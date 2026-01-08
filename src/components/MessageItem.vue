@@ -11,7 +11,7 @@ const DOMPurify = typeof window !== 'undefined' ? createDOMPurify(window) : crea
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { MessageNode } from '../models/types';
-import { User, Bot, Brain, GitFork, Pencil, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 
 const props = defineProps<{
   message: MessageNode;
@@ -149,7 +149,7 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
     <div class="flex-shrink-0">
       <div class="w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
         <User v-if="isUser" class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-        <Bot v-else class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+        <Bird v-else class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
       </div>
     </div>
     

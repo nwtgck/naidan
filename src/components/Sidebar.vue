@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useTheme } from '../composables/useTheme';
+import Logo from './Logo.vue';
 import { MessageSquare, Plus, Trash2, Settings as SettingsIcon, Sun, Moon, Monitor, RotateCcw, AlertTriangle, Pencil, Check, X } from 'lucide-vue-next';
 
 const { chats, loadChats, createNewChat, deleteChat, currentChat, lastDeletedChat, undoDelete, deleteAllChats, renameChat } = useChat();
@@ -74,6 +75,13 @@ async function handleUndo() {
 
 <template>
   <div class="flex flex-col h-full bg-gray-900 text-white w-64 border-r border-gray-800">
+    <div class="p-6 pb-2 flex items-center gap-3">
+      <Logo :size="28" />
+      <h1 class="text-lg font-bold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent">
+        LM Web UI
+      </h1>
+    </div>
+
     <div class="p-4 space-y-2">
       <button 
         @click="handleNewChat"
