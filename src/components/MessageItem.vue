@@ -11,10 +11,14 @@ const DOMPurify = typeof window !== 'undefined' ? createDOMPurify(window) : crea
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { Message } from '../models/types';
-import { User, Bot, Brain } from 'lucide-vue-next';
+import { User, Bot, Brain, GitFork } from 'lucide-vue-next';
 
 const props = defineProps<{
   message: Message;
+}>();
+
+const emit = defineEmits<{
+  (e: 'fork', messageId: string): void;
 }>();
 
 // Initialize Mermaid
@@ -91,7 +95,7 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
 </script>
 
 <template>
-  <div class="flex gap-4 p-4" :class="{ 'bg-gray-50 dark:bg-gray-800/50': !isUser }">
+  <div class="flex gap-4 p-4 group" :class="{ 'bg-gray-50 dark:bg-gray-800/50': !isUser }">
     <div class="flex-shrink-0">
       <div class="w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
         <User v-if="isUser" class="w-5 h-5 text-gray-600 dark:text-gray-300" />
@@ -116,6 +120,18 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
 
       <!-- Content -->
       <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto" v-html="parsedContent"></div>
+    </div>
+
+    <!-- Message Actions -->
+    <div class="flex-shrink-0 self-start opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
+      <button 
+        @click="emit('fork', message.id)"
+        class="flex items-center gap-1.5 px-2 py-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-md transition-all"
+        title="Create a new chat branching from this message"
+      >
+        <span class="text-[10px] font-bold uppercase tracking-tight hidden lg:inline">Fork</span>
+        <GitFork class="w-4 h-4" />
+      </button>
     </div>
   </div>
 </template>

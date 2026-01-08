@@ -85,6 +85,31 @@ export function useChat() {
     }
   }
 
+  async function forkChat(messageId: string): Promise<string | null> {
+    if (!currentChat.value) return null;
+
+    const msgIndex = currentChat.value.messages.findIndex(m => m.id === messageId);
+    if (msgIndex === -1) return null;
+
+    const forkedMessages = currentChat.value.messages.slice(0, msgIndex + 1).map(m => ({ ...m }));
+    const newId = uuidv4();
+    const now = Date.now();
+
+    const forkedChat: Chat = {
+      ...currentChat.value,
+      id: newId,
+      title: `Fork of ${currentChat.value.title}`,
+      messages: forkedMessages,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await storageService.saveChat(forkedChat);
+    await loadChats();
+    currentChat.value = forkedChat;
+    return newId;
+  }
+
 
 
   async function sendMessage(content: string) {
@@ -289,6 +314,7 @@ graph TD
     undoDelete,
     deleteAllChats,
     renameChat,
+    forkChat,
     lastDeletedChat
   };
 }

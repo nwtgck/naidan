@@ -1,14 +1,24 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
 import { Send, Bug, Settings2, Loader2 } from 'lucide-vue-next';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 
-const { currentChat, sendMessage, streaming, toggleDebug } = useChat();
+const { currentChat, sendMessage, streaming, toggleDebug, forkChat } = useChat();
 const { settings } = useSettings();
+const router = useRouter();
 const input = ref('');
+// ... (rest of setup remained the same)
+
+async function handleFork(messageId: string) {
+  const newId = await forkChat(messageId);
+  if (newId) {
+    router.push(`/chat/${newId}`);
+  }
+}
 const container = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
@@ -94,9 +104,12 @@ onMounted(() => {
 <template>
   <div class="flex flex-col h-full bg-white dark:bg-gray-800">
     <!-- Header -->
-    <div v-if="currentChat" class="border-b dark:border-gray-700 px-4 py-3 flex items-center justify-between bg-white dark:bg-gray-800 shadow-sm z-10">
-        <h2 class="font-semibold text-gray-700 dark:text-gray-200 truncate">{{ currentChat.title }}</h2>
-        <div class="flex items-center gap-1">
+    <div v-if="currentChat" class="border-b dark:border-gray-700 px-6 py-4 flex items-center justify-between bg-white dark:bg-gray-800 shadow-sm z-10">
+        <div class="flex flex-col overflow-hidden">
+          <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 truncate">{{ currentChat.title }}</h2>
+          <p class="text-xs text-gray-400 dark:text-gray-500 truncate">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
+        </div>
+        <div class="flex items-center gap-2">
           <button 
               @click="showChatSettings = !showChatSettings; if(showChatSettings) fetchModels()"
               class="p-2 rounded-md transition-colors"
@@ -171,6 +184,7 @@ onMounted(() => {
           v-for="msg in currentChat.messages" 
           :key="msg.id" 
           :message="msg" 
+          @fork="handleFork"
         />
         <div v-if="currentChat.messages.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
           Start a conversation...
