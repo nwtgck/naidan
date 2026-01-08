@@ -205,7 +205,7 @@ onMounted(() => {
       <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
         Select or create a chat to start
       </div>
-      <div v-else>
+      <div v-else class="relative">
         <transition-group name="msg" tag="div">
           <MessageItem 
             v-for="msg in activeMessages" 
@@ -252,11 +252,21 @@ onMounted(() => {
 <style scoped>
 .msg-enter-active,
 .msg-leave-active {
-  transition: opacity 0.1s ease-out;
+  transition: opacity 0.15s ease-out;
 }
+
 .msg-enter-from,
 .msg-leave-to {
   opacity: 0;
 }
-/* No transform during message version switch to keep it feeling stable */
+
+/* Ensure the leaving element doesn't take up space, preventing "jumping" */
+.msg-leave-active {
+  position: absolute;
+  width: 100%;
+}
+
+.msg-move {
+  transition: transform 0.2s ease;
+}
 </style>
