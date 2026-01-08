@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '../services/storage';
-import { v4 as uuidv4 } from 'uuid';
 
 // Mock storage service
 vi.mock('../services/storage', () => ({
@@ -22,7 +21,7 @@ vi.mock('./useSettings', () => ({
 }));
 
 describe('useChat Composable Logic', () => {
-  const { createNewChat, deleteChat, undoDelete, deleteAllChats, chats, lastDeletedChat, loadChats } = useChat();
+  const { deleteChat, undoDelete, deleteAllChats, lastDeletedChat } = useChat();
 
   beforeEach(() => {
     vi.clearAllMocks();
