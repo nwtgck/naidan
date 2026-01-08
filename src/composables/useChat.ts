@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { v4 as uuidv4 } from 'uuid';
+import { v7 as uuidv7 } from 'uuid';
 import type { Chat, Message } from '../models/types';
 import { storageService } from '../services/storage';
 import type { ChatSummary } from '../services/storage/interface';
@@ -20,7 +20,7 @@ export function useChat() {
 
   async function createNewChat() {
     const newChat: Chat = {
-      id: uuidv4(),
+      id: uuidv7(),
       title: 'New Chat',
       messages: [],
       modelId: settings.value.defaultModelId || 'gpt-3.5-turbo', // Fallback
@@ -92,7 +92,7 @@ export function useChat() {
     if (msgIndex === -1) return null;
 
     const forkedMessages = currentChat.value.messages.slice(0, msgIndex + 1).map(m => ({ ...m }));
-    const newId = uuidv4();
+    const newId = uuidv7();
     const now = Date.now();
 
     const forkedChat: Chat = {
@@ -120,7 +120,7 @@ export function useChat() {
 
     // User Message
     const userMsg: Message = {
-      id: uuidv4(),
+      id: uuidv7(),
       role: 'user',
       content,
       timestamp: Date.now(),
@@ -129,7 +129,7 @@ export function useChat() {
 
     // Assistant Placeholder
     const assistantMsg: Message = {
-      id: uuidv4(),
+      id: uuidv7(),
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
@@ -206,7 +206,7 @@ export function useChat() {
    * ensure the new features are covered and can be verified easily.
    */
   async function createSampleChat() {
-    const id = uuidv4();
+    const id = uuidv7();
     const now = Date.now();
     const sampleChat: Chat = {
       id,
@@ -217,13 +217,13 @@ export function useChat() {
       debugEnabled: true,
       messages: [
         {
-          id: uuidv4(),
+          id: uuidv7(),
           role: 'user',
           content: 'Show me your capabilities, including code highlighting and your thought process.',
           timestamp: now - 10000,
         },
         {
-          id: uuidv4(),
+          id: uuidv7(),
           role: 'assistant',
           content: `<think>
 The user wants to see a comprehensive demonstration of my rendering capabilities.

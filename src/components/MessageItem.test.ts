@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { Message } from '../models/types';
-import { v4 as uuidv4 } from 'uuid';
+import { v7 as uuidv7 } from 'uuid';
 
 describe('MessageItem Rendering', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): Message => ({
-    id: uuidv4(),
+    id: uuidv7(),
     role,
     content,
     timestamp: Date.now(),

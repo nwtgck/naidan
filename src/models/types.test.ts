@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { ChatSchemaDto } from './dto';
-import { v4 as uuidv4 } from 'uuid';
+import { v7 as uuidv7 } from 'uuid';
 
 describe('Zod Schemas', () => {
   it('should validate a correct chat object', () => {
     const chat = {
-      id: uuidv4(),
+      id: uuidv7(),
       title: 'Hello',
       messages: [
         {
-          id: uuidv4(),
+          id: uuidv7(),
           role: 'user',
           content: 'Hi',
           timestamp: 123456

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import type { Chat } from '../../models/types';
-import { v4 as uuidv4 } from 'uuid';
+import { v7 as uuidv7 } from 'uuid';
 
 describe('LocalStorageProvider', () => {
   let provider: LocalStorageProvider;
@@ -13,7 +13,7 @@ describe('LocalStorageProvider', () => {
   });
 
   const mockChat: Chat = {
-    id: uuidv4(),
+    id: uuidv7(),
     title: 'Test Chat',
     messages: [],
     modelId: 'gpt-3.5',
