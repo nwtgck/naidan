@@ -9,6 +9,10 @@
  * to ensure that existing user data can still be read. Use Zod's .optional(), 
  * .default(), or .catch() to handle legacy fields during transformation.
  * 
+ * IMPORTANT: Every time you add a feature or change these schemas, you MUST add
+ * a new snapshot test case to `src/models/backward-compatibility.test.ts` to
+ * verify that old data remains readable.
+ * 
  * All persistence-level validation is handled here via Zod.
  */
 import { z } from 'zod';
