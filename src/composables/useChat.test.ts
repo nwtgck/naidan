@@ -186,4 +186,36 @@ describe('useChat Composable Logic', () => {
     const secondVersionUserMsg = currentChat.value?.root.items[1];
     expect(currentChat.value?.currentLeafId).toBe(secondVersionUserMsg?.replies.items[0]?.id);
   });
+
+  it('should support manual editing of assistant messages', async () => {
+    const { sendMessage, editMessage, currentChat } = useChat();
+    
+    currentChat.value = reactive({
+      id: 'assistant-edit-test',
+      title: 'Assistant Edit',
+      root: { items: [] },
+      modelId: 'gpt-4',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false
+    }) as any;
+
+    // 1. Send first message pair
+    await sendMessage('Hello');
+    const userMsg = currentChat.value?.root.items[0];
+    const assistantMsg = userMsg?.replies.items[0];
+    expect(assistantMsg?.role).toBe('assistant');
+
+    // 2. Manually edit the assistant's message
+    await editMessage(assistantMsg!.id, 'Manually corrected answer');
+
+    // 3. Verify
+    // The user message should now have TWO replies (branches)
+    expect(userMsg?.replies.items).toHaveLength(2);
+    expect(userMsg?.replies.items[0]?.content).not.toBe('Manually corrected answer');
+    expect(userMsg?.replies.items[1]?.content).toBe('Manually corrected answer');
+    
+    // The current leaf should be the NEW assistant message
+    expect(currentChat.value?.currentLeafId).toBe(userMsg?.replies.items[1]?.id);
+  });
 });

@@ -260,8 +260,36 @@ export function useChat() {
 
   const editMessage = async (messageId: string, newContent: string) => {
     if (!currentChat.value || currentChat.value.root.items.length === 0) return;
+    
+    const node = findNodeInBranch(currentChat.value.root.items, messageId);
+    if (!node) return;
+
     const parent = findParentInBranch(currentChat.value.root.items, messageId);
-    await sendMessage(newContent, parent ? parent.id : null);
+
+    if (node.role === 'assistant') {
+      // Manual assistant edit: Just add a new version of the assistant message
+      const newAssistantMsg: MessageNode = {
+        id: uuidv7(),
+        role: 'assistant',
+        content: newContent,
+        timestamp: Date.now(),
+        replies: { items: [] }
+      };
+      
+      if (parent) {
+        parent.replies.items.push(newAssistantMsg);
+      } else {
+        // This shouldn't happen usually as first message is user, but for safety:
+        currentChat.value.root.items.push(newAssistantMsg);
+      }
+      
+      currentChat.value.currentLeafId = newAssistantMsg.id;
+      await storageService.saveChat(currentChat.value);
+      triggerRef(currentChat);
+    } else {
+      // User edit: Standard branching (creates new user msg + assistant reply)
+      await sendMessage(newContent, parent ? parent.id : null);
+    }
   };
 
   const switchVersion = async (messageId: string) => {
