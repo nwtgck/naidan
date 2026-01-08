@@ -1,12 +1,35 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted } from 'vue';
 import { useChat } from '../composables/useChat';
+import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
-import { Send, Bug } from 'lucide-vue-next';
+import { Send, Bug, Settings2, X, Loader2 } from 'lucide-vue-next';
+import { OpenAIProvider, OllamaProvider } from '../services/llm';
 
 const { currentChat, sendMessage, streaming, toggleDebug } = useChat();
+const { settings } = useSettings();
 const input = ref('');
 const container = ref<HTMLElement | null>(null);
+
+const showChatSettings = ref(false);
+const availableModels = ref<string[]>([]);
+const fetchingModels = ref(false);
+
+async function fetchModels() {
+  if (!currentChat.value) return;
+  fetchingModels.value = true;
+  try {
+    const type = currentChat.value.endpointType || settings.value.endpointType;
+    const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
+    const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+    availableModels.value = await provider.listModels(url);
+  } catch (e) {
+    console.error(e);
+    availableModels.value = [];
+  } finally {
+    fetchingModels.value = false;
+  }
+}
 
 async function handleSend() {
   if (!input.value.trim() || streaming.value) return;
@@ -50,14 +73,69 @@ onMounted(() => {
     <!-- Header -->
     <div v-if="currentChat" class="border-b dark:border-gray-700 px-4 py-3 flex items-center justify-between bg-white dark:bg-gray-800 shadow-sm z-10">
         <h2 class="font-semibold text-gray-700 dark:text-gray-200 truncate">{{ currentChat.title }}</h2>
-        <button 
-            @click="toggleDebug"
-            class="p-2 rounded-md transition-colors"
-            :class="currentChat.debugEnabled ? 'text-green-600 bg-green-50 dark:bg-green-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
-            title="Toggle Debug Mode for this Chat"
-        >
-            <Bug class="w-5 h-5" />
-        </button>
+        <div class="flex items-center gap-1">
+          <button 
+              @click="showChatSettings = !showChatSettings; if(showChatSettings) fetchModels()"
+              class="p-2 rounded-md transition-colors"
+              :class="showChatSettings ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
+              title="Chat Settings"
+          >
+              <Settings2 class="w-5 h-5" />
+          </button>
+          <button 
+              @click="toggleDebug"
+              class="p-2 rounded-md transition-colors"
+              :class="currentChat.debugEnabled ? 'text-green-600 bg-green-50 dark:bg-green-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
+              title="Toggle Debug Mode for this Chat"
+          >
+              <Bug class="w-5 h-5" />
+          </button>
+        </div>
+    </div>
+
+    <!-- Chat Settings Panel -->
+    <div v-if="showChatSettings && currentChat" class="border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 p-4 animate-in slide-in-from-top duration-200">
+      <div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Endpoint Type</label>
+          <select 
+            v-model="currentChat.endpointType"
+            class="w-full text-sm border dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800"
+          >
+            <option :value="undefined">Global ({{ settings.endpointType }})</option>
+            <option value="openai">OpenAI</option>
+            <option value="ollama">Ollama</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Endpoint URL</label>
+          <input 
+            v-model="currentChat.endpointUrl"
+            type="text"
+            class="w-full text-sm border dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800"
+            :placeholder="settings.endpointUrl"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-500 mb-1">Model Override</label>
+          <div class="flex gap-1">
+            <select 
+              v-model="currentChat.overrideModelId"
+              class="flex-1 text-sm border dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800"
+            >
+              <option :value="undefined">Global ({{ settings.defaultModelId || 'Default' }})</option>
+              <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+            </select>
+            <button @click="fetchModels" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
+              <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
+              <span v-else class="text-xs text-gray-400">Ref</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="mt-2 flex justify-end">
+        <button @click="showChatSettings = false" class="text-xs text-indigo-600 hover:underline">Close Settings</button>
+      </div>
     </div>
 
     <!-- Messages -->

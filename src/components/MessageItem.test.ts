@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
-import { Message } from '../models/types';
+import type { Message } from '../models/types';
 import { v4 as uuidv4 } from 'uuid';
 
 describe('MessageItem Rendering', () => {

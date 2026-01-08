@@ -16,6 +16,12 @@ import { z } from 'zod';
 export const RoleSchemaDto = z.enum(['user', 'assistant', 'system']);
 export type RoleDto = z.infer<typeof RoleSchemaDto>;
 
+export const StorageTypeSchemaDto = z.enum(['local', 'opfs']);
+export type StorageTypeDto = z.infer<typeof StorageTypeSchemaDto>;
+
+export const EndpointTypeSchemaDto = z.enum(['openai', 'ollama']);
+export type EndpointTypeDto = z.infer<typeof EndpointTypeSchemaDto>;
+
 export const MessageSchemaDto = z.object({
   id: z.uuid(),
   role: RoleSchemaDto,
@@ -33,14 +39,12 @@ export const ChatSchemaDto = z.object({
   createdAt: z.number(),
   updatedAt: z.number(),
   debugEnabled: z.boolean().optional().default(false),
+  // Overrides
+  endpointType: EndpointTypeSchemaDto.optional(),
+  endpointUrl: z.string().url().optional(),
+  overrideModelId: z.string().optional(),
 });
 export type ChatDto = z.infer<typeof ChatSchemaDto>;
-
-export const StorageTypeSchemaDto = z.enum(['local', 'opfs']);
-export type StorageTypeDto = z.infer<typeof StorageTypeSchemaDto>;
-
-export const EndpointTypeSchemaDto = z.enum(['openai', 'ollama']);
-export type EndpointTypeDto = z.infer<typeof EndpointTypeSchemaDto>;
 
 export const SettingsSchemaDto = z.object({
   endpointType: EndpointTypeSchemaDto,

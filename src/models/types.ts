@@ -27,6 +27,9 @@ export interface Chat {
   createdAt: number;
   updatedAt: number;
   debugEnabled: boolean;
+  endpointType?: EndpointType;
+  endpointUrl?: string;
+  overrideModelId?: string;
 }
 
 export interface Settings {

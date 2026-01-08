@@ -74,11 +74,13 @@ export function useChat() {
     streaming.value = true;
     
     try {
-      const provider = settings.value.endpointType === 'ollama' 
+      const endpointType = currentChat.value.endpointType || settings.value.endpointType;
+      const endpointUrl = currentChat.value.endpointUrl || settings.value.endpointUrl;
+      const model = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
+
+      const provider = endpointType === 'ollama' 
         ? new OllamaProvider() 
         : new OpenAIProvider();
-        
-      const model = currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
 
       // We only send previous messages context, excluding the empty assistant one we just added
       const contextMessages = messages.slice(0, -1);
@@ -86,7 +88,7 @@ export function useChat() {
       await provider.chat(
         contextMessages,
         model,
-        settings.value.endpointUrl,
+        endpointUrl,
         (chunk) => {
           if (currentChat.value && currentChat.value.messages[lastIdx]) {
             currentChat.value.messages[lastIdx].content += chunk;

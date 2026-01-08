@@ -47,6 +47,9 @@ export const chatToDomain = (dto: ChatDto): Chat => ({
   createdAt: dto.createdAt,
   updatedAt: dto.updatedAt,
   debugEnabled: dto.debugEnabled ?? false,
+  endpointType: dto.endpointType as EndpointType | undefined,
+  endpointUrl: dto.endpointUrl,
+  overrideModelId: dto.overrideModelId,
 });
 
 export const chatToDto = (domain: Chat): ChatDto => ({
@@ -63,6 +66,9 @@ export const chatToDto = (domain: Chat): ChatDto => ({
   createdAt: domain.createdAt,
   updatedAt: domain.updatedAt,
   debugEnabled: domain.debugEnabled,
+  endpointType: domain.endpointType as EndpointTypeDto | undefined,
+  endpointUrl: domain.endpointUrl,
+  overrideModelId: domain.overrideModelId,
 });
 
 export const settingsToDomain = (dto: SettingsDto): Settings => ({
