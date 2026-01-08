@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import Sidebar from './components/Sidebar.vue';
 import ChatArea from './components/ChatArea.vue';
 import SettingsModal from './components/SettingsModal.vue';
+import DebugPanel from './components/DebugPanel.vue';
 import { useSettings } from './composables/useSettings';
 import { useChat } from './composables/useChat';
 
@@ -25,6 +26,7 @@ onMounted(async () => {
     <!-- Main Chat Area -->
     <main class="flex-1 h-full relative">
       <ChatArea />
+      <DebugPanel />
     </main>
 
     <!-- Settings Modal -->

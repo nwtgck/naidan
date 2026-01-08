@@ -134,6 +134,17 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
             Switching storage will hide chats from the previous location.
           </p>
         </div>
+
+        <!-- Debug Mode -->
+        <div class="flex items-center gap-2">
+          <input 
+            type="checkbox" 
+            id="debugMode" 
+            v-model="form.debugMode"
+            class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          >
+          <label for="debugMode" class="text-sm font-medium text-gray-700">Enable Debug Mode</label>
+        </div>
       </div>
 
       <div class="mt-8 flex justify-end gap-2">
