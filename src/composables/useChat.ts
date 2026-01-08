@@ -79,7 +79,7 @@ export function useChat() {
   const createNewChat = async () => {
     const chatObj: Chat = {
       id: uuidv7(),
-      title: 'New Chat',
+      title: null, // Null indicates default title
       root: { items: [] },
       modelId: settings.value.defaultModelId || 'gpt-3.5-turbo',
       createdAt: Date.now(),
@@ -212,6 +212,52 @@ export function useChat() {
       await storageService.saveChat(currentChat.value);
       triggerRef(currentChat);
       await loadChats(); 
+
+      // Auto-rename if title is null
+      if (currentChat.value.title === null) {
+        const chatIdAtStart = currentChat.value.id;
+        try {
+          let generatedTitle = '';
+          const renameProvider = endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+          
+          const promptNode: MessageNode = {
+            id: uuidv7(),
+            role: 'user',
+            content: `Generate a very short, concise title (2-3 words max) for a chat that starts with this message: "${content}". Respond with ONLY the title text.`,
+            timestamp: Date.now(),
+            replies: { items: [] }
+          };
+          
+          await renameProvider.chat([promptNode], model, endpointUrl, (chunk) => {
+            generatedTitle += chunk;
+          });
+          
+          const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
+          
+          if (finalTitle) {
+            // Double-check: still the same chat and title is still null
+            if (currentChat.value && 
+                currentChat.value.id === chatIdAtStart && 
+                currentChat.value.title === null) {
+              currentChat.value.title = finalTitle;
+              await storageService.saveChat(currentChat.value);
+              await loadChats();
+              triggerRef(currentChat);
+            }
+          }
+        } catch (_e) {
+          console.error('Auto-rename failed', _e);
+          // Fallback to truncated content if LLM fails and it's still null
+          if (currentChat.value && 
+              currentChat.value.id === chatIdAtStart && 
+              currentChat.value.title === null) {
+            currentChat.value.title = content.slice(0, 20) + (content.length > 20 ? '...' : '');
+            await storageService.saveChat(currentChat.value);
+            await loadChats();
+            triggerRef(currentChat);
+          }
+        }
+      }
     } catch (e) {
       assistantNode.content += '\n\n[Error: ' + (e as Error).message + ']';
       triggerRef(currentChat);

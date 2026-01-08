@@ -25,7 +25,7 @@ export interface MessageBranch {
 
 export interface Chat {
   id: string;
-  title: string;
+  title: string | null;
   root: MessageBranch;
   currentLeafId?: string;
   

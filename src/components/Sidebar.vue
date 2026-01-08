@@ -125,7 +125,7 @@ async function handleUndo() {
           </div>
           <div v-if="editingId !== chat.id" class="flex items-center gap-1">
             <button 
-              @click.stop="startEditing(chat.id, chat.title)"
+              @click.stop="startEditing(chat.id, chat.title || '')"
               class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-indigo-400 p-1 transition-opacity"
             >
               <Pencil class="w-4 h-4" />

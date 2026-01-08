@@ -54,7 +54,7 @@ export type MessageNodeDto = {
 
 export const ChatSchemaDto = z.object({
   id: z.uuid(),
-  title: z.string(),
+  title: z.string().nullable(),
   // Made optional/default for backward compatibility with legacy data
   root: MessageBranchSchemaDto.optional().default({ items: [] }),
   currentLeafId: z.uuid().optional(),

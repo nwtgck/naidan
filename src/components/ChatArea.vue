@@ -131,7 +131,7 @@ onMounted(() => {
             >
               <ArrowLeft class="w-5 h-5" />
             </button>
-            <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 truncate">{{ currentChat.title }}</h2>
+            <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 truncate">{{ currentChat.title || 'Untitled Chat' }}</h2>
           </div>
           <p class="text-xs text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
         </div>
