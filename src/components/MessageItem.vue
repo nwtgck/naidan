@@ -25,7 +25,23 @@ const emit = defineEmits<{
 }>();
 
 const isEditing = ref(false);
-const editContent = ref(props.message.content);
+const editContent = ref(props.message.content.trimEnd());
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
+
+// Focus and move cursor to end when editing starts
+watch(isEditing, (editing) => {
+  if (editing) {
+    editContent.value = props.message.content.trimEnd();
+    nextTick(() => {
+      if (textareaRef.value) {
+        textareaRef.value.focus();
+        // Move cursor to end
+        textareaRef.value.selectionStart = textareaRef.value.value.length;
+        textareaRef.value.selectionEnd = textareaRef.value.value.length;
+      }
+    });
+  }
+});
 
 const versionInfo = computed(() => {
   if (!props.siblings || props.siblings.length <= 1) return null;
@@ -48,7 +64,7 @@ function handleSaveEdit() {
 }
 
 function handleCancelEdit() {
-  editContent.value = props.message.content;
+  editContent.value = props.message.content.trimEnd();
   isEditing.value = false;
 }
 
@@ -153,6 +169,7 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
       <!-- Content -->
       <div v-if="isEditing" class="mt-1" data-testid="edit-mode">
         <textarea 
+          ref="textareaRef"
           v-model="editContent"
           class="w-full border dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 h-32"
           data-testid="edit-textarea"
