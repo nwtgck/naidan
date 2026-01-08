@@ -11,6 +11,9 @@ const { settings } = useSettings();
 const input = ref('');
 const container = ref<HTMLElement | null>(null);
 
+const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
+
 const showChatSettings = ref(false);
 const availableModels = ref<string[]>([]);
 const fetchingModels = ref(false);
@@ -160,8 +163,9 @@ onMounted(() => {
       <div class="max-w-4xl mx-auto relative">
         <textarea
           v-model="input"
-          @keydown.enter.exact.prevent="handleSend"
-          placeholder="Type a message..."
+          @keydown.enter.ctrl.prevent="handleSend"
+          @keydown.enter.meta.prevent="handleSend"
+          :placeholder="`Type a message... (${sendShortcutText} to send)`"
           class="w-full border dark:border-gray-600 rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-24 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
           :disabled="streaming"
         ></textarea>
