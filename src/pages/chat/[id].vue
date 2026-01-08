@@ -19,5 +19,23 @@ watch(() => route.params.id, syncChat);
 </script>
 
 <template>
-  <ChatArea />
+  <transition
+    name="fade"
+    appear
+  >
+    <ChatArea :key="route.params.id as string" />
+  </transition>
 </template>
+
+<style scoped>
+.fade-enter-active {
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(2px);
+}
+
+/* We don't use leave-active to keep navigation instant */
+</style>

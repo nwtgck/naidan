@@ -196,12 +196,14 @@ onMounted(() => {
         Select or create a chat to start
       </div>
       <div v-else>
-        <MessageItem 
-          v-for="msg in currentChat.messages" 
-          :key="msg.id" 
-          :message="msg" 
-          @fork="handleFork"
-        />
+        <transition-group name="list" tag="div">
+          <MessageItem 
+            v-for="msg in currentChat.messages" 
+            :key="msg.id" 
+            :message="msg" 
+            @fork="handleFork"
+          />
+        </transition-group>
         <div v-if="currentChat.messages.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
           Start a conversation...
         </div>
@@ -233,3 +235,14 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.list-enter-active {
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+}
+.list-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+/* No leave-active here to ensure instant clearing when switching chats */
+</style>
