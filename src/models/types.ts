@@ -6,27 +6,34 @@
  * external validation libraries to ensure a stable and maintainable application core.
  */
 // --- Domain Definitions (Business Logic Layer) ---
-
 export type Role = 'user' | 'assistant' | 'system';
 export type StorageType = 'local' | 'opfs';
 export type EndpointType = 'openai' | 'ollama';
 
-export interface Message {
+export interface MessageNode {
   id: string;
   role: Role;
   content: string;
   timestamp: number;
   thinking?: string;
+  replies: MessageBranch;
+}
+
+export interface MessageBranch {
+  items: MessageNode[];
 }
 
 export interface Chat {
   id: string;
   title: string;
-  messages: Message[];
+  root: MessageBranch;
+  currentLeafId?: string;
+  
   modelId: string;
   createdAt: number;
   updatedAt: number;
   debugEnabled: boolean;
+  
   endpointType?: EndpointType;
   endpointUrl?: string;
   overrideModelId?: string;

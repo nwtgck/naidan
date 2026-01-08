@@ -7,24 +7,15 @@ import MessageItem from './MessageItem.vue';
 import { Send, Bug, Settings2, Loader2, ArrowLeft } from 'lucide-vue-next';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 
-const { currentChat, sendMessage, streaming, toggleDebug, forkChat } = useChat();
+const chatStore = useChat();
+const {
+  currentChat,
+  streaming,
+  activeMessages,
+} = chatStore;
 const { settings } = useSettings();
 const router = useRouter();
 const input = ref('');
-// ... (rest of setup remained the same)
-
-async function handleFork(messageId: string) {
-  const newId = await forkChat(messageId);
-  if (newId) {
-    router.push(`/chat/${newId}`);
-  }
-}
-
-function jumpToOrigin() {
-  if (currentChat.value?.originChatId) {
-    router.push(`/chat/${currentChat.value.originChatId}`);
-  }
-}
 const container = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
@@ -61,10 +52,30 @@ async function handleSend() {
   if (!input.value.trim() || streaming.value) return;
   const text = input.value;
   input.value = '';
-  await sendMessage(text);
+  await chatStore.sendMessage(text);
   focusInput();
 }
 
+async function handleEdit(messageId: string, newContent: string) {
+  await chatStore.editMessage(messageId, newContent);
+}
+
+function handleSwitchVersion(messageId: string) {
+  chatStore.switchVersion(messageId);
+}
+
+async function handleFork(messageId: string) {
+  const newId = await chatStore.forkChat(messageId);
+  if (newId) {
+    router.push(`/chat/${newId}`);
+  }
+}
+
+function jumpToOrigin() {
+  if (currentChat.value?.originChatId) {
+    router.push(`/chat/${currentChat.value.originChatId}`);
+  }
+}
 function scrollToBottom() {
   if (container.value) {
     container.value.scrollTop = container.value.scrollHeight;
@@ -72,14 +83,13 @@ function scrollToBottom() {
 }
 
 watch(
-  () => currentChat.value?.messages.length,
+  () => activeMessages.value.length,
   () => nextTick(scrollToBottom)
 );
 
 watch(
-  () => currentChat.value?.messages[currentChat.value.messages.length - 1]?.content,
+  () => activeMessages.value[activeMessages.value.length - 1]?.content,
   () => {
-    // Scroll if near bottom or if it's the assistant typing
     if (container.value) {
         const { scrollTop, scrollHeight, clientHeight } = container.value;
         if (scrollHeight - scrollTop - clientHeight < 100) {
@@ -135,7 +145,7 @@ onMounted(() => {
               <Settings2 class="w-5 h-5" />
           </button>
           <button 
-              @click="toggleDebug"
+              @click="chatStore.toggleDebug"
               class="p-2 rounded-md transition-colors"
               :class="currentChat.debugEnabled ? 'text-green-600 bg-green-50 dark:bg-green-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
               title="Toggle Debug Mode for this Chat"
@@ -196,15 +206,18 @@ onMounted(() => {
         Select or create a chat to start
       </div>
       <div v-else>
-        <transition-group name="list" tag="div">
+        <transition-group name="msg" tag="div">
           <MessageItem 
-            v-for="msg in currentChat.messages" 
+            v-for="msg in activeMessages" 
             :key="msg.id" 
             :message="msg" 
+            :siblings="chatStore.getSiblings(msg.id)"
             @fork="handleFork"
+            @edit="handleEdit"
+            @switch-version="handleSwitchVersion"
           />
         </transition-group>
-        <div v-if="currentChat.messages.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
+        <div v-if="activeMessages.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
           Start a conversation...
         </div>
       </div>
@@ -237,12 +250,13 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.list-enter-active {
-  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+.msg-enter-active,
+.msg-leave-active {
+  transition: opacity 0.1s ease-out;
 }
-.list-enter-from {
+.msg-enter-from,
+.msg-leave-to {
   opacity: 0;
-  transform: translateY(4px);
 }
-/* No leave-active here to ensure instant clearing when switching chats */
+/* No transform during message version switch to keep it feeling stable */
 </style>

@@ -1,8 +1,8 @@
-import type { Message } from '../models/types';
+import type { MessageNode } from '../models/types';
 
 export interface LLMProvider {
   chat(
-    messages: Message[],
+    messages: MessageNode[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void
@@ -13,7 +13,7 @@ export interface LLMProvider {
 
 export class OpenAIProvider implements LLMProvider {
   async chat(
-    messages: Message[],
+    messages: MessageNode[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void
@@ -73,7 +73,7 @@ export class OpenAIProvider implements LLMProvider {
 
 export class OllamaProvider implements LLMProvider {
   async chat(
-    messages: Message[],
+    messages: MessageNode[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void

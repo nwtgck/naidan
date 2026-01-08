@@ -15,7 +15,7 @@ describe('LocalStorageProvider', () => {
   const mockChat: Chat = {
     id: uuidv7(),
     title: 'Test Chat',
-    messages: [],
+    root: { items: [] },
     modelId: 'gpt-3.5',
     createdAt: Date.now(),
     updatedAt: Date.now(),

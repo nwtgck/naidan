@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
-import type { Message } from '../models/types';
+import type { MessageNode } from '../models/types';
 import { v7 as uuidv7 } from 'uuid';
 
 describe('MessageItem Rendering', () => {
-  const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): Message => ({
+  const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): MessageNode => ({
     id: uuidv7(),
     role,
     content,
     timestamp: Date.now(),
+    replies: { items: [] }
   });
 
   it('renders basic markdown correctly', () => {

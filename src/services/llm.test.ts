@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OpenAIProvider } from './llm';
-import type { Message } from '../models/types';
+import type { MessageNode } from '../models/types';
 
 describe('OpenAIProvider', () => {
   let provider: OpenAIProvider;
@@ -23,7 +23,7 @@ describe('OpenAIProvider', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const messages: Message[] = [];
+    const messages: MessageNode[] = [];
     const onChunk = vi.fn();
 
     await provider.chat(messages, 'gpt-3.5', 'http://localhost:8282/v1', onChunk);

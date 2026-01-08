@@ -7,14 +7,17 @@ describe('Zod Schemas', () => {
     const chat = {
       id: uuidv7(),
       title: 'Hello',
-      messages: [
-        {
-          id: uuidv7(),
-          role: 'user',
-          content: 'Hi',
-          timestamp: 123456
-        }
-      ],
+      root: {
+        items: [
+          {
+            id: uuidv7(),
+            role: 'user',
+            content: 'Hi',
+            timestamp: 123456,
+            replies: { items: [] }
+          }
+        ]
+      },
       modelId: 'gpt-4',
       createdAt: 123,
       updatedAt: 123,
