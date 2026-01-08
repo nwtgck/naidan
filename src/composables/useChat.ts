@@ -129,6 +129,87 @@ export function useChat() {
     await storageService.saveChat(currentChat.value);
   }
 
+  async function createSampleChat() {
+    const id = uuidv4();
+    const now = Date.now();
+    const sampleChat: Chat = {
+      id,
+      title: '🚀 Sample: Feature Showcase',
+      modelId: 'gpt-4-demo',
+      createdAt: now,
+      updatedAt: now,
+      debugEnabled: true,
+      messages: [
+        {
+          id: uuidv4(),
+          role: 'user',
+          content: 'Show me your capabilities, including code highlighting and your thought process.',
+          timestamp: now - 10000,
+        },
+        {
+          id: uuidv4(),
+          role: 'assistant',
+          content: `<think>
+The user wants to see a comprehensive demonstration of my rendering capabilities.
+I should include:
+1. A thought process block (this one).
+2. Code blocks in various languages (Python, TypeScript, Rust).
+3. Markdown features like tables and lists.
+4. Mathematical notation if supported (though we use standard markdown).
+</think>
+Certainly! Here is a demonstration of what I can do:
+
+### 1. Code Syntax Highlighting
+
+**Python:**
+\`\`\`python
+def greet(name: str) -> str:
+    \"\"\"A simple greeting function\"\"\"
+    return f"Hello, {name}!"
+
+print(greet("World"))
+\`\`\`
+
+**TypeScript (Vue):**
+\`\`\`typescript
+import { ref, computed } from 'vue';
+
+const count = ref(0);
+const doubled = computed(() => count.value * 2);
+\`\`\`
+
+**Rust:**
+\`\`\`rust
+fn main() {
+    let message = "Hello Rust";
+    println!("{}", message);
+}
+\`\`\`
+
+### 2. Rich Markdown
+
+| Feature | Supported | Notes |
+| :--- | :---: | :--- |
+| Tables | ✅ | GitHub Flavored |
+| Lists | ✅ | Nested supported |
+| Sanitization | ✅ | Secure rendering |
+
+*   **Bold** and *Italic* text.
+*   Inline code: \`const x = 42\`.
+*   [Hyperlinks](https://github.com).
+
+> "The only way to do great work is to love what you do." - Steve Jobs`,
+          timestamp: now,
+          thinking: 'The user wants to see a comprehensive demonstration of my rendering capabilities.\nI should include:\n1. A thought process block (this one).\n2. Code blocks in various languages (Python, TypeScript, Rust).\n3. Markdown features like tables and lists.\n4. Mathematical notation if supported (though we use standard markdown).'
+        }
+      ]
+    };
+
+    await storageService.saveChat(sampleChat);
+    await loadChats();
+    currentChat.value = sampleChat;
+  }
+
   return {
     chats,
     currentChat,
@@ -138,6 +219,7 @@ export function useChat() {
     openChat,
     deleteChat,
     sendMessage,
-    toggleDebug
+    toggleDebug,
+    createSampleChat
   };
 }

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { useSettings } from '../composables/useSettings';
+import { useChat } from '../composables/useChat';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
-import { X, Loader2 } from 'lucide-vue-next';
+import { X, Loader2, FlaskConical } from 'lucide-vue-next';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -13,6 +14,7 @@ const emit = defineEmits<{
 }>();
 
 const { settings, save } = useSettings();
+const { createSampleChat } = useChat();
 
 const form = ref({ ...settings.value });
 const availableModels = ref<string[]>([]);
@@ -133,6 +135,17 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Switching storage will hide chats from the previous location.
           </p>
+        </div>
+
+        <div class="border-t dark:border-gray-700 pt-4">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Debug / Development</label>
+          <button 
+            @click="createSampleChat(); emit('close')"
+            class="w-full flex items-center justify-center gap-2 px-4 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          >
+            <FlaskConical class="w-4 h-4" />
+            Create Comprehensive Sample Chat
+          </button>
         </div>
       </div>
 
