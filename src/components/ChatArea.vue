@@ -10,6 +10,7 @@ const { currentChat, sendMessage, streaming, toggleDebug } = useChat();
 const { settings } = useSettings();
 const input = ref('');
 const container = ref<HTMLElement | null>(null);
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
@@ -17,6 +18,12 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 const showChatSettings = ref(false);
 const availableModels = ref<string[]>([]);
 const fetchingModels = ref(false);
+
+function focusInput() {
+  nextTick(() => {
+    textareaRef.value?.focus();
+  });
+}
 
 async function fetchModels() {
   if (!currentChat.value) return;
@@ -39,6 +46,7 @@ async function handleSend() {
   const text = input.value;
   input.value = '';
   await sendMessage(text);
+  focusInput();
 }
 
 function scrollToBottom() {
@@ -66,8 +74,20 @@ watch(
   { deep: true }
 );
 
+watch(
+  () => currentChat.value?.id,
+  () => {
+    if (currentChat.value) {
+      focusInput();
+    }
+  }
+);
+
 onMounted(() => {
     scrollToBottom();
+    if (currentChat.value) {
+      focusInput();
+    }
 });
 </script>
 
@@ -162,6 +182,7 @@ onMounted(() => {
     <div class="border-t dark:border-gray-700 p-4" v-if="currentChat">
       <div class="max-w-4xl mx-auto relative">
         <textarea
+          ref="textareaRef"
           v-model="input"
           @keydown.enter.ctrl.prevent="handleSend"
           @keydown.enter.meta.prevent="handleSend"
