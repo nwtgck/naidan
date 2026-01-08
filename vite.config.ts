@@ -12,6 +12,8 @@ export default defineConfig({
       /* options */
     }),
     vue(),
+    // Bundles all assets into a single HTML file to support opening via the file:// protocol
+    // without CORS or ES module loading restrictions.
     viteSingleFile(),
   ],
   test: {
