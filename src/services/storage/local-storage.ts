@@ -1,4 +1,13 @@
-import { type Chat, type Settings, ChatSchema, SettingsSchema } from '../../models/types';
+import { 
+  type Chat, 
+  type Settings, 
+  ChatSchemaDto, 
+  SettingsSchemaDto,
+  chatToDomain,
+  chatToDto,
+  settingsToDomain,
+  settingsToDto
+} from '../../models/types';
 import type { IStorageProvider, ChatSummary } from './interface';
 
 const KEY_PREFIX = 'local-ai-ui:';
@@ -11,11 +20,11 @@ export class LocalStorageProvider implements IStorageProvider {
   }
 
   async saveChat(chat: Chat): Promise<void> {
-    // Validate first
-    const validatedChat = ChatSchema.parse(chat);
+    const dto = chatToDto(chat);
+    const validatedDto = ChatSchemaDto.parse(dto);
     
     // Save Chat
-    localStorage.setItem(`${KEY_PREFIX}chat:${chat.id}`, JSON.stringify(validatedChat));
+    localStorage.setItem(`${KEY_PREFIX}chat:${chat.id}`, JSON.stringify(validatedDto));
     
     // Update Index
     const index = await this.listChats();
@@ -43,7 +52,8 @@ export class LocalStorageProvider implements IStorageProvider {
     
     try {
       const json = JSON.parse(raw);
-      return ChatSchema.parse(json);
+      const dto = ChatSchemaDto.parse(json);
+      return chatToDomain(dto);
     } catch (e) {
       console.error('Failed to parse chat from local storage', e);
       return null;
@@ -54,8 +64,6 @@ export class LocalStorageProvider implements IStorageProvider {
     const raw = localStorage.getItem(KEY_INDEX);
     if (!raw) return [];
     try {
-      // We don't have a schema for summary list, but it's simple enough or we can define one.
-      // For now, trust but verify basic structure if needed, but assuming internal consistency.
       const list = JSON.parse(raw);
       if (Array.isArray(list)) return list as ChatSummary[];
       return [];
@@ -72,7 +80,8 @@ export class LocalStorageProvider implements IStorageProvider {
   }
 
   async saveSettings(settings: Settings): Promise<void> {
-    const validated = SettingsSchema.parse(settings);
+    const dto = settingsToDto(settings);
+    const validated = SettingsSchemaDto.parse(dto);
     localStorage.setItem(KEY_SETTINGS, JSON.stringify(validated));
   }
 
@@ -80,7 +89,9 @@ export class LocalStorageProvider implements IStorageProvider {
     const raw = localStorage.getItem(KEY_SETTINGS);
     if (!raw) return null;
     try {
-      return SettingsSchema.parse(JSON.parse(raw));
+      const json = JSON.parse(raw);
+      const dto = SettingsSchemaDto.parse(json);
+      return settingsToDomain(dto);
     } catch (e) {
       console.error('Failed to load settings', e);
       return null;

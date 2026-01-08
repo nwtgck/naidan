@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ChatSchema } from './types';
+import { ChatSchemaDto } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
 describe('Zod Schemas', () => {
@@ -17,10 +17,11 @@ describe('Zod Schemas', () => {
       ],
       modelId: 'gpt-4',
       createdAt: 123,
-      updatedAt: 123
+      updatedAt: 123,
+      debugEnabled: false
     };
     
-    expect(() => ChatSchema.parse(chat)).not.toThrow();
+    expect(() => ChatSchemaDto.parse(chat)).not.toThrow();
   });
 
   it('should reject invalid UUID', () => {
@@ -30,8 +31,9 @@ describe('Zod Schemas', () => {
       messages: [],
       modelId: 'gpt-4',
       createdAt: 123,
-      updatedAt: 123
+      updatedAt: 123,
+      debugEnabled: false
     };
-    expect(() => ChatSchema.parse(chat)).toThrow();
+    expect(() => ChatSchemaDto.parse(chat)).toThrow();
   });
 });

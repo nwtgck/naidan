@@ -1,4 +1,13 @@
-import { type Chat, type Settings, ChatSchema, SettingsSchema } from '../../models/types';
+import { 
+  type Chat, 
+  type Settings, 
+  ChatSchemaDto, 
+  SettingsSchemaDto,
+  chatToDomain,
+  chatToDto,
+  settingsToDomain,
+  settingsToDto
+} from '../../models/types';
 import type { IStorageProvider, ChatSummary } from './interface';
 
 export class OPFSStorageProvider implements IStorageProvider {
@@ -16,7 +25,8 @@ export class OPFSStorageProvider implements IStorageProvider {
   }
 
   async saveChat(chat: Chat): Promise<void> {
-    const validated = ChatSchema.parse(chat);
+    const dto = chatToDto(chat);
+    const validated = ChatSchemaDto.parse(dto);
     const chatsDir = await this.getChatsDir();
     const fileHandle = await chatsDir.getFileHandle(`${chat.id}.json`, { create: true });
     
@@ -61,7 +71,8 @@ export class OPFSStorageProvider implements IStorageProvider {
       const file = await fileHandle.getFile();
       const text = await file.text();
       const json = JSON.parse(text);
-      return ChatSchema.parse(json);
+      const dto = ChatSchemaDto.parse(json);
+      return chatToDomain(dto);
     } catch (e) {
       console.error('Failed to load chat from OPFS', e);
       return null;
@@ -103,7 +114,8 @@ export class OPFSStorageProvider implements IStorageProvider {
 
   async saveSettings(settings: Settings): Promise<void> {
     await this.init();
-    const validated = SettingsSchema.parse(settings);
+    const dto = settingsToDto(settings);
+    const validated = SettingsSchemaDto.parse(dto);
     const fileHandle = await this.root!.getFileHandle('settings.json', { create: true });
     // @ts-ignore
     const writable = await fileHandle.createWritable();
@@ -118,7 +130,8 @@ export class OPFSStorageProvider implements IStorageProvider {
       const file = await fileHandle.getFile();
       const text = await file.text();
       const json = JSON.parse(text);
-      return SettingsSchema.parse(json);
+      const dto = SettingsSchemaDto.parse(json);
+      return settingsToDomain(dto);
     } catch (e) {
       // console.error('Failed to load settings from OPFS', e); // Silent fail is fine if not exists
       return null;
