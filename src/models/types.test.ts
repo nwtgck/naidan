@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ChatSchemaDto } from './types';
+import { ChatSchemaDto } from './dto';
 import { v4 as uuidv4 } from 'uuid';
 
 describe('Zod Schemas', () => {

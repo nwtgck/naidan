@@ -1,13 +1,11 @@
+import type { Chat, Settings } from '../../models/types';
+import { ChatSchemaDto, SettingsSchemaDto } from '../../models/dto';
 import { 
-  type Chat, 
-  type Settings, 
-  ChatSchemaDto, 
-  SettingsSchemaDto,
   chatToDomain,
   chatToDto,
   settingsToDomain,
   settingsToDto
-} from '../../models/types';
+} from '../../models/mappers';
 import type { IStorageProvider, ChatSummary } from './interface';
 
 const KEY_PREFIX = 'local-ai-ui:';
