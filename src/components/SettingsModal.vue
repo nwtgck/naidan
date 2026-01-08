@@ -71,19 +71,6 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
       <h2 class="text-xl font-bold mb-6">Settings</h2>
 
       <div class="space-y-4">
-        <!-- Theme Selection -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Theme</label>
-          <select 
-            v-model="form.theme"
-            class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
-          >
-            <option value="system">System Preference</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-        </div>
-
         <!-- Endpoint Type -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API Provider</label>

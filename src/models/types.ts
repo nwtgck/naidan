@@ -34,12 +34,10 @@ export interface Settings {
   endpointUrl: string;
   defaultModelId?: string;
   storageType: StorageType;
-  theme: 'light' | 'dark' | 'system';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   endpointType: 'openai',
   endpointUrl: 'http://localhost:8282/v1',
   storageType: 'local',
-  theme: 'system',
 };

@@ -1,35 +1,39 @@
-import { watch, onMounted } from 'vue';
-import { useDark, usePreferredDark } from '@vueuse/core';
-import { useSettings } from './useSettings';
+import { ref, watch, onMounted } from 'vue';
+import { usePreferredDark, useStorage } from '@vueuse/core';
+
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+// Global state to share across components
+const themeMode = useStorage<ThemeMode>('local-ai-ui:theme-mode', 'system');
 
 export function useTheme() {
-  const { settings } = useSettings();
   const preferredDark = usePreferredDark();
-  
-  const isDark = useDark({
-    selector: 'html',
-    attribute: 'class',
-    valueDark: 'dark',
-    valueLight: '',
-  });
 
-  function updateTheme() {
-    if (settings.value.theme === 'system') {
-      isDark.value = preferredDark.value;
+  function applyTheme(mode: ThemeMode) {
+    const isDark = mode === 'system' ? preferredDark.value : (mode === 'dark');
+    
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      // Set color-scheme for browser UI elements like scrollbars
+      document.documentElement.style.colorScheme = 'dark';
     } else {
-      isDark.value = settings.value.theme === 'dark';
+      document.documentElement.classList.remove('dark');
+      document.documentElement.style.colorScheme = 'light';
     }
   }
 
   onMounted(() => {
-    updateTheme();
+    applyTheme(themeMode.value);
   });
 
-  watch(() => [settings.value.theme, preferredDark.value], () => {
-    updateTheme();
-  });
+  watch([themeMode, preferredDark], () => {
+    applyTheme(themeMode.value);
+  }, { immediate: true });
 
   return {
-    isDark
+    themeMode,
+    setTheme: (mode: ThemeMode) => {
+      themeMode.value = mode;
+    }
   };
 }

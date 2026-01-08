@@ -2,9 +2,11 @@
 import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
-import { MessageSquare, Plus, Trash2, Settings as SettingsIcon } from 'lucide-vue-next';
+import { useTheme } from '../composables/useTheme';
+import { MessageSquare, Plus, Trash2, Settings as SettingsIcon, Sun, Moon, Monitor } from 'lucide-vue-next';
 
 const { chats, loadChats, createNewChat, deleteChat, currentChat } = useChat();
+const { themeMode, setTheme } = useTheme();
 const router = useRouter();
 
 const emit = defineEmits<{
@@ -70,7 +72,35 @@ async function handleDeleteChat(id: string) {
       </div>
     </div>
 
-    <div class="p-4 border-t border-gray-800">
+    <div class="p-4 border-t border-gray-800 space-y-4">
+      <!-- Theme Toggle -->
+      <div class="flex items-center justify-between bg-gray-800 p-1 rounded-lg">
+        <button 
+          @click="setTheme('light')"
+          class="flex-1 flex justify-center py-1.5 rounded-md transition-all"
+          :class="themeMode === 'light' ? 'bg-gray-700 text-yellow-400 shadow-sm' : 'text-gray-400 hover:text-gray-200'"
+          title="Light Mode"
+        >
+          <Sun class="w-4 h-4" />
+        </button>
+        <button 
+          @click="setTheme('dark')"
+          class="flex-1 flex justify-center py-1.5 rounded-md transition-all"
+          :class="themeMode === 'dark' ? 'bg-gray-700 text-indigo-400 shadow-sm' : 'text-gray-400 hover:text-gray-200'"
+          title="Dark Mode"
+        >
+          <Moon class="w-4 h-4" />
+        </button>
+        <button 
+          @click="setTheme('system')"
+          class="flex-1 flex justify-center py-1.5 rounded-md transition-all"
+          :class="themeMode === 'system' ? 'bg-gray-700 text-green-400 shadow-sm' : 'text-gray-400 hover:text-gray-200'"
+          title="System Preference"
+        >
+          <Monitor class="w-4 h-4" />
+        </button>
+      </div>
+
       <button 
         @click="emit('open-settings')"
         class="flex items-center gap-2 text-sm text-gray-400 hover:text-white w-full px-2 py-2 rounded hover:bg-gray-800"
