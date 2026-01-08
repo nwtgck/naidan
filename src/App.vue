@@ -25,7 +25,7 @@ onMounted(async () => {
 
     <!-- Main Chat Area -->
     <main class="flex-1 h-full relative">
-      <ChatArea />
+      <router-view />
       <DebugPanel />
     </main>
 

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { MessageSquare, Plus, Trash2, Settings as SettingsIcon } from 'lucide-vue-next';
 
-const { chats, loadChats, createNewChat, openChat, deleteChat, currentChat } = useChat();
+const { chats, loadChats, createNewChat, deleteChat, currentChat } = useChat();
+const router = useRouter();
 
 const emit = defineEmits<{
   (e: 'open-settings'): void
@@ -13,14 +15,31 @@ onMounted(() => {
   loadChats();
 });
 
+async function handleNewChat() {
+  await createNewChat();
+  if (currentChat.value) {
+    router.push(`/chat/${currentChat.value.id}`);
+  }
+}
 
+function handleOpenChat(id: string) {
+  router.push(`/chat/${id}`);
+}
+
+async function handleDeleteChat(id: string) {
+  const isCurrent = currentChat.value?.id === id;
+  await deleteChat(id);
+  if (isCurrent) {
+    router.push('/');
+  }
+}
 </script>
 
 <template>
   <div class="flex flex-col h-full bg-gray-900 text-white w-64 border-r border-gray-800">
     <div class="p-4">
       <button 
-        @click="createNewChat"
+        @click="handleNewChat"
         class="w-full flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors"
       >
         <Plus class="w-4 h-4" />
@@ -33,7 +52,7 @@ onMounted(() => {
         <div 
           v-for="chat in chats" 
           :key="chat.id"
-          @click="openChat(chat.id)"
+          @click="handleOpenChat(chat.id)"
           class="group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors"
           :class="currentChat?.id === chat.id ? 'bg-gray-800' : 'hover:bg-gray-800'"
         >
@@ -42,7 +61,7 @@ onMounted(() => {
             <span class="truncate text-sm">{{ chat.title || 'Untitled Chat' }}</span>
           </div>
           <button 
-            @click.stop="deleteChat(chat.id)"
+            @click.stop="handleDeleteChat(chat.id)"
             class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 p-1"
           >
             <Trash2 class="w-4 h-4" />
