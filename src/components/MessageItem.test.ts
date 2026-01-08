@@ -54,3 +54,63 @@ describe('MessageItem Rendering', () => {
     expect(contentArea.text()).not.toContain('Internal thought');
   });
 });
+
+describe('MessageItem Keyboard Shortcuts', () => {
+  const createMessage = (content: string, role: 'user' | 'assistant' = 'user'): MessageNode => ({
+    id: uuidv7(),
+    role,
+    content,
+    timestamp: Date.now(),
+    replies: { items: [] }
+  });
+
+  it('cancels editing on Escape key', async () => {
+    const message = createMessage('Original content');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Enter edit mode
+    await wrapper.find('button[title="Edit message"]').trigger('click');
+    expect(wrapper.find('[data-testid="edit-mode"]').exists()).toBe(true);
+    
+    const textarea = wrapper.find('textarea');
+    await textarea.setValue('Changed content');
+    
+    // Trigger Escape
+    await textarea.trigger('keydown.esc');
+    
+    expect(wrapper.find('[data-testid="edit-mode"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="message-content"]').text()).toBe('Original content');
+  });
+
+  it('saves and branches on Ctrl+Enter', async () => {
+    const message = createMessage('Original content');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    await wrapper.find('button[title="Edit message"]').trigger('click');
+    const textarea = wrapper.find('textarea');
+    await textarea.setValue('New branch content');
+    
+    // Trigger Ctrl+Enter
+    await textarea.trigger('keydown.enter', { ctrlKey: true });
+    
+    // Should emit 'edit' event
+    expect(wrapper.emitted('edit')).toBeTruthy();
+    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'New branch content']);
+    expect(wrapper.find('[data-testid="edit-mode"]').exists()).toBe(false);
+  });
+
+  it('saves and branches on Cmd+Enter', async () => {
+    const message = createMessage('Original content');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    await wrapper.find('button[title="Edit message"]').trigger('click');
+    const textarea = wrapper.find('textarea');
+    await textarea.setValue('Meta content');
+    
+    // Trigger Cmd+Enter (metaKey)
+    await textarea.trigger('keydown.enter', { metaKey: true });
+    
+    expect(wrapper.emitted('edit')).toBeTruthy();
+    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Meta content']);
+  });
+});

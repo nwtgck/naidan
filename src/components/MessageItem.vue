@@ -176,6 +176,7 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
           v-model="editContent"
           @keydown.enter.ctrl.prevent="handleSaveEdit"
           @keydown.enter.meta.prevent="handleSaveEdit"
+          @keydown.esc.prevent="handleCancelEdit"
           class="w-full border dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 h-32"
           data-testid="edit-textarea"
         ></textarea>
