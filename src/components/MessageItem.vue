@@ -136,35 +136,37 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
     
     <div class="flex-1 overflow-hidden">
       <!-- Thinking Block -->
-      <div v-if="hasThinking" class="mb-2">
+      <div v-if="hasThinking" class="mb-2" data-testid="thinking-block">
         <button 
           @click="showThinking = !showThinking"
           class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded"
+          data-testid="toggle-thinking"
         >
           <Brain class="w-3 h-3" />
           {{ showThinking ? 'Hide Thought Process' : 'Show Thought Process' }}
         </button>
-        <div v-if="showThinking && displayThinking" class="mt-2 p-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm rounded border-l-4 border-gray-300 dark:border-gray-500 font-mono whitespace-pre-wrap">
+        <div v-if="showThinking && displayThinking" class="mt-2 p-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm rounded border-l-4 border-gray-300 dark:border-gray-500 font-mono whitespace-pre-wrap" data-testid="thinking-content">
           {{ displayThinking }}
         </div>
       </div>
 
       <!-- Content -->
-      <div v-if="isEditing" class="mt-1">
+      <div v-if="isEditing" class="mt-1" data-testid="edit-mode">
         <textarea 
           v-model="editContent"
           class="w-full border dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 h-32"
+          data-testid="edit-textarea"
         ></textarea>
         <div class="flex justify-end gap-2 mt-2">
           <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">Cancel</button>
-          <button @click="handleSaveEdit" class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors">Send & Branch</button>
+          <button @click="handleSaveEdit" class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors" data-testid="save-edit">Send & Branch</button>
         </div>
       </div>
       <div v-else>
-        <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto" v-html="parsedContent"></div>
+        <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto" v-html="parsedContent" data-testid="message-content"></div>
         
         <!-- Version Paging -->
-        <div v-if="versionInfo" class="mt-2 flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest select-none">
+        <div v-if="versionInfo" class="mt-2 flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest select-none" data-testid="version-paging">
           <button 
             @click="versionInfo.prevId && emit('switch-version', versionInfo.prevId)"
             :disabled="!versionInfo.hasPrev"

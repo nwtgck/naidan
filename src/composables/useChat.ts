@@ -55,7 +55,6 @@ export function useChat() {
     const path: MessageNode[] = [];
     const targetId = currentChat.value.currentLeafId;
     
-    // Start with the best root candidate
     let curr: MessageNode | null = currentChat.value.root.items.find(item => 
       item.id === targetId || findNodeInBranch(item.replies.items, targetId || '')
     ) || currentChat.value.root.items[currentChat.value.root.items.length - 1] || null;
@@ -131,6 +130,7 @@ export function useChat() {
       currentChat.value.title = newTitle;
       currentChat.value.updatedAt = Date.now();
       await storageService.saveChat(currentChat.value);
+      triggerRef(currentChat);
     } else {
       const chat = await storageService.loadChat(id);
       if (chat) {
@@ -163,36 +163,34 @@ export function useChat() {
     };
     userMsg.replies.items.push(assistantMsg);
 
-    // Determine where to attach this message
     if (parentId === null) {
-      // Explicitly requested to be a new root branch
       currentChat.value.root.items.push(userMsg);
     } else if (parentId) {
-      // Explicitly requested to branch from a specific node
       const parentNode = findNodeInBranch(currentChat.value.root.items, parentId);
       if (parentNode) {
         parentNode.replies.items.push(userMsg);
       } else {
-        // Fallback: if ID provided but not found, add to root
         currentChat.value.root.items.push(userMsg);
       }
     } else if (currentChat.value.currentLeafId && currentChat.value.root.items.length > 0) {
-      // Automatic continuation from current leaf
       const parentNode = findNodeInBranch(currentChat.value.root.items, currentChat.value.currentLeafId);
       if (parentNode) {
         parentNode.replies.items.push(userMsg);
       } else {
-        // Extreme fallback
         currentChat.value.root.items.push(userMsg);
       }
     } else {
-      // First message in an empty chat
       currentChat.value.root.items.push(userMsg);
     }
 
     currentChat.value.currentLeafId = assistantMsg.id;
-    // Deep save
+    triggerRef(currentChat);
+    
     await storageService.saveChat(currentChat.value);
+
+    // Important: Get the reactive node after putting it into the tree
+    const assistantNode = findNodeInBranch(currentChat.value.root.items, assistantMsg.id);
+    if (!assistantNode) throw new Error('Assistant node not found in tree');
 
     streaming.value = true;
     try {
@@ -204,17 +202,18 @@ export function useChat() {
       const context = activeMessages.value.filter(m => m.id !== assistantMsg.id);
 
       await provider.chat(context as any, model, endpointUrl, (chunk) => {
-        assistantMsg.content += chunk;
-        if (currentChat.value) triggerRef(currentChat);
+        assistantNode.content += chunk;
+        triggerRef(currentChat);
       });
 
-      processThinking(assistantMsg);
+      processThinking(assistantNode);
       currentChat.value.updatedAt = Date.now();
       await storageService.saveChat(currentChat.value);
+      triggerRef(currentChat);
       await loadChats(); 
     } catch (e) {
-      assistantMsg.content += '\n\n[Error: ' + (e as Error).message + ']';
-      if (currentChat.value) triggerRef(currentChat);
+      assistantNode.content += '\n\n[Error: ' + (e as Error).message + ']';
+      triggerRef(currentChat);
       await storageService.saveChat(currentChat.value);
     } finally {
       streaming.value = false;
@@ -262,8 +261,6 @@ export function useChat() {
   const editMessage = async (messageId: string, newContent: string) => {
     if (!currentChat.value || currentChat.value.root.items.length === 0) return;
     const parent = findParentInBranch(currentChat.value.root.items, messageId);
-    // If no parent found, it means we are editing a root-level message.
-    // We pass null to signal root branching.
     await sendMessage(newContent, parent ? parent.id : null);
   };
 
@@ -272,6 +269,7 @@ export function useChat() {
     const node = findNodeInBranch(currentChat.value.root.items, messageId);
     if (node) {
       currentChat.value.currentLeafId = findDeepestLeaf(node).id;
+      triggerRef(currentChat);
       await storageService.saveChat(currentChat.value);
     }
   };
@@ -286,6 +284,7 @@ export function useChat() {
   const toggleDebug = async () => {
     if (!currentChat.value) return;
     currentChat.value.debugEnabled = !currentChat.value.debugEnabled;
+    triggerRef(currentChat);
     await storageService.saveChat(currentChat.value);
   };
 
