@@ -87,13 +87,13 @@ export function useChat() {
         model,
         settings.value.endpointUrl,
         (chunk) => {
-          if (currentChat.value) {
+          if (currentChat.value && currentChat.value.messages[lastIdx]) {
             currentChat.value.messages[lastIdx].content += chunk;
           }
         }
       );
 
-      if (currentChat.value) {
+      if (currentChat.value && currentChat.value.messages[lastIdx]) {
         // Post-process <think>
         processThinking(currentChat.value.messages[lastIdx]);
         currentChat.value.updatedAt = Date.now();

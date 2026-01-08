@@ -16,7 +16,7 @@ const displayThinking = computed(() => {
   
   // Try to extract from content if not yet processed (streaming case)
   const match = props.message.content.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
-  return match ? match[1].trim() : '';
+  return (match && match[1]) ? match[1].trim() : '';
 });
 
 const displayContent = computed(() => {
