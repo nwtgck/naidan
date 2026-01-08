@@ -35,7 +35,7 @@ describe('DTO Backward Compatibility', () => {
     expect(domain.id).toBe(v1LegacyData.id);
     expect(domain.debugEnabled).toBe(false); // Default should be applied
     expect(domain.endpointType).toBeUndefined(); // Should be optional
-    expect(domain.messages[0].role).toBe('user');
+    expect(domain.messages[0]?.role).toBe('user');
   });
 
   /**

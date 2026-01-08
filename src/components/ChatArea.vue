@@ -3,7 +3,7 @@ import { ref, watch, nextTick, onMounted } from 'vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
-import { Send, Bug, Settings2, X, Loader2 } from 'lucide-vue-next';
+import { Send, Bug, Settings2, Loader2 } from 'lucide-vue-next';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 
 const { currentChat, sendMessage, streaming, toggleDebug } = useChat();

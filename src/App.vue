@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import Sidebar from './components/Sidebar.vue';
-import ChatArea from './components/ChatArea.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import DebugPanel from './components/DebugPanel.vue';
 import { useSettings } from './composables/useSettings';

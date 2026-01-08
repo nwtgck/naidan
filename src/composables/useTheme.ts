@@ -1,4 +1,4 @@
-import { ref, watch, onMounted } from 'vue';
+import { watch, onMounted } from 'vue';
 import { usePreferredDark, useStorage } from '@vueuse/core';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
