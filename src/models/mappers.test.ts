@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { chatToDomain } from './mappers';
 import { v7 as uuidv7 } from 'uuid';
+import type { ChatDto } from './dto';
 
 describe('Legacy Migration (Flat to Tree)', () => {
   it('should migrate linear messages to a recursive tree structure', () => {
     const legacyId1 = uuidv7();
     const legacyId2 = uuidv7();
-    const legacyChat = {
+    const legacyChat: Partial<ChatDto> = {
       id: uuidv7(),
       title: 'Legacy',
       messages: [
@@ -18,7 +19,7 @@ describe('Legacy Migration (Flat to Tree)', () => {
       updatedAt: 2
     };
 
-    const domain = chatToDomain(legacyChat as any);
+    const domain = chatToDomain(legacyChat as ChatDto);
 
     expect(domain.root.items).toHaveLength(1);
     expect(domain.root.items[0]?.id).toBe(legacyId1);

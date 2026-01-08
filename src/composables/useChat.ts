@@ -199,9 +199,10 @@ export function useChat() {
       const model = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
       const provider = endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
 
+      // Context is the path to the current user message
       const context = activeMessages.value.filter(m => m.id !== assistantMsg.id);
 
-      await provider.chat(context as any, model, endpointUrl, (chunk) => {
+      await provider.chat(context, model, endpointUrl, (chunk) => {
         assistantNode.content += chunk;
         triggerRef(currentChat);
       });

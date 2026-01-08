@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '../services/storage';
 import { reactive } from 'vue';
+import type { Chat, MessageNode } from '../models/types';
 
 // Mock storage service
 vi.mock('../services/storage', () => ({
@@ -24,7 +25,7 @@ vi.mock('./useSettings', () => ({
 // Mock LLM Provider
 vi.mock('../services/llm', () => {
   class MockOpenAI {
-    chat = vi.fn().mockImplementation(async (_msg: any, _model: any, _url: any, onChunk: any) => {
+    chat = vi.fn().mockImplementation(async (_msg: MessageNode[], _model: string, _url: string, onChunk: (chunk: string) => void) => {
       onChunk('Hello');
       await new Promise(r => setTimeout(r, 10)); // Simulate network delay
       onChunk(' World');
@@ -38,10 +39,11 @@ vi.mock('../services/llm', () => {
 });
 
 describe('useChat Composable Logic', () => {
-  const { 
-    deleteChat, undoDelete, deleteAllChats, lastDeletedChat, 
-    activeMessages, sendMessage, currentChat 
-  } = useChat();
+  const chatStore = useChat();
+  const {
+    deleteChat, undoDelete, deleteAllChats, lastDeletedChat,
+    activeMessages, sendMessage, currentChat
+  } = chatStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,8 +78,16 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should store deleted chat in lastDeletedChat for undo', async () => {
-    const mockChat = { id: '1', title: 'Test', root: { items: [] } };
-    vi.mocked(storageService.loadChat).mockResolvedValue(mockChat as any);
+    const mockChat: Chat = { 
+      id: '1', 
+      title: 'Test', 
+      root: { items: [] },
+      modelId: 'gpt-4',
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false
+    };
+    vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
     vi.mocked(storageService.deleteChat).mockResolvedValue();
 
     await deleteChat('1');
@@ -87,8 +97,16 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should restore chat on undoDelete', async () => {
-    const mockChat = { id: '1', title: 'Test', root: { items: [] } };
-    lastDeletedChat.value = mockChat as any;
+    const mockChat: Chat = { 
+      id: '1', 
+      title: 'Test', 
+      root: { items: [] },
+      modelId: 'gpt-4',
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false
+    };
+    lastDeletedChat.value = mockChat;
     vi.mocked(storageService.saveChat).mockResolvedValue();
     vi.mocked(storageService.listChats).mockResolvedValue([]);
 
@@ -99,8 +117,8 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should delete all chats when deleteAllChats is called', async () => {
-    const mockSummaries = [{ id: '1' }, { id: '2' }];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockSummaries as any);
+    const mockSummaries = [{ id: '1', title: 'T1', updatedAt: 0 }, { id: '2', title: 'T2', updatedAt: 0 }];
+    vi.mocked(storageService.listChats).mockResolvedValue(mockSummaries);
     vi.mocked(storageService.deleteChat).mockResolvedValue();
 
     await deleteAllChats();
@@ -111,8 +129,16 @@ describe('useChat Composable Logic', () => {
 
   it('should rename a chat and update storage', async () => {
     const { renameChat } = useChat();
-    const mockChat = { id: '1', title: 'Old Title', root: { items: [] } };
-    vi.mocked(storageService.loadChat).mockResolvedValue(mockChat as any);
+    const mockChat: Chat = { 
+      id: '1', 
+      title: 'Old Title', 
+      root: { items: [] },
+      modelId: 'gpt-4',
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false
+    };
+    vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
     vi.mocked(storageService.saveChat).mockResolvedValue();
 
     await renameChat('1', 'New Title');
@@ -128,17 +154,20 @@ describe('useChat Composable Logic', () => {
     const { forkChat, currentChat } = useChat();
     
     // Create a tree: m1 -> m2
-    const m2 = { id: 'm2', role: 'assistant', content: 'Msg 2', replies: { items: [] } };
-    const m1 = { id: 'm1', role: 'user', content: 'Msg 1', replies: { items: [m2] } };
+    const m2: MessageNode = { id: 'm2', role: 'assistant', content: 'Msg 2', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: 'm1', role: 'user', content: 'Msg 1', replies: { items: [m2] }, timestamp: 0 };
     
-    const mockChat = { 
+    const mockChat: Chat = { 
       id: 'old-chat', 
       title: 'Original', 
       root: { items: [m1] },
-      modelId: 'gpt-4'
+      modelId: 'gpt-4',
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false
     };
     
-    currentChat.value = reactive(mockChat as any);
+    currentChat.value = reactive(mockChat);
     vi.mocked(storageService.saveChat).mockResolvedValue();
     vi.mocked(storageService.listChats).mockResolvedValue([]);
 
@@ -152,14 +181,14 @@ describe('useChat Composable Logic', () => {
       currentLeafId: 'm1'
     }));
     
-    const savedChat = vi.mocked(storageService.saveChat).mock.calls[0]?.[0] as any;
-    expect(savedChat.root.items[0].replies.items).toHaveLength(0); // m2 should be gone
+    const savedChat = vi.mocked(storageService.saveChat).mock.calls[0]?.[0] as Chat;
+    expect(savedChat.root.items[0]?.replies.items).toHaveLength(0); // m2 should be gone
   });
 
   it('should support rewriting the very first message', async () => {
     const { sendMessage, editMessage, currentChat } = useChat();
     
-    currentChat.value = reactive({
+    const chatObj: Chat = {
       id: 'chat-root-test',
       title: 'Root Test',
       root: { items: [] },
@@ -167,7 +196,8 @@ describe('useChat Composable Logic', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false
-    }) as any;
+    };
+    currentChat.value = reactive(chatObj);
 
     // 1. Send first message
     await sendMessage('First version');
@@ -190,7 +220,7 @@ describe('useChat Composable Logic', () => {
   it('should support manual editing of assistant messages', async () => {
     const { sendMessage, editMessage, currentChat } = useChat();
     
-    currentChat.value = reactive({
+    const chatObj: Chat = {
       id: 'assistant-edit-test',
       title: 'Assistant Edit',
       root: { items: [] },
@@ -198,7 +228,8 @@ describe('useChat Composable Logic', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false
-    }) as any;
+    };
+    currentChat.value = reactive(chatObj);
 
     // 1. Send first message pair
     await sendMessage('Hello');

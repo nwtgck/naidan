@@ -10,13 +10,15 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }]
 });
 
+import type { MessageNode } from '../models/types';
+
 // Mock dependencies
 const mockSendMessage = vi.fn();
 const mockCurrentChat = ref({ 
   id: '1', 
   title: 'Test Chat', 
-  root: null as any,
-  currentLeafId: undefined,
+  root: { items: [] } as { items: MessageNode[] },
+  currentLeafId: undefined as string | undefined,
   debugEnabled: false 
 });
 
@@ -26,7 +28,7 @@ vi.mock('../composables/useChat', () => ({
     sendMessage: mockSendMessage,
     streaming: ref(false),
     toggleDebug: vi.fn(),
-    activeMessages: ref([] as any[]),
+    activeMessages: ref([] as MessageNode[]),
     getSiblings: vi.fn().mockReturnValue([]),
     editMessage: vi.fn(),
     switchVersion: vi.fn()

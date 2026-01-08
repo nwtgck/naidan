@@ -28,7 +28,7 @@ export type EndpointTypeDto = z.infer<typeof EndpointTypeSchemaDto>;
 
 // --- Tree-based Message Structure (Recursive) ---
 
-export const MessageNodeSchemaDto: any = z.lazy(() => z.object({
+export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() => z.object({
   id: z.uuid(),
   role: RoleSchemaDto,
   content: z.string(),
@@ -61,7 +61,7 @@ export const ChatSchemaDto = z.object({
   
   // Legacy support field (will be migrated on load)
   /** @deprecated Use root instead. */
-  messages: z.array(z.any()).optional(),
+  messages: z.array(z.unknown()).optional(),
 
   modelId: z.string(),
   createdAt: z.number(),

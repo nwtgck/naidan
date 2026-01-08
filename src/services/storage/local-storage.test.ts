@@ -47,6 +47,6 @@ describe('LocalStorageProvider', () => {
 
   it('should validate schema', async () => {
     const invalidChat = { ...mockChat, id: 'not-a-uuid' };
-    await expect(provider.saveChat(invalidChat as any)).rejects.toThrow();
+    await expect(provider.saveChat(invalidChat as unknown as Chat)).rejects.toThrow();
   });
 });

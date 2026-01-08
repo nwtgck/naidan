@@ -54,10 +54,19 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => ({
 
 // --- Legacy Migration: Flat Array to Tree ---
 
-function migrateFlatMessagesToTree(messages: any[]): MessageBranch {
+interface LegacyMessage {
+  id: string;
+  role: Role;
+  content: string;
+  timestamp: number;
+  thinking?: string;
+}
+
+function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
   if (!messages || messages.length === 0) return { items: [] };
 
-  const nodes: MessageNode[] = messages.map(m => ({
+  const legacyMsgs = messages as LegacyMessage[];
+  const nodes: MessageNode[] = legacyMsgs.map(m => ({
     id: m.id,
     role: m.role,
     content: m.content,
@@ -121,7 +130,7 @@ export const chatToDto = (domain: Chat): ChatDto => ({
   root: {
     items: domain.root.items.map(messageNodeToDto)
   },
-  currentLeafId: domain.currentLeafId as any,
+  currentLeafId: domain.currentLeafId,
   modelId: domain.modelId,
   createdAt: domain.createdAt,
   updatedAt: domain.updatedAt,

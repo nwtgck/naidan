@@ -102,7 +102,7 @@ const renderMermaid = async () => {
     const nodes = document.querySelectorAll('.mermaid');
     if (nodes.length > 0) {
       await mermaid.run({
-        nodes: nodes as any,
+        nodes: Array.from(nodes) as HTMLElement[],
       });
     }
   } catch (e) {

@@ -28,7 +28,6 @@ export class OPFSStorageProvider implements IStorageProvider {
     const chatsDir = await this.getChatsDir();
     const fileHandle = await chatsDir.getFileHandle(`${chat.id}.json`, { create: true });
     
-    // @ts-ignore - createWritable is standard but sometimes types are missing
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(validated));
     await writable.close();
@@ -39,7 +38,7 @@ export class OPFSStorageProvider implements IStorageProvider {
 
   private async updateIndex(chat: Chat): Promise<void> {
     await this.init();
-    let index: ChatSummary[] = await this.listChats();
+    const index: ChatSummary[] = await this.listChats();
     
     const summary: ChatSummary = {
       id: chat.id,
@@ -56,7 +55,6 @@ export class OPFSStorageProvider implements IStorageProvider {
     index.sort((a, b) => b.updatedAt - a.updatedAt);
 
     const fileHandle = await this.root!.getFileHandle('index.json', { create: true });
-    // @ts-ignore
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(index));
     await writable.close();
@@ -71,8 +69,7 @@ export class OPFSStorageProvider implements IStorageProvider {
       const json = JSON.parse(text);
       const dto = ChatSchemaDto.parse(json);
       return chatToDomain(dto);
-    } catch (e) {
-      console.error('Failed to load chat from OPFS', e);
+    } catch (_e) {
       return null;
     }
   }
@@ -86,7 +83,7 @@ export class OPFSStorageProvider implements IStorageProvider {
       const json = JSON.parse(text);
       if (Array.isArray(json)) return json as ChatSummary[];
       return [];
-    } catch (e) {
+    } catch (_e) {
       // If index doesn't exist, return empty
       return [];
     }
@@ -101,12 +98,11 @@ export class OPFSStorageProvider implements IStorageProvider {
       index = index.filter(c => c.id !== id);
       
       const fileHandle = await this.root!.getFileHandle('index.json', { create: true });
-      // @ts-ignore
       const writable = await fileHandle.createWritable();
       await writable.write(JSON.stringify(index));
       await writable.close();
-    } catch (e) {
-      console.error('Failed to delete chat from OPFS', e);
+    } catch (_e) {
+      // ignore
     }
   }
 
@@ -115,7 +111,6 @@ export class OPFSStorageProvider implements IStorageProvider {
     const dto = settingsToDto(settings);
     const validated = SettingsSchemaDto.parse(dto);
     const fileHandle = await this.root!.getFileHandle('settings.json', { create: true });
-    // @ts-ignore
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(validated));
     await writable.close();
@@ -130,8 +125,7 @@ export class OPFSStorageProvider implements IStorageProvider {
       const json = JSON.parse(text);
       const dto = SettingsSchemaDto.parse(json);
       return settingsToDomain(dto);
-    } catch (e) {
-      // console.error('Failed to load settings from OPFS', e); // Silent fail is fine if not exists
+    } catch (_e) {
       return null;
     }
   }
