@@ -70,6 +70,7 @@ export const settingsToDomain = (dto: SettingsDto): Settings => ({
   endpointUrl: dto.endpointUrl,
   defaultModelId: dto.defaultModelId,
   storageType: dto.storageType as StorageType,
+  theme: dto.theme as 'light' | 'dark' | 'system',
 });
 
 export const settingsToDto = (domain: Settings): SettingsDto => ({
@@ -77,4 +78,5 @@ export const settingsToDto = (domain: Settings): SettingsDto => ({
   endpointUrl: domain.endpointUrl,
   defaultModelId: domain.defaultModelId,
   storageType: domain.storageType as StorageTypeDto,
+  theme: domain.theme,
 });

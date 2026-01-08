@@ -60,10 +60,10 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
 
 <template>
   <div v-if="isOpen" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg w-full max-w-md p-6 shadow-xl relative">
+    <div class="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md p-6 shadow-xl relative text-gray-900 dark:text-gray-100">
       <button 
         @click="emit('close')"
-        class="absolute right-4 top-4 text-gray-500 hover:text-gray-700"
+        class="absolute right-4 top-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
       >
         <X class="w-5 h-5" />
       </button>
@@ -71,12 +71,25 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
       <h2 class="text-xl font-bold mb-6">Settings</h2>
 
       <div class="space-y-4">
+        <!-- Theme Selection -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Theme</label>
+          <select 
+            v-model="form.theme"
+            class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
+          >
+            <option value="system">System Preference</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+
         <!-- Endpoint Type -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">API Provider</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API Provider</label>
           <select 
             v-model="form.endpointType"
-            class="w-full border rounded px-3 py-2 bg-white"
+            class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
             @change="fetchModels"
           >
             <option value="openai">OpenAI Compatible</option>
@@ -86,17 +99,17 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
 
         <!-- Endpoint URL -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Endpoint URL</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endpoint URL</label>
           <div class="flex gap-2">
             <input 
               v-model="form.endpointUrl"
               type="text"
-              class="flex-1 border rounded px-3 py-2"
+              class="flex-1 border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
               placeholder="http://localhost:11434"
             />
             <button 
               @click="fetchModels"
-              class="px-3 py-2 bg-gray-100 rounded hover:bg-gray-200"
+              class="px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
               title="Refresh Models"
             >
               <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
@@ -108,10 +121,10 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
 
         <!-- Model Selection -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Default Model</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Default Model</label>
           <select 
             v-model="form.defaultModelId"
-            class="w-full border rounded px-3 py-2 bg-white"
+            class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
           >
             <option v-if="availableModels.length === 0" :value="form.defaultModelId">{{ form.defaultModelId || 'Custom' }}</option>
             <option v-for="m in availableModels" :key="m" :value="m">
@@ -122,15 +135,15 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
 
         <!-- Storage Type -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Storage Location</label>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Storage Location</label>
           <select 
             v-model="form.storageType"
-            class="w-full border rounded px-3 py-2 bg-white"
+            class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
           >
             <option value="local">Browser Local Storage</option>
             <option value="opfs">Origin Private File System (OPFS)</option>
           </select>
-          <p class="text-xs text-gray-500 mt-1">
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             Switching storage will hide chats from the previous location.
           </p>
         </div>
@@ -139,7 +152,7 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
       <div class="mt-8 flex justify-end gap-2">
         <button 
           @click="emit('close')"
-          class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
+          class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
         >
           Cancel
         </button>

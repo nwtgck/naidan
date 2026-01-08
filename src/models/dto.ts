@@ -47,5 +47,6 @@ export const SettingsSchemaDto = z.object({
   endpointUrl: z.string().url(),
   defaultModelId: z.string().optional(),
   storageType: StorageTypeSchemaDto,
+  theme: z.enum(['light', 'dark', 'system']).default('system'),
 });
 export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
