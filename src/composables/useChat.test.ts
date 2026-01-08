@@ -62,4 +62,19 @@ describe('useChat Composable Logic', () => {
     expect(storageService.deleteChat).toHaveBeenCalledTimes(2);
     expect(lastDeletedChat.value).toBeNull();
   });
+
+  it('should rename a chat and update storage', async () => {
+    const { renameChat } = useChat();
+    const mockChat = { id: '1', title: 'Old Title' };
+    vi.mocked(storageService.loadChat).mockResolvedValue(mockChat as any);
+    vi.mocked(storageService.saveChat).mockResolvedValue();
+
+    await renameChat('1', 'New Title');
+
+    expect(storageService.loadChat).toHaveBeenCalledWith('1');
+    expect(storageService.saveChat).toHaveBeenCalledWith(expect.objectContaining({
+      id: '1',
+      title: 'New Title'
+    }));
+  });
 });

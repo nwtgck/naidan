@@ -71,6 +71,20 @@ export function useChat() {
     await loadChats();
   }
 
+  async function renameChat(id: string, newTitle: string) {
+    const chat = await storageService.loadChat(id);
+    if (chat) {
+      chat.title = newTitle;
+      chat.updatedAt = Date.now();
+      await storageService.saveChat(chat);
+      await loadChats();
+      // If the renamed chat is the current one, update it in memory
+      if (currentChat.value?.id === id) {
+        currentChat.value.title = newTitle;
+      }
+    }
+  }
+
 
 
   async function sendMessage(content: string) {
@@ -274,6 +288,7 @@ graph TD
     createSampleChat,
     undoDelete,
     deleteAllChats,
+    renameChat,
     lastDeletedChat
   };
 }

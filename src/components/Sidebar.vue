@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useTheme } from '../composables/useTheme';
-import { MessageSquare, Plus, Trash2, Settings as SettingsIcon, Sun, Moon, Monitor, RotateCcw, AlertTriangle } from 'lucide-vue-next';
+import { MessageSquare, Plus, Trash2, Settings as SettingsIcon, Sun, Moon, Monitor, RotateCcw, AlertTriangle, Pencil, Check, X } from 'lucide-vue-next';
 
-const { chats, loadChats, createNewChat, deleteChat, currentChat, lastDeletedChat, undoDelete, deleteAllChats } = useChat();
+const { chats, loadChats, createNewChat, deleteChat, currentChat, lastDeletedChat, undoDelete, deleteAllChats, renameChat } = useChat();
 const { themeMode, setTheme } = useTheme();
 const router = useRouter();
+
+const editingId = ref<string | null>(null);
+const editingTitle = ref('');
 
 const emit = defineEmits<{
   (e: 'open-settings'): void
@@ -25,6 +28,7 @@ async function handleNewChat() {
 }
 
 function handleOpenChat(id: string) {
+  if (editingId.value === id) return;
   router.push(`/chat/${id}`);
 }
 
@@ -35,6 +39,23 @@ async function handleDeleteChat(id: string) {
     router.push('/');
   }
 }
+
+function startEditing(id: string, title: string) {
+  editingId.value = id;
+  editingTitle.value = title;
+}
+
+async function saveRename() {
+  if (editingId.value && editingTitle.value.trim()) {
+    await renameChat(editingId.value, editingTitle.value.trim());
+  }
+  editingId.value = null;
+}
+
+function cancelRename() {
+  editingId.value = null;
+}
+
 
 async function handleDeleteAll() {
   if (confirm('Are you absolutely sure you want to delete ALL chats? This action cannot be undone (except for the very last one via Undo).')) {
@@ -82,16 +103,40 @@ async function handleUndo() {
           class="group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors"
           :class="currentChat?.id === chat.id ? 'bg-gray-800' : 'hover:bg-gray-800'"
         >
-          <div class="flex items-center gap-3 overflow-hidden">
-            <MessageSquare class="w-4 h-4 text-gray-400" />
-            <span class="truncate text-sm">{{ chat.title || 'Untitled Chat' }}</span>
+          <div class="flex items-center gap-3 overflow-hidden flex-1">
+            <MessageSquare class="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <div v-if="editingId === chat.id" class="flex items-center gap-1 flex-1">
+              <input 
+                v-model="editingTitle"
+                @keyup.enter="saveRename"
+                @keyup.esc="cancelRename"
+                @click.stop
+                class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500"
+                auto-focus
+              />
+              <button @click.stop="saveRename" class="text-green-400 hover:text-green-300 p-0.5">
+                <Check class="w-3 h-3" />
+              </button>
+              <button @click.stop="cancelRename" class="text-red-400 hover:text-red-300 p-0.5">
+                <X class="w-3 h-3" />
+              </button>
+            </div>
+            <span v-else class="truncate text-sm">{{ chat.title || 'Untitled Chat' }}</span>
           </div>
-          <button 
-            @click.stop="handleDeleteChat(chat.id)"
-            class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 p-1"
-          >
-            <Trash2 class="w-4 h-4" />
-          </button>
+          <div v-if="editingId !== chat.id" class="flex items-center gap-1">
+            <button 
+              @click.stop="startEditing(chat.id, chat.title)"
+              class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-indigo-400 p-1 transition-opacity"
+            >
+              <Pencil class="w-4 h-4" />
+            </button>
+            <button 
+              @click.stop="handleDeleteChat(chat.id)"
+              class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 p-1 transition-opacity"
+            >
+              <Trash2 class="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
