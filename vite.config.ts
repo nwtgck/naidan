@@ -12,6 +12,6 @@ export default defineConfig({
     vue(),
   ],
   test: {
-    environment: 'happy-dom',
+    environment: 'jsdom',
   },
 })

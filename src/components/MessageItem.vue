@@ -2,8 +2,10 @@
 import { computed, ref } from 'vue';
 import { Marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
-import DOMPurify from 'dompurify';
+import createDOMPurify from 'dompurify';
 import hljs from 'highlight.js';
+
+const DOMPurify = typeof window !== 'undefined' ? createDOMPurify(window) : createDOMPurify();
 import 'highlight.js/styles/github-dark.css'; 
 import type { Message } from '../models/types';
 import { User, Bot, Brain } from 'lucide-vue-next';
@@ -43,7 +45,10 @@ const displayContent = computed(() => {
 
 const parsedContent = computed(() => {
   const html = marked.parse(displayContent.value) as string;
-  return DOMPurify.sanitize(html);
+  return DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_ATTR: ['onerror', 'onclick', 'onload'], // Explicitly forbid dangerous attributes
+  });
 });
 
 const isUser = computed(() => props.message.role === 'user');
