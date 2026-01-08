@@ -28,6 +28,9 @@ const isEditing = ref(false);
 const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
+const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
+
 // Focus and move cursor to end when editing starts
 watch(isEditing, (editing) => {
   if (editing) {
@@ -171,12 +174,17 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
         <textarea 
           ref="textareaRef"
           v-model="editContent"
+          @keydown.enter.ctrl.prevent="handleSaveEdit"
+          @keydown.enter.meta.prevent="handleSaveEdit"
           class="w-full border dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 h-32"
           data-testid="edit-textarea"
         ></textarea>
         <div class="flex justify-end gap-2 mt-2">
           <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">Cancel</button>
-          <button @click="handleSaveEdit" class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors" data-testid="save-edit">Send & Branch</button>
+          <button @click="handleSaveEdit" class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors flex items-center gap-2" data-testid="save-edit">
+            <span>Send & Branch</span>
+            <span class="opacity-60 text-[10px] border border-white/20 px-1 rounded">{{ sendShortcutText }}</span>
+          </button>
         </div>
       </div>
       <div v-else>
