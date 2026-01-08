@@ -26,31 +26,55 @@ export type StorageTypeDto = z.infer<typeof StorageTypeSchemaDto>;
 export const EndpointTypeSchemaDto = z.enum(['openai', 'ollama']);
 export type EndpointTypeDto = z.infer<typeof EndpointTypeSchemaDto>;
 
-export const MessageSchemaDto = z.object({
+// --- Tree-based Message Structure (Recursive) ---
+
+export const MessageNodeSchemaDto: any = z.lazy(() => z.object({
   id: z.uuid(),
   role: RoleSchemaDto,
   content: z.string(),
   timestamp: z.number(),
   thinking: z.string().optional(),
+  replies: MessageBranchSchemaDto,
+}));
+
+export const MessageBranchSchemaDto = z.object({
+  items: z.array(MessageNodeSchemaDto),
 });
-export type MessageDto = z.infer<typeof MessageSchemaDto>;
+
+export type MessageNodeDto = {
+  id: string;
+  role: RoleDto;
+  content: string;
+  timestamp: number;
+  thinking?: string;
+  replies: {
+    items: MessageNodeDto[];
+  };
+};
 
 export const ChatSchemaDto = z.object({
   id: z.uuid(),
   title: z.string(),
-  messages: z.array(MessageSchemaDto),
+  // Made optional/default for backward compatibility with legacy data
+  root: MessageBranchSchemaDto.optional().default({ items: [] }),
+  currentLeafId: z.uuid().optional(),
+  
+  // Legacy support field (will be migrated on load)
+  /** @deprecated Use root instead. */
+  messages: z.array(z.any()).optional(),
+
   modelId: z.string(),
   createdAt: z.number(),
   updatedAt: z.number(),
   debugEnabled: z.boolean().optional().default(false),
-  // Overrides
+  
   endpointType: EndpointTypeSchemaDto.optional(),
   endpointUrl: z.string().url().optional(),
   overrideModelId: z.string().optional(),
-  // Fork Origin
   originChatId: z.uuid().optional(),
   originMessageId: z.uuid().optional(),
 });
+
 export type ChatDto = z.infer<typeof ChatSchemaDto>;
 
 export const SettingsSchemaDto = z.object({

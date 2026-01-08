@@ -1,203 +1,320 @@
-import { ref } from 'vue';
+import { ref, computed, shallowRef, reactive, triggerRef } from 'vue';
 import { v7 as uuidv7 } from 'uuid';
-import type { Chat, Message } from '../models/types';
+import type { Chat, MessageNode } from '../models/types';
 import { storageService } from '../services/storage';
 import type { ChatSummary } from '../services/storage/interface';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
+import sampleContent from '../assets/sample-showcase.md?raw';
 
 const chats = ref<ChatSummary[]>([]);
-const currentChat = ref<Chat | null>(null);
+const currentChat = shallowRef<Chat | null>(null);
 const streaming = ref(false);
 const lastDeletedChat = ref<Chat | null>(null);
+
+// --- Helpers ---
+
+function findNodeInBranch(items: MessageNode[], targetId: string): MessageNode | null {
+  for (const item of items) {
+    if (item.id === targetId) return item;
+    const found = findNodeInBranch(item.replies.items, targetId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findParentInBranch(items: MessageNode[], childId: string): MessageNode | null {
+  for (const item of items) {
+    if (item.replies.items.some(child => child.id === childId)) return item;
+    const found = findParentInBranch(item.replies.items, childId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findDeepestLeaf(node: MessageNode): MessageNode {
+  if (node.replies.items.length === 0) return node;
+  return findDeepestLeaf(node.replies.items[node.replies.items.length - 1]!);
+}
+
+function processThinking(node: MessageNode) {
+  const thinkRegex = /<think>([\s\S]*?)<\/think>/;
+  const match = node.content.match(thinkRegex);
+  if (match && match[1]) {
+    node.thinking = match[1].trim();
+    node.content = node.content.replace(thinkRegex, '').trim();
+  }
+}
 
 export function useChat() {
   const { settings } = useSettings();
 
-  async function loadChats() {
-    chats.value = await storageService.listChats();
-  }
+  const activeMessages = computed(() => {
+    if (!currentChat.value || currentChat.value.root.items.length === 0) return [];
+    
+    const path: MessageNode[] = [];
+    const targetId = currentChat.value.currentLeafId;
+    
+    let curr: MessageNode | null = currentChat.value.root.items.find(item => 
+      item.id === targetId || findNodeInBranch(item.replies.items, targetId || '')
+    ) || currentChat.value.root.items[currentChat.value.root.items.length - 1] || null;
 
-  async function createNewChat() {
-    const newChat: Chat = {
+    while (curr) {
+      path.push(curr);
+      if (curr.id === targetId) break;
+      
+      const next: MessageNode | undefined = curr.replies.items.find(item => 
+        item.id === targetId || findNodeInBranch(item.replies.items, targetId || '')
+      ) || curr.replies.items[curr.replies.items.length - 1];
+      
+      curr = next || null;
+    }
+    return path;
+  });
+
+  const loadChats = async () => {
+    chats.value = await storageService.listChats();
+  };
+
+  const createNewChat = async () => {
+    const chatObj: Chat = {
       id: uuidv7(),
       title: 'New Chat',
-      messages: [],
-      modelId: settings.value.defaultModelId || 'gpt-3.5-turbo', // Fallback
+      root: { items: [] },
+      modelId: settings.value.defaultModelId || 'gpt-3.5-turbo',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
     };
-    await storageService.saveChat(newChat);
+    currentChat.value = reactive(chatObj);
+    await storageService.saveChat(currentChat.value);
     await loadChats();
-    currentChat.value = newChat;
-  }
+  };
 
-  async function openChat(id: string) {
-    currentChat.value = await storageService.loadChat(id);
-  }
-
-  async function deleteChat(id: string) {
-    // Save for undo before deleting
-    const chatData = await storageService.loadChat(id);
-    if (chatData) {
-      lastDeletedChat.value = chatData;
-    }
-
-    await storageService.deleteChat(id);
-    if (currentChat.value?.id === id) {
+  const openChat = async (id: string) => {
+    const loaded = await storageService.loadChat(id);
+    if (loaded) {
+      currentChat.value = reactive(loaded);
+    } else {
       currentChat.value = null;
     }
-    await loadChats();
-  }
+  };
 
-  async function undoDelete() {
+  const deleteChat = async (id: string) => {
+    const chatData = await storageService.loadChat(id);
+    if (chatData) lastDeletedChat.value = chatData;
+    await storageService.deleteChat(id);
+    if (currentChat.value?.id === id) currentChat.value = null;
+    await loadChats();
+  };
+
+  const undoDelete = async () => {
     if (!lastDeletedChat.value) return;
-    
     await storageService.saveChat(lastDeletedChat.value);
     const restoredId = lastDeletedChat.value.id;
     lastDeletedChat.value = null;
     await loadChats();
     await openChat(restoredId);
-  }
+  };
 
-  async function deleteAllChats() {
+  const deleteAllChats = async () => {
     const all = await storageService.listChats();
-    for (const c of all) {
-      await storageService.deleteChat(c.id);
-    }
+    for (const c of all) await storageService.deleteChat(c.id);
     currentChat.value = null;
     lastDeletedChat.value = null;
     await loadChats();
-  }
+  };
 
-  async function renameChat(id: string, newTitle: string) {
-    const chat = await storageService.loadChat(id);
-    if (chat) {
-      chat.title = newTitle;
-      chat.updatedAt = Date.now();
-      await storageService.saveChat(chat);
-      await loadChats();
-      // If the renamed chat is the current one, update it in memory
-      if (currentChat.value?.id === id) {
-        currentChat.value.title = newTitle;
+  const renameChat = async (id: string, newTitle: string) => {
+    if (currentChat.value?.id === id) {
+      currentChat.value.title = newTitle;
+      currentChat.value.updatedAt = Date.now();
+      await storageService.saveChat(currentChat.value);
+      triggerRef(currentChat);
+    } else {
+      const chat = await storageService.loadChat(id);
+      if (chat) {
+        chat.title = newTitle;
+        chat.updatedAt = Date.now();
+        await storageService.saveChat(chat);
       }
     }
-  }
-
-  async function forkChat(messageId: string): Promise<string | null> {
-    if (!currentChat.value) return null;
-
-    const msgIndex = currentChat.value.messages.findIndex(m => m.id === messageId);
-    if (msgIndex === -1) return null;
-
-    const forkedMessages = currentChat.value.messages.slice(0, msgIndex + 1).map(m => ({ ...m }));
-    const newId = uuidv7();
-    const now = Date.now();
-
-    const forkedChat: Chat = {
-      ...currentChat.value,
-      id: newId,
-      title: `Fork of ${currentChat.value.title}`,
-      messages: forkedMessages,
-      createdAt: now,
-      updatedAt: now,
-      originChatId: currentChat.value.id,
-      originMessageId: messageId,
-    };
-
-    await storageService.saveChat(forkedChat);
     await loadChats();
-    currentChat.value = forkedChat;
-    return newId;
-  }
+  };
 
-
-
-  async function sendMessage(content: string) {
+  const sendMessage = async (content: string, parentId?: string | null) => {
     if (!currentChat.value) return;
     if (streaming.value) return;
 
-    // User Message
-    const userMsg: Message = {
+    const userMsg: MessageNode = {
       id: uuidv7(),
       role: 'user',
       content,
       timestamp: Date.now(),
+      replies: { items: [] }
     };
-    currentChat.value.messages.push(userMsg);
 
-    // Assistant Placeholder
-    const assistantMsg: Message = {
+    const assistantMsg: MessageNode = {
       id: uuidv7(),
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
+      replies: { items: [] }
     };
-    const messages = currentChat.value.messages;
-    messages.push(assistantMsg);
-    const lastIdx = messages.length - 1;
+    userMsg.replies.items.push(assistantMsg);
 
-    // Save state before request
+    if (parentId === null) {
+      currentChat.value.root.items.push(userMsg);
+    } else if (parentId) {
+      const parentNode = findNodeInBranch(currentChat.value.root.items, parentId);
+      if (parentNode) {
+        parentNode.replies.items.push(userMsg);
+      } else {
+        currentChat.value.root.items.push(userMsg);
+      }
+    } else if (currentChat.value.currentLeafId && currentChat.value.root.items.length > 0) {
+      const parentNode = findNodeInBranch(currentChat.value.root.items, currentChat.value.currentLeafId);
+      if (parentNode) {
+        parentNode.replies.items.push(userMsg);
+      } else {
+        currentChat.value.root.items.push(userMsg);
+      }
+    } else {
+      currentChat.value.root.items.push(userMsg);
+    }
+
+    currentChat.value.currentLeafId = assistantMsg.id;
+    triggerRef(currentChat);
+    
     await storageService.saveChat(currentChat.value);
 
+    // Important: Get the reactive node after putting it into the tree
+    const assistantNode = findNodeInBranch(currentChat.value.root.items, assistantMsg.id);
+    if (!assistantNode) throw new Error('Assistant node not found in tree');
+
     streaming.value = true;
-    
     try {
       const endpointType = currentChat.value.endpointType || settings.value.endpointType;
       const endpointUrl = currentChat.value.endpointUrl || settings.value.endpointUrl;
       const model = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
+      const provider = endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
 
-      const provider = endpointType === 'ollama' 
-        ? new OllamaProvider() 
-        : new OpenAIProvider();
+      const context = activeMessages.value.filter(m => m.id !== assistantMsg.id);
 
-      // We only send previous messages context, excluding the empty assistant one we just added
-      const contextMessages = messages.slice(0, -1);
+      await provider.chat(context as any, model, endpointUrl, (chunk) => {
+        assistantNode.content += chunk;
+        triggerRef(currentChat);
+      });
 
-      await provider.chat(
-        contextMessages,
-        model,
-        endpointUrl,
-        (chunk) => {
-          if (currentChat.value && currentChat.value.messages[lastIdx]) {
-            currentChat.value.messages[lastIdx].content += chunk;
-          }
-        }
-      );
-
-      if (currentChat.value && currentChat.value.messages[lastIdx]) {
-        // Post-process <think>
-        processThinking(currentChat.value.messages[lastIdx]);
-        currentChat.value.updatedAt = Date.now();
-        await storageService.saveChat(currentChat.value);
-      }
+      processThinking(assistantNode);
+      currentChat.value.updatedAt = Date.now();
+      await storageService.saveChat(currentChat.value);
+      triggerRef(currentChat);
       await loadChats(); 
     } catch (e) {
-      console.error('Chat error', e);
-      assistantMsg.content += '\n\n[Error: ' + (e as Error).message + ']';
+      assistantNode.content += '\n\n[Error: ' + (e as Error).message + ']';
+      triggerRef(currentChat);
       await storageService.saveChat(currentChat.value);
     } finally {
       streaming.value = false;
     }
-  }
+  };
 
-  function processThinking(msg: Message) {
-    // Regex to find <think>...</think>
-    // Handles multiline.
-    const thinkRegex = /<think>([\s\S]*?)<\/think>/;
-    const match = msg.content.match(thinkRegex);
-    if (match && match[1]) {
-      msg.thinking = match[1].trim();
-      msg.content = msg.content.replace(thinkRegex, '').trim();
+  const forkChat = async (messageId: string): Promise<string | null> => {
+    if (!currentChat.value || currentChat.value.root.items.length === 0) return null;
+    
+    const path = activeMessages.value;
+    const idx = path.findIndex(m => m.id === messageId);
+    if (idx === -1) return null;
+    const forkPath = path.slice(0, idx + 1);
+
+    const clonedNodes: MessageNode[] = forkPath.map(n => ({
+      id: n.id,
+      role: n.role,
+      content: n.content,
+      timestamp: n.timestamp,
+      thinking: n.thinking,
+      replies: { items: [] }
+    }));
+
+    for (let i = 0; i < clonedNodes.length - 1; i++) {
+      clonedNodes[i]!.replies.items.push(clonedNodes[i+1]!);
     }
-  }
 
-  async function toggleDebug() {
+    const newChatObj: Chat = {
+      ...currentChat.value,
+      id: uuidv7(),
+      title: `Fork of ${currentChat.value.title}`,
+      root: { items: [clonedNodes[0]!] },
+      currentLeafId: clonedNodes[clonedNodes.length - 1]?.id,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    const newChat = reactive(newChatObj);
+    await storageService.saveChat(newChat);
+    await loadChats();
+    currentChat.value = newChat;
+    return newChat.id;
+  };
+
+  const editMessage = async (messageId: string, newContent: string) => {
+    if (!currentChat.value || currentChat.value.root.items.length === 0) return;
+    
+    const node = findNodeInBranch(currentChat.value.root.items, messageId);
+    if (!node) return;
+
+    const parent = findParentInBranch(currentChat.value.root.items, messageId);
+
+    if (node.role === 'assistant') {
+      // Manual assistant edit: Just add a new version of the assistant message
+      const newAssistantMsg: MessageNode = {
+        id: uuidv7(),
+        role: 'assistant',
+        content: newContent,
+        timestamp: Date.now(),
+        replies: { items: [] }
+      };
+      
+      if (parent) {
+        parent.replies.items.push(newAssistantMsg);
+      } else {
+        // This shouldn't happen usually as first message is user, but for safety:
+        currentChat.value.root.items.push(newAssistantMsg);
+      }
+      
+      currentChat.value.currentLeafId = newAssistantMsg.id;
+      await storageService.saveChat(currentChat.value);
+      triggerRef(currentChat);
+    } else {
+      // User edit: Standard branching (creates new user msg + assistant reply)
+      await sendMessage(newContent, parent ? parent.id : null);
+    }
+  };
+
+  const switchVersion = async (messageId: string) => {
+    if (!currentChat.value || currentChat.value.root.items.length === 0) return;
+    const node = findNodeInBranch(currentChat.value.root.items, messageId);
+    if (node) {
+      currentChat.value.currentLeafId = findDeepestLeaf(node).id;
+      triggerRef(currentChat);
+      await storageService.saveChat(currentChat.value);
+    }
+  };
+
+  const getSiblings = (messageId: string): MessageNode[] => {
+    if (!currentChat.value || currentChat.value.root.items.length === 0) return [];
+    if (currentChat.value.root.items.some(m => m.id === messageId)) return currentChat.value.root.items;
+    const parent = findParentInBranch(currentChat.value.root.items, messageId);
+    return parent ? parent.replies.items : [];
+  };
+
+  const toggleDebug = async () => {
     if (!currentChat.value) return;
     currentChat.value.debugEnabled = !currentChat.value.debugEnabled;
+    triggerRef(currentChat);
     await storageService.saveChat(currentChat.value);
-  }
+  };
 
   /**
    * Creates a comprehensive sample chat for debugging and showcasing features.
@@ -205,118 +322,57 @@ export function useChat() {
    * custom components, or LLM response types), update this sample chat to 
    * ensure the new features are covered and can be verified easily.
    */
-  async function createSampleChat() {
-    const id = uuidv7();
+  const createSampleChat = async () => {
     const now = Date.now();
-    const sampleChat: Chat = {
-      id,
-      title: '🚀 Sample: Feature Showcase',
-      modelId: 'gpt-4-demo',
+    const m2: MessageNode = {
+      id: uuidv7(),
+      role: 'assistant',
+      content: sampleContent,
+      timestamp: now,
+      replies: { items: [] }
+    };
+    processThinking(m2);
+    const m1: MessageNode = {
+      id: uuidv7(),
+      role: 'user',
+      content: 'Show me your tree-based branching and rendering capabilities!',
+      timestamp: now - 5000,
+      replies: { items: [m2] }
+    };
+    const sampleChatObj: Chat = {
+      id: uuidv7(),
+      title: '🚀 Sample: Tree Showcase',
+      root: { items: [m1] },
+      currentLeafId: m2.id,
+      modelId: 'gpt-4-showcase',
       createdAt: now,
       updatedAt: now,
       debugEnabled: true,
-      messages: [
-        {
-          id: uuidv7(),
-          role: 'user',
-          content: 'Show me your capabilities, including code highlighting and your thought process.',
-          timestamp: now - 10000,
-        },
-        {
-          id: uuidv7(),
-          role: 'assistant',
-          content: `<think>
-The user wants to see a comprehensive demonstration of my rendering capabilities.
-I should include:
-1. A thought process block (this one).
-2. Code blocks in various languages (Python, TypeScript, Rust).
-3. Markdown features like tables and lists.
-4. Mathematical notation if supported (though we use standard markdown).
-</think>
-Certainly! Here is a demonstration of what I can do:
-
-### 1. Code Syntax Highlighting
-
-**Python:**
-\`\`\`python
-def greet(name: str) -> str:
-    \"\"\"A simple greeting function\"\"\"
-    return f"Hello, {name}!"
-
-print(greet("World"))
-\`\`\`
-
-**TypeScript (Vue):**
-\`\`\`typescript
-import { ref, computed } from 'vue';
-
-const count = ref(0);
-const doubled = computed(() => count.value * 2);
-\`\`\`
-
-**Rust:**
-\`\`\`rust
-fn main() {
-    let message = "Hello Rust";
-    println!("{}", message);
-}
-\`\`\`
-
-### 2. Mathematics (KaTeX)
-
-When $a \ne 0$, there are two solutions to $ax^2 + bx + c = 0$ and they are:
-$$x = {-b \pm \sqrt{b^2-4ac} \over 2a}$$
-
-### 3. Diagrams (Mermaid)
-
-\`\`\`mermaid
-graph TD
-    A[Start] --> B{Is it working?}
-    B -- Yes --> C[Great!]
-    B -- No --> D[Debug]
-    D --> B
-\`\`\`
-
-### 4. Rich Markdown & Task Lists
-
-- [x] Support for **bold** and *italic*
-- [x] Support for [links](https://google.com)
-- [ ] Support for inline code \`const x = 42\`
-- [x] Support for Task Lists
-
-| Feature | Status |
-| :--- | :--- |
-| KaTeX | ✅ |
-| Mermaid | ✅ |
-| Highlighting | ✅ |
-
-> "Logic will get you from A to B. Imagination will take you everywhere." - Albert Einstein`,
-          timestamp: now,
-          thinking: 'The user wants to see a comprehensive demonstration of my rendering capabilities.\nI should include:\n1. A thought process block (this one).\n2. Code blocks in various languages (Python, TypeScript, Rust).\n3. Mathematics using LaTeX.\n4. Diagrams using Mermaid.\n5. Markdown features like tables and task lists.'
-        }
-      ]
     };
-
-    await storageService.saveChat(sampleChat);
+    currentChat.value = reactive(sampleChatObj);
+    await storageService.saveChat(currentChat.value);
     await loadChats();
-    currentChat.value = sampleChat;
-  }
+  };
 
   return {
     chats,
     currentChat,
+    activeMessages,
     streaming,
     loadChats,
     createNewChat,
     openChat,
     deleteChat,
-    sendMessage,
-    toggleDebug,
-    createSampleChat,
     undoDelete,
     deleteAllChats,
     renameChat,
+    sendMessage,
     forkChat,
+    editMessage,
+    switchVersion,
+    getSiblings,
+    toggleDebug,
+    createSampleChat,
     lastDeletedChat
   };
 }
