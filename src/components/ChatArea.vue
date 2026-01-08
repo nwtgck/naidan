@@ -186,15 +186,17 @@ onMounted(() => {
           v-model="input"
           @keydown.enter.ctrl.prevent="handleSend"
           @keydown.enter.meta.prevent="handleSend"
-          :placeholder="`Type a message... (${sendShortcutText} to send)`"
+          placeholder="Type a message..."
           class="w-full border dark:border-gray-600 rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-24 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
           :disabled="streaming"
         ></textarea>
         <button 
           @click="handleSend"
           :disabled="!input.trim() || streaming"
-          class="absolute right-3 bottom-3 p-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="absolute right-3 bottom-3 px-3 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors shadow-sm"
+          :title="`Send message (${sendShortcutText})`"
         >
+          <span class="text-xs font-medium opacity-90 hidden sm:inline">{{ sendShortcutText }}</span>
           <Send class="w-4 h-4" />
         </button>
       </div>
