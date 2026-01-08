@@ -17,7 +17,7 @@ export const RoleSchemaDto = z.enum(['user', 'assistant', 'system']);
 export type RoleDto = z.infer<typeof RoleSchemaDto>;
 
 export const MessageSchemaDto = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   role: RoleSchemaDto,
   content: z.string(),
   timestamp: z.number(),
@@ -26,7 +26,7 @@ export const MessageSchemaDto = z.object({
 export type MessageDto = z.infer<typeof MessageSchemaDto>;
 
 export const ChatSchemaDto = z.object({
-  id: z.string().uuid(),
+  id: z.uuid(),
   title: z.string(),
   messages: z.array(MessageSchemaDto),
   modelId: z.string(),
