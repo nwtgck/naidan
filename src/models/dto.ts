@@ -4,6 +4,11 @@
  * These schemas and types represent the data as it is persisted or transmitted.
  * They are decoupled from the Domain layer to allow the persistence format to evolve
  * (handling historical baggage or legacy constraints) without polluting business logic.
+ * 
+ * CRITICAL: When evolving these schemas, backward compatibility MUST be maintained
+ * to ensure that existing user data can still be read. Use Zod's .optional(), 
+ * .default(), or .catch() to handle legacy fields during transformation.
+ * 
  * All persistence-level validation is handled here via Zod.
  */
 import { z } from 'zod';
