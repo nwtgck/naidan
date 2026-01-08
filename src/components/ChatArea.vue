@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
-import { Send, Bug, Settings2, Loader2 } from 'lucide-vue-next';
+import { Send, Bug, Settings2, Loader2, ArrowLeft } from 'lucide-vue-next';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 
 const { currentChat, sendMessage, streaming, toggleDebug, forkChat } = useChat();
@@ -17,6 +17,12 @@ async function handleFork(messageId: string) {
   const newId = await forkChat(messageId);
   if (newId) {
     router.push(`/chat/${newId}`);
+  }
+}
+
+function jumpToOrigin() {
+  if (currentChat.value?.originChatId) {
+    router.push(`/chat/${currentChat.value.originChatId}`);
   }
 }
 const container = ref<HTMLElement | null>(null);
@@ -106,8 +112,18 @@ onMounted(() => {
     <!-- Header -->
     <div v-if="currentChat" class="border-b dark:border-gray-700 px-6 py-4 flex items-center justify-between bg-white dark:bg-gray-800 shadow-sm z-10">
         <div class="flex flex-col overflow-hidden">
-          <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 truncate">{{ currentChat.title }}</h2>
-          <p class="text-xs text-gray-400 dark:text-gray-500 truncate">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
+          <div class="flex items-center gap-3">
+            <button 
+              v-if="currentChat.originChatId"
+              @click="jumpToOrigin"
+              class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-indigo-600 transition-colors"
+              title="Jump to original chat"
+            >
+              <ArrowLeft class="w-5 h-5" />
+            </button>
+            <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 truncate">{{ currentChat.title }}</h2>
+          </div>
+          <p class="text-xs text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
         </div>
         <div class="flex items-center gap-2">
           <button 

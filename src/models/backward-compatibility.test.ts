@@ -58,5 +58,25 @@ describe('DTO Backward Compatibility', () => {
     expect(domain.debugEnabled).toBe(true);
   });
 
-  // Future DTO updates should add a new 'it' block here with the snapshot of the old data.
+  /**
+   * TEST SET: v1.2 (Added fork origins)
+   */
+  it('should load v1.2 chat data (added fork origins)', () => {
+    const v1_2Data = {
+      id: '550e8400-e29b-41d4-a716-446655440003',
+      title: 'Forked Chat',
+      messages: [],
+      modelId: 'gpt-4',
+      createdAt: 1700000000000,
+      updatedAt: 1700000000000,
+      originChatId: '550e8400-e29b-41d4-a716-446655440000',
+      originMessageId: '660e8400-e29b-41d4-a716-446655440001'
+    };
+
+    const dto = ChatSchemaDto.parse(v1_2Data);
+    const domain = chatToDomain(dto);
+
+    expect(domain.originChatId).toBe(v1_2Data.originChatId);
+    expect(domain.originMessageId).toBe(v1_2Data.originMessageId);
+  });
 });

@@ -50,6 +50,8 @@ export const chatToDomain = (dto: ChatDto): Chat => ({
   endpointType: dto.endpointType as EndpointType | undefined,
   endpointUrl: dto.endpointUrl,
   overrideModelId: dto.overrideModelId,
+  originChatId: dto.originChatId,
+  originMessageId: dto.originMessageId,
 });
 
 export const chatToDto = (domain: Chat): ChatDto => ({
@@ -69,6 +71,8 @@ export const chatToDto = (domain: Chat): ChatDto => ({
   endpointType: domain.endpointType as EndpointTypeDto | undefined,
   endpointUrl: domain.endpointUrl,
   overrideModelId: domain.overrideModelId,
+  originChatId: domain.originChatId,
+  originMessageId: domain.originMessageId,
 });
 
 export const settingsToDomain = (dto: SettingsDto): Settings => ({

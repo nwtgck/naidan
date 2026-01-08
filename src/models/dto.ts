@@ -47,6 +47,9 @@ export const ChatSchemaDto = z.object({
   endpointType: EndpointTypeSchemaDto.optional(),
   endpointUrl: z.string().url().optional(),
   overrideModelId: z.string().optional(),
+  // Fork Origin
+  originChatId: z.uuid().optional(),
+  originMessageId: z.uuid().optional(),
 });
 export type ChatDto = z.infer<typeof ChatSchemaDto>;
 

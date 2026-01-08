@@ -102,6 +102,8 @@ export function useChat() {
       messages: forkedMessages,
       createdAt: now,
       updatedAt: now,
+      originChatId: currentChat.value.id,
+      originMessageId: messageId,
     };
 
     await storageService.saveChat(forkedChat);

@@ -30,6 +30,8 @@ export interface Chat {
   endpointType?: EndpointType;
   endpointUrl?: string;
   overrideModelId?: string;
+  originChatId?: string;
+  originMessageId?: string;
 }
 
 export interface Settings {
