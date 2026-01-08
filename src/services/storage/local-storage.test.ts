@@ -19,6 +19,7 @@ describe('LocalStorageProvider', () => {
     modelId: 'gpt-3.5',
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    debugEnabled: false,
   };
 
   it('should save and load a chat', async () => {

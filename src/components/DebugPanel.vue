@@ -6,7 +6,7 @@ import { computed } from 'vue';
 const { currentChat, chats, streaming } = useChat();
 const { settings } = useSettings();
 
-const isDebug = computed(() => settings.value.debugMode);
+const isDebug = computed(() => currentChat.value?.debugEnabled || false);
 </script>
 
 <template>

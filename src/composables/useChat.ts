@@ -25,6 +25,7 @@ export function useChat() {
       modelId: settings.value.defaultModelId || 'gpt-3.5-turbo', // Fallback
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      debugEnabled: false,
     };
     await storageService.saveChat(newChat);
     await loadChats();
@@ -120,6 +121,12 @@ export function useChat() {
     }
   }
 
+  async function toggleDebug() {
+    if (!currentChat.value) return;
+    currentChat.value.debugEnabled = !currentChat.value.debugEnabled;
+    await storageService.saveChat(currentChat.value);
+  }
+
   return {
     chats,
     currentChat,
@@ -128,6 +135,7 @@ export function useChat() {
     createNewChat,
     openChat,
     deleteChat,
-    sendMessage
+    sendMessage,
+    toggleDebug
   };
 }

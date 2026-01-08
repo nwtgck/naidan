@@ -2,9 +2,9 @@
 import { ref, watch, nextTick, onMounted } from 'vue';
 import { useChat } from '../composables/useChat';
 import MessageItem from './MessageItem.vue';
-import { Send } from 'lucide-vue-next';
+import { Send, Bug } from 'lucide-vue-next';
 
-const { currentChat, sendMessage, streaming } = useChat();
+const { currentChat, sendMessage, streaming, toggleDebug } = useChat();
 const input = ref('');
 const container = ref<HTMLElement | null>(null);
 
@@ -47,6 +47,19 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col h-full bg-white">
+    <!-- Header -->
+    <div v-if="currentChat" class="border-b px-4 py-3 flex items-center justify-between bg-white shadow-sm z-10">
+        <h2 class="font-semibold text-gray-700 truncate">{{ currentChat.title }}</h2>
+        <button 
+            @click="toggleDebug"
+            class="p-2 rounded-md transition-colors"
+            :class="currentChat.debugEnabled ? 'text-green-600 bg-green-50' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'"
+            title="Toggle Debug Mode for this Chat"
+        >
+            <Bug class="w-5 h-5" />
+        </button>
+    </div>
+
     <!-- Messages -->
     <div ref="container" class="flex-1 overflow-y-auto">
       <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400">

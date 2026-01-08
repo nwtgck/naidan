@@ -19,6 +19,7 @@ export const ChatSchema = z.object({
   modelId: z.string(),
   createdAt: z.number(),
   updatedAt: z.number(),
+  debugEnabled: z.boolean().optional().default(false),
 });
 export type Chat = z.infer<typeof ChatSchema>;
 
@@ -33,7 +34,6 @@ export const SettingsSchema = z.object({
   endpointUrl: z.string().url(),
   defaultModelId: z.string().optional(),
   storageType: StorageTypeSchema,
-  debugMode: z.boolean().default(false),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -41,5 +41,4 @@ export const DEFAULT_SETTINGS: Settings = {
   endpointType: 'openai',
   endpointUrl: 'http://localhost:8282/v1', // Default for testing as per requirements
   storageType: 'local',
-  debugMode: false,
 };
