@@ -129,6 +129,12 @@ export function useChat() {
     await storageService.saveChat(currentChat.value);
   }
 
+  /**
+   * Creates a comprehensive sample chat for debugging and showcasing features.
+   * IMPORTANT: When adding new rendering capabilities (e.g., new markdown plugins, 
+   * custom components, or LLM response types), update this sample chat to 
+   * ensure the new features are covered and can be verified easily.
+   */
   async function createSampleChat() {
     const id = uuidv4();
     const now = Date.now();
@@ -186,21 +192,37 @@ fn main() {
 }
 \`\`\`
 
-### 2. Rich Markdown
+### 2. Mathematics (KaTeX)
 
-| Feature | Supported | Notes |
-| :--- | :---: | :--- |
-| Tables | ✅ | GitHub Flavored |
-| Lists | ✅ | Nested supported |
-| Sanitization | ✅ | Secure rendering |
+When $a \ne 0$, there are two solutions to $ax^2 + bx + c = 0$ and they are:
+$$x = {-b \pm \sqrt{b^2-4ac} \over 2a}$$
 
-*   **Bold** and *Italic* text.
-*   Inline code: \`const x = 42\`.
-*   [Hyperlinks](https://github.com).
+### 3. Diagrams (Mermaid)
 
-> "The only way to do great work is to love what you do." - Steve Jobs`,
+\`\`\`mermaid
+graph TD
+    A[Start] --> B{Is it working?}
+    B -- Yes --> C[Great!]
+    B -- No --> D[Debug]
+    D --> B
+\`\`\`
+
+### 4. Rich Markdown & Task Lists
+
+- [x] Support for **bold** and *italic*
+- [x] Support for [links](https://google.com)
+- [ ] Support for inline code \`const x = 42\`
+- [x] Support for Task Lists
+
+| Feature | Status |
+| :--- | :--- |
+| KaTeX | ✅ |
+| Mermaid | ✅ |
+| Highlighting | ✅ |
+
+> "Logic will get you from A to B. Imagination will take you everywhere." - Albert Einstein`,
           timestamp: now,
-          thinking: 'The user wants to see a comprehensive demonstration of my rendering capabilities.\nI should include:\n1. A thought process block (this one).\n2. Code blocks in various languages (Python, TypeScript, Rust).\n3. Markdown features like tables and lists.\n4. Mathematical notation if supported (though we use standard markdown).'
+          thinking: 'The user wants to see a comprehensive demonstration of my rendering capabilities.\nI should include:\n1. A thought process block (this one).\n2. Code blocks in various languages (Python, TypeScript, Rust).\n3. Mathematics using LaTeX.\n4. Diagrams using Mermaid.\n5. Markdown features like tables and task lists.'
         }
       ]
     };
