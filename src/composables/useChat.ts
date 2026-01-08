@@ -220,10 +220,12 @@ export function useChat() {
           let generatedTitle = '';
           const renameProvider = endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
           
+          // Ask LLM for a title in the user's language
           const promptNode: MessageNode = {
             id: uuidv7(),
             role: 'user',
-            content: `Generate a very short, concise title (2-3 words max) for a chat that starts with this message: "${content}". Respond with ONLY the title text.`,
+            content: `Generate a very short, concise title (2-3 words max) for a chat that starts with this message: "${content}". 
+            IMPORTANT: Use the same language as the user's message for the title. Respond with ONLY the title text.`,
             timestamp: Date.now(),
             replies: { items: [] }
           };
