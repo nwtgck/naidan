@@ -77,4 +77,38 @@ describe('useChat Composable Logic', () => {
       title: 'New Title'
     }));
   });
+
+  it('should fork a chat up to a specific message', async () => {
+    const { forkChat, currentChat } = useChat();
+    const mockMessages = [
+      { id: 'm1', content: 'Msg 1' },
+      { id: 'm2', content: 'Msg 2' },
+      { id: 'm3', content: 'Msg 3' },
+    ];
+    const mockChat = { 
+      id: 'old-chat', 
+      title: 'Original', 
+      messages: mockMessages,
+      modelId: 'gpt-4'
+    };
+    
+    currentChat.value = mockChat as any;
+    vi.mocked(storageService.saveChat).mockResolvedValue();
+    vi.mocked(storageService.listChats).mockResolvedValue([]);
+
+    // Fork at message 'm2'
+    const newId = await forkChat('m2');
+
+    expect(newId).toBeDefined();
+    expect(storageService.saveChat).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Fork of Original',
+      messages: [
+        expect.objectContaining({ id: 'm1' }),
+        expect.objectContaining({ id: 'm2' }),
+      ]
+    }));
+    // Should NOT contain m3
+    const savedChat = vi.mocked(storageService.saveChat).mock.calls[0]?.[0];
+    expect(savedChat?.messages).toHaveLength(2);
+  });
 });
