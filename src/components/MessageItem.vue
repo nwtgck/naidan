@@ -1,13 +1,26 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { marked } from 'marked';
+import { Marked } from 'marked';
+import { markedHighlight } from 'marked-highlight';
 import DOMPurify from 'dompurify';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github-dark.css'; 
 import type { Message } from '../models/types';
 import { User, Bot, Brain } from 'lucide-vue-next';
 
 const props = defineProps<{
   message: Message;
 }>();
+
+const marked = new Marked(
+  markedHighlight({
+    langPrefix: 'hljs language-',
+    highlight(code, lang) {
+      const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+      return hljs.highlight(code, { language }).value;
+    }
+  })
+);
 
 const showThinking = ref(true); // Default to true during streaming to see progress
 
@@ -62,7 +75,7 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
       </div>
 
       <!-- Content -->
-      <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200" v-html="parsedContent"></div>
+      <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto" v-html="parsedContent"></div>
     </div>
   </div>
 </template>
