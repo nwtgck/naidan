@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, nextTick, watch } from 'vue';
 import { Marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
+import markedKatex from 'marked-katex-extension';
 import createDOMPurify from 'dompurify';
 import hljs from 'highlight.js';
+import mermaid from 'mermaid';
 
 const DOMPurify = typeof window !== 'undefined' ? createDOMPurify(window) : createDOMPurify();
 import 'highlight.js/styles/github-dark.css'; 
+import 'katex/dist/katex.min.css';
 import type { Message } from '../models/types';
 import { User, Bot, Brain } from 'lucide-vue-next';
 
@@ -14,15 +17,47 @@ const props = defineProps<{
   message: Message;
 }>();
 
+// Initialize Mermaid
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+});
+
 const marked = new Marked(
   markedHighlight({
     langPrefix: 'hljs language-',
     highlight(code, lang) {
+      if (lang === 'mermaid') {
+        return `<pre class="mermaid">${code}</pre>`;
+      }
       const language = hljs.getLanguage(lang) ? lang : 'plaintext';
       return hljs.highlight(code, { language }).value;
     }
   })
 );
+
+marked.use(markedKatex({
+  throwOnError: false,
+  output: 'html'
+}));
+
+const renderMermaid = async () => {
+  await nextTick();
+  try {
+    // Only run if there are mermaid nodes to process
+    const nodes = document.querySelectorAll('.mermaid');
+    if (nodes.length > 0) {
+      await mermaid.run({
+        nodes: nodes as any,
+      });
+    }
+  } catch (e) {
+    console.error('Mermaid render error', e);
+  }
+};
+
+onMounted(renderMermaid);
+watch(() => props.message.content, renderMermaid);
 
 const showThinking = ref(true); // Default to true during streaming to see progress
 
