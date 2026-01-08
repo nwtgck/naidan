@@ -3,9 +3,9 @@ import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useTheme } from '../composables/useTheme';
-import { MessageSquare, Plus, Trash2, Settings as SettingsIcon, Sun, Moon, Monitor } from 'lucide-vue-next';
+import { MessageSquare, Plus, Trash2, Settings as SettingsIcon, Sun, Moon, Monitor, RotateCcw, AlertTriangle } from 'lucide-vue-next';
 
-const { chats, loadChats, createNewChat, deleteChat, currentChat } = useChat();
+const { chats, loadChats, createNewChat, deleteChat, currentChat, lastDeletedChat, undoDelete, deleteAllChats } = useChat();
 const { themeMode, setTheme } = useTheme();
 const router = useRouter();
 
@@ -35,17 +35,41 @@ async function handleDeleteChat(id: string) {
     router.push('/');
   }
 }
+
+async function handleDeleteAll() {
+  if (confirm('Are you absolutely sure you want to delete ALL chats? This action cannot be undone (except for the very last one via Undo).')) {
+    await deleteAllChats();
+    router.push('/');
+  }
+}
+
+async function handleUndo() {
+  await undoDelete();
+  if (currentChat.value) {
+    router.push(`/chat/${currentChat.value.id}`);
+  }
+}
 </script>
 
 <template>
   <div class="flex flex-col h-full bg-gray-900 text-white w-64 border-r border-gray-800">
-    <div class="p-4">
+    <div class="p-4 space-y-2">
       <button 
         @click="handleNewChat"
         class="w-full flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors"
       >
         <Plus class="w-4 h-4" />
         New Chat
+      </button>
+
+      <!-- Undo Button -->
+      <button 
+        v-if="lastDeletedChat"
+        @click="handleUndo"
+        class="w-full flex items-center justify-center gap-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 px-4 py-2 rounded-lg transition-colors text-sm border border-green-600/30"
+      >
+        <RotateCcw class="w-4 h-4" />
+        Undo Delete
       </button>
     </div>
 
@@ -73,6 +97,16 @@ async function handleDeleteChat(id: string) {
     </div>
 
     <div class="p-4 border-t border-gray-800 space-y-4">
+      <!-- Danger Zone -->
+      <button 
+        v-if="chats.length > 0"
+        @click="handleDeleteAll"
+        class="flex items-center gap-2 text-xs text-red-400/60 hover:text-red-400 w-full px-2 py-1 rounded hover:bg-red-900/20 transition-colors"
+      >
+        <AlertTriangle class="w-3 h-3" />
+        Clear All History
+      </button>
+
       <!-- Theme Toggle -->
       <div class="flex items-center justify-between bg-gray-800 p-1 rounded-lg">
         <button 

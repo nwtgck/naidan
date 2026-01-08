@@ -9,6 +9,7 @@ import { useSettings } from './useSettings';
 const chats = ref<ChatSummary[]>([]);
 const currentChat = ref<Chat | null>(null);
 const streaming = ref(false);
+const lastDeletedChat = ref<Chat | null>(null);
 
 export function useChat() {
   const { settings } = useSettings();
@@ -37,12 +38,40 @@ export function useChat() {
   }
 
   async function deleteChat(id: string) {
+    // Save for undo before deleting
+    const chatData = await storageService.loadChat(id);
+    if (chatData) {
+      lastDeletedChat.value = chatData;
+    }
+
     await storageService.deleteChat(id);
     if (currentChat.value?.id === id) {
       currentChat.value = null;
     }
     await loadChats();
   }
+
+  async function undoDelete() {
+    if (!lastDeletedChat.value) return;
+    
+    await storageService.saveChat(lastDeletedChat.value);
+    const restoredId = lastDeletedChat.value.id;
+    lastDeletedChat.value = null;
+    await loadChats();
+    await openChat(restoredId);
+  }
+
+  async function deleteAllChats() {
+    const all = await storageService.listChats();
+    for (const c of all) {
+      await storageService.deleteChat(c.id);
+    }
+    currentChat.value = null;
+    lastDeletedChat.value = null;
+    await loadChats();
+  }
+
+
 
   async function sendMessage(content: string) {
     if (!currentChat.value) return;
@@ -242,6 +271,9 @@ graph TD
     deleteChat,
     sendMessage,
     toggleDebug,
-    createSampleChat
+    createSampleChat,
+    undoDelete,
+    deleteAllChats,
+    lastDeletedChat
   };
 }
