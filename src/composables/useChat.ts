@@ -63,8 +63,10 @@ export function useChat() {
       content: '',
       timestamp: Date.now(),
     };
-    currentChat.value.messages.push(assistantMsg);
-    
+    const messages = currentChat.value.messages;
+    messages.push(assistantMsg);
+    const lastIdx = messages.length - 1;
+
     // Save state before request
     await storageService.saveChat(currentChat.value);
 
@@ -78,27 +80,26 @@ export function useChat() {
       const model = currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
 
       // We only send previous messages context, excluding the empty assistant one we just added
-      const contextMessages = currentChat.value.messages.slice(0, -1);
+      const contextMessages = messages.slice(0, -1);
 
       await provider.chat(
         contextMessages,
         model,
         settings.value.endpointUrl,
         (chunk) => {
-          assistantMsg.content += chunk;
-          // Trigger reactivity if needed, usually Vue handles array mutation deep watch or we force update
-          // But ref mutation is reactive.
+          if (currentChat.value) {
+            currentChat.value.messages[lastIdx].content += chunk;
+          }
         }
       );
 
-      // Post-process <think>
-      processThinking(assistantMsg);
-
-      // Update Title if it's the first exchange? 
-      // Simplify: Update timestamp
-      currentChat.value.updatedAt = Date.now();
-      await storageService.saveChat(currentChat.value);
-      await loadChats(); // Refresh list order
+      if (currentChat.value) {
+        // Post-process <think>
+        processThinking(currentChat.value.messages[lastIdx]);
+        currentChat.value.updatedAt = Date.now();
+        await storageService.saveChat(currentChat.value);
+      }
+      await loadChats(); 
     } catch (e) {
       console.error('Chat error', e);
       assistantMsg.content += '\n\n[Error: ' + (e as Error).message + ']';
