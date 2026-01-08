@@ -3,7 +3,7 @@ import type { IStorageProvider, ChatSummary } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 
-const STORAGE_PREF_KEY = 'local-ai-ui:storage-preference';
+const STORAGE_PREF_KEY = 'lm-web-ui:storage-preference';
 
 export class StorageService implements IStorageProvider {
   private provider: IStorageProvider;

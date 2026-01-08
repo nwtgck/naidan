@@ -4,7 +4,7 @@ import { usePreferredDark, useStorage } from '@vueuse/core';
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 // Global state to share across components
-const themeMode = useStorage<ThemeMode>('local-ai-ui:theme-mode', 'system');
+const themeMode = useStorage<ThemeMode>('lm-web-ui:theme-mode', 'system');
 
 export function useTheme() {
   const preferredDark = usePreferredDark();

@@ -8,7 +8,7 @@ import {
 } from '../../models/mappers';
 import type { IStorageProvider, ChatSummary } from './interface';
 
-const KEY_PREFIX = 'local-ai-ui:';
+const KEY_PREFIX = 'lm-web-ui:';
 const KEY_INDEX = `${KEY_PREFIX}index`;
 const KEY_SETTINGS = `${KEY_PREFIX}settings`;
 
