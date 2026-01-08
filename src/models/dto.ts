@@ -1,3 +1,11 @@
+/**
+ * DTO (Data Transfer Objects) Definitions
+ * 
+ * These schemas and types represent the data as it is persisted or transmitted.
+ * They are decoupled from the Domain layer to allow the persistence format to evolve
+ * (handling historical baggage or legacy constraints) without polluting business logic.
+ * All persistence-level validation is handled here via Zod.
+ */
 import { z } from 'zod';
 
 export const RoleSchemaDto = z.enum(['user', 'assistant', 'system']);

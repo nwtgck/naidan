@@ -1,3 +1,10 @@
+/**
+ * Mappers
+ * 
+ * This layer is responsible for translating between the Persistence layer (DTOs)
+ * and the Business layer (Domain). It ensures that the Domain remains isolated
+ * from any historical or technical constraints of the underlying storage format.
+ */
 import type { 
   RoleDto, 
   MessageDto, 

@@ -1,3 +1,10 @@
+/**
+ * Domain Definitions (Business Logic Layer)
+ * 
+ * These types represent the "ideal" model used by the UI and business logic.
+ * They are intentionally kept clean of persistence constraints (DTOs) and
+ * external validation libraries to ensure a stable and maintainable application core.
+ */
 // --- Domain Definitions (Business Logic Layer) ---
 
 export type Role = 'user' | 'assistant' | 'system';
