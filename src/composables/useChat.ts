@@ -213,14 +213,16 @@ export function useChat() {
       triggerRef(currentChat);
       await loadChats(); 
 
-      // Auto-rename if title is null
-      if (currentChat.value.title === null) {
+      // Auto-rename if title is null and enabled globally
+      if (currentChat.value.title === null && settings.value.autoTitleEnabled) {
         const chatIdAtStart = currentChat.value.id;
         try {
           let generatedTitle = '';
-          const renameProvider = endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+          const titleProvider = endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
           
-          // Ask LLM for a title in the user's language
+          // Use designated title model or fallback to current chat model
+          const titleGenModel = settings.value.titleModelId || model;
+
           const promptNode: MessageNode = {
             id: uuidv7(),
             role: 'user',
@@ -230,7 +232,7 @@ export function useChat() {
             replies: { items: [] }
           };
           
-          await renameProvider.chat([promptNode], model, endpointUrl, (chunk) => {
+          await titleProvider.chat([promptNode], titleGenModel, endpointUrl, (chunk) => {
             generatedTitle += chunk;
           });
           
@@ -248,7 +250,7 @@ export function useChat() {
             }
           }
         } catch (_e) {
-          console.error('Auto-rename failed', _e);
+          console.error('Title generation failed', _e);
           // Fallback to truncated content if LLM fails and it's still null
           if (currentChat.value && 
               currentChat.value.id === chatIdAtStart && 

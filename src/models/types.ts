@@ -45,11 +45,14 @@ export interface Settings {
   endpointType: EndpointType;
   endpointUrl: string;
   defaultModelId?: string;
+  titleModelId?: string;
+  autoTitleEnabled: boolean;
   storageType: StorageType;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   endpointType: 'openai',
   endpointUrl: 'http://localhost:8282/v1',
+  autoTitleEnabled: true,
   storageType: 'local',
 };

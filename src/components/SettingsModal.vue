@@ -122,6 +122,33 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
           </select>
         </div>
 
+        <!-- Title Model Selection -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Title Generation Model</label>
+            <div class="flex items-center gap-2">
+              <input 
+                type="checkbox" 
+                id="autoTitleEnabled" 
+                v-model="form.autoTitleEnabled"
+                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              >
+              <label for="autoTitleEnabled" class="text-xs text-gray-500 dark:text-gray-400">Enabled</label>
+            </div>
+          </div>
+          <select 
+            v-model="form.titleModelId"
+            :disabled="!form.autoTitleEnabled"
+            class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <option :value="undefined">Use Current Chat Model</option>
+            <option v-for="m in availableModels" :key="m" :value="m">
+              {{ m }}
+            </option>
+          </select>
+          <p class="text-[10px] text-gray-500 mt-1">Automatically generates a title after the first response.</p>
+        </div>
+
         <!-- Storage Type -->
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Storage Location</label>

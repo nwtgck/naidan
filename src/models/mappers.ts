@@ -146,6 +146,8 @@ export const settingsToDomain = (dto: SettingsDto): Settings => ({
   endpointType: dto.endpointType as EndpointType,
   endpointUrl: dto.endpointUrl,
   defaultModelId: dto.defaultModelId,
+  titleModelId: dto.titleModelId,
+  autoTitleEnabled: dto.autoTitleEnabled,
   storageType: dto.storageType as StorageType,
 });
 
@@ -153,5 +155,7 @@ export const settingsToDto = (domain: Settings): SettingsDto => ({
   endpointType: domain.endpointType as EndpointTypeDto,
   endpointUrl: domain.endpointUrl,
   defaultModelId: domain.defaultModelId,
+  titleModelId: domain.titleModelId,
+  autoTitleEnabled: domain.autoTitleEnabled,
   storageType: domain.storageType as StorageTypeDto,
 });

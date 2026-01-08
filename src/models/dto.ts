@@ -81,6 +81,8 @@ export const SettingsSchemaDto = z.object({
   endpointType: EndpointTypeSchemaDto,
   endpointUrl: z.string().url(),
   defaultModelId: z.string().optional(),
+  titleModelId: z.string().optional(),
+  autoTitleEnabled: z.boolean().default(true),
   storageType: StorageTypeSchemaDto,
 });
 export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
