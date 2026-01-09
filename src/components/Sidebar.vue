@@ -41,7 +41,7 @@ onMounted(async () => {
 
 function syncLocalItems() {
   if (isDragging.value || isInternalUpdate) return;
-  // Use a fresh copy to decouple from store reactivity during DND
+  // Use JSON.parse/stringify for robust deep cloning of reactive objects in test environments
   sidebarItemsLocal.value = JSON.parse(JSON.stringify(chatStore.sidebarItems.value));
 }
 

@@ -33,6 +33,7 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     listGroups: vi.fn().mockResolvedValue([]),
+    getSidebarStructure: vi.fn().mockResolvedValue([]),
   }
 }));
 

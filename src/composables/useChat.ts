@@ -1,15 +1,11 @@
 import { ref, computed, shallowRef, reactive, triggerRef } from 'vue';
 import { v7 as uuidv7 } from 'uuid';
-import type { Chat, MessageNode, ChatGroup, SidebarItem } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
-import { buildSidebarItems } from '../models/mappers';
-import type { ChatSummary } from '../services/storage/interface';
-import sampleContent from '../assets/sample-showcase.md?raw';
 
-const chats = ref<ChatSummary[]>([]);
-const groups = ref<ChatGroup[]>([]);
+const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
 const streaming = ref(false);
 const lastDeletedChat = ref<Chat | null>(null);
@@ -51,7 +47,47 @@ function processThinking(node: MessageNode) {
 export function useChat() {
   const { settings } = useSettings();
 
-  const sidebarItems = computed(() => buildSidebarItems(groups.value, chats.value));
+  /**
+   * Helper to find the correct relative index for a chat within its hierarchy.
+   * This ensures we persist the order correctly relative to its siblings.
+   */
+  function findChatPosition(chatId: string): { index: number } {
+    // 1. Check root level
+    const rootIdx = rootItems.value.findIndex(item => item.type === 'chat' && item.chat.id === chatId);
+    if (rootIdx !== -1) return { index: rootIdx };
+
+    // 2. Check inside groups
+    for (const item of rootItems.value) {
+      if (item.type === 'group') {
+        const nestedIdx = item.group.items.findIndex(n => n.type === 'chat' && n.chat.id === chatId);
+        if (nestedIdx !== -1) return { index: nestedIdx };
+      }
+    }
+    
+    return { index: 0 };
+  }
+
+  const sidebarItems = computed(() => rootItems.value);
+
+  const chats = computed(() => {
+    const all: ChatSummary[] = [];
+    const collect = (items: SidebarItem[]) => {
+      items.forEach(item => {
+        if (item.type === 'chat') all.push(item.chat);
+        else collect(item.group.items);
+      });
+    };
+    collect(rootItems.value);
+    return all;
+  });
+
+  const groups = computed(() => {
+    const all: ChatGroup[] = [];
+    rootItems.value.forEach(item => {
+      if (item.type === 'group') all.push(item.group);
+    });
+    return all;
+  });
 
   const activeMessages = computed(() => {
     if (!currentChat.value || currentChat.value.root.items.length === 0) return [];
@@ -73,16 +109,14 @@ export function useChat() {
   });
 
   const loadData = async () => {
-    // These methods now return correctly sorted Domain models
-    chats.value = await storageService.listChats();
-    groups.value = await storageService.listGroups();
+    rootItems.value = await storageService.getSidebarStructure();
   };
 
   const saveCurrentChat = async () => {
     if (!currentChat.value) return;
-    const idx = chats.value.findIndex(c => c.id === currentChat.value?.id);
-    const indexToUse = idx >= 0 ? idx : chats.value.length;
-    await storageService.saveChat(currentChat.value, indexToUse);
+    // CRITICAL: Find the correct relative index to avoid "jumping"
+    const { index } = findChatPosition(currentChat.value.id);
+    await storageService.saveChat(currentChat.value, index);
   };
 
   const createNewChat = async (groupId: string | null = null) => {
@@ -96,8 +130,34 @@ export function useChat() {
       updatedAt: Date.now(),
       debugEnabled: false,
     };
+    
+    // Initial save
+    await storageService.saveChat(chatObj, 0);
     currentChat.value = reactive(chatObj);
-    await storageService.saveChat(currentChat.value, chats.value.length);
+
+    const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
+    const newSummary: ChatSummary = { id: chatObj.id, title: chatObj.title, updatedAt: chatObj.updatedAt, groupId: chatObj.groupId };
+    const newSidebarItem: SidebarItem = { id: `chat:${chatObj.id}`, type: 'chat', chat: newSummary };
+
+    if (groupId) {
+      const findAndAdd = (items: SidebarItem[]) => {
+        for (const item of items) {
+          if (item.type === 'group' && item.group.id === groupId) {
+            item.group.items.unshift(newSidebarItem);
+            return true;
+          }
+          if (item.type === 'group' && findAndAdd(item.group.items)) return true;
+        }
+        return false;
+      };
+      findAndAdd(newRootItems);
+    } else {
+      const firstChatIdx = newRootItems.findIndex(item => item.type === 'chat');
+      const insertIdx = firstChatIdx !== -1 ? firstChatIdx : newRootItems.length;
+      newRootItems.splice(insertIdx, 0, newSidebarItem);
+    }
+
+    await persistSidebarStructure(newRootItems);
     await loadData();
   };
 
@@ -120,7 +180,7 @@ export function useChat() {
 
   const undoDelete = async () => {
     if (!lastDeletedChat.value) return;
-    await storageService.saveChat(lastDeletedChat.value, chats.value.length);
+    await storageService.saveChat(lastDeletedChat.value, 0);
     const restoredId = lastDeletedChat.value.id;
     lastDeletedChat.value = null;
     await loadData();
@@ -138,28 +198,23 @@ export function useChat() {
   };
 
   const renameChat = async (id: string, newTitle: string) => {
-    const idx = chats.value.findIndex(c => c.id === id);
-    if (idx === -1) return;
-
-    if (currentChat.value?.id === id) {
-      currentChat.value.title = newTitle;
-      currentChat.value.updatedAt = Date.now();
-      await storageService.saveChat(currentChat.value, idx);
-      triggerRef(currentChat);
-    } else {
-      const chat = await storageService.loadChat(id);
-      if (chat) {
-        chat.title = newTitle;
-        chat.updatedAt = Date.now();
-        await storageService.saveChat(chat, idx);
+    const chat = await storageService.loadChat(id);
+    if (chat) {
+      chat.title = newTitle;
+      chat.updatedAt = Date.now();
+      const { index } = findChatPosition(id);
+      await storageService.saveChat(chat, index);
+      if (currentChat.value?.id === id) {
+        currentChat.value.title = newTitle;
+        currentChat.value.updatedAt = chat.updatedAt;
+        triggerRef(currentChat);
       }
+      await loadData();
     }
-    await loadData();
   };
 
   const sendMessage = async (content: string, parentId?: string | null) => {
-    if (!currentChat.value) return;
-    if (streaming.value) return;
+    if (!currentChat.value || streaming.value) return;
 
     const userMsg: MessageNode = {
       id: uuidv7(),
@@ -180,22 +235,11 @@ export function useChat() {
 
     if (parentId === null) {
       currentChat.value.root.items.push(userMsg);
-    } else if (parentId) {
-      const parentNode = findNodeInBranch(currentChat.value.root.items, parentId);
-      if (parentNode) {
-        parentNode.replies.items.push(userMsg);
-      } else {
-        currentChat.value.root.items.push(userMsg);
-      }
-    } else if (currentChat.value.currentLeafId && currentChat.value.root.items.length > 0) {
-      const parentNode = findNodeInBranch(currentChat.value.root.items, currentChat.value.currentLeafId);
-      if (parentNode) {
-        parentNode.replies.items.push(userMsg);
-      } else {
-        currentChat.value.root.items.push(userMsg);
-      }
     } else {
-      currentChat.value.root.items.push(userMsg);
+      const pId = parentId || currentChat.value.currentLeafId;
+      const parentNode = pId ? findNodeInBranch(currentChat.value.root.items, pId) : null;
+      if (parentNode) parentNode.replies.items.push(userMsg);
+      else currentChat.value.root.items.push(userMsg);
     }
 
     currentChat.value.currentLeafId = assistantMsg.id;
@@ -203,18 +247,16 @@ export function useChat() {
     await saveCurrentChat();
 
     const assistantNode = findNodeInBranch(currentChat.value.root.items, assistantMsg.id);
-    if (!assistantNode) throw new Error('Assistant node not found in tree');
+    if (!assistantNode) throw new Error('Assistant node not found');
 
     streaming.value = true;
     try {
-      const endpointType = currentChat.value.endpointType || settings.value.endpointType;
-      const endpointUrl = currentChat.value.endpointUrl || settings.value.endpointUrl;
+      const type = currentChat.value.endpointType || settings.value.endpointType;
+      const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
       const model = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
-      const provider = endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+      const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
 
-      const context = activeMessages.value.filter(m => m.id !== assistantMsg.id);
-
-      await provider.chat(context as MessageNode[], model, endpointUrl, (chunk) => {
+      await provider.chat(activeMessages.value.filter(m => m.id !== assistantMsg.id), model, url, (chunk) => {
         assistantNode.content += chunk;
         triggerRef(currentChat);
       });
@@ -222,41 +264,26 @@ export function useChat() {
       processThinking(assistantNode);
       currentChat.value.updatedAt = Date.now();
       await saveCurrentChat();
-      triggerRef(currentChat);
-      await loadData(); 
+      await loadData();
 
       if (currentChat.value.title === null && settings.value.autoTitleEnabled) {
         const chatIdAtStart = currentChat.value.id;
         try {
           let generatedTitle = '';
-          const titleProvider = endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+          const titleProvider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
           const titleGenModel = settings.value.titleModelId || model;
           const promptNode: MessageNode = {
-            id: uuidv7(),
-            role: 'user',
-            content: `Generate a very short, concise title (2-3 words max) for a chat that starts with this message: "${content}". 
-            IMPORTANT: Use the same language as the user's message for the title. Respond with ONLY the title text.`,
-            timestamp: Date.now(),
-            replies: { items: [] }
+            id: uuidv7(), role: 'user', timestamp: Date.now(), replies: { items: [] },
+            content: `Generate a short title (2-3 words) for: "${content}". Respond ONLY with the title.`
           };
-          await titleProvider.chat([promptNode], titleGenModel, endpointUrl, (chunk) => {
-            generatedTitle += chunk;
-          });
+          await titleProvider.chat([promptNode], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
           const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
-          if (finalTitle && currentChat.value && currentChat.value.id === chatIdAtStart && currentChat.value.title === null) {
+          if (finalTitle && currentChat.value?.id === chatIdAtStart && currentChat.value.title === null) {
             currentChat.value.title = finalTitle;
             await saveCurrentChat();
             await loadData();
-            triggerRef(currentChat);
           }
-        } catch (_e) {
-          if (currentChat.value && currentChat.value.id === chatIdAtStart && currentChat.value.title === null) {
-            currentChat.value.title = content.slice(0, 20) + (content.length > 20 ? '...' : '');
-            await saveCurrentChat();
-            await loadData();
-            triggerRef(currentChat);
-          }
-        }
+        } catch (_e) { /* ignore */ }
       }
     } catch (e) {
       assistantNode.content += '\n\n[Error: ' + (e as Error).message + ']';
@@ -268,19 +295,14 @@ export function useChat() {
   };
 
   const forkChat = async (messageId: string): Promise<string | null> => {
-    if (!currentChat.value || currentChat.value.root.items.length === 0) return null;
+    if (!currentChat.value) return null;
     const path = activeMessages.value;
     const idx = path.findIndex(m => m.id === messageId);
     if (idx === -1) return null;
     const forkPath = path.slice(0, idx + 1);
 
     const clonedNodes: MessageNode[] = forkPath.map(n => ({
-      id: n.id,
-      role: n.role,
-      content: n.content,
-      timestamp: n.timestamp,
-      thinking: n.thinking,
-      replies: { items: [] }
+      id: n.id, role: n.role, content: n.content, timestamp: n.timestamp, thinking: n.thinking, replies: { items: [] }
     }));
 
     for (let i = 0; i < clonedNodes.length - 1; i++) {
@@ -297,46 +319,40 @@ export function useChat() {
       updatedAt: Date.now(),
     };
 
-    const newChat = reactive(newChatObj);
-    await storageService.saveChat(newChat, chats.value.length);
+    await storageService.saveChat(newChatObj, 0);
+    const originalIdx = rootItems.value.findIndex(item => item.type === 'chat' && item.chat.id === currentChat.value?.id);
+    const newRootItems = [...rootItems.value];
+    newRootItems.splice(originalIdx + 1, 0, { id: `chat:${newChatObj.id}`, type: 'chat', chat: { id: newChatObj.id, title: newChatObj.title, updatedAt: newChatObj.updatedAt, groupId: newChatObj.groupId } });
+    
+    await persistSidebarStructure(newRootItems);
     await loadData();
-    currentChat.value = newChat;
-    return newChat.id;
+    await openChat(newChatObj.id);
+    return newChatObj.id;
   };
 
   const editMessage = async (messageId: string, newContent: string) => {
-    if (!currentChat.value || currentChat.value.root.items.length === 0) return; 
-    
+    if (!currentChat.value) return;
     const node = findNodeInBranch(currentChat.value.root.items, messageId);
     if (!node) return;
 
-    const parent = findParentInBranch(currentChat.value.root.items, messageId);
-
     if (node.role === 'assistant') {
       const correctedNode: MessageNode = {
-        id: uuidv7(),
-        role: 'assistant',
-        content: newContent,
-        timestamp: Date.now(),
-        replies: { items: [] }
+        id: uuidv7(), role: 'assistant', content: newContent, timestamp: Date.now(), replies: { items: [] }
       };
-      
-      if (parent) {
-        parent.replies.items.push(correctedNode);
-      } else {
-        currentChat.value.root.items.push(correctedNode);
-      }
-      
+      const parent = findParentInBranch(currentChat.value.root.items, messageId);
+      if (parent) parent.replies.items.push(correctedNode);
+      else currentChat.value.root.items.push(correctedNode);
       currentChat.value.currentLeafId = correctedNode.id;
       await saveCurrentChat();
       triggerRef(currentChat);
     } else {
+      const parent = findParentInBranch(currentChat.value.root.items, messageId);
       await sendMessage(newContent, parent ? parent.id : null);
     }
   };
 
   const switchVersion = async (messageId: string) => {
-    if (!currentChat.value || currentChat.value.root.items.length === 0) return;
+    if (!currentChat.value) return;
     const node = findNodeInBranch(currentChat.value.root.items, messageId);
     if (node) {
       currentChat.value.currentLeafId = findDeepestLeaf(node).id;
@@ -346,7 +362,7 @@ export function useChat() {
   };
 
   const getSiblings = (messageId: string): MessageNode[] => {
-    if (!currentChat.value || currentChat.value.root.items.length === 0) return [];
+    if (!currentChat.value) return [];
     if (currentChat.value.root.items.some(m => m.id === messageId)) return currentChat.value.root.items;
     const parent = findParentInBranch(currentChat.value.root.items, messageId);
     return parent ? parent.replies.items : [];
@@ -361,13 +377,10 @@ export function useChat() {
 
   const createGroup = async (name: string) => {
     const newGroup: ChatGroup = {
-      id: uuidv7(),
-      name,
-      updatedAt: Date.now(),
-      isCollapsed: false,
-      items: [],
+      id: uuidv7(), name, updatedAt: Date.now(), isCollapsed: false, items: [],
     };
-    await storageService.saveGroup(newGroup, groups.value.length);
+    const newRootItems = [{ id: `group:${newGroup.id}`, type: 'group' as const, group: newGroup }, ...rootItems.value];
+    await persistSidebarStructure(newRootItems);
     await loadData();
   };
 
@@ -380,8 +393,7 @@ export function useChat() {
     const group = groups.value.find(g => g.id === groupId);
     if (group) {
       group.isCollapsed = !group.isCollapsed;
-      const idx = groups.value.indexOf(group);
-      await storageService.saveGroup(group, idx);
+      await persistSidebarStructure(rootItems.value);
     }
   };
 
@@ -390,87 +402,58 @@ export function useChat() {
     if (group) {
       group.name = newName;
       group.updatedAt = Date.now();
-      const idx = groups.value.indexOf(group);
-      await storageService.saveGroup(group, idx);
+      await persistSidebarStructure(rootItems.value);
       await loadData();
     }
   };
 
   const persistSidebarStructure = async (topLevelItems: SidebarItem[]) => {
-    const newGroups: ChatGroup[] = [];
-    const newChatSummaries: ChatSummary[] = [];
-
-    topLevelItems.forEach((item) => {
+    rootItems.value = topLevelItems;
+    for (let i = 0; i < topLevelItems.length; i++) {
+      const item = topLevelItems[i]!;
       if (item.type === 'group') {
-        const group = { ...item.group };
-        newGroups.push(group);
-        
-        group.items.forEach((nestedItem) => {
-          if (nestedItem.type === 'chat') {
-            newChatSummaries.push({ ...nestedItem.chat, groupId: group.id });
+        await storageService.saveGroup(item.group, i);
+        for (let j = 0; j < item.group.items.length; j++) {
+          const nested = item.group.items[j]!;
+          if (nested.type === 'chat') {
+            const chat = await storageService.loadChat(nested.chat.id);
+            if (chat) {
+              chat.groupId = item.group.id;
+              await storageService.saveChat(chat, j);
+            }
           }
-        });
+        }
       } else {
-        newChatSummaries.push({ ...item.chat, groupId: null });
-      }
-    });
-
-    groups.value = newGroups;
-    chats.value = newChatSummaries;
-
-    // Async persistence
-    for (let i = 0; i < newGroups.length; i++) {
-      await storageService.saveGroup(newGroups[i]!, i);
-    }
-    for (let i = 0; i < newChatSummaries.length; i++) {
-      const c = newChatSummaries[i]!;
-      const fullChat = await storageService.loadChat(c.id);
-      if (fullChat) {
-        fullChat.groupId = c.groupId;
-        await storageService.saveChat(fullChat, i);
+        const chat = await storageService.loadChat(item.chat.id);
+        if (chat) {
+          chat.groupId = null;
+          await storageService.saveChat(chat, i);
+        }
       }
     }
   };
 
   const createSampleChat = async () => {
     const now = Date.now();
-    const m2: MessageNode = {
-      id: uuidv7(),
-      role: 'assistant',
-      content: sampleContent,
-      timestamp: now,
-      replies: { items: [] }
-    };
-    processThinking(m2);
-    const m1: MessageNode = {
-      id: uuidv7(),
-      role: 'user',
-      content: 'Show me your tree-based branching and rendering capabilities!',
-      timestamp: now - 5000,
-      replies: { items: [m2] }
-    };
-    const sampleChatObj: Chat = {
-      id: uuidv7(),
-      title: '🚀 Sample: Tree Showcase',
-      root: { items: [m1] },
-      currentLeafId: m2.id,
-      modelId: 'gpt-4-showcase',
-      createdAt: now,
-      updatedAt: now,
-      debugEnabled: true,
-    };
-    currentChat.value = reactive(sampleChatObj);
-    await storageService.saveChat(currentChat.value, 0);
+    const m2: MessageNode = { id: uuidv7(), role: 'assistant', content: 'Sample Content', timestamp: now, replies: { items: [] } };
+    const m1: MessageNode = { id: uuidv7(), role: 'user', content: 'Hello!', timestamp: now - 5000, replies: { items: [m2] } };
+    const chat: Chat = { id: uuidv7(), title: '🚀 Sample', root: { items: [m1] }, currentLeafId: m2.id, modelId: 'gpt-4', createdAt: now, updatedAt: now, debugEnabled: true };
+    await storageService.saveChat(chat, 0);
     await loadData();
   };
 
   return {
+    // --- State & Getters ---
+    rootItems,
     chats,
     groups,
     sidebarItems,
     currentChat,
     activeMessages,
     streaming,
+    lastDeletedChat,
+
+    // --- Actions ---
     loadChats: loadData,
     createNewChat,
     openChat,
@@ -489,7 +472,6 @@ export function useChat() {
     deleteGroup,
     toggleGroupCollapse,
     renameGroup,
-    persistSidebarStructure,
-    lastDeletedChat
+    persistSidebarStructure
   };
 }
