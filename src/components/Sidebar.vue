@@ -164,7 +164,7 @@ async function handleUndo() {
       <div class="flex gap-2">
         <button 
           @click="handleNewChat(null)"
-          class="flex-1 flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg transition-colors text-xs font-medium whitespace-nowrap overflow-hidden"
+          class="flex-1 flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-3 rounded-lg transition-colors text-xs font-medium whitespace-nowrap overflow-hidden"
           :disabled="streaming"
           data-testid="new-chat-button"
         >
@@ -174,7 +174,7 @@ async function handleUndo() {
         </button>
         <button 
           @click="isCreatingGroup = true"
-          class="p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
+          class="p-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
           title="Create Group"
           data-testid="create-group-button"
         >
@@ -188,7 +188,7 @@ async function handleUndo() {
           @keyup.enter="handleCreateGroup"
           @keyup.esc="isCreatingGroup = false"
           @blur="handleCreateGroup"
-          class="bg-transparent text-xs text-white outline-none w-full px-1"
+          class="bg-transparent text-sm text-white outline-none w-full px-1"
           placeholder="Group name..."
           auto-focus
           data-testid="group-name-input"
@@ -204,7 +204,7 @@ async function handleUndo() {
       <button 
         v-if="lastDeletedChat"
         @click="handleUndo"
-        class="w-full flex items-center justify-center gap-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 px-4 py-2 rounded-lg transition-colors text-sm border border-green-600/30"
+        class="w-full flex items-center justify-center gap-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 px-4 py-3 rounded-lg transition-colors text-sm border border-green-600/30"
         data-testid="undo-delete-button"
       >
         <RotateCcw class="w-4 h-4" />
@@ -223,7 +223,7 @@ async function handleUndo() {
         @start="onDragStart"
         @end="onDragEnd"
         ghost-class="opacity-50"
-        class="space-y-4 min-h-[100px]"
+        class="space-y-1 min-h-[100px]"
       >
         <template #item="{ element }">
           <div :class="{ 'is-group': element.type === 'group' }">
@@ -245,10 +245,10 @@ async function handleUndo() {
                     @keyup.esc="editingGroupId = null"
                     @blur="saveGroupRename"
                     @click.stop
-                    class="bg-gray-700 text-white text-xs px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto"
+                    class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto font-medium"
                     auto-focus
                   />
-                  <span v-else class="truncate text-xs font-bold tracking-tight">{{ element.group.name }}</span>
+                  <span v-else class="truncate text-sm font-semibold tracking-tight">{{ element.group.name }}</span>
                 </div>
                 
                 <div class="flex items-center opacity-0 group-hover/folder:opacity-100 transition-opacity">
