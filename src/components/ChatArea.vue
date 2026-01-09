@@ -234,6 +234,7 @@ onMounted(() => {
           placeholder="Type a message..."
           class="w-full border dark:border-gray-600 rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-24 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
           :disabled="streaming"
+          data-testid="chat-input"
         ></textarea>
         <button 
           @click="handleSend"

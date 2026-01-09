@@ -49,7 +49,7 @@ describe('MessageItem Rendering', () => {
     expect(wrapper.text()).toContain('Thought Process');
     
     // Check if the content part only shows the actual response
-    const contentArea = wrapper.find('.prose');
+    const contentArea = wrapper.find('[data-testid="message-content"]');
     expect(contentArea.text()).toBe('Actual response');
     expect(contentArea.text()).not.toContain('Internal thought');
   });
@@ -69,10 +69,10 @@ describe('MessageItem Keyboard Shortcuts', () => {
     const wrapper = mount(MessageItem, { props: { message } });
     
     // Enter edit mode
-    await wrapper.find('button[title="Edit message"]').trigger('click');
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     expect(wrapper.find('[data-testid="edit-mode"]').exists()).toBe(true);
     
-    const textarea = wrapper.find('textarea');
+    const textarea = wrapper.find('[data-testid="edit-textarea"]');
     await textarea.setValue('Changed content');
     
     // Trigger Escape
@@ -86,8 +86,8 @@ describe('MessageItem Keyboard Shortcuts', () => {
     const message = createMessage('Original content');
     const wrapper = mount(MessageItem, { props: { message } });
     
-    await wrapper.find('button[title="Edit message"]').trigger('click');
-    const textarea = wrapper.find('textarea');
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    const textarea = wrapper.find('[data-testid="edit-textarea"]');
     await textarea.setValue('New branch content');
     
     // Trigger Ctrl+Enter
@@ -103,8 +103,8 @@ describe('MessageItem Keyboard Shortcuts', () => {
     const message = createMessage('Original content');
     const wrapper = mount(MessageItem, { props: { message } });
     
-    await wrapper.find('button[title="Edit message"]').trigger('click');
-    const textarea = wrapper.find('textarea');
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    const textarea = wrapper.find('[data-testid="edit-textarea"]');
     await textarea.setValue('Meta content');
     
     // Trigger Cmd+Enter (metaKey)

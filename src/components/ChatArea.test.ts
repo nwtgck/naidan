@@ -55,7 +55,7 @@ describe('ChatArea Focus', () => {
       }
     });
     
-    const textarea = wrapper.find('textarea');
+    const textarea = wrapper.find('[data-testid="chat-input"]');
     await textarea.setValue('Hello');
     
     // Simulate send (Ctrl+Enter)
@@ -78,7 +78,7 @@ describe('ChatArea Focus', () => {
     });
     
     await nextTick();
-    const textarea = wrapper.find('textarea');
+    const textarea = wrapper.find('[data-testid="chat-input"]');
     expect(document.activeElement).toBe(textarea.element);
   });
 });

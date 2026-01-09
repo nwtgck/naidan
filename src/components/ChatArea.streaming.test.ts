@@ -58,7 +58,7 @@ describe('ChatArea Streaming DOM Test', () => {
 
     await nextTick();
 
-    const textarea = wrapper.find('textarea');
+    const textarea = wrapper.find('[data-testid="chat-input"]');
     if (!textarea.exists()) {
       console.log('HTML State:', wrapper.html());
       throw new Error('Textarea not found');

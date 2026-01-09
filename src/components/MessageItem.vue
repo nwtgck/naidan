@@ -218,6 +218,7 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
         @click="isEditing = true"
         class="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
         title="Edit message"
+        data-testid="edit-message-button"
       >
         <Pencil class="w-3.5 h-3.5" />
       </button>
