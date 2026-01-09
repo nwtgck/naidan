@@ -1,39 +1,28 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref } from 'vue';
 import Sidebar from './components/Sidebar.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import DebugPanel from './components/DebugPanel.vue';
-import { useSettings } from './composables/useSettings';
-import { useChat } from './composables/useChat';
-import { useTheme } from './composables/useTheme';
 
-const { init: initSettings } = useSettings();
-const { loadChats } = useChat();
-useTheme(); // Initialize theme logic
-
-const showSettings = ref(false);
-
-onMounted(async () => {
-  await initSettings();
-  await loadChats();
-});
+const isSettingsOpen = ref(false);
 </script>
 
 <template>
-  <div class="flex h-screen w-screen bg-gray-100 dark:bg-gray-900 overflow-hidden text-gray-900 dark:text-gray-100 font-sans">
-    <!-- Sidebar -->
-    <Sidebar @open-settings="showSettings = true" />
-
-    <!-- Main Chat Area -->
-    <main class="flex-1 h-full relative">
+  <div class="flex h-screen bg-gray-50 text-gray-900 overflow-hidden">
+    <Sidebar @open-settings="isSettingsOpen = true" />
+    
+    <main class="flex-1 relative flex flex-col min-w-0 pb-10">
       <router-view />
       <DebugPanel />
     </main>
 
-    <!-- Settings Modal -->
     <SettingsModal 
-      :isOpen="showSettings" 
-      @close="showSettings = false"
+      :is-open="isSettingsOpen" 
+      @close="isSettingsOpen = false" 
     />
   </div>
 </template>
+
+<style scoped>
+/* Scoped styles here if needed */
+</style>

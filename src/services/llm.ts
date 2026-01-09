@@ -10,13 +10,16 @@
  */
 import { z } from 'zod';
 import type { MessageNode } from '../models/types';
+import { useErrorEvents } from '../composables/useErrorEvents';
+
+const { addErrorEvent } = useErrorEvents();
 
 // --- OpenAI API Schemas ---
 
 const OpenAIChatChunkSchema = z.object({
   choices: z.array(z.object({
     delta: z.object({
-      content: z.string().optional(),
+      content: z.string().nullable().optional(),
     }),
   })),
 });
@@ -31,7 +34,7 @@ const OpenAIModelsSchema = z.object({
 
 const OllamaChatChunkSchema = z.object({
   message: z.object({
-    content: z.string(),
+    content: z.string().nullable().optional(),
   }).optional(),
   done: z.boolean().optional(),
 });
@@ -99,8 +102,13 @@ export class OpenAIProvider implements LLMProvider {
           const validated = OpenAIChatChunkSchema.parse(rawJson);
           const content = validated.choices[0]?.delta?.content || '';
           if (content) onChunk(content);
-        } catch (_e) {
-          console.warn('Failed to parse or validate SSE line', line, _e);
+        } catch (e) {
+          addErrorEvent({
+            source: 'OpenAIProvider',
+            message: 'Failed to parse or validate SSE line',
+            details: { line, error: e instanceof Error ? e : String(e) }
+          });
+          console.warn('Failed to parse or validate SSE line', line, e);
         }
       }
     }
@@ -161,8 +169,13 @@ export class OllamaProvider implements LLMProvider {
           const content = validated.message?.content || '';
           if (content) onChunk(content);
           if (validated.done) return;
-        } catch (_e) {
-           console.warn('Failed to parse or validate Ollama JSON', line, _e);
+        } catch (e) {
+           addErrorEvent({
+             source: 'OllamaProvider',
+             message: 'Failed to parse or validate Ollama JSON',
+             details: { line, error: e instanceof Error ? e : String(e) }
+           });
+           console.warn('Failed to parse or validate Ollama JSON', line, e);
         }
       }
     }
