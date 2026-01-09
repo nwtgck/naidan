@@ -95,6 +95,26 @@ describe('ChatArea UI States', () => {
     // Shortcut text depends on OS, but should contain either 'Enter' or 'Cmd'/'Ctrl'
     expect(sendBtn.text()).toMatch(/(Enter|Cmd|Ctrl)/);
   });
+
+  it('should show the chat inspector when debug mode is enabled', async () => {
+    mockCurrentChat.value.debugEnabled = true;
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] }
+    });
+    
+    const inspector = wrapper.find('[data-testid="chat-inspector"]');
+    expect(inspector.exists()).toBe(true);
+    expect(inspector.text()).toContain('Metadata');
+  });
+
+  it('should hide the chat inspector when debug mode is disabled', async () => {
+    mockCurrentChat.value.debugEnabled = false;
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] }
+    });
+    
+    expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
+  });
 });
 
 describe('ChatArea Focus', () => {

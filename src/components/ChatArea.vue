@@ -201,24 +201,57 @@ onMounted(() => {
     </div>
 
     <!-- Messages -->
-    <div ref="container" class="flex-1 overflow-y-auto">
-      <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
-        Select or create a chat to start
+    <div class="flex-1 flex overflow-hidden">
+      <div ref="container" class="flex-1 overflow-y-auto relative">
+        <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
+          Select or create a chat to start
+        </div>
+        <div v-else class="relative p-2">
+          <!-- Removed transition-group to prevent unstable jumping between chats -->
+          <MessageItem 
+            v-for="msg in activeMessages" 
+            :key="msg.id" 
+            :message="msg" 
+            :siblings="chatStore.getSiblings(msg.id)"
+            @fork="handleFork"
+            @edit="handleEdit"
+            @switch-version="handleSwitchVersion"
+            class="animate-in fade-in duration-300"
+          />
+          <div v-if="activeMessages.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
+            Start a conversation...
+          </div>
+        </div>
       </div>
-      <div v-else class="relative p-2">
-        <!-- Removed transition-group to prevent unstable jumping between chats -->
-        <MessageItem 
-          v-for="msg in activeMessages" 
-          :key="msg.id" 
-          :message="msg" 
-          :siblings="chatStore.getSiblings(msg.id)"
-          @fork="handleFork"
-          @edit="handleEdit"
-          @switch-version="handleSwitchVersion"
-          class="animate-in fade-in duration-300"
-        />
-        <div v-if="activeMessages.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
-          Start a conversation...
+
+      <!-- Chat State Inspector (Debug Mode) -->
+      <div 
+        v-if="currentChat?.debugEnabled" 
+        class="w-96 border-l dark:border-gray-800 bg-gray-50 dark:bg-gray-900 overflow-y-auto p-4 font-mono text-[10px] animate-in slide-in-from-right duration-300 shadow-xl z-20"
+        data-testid="chat-inspector"
+      >
+        <div class="flex items-center justify-between mb-4 pb-2 border-b dark:border-gray-800">
+          <div class="flex items-center gap-2 text-indigo-500 uppercase font-bold tracking-widest">
+            <Bug class="w-3.5 h-3.5" />
+            <span>Chat Inspector</span>
+          </div>
+          <button @click="chatStore.toggleDebug" class="text-gray-400 hover:text-white">
+             <Square class="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <div class="space-y-4">
+          <section>
+            <h3 class="text-gray-500 mb-1 font-bold">Metadata</h3>
+            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ JSON.stringify({ id: currentChat.id, title: currentChat.title, model: currentChat.modelId, currentLeafId: currentChat.currentLeafId }, null, 2) }}</pre>
+          </section>
+          <section>
+            <h3 class="text-gray-500 mb-1 font-bold">Active Branch Path</h3>
+            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ activeMessages.map(m => `[${m.role.slice(0,1).toUpperCase()}] ${m.id.slice(0,8)}...`).join(' -> ') }}</pre>
+          </section>
+          <section>
+            <h3 class="text-gray-500 mb-1 font-bold">Full Tree Structure</h3>
+            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ JSON.stringify(currentChat.root.items, null, 2) }}</pre>
+          </section>
         </div>
       </div>
     </div>
