@@ -7,8 +7,8 @@ export type ErrorDetailValue =
   | null 
   | undefined 
   | Error 
-  | { [key: string]: ErrorDetailValue } 
-  | ErrorDetailValue[];
+  | Record<string, unknown>
+  | unknown[];
 
 export interface ErrorEvent {
   id: string;
