@@ -107,7 +107,7 @@ onUnmounted(() => {
     >
       <div class="flex items-center gap-2">
         <Terminal class="w-4 h-4 text-indigo-400" />
-        <span class="text-xs font-bold text-gray-400 tracking-wider uppercase">Global Events</span>
+        <span class="text-xs font-bold text-gray-400 tracking-wider uppercase">Events</span>
         
         <div 
           v-if="errorCount > 0"

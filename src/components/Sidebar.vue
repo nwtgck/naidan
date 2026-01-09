@@ -8,7 +8,7 @@ import Logo from './Logo.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
   Plus, Trash2, Settings as SettingsIcon, Sun, Moon, Monitor, 
-  RotateCcw, AlertTriangle, Pencil, Folder, FolderPlus, 
+  RotateCcw, Pencil, Folder, FolderPlus, 
   ChevronDown, ChevronRight, GripVertical, Check, X
 } from 'lucide-vue-next';
 
@@ -332,7 +332,7 @@ async function handleUndo() {
         @click="handleDeleteAll"
         class="flex items-center gap-2 text-xs text-gray-600 hover:text-red-400 w-full px-2 py-1 rounded hover:bg-red-900/10 transition-colors"
       >
-        <AlertTriangle class="w-3 h-3" />
+        <Trash2 class="w-3 h-3" />
         Clear All History
       </button>
 
