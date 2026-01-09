@@ -226,11 +226,11 @@ async function handleUndo() {
             <div v-if="element.type === 'group'" class="space-y-1">
               <div 
                 @click="chatStore.toggleGroupCollapse(element.group.id)"
-                class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer text-gray-400 group/folder relative transition-all"
+                class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer text-gray-400 group/folder relative transition-all handle"
                 data-testid="group-item"
               >
-                <div class="flex items-center gap-2 overflow-hidden flex-1">
-                  <GripVertical class="w-3 h-3 flex-shrink-0 handle cursor-grab active:cursor-grabbing text-gray-600 opacity-0 group-hover/folder:opacity-100" />
+                <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
+                  <GripVertical class="w-3 h-3 flex-shrink-0 text-gray-600 opacity-0 group-hover/folder:opacity-100" />
                   <component :is="element.group.isCollapsed ? ChevronRight : ChevronDown" class="w-3 h-3 flex-shrink-0" />
                   <Folder class="w-4 h-4 text-indigo-400/70" />
                   
@@ -240,7 +240,7 @@ async function handleUndo() {
                     @keyup.enter="saveGroupRename"
                     @keyup.esc="editingGroupId = null"
                     @click.stop
-                    class="bg-gray-700 text-white text-xs px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500"
+                    class="bg-gray-700 text-white text-xs px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto"
                     auto-focus
                   />
                   <span v-else class="truncate text-xs font-bold tracking-tight">{{ element.group.name }}</span>
@@ -267,19 +267,19 @@ async function handleUndo() {
                     <div v-if="nestedItem.type === 'chat'">
                       <div 
                         @click="handleOpenChat(nestedItem.chat.id)"
-                        class="group/chat flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors"
+                        class="group/chat flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors handle"
                         :class="currentChat?.id === nestedItem.chat.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'"
                         data-testid="sidebar-chat-item"
                       >
-                        <div class="flex items-center gap-2 overflow-hidden flex-1">
-                          <GripVertical class="w-3 h-3 text-gray-700 opacity-0 group-hover/chat:opacity-100 handle cursor-grab" />
+                        <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
+                          <GripVertical class="w-3 h-3 text-gray-700 opacity-0 group-hover/chat:opacity-100" />
                           <input 
                             v-if="editingId === nestedItem.chat.id"
                             v-model="editingTitle"
                             @keyup.enter="saveRename"
                             @keyup.esc="editingId = null"
                             @click.stop
-                            class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500"
+                            class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto"
                             auto-focus
                           />
                           <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'Untitled Chat' }}</span>
@@ -305,19 +305,19 @@ async function handleUndo() {
             <div 
               v-else
               @click="handleOpenChat(element.chat.id)"
-              class="group/chat flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors"
+              class="group/chat flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors handle"
               :class="currentChat?.id === element.chat.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'"
               data-testid="sidebar-chat-item"
             >
-              <div class="flex items-center gap-3 overflow-hidden flex-1">
-                <GripVertical class="w-3 h-3 text-gray-700 opacity-0 group-hover/chat:opacity-100 handle cursor-grab" />
+              <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
+                <GripVertical class="w-3 h-3 text-gray-700 opacity-0 group-hover/chat:opacity-100" />
                 <input 
                   v-if="editingId === element.chat.id"
                   v-model="editingTitle"
                   @keyup.enter="saveRename"
                   @keyup.esc="editingId = null"
                   @click.stop
-                  class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500"
+                  class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto"
                   auto-focus
                 />
                 <span v-else class="truncate text-sm">{{ element.chat.title || 'Untitled Chat' }}</span>

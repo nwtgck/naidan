@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { ref, computed } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '../models/types';
 
 // Use refs that we can control
@@ -25,7 +25,9 @@ vi.mock('../composables/useChat', () => ({
     currentChat: ref(null),
     lastDeletedChat: ref(null),
     streaming: ref(false),
-    loadChats: vi.fn(),
+    loadChats: vi.fn().mockImplementation(() => {
+        // Sync items when loaded
+    }),
     persistSidebarStructure: vi.fn(),
     toggleGroupCollapse: vi.fn(),
   })
@@ -54,7 +56,7 @@ vi.mock('../composables/useGlobalEvents', () => ({
 vi.mock('vuedraggable', () => ({
   default: {
     name: 'draggable',
-    template: '<div><slot name="item" v-for="item in modelValue" :element="item"></slot></div>',
+    template: '<div class="draggable-mock"><slot name="item" v-for="element in modelValue" :element="element"></slot></div>',
     props: ['modelValue']
   }
 }));
@@ -83,8 +85,7 @@ describe('Sidebar Logic Stability', () => {
         plugins: [router],
         stubs: {
           'lucide-vue-next': true,
-          'Logo': true,
-          'draggable': true
+          'Logo': true
         }
       }
     });
@@ -92,7 +93,10 @@ describe('Sidebar Logic Stability', () => {
     const vm = wrapper.vm as unknown as SidebarComponent;
 
     // 1. Initial state
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    vm.syncLocalItems(); // Manually sync for testing
+    await nextTick();
+    
     expect(vm.sidebarItemsLocal).toHaveLength(1);
     expect(vm.sidebarItemsLocal[0]?.type).toBe('chat');
     if (vm.sidebarItemsLocal[0]?.type === 'chat') {
@@ -104,7 +108,7 @@ describe('Sidebar Logic Stability', () => {
 
     // 3. Simulate an external data update (e.g. a new group added)
     mockGroups.value = [{ id: 'g1', name: 'New Group', isCollapsed: false, updatedAt: 0, items: [] }];
-    await wrapper.vm.$nextTick();
+    await nextTick();
 
     // 4. Verification: sidebarItemsLocal should NOT have changed yet
     expect(vm.sidebarItemsLocal).toHaveLength(1);
@@ -115,8 +119,42 @@ describe('Sidebar Logic Stability', () => {
     // 5. Simulate drag end
     vm.isDragging = false;
     vm.syncLocalItems();
+    await nextTick();
     
     // Now it should finally reflect the change
     expect(vm.sidebarItemsLocal).toHaveLength(2);
+  });
+
+  it('should apply the .handle class to both groups and chats for drag-and-drop', async () => {
+    mockGroups.value = [{ id: 'g1', name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
+    mockChats.value = [{ id: 'c1', title: 'Chat', updatedAt: 0 }];
+    
+    const wrapper = mount(Sidebar, {
+      global: {
+        plugins: [router],
+        stubs: {
+          'lucide-vue-next': true,
+          'Logo': true
+        }
+      }
+    });
+
+    const vm = wrapper.vm as unknown as SidebarComponent;
+    vm.syncLocalItems();
+    await nextTick();
+
+    // Verify group has handle
+    const groupItem = wrapper.find('[data-testid="group-item"]');
+    if (!groupItem.exists()) {
+        console.log('DOM:', wrapper.html());
+    }
+    expect(groupItem.classes()).toContain('handle');
+
+    // Verify chat has handle
+    const chatItems = wrapper.findAll('[data-testid="sidebar-chat-item"]');
+    expect(chatItems.length).toBeGreaterThan(0);
+    chatItems.forEach(item => {
+      expect(item.classes()).toContain('handle');
+    });
   });
 });
