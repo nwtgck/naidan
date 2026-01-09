@@ -1,10 +1,26 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { onKeyStroke } from '@vueuse/core';
+import { useChat } from './composables/useChat';
 import Sidebar from './components/Sidebar.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import DebugPanel from './components/DebugPanel.vue';
 
 const isSettingsOpen = ref(false);
+const chatStore = useChat();
+const router = useRouter();
+
+// ChatGPT-style shortcut for New Chat: Ctrl+Shift+O (Cmd+Shift+O on Mac)
+onKeyStroke(['o', 'O'], async (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+    e.preventDefault();
+    await chatStore.createNewChat();
+    if (chatStore.currentChat.value) {
+      router.push(`/chat/${chatStore.currentChat.value.id}`);
+    }
+  }
+});
 </script>
 
 <template>

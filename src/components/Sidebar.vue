@@ -31,6 +31,9 @@ const newGroupName = ref('');
 const editingGroupId = ref<string | null>(null);
 const editingGroupName = ref('');
 
+const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+const newChatShortcutText = isMac ? 'Cmd + Shift + O' : 'Ctrl + Shift + O';
+
 onMounted(async () => {
   await chatStore.loadChats();
   syncLocalItems();
@@ -161,12 +164,13 @@ async function handleUndo() {
       <div class="flex gap-2">
         <button 
           @click="handleNewChat(null)"
-          class="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+          class="flex-1 flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg transition-colors text-xs font-medium whitespace-nowrap overflow-hidden"
           :disabled="streaming"
           data-testid="new-chat-button"
         >
-          <Plus class="w-4 h-4" />
-          New Chat
+          <Plus class="w-3.5 h-3.5 shrink-0" />
+          <span>New Chat</span>
+          <span class="text-[9px] opacity-40 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
         </button>
         <button 
           @click="isCreatingGroup = true"
