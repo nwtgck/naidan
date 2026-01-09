@@ -1,5 +1,20 @@
-# Vue 3 + TypeScript + Vite
+# LM Web UI
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+> [!NOTE]
+> Most of this project was created by Gemini 3 with significantly less human review than my usual projects.
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+A privacy-focused web interface for LLMs (OpenAI-compatible APIs and Ollama), featuring advanced tree-based conversation branching and secure, browser-based storage.
+
+## Key Features
+
+- **Privacy-First**: Your data never leaves your browser. All conversations are stored locally using OPFS or LocalStorage, ensuring complete privacy with no cloud tracking or external dependencies.
+- **Infinite Branching**: Effortlessly fork or edit any message to create complex, tree-structured conversations without losing context.
+- **Intuitive Organization**: Seamlessly manage your chats using a drag-and-drop sidebar with support for custom groups and reordering.
+- **Rich Rendering**: First-class support for Markdown, LaTeX mathematical equations (KaTeX), and Mermaid diagrams.
+
+## Development
+
+```bash
+npm ci
+npm run dev
+```
