@@ -187,6 +187,7 @@ async function handleUndo() {
           v-model="newGroupName"
           @keyup.enter="handleCreateGroup"
           @keyup.esc="isCreatingGroup = false"
+          @blur="handleCreateGroup"
           class="bg-transparent text-xs text-white outline-none w-full px-1"
           placeholder="Group name..."
           auto-focus
@@ -242,6 +243,7 @@ async function handleUndo() {
                     v-model="editingGroupName"
                     @keyup.enter="saveGroupRename"
                     @keyup.esc="editingGroupId = null"
+                    @blur="saveGroupRename"
                     @click.stop
                     class="bg-gray-700 text-white text-xs px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto"
                     auto-focus
@@ -280,6 +282,7 @@ async function handleUndo() {
                             v-model="editingTitle"
                             @keyup.enter="saveRename"
                             @keyup.esc="editingId = null"
+                            @blur="saveRename"
                             @click.stop
                             class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto"
                             auto-focus
@@ -312,16 +315,16 @@ async function handleUndo() {
               data-testid="sidebar-chat-item"
             >
               <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
-                <input 
-                  v-if="editingId === element.chat.id"
-                  v-model="editingTitle"
-                  @keyup.enter="saveRename"
-                  @keyup.esc="editingId = null"
-                  @click.stop
-                  class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto"
-                  auto-focus
-                />
-                <span v-else class="truncate text-sm">{{ element.chat.title || 'Untitled Chat' }}</span>
+                              <input 
+                                v-if="editingId === element.chat.id"
+                                v-model="editingTitle"
+                                @keyup.enter="saveRename"
+                                @keyup.esc="editingId = null"
+                                @blur="saveRename"
+                                @click.stop
+                                class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto"
+                                auto-focus
+                              />                <span v-else class="truncate text-sm">{{ element.chat.title || 'Untitled Chat' }}</span>
               </div>
               <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
                 <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-indigo-400"><Pencil class="w-3 h-3" /></button>
