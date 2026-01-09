@@ -1,8 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '../services/storage';
 import { reactive, nextTick } from 'vue';
 import type { Chat, MessageNode, SidebarItem } from '../models/types';
+
+import { useErrorEvents } from '../composables/useErrorEvents';
 
 // Mock storage service
 vi.mock('../services/storage', () => ({
@@ -51,6 +53,14 @@ describe('useChat Composable Logic', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     currentChat.value = null;
+    const { clearErrorEvents } = useErrorEvents();
+    clearErrorEvents();
+  });
+
+  const { errorEventCount } = useErrorEvents();
+  // @ts-expect-error: vitest types
+  afterEach(() => {
+    expect(errorEventCount.value).toBe(0);
   });
 
   it('should update activeMessages in real-time during streaming', async () => {
