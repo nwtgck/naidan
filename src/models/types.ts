@@ -1,9 +1,10 @@
 /**
- * Domain Definitions (Business Logic Layer)
+ * Domain Definitions (Single Source of Truth)
  * 
- * These types represent the "ideal" model used by the UI and business logic.
- * They are intentionally kept clean of persistence constraints (DTOs) and
- * external validation libraries to ensure a stable and maintainable application core.
+ * These models represent the definitive state used by the UI and business logic.
+ * They are strictly decoupled from DTOs to prevent persistence details from 
+ * leaking into the core, ensuring structural integrity and preventing data 
+ * inconsistencies.
  */
 // --- Domain Definitions (Business Logic Layer) ---
 
