@@ -9,6 +9,7 @@ const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
 const streaming = ref(false);
 const lastDeletedChat = ref<Chat | null>(null);
+let abortController: AbortController | null = null;
 
 // --- Helpers ---
 
@@ -250,6 +251,7 @@ export function useChat() {
     if (!assistantNode) throw new Error('Assistant node not found');
 
     streaming.value = true;
+    abortController = new AbortController();
     try {
       const type = currentChat.value.endpointType || settings.value.endpointType;
       const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
@@ -259,7 +261,7 @@ export function useChat() {
       await provider.chat(activeMessages.value.filter(m => m.id !== assistantMsg.id), model, url, (chunk) => {
         assistantNode.content += chunk;
         triggerRef(currentChat);
-      });
+      }, abortController.signal);
 
       processThinking(assistantNode);
       currentChat.value.updatedAt = Date.now();
@@ -286,10 +288,23 @@ export function useChat() {
         } catch (_e) { /* ignore */ }
       }
     } catch (e) {
-      assistantNode.content += '\n\n[Error: ' + (e as Error).message + ']';
-      triggerRef(currentChat);
-      await saveCurrentChat();
+      if ((e as Error).name === 'AbortError') {
+        assistantNode.content += '\n\n[Generation Aborted]';
+      } else {
+        assistantNode.content += '\n\n[Error: ' + (e as Error).message + ']';
+      }
+      console.error(e);
     } finally {
+      streaming.value = false;
+      abortController = null;
+      await saveCurrentChat();
+    }
+  };
+
+  const abortChat = () => {
+    if (abortController) {
+      abortController.abort();
+      abortController = null;
       streaming.value = false;
     }
   };
@@ -472,6 +487,7 @@ export function useChat() {
     deleteGroup,
     toggleGroupCollapse,
     renameGroup,
-    persistSidebarStructure
+    persistSidebarStructure,
+    abortChat
   };
 }

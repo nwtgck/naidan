@@ -14,6 +14,7 @@ import type { MessageNode } from '../models/types';
 
 // Mock dependencies
 const mockSendMessage = vi.fn();
+const mockAbortChat = vi.fn();
 const mockStreaming = ref(false);
 const mockCurrentChat = ref({ 
   id: '1', 
@@ -32,7 +33,8 @@ vi.mock('../composables/useChat', () => ({
     activeMessages: ref([] as MessageNode[]),
     getSiblings: vi.fn().mockReturnValue([]),
     editMessage: vi.fn(),
-    switchVersion: vi.fn()
+    switchVersion: vi.fn(),
+    abortChat: mockAbortChat
   })
 }));
 
@@ -59,15 +61,39 @@ describe('ChatArea UI States', () => {
     expect((textarea.element as HTMLTextAreaElement).disabled).toBe(false);
   });
 
-  it('should disable the send button during streaming', async () => {
+  it('should show the abort button and hide the send button during streaming', async () => {
     mockStreaming.value = true;
     const wrapper = mount(ChatArea, {
       global: { plugins: [router] }
     });
     
-    // Find the send button by its title or finding the button with the Send icon
-    const sendButton = wrapper.find('button[title*="Send message"]');
-    expect((sendButton.element as HTMLButtonElement).disabled).toBe(true);
+    const abortBtn = wrapper.find('[data-testid="abort-button"]');
+    expect(abortBtn.exists()).toBe(true);
+    expect(abortBtn.text()).toContain('Esc');
+    expect(wrapper.find('[data-testid="send-button"]').exists()).toBe(false);
+  });
+
+  it('should call abortChat when Esc is pressed during streaming', async () => {
+    mockStreaming.value = true;
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] }
+    });
+    
+    const textarea = wrapper.find('[data-testid="chat-input"]');
+    await textarea.trigger('keydown.esc');
+    expect(mockAbortChat).toHaveBeenCalled();
+  });
+
+  it('should show the send button with shortcut text when not streaming', async () => {
+    mockStreaming.value = false;
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] }
+    });
+    
+    const sendBtn = wrapper.find('[data-testid="send-button"]');
+    expect(sendBtn.exists()).toBe(true);
+    // Shortcut text depends on OS, but should contain either 'Enter' or 'Cmd'/'Ctrl'
+    expect(sendBtn.text()).toMatch(/(Enter|Cmd|Ctrl)/);
   });
 });
 
