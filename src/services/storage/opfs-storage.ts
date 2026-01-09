@@ -1,20 +1,20 @@
 import type { Chat, Settings, ChatGroup, SidebarItem } from '../../models/types';
-import { ChatSchemaDto, SettingsSchemaDto, ChatGroupSchemaDto, type ChatGroupDto } from '../../models/dto';
+import { ChatSchemaDto, SettingsSchemaDto, type ChatGroupDto, type ChatDto } from '../../models/dto';
 import { 
   chatToDomain,
   chatToDto,
-  chatGroupToDomain,
-  chatGroupToDto,
   settingsToDomain,
-  settingsToDto
+  settingsToDto,
+  chatGroupToDto,
+  buildSidebarItemsFromDtos
 } from '../../models/mappers';
-import type { IStorageProvider, ChatSummary } from './interface';
+import { IStorageProvider } from './interface';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>;
 }
 
-export class OPFSStorageProvider implements IStorageProvider {
+export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
 
   async init(): Promise<void> {
@@ -33,6 +33,38 @@ export class OPFSStorageProvider implements IStorageProvider {
     return await this.root!.getDirectoryHandle('groups', { create: true });
   }
 
+  // --- Internal Data Access ---
+
+  protected async listChatsRaw(): Promise<ChatDto[]> {
+    await this.init();
+    try {
+      const fileHandle = await this.root!.getFileHandle('index.json');
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      const json = JSON.parse(text);
+      if (Array.isArray(json)) return json as ChatDto[];
+      return [];
+    } catch { return []; }
+  }
+
+  protected async listGroupsRaw(): Promise<ChatGroupDto[]> {
+    try {
+      const groupsDir = await this.getGroupsDir();
+      const dtos: ChatGroupDto[] = [];
+      // @ts-expect-error: values() is missing in some types
+      for await (const entry of groupsDir.values()) {
+        if (entry.kind === 'file' && entry.name.endsWith('.json')) {
+          const file = await entry.getFile();
+          const text = await file.text();
+          dtos.push(JSON.parse(text));
+        }
+      }
+      return dtos;
+    } catch { return []; }
+  }
+
+  // --- Persistence Implementation ---
+
   async saveChat(chat: Chat, index: number): Promise<void> {
     const dto = chatToDto(chat, index);
     ChatSchemaDto.parse(dto);
@@ -41,26 +73,19 @@ export class OPFSStorageProvider implements IStorageProvider {
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(dto));
     await writable.close();
-    await this.updateIndex(chat, index);
+    await this.updateIndex(dto);
   }
 
-  private async updateIndex(chat: Chat, index: number): Promise<void> {
+  private async updateIndex(chatDto: ChatDto): Promise<void> {
     await this.init();
-    const summaries: ChatSummary[] = await this.listChats();
-    const summary: ChatSummary = {
-      id: chat.id,
-      title: chat.title,
-      updatedAt: chat.updatedAt,
-      groupId: chat.groupId,
-      order: index
-    };
-    const existingIndex = summaries.findIndex(c => c.id === chat.id);
-    if (existingIndex >= 0) summaries[existingIndex] = summary;
-    else summaries.push(summary);
+    const index: ChatDto[] = await this.listChatsRaw();
+    const existingIndex = index.findIndex(c => c.id === chatDto.id);
+    if (existingIndex >= 0) index[existingIndex] = chatDto;
+    else index.push(chatDto);
     
     const fileHandle = await this.root!.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(summaries));
+    await writable.write(JSON.stringify(index));
     await writable.close();
   }
 
@@ -74,34 +99,17 @@ export class OPFSStorageProvider implements IStorageProvider {
     } catch { return null; }
   }
 
-  async listChats(): Promise<ChatSummary[]> {
-    await this.init();
-    try {
-      const fileHandle = await this.root!.getFileHandle('index.json');
-      const file = await fileHandle.getFile();
-      const text = await file.text();
-      const json = JSON.parse(text);
-      if (Array.isArray(json)) {
-        const summaries = json as ChatSummary[];
-        return summaries.sort((a, b) => a.order - b.order);
-      }
-      return [];
-    } catch { return []; }
-  }
-
   async deleteChat(id: string): Promise<void> {
     try {
       const chatsDir = await this.getChatsDir();
       await chatsDir.removeEntry(`${id}.json`);
-      const summaries = (await this.listChats()).filter(c => c.id !== id);
+      const indexList = (await this.listChatsRaw()).filter(c => c.id !== id);
       const fileHandle = await this.root!.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
       const writable = await fileHandle.createWritable();
-      await writable.write(JSON.stringify(summaries));
+      await writable.write(JSON.stringify(indexList));
       await writable.close();
     } catch { /* ignore */ }
   }
-
-  // --- Groups ---
 
   async saveGroup(group: ChatGroup, index: number): Promise<void> {
     const dto = chatGroupToDto(group, index);
@@ -112,54 +120,33 @@ export class OPFSStorageProvider implements IStorageProvider {
     await writable.close();
   }
 
-  async loadGroup(id: string): Promise<ChatGroup | null> {
-    const groups = await this.listGroups();
-    return groups.find(g => g.id === id) || null;
-  }
-
-  async listGroups(): Promise<ChatGroup[]> {
-    try {
-      const groupsDir = await this.getGroupsDir();
-      const allChats = await this.listChats();
-      const dtos: ChatGroupDto[] = [];
-      // @ts-expect-error: values() is missing in some types
-      for await (const entry of groupsDir.values()) {
-        if (entry.kind === 'file' && entry.name.endsWith('.json')) {
-          const file = await entry.getFile();
-          const text = await file.text();
-          dtos.push(JSON.parse(text));
-        }
-      }
-      return dtos
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-        .map(dto => {
-          const validated = ChatGroupSchemaDto.parse(dto);
-          const groupChats = allChats.filter(c => c.groupId === validated.id);
-          const nestedItems: SidebarItem[] = groupChats.map(c => ({
-            id: `chat:${c.id}`,
-            type: 'chat',
-            chat: c
-          }));
-          return chatGroupToDomain(validated, nestedItems);
-        });
-    } catch { return []; }
+  async loadGroup(_id: string): Promise<ChatGroup | null> {
+    return null;
   }
 
   async deleteGroup(id: string): Promise<void> {
     try {
       const groupsDir = await this.getGroupsDir();
       await groupsDir.removeEntry(`${id}.json`);
-      const summaries = await this.listChats();
-      for (const c of summaries) {
+      const chats = await this.listChatsRaw();
+      for (const c of chats) {
         if (c.groupId === id) {
-          const chat = await this.loadChat(c.id);
-          if (chat) {
-            chat.groupId = null;
-            await this.saveChat(chat, c.order);
+          const fullChat = await this.loadChat(c.id);
+          if (fullChat) {
+            fullChat.groupId = null;
+            await this.saveChat(fullChat, c.order ?? 0);
           }
         }
       }
     } catch { /* ignore */ }
+  }
+
+  public override async getSidebarStructure(): Promise<SidebarItem[]> {
+    const [chats, groups] = await Promise.all([
+      this.listChatsRaw(),
+      this.listGroupsRaw()
+    ]);
+    return buildSidebarItemsFromDtos(groups, chats);
   }
 
   async saveSettings(settings: Settings): Promise<void> {

@@ -73,21 +73,19 @@ export function useChat() {
   });
 
   const loadData = async () => {
+    // These methods now return correctly sorted Domain models
     chats.value = await storageService.listChats();
     groups.value = await storageService.listGroups();
   };
 
   const saveCurrentChat = async () => {
     if (!currentChat.value) return;
-    const summary = chats.value.find(c => c.id === currentChat.value?.id);
-    const order = summary?.order ?? chats.value.length;
-    await storageService.saveChat(currentChat.value, order);
+    const idx = chats.value.findIndex(c => c.id === currentChat.value?.id);
+    const indexToUse = idx >= 0 ? idx : chats.value.length;
+    await storageService.saveChat(currentChat.value, indexToUse);
   };
 
   const createNewChat = async (groupId: string | null = null) => {
-    const siblings = chats.value.filter(c => (c.groupId || null) === (groupId || null));
-    const maxOrder = siblings.reduce((max, c) => Math.max(max, c.order), -1);
-
     const chatObj: Chat = {
       id: uuidv7(),
       title: null,
@@ -99,7 +97,7 @@ export function useChat() {
       debugEnabled: false,
     };
     currentChat.value = reactive(chatObj);
-    await storageService.saveChat(currentChat.value, maxOrder + 1);
+    await storageService.saveChat(currentChat.value, chats.value.length);
     await loadData();
   };
 
@@ -122,8 +120,7 @@ export function useChat() {
 
   const undoDelete = async () => {
     if (!lastDeletedChat.value) return;
-    const summary = chats.value.find(c => c.id === lastDeletedChat.value?.id);
-    await storageService.saveChat(lastDeletedChat.value, summary?.order ?? 0);
+    await storageService.saveChat(lastDeletedChat.value, chats.value.length);
     const restoredId = lastDeletedChat.value.id;
     lastDeletedChat.value = null;
     await loadData();
@@ -141,20 +138,20 @@ export function useChat() {
   };
 
   const renameChat = async (id: string, newTitle: string) => {
-    const summary = chats.value.find(c => c.id === id);
-    if (!summary) return;
+    const idx = chats.value.findIndex(c => c.id === id);
+    if (idx === -1) return;
 
     if (currentChat.value?.id === id) {
       currentChat.value.title = newTitle;
       currentChat.value.updatedAt = Date.now();
-      await storageService.saveChat(currentChat.value, summary.order);
+      await storageService.saveChat(currentChat.value, idx);
       triggerRef(currentChat);
     } else {
       const chat = await storageService.loadChat(id);
       if (chat) {
         chat.title = newTitle;
         chat.updatedAt = Date.now();
-        await storageService.saveChat(chat, summary.order);
+        await storageService.saveChat(chat, idx);
       }
     }
     await loadData();
@@ -403,18 +400,18 @@ export function useChat() {
     const newGroups: ChatGroup[] = [];
     const newChatSummaries: ChatSummary[] = [];
 
-    topLevelItems.forEach((item, index) => {
+    topLevelItems.forEach((item) => {
       if (item.type === 'group') {
         const group = { ...item.group };
         newGroups.push(group);
         
-        group.items.forEach((nestedItem, chatIdx) => {
+        group.items.forEach((nestedItem) => {
           if (nestedItem.type === 'chat') {
-            newChatSummaries.push({ ...nestedItem.chat, groupId: group.id, order: chatIdx });
+            newChatSummaries.push({ ...nestedItem.chat, groupId: group.id });
           }
         });
       } else {
-        newChatSummaries.push({ ...item.chat, groupId: null, order: index });
+        newChatSummaries.push({ ...item.chat, groupId: null });
       }
     });
 
@@ -425,11 +422,12 @@ export function useChat() {
     for (let i = 0; i < newGroups.length; i++) {
       await storageService.saveGroup(newGroups[i]!, i);
     }
-    for (const c of newChatSummaries) {
+    for (let i = 0; i < newChatSummaries.length; i++) {
+      const c = newChatSummaries[i]!;
       const fullChat = await storageService.loadChat(c.id);
       if (fullChat) {
         fullChat.groupId = c.groupId;
-        await storageService.saveChat(fullChat, c.order);
+        await storageService.saveChat(fullChat, i);
       }
     }
   };

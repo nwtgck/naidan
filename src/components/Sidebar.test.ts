@@ -3,14 +3,15 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed } from 'vue';
+import type { ChatGroup, ChatSummary, SidebarItem } from '../models/types';
 
 // Use refs that we can control
-const mockGroups = ref<any[]>([]);
-const mockChats = ref<any[]>([]);
+const mockGroups = ref<ChatGroup[]>([]);
+const mockChats = ref<ChatSummary[]>([]);
 
 // buildSidebarItems logic simplified for testing
-const mockSidebarItems = computed(() => {
-  const items: any[] = [];
+const mockSidebarItems = computed<SidebarItem[]>(() => {
+  const items: SidebarItem[] = [];
   mockGroups.value.forEach(g => items.push({ id: `group:${g.id}`, type: 'group', group: g }));
   mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
   return items;
@@ -46,6 +47,12 @@ vi.mock('vuedraggable', () => ({
   }
 }));
 
+interface SidebarComponent {
+  sidebarItemsLocal: SidebarItem[];
+  isDragging: boolean;
+  syncLocalItems: () => void;
+}
+
 describe('Sidebar Logic Stability', () => {
   const router = createRouter({
     history: createWebHistory(),
@@ -54,7 +61,7 @@ describe('Sidebar Logic Stability', () => {
 
   beforeEach(() => {
     mockGroups.value = [];
-    mockChats.value = [{ id: '1', title: 'Initial Chat' }];
+    mockChats.value = [{ id: '1', title: 'Initial Chat', updatedAt: 0 }];
     vi.clearAllMocks();
   });
 
@@ -70,28 +77,34 @@ describe('Sidebar Logic Stability', () => {
       }
     });
 
+    const vm = wrapper.vm as unknown as SidebarComponent;
+
     // 1. Initial state
     await wrapper.vm.$nextTick();
-    expect((wrapper.vm as any).sidebarItemsLocal).toHaveLength(1);
-    expect((wrapper.vm as any).sidebarItemsLocal[0].chat.title).toBe('Initial Chat');
+    expect(vm.sidebarItemsLocal).toHaveLength(1);
+    expect(vm.sidebarItemsLocal[0]?.type).toBe('chat');
+    if (vm.sidebarItemsLocal[0]?.type === 'chat') {
+      expect(vm.sidebarItemsLocal[0].chat.title).toBe('Initial Chat');
+    }
 
     // 2. Simulate drag start
-    (wrapper.vm as any).isDragging = true;
+    vm.isDragging = true;
 
     // 3. Simulate an external data update (e.g. a new group added)
-    mockGroups.value = [{ id: 'g1', name: 'New Group', items: [] }];
+    mockGroups.value = [{ id: 'g1', name: 'New Group', isCollapsed: false, updatedAt: 0, items: [] }];
     await wrapper.vm.$nextTick();
 
     // 4. Verification: sidebarItemsLocal should NOT have changed yet
-    // This stability is what prevents the SortableJS error
-    expect((wrapper.vm as any).sidebarItemsLocal).toHaveLength(1);
-    expect((wrapper.vm as any).sidebarItemsLocal[0].chat.title).toBe('Initial Chat');
+    expect(vm.sidebarItemsLocal).toHaveLength(1);
+    if (vm.sidebarItemsLocal[0]?.type === 'chat') {
+      expect(vm.sidebarItemsLocal[0].chat.title).toBe('Initial Chat');
+    }
 
     // 5. Simulate drag end
-    (wrapper.vm as any).isDragging = false;
-    (wrapper.vm as any).syncLocalItems();
+    vm.isDragging = false;
+    vm.syncLocalItems();
     
     // Now it should finally reflect the change
-    expect((wrapper.vm as any).sidebarItemsLocal).toHaveLength(2);
+    expect(vm.sidebarItemsLocal).toHaveLength(2);
   });
 });

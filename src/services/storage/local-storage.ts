@@ -8,44 +8,58 @@ import {
   ChatSchemaDto as DtoChatSchema, 
   SettingsSchemaDto as DtoSettingsSchema,
   ChatGroupSchemaDto as DtoChatGroupSchema,
-  type ChatGroupDto
+  type ChatGroupDto,
+  type ChatDto
 } from '../../models/dto';
 import { 
   chatToDomain as mapChatToDomain,
   chatToDto as mapChatToDto,
-  chatGroupToDomain as mapGroupToDomain,
-  chatGroupToDto as mapGroupToDto,
   settingsToDomain as mapSettingsToDomain,
-  settingsToDto as mapSettingsToDto
+  settingsToDto as mapSettingsToDto,
+  chatGroupToDto as mapGroupToDto,
+  buildSidebarItemsFromDtos
 } from '../../models/mappers';
-import type { IStorageProvider, ChatSummary } from './interface';
+import { IStorageProvider } from './interface';
 
 const KEY_PREFIX = 'lm-web-ui:';
 const KEY_INDEX = `${KEY_PREFIX}index`;
 const KEY_GROUPS = `${KEY_PREFIX}groups`;
 const KEY_SETTINGS = `${KEY_PREFIX}settings`;
 
-export class LocalStorageProvider implements IStorageProvider {
+export class LocalStorageProvider extends IStorageProvider {
   async init(): Promise<void> {}
+
+  // --- Internal Data Access (Implementing abstract protected methods) ---
+
+  protected async listChatsRaw(): Promise<ChatDto[]> {
+    const raw = localStorage.getItem(KEY_INDEX);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw) as ChatDto[];
+    } catch { return []; }
+  }
+
+  protected async listGroupsRaw(): Promise<ChatGroupDto[]> {
+    const rawGroups = localStorage.getItem(KEY_GROUPS);
+    if (!rawGroups) return [];
+    try {
+      return JSON.parse(rawGroups) as ChatGroupDto[];
+    } catch { return []; }
+  }
+
+  // --- Persistence Implementation ---
 
   async saveChat(chat: Chat, index: number): Promise<void> {
     const dto = mapChatToDto(chat, index);
     const validated = DtoChatSchema.parse(dto);
     localStorage.setItem(`${KEY_PREFIX}chat:${chat.id}`, JSON.stringify(validated));
     
-    const summaries = await this.listChats();
-    const existingIdx = summaries.findIndex(c => c.id === chat.id);
-    const summary: ChatSummary = {
-      id: chat.id,
-      title: chat.title,
-      updatedAt: chat.updatedAt,
-      groupId: chat.groupId,
-      order: index
-    };
-    if (existingIdx >= 0) summaries[existingIdx] = summary;
-    else summaries.push(summary);
+    const indexList = await this.listChatsRaw();
+    const existingIdx = indexList.findIndex(c => c.id === chat.id);
+    if (existingIdx >= 0) indexList[existingIdx] = validated;
+    else indexList.push(validated);
     
-    localStorage.setItem(KEY_INDEX, JSON.stringify(summaries));
+    localStorage.setItem(KEY_INDEX, JSON.stringify(indexList));
   }
 
   async loadChat(id: string): Promise<Chat | null> {
@@ -57,89 +71,56 @@ export class LocalStorageProvider implements IStorageProvider {
     } catch { return null; }
   }
 
-  async listChats(): Promise<ChatSummary[]> {
-    const raw = localStorage.getItem(KEY_INDEX);
-    if (!raw) return [];
-    try {
-      const summaries = JSON.parse(raw) as ChatSummary[];
-      return summaries.sort((a, b) => a.order - b.order);
-    } catch { return []; }
-  }
-
   async deleteChat(id: string): Promise<void> {
     localStorage.removeItem(`${KEY_PREFIX}chat:${id}`);
-    const index = (await this.listChats()).filter(c => c.id !== id);
-    localStorage.setItem(KEY_INDEX, JSON.stringify(index));
+    const indexList = (await this.listChatsRaw()).filter(c => c.id !== id);
+    localStorage.setItem(KEY_INDEX, JSON.stringify(indexList));
   }
 
-  // --- Groups ---
-
   async saveGroup(group: ChatGroup, index: number): Promise<void> {
-    const groups = await this.listGroups();
+    const groups = await this.listGroupsRaw();
     const idx = groups.findIndex(g => g.id === group.id);
     
     const dto = mapGroupToDto(group, index);
     DtoChatGroupSchema.parse(dto);
 
-    if (idx >= 0) {
-      groups[idx] = group;
-    } else {
-      groups.push(group);
-    }
+    if (idx >= 0) groups[idx] = dto;
+    else groups.push(dto);
     
-    // Map all to DTOs using their current order in the array or explicit order
-    // But since we want to persist the 'index' passed, we update the domain groups list
-    const dtos = groups.map((g) => {
-      const gIdx = g.id === group.id ? index : (groups.findIndex(orig => orig.id === g.id));
-      return mapGroupToDto(g, gIdx);
-    });
-    
-    localStorage.setItem(KEY_GROUPS, JSON.stringify(dtos));
+    localStorage.setItem(KEY_GROUPS, JSON.stringify(groups));
   }
 
-  async loadGroup(id: string): Promise<ChatGroup | null> {
-    const groups = await this.listGroups();
-    return groups.find(g => g.id === id) || null;
-  }
-
-  async listGroups(): Promise<ChatGroup[]> {
-    const rawGroups = localStorage.getItem(KEY_GROUPS);
-    if (!rawGroups) return [];
-    const allChats = await this.listChats();
-    
-    try {
-      const dtos = JSON.parse(rawGroups) as ChatGroupDto[];
-      return dtos
-        .sort((a, b) => a.order - b.order)
-        .map(dto => {
-          const validated = DtoChatGroupSchema.parse(dto);
-          const groupChats = allChats.filter(c => c.groupId === validated.id);
-          const nestedItems: SidebarItem[] = groupChats.map(c => ({
-            id: `chat:${c.id}`,
-            type: 'chat',
-            chat: c
-          }));
-          return mapGroupToDomain(validated, nestedItems);
-        });
-    } catch { return []; }
+  async loadGroup(_id: string): Promise<ChatGroup | null> {
+    // Note: Use public listGroups() from base class if full structure is needed.
+    return null;
   }
 
   async deleteGroup(id: string): Promise<void> {
-    const rawGroups = localStorage.getItem(KEY_GROUPS);
-    if (!rawGroups) return;
-    const dtos = (JSON.parse(rawGroups) as ChatGroupDto[]).filter(g => g.id !== id);
-    localStorage.setItem(KEY_GROUPS, JSON.stringify(dtos));
+    const groups = (await this.listGroupsRaw()).filter(g => g.id !== id);
+    localStorage.setItem(KEY_GROUPS, JSON.stringify(groups));
     
-    const index = await this.listChats();
-    for (const chatSummary of index) {
-      if (chatSummary.groupId === id) {
-        const chat = await this.loadChat(chatSummary.id);
-        if (chat) {
-          chat.groupId = null;
-          await this.saveChat(chat, chatSummary.order);
+    const chats = await this.listChatsRaw();
+    for (const c of chats) {
+      if (c.groupId === id) {
+        const fullChat = await this.loadChat(c.id);
+        if (fullChat) {
+          fullChat.groupId = null;
+          // When removing group, keep original relative order if possible
+          await this.saveChat(fullChat, c.order ?? 0);
         }
       }
     }
+  }
+
+  /**
+   * Overriding getSidebarStructure to ensure we use the DTO mapper.
+   */
+  public override async getSidebarStructure(): Promise<SidebarItem[]> {
+    const [chats, groups] = await Promise.all([
+      this.listChatsRaw(),
+      this.listGroupsRaw()
+    ]);
+    return buildSidebarItemsFromDtos(groups, chats);
   }
 
   async saveSettings(settings: Settings): Promise<void> {

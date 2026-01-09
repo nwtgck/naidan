@@ -32,13 +32,27 @@ export const roleToDomain = (dto: RoleDto): Role => {
   }
 };
 
-export const chatGroupToDomain = (dto: ChatGroupDto, groupItems: SidebarItem[] = []): ChatGroup => ({
-  id: dto.id,
-  name: dto.name,
-  isCollapsed: dto.isCollapsed,
-  updatedAt: dto.updatedAt,
-  items: groupItems, // items should already be sorted before calling this
-});
+/**
+ * Converts a Group DTO and associated Chat DTOs into a Domain ChatGroup.
+ * Sorting is performed here to ensure the Domain model's array reflects the correct order.
+ */
+export const chatGroupToDomain = (dto: ChatGroupDto, chatDtos: ChatDto[] = []): ChatGroup => {
+  const nestedItems: SidebarItem[] = chatDtos
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map(c => ({
+      id: `chat:${c.id}`,
+      type: 'chat',
+      chat: chatToSummary(c)
+    }));
+
+  return {
+    id: dto.id,
+    name: dto.name,
+    isCollapsed: dto.isCollapsed,
+    updatedAt: dto.updatedAt,
+    items: nestedItems,
+  };
+};
 
 export const chatGroupToDto = (domain: ChatGroup, index: number): ChatGroupDto => ({
   id: domain.id,
@@ -127,6 +141,13 @@ export const chatToDomain = (dto: ChatDto): Chat => {
   };
 };
 
+export const chatToSummary = (dto: ChatDto): ChatSummary => ({
+  id: dto.id,
+  title: dto.title,
+  updatedAt: dto.updatedAt,
+  groupId: dto.groupId,
+});
+
 export const chatToDto = (domain: Chat, index: number): ChatDto => ({
   id: domain.id,
   title: domain.title,
@@ -146,27 +167,62 @@ export const chatToDto = (domain: Chat, index: number): ChatDto => ({
 });
 
 /**
- * Builds the hierarchical Sidebar structure from flat DTOs.
+ * Builds the hierarchical Sidebar structure from Domain models.
+ * Used by the UI layer. Expects groups and chats to be pre-sorted.
  */
 export const buildSidebarItems = (groups: ChatGroup[], allChats: ChatSummary[]): SidebarItem[] => {
   const items: SidebarItem[] = [];
   
-  // 1. Map groups to sidebar items
+  // 1. Process Groups
   groups.forEach(g => {
-    // We need the order from the DTO to sort groups
-    // But groups are already sorted by the storage service
     items.push({ id: `group:${g.id}`, type: 'group', group: g });
   });
   
-  // 2. Map ungrouped chats to sidebar items
+  // 2. Process Ungrouped Chats
   allChats
     .filter(c => !c.groupId)
     .forEach(c => {
       items.push({ id: `chat:${c.id}`, type: 'chat', chat: c });
     });
     
-  // Sorting is handled by the storage providers before returning the domain objects
   return items;
+};
+
+/**
+ * Builds the hierarchical Sidebar structure from raw DTOs.
+ * Used internally by storage providers to return sorted domain structures.
+ */
+export const buildSidebarItemsFromDtos = (groupDtos: ChatGroupDto[], allChatDtos: ChatDto[]): SidebarItem[] => {
+  type SortableSidebarItem = SidebarItem & { _order: number };
+  const items: SortableSidebarItem[] = [];
+  
+  groupDtos.forEach(gDto => {
+    const groupChats = allChatDtos.filter(c => c.groupId === gDto.id);
+    items.push({ 
+      id: `group:${gDto.id}`, 
+      type: 'group', 
+      group: chatGroupToDomain(gDto, groupChats),
+      _order: gDto.order ?? 0
+    });
+  });
+  
+  allChatDtos
+    .filter(c => !c.groupId)
+    .forEach(cDto => {
+      items.push({ 
+        id: `chat:${cDto.id}`, 
+        type: 'chat', 
+        chat: chatToSummary(cDto),
+        _order: cDto.order ?? 0
+      });
+    });
+    
+  return items
+    .sort((a, b) => a._order - b._order)
+    .map((item) => {
+      const { _order: _o, ...rest } = item;
+      return rest as SidebarItem;
+    });
 };
 
 export const settingsToDomain = (dto: SettingsDto): Settings => ({

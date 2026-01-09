@@ -1,5 +1,5 @@
-import type { Chat, Settings, ChatGroup } from '../../models/types';
-import type { IStorageProvider, ChatSummary } from './interface';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary } from '../../models/types';
+import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 
@@ -30,7 +30,22 @@ class StorageService {
     await this.init(type);
   }
 
-  // Chats
+  // --- Domain Methods (leveraging base class implementations) ---
+
+  async listChats(): Promise<ChatSummary[]> {
+    return this.provider.listChats();
+  }
+
+  async listGroups(): Promise<ChatGroup[]> {
+    return this.provider.listGroups();
+  }
+
+  async getSidebarStructure(): Promise<SidebarItem[]> {
+    return this.provider.getSidebarStructure();
+  }
+
+  // --- Persistence Methods ---
+
   async saveChat(chat: Chat, index: number): Promise<void> {
     return this.provider.saveChat(chat, index);
   }
@@ -39,15 +54,10 @@ class StorageService {
     return this.provider.loadChat(id);
   }
 
-  async listChats(): Promise<ChatSummary[]> {
-    return this.provider.listChats();
-  }
-
   async deleteChat(id: string): Promise<void> {
     return this.provider.deleteChat(id);
   }
 
-  // Groups
   async saveGroup(group: ChatGroup, index: number): Promise<void> {
     return this.provider.saveGroup(group, index);
   }
@@ -56,15 +66,10 @@ class StorageService {
     return this.provider.loadGroup(id);
   }
 
-  async listGroups(): Promise<ChatGroup[]> {
-    return this.provider.listGroups();
-  }
-
   async deleteGroup(id: string): Promise<void> {
     return this.provider.deleteGroup(id);
   }
 
-  // Settings
   async saveSettings(settings: Settings): Promise<void> {
     return this.provider.saveSettings(settings);
   }

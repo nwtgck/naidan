@@ -103,4 +103,3 @@ describe('OllamaProvider', () => {
     expect(onChunk).toHaveBeenCalledTimes(1);
   });
 });
-
