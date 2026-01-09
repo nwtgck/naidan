@@ -9,7 +9,7 @@ import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
   Plus, Trash2, Settings as SettingsIcon, Sun, Moon, Monitor, 
   RotateCcw, Pencil, Folder, FolderPlus, 
-  ChevronDown, ChevronRight, GripVertical, Check, X
+  ChevronDown, ChevronRight, Check, X
 } from 'lucide-vue-next';
 
 const chatStore = useChat();
@@ -230,7 +230,6 @@ async function handleUndo() {
                 data-testid="group-item"
               >
                 <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
-                  <GripVertical class="w-3 h-3 flex-shrink-0 text-gray-600 opacity-0 group-hover/folder:opacity-100" />
                   <component :is="element.group.isCollapsed ? ChevronRight : ChevronDown" class="w-3 h-3 flex-shrink-0" />
                   <Folder class="w-4 h-4 text-indigo-400/70" />
                   
@@ -271,8 +270,7 @@ async function handleUndo() {
                         :class="currentChat?.id === nestedItem.chat.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'"
                         data-testid="sidebar-chat-item"
                       >
-                        <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
-                          <GripVertical class="w-3 h-3 text-gray-700 opacity-0 group-hover/chat:opacity-100" />
+                        <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
                           <input 
                             v-if="editingId === nestedItem.chat.id"
                             v-model="editingTitle"
@@ -310,7 +308,6 @@ async function handleUndo() {
               data-testid="sidebar-chat-item"
             >
               <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
-                <GripVertical class="w-3 h-3 text-gray-700 opacity-0 group-hover/chat:opacity-100" />
                 <input 
                   v-if="editingId === element.chat.id"
                   v-model="editingTitle"
