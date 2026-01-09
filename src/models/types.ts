@@ -28,8 +28,7 @@ export interface ChatGroup {
   id: string;
   name: string;
   isCollapsed: boolean;
-  order: number;
-  items: SidebarItem[]; // Recursive: can contain chats (and potentially nested groups later)
+  items: SidebarItem[]; // Order is defined by array index
   updatedAt: number;
 }
 
@@ -37,7 +36,6 @@ export interface Chat {
   id: string;
   title: string | null;
   groupId?: string | null;
-  order: number;
   root: MessageBranch;
   currentLeafId?: string;
   
@@ -53,12 +51,12 @@ export interface Chat {
   originMessageId?: string;
 }
 
-export type ChatSummary = Pick<Chat, 'id' | 'title' | 'updatedAt' | 'groupId' | 'order'>;
+export type ChatSummary = Pick<Chat, 'id' | 'title' | 'updatedAt' | 'groupId'>;
 
-// Recursive type for sidebar hierarchy
+// Sidebar hierarchy - order is implicit by position in array
 export type SidebarItem = 
-  | { id: string; type: 'chat'; chat: ChatSummary; order: number }
-  | { id: string; type: 'group'; group: ChatGroup; order: number };
+  | { id: string; type: 'chat'; chat: ChatSummary }
+  | { id: string; type: 'group'; group: ChatGroup };
 
 export interface Settings {
   endpointType: EndpointType;

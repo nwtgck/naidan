@@ -2,7 +2,6 @@ import type {
   Chat, 
   Settings, 
   ChatGroup,
-  ChatSummary,
   SidebarItem
 } from '../../models/types';
 import { 
@@ -19,7 +18,7 @@ import {
   settingsToDomain as mapSettingsToDomain,
   settingsToDto as mapSettingsToDto
 } from '../../models/mappers';
-import type { IStorageProvider } from './interface';
+import type { IStorageProvider, ChatSummary } from './interface';
 
 const KEY_PREFIX = 'lm-web-ui:';
 const KEY_INDEX = `${KEY_PREFIX}index`;
@@ -29,24 +28,24 @@ const KEY_SETTINGS = `${KEY_PREFIX}settings`;
 export class LocalStorageProvider implements IStorageProvider {
   async init(): Promise<void> {}
 
-  async saveChat(chat: Chat): Promise<void> {
-    const dto = mapChatToDto(chat);
+  async saveChat(chat: Chat, index: number): Promise<void> {
+    const dto = mapChatToDto(chat, index);
     const validated = DtoChatSchema.parse(dto);
     localStorage.setItem(`${KEY_PREFIX}chat:${chat.id}`, JSON.stringify(validated));
     
-    const index = await this.listChats();
-    const existingIdx = index.findIndex(c => c.id === chat.id);
+    const summaries = await this.listChats();
+    const existingIdx = summaries.findIndex(c => c.id === chat.id);
     const summary: ChatSummary = {
       id: chat.id,
       title: chat.title,
       updatedAt: chat.updatedAt,
       groupId: chat.groupId,
-      order: chat.order
+      order: index
     };
-    if (existingIdx >= 0) index[existingIdx] = summary;
-    else index.push(summary);
+    if (existingIdx >= 0) summaries[existingIdx] = summary;
+    else summaries.push(summary);
     
-    localStorage.setItem(KEY_INDEX, JSON.stringify(index));
+    localStorage.setItem(KEY_INDEX, JSON.stringify(summaries));
   }
 
   async loadChat(id: string): Promise<Chat | null> {
@@ -62,7 +61,8 @@ export class LocalStorageProvider implements IStorageProvider {
     const raw = localStorage.getItem(KEY_INDEX);
     if (!raw) return [];
     try {
-      return JSON.parse(raw) as ChatSummary[];
+      const summaries = JSON.parse(raw) as ChatSummary[];
+      return summaries.sort((a, b) => a.order - b.order);
     } catch { return []; }
   }
 
@@ -74,24 +74,26 @@ export class LocalStorageProvider implements IStorageProvider {
 
   // --- Groups ---
 
-  async saveGroup(group: ChatGroup): Promise<void> {
+  async saveGroup(group: ChatGroup, index: number): Promise<void> {
     const groups = await this.listGroups();
     const idx = groups.findIndex(g => g.id === group.id);
     
-    // Use the order specified in the group object
-    const order = group.order;
-    
-    const dto = mapGroupToDto(group, order);
+    const dto = mapGroupToDto(group, index);
     DtoChatGroupSchema.parse(dto);
 
     if (idx >= 0) {
-      groups[idx] = { ...group, order };
+      groups[idx] = group;
     } else {
-      groups.push({ ...group, order });
+      groups.push(group);
     }
     
-    // Ensure the entire list is persisted with their current order
-    const dtos = groups.map((g) => mapGroupToDto(g, g.order));
+    // Map all to DTOs using their current order in the array or explicit order
+    // But since we want to persist the 'index' passed, we update the domain groups list
+    const dtos = groups.map((g) => {
+      const gIdx = g.id === group.id ? index : (groups.findIndex(orig => orig.id === g.id));
+      return mapGroupToDto(g, gIdx);
+    });
+    
     localStorage.setItem(KEY_GROUPS, JSON.stringify(dtos));
   }
 
@@ -115,8 +117,7 @@ export class LocalStorageProvider implements IStorageProvider {
           const nestedItems: SidebarItem[] = groupChats.map(c => ({
             id: `chat:${c.id}`,
             type: 'chat',
-            chat: c,
-            order: c.order
+            chat: c
           }));
           return mapGroupToDomain(validated, nestedItems);
         });
@@ -135,7 +136,7 @@ export class LocalStorageProvider implements IStorageProvider {
         const chat = await this.loadChat(chatSummary.id);
         if (chat) {
           chat.groupId = null;
-          await this.saveChat(chat);
+          await this.saveChat(chat, chatSummary.order);
         }
       }
     }

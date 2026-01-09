@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, ref, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
@@ -22,6 +22,7 @@ const router = useRouter();
 
 const sidebarItemsLocal = ref<SidebarItem[]>([]);
 const isDragging = ref(false);
+let isInternalUpdate = false;
 
 const editingId = ref<string | null>(null);
 const editingTitle = ref('');
@@ -36,7 +37,8 @@ onMounted(async () => {
 });
 
 function syncLocalItems() {
-  if (isDragging.value) return;
+  if (isDragging.value || isInternalUpdate) return;
+  // Use a fresh copy to decouple from store reactivity during DND
   sidebarItemsLocal.value = JSON.parse(JSON.stringify(chatStore.sidebarItems.value));
 }
 
@@ -52,9 +54,16 @@ function onDragStart() {
 }
 
 async function onDragEnd() {
-  isDragging.value = false;
+  isInternalUpdate = true;
   // Sync the UI structure to storage
   await chatStore.persistSidebarStructure(sidebarItemsLocal.value);
+  
+  // Wait for DOM and Sortable cleanup
+  await nextTick();
+  isDragging.value = false;
+  setTimeout(() => {
+    isInternalUpdate = false;
+  }, 100);
 }
 
 /**
@@ -238,7 +247,7 @@ async function handleUndo() {
                 </div>
               </div>
 
-              <!-- Nested Chats in Group -->
+              <!-- Nested Items in Group -->
               <div v-if="!element.group.isCollapsed" class="ml-4 pl-2 border-l border-gray-800 mt-1 space-y-0.5">
                 <draggable
                   v-model="element.group.items"
@@ -249,28 +258,30 @@ async function handleUndo() {
                   ghost-class="opacity-50"
                   class="nested-draggable min-h-[20px] space-y-0.5"
                 >
-                  <template #item="{ element: chatItem }">
-                    <div 
-                      @click="handleOpenChat(chatItem.chat.id)"
-                      class="group/chat flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors"
-                      :class="currentChat?.id === chatItem.chat.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'"
-                    >
-                      <div class="flex items-center gap-2 overflow-hidden flex-1">
-                        <GripVertical class="w-3 h-3 text-gray-700 opacity-0 group-hover/chat:opacity-100 handle cursor-grab" />
-                        <input 
-                          v-if="editingId === chatItem.chat.id"
-                          v-model="editingTitle"
-                          @keyup.enter="saveRename"
-                          @keyup.esc="editingId = null"
-                          @click.stop
-                          class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500"
-                          auto-focus
-                        />
-                        <span v-else class="truncate text-sm">{{ chatItem.chat.title || 'Untitled Chat' }}</span>
-                      </div>
-                      <div v-if="editingId !== chatItem.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                        <button @click.stop="startEditing(chatItem.chat.id, chatItem.chat.title)" class="p-1 hover:text-indigo-400"><Pencil class="w-3 h-3" /></button>
-                        <button @click.stop="handleDeleteChat(chatItem.chat.id)" class="p-1 hover:text-red-400"><Trash2 class="w-3 h-3" /></button>
+                  <template #item="{ element: nestedItem }">
+                    <div v-if="nestedItem.type === 'chat'">
+                      <div 
+                        @click="handleOpenChat(nestedItem.chat.id)"
+                        class="group/chat flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors"
+                        :class="currentChat?.id === nestedItem.chat.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'"
+                      >
+                        <div class="flex items-center gap-2 overflow-hidden flex-1">
+                          <GripVertical class="w-3 h-3 text-gray-700 opacity-0 group-hover/chat:opacity-100 handle cursor-grab" />
+                          <input 
+                            v-if="editingId === nestedItem.chat.id"
+                            v-model="editingTitle"
+                            @keyup.enter="saveRename"
+                            @keyup.esc="editingId = null"
+                            @click.stop
+                            class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500"
+                            auto-focus
+                          />
+                          <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'Untitled Chat' }}</span>
+                        </div>
+                        <div v-if="editingId !== nestedItem.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                          <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-indigo-400"><Pencil class="w-3 h-3" /></button>
+                          <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-400"><Trash2 class="w-3 h-3" /></button>
+                        </div>
                       </div>
                     </div>
                   </template>

@@ -1,10 +1,11 @@
 import { ref, computed, shallowRef, reactive, triggerRef } from 'vue';
 import { v7 as uuidv7 } from 'uuid';
-import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
 import { buildSidebarItems } from '../models/mappers';
+import type { ChatSummary } from '../services/storage/interface';
 import sampleContent from '../assets/sample-showcase.md?raw';
 
 const chats = ref<ChatSummary[]>([]);
@@ -76,6 +77,13 @@ export function useChat() {
     groups.value = await storageService.listGroups();
   };
 
+  const saveCurrentChat = async () => {
+    if (!currentChat.value) return;
+    const summary = chats.value.find(c => c.id === currentChat.value?.id);
+    const order = summary?.order ?? chats.value.length;
+    await storageService.saveChat(currentChat.value, order);
+  };
+
   const createNewChat = async (groupId: string | null = null) => {
     const siblings = chats.value.filter(c => (c.groupId || null) === (groupId || null));
     const maxOrder = siblings.reduce((max, c) => Math.max(max, c.order), -1);
@@ -84,7 +92,6 @@ export function useChat() {
       id: uuidv7(),
       title: null,
       groupId,
-      order: maxOrder + 1,
       root: { items: [] },
       modelId: settings.value.defaultModelId || 'gpt-3.5-turbo',
       createdAt: Date.now(),
@@ -92,7 +99,7 @@ export function useChat() {
       debugEnabled: false,
     };
     currentChat.value = reactive(chatObj);
-    await storageService.saveChat(currentChat.value);
+    await storageService.saveChat(currentChat.value, maxOrder + 1);
     await loadData();
   };
 
@@ -115,7 +122,8 @@ export function useChat() {
 
   const undoDelete = async () => {
     if (!lastDeletedChat.value) return;
-    await storageService.saveChat(lastDeletedChat.value);
+    const summary = chats.value.find(c => c.id === lastDeletedChat.value?.id);
+    await storageService.saveChat(lastDeletedChat.value, summary?.order ?? 0);
     const restoredId = lastDeletedChat.value.id;
     lastDeletedChat.value = null;
     await loadData();
@@ -133,17 +141,20 @@ export function useChat() {
   };
 
   const renameChat = async (id: string, newTitle: string) => {
+    const summary = chats.value.find(c => c.id === id);
+    if (!summary) return;
+
     if (currentChat.value?.id === id) {
       currentChat.value.title = newTitle;
       currentChat.value.updatedAt = Date.now();
-      await storageService.saveChat(currentChat.value);
+      await storageService.saveChat(currentChat.value, summary.order);
       triggerRef(currentChat);
     } else {
       const chat = await storageService.loadChat(id);
       if (chat) {
         chat.title = newTitle;
         chat.updatedAt = Date.now();
-        await storageService.saveChat(chat);
+        await storageService.saveChat(chat, summary.order);
       }
     }
     await loadData();
@@ -192,7 +203,7 @@ export function useChat() {
 
     currentChat.value.currentLeafId = assistantMsg.id;
     triggerRef(currentChat);
-    await storageService.saveChat(currentChat.value);
+    await saveCurrentChat();
 
     const assistantNode = findNodeInBranch(currentChat.value.root.items, assistantMsg.id);
     if (!assistantNode) throw new Error('Assistant node not found in tree');
@@ -206,14 +217,14 @@ export function useChat() {
 
       const context = activeMessages.value.filter(m => m.id !== assistantMsg.id);
 
-      await provider.chat(context, model, endpointUrl, (chunk) => {
+      await provider.chat(context as MessageNode[], model, endpointUrl, (chunk) => {
         assistantNode.content += chunk;
         triggerRef(currentChat);
       });
 
       processThinking(assistantNode);
       currentChat.value.updatedAt = Date.now();
-      await storageService.saveChat(currentChat.value);
+      await saveCurrentChat();
       triggerRef(currentChat);
       await loadData(); 
 
@@ -237,14 +248,14 @@ export function useChat() {
           const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
           if (finalTitle && currentChat.value && currentChat.value.id === chatIdAtStart && currentChat.value.title === null) {
             currentChat.value.title = finalTitle;
-            await storageService.saveChat(currentChat.value);
+            await saveCurrentChat();
             await loadData();
             triggerRef(currentChat);
           }
         } catch (_e) {
           if (currentChat.value && currentChat.value.id === chatIdAtStart && currentChat.value.title === null) {
             currentChat.value.title = content.slice(0, 20) + (content.length > 20 ? '...' : '');
-            await storageService.saveChat(currentChat.value);
+            await saveCurrentChat();
             await loadData();
             triggerRef(currentChat);
           }
@@ -253,7 +264,7 @@ export function useChat() {
     } catch (e) {
       assistantNode.content += '\n\n[Error: ' + (e as Error).message + ']';
       triggerRef(currentChat);
-      await storageService.saveChat(currentChat.value);
+      await saveCurrentChat();
     } finally {
       streaming.value = false;
     }
@@ -290,7 +301,7 @@ export function useChat() {
     };
 
     const newChat = reactive(newChatObj);
-    await storageService.saveChat(newChat);
+    await storageService.saveChat(newChat, chats.value.length);
     await loadData();
     currentChat.value = newChat;
     return newChat.id;
@@ -320,7 +331,7 @@ export function useChat() {
       }
       
       currentChat.value.currentLeafId = correctedNode.id;
-      await storageService.saveChat(currentChat.value);
+      await saveCurrentChat();
       triggerRef(currentChat);
     } else {
       await sendMessage(newContent, parent ? parent.id : null);
@@ -333,7 +344,7 @@ export function useChat() {
     if (node) {
       currentChat.value.currentLeafId = findDeepestLeaf(node).id;
       triggerRef(currentChat);
-      await storageService.saveChat(currentChat.value);
+      await saveCurrentChat();
     }
   };
 
@@ -348,19 +359,18 @@ export function useChat() {
     if (!currentChat.value) return;
     currentChat.value.debugEnabled = !currentChat.value.debugEnabled;
     triggerRef(currentChat);
-    await storageService.saveChat(currentChat.value);
+    await saveCurrentChat();
   };
 
   const createGroup = async (name: string) => {
     const newGroup: ChatGroup = {
       id: uuidv7(),
       name,
-      order: groups.value.length,
       updatedAt: Date.now(),
       isCollapsed: false,
       items: [],
     };
-    await storageService.saveGroup(newGroup);
+    await storageService.saveGroup(newGroup, groups.value.length);
     await loadData();
   };
 
@@ -373,7 +383,8 @@ export function useChat() {
     const group = groups.value.find(g => g.id === groupId);
     if (group) {
       group.isCollapsed = !group.isCollapsed;
-      await storageService.saveGroup(group);
+      const idx = groups.value.indexOf(group);
+      await storageService.saveGroup(group, idx);
     }
   };
 
@@ -382,7 +393,8 @@ export function useChat() {
     if (group) {
       group.name = newName;
       group.updatedAt = Date.now();
-      await storageService.saveGroup(group);
+      const idx = groups.value.indexOf(group);
+      await storageService.saveGroup(group, idx);
       await loadData();
     }
   };
@@ -391,13 +403,11 @@ export function useChat() {
     const newGroups: ChatGroup[] = [];
     const newChatSummaries: ChatSummary[] = [];
 
-    // 1. Traverse the recursive structure to build flat refs and determine orders
     topLevelItems.forEach((item, index) => {
       if (item.type === 'group') {
-        const group = { ...item.group, order: index };
+        const group = { ...item.group };
         newGroups.push(group);
         
-        // Items within group
         group.items.forEach((nestedItem, chatIdx) => {
           if (nestedItem.type === 'chat') {
             newChatSummaries.push({ ...nestedItem.chat, groupId: group.id, order: chatIdx });
@@ -408,39 +418,19 @@ export function useChat() {
       }
     });
 
-    // 2. Synchronous update
     groups.value = newGroups;
     chats.value = newChatSummaries;
 
-    // 3. Asynchronous persistence
-    for (const g of newGroups) {
-      await storageService.saveGroup(g);
+    // Async persistence
+    for (let i = 0; i < newGroups.length; i++) {
+      await storageService.saveGroup(newGroups[i]!, i);
     }
     for (const c of newChatSummaries) {
       const fullChat = await storageService.loadChat(c.id);
       if (fullChat) {
         fullChat.groupId = c.groupId;
-        fullChat.order = c.order;
-        await storageService.saveChat(fullChat);
+        await storageService.saveChat(fullChat, c.order);
       }
-    }
-  };
-
-  const reorderChat = async (chatId: string, newOrder: number, newGroupId: string | null = null) => {
-    const fullChat = await storageService.loadChat(chatId);
-    if (fullChat) {
-      fullChat.order = newOrder;
-      fullChat.groupId = newGroupId;
-      await storageService.saveChat(fullChat);
-      await loadData();
-    }
-  };
-
-  const reorderGroup = async (groupId: string, _newOrder: number) => {
-    const group = groups.value.find(item => item.id === groupId);
-    if (group) {
-      await storageService.saveGroup({ ...group, updatedAt: Date.now() }); 
-      await loadData();
     }
   };
 
@@ -466,14 +456,13 @@ export function useChat() {
       title: '🚀 Sample: Tree Showcase',
       root: { items: [m1] },
       currentLeafId: m2.id,
-      order: 0,
       modelId: 'gpt-4-showcase',
       createdAt: now,
       updatedAt: now,
       debugEnabled: true,
     };
     currentChat.value = reactive(sampleChatObj);
-    await storageService.saveChat(currentChat.value);
+    await storageService.saveChat(currentChat.value, 0);
     await loadData();
   };
 
@@ -503,8 +492,6 @@ export function useChat() {
     toggleGroupCollapse,
     renameGroup,
     persistSidebarStructure,
-    reorderChat,
-    reorderGroup,
     lastDeletedChat
   };
 }

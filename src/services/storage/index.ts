@@ -3,37 +3,17 @@ import type { IStorageProvider, ChatSummary } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 
-const STORAGE_PREF_KEY = 'lm-web-ui:storage-preference';
-
-export class StorageService implements IStorageProvider {
+class StorageService {
   private provider: IStorageProvider;
-  private currentType: 'local' | 'opfs';
+  private currentType: 'local' | 'opfs' = 'local';
 
   constructor() {
-    // Default to local
-    this.currentType = 'local';
     this.provider = new LocalStorageProvider();
   }
 
-  async init(): Promise<void> {
-    const savedPref = localStorage.getItem(STORAGE_PREF_KEY);
-    if (savedPref === 'opfs') {
-      this.currentType = 'opfs';
-      this.provider = new OPFSStorageProvider();
-    } else {
-      this.currentType = 'local';
-      this.provider = new LocalStorageProvider();
-    }
-    await this.provider.init();
-  }
-
-  async switchProvider(type: 'local' | 'opfs'): Promise<void> {
-    if (this.currentType === type) return;
-
+  async init(type: 'local' | 'opfs' = 'local') {
     this.currentType = type;
-    localStorage.setItem(STORAGE_PREF_KEY, type);
-    
-    if (type === 'opfs') {
+    if (type === 'opfs' && typeof navigator.storage?.getDirectory === 'function') {
       this.provider = new OPFSStorageProvider();
     } else {
       this.provider = new LocalStorageProvider();
@@ -45,9 +25,14 @@ export class StorageService implements IStorageProvider {
     return this.currentType;
   }
 
-  // Delegate methods
-  async saveChat(chat: Chat): Promise<void> {
-    return this.provider.saveChat(chat);
+  async switchProvider(type: 'local' | 'opfs') {
+    if (this.currentType === type) return;
+    await this.init(type);
+  }
+
+  // Chats
+  async saveChat(chat: Chat, index: number): Promise<void> {
+    return this.provider.saveChat(chat, index);
   }
 
   async loadChat(id: string): Promise<Chat | null> {
@@ -62,8 +47,9 @@ export class StorageService implements IStorageProvider {
     return this.provider.deleteChat(id);
   }
 
-  async saveGroup(group: ChatGroup): Promise<void> {
-    return this.provider.saveGroup(group);
+  // Groups
+  async saveGroup(group: ChatGroup, index: number): Promise<void> {
+    return this.provider.saveGroup(group, index);
   }
 
   async loadGroup(id: string): Promise<ChatGroup | null> {
@@ -78,6 +64,7 @@ export class StorageService implements IStorageProvider {
     return this.provider.deleteGroup(id);
   }
 
+  // Settings
   async saveSettings(settings: Settings): Promise<void> {
     return this.provider.saveSettings(settings);
   }
@@ -88,3 +75,4 @@ export class StorageService implements IStorageProvider {
 }
 
 export const storageService = new StorageService();
+export type { ChatSummary };

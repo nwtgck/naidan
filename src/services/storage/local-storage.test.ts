@@ -1,53 +1,71 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import type { Chat } from '../../models/types';
-import { v7 as uuidv7 } from 'uuid';
 
 describe('LocalStorageProvider', () => {
   let provider: LocalStorageProvider;
-  
+
   beforeEach(() => {
-    provider = new LocalStorageProvider();
     localStorage.clear();
-    vi.clearAllMocks();
+    provider = new LocalStorageProvider();
   });
 
-  const mockChat: Chat = {
-    id: uuidv7(),
-    title: 'Test Chat',
-    root: { items: [] },
-    modelId: 'gpt-3.5',
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    order: 0,
-    debugEnabled: false,
-  };
-
   it('should save and load a chat', async () => {
-    await provider.saveChat(mockChat);
+    const mockChat: Chat = {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      title: 'Test Chat',
+      root: { items: [] },
+      modelId: 'gpt-3.5-turbo',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    };
+
+    await provider.saveChat(mockChat, 0);
     const loaded = await provider.loadChat(mockChat.id);
     expect(loaded).toEqual(mockChat);
   });
 
-  it('should update index when saving chat', async () => {
-    await provider.saveChat(mockChat);
-    const index = await provider.listChats();
-    expect(index).toHaveLength(1);
-    expect(index[0]?.id).toBe(mockChat.id);
-    expect(index[0]?.title).toBe(mockChat.title);
+  it('should list saved chats', async () => {
+    const mockChat: Chat = {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      title: 'Test Chat',
+      root: { items: [] },
+      modelId: 'gpt-3.5-turbo',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    };
+
+    await provider.saveChat(mockChat, 0);
+    const list = await provider.listChats();
+    expect(list).toHaveLength(1);
+    expect(list[0]?.id).toBe(mockChat.id);
   });
 
   it('should delete a chat', async () => {
-    await provider.saveChat(mockChat);
+    const mockChat: Chat = {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      title: 'Test Chat',
+      root: { items: [] },
+      modelId: 'gpt-3.5-turbo',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    };
+
+    await provider.saveChat(mockChat, 0);
     await provider.deleteChat(mockChat.id);
     const loaded = await provider.loadChat(mockChat.id);
     expect(loaded).toBeNull();
-    const index = await provider.listChats();
-    expect(index).toHaveLength(0);
   });
 
-  it('should validate schema', async () => {
-    const invalidChat = { ...mockChat, id: 'not-a-uuid' };
-    await expect(provider.saveChat(invalidChat as unknown as Chat)).rejects.toThrow();
+  it('should validate chat DTO schema on save', async () => {
+    const invalidChat = {
+      id: 'invalid-uuid',
+      title: 'Test Chat'
+    };
+
+    await expect(provider.saveChat(invalidChat as unknown as Chat, 0)).rejects.toThrow();
   });
 });

@@ -36,9 +36,8 @@ export const chatGroupToDomain = (dto: ChatGroupDto, groupItems: SidebarItem[] =
   id: dto.id,
   name: dto.name,
   isCollapsed: dto.isCollapsed,
-  order: dto.order,
   updatedAt: dto.updatedAt,
-  items: groupItems.sort((a, b) => a.order - b.order),
+  items: groupItems, // items should already be sorted before calling this
 });
 
 export const chatGroupToDto = (domain: ChatGroup, index: number): ChatGroupDto => ({
@@ -114,7 +113,6 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     id: dto.id,
     title: dto.title,
     groupId: dto.groupId,
-    order: dto.order ?? 0,
     root,
     currentLeafId: dto.currentLeafId,
     modelId: dto.modelId,
@@ -129,11 +127,11 @@ export const chatToDomain = (dto: ChatDto): Chat => {
   };
 };
 
-export const chatToDto = (domain: Chat): ChatDto => ({
+export const chatToDto = (domain: Chat, index: number): ChatDto => ({
   id: domain.id,
   title: domain.title,
   groupId: domain.groupId,
-  order: domain.order,
+  order: index,
   root: { items: domain.root.items.map(messageNodeToDto) },
   currentLeafId: domain.currentLeafId,
   modelId: domain.modelId,
@@ -147,34 +145,28 @@ export const chatToDto = (domain: Chat): ChatDto => ({
   originMessageId: domain.originMessageId,
 });
 
+/**
+ * Builds the hierarchical Sidebar structure from flat DTOs.
+ */
 export const buildSidebarItems = (groups: ChatGroup[], allChats: ChatSummary[]): SidebarItem[] => {
   const items: SidebarItem[] = [];
   
+  // 1. Map groups to sidebar items
   groups.forEach(g => {
-    // Each group's items are built from chats belonging to it
-    const groupChats = allChats.filter(c => c.groupId === g.id);
-    const nestedItems: SidebarItem[] = groupChats.map(c => ({
-      id: `chat:${c.id}`,
-      type: 'chat',
-      chat: c,
-      order: c.order
-    }));
-    
-    items.push({ 
-      id: `group:${g.id}`, 
-      type: 'group', 
-      group: { ...g, items: nestedItems.sort((a, b) => a.order - b.order) }, 
-      order: g.order 
-    });
+    // We need the order from the DTO to sort groups
+    // But groups are already sorted by the storage service
+    items.push({ id: `group:${g.id}`, type: 'group', group: g });
   });
   
+  // 2. Map ungrouped chats to sidebar items
   allChats
     .filter(c => !c.groupId)
     .forEach(c => {
-      items.push({ id: `chat:${c.id}`, type: 'chat', chat: c, order: c.order });
+      items.push({ id: `chat:${c.id}`, type: 'chat', chat: c });
     });
     
-  return items.sort((a, b) => a.order - b.order);
+  // Sorting is handled by the storage providers before returning the domain objects
+  return items;
 };
 
 export const settingsToDomain = (dto: SettingsDto): Settings => ({

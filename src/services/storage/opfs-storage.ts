@@ -33,34 +33,34 @@ export class OPFSStorageProvider implements IStorageProvider {
     return await this.root!.getDirectoryHandle('groups', { create: true });
   }
 
-  async saveChat(chat: Chat): Promise<void> {
-    const dto = chatToDto(chat);
+  async saveChat(chat: Chat, index: number): Promise<void> {
+    const dto = chatToDto(chat, index);
     ChatSchemaDto.parse(dto);
     const chatsDir = await this.getChatsDir();
     const fileHandle = await chatsDir.getFileHandle(`${chat.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(dto));
     await writable.close();
-    await this.updateIndex(chat);
+    await this.updateIndex(chat, index);
   }
 
-  private async updateIndex(chat: Chat): Promise<void> {
+  private async updateIndex(chat: Chat, index: number): Promise<void> {
     await this.init();
-    const index: ChatSummary[] = await this.listChats();
+    const summaries: ChatSummary[] = await this.listChats();
     const summary: ChatSummary = {
       id: chat.id,
       title: chat.title,
       updatedAt: chat.updatedAt,
       groupId: chat.groupId,
-      order: chat.order
+      order: index
     };
-    const existingIndex = index.findIndex(c => c.id === chat.id);
-    if (existingIndex >= 0) index[existingIndex] = summary;
-    else index.push(summary);
+    const existingIndex = summaries.findIndex(c => c.id === chat.id);
+    if (existingIndex >= 0) summaries[existingIndex] = summary;
+    else summaries.push(summary);
     
     const fileHandle = await this.root!.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(index));
+    await writable.write(JSON.stringify(summaries));
     await writable.close();
   }
 
@@ -81,7 +81,10 @@ export class OPFSStorageProvider implements IStorageProvider {
       const file = await fileHandle.getFile();
       const text = await file.text();
       const json = JSON.parse(text);
-      if (Array.isArray(json)) return json as ChatSummary[];
+      if (Array.isArray(json)) {
+        const summaries = json as ChatSummary[];
+        return summaries.sort((a, b) => a.order - b.order);
+      }
       return [];
     } catch { return []; }
   }
@@ -90,19 +93,18 @@ export class OPFSStorageProvider implements IStorageProvider {
     try {
       const chatsDir = await this.getChatsDir();
       await chatsDir.removeEntry(`${id}.json`);
-      const index = (await this.listChats()).filter(c => c.id !== id);
+      const summaries = (await this.listChats()).filter(c => c.id !== id);
       const fileHandle = await this.root!.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
       const writable = await fileHandle.createWritable();
-      await writable.write(JSON.stringify(index));
+      await writable.write(JSON.stringify(summaries));
       await writable.close();
     } catch { /* ignore */ }
   }
 
   // --- Groups ---
 
-  async saveGroup(group: ChatGroup): Promise<void> {
-    const order = group.order;
-    const dto = chatGroupToDto(group, order);
+  async saveGroup(group: ChatGroup, index: number): Promise<void> {
+    const dto = chatGroupToDto(group, index);
     const groupsDir = await this.getGroupsDir();
     const fileHandle = await groupsDir.getFileHandle(`${group.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
@@ -136,8 +138,7 @@ export class OPFSStorageProvider implements IStorageProvider {
           const nestedItems: SidebarItem[] = groupChats.map(c => ({
             id: `chat:${c.id}`,
             type: 'chat',
-            chat: c,
-            order: c.order
+            chat: c
           }));
           return chatGroupToDomain(validated, nestedItems);
         });
@@ -148,13 +149,13 @@ export class OPFSStorageProvider implements IStorageProvider {
     try {
       const groupsDir = await this.getGroupsDir();
       await groupsDir.removeEntry(`${id}.json`);
-      const chats = await this.listChats();
-      for (const c of chats) {
+      const summaries = await this.listChats();
+      for (const c of summaries) {
         if (c.groupId === id) {
           const chat = await this.loadChat(c.id);
           if (chat) {
             chat.groupId = null;
-            await this.saveChat(chat);
+            await this.saveChat(chat, c.order);
           }
         }
       }
