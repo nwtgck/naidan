@@ -50,7 +50,8 @@ export interface LLMProvider {
     messages: MessageNode[],
     model: string,
     endpoint: string,
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    signal?: AbortSignal
   ): Promise<void>;
   
   listModels(endpoint: string): Promise<string[]>;
@@ -61,7 +62,8 @@ export class OpenAIProvider implements LLMProvider {
     messages: MessageNode[],
     model: string,
     endpoint: string,
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
     const body = {
@@ -74,6 +76,7 @@ export class OpenAIProvider implements LLMProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal,
     });
 
     if (!response.ok) throw new Error(`OpenAI API Error: ${response.statusText}`);
@@ -130,7 +133,8 @@ export class OllamaProvider implements LLMProvider {
     messages: MessageNode[],
     model: string,
     endpoint: string,
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
     const body = {
@@ -143,6 +147,7 @@ export class OllamaProvider implements LLMProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal,
     });
 
     if (!response.ok) throw new Error(`Ollama API Error: ${response.statusText}`);
