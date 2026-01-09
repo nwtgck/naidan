@@ -118,15 +118,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-white dark:bg-gray-800">
+  <div class="flex flex-col h-full bg-white dark:bg-gray-900 transition-colors">
     <!-- Header -->
-    <div v-if="currentChat" class="border-b dark:border-gray-700 px-6 py-4 flex items-center justify-between bg-white dark:bg-gray-800 shadow-sm z-10">
+    <div v-if="currentChat" class="border-b dark:border-gray-800 px-6 py-4 flex items-center justify-between bg-white dark:bg-gray-900 shadow-sm z-10">
         <div class="flex flex-col overflow-hidden">
           <div class="flex items-center gap-3">
             <button 
               v-if="currentChat.originChatId"
               @click="jumpToOrigin"
-              class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-indigo-600 transition-colors"
+              class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-indigo-600 transition-colors"
               title="Jump to original chat"
             >
               <ArrowLeft class="w-5 h-5" />
@@ -139,7 +139,7 @@ onMounted(() => {
           <button 
               @click="showChatSettings = !showChatSettings; if(showChatSettings) fetchModels()"
               class="p-2 rounded-md transition-colors"
-              :class="showChatSettings ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
+              :class="showChatSettings ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
               title="Chat Settings"
           >
               <Settings2 class="w-5 h-5" />
@@ -156,13 +156,13 @@ onMounted(() => {
     </div>
 
     <!-- Chat Settings Panel -->
-    <div v-if="showChatSettings && currentChat" class="border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 p-4 animate-in slide-in-from-top duration-200">
+    <div v-if="showChatSettings && currentChat" class="border-b dark:border-gray-800 bg-gray-50 dark:bg-gray-950/50 p-4 animate-in slide-in-from-top duration-200">
       <div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label class="block text-xs font-medium text-gray-500 mb-1">Endpoint Type</label>
           <select 
             v-model="currentChat.endpointType"
-            class="w-full text-sm border dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800"
+            class="w-full text-sm border dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800"
           >
             <option :value="undefined">Global ({{ settings.endpointType }})</option>
             <option value="openai">OpenAI</option>
@@ -174,7 +174,7 @@ onMounted(() => {
           <input 
             v-model="currentChat.endpointUrl"
             type="text"
-            class="w-full text-sm border dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800"
+            class="w-full text-sm border dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800"
             :placeholder="settings.endpointUrl"
           />
         </div>
@@ -183,7 +183,7 @@ onMounted(() => {
           <div class="flex gap-1">
             <select 
               v-model="currentChat.overrideModelId"
-              class="flex-1 text-sm border dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-800"
+              class="flex-1 text-sm border dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800"
             >
               <option :value="undefined">Global ({{ settings.defaultModelId || 'Default' }})</option>
               <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
@@ -205,18 +205,18 @@ onMounted(() => {
       <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
         Select or create a chat to start
       </div>
-      <div v-else class="relative">
-        <transition-group name="msg" tag="div">
-          <MessageItem 
-            v-for="msg in activeMessages" 
-            :key="msg.id" 
-            :message="msg" 
-            :siblings="chatStore.getSiblings(msg.id)"
-            @fork="handleFork"
-            @edit="handleEdit"
-            @switch-version="handleSwitchVersion"
-          />
-        </transition-group>
+      <div v-else class="relative p-2">
+        <!-- Removed transition-group to prevent unstable jumping between chats -->
+        <MessageItem 
+          v-for="msg in activeMessages" 
+          :key="msg.id" 
+          :message="msg" 
+          :siblings="chatStore.getSiblings(msg.id)"
+          @fork="handleFork"
+          @edit="handleEdit"
+          @switch-version="handleSwitchVersion"
+          class="animate-in fade-in duration-300"
+        />
         <div v-if="activeMessages.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
           Start a conversation...
         </div>
@@ -224,7 +224,7 @@ onMounted(() => {
     </div>
 
     <!-- Input -->
-    <div class="border-t dark:border-gray-700 p-4" v-if="currentChat">
+    <div class="border-t dark:border-gray-800 p-4" v-if="currentChat">
       <div class="max-w-4xl mx-auto relative">
         <textarea
           ref="textareaRef"
@@ -232,7 +232,7 @@ onMounted(() => {
           @keydown.enter.ctrl.prevent="handleSend"
           @keydown.enter.meta.prevent="handleSend"
           placeholder="Type a message..."
-          class="w-full border dark:border-gray-600 rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-24 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+          class="w-full border dark:border-gray-700 rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-24 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           :disabled="streaming"
           data-testid="chat-input"
         ></textarea>
@@ -251,23 +251,15 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.msg-enter-active,
-.msg-leave-active {
-  transition: opacity 0.15s ease-out;
+/* Simplified animations */
+.animate-in {
+  animation-fill-mode: forwards;
 }
-
-.msg-enter-from,
-.msg-leave-to {
-  opacity: 0;
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
-
-/* Ensure the leaving element doesn't take up space, preventing "jumping" */
-.msg-leave-active {
-  position: absolute;
-  width: 100%;
-}
-
-.msg-move {
-  transition: transform 0.2s ease;
+.fade-in {
+  animation-name: fade-in;
 }
 </style>

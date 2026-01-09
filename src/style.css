@@ -2,3 +2,35 @@
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html, body {
+    /* Fixed background to prevent flashes during navigation */
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+  
+  html.dark, html.dark body {
+    @apply bg-gray-950 text-gray-100;
+  }
+
+  #app {
+    height: 100%;
+  }
+}
+
+/* Scrollbar styling for dark mode */
+.dark ::-webkit-scrollbar {
+  width: 10px;
+}
+.dark ::-webkit-scrollbar-track {
+  @apply bg-gray-950;
+}
+.dark ::-webkit-scrollbar-thumb {
+  @apply bg-gray-800 border-2 border-gray-950 rounded-full;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-700;
+}
