@@ -38,6 +38,18 @@ vi.mock('../composables/useTheme', () => ({
   })
 }));
 
+vi.mock('../composables/useGlobalEvents', () => ({
+  useGlobalEvents: () => ({
+    events: ref([]),
+    eventCount: ref(0),
+    errorCount: ref(0),
+    addEvent: vi.fn(),
+    addErrorEvent: vi.fn(),
+    addInfoEvent: vi.fn(),
+    clearEvents: vi.fn(),
+  })
+}));
+
 // Mock draggable component
 vi.mock('vuedraggable', () => ({
   default: {

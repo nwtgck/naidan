@@ -10,9 +10,9 @@
  */
 import { z } from 'zod';
 import type { MessageNode } from '../models/types';
-import { useErrorEvents } from '../composables/useErrorEvents';
+import { useGlobalEvents } from '../composables/useGlobalEvents';
 
-const { addErrorEvent } = useErrorEvents();
+const { addErrorEvent } = useGlobalEvents();
 
 // --- OpenAI API Schemas ---
 
