@@ -1,13 +1,14 @@
 import { ref, computed, shallowRef, reactive, triggerRef } from 'vue';
 import { v7 as uuidv7 } from 'uuid';
-import type { Chat, MessageNode } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary } from '../models/types';
 import { storageService } from '../services/storage';
-import type { ChatSummary } from '../services/storage/interface';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
+import { buildSidebarItems } from '../models/mappers';
 import sampleContent from '../assets/sample-showcase.md?raw';
 
 const chats = ref<ChatSummary[]>([]);
+const groups = ref<ChatGroup[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
 const streaming = ref(false);
 const lastDeletedChat = ref<Chat | null>(null);
@@ -49,12 +50,12 @@ function processThinking(node: MessageNode) {
 export function useChat() {
   const { settings } = useSettings();
 
+  const sidebarItems = computed(() => buildSidebarItems(groups.value, chats.value));
+
   const activeMessages = computed(() => {
     if (!currentChat.value || currentChat.value.root.items.length === 0) return [];
-    
     const path: MessageNode[] = [];
     const targetId = currentChat.value.currentLeafId;
-    
     let curr: MessageNode | null = currentChat.value.root.items.find(item => 
       item.id === targetId || findNodeInBranch(item.replies.items, targetId || '')
     ) || currentChat.value.root.items[currentChat.value.root.items.length - 1] || null;
@@ -62,24 +63,28 @@ export function useChat() {
     while (curr) {
       path.push(curr);
       if (curr.id === targetId) break;
-      
       const next: MessageNode | undefined = curr.replies.items.find(item => 
         item.id === targetId || findNodeInBranch(item.replies.items, targetId || '')
       ) || curr.replies.items[curr.replies.items.length - 1];
-      
       curr = next || null;
     }
     return path;
   });
 
-  const loadChats = async () => {
+  const loadData = async () => {
     chats.value = await storageService.listChats();
+    groups.value = await storageService.listGroups();
   };
 
-  const createNewChat = async () => {
+  const createNewChat = async (groupId: string | null = null) => {
+    const siblings = chats.value.filter(c => (c.groupId || null) === (groupId || null));
+    const maxOrder = siblings.reduce((max, c) => Math.max(max, c.order), -1);
+
     const chatObj: Chat = {
       id: uuidv7(),
-      title: null, // Null indicates default title
+      title: null,
+      groupId,
+      order: maxOrder + 1,
       root: { items: [] },
       modelId: settings.value.defaultModelId || 'gpt-3.5-turbo',
       createdAt: Date.now(),
@@ -88,7 +93,7 @@ export function useChat() {
     };
     currentChat.value = reactive(chatObj);
     await storageService.saveChat(currentChat.value);
-    await loadChats();
+    await loadData();
   };
 
   const openChat = async (id: string) => {
@@ -105,7 +110,7 @@ export function useChat() {
     if (chatData) lastDeletedChat.value = chatData;
     await storageService.deleteChat(id);
     if (currentChat.value?.id === id) currentChat.value = null;
-    await loadChats();
+    await loadData();
   };
 
   const undoDelete = async () => {
@@ -113,16 +118,18 @@ export function useChat() {
     await storageService.saveChat(lastDeletedChat.value);
     const restoredId = lastDeletedChat.value.id;
     lastDeletedChat.value = null;
-    await loadChats();
+    await loadData();
     await openChat(restoredId);
   };
 
   const deleteAllChats = async () => {
     const all = await storageService.listChats();
     for (const c of all) await storageService.deleteChat(c.id);
+    const allGroups = await storageService.listGroups();
+    for (const g of allGroups) await storageService.deleteGroup(g.id);
     currentChat.value = null;
     lastDeletedChat.value = null;
-    await loadChats();
+    await loadData();
   };
 
   const renameChat = async (id: string, newTitle: string) => {
@@ -139,7 +146,7 @@ export function useChat() {
         await storageService.saveChat(chat);
       }
     }
-    await loadChats();
+    await loadData();
   };
 
   const sendMessage = async (content: string, parentId?: string | null) => {
@@ -185,10 +192,8 @@ export function useChat() {
 
     currentChat.value.currentLeafId = assistantMsg.id;
     triggerRef(currentChat);
-    
     await storageService.saveChat(currentChat.value);
 
-    // Important: Get the reactive node after putting it into the tree
     const assistantNode = findNodeInBranch(currentChat.value.root.items, assistantMsg.id);
     if (!assistantNode) throw new Error('Assistant node not found in tree');
 
@@ -199,7 +204,6 @@ export function useChat() {
       const model = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
       const provider = endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
 
-      // Context is the path to the current user message
       const context = activeMessages.value.filter(m => m.id !== assistantMsg.id);
 
       await provider.chat(context, model, endpointUrl, (chunk) => {
@@ -211,18 +215,14 @@ export function useChat() {
       currentChat.value.updatedAt = Date.now();
       await storageService.saveChat(currentChat.value);
       triggerRef(currentChat);
-      await loadChats(); 
+      await loadData(); 
 
-      // Auto-rename if title is null and enabled globally
       if (currentChat.value.title === null && settings.value.autoTitleEnabled) {
         const chatIdAtStart = currentChat.value.id;
         try {
           let generatedTitle = '';
           const titleProvider = endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-          
-          // Use designated title model or fallback to current chat model
           const titleGenModel = settings.value.titleModelId || model;
-
           const promptNode: MessageNode = {
             id: uuidv7(),
             role: 'user',
@@ -231,33 +231,21 @@ export function useChat() {
             timestamp: Date.now(),
             replies: { items: [] }
           };
-          
           await titleProvider.chat([promptNode], titleGenModel, endpointUrl, (chunk) => {
             generatedTitle += chunk;
           });
-          
           const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
-          
-          if (finalTitle) {
-            // Double-check: still the same chat and title is still null
-            if (currentChat.value && 
-                currentChat.value.id === chatIdAtStart && 
-                currentChat.value.title === null) {
-              currentChat.value.title = finalTitle;
-              await storageService.saveChat(currentChat.value);
-              await loadChats();
-              triggerRef(currentChat);
-            }
+          if (finalTitle && currentChat.value && currentChat.value.id === chatIdAtStart && currentChat.value.title === null) {
+            currentChat.value.title = finalTitle;
+            await storageService.saveChat(currentChat.value);
+            await loadData();
+            triggerRef(currentChat);
           }
         } catch (_e) {
-          console.error('Title generation failed', _e);
-          // Fallback to truncated content if LLM fails and it's still null
-          if (currentChat.value && 
-              currentChat.value.id === chatIdAtStart && 
-              currentChat.value.title === null) {
+          if (currentChat.value && currentChat.value.id === chatIdAtStart && currentChat.value.title === null) {
             currentChat.value.title = content.slice(0, 20) + (content.length > 20 ? '...' : '');
             await storageService.saveChat(currentChat.value);
-            await loadChats();
+            await loadData();
             triggerRef(currentChat);
           }
         }
@@ -273,7 +261,6 @@ export function useChat() {
 
   const forkChat = async (messageId: string): Promise<string | null> => {
     if (!currentChat.value || currentChat.value.root.items.length === 0) return null;
-    
     const path = activeMessages.value;
     const idx = path.findIndex(m => m.id === messageId);
     if (idx === -1) return null;
@@ -304,13 +291,13 @@ export function useChat() {
 
     const newChat = reactive(newChatObj);
     await storageService.saveChat(newChat);
-    await loadChats();
+    await loadData();
     currentChat.value = newChat;
     return newChat.id;
   };
 
   const editMessage = async (messageId: string, newContent: string) => {
-    if (!currentChat.value || currentChat.value.root.items.length === 0) return;
+    if (!currentChat.value || currentChat.value.root.items.length === 0) return; 
     
     const node = findNodeInBranch(currentChat.value.root.items, messageId);
     if (!node) return;
@@ -318,8 +305,7 @@ export function useChat() {
     const parent = findParentInBranch(currentChat.value.root.items, messageId);
 
     if (node.role === 'assistant') {
-      // Manual assistant edit: Just add a new version of the assistant message
-      const newAssistantMsg: MessageNode = {
+      const correctedNode: MessageNode = {
         id: uuidv7(),
         role: 'assistant',
         content: newContent,
@@ -328,17 +314,15 @@ export function useChat() {
       };
       
       if (parent) {
-        parent.replies.items.push(newAssistantMsg);
+        parent.replies.items.push(correctedNode);
       } else {
-        // This shouldn't happen usually as first message is user, but for safety:
-        currentChat.value.root.items.push(newAssistantMsg);
+        currentChat.value.root.items.push(correctedNode);
       }
       
-      currentChat.value.currentLeafId = newAssistantMsg.id;
+      currentChat.value.currentLeafId = correctedNode.id;
       await storageService.saveChat(currentChat.value);
       triggerRef(currentChat);
     } else {
-      // User edit: Standard branching (creates new user msg + assistant reply)
       await sendMessage(newContent, parent ? parent.id : null);
     }
   };
@@ -367,12 +351,99 @@ export function useChat() {
     await storageService.saveChat(currentChat.value);
   };
 
-  /**
-   * Creates a comprehensive sample chat for debugging and showcasing features.
-   * IMPORTANT: When adding new rendering capabilities (e.g., new markdown plugins, 
-   * custom components, or LLM response types), update this sample chat to 
-   * ensure the new features are covered and can be verified easily.
-   */
+  const createGroup = async (name: string) => {
+    const newGroup: ChatGroup = {
+      id: uuidv7(),
+      name,
+      order: groups.value.length,
+      updatedAt: Date.now(),
+      isCollapsed: false,
+      items: [],
+    };
+    await storageService.saveGroup(newGroup);
+    await loadData();
+  };
+
+  const deleteGroup = async (id: string) => {
+    await storageService.deleteGroup(id);
+    await loadData();
+  };
+
+  const toggleGroupCollapse = async (groupId: string) => {
+    const group = groups.value.find(g => g.id === groupId);
+    if (group) {
+      group.isCollapsed = !group.isCollapsed;
+      await storageService.saveGroup(group);
+    }
+  };
+
+  const renameGroup = async (groupId: string, newName: string) => {
+    const group = groups.value.find(g => g.id === groupId);
+    if (group) {
+      group.name = newName;
+      group.updatedAt = Date.now();
+      await storageService.saveGroup(group);
+      await loadData();
+    }
+  };
+
+  const persistSidebarStructure = async (topLevelItems: SidebarItem[]) => {
+    const newGroups: ChatGroup[] = [];
+    const newChatSummaries: ChatSummary[] = [];
+
+    // 1. Traverse the recursive structure to build flat refs and determine orders
+    topLevelItems.forEach((item, index) => {
+      if (item.type === 'group') {
+        const group = { ...item.group, order: index };
+        newGroups.push(group);
+        
+        // Items within group
+        group.items.forEach((nestedItem, chatIdx) => {
+          if (nestedItem.type === 'chat') {
+            newChatSummaries.push({ ...nestedItem.chat, groupId: group.id, order: chatIdx });
+          }
+        });
+      } else {
+        newChatSummaries.push({ ...item.chat, groupId: null, order: index });
+      }
+    });
+
+    // 2. Synchronous update
+    groups.value = newGroups;
+    chats.value = newChatSummaries;
+
+    // 3. Asynchronous persistence
+    for (const g of newGroups) {
+      await storageService.saveGroup(g);
+    }
+    for (const c of newChatSummaries) {
+      const fullChat = await storageService.loadChat(c.id);
+      if (fullChat) {
+        fullChat.groupId = c.groupId;
+        fullChat.order = c.order;
+        await storageService.saveChat(fullChat);
+      }
+    }
+  };
+
+  const reorderChat = async (chatId: string, newOrder: number, newGroupId: string | null = null) => {
+    const fullChat = await storageService.loadChat(chatId);
+    if (fullChat) {
+      fullChat.order = newOrder;
+      fullChat.groupId = newGroupId;
+      await storageService.saveChat(fullChat);
+      await loadData();
+    }
+  };
+
+  const reorderGroup = async (groupId: string, _newOrder: number) => {
+    const group = groups.value.find(item => item.id === groupId);
+    if (group) {
+      await storageService.saveGroup({ ...group, updatedAt: Date.now() }); 
+      await loadData();
+    }
+  };
+
   const createSampleChat = async () => {
     const now = Date.now();
     const m2: MessageNode = {
@@ -395,6 +466,7 @@ export function useChat() {
       title: '🚀 Sample: Tree Showcase',
       root: { items: [m1] },
       currentLeafId: m2.id,
+      order: 0,
       modelId: 'gpt-4-showcase',
       createdAt: now,
       updatedAt: now,
@@ -402,15 +474,17 @@ export function useChat() {
     };
     currentChat.value = reactive(sampleChatObj);
     await storageService.saveChat(currentChat.value);
-    await loadChats();
+    await loadData();
   };
 
   return {
     chats,
+    groups,
+    sidebarItems,
     currentChat,
     activeMessages,
     streaming,
-    loadChats,
+    loadChats: loadData,
     createNewChat,
     openChat,
     deleteChat,
@@ -424,6 +498,13 @@ export function useChat() {
     getSiblings,
     toggleDebug,
     createSampleChat,
+    createGroup,
+    deleteGroup,
+    toggleGroupCollapse,
+    renameGroup,
+    persistSidebarStructure,
+    reorderChat,
+    reorderGroup,
     lastDeletedChat
   };
 }

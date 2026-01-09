@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '../services/storage';
-import { reactive } from 'vue';
-import type { Chat, MessageNode } from '../models/types';
+import { reactive, nextTick } from 'vue';
+import type { Chat, MessageNode, SidebarItem } from '../models/types';
 
 // Mock storage service
 vi.mock('../services/storage', () => ({
@@ -12,13 +12,16 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     deleteChat: vi.fn(),
+    saveGroup: vi.fn(),
+    listGroups: vi.fn().mockResolvedValue([]),
+    deleteGroup: vi.fn(),
   }
 }));
 
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local' } }
+    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: true } }
   })
 }));
 
@@ -59,6 +62,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      order: 0,
       debugEnabled: false
     };
 
@@ -66,7 +70,6 @@ describe('useChat Composable Logic', () => {
     const sendPromise = sendMessage('Ping');
     
     // During streaming (after first chunk 'Hello'), check state
-    // We use a small timeout to allow the async chat function to start and emit first chunk
     await new Promise(r => setTimeout(r, 5));
     
     expect(activeMessages.value).toHaveLength(2); // User + Assistant
@@ -85,6 +88,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'gpt-4',
       createdAt: 0,
       updatedAt: 0,
+      order: 0,
       debugEnabled: false
     };
     vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
@@ -104,6 +108,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'gpt-4',
       createdAt: 0,
       updatedAt: 0,
+      order: 0,
       debugEnabled: false
     };
     lastDeletedChat.value = mockChat;
@@ -117,9 +122,10 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should delete all chats when deleteAllChats is called', async () => {
-    const mockSummaries = [{ id: '1', title: 'T1', updatedAt: 0 }, { id: '2', title: 'T2', updatedAt: 0 }];
+    const mockSummaries = [{ id: '1', title: 'T1', updatedAt: 0, order: 0 }, { id: '2', title: 'T2', updatedAt: 0, order: 0 }];
     vi.mocked(storageService.listChats).mockResolvedValue(mockSummaries);
     vi.mocked(storageService.deleteChat).mockResolvedValue();
+    vi.mocked(storageService.listGroups).mockResolvedValue([]);
 
     await deleteAllChats();
 
@@ -136,6 +142,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'gpt-4',
       createdAt: 0,
       updatedAt: 0,
+      order: 0,
       debugEnabled: false
     };
     vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
@@ -164,6 +171,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'gpt-4',
       createdAt: 0,
       updatedAt: 0,
+      order: 0,
       debugEnabled: false
     };
     
@@ -195,6 +203,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      order: 0,
       debugEnabled: false
     };
     currentChat.value = reactive(chatObj);
@@ -227,6 +236,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      order: 0,
       debugEnabled: false
     };
     currentChat.value = reactive(chatObj);
@@ -239,14 +249,170 @@ describe('useChat Composable Logic', () => {
 
     // 2. Manually edit the assistant's message
     await editMessage(assistantMsg!.id, 'Manually corrected answer');
+    await nextTick();
 
     // 3. Verify
     // The user message should now have TWO replies (branches)
-    expect(userMsg?.replies.items).toHaveLength(2);
-    expect(userMsg?.replies.items[0]?.content).not.toBe('Manually corrected answer');
-    expect(userMsg?.replies.items[1]?.content).toBe('Manually corrected answer');
+    const userMsgAfter = currentChat.value?.root.items[0];
+    expect(userMsgAfter?.replies.items).toHaveLength(2);
     
-    // The current leaf should be the NEW assistant message
-    expect(currentChat.value?.currentLeafId).toBe(userMsg?.replies.items[1]?.id);
+    // The active path should be [Original User, Corrected Assistant]
+    expect(activeMessages.value).toHaveLength(2);
+    expect(activeMessages.value[1]?.role).toBe('assistant');
+    expect(activeMessages.value[1]?.content).toBe('Manually corrected answer');
+  });
+
+  it('should maintain the new order after reordering items', async () => {
+    const { sidebarItems, persistSidebarStructure, groups, chats } = useChat();
+    
+    const mockGroup = { id: 'g1', name: 'Group A', isCollapsed: false, order: 0, items: [], updatedAt: 0 };
+    const mockChat = { id: 'c1', title: 'Chat B', updatedAt: 0, order: 1 };
+    
+    groups.value = [mockGroup];
+    chats.value = [mockChat];
+    
+    expect(sidebarItems.value[0]?.type).toBe('group');
+    expect(sidebarItems.value[1]?.type).toBe('chat');
+
+    const newItems: SidebarItem[] = [
+      { id: 'chat:c1', type: 'chat' as const, chat: mockChat, order: 0 },
+      { id: 'group:g1', type: 'group' as const, group: { ...mockGroup, items: [] }, order: 1 }
+    ];
+    
+    await persistSidebarStructure(newItems);
+    
+    expect(groups.value[0]?.id).toBe('g1');
+    const savedChat = chats.value.find(c => c.id === 'c1');
+    expect(savedChat?.order).toBe(0);
+  });
+
+  it('should handle moving a chat into a group', async () => {
+    const { persistSidebarStructure, groups, chats } = useChat();
+    
+    const mockGroup = { id: 'g1', name: 'Group A', isCollapsed: false, order: 0, items: [], updatedAt: 0 };
+    const mockChat = { id: 'c1', title: 'Chat B', updatedAt: 0, order: 1, groupId: null };
+    
+    groups.value = [mockGroup];
+    chats.value = [mockChat];
+
+    const newItems: SidebarItem[] = [
+      { 
+        id: 'group:g1', 
+        type: 'group' as const, 
+        group: { 
+          ...mockGroup, 
+          items: [
+            { id: 'chat:c1', type: 'chat' as const, chat: { ...mockChat, groupId: 'g1', order: 0 }, order: 0 }
+          ] 
+        }, 
+        order: 0 
+      }
+    ];
+
+    await persistSidebarStructure(newItems);
+
+    const savedChat = chats.value.find(c => c.id === 'c1');
+    expect(savedChat?.groupId).toBe('g1');
+    expect(savedChat?.order).toBe(0);
+  });
+
+  it('should handle reordering chats within a group', async () => {
+    const { persistSidebarStructure, groups, chats } = useChat();
+    
+    const chat1 = { id: 'c1', title: 'C1', updatedAt: 0, order: 0, groupId: 'g1' };
+    const chat2 = { id: 'c2', title: 'C2', updatedAt: 0, order: 1, groupId: 'g1' };
+    const mockGroup = { 
+      id: 'g1', name: 'G1', isCollapsed: false, order: 0, updatedAt: 0,
+      items: [
+        { id: 'chat:c1', type: 'chat' as const, chat: chat1, order: 0 },
+        { id: 'chat:c2', type: 'chat' as const, chat: chat2, order: 1 }
+      ]
+    };
+    
+    groups.value = [mockGroup];
+    chats.value = [chat1, chat2];
+
+    const newItems: SidebarItem[] = [
+      { 
+        id: 'group:g1', 
+        type: 'group' as const, 
+        group: { 
+          ...mockGroup, 
+          items: [
+            { id: 'chat:c2', type: 'chat' as const, chat: { ...chat2, order: 0 }, order: 0 },
+            { id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, order: 1 }, order: 1 }
+          ] 
+        }, 
+        order: 0 
+      }
+    ];
+
+    await persistSidebarStructure(newItems);
+
+    const savedC1 = chats.value.find(c => c.id === 'c1');
+    const savedC2 = chats.value.find(c => c.id === 'c2');
+    expect(savedC1?.order).toBe(1);
+    expect(savedC2?.order).toBe(0);
+    expect(savedC1?.groupId).toBe('g1');
+  });
+
+  it('should handle moving a chat out of a group to the root', async () => {
+    const { persistSidebarStructure, groups, chats } = useChat();
+    
+    const chat1 = { id: 'c1', title: 'C1', updatedAt: 0, order: 0, groupId: 'g1' };
+    const mockGroup = { 
+      id: 'g1', name: 'G1', isCollapsed: false, order: 0, updatedAt: 0,
+      items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1, order: 0 }]
+    };
+    
+    groups.value = [mockGroup];
+    chats.value = [chat1];
+
+    const newItems: SidebarItem[] = [
+      { id: 'group:g1', type: 'group' as const, group: { ...mockGroup, items: [] }, order: 0 },
+      { id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: null, order: 1 }, order: 1 }
+    ];
+
+    await persistSidebarStructure(newItems);
+
+    const savedChat = chats.value.find(c => c.id === 'c1');
+    expect(savedChat?.groupId).toBeNull();
+    expect(savedChat?.order).toBe(1);
+  });
+
+  it('should handle moving a chat from one group to another', async () => {
+    const { persistSidebarStructure, groups, chats } = useChat();
+    
+    const chat1 = { id: 'c1', title: 'C1', updatedAt: 0, order: 0, groupId: 'g1' };
+    const groupA = { 
+      id: 'g1', name: 'GA', isCollapsed: false, order: 0, updatedAt: 0,
+      items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1, order: 0 }]
+    };
+    const groupB = { 
+      id: 'g2', name: 'GB', isCollapsed: false, order: 1, updatedAt: 0,
+      items: []
+    };
+    
+    groups.value = [groupA, groupB];
+    chats.value = [chat1];
+
+    const newItems: SidebarItem[] = [
+      { id: 'group:g1', type: 'group' as const, group: { ...groupA, items: [] }, order: 0 },
+      { 
+        id: 'group:g2', 
+        type: 'group' as const, 
+        group: { 
+          ...groupB, 
+          items: [{ id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: 'g2', order: 0 }, order: 0 }] 
+        }, 
+        order: 1 
+      }
+    ];
+
+    await persistSidebarStructure(newItems);
+
+    const savedChat = chats.value.find(c => c.id === 'c1');
+    expect(savedChat?.groupId).toBe('g2');
+    expect(savedChat?.order).toBe(0);
   });
 });

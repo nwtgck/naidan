@@ -5,6 +5,7 @@ import type {
   RoleDto, 
   MessageNodeDto,
   ChatDto, 
+  ChatGroupDto,
   SettingsDto,
   EndpointTypeDto,
   StorageTypeDto
@@ -14,6 +15,9 @@ import type {
   MessageNode, 
   MessageBranch,
   Chat, 
+  ChatGroup,
+  ChatSummary,
+  SidebarItem,
   Settings,
   EndpointType,
   StorageType
@@ -28,7 +32,22 @@ export const roleToDomain = (dto: RoleDto): Role => {
   }
 };
 
-// --- Recursive Message Mapping ---
+export const chatGroupToDomain = (dto: ChatGroupDto, groupItems: SidebarItem[] = []): ChatGroup => ({
+  id: dto.id,
+  name: dto.name,
+  isCollapsed: dto.isCollapsed,
+  order: dto.order,
+  updatedAt: dto.updatedAt,
+  items: groupItems.sort((a, b) => a.order - b.order),
+});
+
+export const chatGroupToDto = (domain: ChatGroup, index: number): ChatGroupDto => ({
+  id: domain.id,
+  name: domain.name,
+  isCollapsed: domain.isCollapsed,
+  updatedAt: domain.updatedAt,
+  order: index,
+});
 
 export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => ({
   id: dto.id,
@@ -52,8 +71,6 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => ({
   }
 });
 
-// --- Legacy Migration: Flat Array to Tree ---
-
 interface LegacyMessage {
   id: string;
   role: Role;
@@ -64,7 +81,6 @@ interface LegacyMessage {
 
 function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
   if (!messages || messages.length === 0) return { items: [] };
-
   const legacyMsgs = messages as LegacyMessage[];
   const nodes: MessageNode[] = legacyMsgs.map(m => ({
     id: m.id,
@@ -74,7 +90,6 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
     thinking: m.thinking,
     replies: { items: [] }
   }));
-
   for (let i = 0; i < nodes.length - 1; i++) {
     const current = nodes[i];
     const next = nodes[i+1];
@@ -82,36 +97,26 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
       current.replies.items.push(next);
     }
   }
-
   return { items: nodes[0] ? [nodes[0]] : [] };
 }
 
-// --- Chat Mapping ---
-
 export const chatToDomain = (dto: ChatDto): Chat => {
   let root: MessageBranch = { items: [] };
-  
   if (dto.root && dto.root.items && dto.root.items.length > 0) {
-    // Newest format
-    root = {
-      items: (dto.root.items as MessageNodeDto[]).map(messageNodeToDomain)
-    };
+    root = { items: (dto.root.items as MessageNodeDto[]).map(messageNodeToDomain) };
   } else if (dto.root && !('items' in dto.root)) {
-    // Middle format (single node root - handle if passed as raw node)
-    root = {
-      items: [messageNodeToDomain(dto.root as MessageNodeDto)]
-    };
+    root = { items: [messageNodeToDomain(dto.root as MessageNodeDto)] };
   } else if (dto.messages && dto.messages.length > 0) {
-    // Oldest format (flat array)
     root = migrateFlatMessagesToTree(dto.messages);
   }
 
   return {
     id: dto.id,
     title: dto.title,
+    groupId: dto.groupId,
+    order: dto.order ?? 0,
     root,
     currentLeafId: dto.currentLeafId,
-    // ... rest same
     modelId: dto.modelId,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
@@ -127,9 +132,9 @@ export const chatToDomain = (dto: ChatDto): Chat => {
 export const chatToDto = (domain: Chat): ChatDto => ({
   id: domain.id,
   title: domain.title,
-  root: {
-    items: domain.root.items.map(messageNodeToDto)
-  },
+  groupId: domain.groupId,
+  order: domain.order,
+  root: { items: domain.root.items.map(messageNodeToDto) },
   currentLeafId: domain.currentLeafId,
   modelId: domain.modelId,
   createdAt: domain.createdAt,
@@ -142,20 +147,44 @@ export const chatToDto = (domain: Chat): ChatDto => ({
   originMessageId: domain.originMessageId,
 });
 
+export const buildSidebarItems = (groups: ChatGroup[], allChats: ChatSummary[]): SidebarItem[] => {
+  const items: SidebarItem[] = [];
+  
+  groups.forEach(g => {
+    // Each group's items are built from chats belonging to it
+    const groupChats = allChats.filter(c => c.groupId === g.id);
+    const nestedItems: SidebarItem[] = groupChats.map(c => ({
+      id: `chat:${c.id}`,
+      type: 'chat',
+      chat: c,
+      order: c.order
+    }));
+    
+    items.push({ 
+      id: `group:${g.id}`, 
+      type: 'group', 
+      group: { ...g, items: nestedItems.sort((a, b) => a.order - b.order) }, 
+      order: g.order 
+    });
+  });
+  
+  allChats
+    .filter(c => !c.groupId)
+    .forEach(c => {
+      items.push({ id: `chat:${c.id}`, type: 'chat', chat: c, order: c.order });
+    });
+    
+  return items.sort((a, b) => a.order - b.order);
+};
+
 export const settingsToDomain = (dto: SettingsDto): Settings => ({
+  ...dto,
   endpointType: dto.endpointType as EndpointType,
-  endpointUrl: dto.endpointUrl,
-  defaultModelId: dto.defaultModelId,
-  titleModelId: dto.titleModelId,
-  autoTitleEnabled: dto.autoTitleEnabled,
   storageType: dto.storageType as StorageType,
 });
 
 export const settingsToDto = (domain: Settings): SettingsDto => ({
+  ...domain,
   endpointType: domain.endpointType as EndpointTypeDto,
-  endpointUrl: domain.endpointUrl,
-  defaultModelId: domain.defaultModelId,
-  titleModelId: domain.titleModelId,
-  autoTitleEnabled: domain.autoTitleEnabled,
   storageType: domain.storageType as StorageTypeDto,
 });

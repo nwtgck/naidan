@@ -6,6 +6,7 @@
  * external validation libraries to ensure a stable and maintainable application core.
  */
 // --- Domain Definitions (Business Logic Layer) ---
+
 export type Role = 'user' | 'assistant' | 'system';
 export type StorageType = 'local' | 'opfs';
 export type EndpointType = 'openai' | 'ollama';
@@ -23,9 +24,20 @@ export interface MessageBranch {
   items: MessageNode[];
 }
 
+export interface ChatGroup {
+  id: string;
+  name: string;
+  isCollapsed: boolean;
+  order: number;
+  items: SidebarItem[]; // Recursive: can contain chats (and potentially nested groups later)
+  updatedAt: number;
+}
+
 export interface Chat {
   id: string;
   title: string | null;
+  groupId?: string | null;
+  order: number;
   root: MessageBranch;
   currentLeafId?: string;
   
@@ -40,6 +52,13 @@ export interface Chat {
   originChatId?: string;
   originMessageId?: string;
 }
+
+export type ChatSummary = Pick<Chat, 'id' | 'title' | 'updatedAt' | 'groupId' | 'order'>;
+
+// Recursive type for sidebar hierarchy
+export type SidebarItem = 
+  | { id: string; type: 'chat'; chat: ChatSummary; order: number }
+  | { id: string; type: 'group'; group: ChatGroup; order: number };
 
 export interface Settings {
   endpointType: EndpointType;

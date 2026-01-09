@@ -1,4 +1,4 @@
-import type { Chat, Settings } from '../../models/types';
+import type { Chat, Settings, ChatGroup } from '../../models/types';
 import type { IStorageProvider, ChatSummary } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
@@ -60,6 +60,22 @@ export class StorageService implements IStorageProvider {
 
   async deleteChat(id: string): Promise<void> {
     return this.provider.deleteChat(id);
+  }
+
+  async saveGroup(group: ChatGroup): Promise<void> {
+    return this.provider.saveGroup(group);
+  }
+
+  async loadGroup(id: string): Promise<ChatGroup | null> {
+    return this.provider.loadGroup(id);
+  }
+
+  async listGroups(): Promise<ChatGroup[]> {
+    return this.provider.listGroups();
+  }
+
+  async deleteGroup(id: string): Promise<void> {
+    return this.provider.deleteGroup(id);
   }
 
   async saveSettings(settings: Settings): Promise<void> {
