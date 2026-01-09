@@ -80,6 +80,7 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
             v-model="form.endpointType"
             class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
             @change="fetchModels"
+            data-testid="setting-provider-select"
           >
             <option value="openai">OpenAI Compatible</option>
             <option value="ollama">Ollama</option>
@@ -95,11 +96,13 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
               type="text"
               class="flex-1 border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
               placeholder="http://localhost:11434"
+              data-testid="setting-url-input"
             />
             <button 
               @click="fetchModels"
               class="px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
               title="Refresh Models"
+              data-testid="setting-refresh-models"
             >
               <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
               <span v-else>Refresh</span>
@@ -114,6 +117,7 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
           <select 
             v-model="form.defaultModelId"
             class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
+            data-testid="setting-model-select"
           >
             <option v-if="availableModels.length === 0" :value="form.defaultModelId">{{ form.defaultModelId || 'Custom' }}</option>
             <option v-for="m in availableModels" :key="m" :value="m">
@@ -132,6 +136,7 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
                 id="autoTitleEnabled" 
                 v-model="form.autoTitleEnabled"
                 class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                data-testid="setting-auto-title-checkbox"
               >
               <label for="autoTitleEnabled" class="text-xs text-gray-500 dark:text-gray-400">Enabled</label>
             </div>
@@ -140,6 +145,7 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
             v-model="form.titleModelId"
             :disabled="!form.autoTitleEnabled"
             class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="setting-title-model-select"
           >
             <option :value="undefined">Use Current Chat Model</option>
             <option v-for="m in availableModels" :key="m" :value="m">
@@ -155,6 +161,7 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
           <select 
             v-model="form.storageType"
             class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
+            data-testid="setting-storage-select"
           >
             <option value="local">Browser Local Storage</option>
             <option value="opfs">Origin Private File System (OPFS)</option>
@@ -169,6 +176,7 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
           <button 
             @click="chatStore.createSampleChat(); emit('close')"
             class="w-full flex items-center justify-center gap-2 px-4 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            data-testid="setting-create-sample-button"
           >
             <FlaskConical class="w-4 h-4" />
             Create Comprehensive Sample Chat
@@ -180,12 +188,14 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
         <button 
           @click="emit('close')"
           class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+          data-testid="setting-cancel-button"
         >
           Cancel
         </button>
         <button 
           @click="handleSave"
           class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          data-testid="setting-save-button"
         >
           Save Changes
         </button>

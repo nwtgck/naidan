@@ -163,6 +163,7 @@ async function handleUndo() {
           @click="handleNewChat(null)"
           class="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
           :disabled="streaming"
+          data-testid="new-chat-button"
         >
           <Plus class="w-4 h-4" />
           New Chat
@@ -171,6 +172,7 @@ async function handleUndo() {
           @click="isCreatingGroup = true"
           class="p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
           title="Create Group"
+          data-testid="create-group-button"
         >
           <FolderPlus class="w-4 h-4" />
         </button>
@@ -184,8 +186,9 @@ async function handleUndo() {
           class="bg-transparent text-xs text-white outline-none w-full px-1"
           placeholder="Group name..."
           auto-focus
+          data-testid="group-name-input"
         />
-        <button @click="handleCreateGroup" class="text-green-400 hover:text-green-300">
+        <button @click="handleCreateGroup" class="text-green-400 hover:text-green-300" data-testid="confirm-create-group">
           <Check class="w-3 h-3" />
         </button>
         <button @click="isCreatingGroup = false" class="text-red-400 hover:text-red-300">
@@ -197,6 +200,7 @@ async function handleUndo() {
         v-if="lastDeletedChat"
         @click="handleUndo"
         class="w-full flex items-center justify-center gap-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 px-4 py-2 rounded-lg transition-colors text-sm border border-green-600/30"
+        data-testid="undo-delete-button"
       >
         <RotateCcw class="w-4 h-4" />
         Undo Delete
@@ -223,6 +227,7 @@ async function handleUndo() {
               <div 
                 @click="chatStore.toggleGroupCollapse(element.group.id)"
                 class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer text-gray-400 group/folder relative transition-all"
+                data-testid="group-item"
               >
                 <div class="flex items-center gap-2 overflow-hidden flex-1">
                   <GripVertical class="w-3 h-3 flex-shrink-0 handle cursor-grab active:cursor-grabbing text-gray-600 opacity-0 group-hover/folder:opacity-100" />
@@ -264,6 +269,7 @@ async function handleUndo() {
                         @click="handleOpenChat(nestedItem.chat.id)"
                         class="group/chat flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors"
                         :class="currentChat?.id === nestedItem.chat.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'"
+                        data-testid="sidebar-chat-item"
                       >
                         <div class="flex items-center gap-2 overflow-hidden flex-1">
                           <GripVertical class="w-3 h-3 text-gray-700 opacity-0 group-hover/chat:opacity-100 handle cursor-grab" />
@@ -301,6 +307,7 @@ async function handleUndo() {
               @click="handleOpenChat(element.chat.id)"
               class="group/chat flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors"
               :class="currentChat?.id === element.chat.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'"
+              data-testid="sidebar-chat-item"
             >
               <div class="flex items-center gap-3 overflow-hidden flex-1">
                 <GripVertical class="w-3 h-3 text-gray-700 opacity-0 group-hover/chat:opacity-100 handle cursor-grab" />
@@ -331,6 +338,7 @@ async function handleUndo() {
         v-if="chats.length > 0 || groups.length > 0"
         @click="handleDeleteAll"
         class="flex items-center gap-2 text-xs text-gray-600 hover:text-red-400 w-full px-2 py-1 rounded hover:bg-red-900/10 transition-colors"
+        data-testid="clear-all-button"
       >
         <Trash2 class="w-3 h-3" />
         Clear All History

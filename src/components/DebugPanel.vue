@@ -104,6 +104,7 @@ onUnmounted(() => {
     <div 
       @click="toggle"
       class="flex items-center justify-between px-4 h-10 cursor-pointer hover:bg-gray-800 transition-colors border-b border-gray-800/50"
+      data-testid="debug-panel-toggle"
     >
       <div class="flex items-center gap-2">
         <Terminal class="w-4 h-4 text-indigo-400" />
@@ -112,14 +113,17 @@ onUnmounted(() => {
         <div 
           v-if="errorCount > 0"
           class="ml-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/50 text-[10px] font-bold text-red-400 animate-pulse"
+          data-testid="debug-error-badge"
         >
           <AlertCircle class="w-3 h-3" />
           {{ errorCount }} Errors
         </div>
 
+        <!-- Total Badge (Only show when open) -->
         <span 
           v-if="isOpen"
           class="text-[10px] font-medium text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded"
+          data-testid="debug-total-badge"
         >
           Total: {{ eventCount }}
         </span>
@@ -132,6 +136,7 @@ onUnmounted(() => {
             @click.stop="clearEvents"
             class="p-1 hover:text-red-400 text-gray-500 transition-colors rounded hover:bg-gray-700"
             title="Clear Logs"
+            data-testid="debug-clear-button"
           >
             <Trash2 class="w-4 h-4" />
           </button>
@@ -141,6 +146,7 @@ onUnmounted(() => {
             @click.stop="toggleMenu"
             class="p-1 hover:text-white text-gray-500 transition-colors rounded hover:bg-gray-700"
             title="Development Tools"
+            data-testid="debug-menu-button"
           >
             <MoreVertical class="w-4 h-4" />
           </button>
@@ -149,10 +155,12 @@ onUnmounted(() => {
           <div 
             v-if="isMenuOpen"
             class="absolute right-0 bottom-full mb-2 w-48 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden py-1 z-[60]"
+            data-testid="debug-menu-dropdown"
           >
             <button 
               @click.stop="triggerTestInfo"
               class="w-full flex items-center gap-2 px-3 py-2 text-xs text-blue-400 hover:bg-gray-700 transition-colors"
+              data-testid="trigger-test-info"
             >
               <Info class="w-3.5 h-3.5" />
               <span>Trigger Test Info</span>
@@ -160,6 +168,7 @@ onUnmounted(() => {
             <button 
               @click.stop="triggerTestError"
               class="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-gray-700 transition-colors"
+              data-testid="trigger-test-error"
             >
               <Skull class="w-3.5 h-3.5" />
               <span>Trigger Test Error</span>
@@ -171,7 +180,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Content Area -->
-    <div v-if="isOpen" class="h-54 overflow-y-auto bg-black/30 font-mono text-[11px] p-2 space-y-1">
+    <div v-if="isOpen" class="h-54 overflow-y-auto bg-black/30 font-mono text-[11px] p-2 space-y-1" data-testid="debug-content-area">
       <div v-if="eventCount === 0" class="flex flex-col items-center justify-center h-full text-gray-600 gap-2">
         <X class="w-8 h-8 opacity-20" />
         <p>No events recorded</p>
@@ -182,6 +191,7 @@ onUnmounted(() => {
         :key="event.id"
         class="border-l-2 p-2 rounded-r flex gap-3 group"
         :class="getEventStyle(event.type)"
+        data-testid="event-item"
       >
         <span class="text-gray-600 shrink-0">[{{ formatTime(event.timestamp) }}]</span>
         <div class="flex-1 min-w-0">
