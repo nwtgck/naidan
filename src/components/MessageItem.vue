@@ -226,7 +226,7 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
           <div v-else></div>
 
           <!-- Message Actions -->
-          <div class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+          <div class="flex items-center gap-1">
             <button 
               @click="handleCopy"
               class="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
