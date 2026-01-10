@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode } from '../models/types';
 import { v7 as uuidv7 } from 'uuid';
+import { Check } from 'lucide-vue-next';
+import { nextTick } from 'vue';
 
 describe('MessageItem Rendering', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): MessageNode => ({
@@ -52,6 +54,29 @@ describe('MessageItem Rendering', () => {
     const contentArea = wrapper.find('[data-testid="message-content"]');
     expect(contentArea.text()).toBe('Actual response');
     expect(contentArea.text()).not.toContain('Internal thought');
+  });
+
+  it('copies message content to clipboard', async () => {
+    const message = createMessage('Copy me');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Mock clipboard
+    const writeText = vi.fn().mockImplementation(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true
+    });
+
+    const copyButton = wrapper.find('[data-testid="copy-message-button"]');
+    await copyButton.trigger('click');
+
+    expect(writeText).toHaveBeenCalledWith('Copy me');
+    
+    // Wait for Vue to update the DOM
+    await nextTick();
+    
+    // Icon should change to checkmark
+    expect(wrapper.findComponent(Check).exists()).toBe(true);
   });
 });
 
