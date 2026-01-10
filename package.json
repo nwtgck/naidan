@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "vue-tsc -b && vite build && node finalize-single-file.cjs",
     "preview": "vite preview",
     "test": "vitest",
     "lint": "eslint . --max-warnings 0"
