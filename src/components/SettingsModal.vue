@@ -4,7 +4,7 @@ import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { storageService } from '../services/storage';
-import { X, Loader2, FlaskConical, Trash2 } from 'lucide-vue-next';
+import { X, Loader2, FlaskConical, Trash2, Globe, Database, Bot, Type, Settings2, RefreshCw } from 'lucide-vue-next';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -62,159 +62,191 @@ watch(() => props.isOpen, (open) => {
     fetchModels();
   }
 });
-
-// Watch for endpoint changes to refresh models
-watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
-    // Debounce or just wait for user action? 
-    // Let's add a button to refresh or do it on blur.
-    // Doing it automatically might spam.
-});
-
 </script>
 
 <template>
-  <div v-if="isOpen" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md p-6 shadow-xl relative text-gray-900 dark:text-gray-100">
-      <button 
-        @click="emit('close')"
-        class="absolute right-4 top-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-      >
-        <X class="w-5 h-5" />
-      </button>
-
-      <h2 class="text-xl font-bold mb-6">Settings</h2>
-
-      <div class="space-y-4">
-        <!-- Endpoint Type -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API Provider</label>
-          <select 
-            v-model="form.endpointType"
-            class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
-            @change="fetchModels"
-            data-testid="setting-provider-select"
-          >
-            <option value="openai">OpenAI Compatible</option>
-            <option value="ollama">Ollama</option>
-          </select>
-        </div>
-
-        <!-- Endpoint URL -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endpoint URL</label>
-          <div class="flex gap-2">
-            <input 
-              v-model="form.endpointUrl"
-              type="text"
-              class="flex-1 border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
-              placeholder="http://localhost:11434"
-              data-testid="setting-url-input"
-            />
-            <button 
-              @click="fetchModels"
-              class="px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-              title="Refresh Models"
-              data-testid="setting-refresh-models"
-            >
-              <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
-              <span v-else>Refresh</span>
-            </button>
+  <div v-if="isOpen" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur p-4">
+    <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 animate-in fade-in zoom-in-95 duration-200">
+      <!-- Header -->
+      <div class="px-6 py-5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+            <Settings2 class="w-5 h-5" />
           </div>
-          <p v-if="error" class="text-red-500 text-xs mt-1">{{ error }}</p>
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">Settings</h2>
         </div>
+        <button 
+          @click="emit('close')"
+          class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
+        >
+          <X class="w-5 h-5" />
+        </button>
+      </div>
 
-        <!-- Model Selection -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Default Model</label>
-          <select 
-            v-model="form.defaultModelId"
-            class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
-            data-testid="setting-model-select"
-          >
-            <option v-if="availableModels.length === 0" :value="form.defaultModelId">{{ form.defaultModelId || 'Custom' }}</option>
-            <option v-for="m in availableModels" :key="m" :value="m">
-              {{ m }}
-            </option>
-          </select>
-        </div>
-
-        <!-- Title Model Selection -->
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Title Generation Model</label>
-            <div class="flex items-center gap-2">
-              <input 
-                type="checkbox" 
-                id="autoTitleEnabled" 
-                v-model="form.autoTitleEnabled"
-                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                data-testid="setting-auto-title-checkbox"
+      <!-- Body -->
+      <div class="p-6 space-y-6 flex-1 overflow-y-auto max-h-[70vh]">
+        <!-- Endpoint Section -->
+        <div class="space-y-4">
+          <div class="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider">
+            <Globe class="w-3.5 h-3.5" />
+            <span>Endpoint Configuration</span>
+          </div>
+          
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">API Provider</label>
+              <select 
+                v-model="form.endpointType"
+                class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white appearance-none"
+                style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
+                @change="fetchModels"
+                data-testid="setting-provider-select"
               >
-              <label for="autoTitleEnabled" class="text-xs text-gray-500 dark:text-gray-400">Enabled</label>
+                <option value="openai">OpenAI Compatible</option>
+                <option value="ollama">Ollama</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Endpoint URL</label>
+              <div class="flex gap-2">
+                <input 
+                  v-model="form.endpointUrl"
+                  type="text"
+                  class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white"
+                  placeholder="http://localhost:11434"
+                  data-testid="setting-url-input"
+                />
+                <button 
+                  @click="fetchModels"
+                  class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl transition-colors flex items-center justify-center gap-2 min-w-[100px]"
+                  title="Refresh Models"
+                  data-testid="setting-refresh-models"
+                >
+                  <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
+                  <RefreshCw v-else class="w-4 h-4" />
+                  <span class="text-xs font-bold">Refresh</span>
+                </button>
+              </div>
+              <p v-if="error" class="text-[10px] text-red-500 mt-1 ml-1">{{ error }}</p>
             </div>
           </div>
-          <select 
-            v-model="form.titleModelId"
-            :disabled="!form.autoTitleEnabled"
-            class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            data-testid="setting-title-model-select"
-          >
-            <option :value="undefined">Use Current Chat Model</option>
-            <option v-for="m in availableModels" :key="m" :value="m">
-              {{ m }}
-            </option>
-          </select>
-          <p class="text-[10px] text-gray-500 mt-1">Automatically generates a title after the first response.</p>
         </div>
 
-        <!-- Storage Type -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Storage Location</label>
-          <select 
-            v-model="form.storageType"
-            class="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700"
-            data-testid="setting-storage-select"
-          >
-            <option value="local">Browser Local Storage</option>
-            <option value="opfs">Origin Private File System (OPFS)</option>
-          </select>
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Switching storage will hide chats from the previous location.
-          </p>
+        <!-- Models Section -->
+        <div class="space-y-4">
+          <div class="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider">
+            <Bot class="w-3.5 h-3.5" />
+            <span>Model Selection</span>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-medium text-gray-400 mb-1 ml-1">Default Model</label>
+              <select 
+                v-model="form.defaultModelId"
+                class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white appearance-none"
+                style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
+                data-testid="setting-model-select"
+              >
+                <option v-if="availableModels.length === 0" :value="form.defaultModelId">{{ form.defaultModelId || 'Custom' }}</option>
+                <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+              </select>
+            </div>
+
+            <div class="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-800">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2 text-xs font-bold text-gray-700 dark:text-gray-300">
+                  <Type class="w-3.5 h-3.5" />
+                  <span>Auto-Title Generation</span>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    v-model="form.autoTitleEnabled" 
+                    class="sr-only peer"
+                    data-testid="setting-auto-title-checkbox"
+                  >
+                  <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              <select 
+                v-model="form.titleModelId"
+                :disabled="!form.autoTitleEnabled"
+                class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white appearance-none disabled:opacity-30 disabled:cursor-not-allowed"
+                style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
+                data-testid="setting-title-model-select"
+              >
+                <option :value="undefined">Use Current Chat Model</option>
+                <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        <div class="border-t dark:border-gray-700 pt-4 space-y-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Debug / Development</label>
-          <button 
-            @click="chatStore.createSampleChat(); emit('close')"
-            class="w-full flex items-center justify-center gap-2 px-4 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            data-testid="setting-create-sample-button"
-          >
-            <FlaskConical class="w-4 h-4" />
-            Create Comprehensive Sample Chat
-          </button>
-          <button 
-            @click="handleResetData"
-            class="w-full flex items-center justify-center gap-2 px-4 py-2 border border-red-200 dark:border-red-900/30 rounded text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
-            data-testid="setting-reset-data-button"
-          >
-            <Trash2 class="w-4 h-4" />
-            Reset All App Data
-          </button>
+        <!-- Storage Section -->
+        <div class="space-y-4">
+          <div class="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider">
+            <Database class="w-3.5 h-3.5" />
+            <span>Storage Management</span>
+          </div>
+          
+          <div class="space-y-2">
+            <select 
+              v-model="form.storageType"
+              class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white appearance-none"
+              style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
+              data-testid="setting-storage-select"
+            >
+              <option value="local">Browser Local Storage</option>
+              <option value="opfs">Origin Private File System (OPFS)</option>
+            </select>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 ml-1">
+              Note: Switching storage will hide chats from the previous location.
+            </p>
+          </div>
+        </div>
+
+        <!-- Debug Section -->
+        <div class="space-y-4 pt-2">
+          <div class="flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider">
+            <FlaskConical class="w-3.5 h-3.5" />
+            <span>Developer Tools</span>
+          </div>
+          
+          <div class="grid grid-cols-1 gap-2">
+            <button 
+              @click="chatStore.createSampleChat(); emit('close')"
+              class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 rounded-xl text-xs hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              data-testid="setting-create-sample-button"
+            >
+              <FlaskConical class="w-4 h-4" />
+              Create Sample Chat
+            </button>
+            <button 
+              @click="handleResetData"
+              class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-red-100 dark:border-red-900/20 text-red-500 dark:text-red-400 rounded-xl text-xs hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+              data-testid="setting-reset-data-button"
+            >
+              <Trash2 class="w-4 h-4" />
+              Reset All App Data
+            </button>
+          </div>
         </div>
       </div>
 
-      <div class="mt-8 flex justify-end gap-2">
+      <!-- Footer -->
+      <div class="p-6 bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 flex gap-3">
         <button 
           @click="emit('close')"
-          class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+          class="flex-1 py-3 px-4 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all"
           data-testid="setting-cancel-button"
         >
           Cancel
         </button>
         <button 
           @click="handleSave"
-          class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+          class="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all"
           data-testid="setting-save-button"
         >
           Save Changes
@@ -223,3 +255,16 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.animate-in {
+  animation-fill-mode: forwards;
+}
+@keyframes zoom-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.zoom-in-95 {
+  animation-name: zoom-in;
+}
+</style>
