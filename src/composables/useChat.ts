@@ -35,7 +35,7 @@ function findDeepestLeaf(node: MessageNode): MessageNode {
   return findDeepestLeaf(node.replies.items[node.replies.items.length - 1]!);
 }
 
-function processThinking(node: MessageNode) {
+export function processThinking(node: MessageNode) {
   const thinkRegex = /<think>([\s\S]*?)<\/think>/;
   const match = node.content.match(thinkRegex);
   if (match && match[1]) {
@@ -526,15 +526,6 @@ export function useChat() {
     }
   };
 
-  const createSampleChat = async () => {
-    const now = Date.now();
-    const m2: MessageNode = { id: uuidv7(), role: 'assistant', content: 'Sample Content', timestamp: now, replies: { items: [] } };
-    const m1: MessageNode = { id: uuidv7(), role: 'user', content: 'Hello!', timestamp: now - 5000, replies: { items: [m2] } };
-    const chat: Chat = { id: uuidv7(), title: '🚀 Sample', root: { items: [m1] }, currentLeafId: m2.id, modelId: 'gpt-4', createdAt: now, updatedAt: now, debugEnabled: true };
-    await storageService.saveChat(chat, 0);
-    await loadData();
-  };
-
   return {
     // --- State & Getters ---
     rootItems,
@@ -558,7 +549,6 @@ export function useChat() {
     switchVersion,
     getSiblings,
     toggleDebug,
-    createSampleChat,
     createGroup,
     deleteGroup,
     toggleGroupCollapse,

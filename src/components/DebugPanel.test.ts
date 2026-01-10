@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import DebugPanel from './DebugPanel.vue';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
@@ -14,7 +14,7 @@ describe('DebugPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useGlobalEvents as any).mockReturnValue({
+    (useGlobalEvents as unknown as Mock).mockReturnValue({
       events: [],
       eventCount: 0,
       errorCount: 0,
@@ -39,7 +39,7 @@ describe('DebugPanel', () => {
   });
 
   it('shows error badge when errorCount > 0', () => {
-    (useGlobalEvents as any).mockReturnValue({
+    (useGlobalEvents as unknown as Mock).mockReturnValue({
       events: [],
       eventCount: 1,
       errorCount: 1,
@@ -53,7 +53,7 @@ describe('DebugPanel', () => {
   });
 
   it('calls clearEvents when clear button is clicked', async () => {
-    (useGlobalEvents as any).mockReturnValue({
+    (useGlobalEvents as unknown as Mock).mockReturnValue({
       events: [{ id: '1', type: 'info', timestamp: Date.now(), source: 'test', message: 'test' }],
       eventCount: 1,
       errorCount: 0,
@@ -84,7 +84,7 @@ describe('DebugPanel', () => {
     const error = new Error('Test error message');
     error.stack = 'test stack trace';
     
-    (useGlobalEvents as any).mockReturnValue({
+    (useGlobalEvents as unknown as Mock).mockReturnValue({
       events: [{ 
         id: '1', 
         type: 'error', 
@@ -110,10 +110,10 @@ describe('DebugPanel', () => {
   });
 
   it('handles circular references in details gracefully', async () => {
-    const circular: any = { a: 1 };
+    const circular: Record<string, unknown> = { a: 1 };
     circular.self = circular;
 
-    (useGlobalEvents as any).mockReturnValue({
+    (useGlobalEvents as unknown as Mock).mockReturnValue({
       events: [{ 
         id: '1', 
         type: 'error', 

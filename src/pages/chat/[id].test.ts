@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { reactive, nextTick } from 'vue';
 import ChatPage from './[id].vue';
@@ -25,13 +25,13 @@ describe('ChatPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useChat as any).mockReturnValue({
+    (useChat as unknown as Mock).mockReturnValue({
       openChat: mockOpenChat
     });
   });
 
   it('calls openChat on mount with id from route', () => {
-    (useRoute as any).mockReturnValue({
+    (useRoute as unknown as Mock).mockReturnValue({
       params: reactive({ id: 'chat-123' })
     });
     
@@ -41,7 +41,7 @@ describe('ChatPage', () => {
 
   it('watches route.params.id and calls openChat', async () => {
     const params = reactive({ id: 'chat-123' });
-    (useRoute as any).mockReturnValue({ params });
+    (useRoute as unknown as Mock).mockReturnValue({ params });
     
     mount(ChatPage);
     expect(mockOpenChat).toHaveBeenCalledWith('chat-123');

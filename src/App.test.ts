@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
 import App from './App.vue';
 import { useChat } from './composables/useChat';
 import { useSettings } from './composables/useSettings';
 import { useRouter } from 'vue-router';
+import type { Chat } from './models/types';
 
 vi.mock('./composables/useChat', () => ({
   useChat: vi.fn()
@@ -61,16 +62,16 @@ describe('App', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useChat as any).mockReturnValue({
+    (useChat as unknown as Mock).mockReturnValue({
       createNewChat: mockCreateNewChat,
       currentChat: ref(null)
     });
-    (useSettings as any).mockReturnValue({
+    (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
       initialized: ref(true),
       settings: ref({ endpointUrl: 'http://localhost:11434' })
     });
-    (useRouter as any).mockReturnValue({
+    (useRouter as unknown as Mock).mockReturnValue({
       push: vi.fn()
     });
   });
@@ -119,7 +120,7 @@ describe('App', () => {
   });
 
   it('shows OnboardingModal when endpointUrl is missing', async () => {
-    (useSettings as any).mockReturnValue({
+    (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
       initialized: ref(true),
       settings: ref({ endpointUrl: '' })
@@ -139,13 +140,13 @@ describe('App', () => {
 
   it('triggers createNewChat and navigates on Ctrl+Shift+O', async () => {
     const mockRouterPush = vi.fn();
-    const currentChat = ref<any>(null);
+    const currentChat = ref<Chat | null>(null);
     const localMockCreateNewChat = vi.fn(async () => {
-      currentChat.value = { id: 'new-chat-id' };
+      currentChat.value = { id: 'new-chat-id' } as Chat;
     });
     
-    (useRouter as any).mockReturnValue({ push: mockRouterPush });
-    (useChat as any).mockReturnValue({
+    (useRouter as unknown as Mock).mockReturnValue({ push: mockRouterPush });
+    (useChat as unknown as Mock).mockReturnValue({
       createNewChat: localMockCreateNewChat,
       currentChat
     });
@@ -177,13 +178,13 @@ describe('App', () => {
 
   it('triggers createNewChat and navigates on Meta+Shift+O (Mac)', async () => {
     const mockRouterPush = vi.fn();
-    const currentChat = ref<any>(null);
+    const currentChat = ref<Chat | null>(null);
     const localMockCreateNewChat = vi.fn(async () => {
-      currentChat.value = { id: 'mac-chat-id' };
+      currentChat.value = { id: 'mac-chat-id' } as Chat;
     });
     
-    (useRouter as any).mockReturnValue({ push: mockRouterPush });
-    (useChat as any).mockReturnValue({
+    (useRouter as unknown as Mock).mockReturnValue({ push: mockRouterPush });
+    (useChat as unknown as Mock).mockReturnValue({
       createNewChat: localMockCreateNewChat,
       currentChat
     });

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { useSettings } from '../composables/useSettings';
-import { useChat } from '../composables/useChat';
+import { useSampleChat } from '../composables/useSampleChat';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { storageService } from '../services/storage';
 import { X, Loader2, FlaskConical, Trash2, Globe, Database, Bot, Type, Settings2, RefreshCw } from 'lucide-vue-next';
@@ -15,7 +15,7 @@ const emit = defineEmits<{
 }>();
 
 const { settings, save } = useSettings();
-const chatStore = useChat();
+const { createSampleChat } = useSampleChat();
 
 const form = ref({ ...settings.value });
 const availableModels = ref<string[]>([]);
@@ -230,7 +230,7 @@ watch(() => props.isOpen, (open) => {
           
           <div class="grid grid-cols-1 gap-2">
             <button 
-              @click="chatStore.createSampleChat(); emit('close')"
+              @click="createSampleChat(); emit('close')"
               class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 rounded-xl text-xs hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               data-testid="setting-create-sample-button"
             >

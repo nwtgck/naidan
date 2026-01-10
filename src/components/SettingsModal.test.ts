@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
+import { useSampleChat } from '../composables/useSampleChat';
 import { storageService } from '../services/storage';
 import * as llm from '../services/llm';
 
@@ -13,6 +14,10 @@ vi.mock('../composables/useSettings', () => ({
 
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(),
+}));
+
+vi.mock('../composables/useSampleChat', () => ({
+  useSampleChat: vi.fn(),
 }));
 
 // Mock storage service
@@ -56,7 +61,10 @@ describe('SettingsModal.vue', () => {
     });
 
     // Mock useChat return value
-    (useChat as unknown as Mock).mockReturnValue({
+    (useChat as unknown as Mock).mockReturnValue({});
+
+    // Mock useSampleChat return value
+    (useSampleChat as unknown as Mock).mockReturnValue({
       createSampleChat: mockCreateSampleChat,
     });
 

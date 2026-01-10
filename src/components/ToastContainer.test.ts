@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ToastContainer from './ToastContainer.vue';
 import { useToast } from '../composables/useToast';
@@ -15,7 +15,7 @@ describe('ToastContainer', () => {
   });
 
   it('renders nothing when there are no toasts', () => {
-    (useToast as any).mockReturnValue({
+    (useToast as unknown as Mock).mockReturnValue({
       toasts: [],
       removeToast: mockRemoveToast
     });
@@ -25,7 +25,7 @@ describe('ToastContainer', () => {
   });
 
   it('renders toasts correctly', () => {
-    (useToast as any).mockReturnValue({
+    (useToast as unknown as Mock).mockReturnValue({
       toasts: [
         { id: '1', message: 'Test message 1' },
         { id: '2', message: 'Test message 2', actionLabel: 'Undo' }
@@ -41,7 +41,7 @@ describe('ToastContainer', () => {
   });
 
   it('calls removeToast when close button is clicked', async () => {
-    (useToast as any).mockReturnValue({
+    (useToast as unknown as Mock).mockReturnValue({
       toasts: [{ id: '1', message: 'Test message' }],
       removeToast: mockRemoveToast
     });
@@ -53,7 +53,7 @@ describe('ToastContainer', () => {
 
   it('calls handleAction and removeToast when action button is clicked', async () => {
     const onAction = vi.fn();
-    (useToast as any).mockReturnValue({
+    (useToast as unknown as Mock).mockReturnValue({
       toasts: [{ id: '1', message: 'Test message', actionLabel: 'Undo', onAction }],
       removeToast: mockRemoveToast
     });
@@ -65,7 +65,7 @@ describe('ToastContainer', () => {
   });
 
   it('renders multiple toasts in order', () => {
-    (useToast as any).mockReturnValue({
+    (useToast as unknown as Mock).mockReturnValue({
       toasts: [
         { id: '1', message: 'First toast' },
         { id: '2', message: 'Second toast' },
