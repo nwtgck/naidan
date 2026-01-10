@@ -78,6 +78,61 @@ describe('MessageItem Rendering', () => {
     // Icon should change to checkmark
     expect(wrapper.findComponent(Check).exists()).toBe(true);
   });
+
+  it('toggles mermaid display modes', async () => {
+    const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Mode should be preview by default
+    expect(wrapper.find('.mermaid-raw').attributes('style')).toContain('display: none');
+    expect(wrapper.find('.mermaid').attributes('style')).not.toContain('display: none');
+
+    // Manually set mode to 'code' via VM
+    (wrapper.vm as unknown as { mermaidMode: string }).mermaidMode = 'code';
+    await nextTick();
+    await nextTick();
+
+    expect(wrapper.find('.mermaid-raw').attributes('style')).not.toContain('display: none');
+    expect(wrapper.find('.mermaid').attributes('style')).toContain('display: none');
+
+    // Manually set mode to 'both'
+    (wrapper.vm as unknown as { mermaidMode: string }).mermaidMode = 'both';
+    await nextTick();
+    await nextTick();
+
+    const finalRaw = wrapper.find('.mermaid-raw').attributes('style') || '';
+    const finalDiagram = wrapper.find('.mermaid').attributes('style') || '';
+    
+    expect(finalRaw).not.toContain('display: none');
+    expect(finalDiagram).not.toContain('display: none');
+  });
+
+  describe('Mermaid UI Design Consistency', () => {
+    it('has the correct layout structure and classes for positioning', async () => {
+      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const wrapper = mount(MessageItem, { props: { message } });
+      await nextTick();
+      await nextTick();
+      
+      const html = wrapper.html();
+      expect(html).toContain('mermaid-block relative group/mermaid');
+      expect(html).toContain('mermaid-ui-overlay');
+      expect(html).toContain('mermaid-tabs');
+    });
+
+    it('contains Mermaid tabs with correct labels', async () => {
+      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const wrapper = mount(MessageItem, { props: { message } });
+      await nextTick();
+      await nextTick();
+      
+      const tabs = wrapper.findAll('.mermaid-tab');
+      expect(tabs.length).toBe(3);
+      expect(tabs[0]!.text()).toContain('Preview');
+      expect(tabs[1]!.text()).toContain('Code');
+      expect(tabs[2]!.text()).toContain('Both');
+    });
+  });
 });
 
 describe('MessageItem Keyboard Shortcuts', () => {

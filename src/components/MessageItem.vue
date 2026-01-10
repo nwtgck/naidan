@@ -29,6 +29,9 @@ const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const copied = ref(false);
 
+type MermaidMode = 'preview' | 'code' | 'both';
+const mermaidMode = ref<MermaidMode>('preview');
+
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
@@ -84,6 +87,19 @@ async function handleCopy() {
   }
 }
 
+const mermaidIcons = {
+  preview: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-presentation"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>`,
+  code: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-code"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/></svg>`,
+  both: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-columns-2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/></svg>`
+};
+
+function setMermaidMode(mode: MermaidMode) {
+  mermaidMode.value = mode;
+  if (mode !== 'code') {
+    renderMermaid();
+  }
+}
+
 // Initialize Mermaid
 mermaid.initialize({
   startOnLoad: false,
@@ -95,7 +111,28 @@ const marked = new Marked(
     langPrefix: 'hljs language-',
     highlight(code, lang) {
       if (lang === 'mermaid') {
-        return `<pre class="mermaid">${code}</pre>`;
+        const mode = mermaidMode.value;
+        
+        return `<div class="mermaid-block relative group/mermaid" data-mermaid-mode="${mode}">
+                  <div class="mermaid-ui-overlay">
+                    <div class="mermaid-tabs">
+                      <button class="mermaid-tab ${mode === 'preview' ? 'active' : ''}" data-mode="preview" title="Preview Only">
+                        ${mermaidIcons.preview}
+                        <span>Preview</span>
+                      </button>
+                      <button class="mermaid-tab ${mode === 'code' ? 'active' : ''}" data-mode="code" title="Code Only">
+                        ${mermaidIcons.code}
+                        <span>Code</span>
+                      </button>
+                      <button class="mermaid-tab ${mode === 'both' ? 'active' : ''}" data-mode="both" title="Show Both">
+                        ${mermaidIcons.both}
+                        <span>Both</span>
+                      </button>
+                    </div>
+                  </div>
+                  <pre class="mermaid" style="display: ${mode === 'code' ? 'none' : 'block'}">${code}</pre>
+                  <pre class="mermaid-raw hljs language-mermaid" style="display: ${mode === 'preview' ? 'none' : 'block'}"><code>${hljs.highlight(code, { language: 'plaintext' }).value}</code></pre>
+                </div>`;
       }
       const language = hljs.getLanguage(lang) ? lang : 'plaintext';
       return hljs.highlight(code, { language }).value;
@@ -111,8 +148,8 @@ marked.use(markedKatex({
 const renderMermaid = async () => {
   await nextTick();
   try {
-    // Only run if there are mermaid nodes to process
-    const nodes = document.querySelectorAll('.mermaid');
+    if (!messageRef.value) return;
+    const nodes = messageRef.value.querySelectorAll('.mermaid');
     if (nodes.length > 0) {
       await mermaid.run({
         nodes: Array.from(nodes) as HTMLElement[],
@@ -123,8 +160,29 @@ const renderMermaid = async () => {
   }
 };
 
-onMounted(renderMermaid);
+onMounted(() => {
+  renderMermaid();
+  // Handle toggle clicks via event delegation
+  messageRef.value?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const tab = target.closest('.mermaid-tab') as HTMLElement;
+    if (tab) {
+      const mode = tab.dataset.mode as MermaidMode;
+      if (mode) setMermaidMode(mode);
+    }
+  });
+});
+
 watch(() => props.message.content, renderMermaid);
+
+const messageRef = ref<HTMLElement | null>(null);
+
+watch(mermaidMode, async () => {
+  if (mermaidMode.value !== 'code') {
+    await nextTick(); // Wait for parsedContent to update DOM
+    renderMermaid();
+  }
+});
 
 const showThinking = ref(true); // Default to true during streaming to see progress
 
@@ -146,6 +204,9 @@ const displayContent = computed(() => {
 });
 
 const parsedContent = computed(() => {
+  // Add mermaidMode as a dependency to trigger re-parse when it changes
+  // This ensures the HTML is always in sync with the current mode
+  void mermaidMode.value;
   const html = marked.parse(displayContent.value) as string;
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
@@ -158,7 +219,7 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
 </script>
 
 <template>
-  <div class="flex gap-4 p-4 group" :class="{ 'bg-gray-50 dark:bg-gray-800/50': !isUser }">
+  <div ref="messageRef" class="flex gap-4 p-4 group" :class="{ 'bg-gray-50 dark:bg-gray-800/50': !isUser }">
     <div class="flex-shrink-0">
       <div class="w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
         <User v-if="isUser" class="w-5 h-5 text-gray-600 dark:text-gray-300" />

@@ -34,3 +34,40 @@
 .dark ::-webkit-scrollbar-thumb:hover {
   @apply bg-gray-700;
 }
+
+/* Mermaid display modes */
+.mermaid-block {
+  @apply my-4 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 relative;
+}
+
+.mermaid-ui-overlay {
+  @apply absolute top-1 right-1 z-10 opacity-0 transition-opacity;
+}
+
+.mermaid-block:hover .mermaid-ui-overlay {
+  @apply opacity-100;
+}
+
+.mermaid-tabs {
+  @apply flex p-0.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-md shadow-sm overflow-hidden;
+}
+
+.mermaid-tab {
+  @apply flex items-center gap-1 px-1.5 py-0.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all rounded-[3px] text-[10px] font-medium;
+}
+
+.mermaid-tab.active {
+  @apply bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 shadow-sm;
+}
+
+.mermaid-tab span {
+  @apply hidden sm:inline;
+}
+
+.mermaid {
+  @apply bg-white dark:bg-gray-900 p-4 flex justify-center;
+}
+
+.mermaid-raw {
+  @apply m-0 rounded-none border-t border-gray-200 dark:border-gray-700;
+}
