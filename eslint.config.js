@@ -2,8 +2,12 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
+import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-init.js';
 
 export default tseslint.config(
+  {
+    ignores: ['dist/**', 'node_modules/**', 'public/**'],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/essential'],
@@ -31,6 +35,7 @@ export default tseslint.config(
       'vue/multi-word-component-names': 'off', // Relax for page components
     },
   },
+  ensureFileProtocolInit,
   {
     files: ['**/*.test.ts'],
     languageOptions: {
