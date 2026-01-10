@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
@@ -22,10 +22,24 @@ const availableModels = ref<string[]>([]);
 const fetchingModels = ref(false);
 const error = ref<string | null>(null);
 
+const hasChanges = computed(() => {
+  return JSON.stringify(form.value) !== JSON.stringify(settings.value);
+});
+
 async function handleResetData() {
   if (confirm('Are you sure you want to reset all app data? This will delete all chats, groups, and settings for the current storage location.')) {
     await storageService.clearAll();
     window.location.reload();
+  }
+}
+
+function handleCancel() {
+  if (hasChanges.value) {
+    if (confirm('You have unsaved changes. Are you sure you want to discard them?')) {
+      emit('close');
+    }
+  } else {
+    emit('close');
   }
 }
 
@@ -76,7 +90,7 @@ watch(() => props.isOpen, (open) => {
           <h2 class="text-xl font-bold text-gray-900 dark:text-white">Settings</h2>
         </div>
         <button 
-          @click="emit('close')"
+          @click="handleCancel"
           class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
         >
           <X class="w-5 h-5" />
@@ -238,7 +252,7 @@ watch(() => props.isOpen, (open) => {
       <!-- Footer -->
       <div class="p-6 bg-gray-50/50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 flex gap-3">
         <button 
-          @click="emit('close')"
+          @click="handleCancel"
           class="flex-1 py-3 px-4 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all"
           data-testid="setting-cancel-button"
         >

@@ -13,7 +13,7 @@ describe('useToast', () => {
     
     const id = addToast({ message: 'Hello' });
     expect(toasts.value).toHaveLength(1);
-    expect(toasts.value[0].message).toBe('Hello');
+    expect(toasts.value[0]?.message).toBe('Hello');
 
     removeToast(id);
     expect(toasts.value).toHaveLength(0);

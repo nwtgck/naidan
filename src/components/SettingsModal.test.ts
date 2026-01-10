@@ -132,4 +132,44 @@ describe('SettingsModal.vue', () => {
     expect(mockCreateSampleChat).toHaveBeenCalled();
     expect(wrapper.emitted()).toHaveProperty('close');
   });
+
+  it('shows confirmation when closing with unsaved changes', async () => {
+    const wrapper = mount(SettingsModal, {
+      props: { isOpen: true }
+    });
+
+    // Change something
+    await wrapper.find('[data-testid="setting-url-input"]').setValue('http://changed-url');
+    
+    // Try to cancel
+    await wrapper.find('[data-testid="setting-cancel-button"]').trigger('click');
+    
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('unsaved changes'));
+    expect(wrapper.emitted()).toHaveProperty('close');
+  });
+
+  it('does not close if confirmation is rejected', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => false));
+    
+    const wrapper = mount(SettingsModal, {
+      props: { isOpen: true }
+    });
+
+    await wrapper.find('[data-testid="setting-url-input"]').setValue('http://changed-url');
+    await wrapper.find('[data-testid="setting-cancel-button"]').trigger('click');
+    
+    expect(window.confirm).toHaveBeenCalled();
+    expect(wrapper.emitted()).not.toHaveProperty('close');
+  });
+
+  it('closes without confirmation if no changes were made', async () => {
+    const wrapper = mount(SettingsModal, {
+      props: { isOpen: true }
+    });
+
+    await wrapper.find('[data-testid="setting-cancel-button"]').trigger('click');
+    
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(wrapper.emitted()).toHaveProperty('close');
+  });
 });
