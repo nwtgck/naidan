@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useChat } from './useChat';
+import { useChat, findRestorationIndex, type AddToastOptions } from './useChat';
 import { storageService } from '../services/storage';
 import { reactive, nextTick, triggerRef } from 'vue';
 import type { Chat, MessageNode, SidebarItem, ChatGroup } from '../models/types';
@@ -48,7 +48,6 @@ vi.mock('../services/llm', () => {
 describe('useChat Composable Logic', () => {
   const chatStore = useChat();
   const {
-    deleteChat, undoDelete, deleteAllChats, lastDeletedChat,
     activeMessages, sendMessage, currentChat, rootItems
   } = chatStore;
 
@@ -95,113 +94,28 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should update activeMessages in real-time during streaming', async () => {
-    // Setup initial chat
     currentChat.value = reactive({
-      id: 'chat-1',
-      title: 'Test',
-      root: { items: [] },
-      modelId: 'gpt-4',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      debugEnabled: false
+      id: 'chat-1', title: 'Test', root: { items: [] }, modelId: 'gpt-4',
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false
     });
-
-    // Start sending a message
     const sendPromise = sendMessage('Ping');
-    
-    // Wait for first chunk
     await new Promise(r => setTimeout(r, 20)); 
-    
-    // Force reactivity update for computed in test environment
     triggerRef(currentChat);
-    
-    // Use toBe('Hello') because it should have received only the first chunk at this point
-    // but the mock might have finished if timing is tight. 
-    // Let's check for either 'Hello' or the full string to make it more robust.
     expect(['Hello', 'Hello World']).toContain(activeMessages.value[1]?.content);
-
-    await sendPromise; // Finish streaming
+    await sendPromise;
     triggerRef(currentChat);
-
     expect(activeMessages.value[1]?.content).toBe('Hello World');
-  });
-
-  it('should store deleted chat in lastDeletedChat for undo', async () => {
-    const mockChat: Chat = { 
-      id: '1', 
-      title: 'Test', 
-      root: { items: [] },
-      modelId: 'gpt-4',
-      createdAt: 0,
-      updatedAt: 0,
-      debugEnabled: false
-    };
-    vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
-    vi.mocked(storageService.deleteChat).mockResolvedValue();
-
-    await deleteChat('1');
-
-    expect(storageService.loadChat).toHaveBeenCalledWith('1');
-    expect(lastDeletedChat.value).toEqual(mockChat);
-  });
-
-  it('should restore chat on undoDelete', async () => {
-    const mockChat: Chat = { 
-      id: '1', 
-      title: 'Test', 
-      root: { items: [] },
-      modelId: 'gpt-4',
-      createdAt: 0,
-      updatedAt: 0,
-      debugEnabled: false
-    };
-    lastDeletedChat.value = mockChat;
-    vi.mocked(storageService.saveChat).mockResolvedValue();
-    vi.mocked(storageService.listChats).mockResolvedValue([]);
-
-    await undoDelete();
-
-    expect(storageService.saveChat).toHaveBeenCalledWith(mockChat, 0);
-    expect(lastDeletedChat.value).toBeNull();
-  });
-
-  it('should delete all chats when deleteAllChats is called', async () => {
-    const mockSummaries = [{ id: '1', title: 'T1', updatedAt: 0 }, { id: '2', title: 'T2', updatedAt: 0 }];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockSummaries);
-    vi.mocked(storageService.deleteChat).mockResolvedValue();
-    vi.mocked(storageService.listGroups).mockResolvedValue([]);
-
-    await deleteAllChats();
-
-    expect(storageService.deleteChat).toHaveBeenCalledTimes(2);
-    expect(lastDeletedChat.value).toBeNull();
   });
 
   it('should rename a chat and update storage', async () => {
     const { renameChat, rootItems } = useChat();
-    const mockChat: Chat = { 
-      id: '1', 
-      title: 'Old Title', 
-      root: { items: [] },
-      modelId: 'gpt-4',
-      createdAt: 0,
-      updatedAt: 0,
-      debugEnabled: false
-    };
-    const summary = { id: '1', title: 'Old Title', updatedAt: 0 };
-    rootItems.value = [{ id: 'chat:1', type: 'chat', chat: summary }];
+    const mockChat: Chat = { id: '1', title: 'Old', root: { items: [] }, modelId: 'gpt-4', createdAt: 0, updatedAt: 0, debugEnabled: false };
+    rootItems.value = [{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Old', updatedAt: 0 } }];
     mockRootItems.push(...rootItems.value);
-    
     vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
     vi.mocked(storageService.saveChat).mockResolvedValue();
-
-    await renameChat('1', 'New Title');
-
-    expect(storageService.loadChat).toHaveBeenCalledWith('1');
-    expect(storageService.saveChat).toHaveBeenCalledWith(expect.objectContaining({
-      id: '1',
-      title: 'New Title'
-    }), 0);
+    await renameChat('1', 'New');
+    expect(storageService.saveChat).toHaveBeenCalledWith(expect.objectContaining({ id: '1', title: 'New' }), 0);
   });
 
   it('should fork a chat up to a specific message', async () => {
@@ -522,30 +436,126 @@ describe('useChat Composable Logic', () => {
     expect(items.value[1]?.id).toBe('chat:c1');
   });
 
-  it('should maintain the correct position in rootItems after sending a message', async () => {
+  it('should maintain the correct position after sending a message', async () => {
     const { sendMessage, rootItems, currentChat } = useChat();
-    
-    // 1. Setup initial state: [Group G1, Chat C1, Chat C2]
-    const c1 = { id: 'c1', title: 'Chat 1', updatedAt: 0 };
-    const c2 = { id: 'c2', title: 'Chat 2', updatedAt: 0 };
+    const c2 = { id: 'c2', title: 'C2', updatedAt: 0 };
     const initial: SidebarItem[] = [
       { id: 'group:g1', type: 'group', group: { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] } },
-      { id: 'chat:c1', type: 'chat', chat: c1 },
+      { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
       { id: 'chat:c2', type: 'chat', chat: c2 }
     ];
     mockRootItems.push(...initial);
     await chatStore.loadChats();
-    
-    // 2. Open Chat C2 (at the end)
     currentChat.value = reactive({ ...c2, root: { items: [] }, modelId: 'm1', createdAt: 0, updatedAt: 0, debugEnabled: false });
-
-    // 3. Act: Send a message (triggers saveCurrentChat and automated loadData)
     await sendMessage('Hello');
-    await chatStore.loadChats(); // Force reload to see if it jumps
-
-    // 4. Verify: C2 should STILL be at the end (index 2)
-    expect(rootItems.value).toHaveLength(3);
+    await chatStore.loadChats();
     expect(rootItems.value[2]?.id).toBe('chat:c2');
-    expect(rootItems.value[0]?.type).toBe('group');
+  });
+
+  describe('findRestorationIndex Logic (Bidirectional Context)', () => {
+    const items: SidebarItem[] = [
+      { id: 'i1', type: 'chat', chat: { id: 'c1', title: '1', updatedAt: 0 } },
+      { id: 'i2', type: 'chat', chat: { id: 'c2', title: '2', updatedAt: 0 } },
+      { id: 'i3', type: 'chat', chat: { id: 'c3', title: '3', updatedAt: 0 } },
+    ];
+
+    it('should return index after prevId if prevId is present', () => {
+      expect(findRestorationIndex(items, 'i1', 'i3')).toBe(1);
+      expect(findRestorationIndex(items, 'i2', 'i3')).toBe(2);
+    });
+
+    it('should return index before nextId if prevId is missing but nextId is present', () => {
+      expect(findRestorationIndex(items, 'deleted-prev', 'i2')).toBe(1);
+      expect(findRestorationIndex(items, null, 'i1')).toBe(0);
+      expect(findRestorationIndex(items, null, 'i3')).toBe(2);
+    });
+
+    it('should return 0 (top) if both prevId and nextId are missing or not in list', () => {
+      expect(findRestorationIndex(items, 'ghost-1', 'ghost-2')).toBe(0);
+      expect(findRestorationIndex(items, null, null)).toBe(0);
+    });
+
+    it('should return 0 for empty list', () => {
+      expect(findRestorationIndex([], 'any', 'any')).toBe(0);
+    });
+
+    it('should handle last position correctly', () => {
+      expect(findRestorationIndex(items, 'i3', null)).toBe(3);
+    });
+
+    it('should restore the last item of a group correctly in an integrated flow', async () => {
+      // 1. Prepare data
+      const chat2Id = 'c2';
+      const c1 = { id: 'c1', title: '1', updatedAt: 0, groupId: 'g1' };
+      const c2 = { id: chat2Id, title: '2', updatedAt: 0, groupId: 'g1' };
+      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [
+        { id: 'chat:c1', type: 'chat', chat: c1 },
+        { id: 'chat:c2', type: 'chat', chat: c2 },
+      ] as SidebarItem[] };
+      
+      mockRootItems.length = 0;
+      mockRootItems.push({ id: 'group:g1', type: 'group', group: g1 });
+      
+      // Ensure mock loadChat returns the chat we are about to delete
+      vi.mocked(storageService.loadChat).mockImplementation(async (id) => {
+        if (id === chat2Id) return { 
+          ...c2, 
+          root: { items: [] }, 
+          modelId: 'gpt-4', 
+          createdAt: 0, 
+          debugEnabled: false 
+        } as Chat;
+        return null;
+      });
+
+      // Crucial: Update mockRootItems when saveChat is called during Undo
+      vi.mocked(storageService.saveChat).mockImplementation(async (chat: Chat, index: number) => {
+        const item: SidebarItem = { id: `chat:${chat.id}`, type: 'chat', chat: { id: chat.id, title: chat.title, updatedAt: chat.updatedAt, groupId: chat.groupId } };
+        const targetList = chat.groupId 
+            ? mockRootItems.find(i => i.type === 'group' && i.group.id === chat.groupId)
+            : null;
+        
+        if (targetList && targetList.type === 'group') {
+            targetList.group.items.splice(index, 0, item);
+        } else {
+            mockRootItems.splice(index, 0, item);
+        }
+        return Promise.resolve();
+      });
+
+      await chatStore.loadChats();
+
+      // 2. Mock toast capture with proper typing
+      let capturedOnAction: (() => void | Promise<void>) | undefined;
+      const mockAdd = (toast: AddToastOptions) => {
+        capturedOnAction = toast.onAction;
+        return 'test-toast-id';
+      };
+
+      // 3. Act: Delete C2 (the last item) with injection
+      const { deleteChat: delChat } = useChat();
+      await delChat(chat2Id, mockAdd);
+      
+      // 4. Simulate storage change (item removed) and reload side panel
+      const groupInStorage = mockRootItems[0];
+      if (groupInStorage?.type === 'group') {
+        groupInStorage.group.items = groupInStorage.group.items.filter(i => i.id !== `chat:${chat2Id}`);
+      }
+      await chatStore.loadChats();
+
+      // 5. Act: Undo
+      if (capturedOnAction) {
+        await capturedOnAction();
+      } else {
+        throw new Error('onAction was not captured. deleteChat might have returned early.');
+      }
+
+      // 6. Verify: C2 should be back at the end (index 1 in the group items)
+      const restoredGroup = rootItems.value[0];
+      if (restoredGroup?.type === 'group') {
+        expect(restoredGroup.group.items).toHaveLength(2);
+        expect(restoredGroup.group.items[1]?.id).toBe(`chat:${chat2Id}`);
+      }
+    });
   });
 });

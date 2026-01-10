@@ -8,13 +8,13 @@ import Logo from './Logo.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
   Plus, Trash2, Settings as SettingsIcon, Sun, Moon, Monitor, 
-  RotateCcw, Pencil, Folder, FolderPlus, 
+  Pencil, Folder, FolderPlus, 
   ChevronDown, ChevronRight, Check, X
 } from 'lucide-vue-next';
 
 const chatStore = useChat();
 const { 
-  currentChat, lastDeletedChat, streaming, groups, chats
+  currentChat, streaming, groups, chats
 } = chatStore;
 
 const { themeMode, setTheme } = useTheme();
@@ -140,13 +140,6 @@ async function handleDeleteAll() {
     router.push('/');
   }
 }
-
-async function handleUndo() {
-  await chatStore.undoDelete();
-  if (currentChat.value) {
-    router.push(`/chat/${currentChat.value.id}`);
-  }
-}
 </script>
 
 <template>
@@ -200,18 +193,7 @@ async function handleUndo() {
           <X class="w-3 h-3" />
         </button>
       </div>
-
-      <button 
-        v-if="lastDeletedChat"
-        @click="handleUndo"
-        class="w-full flex items-center justify-center gap-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 px-4 py-3 rounded-lg transition-colors text-sm border border-green-600/30"
-        data-testid="undo-delete-button"
-      >
-        <RotateCcw class="w-4 h-4" />
-        Undo Delete
-      </button>
     </div>
-
     <!-- Navigation List -->
     <div class="flex-1 overflow-y-auto px-2 py-2">
       <draggable 

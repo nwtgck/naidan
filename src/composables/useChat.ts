@@ -8,7 +8,6 @@ import { useSettings } from './useSettings';
 const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
 const streaming = ref(false);
-const lastDeletedChat = ref<Chat | null>(null);
 let abortController: AbortController | null = null;
 
 // --- Helpers ---
@@ -43,6 +42,39 @@ function processThinking(node: MessageNode) {
     node.thinking = match[1].trim();
     node.content = node.content.replace(thinkRegex, '').trim();
   }
+}
+
+/**
+ * Calculates the best restoration index for a deleted item based on its bidirectional context.
+ */
+export function findRestorationIndex(
+  items: SidebarItem[],
+  prevId: string | null,
+  nextId: string | null
+): number {
+  if (items.length === 0) return 0;
+
+  const prevIdx = prevId ? items.findIndex(item => item.id === prevId) : -1;
+  if (prevIdx !== -1) {
+    // Priority 1: Right after the previous item
+    return prevIdx + 1;
+  }
+
+  const nextIdx = nextId ? items.findIndex(item => item.id === nextId) : -1;
+  if (nextIdx !== -1) {
+    // Priority 2: Right before the next item
+    return nextIdx;
+  }
+
+  // Priority 3: Default to top
+  return 0;
+}
+
+export interface AddToastOptions {
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void | Promise<void>;
+  duration?: number;
 }
 
 export function useChat() {
@@ -171,21 +203,68 @@ export function useChat() {
     }
   };
 
-  const deleteChat = async (id: string) => {
+  const deleteChat = async (
+    id: string, 
+    injectAddToast?: (toast: AddToastOptions) => string
+  ) => {
+    const { useToast } = await import('./useToast');
+    const { addToast: originalAddToast } = useToast();
+    const addToast = injectAddToast || originalAddToast;
     const chatData = await storageService.loadChat(id);
-    if (chatData) lastDeletedChat.value = chatData;
+    if (!chatData) return;
+
+    // Capture bidirectional context for robust restoration
+    let parentId: string | null = null;
+    let prevId: string | null = null;
+    let nextId: string | null = null;
+
+    // Search for current position in sidebarItems
+    const findContext = (items: SidebarItem[], pId: string | null): boolean => {
+      const idx = items.findIndex(item => item.type === 'chat' && item.chat.id === id);
+      if (idx !== -1) {
+        parentId = pId;
+        prevId = idx > 0 ? items[idx - 1]!.id : null;
+        nextId = idx < items.length - 1 ? items[idx + 1]!.id : null;
+        return true;
+      }
+      for (const item of items) {
+        if (item.type === 'group' && findContext(item.group.items, item.group.id)) return true;
+      }
+      return false;
+    };
+    findContext(rootItems.value, null);
+
     await storageService.deleteChat(id);
     if (currentChat.value?.id === id) currentChat.value = null;
     await loadData();
-  };
 
-  const undoDelete = async () => {
-    if (!lastDeletedChat.value) return;
-    await storageService.saveChat(lastDeletedChat.value, 0);
-    const restoredId = lastDeletedChat.value.id;
-    lastDeletedChat.value = null;
-    await loadData();
-    await openChat(restoredId);
+    addToast({
+      message: `Chat "${chatData.title || 'Untitled'}" deleted`,
+      actionLabel: 'Undo',
+      onAction: async () => {
+        let targetIndex = 0;
+        let targetList: SidebarItem[] | null = null;
+
+        if (parentId) {
+          // Robustly find the group in the latest rootItems
+          const groupItem = rootItems.value.find(item => item.type === 'group' && item.group.id === parentId);
+          if (groupItem && groupItem.type === 'group') {
+            targetList = groupItem.group.items;
+          }
+        } else {
+          targetList = rootItems.value;
+        }
+
+        // If targetList is still null (e.g. parent group was also deleted), fallback to rootItems
+        const finalTargetList = targetList || rootItems.value;
+        targetIndex = findRestorationIndex(finalTargetList, prevId, nextId);
+
+        chatData.groupId = targetList ? parentId : null;
+        await storageService.saveChat(chatData, targetIndex);
+        await loadData();
+        await openChat(chatData.id);
+      }
+    });
   };
 
   const deleteAllChats = async () => {
@@ -194,7 +273,6 @@ export function useChat() {
     const allGroups = await storageService.listGroups();
     for (const g of allGroups) await storageService.deleteGroup(g.id);
     currentChat.value = null;
-    lastDeletedChat.value = null;
     await loadData();
   };
 
@@ -466,14 +544,12 @@ export function useChat() {
     currentChat,
     activeMessages,
     streaming,
-    lastDeletedChat,
 
     // --- Actions ---
     loadChats: loadData,
     createNewChat,
     openChat,
     deleteChat,
-    undoDelete,
     deleteAllChats,
     renameChat,
     sendMessage,

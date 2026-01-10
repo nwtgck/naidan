@@ -6,6 +6,7 @@ import { useChat } from './composables/useChat';
 import Sidebar from './components/Sidebar.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import DebugPanel from './components/DebugPanel.vue';
+import ToastContainer from './components/ToastContainer.vue';
 
 const isSettingsOpen = ref(false);
 const chatStore = useChat();
@@ -41,6 +42,8 @@ onKeyStroke(['o', 'O'], async (e) => {
       :is-open="isSettingsOpen" 
       @close="isSettingsOpen = false" 
     />
+
+    <ToastContainer />
   </div>
 </template>
 

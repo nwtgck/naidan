@@ -19,17 +19,14 @@ const mockSidebarItems = computed<SidebarItem[]>(() => {
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
+    currentChat: ref(null),
+    streaming: ref(false),
     groups: mockGroups,
     chats: mockChats,
     sidebarItems: mockSidebarItems,
-    currentChat: ref(null),
-    lastDeletedChat: ref(null),
-    streaming: ref(false),
-    loadChats: vi.fn().mockImplementation(() => {
-        // Sync items when loaded
-    }),
-    persistSidebarStructure: vi.fn(),
+    loadChats: vi.fn(),
     toggleGroupCollapse: vi.fn(),
+    persistSidebarStructure: vi.fn(),
   })
 }));
 
