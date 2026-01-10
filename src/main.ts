@@ -19,18 +19,16 @@ app.config.errorHandler = (err, instance, info) => {
 
 app.use(router)
 
-// Wait for DOM and Router to be ready
+/**
+ * IMPORTANT FOR file:/// PROTOCOL:
+ * We must wait for both the DOM to be fully loaded and the Router to be ready.
+ * In a local file environment (especially with IIFE builds), mounting the app
+ * prematurely can lead to silent failures or white screens.
+ */
 window.addEventListener('DOMContentLoaded', async () => {
-  console.log('DOM Content Loaded')
   const appElement = document.querySelector('#app')
-  if (!appElement) {
-    console.error('Target element #app not found!')
-    return
-  }
+  if (!appElement) return
 
   await router.isReady()
-  console.log('Router is ready at:', window.location.hash || '/')
-
   app.mount('#app')
-  console.log('App mounted.')
 })
