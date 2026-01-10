@@ -6,4 +6,4 @@
 *   **Non-interactive Tests**: Always use the `--run` flag (e.g., `npm run test -- --run`) when executing tests as an agent or in CI to ensure the process exits after completion and does not hang in watch mode.
 *   **Testing**: Actively use `data-testid` attributes for selecting elements in tests. This decouples tests from implementation details (CSS classes, tag names) and makes them more resilient to styling changes.
 *   **Language**: English only for source code, UI, and commit messages.
-*   **Commit Attribution**: When you (the AI agent) perform a git commit, always append appropriate `Co-authored-by` information for yourself to the end of the commit message.
+*   **Commit Attribution**: When you (the AI agent) perform a git commit, always append `Co-authored-by: Gemini <gemini@google.com>` to the end of the commit message.
