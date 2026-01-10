@@ -11,6 +11,12 @@ const router = createRouter({
 
 const app = createApp(App)
 
+/**
+ * Global Vue error handler.
+ * This is essential for catching and logging rendering errors that might otherwise 
+ * fail silently, particularly in the restrictive 'file:///' environment.
+ * It helps identify which component and lifecycle hook caused the issue.
+ */
 app.config.errorHandler = (err, instance, info) => {
   console.error('Vue Error:', err)
   console.error('Vue Instance:', instance)
