@@ -77,6 +77,10 @@ class StorageService {
   async loadSettings(): Promise<Settings | null> {
     return this.provider.loadSettings();
   }
+
+  async clearAll(): Promise<void> {
+    return this.provider.clearAll();
+  }
 }
 
 export const storageService = new StorageService();

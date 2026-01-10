@@ -1,16 +1,23 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useChat } from './composables/useChat';
+import { useSettings } from './composables/useSettings';
 import Sidebar from './components/Sidebar.vue';
 import SettingsModal from './components/SettingsModal.vue';
+import OnboardingModal from './components/OnboardingModal.vue';
 import DebugPanel from './components/DebugPanel.vue';
 import ToastContainer from './components/ToastContainer.vue';
 
 const isSettingsOpen = ref(false);
 const chatStore = useChat();
+const settingsStore = useSettings();
 const router = useRouter();
+
+onMounted(async () => {
+  await settingsStore.init();
+});
 
 // ChatGPT-style shortcut for New Chat: Ctrl+Shift+O (Cmd+Shift+O on Mac)
 onKeyStroke(['o', 'O'], async (e) => {
@@ -42,6 +49,8 @@ onKeyStroke(['o', 'O'], async (e) => {
       :is-open="isSettingsOpen" 
       @close="isSettingsOpen = false" 
     />
+
+    <OnboardingModal v-if="settingsStore.initialized && !settingsStore.settings.value.endpointUrl" />
 
     <ToastContainer />
   </div>

@@ -37,7 +37,7 @@ async function fetchModels() {
   fetchingModels.value = true;
   try {
     const type = currentChat.value.endpointType || settings.value.endpointType;
-    const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
+    const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
     const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
     availableModels.value = await provider.listModels(url);
   } catch (e) {

@@ -40,6 +40,7 @@ export function useSettings() {
   return {
     settings,
     loading,
+    initialized,
     init,
     save
   };

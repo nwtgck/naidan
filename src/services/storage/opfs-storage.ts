@@ -168,4 +168,12 @@ export class OPFSStorageProvider extends IStorageProvider {
       return settingsToDomain(SettingsSchemaDto.parse(JSON.parse(text)));
     } catch { return null; }
   }
+
+  async clearAll(): Promise<void> {
+    await this.init();
+    // @ts-expect-error: keys() is missing in some types
+    for await (const key of this.root!.keys()) {
+      await this.root!.removeEntry(key, { recursive: true });
+    }
+  }
 }

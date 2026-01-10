@@ -136,4 +136,15 @@ export class LocalStorageProvider extends IStorageProvider {
       return mapSettingsToDomain(dto);
     } catch { return null; }
   }
+
+  async clearAll(): Promise<void> {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(KEY_PREFIX)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  }
 }

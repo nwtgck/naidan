@@ -3,7 +3,8 @@ import { ref, watch } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
-import { X, Loader2, FlaskConical } from 'lucide-vue-next';
+import { storageService } from '../services/storage';
+import { X, Loader2, FlaskConical, Trash2 } from 'lucide-vue-next';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -21,7 +22,18 @@ const availableModels = ref<string[]>([]);
 const fetchingModels = ref(false);
 const error = ref<string | null>(null);
 
+async function handleResetData() {
+  if (confirm('Are you sure you want to reset all app data? This will delete all chats, groups, and settings for the current storage location.')) {
+    await storageService.clearAll();
+    window.location.reload();
+  }
+}
+
 async function fetchModels() {
+  if (!form.value.endpointUrl) {
+    availableModels.value = [];
+    return;
+  }
   fetchingModels.value = true;
   error.value = null;
   try {
@@ -171,7 +183,7 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
           </p>
         </div>
 
-        <div class="border-t dark:border-gray-700 pt-4">
+        <div class="border-t dark:border-gray-700 pt-4 space-y-2">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Debug / Development</label>
           <button 
             @click="chatStore.createSampleChat(); emit('close')"
@@ -180,6 +192,14 @@ watch(() => [form.value.endpointType, form.value.endpointUrl], () => {
           >
             <FlaskConical class="w-4 h-4" />
             Create Comprehensive Sample Chat
+          </button>
+          <button 
+            @click="handleResetData"
+            class="w-full flex items-center justify-center gap-2 px-4 py-2 border border-red-200 dark:border-red-900/30 rounded text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+            data-testid="setting-reset-data-button"
+          >
+            <Trash2 class="w-4 h-4" />
+            Reset All App Data
           </button>
         </div>
       </div>

@@ -70,4 +70,5 @@ export abstract class IStorageProvider {
   
   abstract saveSettings(settings: Settings): Promise<void>;
   abstract loadSettings(): Promise<Settings | null>;
+  abstract clearAll(): Promise<void>;
 }

@@ -61,7 +61,7 @@ export type SidebarItem =
 
 export interface Settings {
   endpointType: EndpointType;
-  endpointUrl: string;
+  endpointUrl?: string;
   defaultModelId?: string;
   titleModelId?: string;
   autoTitleEnabled: boolean;
@@ -70,7 +70,6 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   endpointType: 'openai',
-  endpointUrl: 'http://localhost:8282/v1',
   autoTitleEnabled: true,
   storageType: 'local',
 };

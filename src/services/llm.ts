@@ -54,7 +54,7 @@ export interface LLMProvider {
     signal?: AbortSignal
   ): Promise<void>;
   
-  listModels(endpoint: string): Promise<string[]>;
+  listModels(endpoint: string, signal?: AbortSignal): Promise<string[]>;
 }
 
 export class OpenAIProvider implements LLMProvider {
@@ -117,9 +117,9 @@ export class OpenAIProvider implements LLMProvider {
     }
   }
 
-  async listModels(endpoint: string): Promise<string[]> {
+  async listModels(endpoint: string, signal?: AbortSignal): Promise<string[]> {
     const url = `${endpoint.replace(/\/$/, '')}/models`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
     if (!response.ok) throw new Error(`Failed to fetch models: ${response.statusText}`);
     const rawJson = await response.json();
     // Validate with Zod
@@ -186,9 +186,9 @@ export class OllamaProvider implements LLMProvider {
     }
   }
 
-  async listModels(endpoint: string): Promise<string[]> {
+  async listModels(endpoint: string, signal?: AbortSignal): Promise<string[]> {
     const url = `${endpoint.replace(/\/$/, '')}/api/tags`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
     if (!response.ok) throw new Error(`Failed to fetch models: ${response.statusText}`);
     const rawJson = await response.json();
     // Validate with Zod

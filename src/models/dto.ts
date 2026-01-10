@@ -76,7 +76,7 @@ export type ChatDto = z.infer<typeof ChatSchemaDto>;
 
 export const SettingsSchemaDto = z.object({
   endpointType: EndpointTypeSchemaDto,
-  endpointUrl: z.string().url(),
+  endpointUrl: z.string().optional(),
   defaultModelId: z.string().optional(),
   titleModelId: z.string().optional(),
   autoTitleEnabled: z.boolean().default(true),

@@ -332,7 +332,7 @@ export function useChat() {
     abortController = new AbortController();
     try {
       const type = currentChat.value.endpointType || settings.value.endpointType;
-      const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
+      const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
       const model = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
 
