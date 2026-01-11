@@ -31,6 +31,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() => z.ob
   content: z.string(),
   timestamp: z.number(),
   thinking: z.string().optional(),
+  modelId: z.string().optional(),
   replies: MessageBranchSchemaDto,
 }));
 
@@ -44,6 +45,7 @@ export type MessageNodeDto = {
   content: string;
   timestamp: number;
   thinking?: string;
+  modelId?: string;
   replies: {
     items: MessageNodeDto[];
   };

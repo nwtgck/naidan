@@ -296,8 +296,9 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
         <User v-if="isUser" class="w-5 h-5 text-gray-600 dark:text-gray-300" />
         <Bird v-else class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
       </div>
-      <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest select-none">
-        {{ isUser ? 'You' : 'Assistant' }}
+      <div class="text-[10px] font-bold text-gray-400 tracking-widest flex items-center gap-2">
+        <span v-if="isUser">You</span>
+        <span v-else>{{ message.modelId || 'Assistant' }}</span>
       </div>
     </div>
     
@@ -341,7 +342,7 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
         
         <div class="mt-2 flex items-center justify-between min-h-[28px]">
           <!-- Version Paging -->
-          <div v-if="versionInfo" class="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest select-none" data-testid="version-paging">
+          <div v-if="versionInfo" class="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest" data-testid="version-paging">
             <button 
               @click="versionInfo.prevId && emit('switch-version', versionInfo.prevId)"
               :disabled="!versionInfo.hasPrev"

@@ -16,6 +16,9 @@ import type { MessageNode } from '../models/types';
 const mockSendMessage = vi.fn();
 const mockAbortChat = vi.fn();
 const mockStreaming = ref(false);
+const mockAvailableModels = ref<string[]>([]);
+const mockFetchingModels = ref(false);
+const mockFetchAvailableModels = vi.fn();
 const mockCurrentChat = ref({
   id: '1', 
   title: 'Test Chat', 
@@ -36,6 +39,9 @@ vi.mock('../composables/useChat', () => ({
     editMessage: vi.fn(),
     switchVersion: vi.fn(),
     abortChat: mockAbortChat,
+    availableModels: mockAvailableModels,
+    fetchingModels: mockFetchingModels,
+    fetchAvailableModels: mockFetchAvailableModels,
   }),
 }));
 
@@ -948,5 +954,57 @@ describe('ChatArea Textarea Sizing', () => {
     await wrapper.vm.$nextTick();
     await wrapper.vm.$nextTick();
     expect(parseFloat(textarea.style.height)).toBeCloseTo(expectedMinHeight);
+  });
+});
+
+describe('ChatArea Model Selection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAvailableModels.value = ['model-1', 'model-2'];
+    mockFetchingModels.value = false;
+    document.body.innerHTML = '<div id="app"></div>';
+  });
+
+  it('should render available models in the dropdown', async () => {
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const select = wrapper.find('[data-testid="model-override-select"]');
+    const options = select.findAll('option');
+    
+    expect(options.length).toBe(3); // Default + 2 models
+    expect(options[1]!.text()).toBe('model-1');
+    expect(options[2]!.text()).toBe('model-2');
+  });
+
+  it('should show loader when fetching models', async () => {
+    mockFetchingModels.value = true;
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    expect(wrapper.find('.animate-spin').exists()).toBe(true);
+  });
+
+  it('should trigger fetchAvailableModels on mount if chat exists', async () => {
+    mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    expect(mockFetchAvailableModels).toHaveBeenCalled();
+  });
+
+  it('should trigger fetchAvailableModels when switching chats', async () => {
+    mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    mockFetchAvailableModels.mockClear();
+
+    // Simulate chat ID change
+    mockCurrentChat.value = { ...mockCurrentChat.value, id: 'chat-new' };
+    await nextTick();
+
+    expect(mockFetchAvailableModels).toHaveBeenCalled();
   });
 });

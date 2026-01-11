@@ -317,6 +317,22 @@ export function useChat() {
   const sendMessage = async (content: string, parentId?: string | null) => {
     if (!currentChat.value || streaming.value) return;
 
+    // Determine the intended model early
+    const type = currentChat.value.endpointType || settings.value.endpointType;
+    const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
+    const baseModel = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
+    
+    // Dynamic Model Resolution:
+    let resolvedModel = baseModel;
+    const available = await fetchAvailableModels();
+    if (available.length > 0 && !available.includes(baseModel)) {
+      if (settings.value.defaultModelId && available.includes(settings.value.defaultModelId)) {
+        resolvedModel = settings.value.defaultModelId;
+      } else {
+        resolvedModel = available[0] || baseModel;
+      }
+    }
+
     const userMsg: MessageNode = {
       id: uuidv7(),
       role: 'user',
@@ -330,6 +346,7 @@ export function useChat() {
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
+      modelId: resolvedModel,
       replies: { items: [] },
     };
     userMsg.replies.items.push(assistantMsg);
@@ -353,25 +370,6 @@ export function useChat() {
     streaming.value = true;
     abortController = new AbortController();
     try {
-      const type = currentChat.value.endpointType || settings.value.endpointType;
-      const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
-      
-      // Determine the intended model
-      const baseModel = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
-      
-      // Dynamic Model Resolution:
-      // Check if the baseModel is actually available at this endpoint.
-      // If not, fallback to the defaultModelId or the first available model.
-      let resolvedModel = baseModel;
-      const available = await fetchAvailableModels();
-      if (available.length > 0 && !available.includes(baseModel)) {
-        if (settings.value.defaultModelId && available.includes(settings.value.defaultModelId)) {
-          resolvedModel = settings.value.defaultModelId;
-        } else {
-          resolvedModel = available[0] || baseModel;
-        }
-      }
-
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
 
       await provider.chat(activeMessages.value.filter(m => m.id !== assistantMsg.id), resolvedModel, url, (chunk) => {
@@ -468,7 +466,12 @@ export function useChat() {
 
     if (node.role === 'assistant') {
       const correctedNode: MessageNode = {
-        id: uuidv7(), role: 'assistant', content: newContent, timestamp: Date.now(), replies: { items: [] },
+        id: uuidv7(), 
+        role: 'assistant', 
+        content: newContent, 
+        timestamp: Date.now(), 
+        modelId: node.modelId,
+        replies: { items: [] },
       };
       const parent = findParentInBranch(currentChat.value.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);

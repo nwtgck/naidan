@@ -68,6 +68,7 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => ({
   content: dto.content,
   timestamp: dto.timestamp,
   thinking: dto.thinking,
+  modelId: dto.modelId,
   replies: {
     items: dto.replies.items.map(messageNodeToDomain),
   },
@@ -79,6 +80,7 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => ({
   content: domain.content,
   timestamp: domain.timestamp,
   thinking: domain.thinking,
+  modelId: domain.modelId,
   replies: {
     items: domain.replies.items.map(messageNodeToDto),
   },
@@ -90,6 +92,7 @@ interface LegacyMessage {
   content: string;
   timestamp: number;
   thinking?: string;
+  modelId?: string;
 }
 
 function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
@@ -101,6 +104,7 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
     content: m.content,
     timestamp: m.timestamp,
     thinking: m.thinking,
+    modelId: m.modelId,
     replies: { items: [] },
   }));
   for (let i = 0; i < nodes.length - 1; i++) {

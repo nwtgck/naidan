@@ -18,6 +18,7 @@ export interface MessageNode {
   content: string;
   timestamp: number;
   thinking?: string;
+  modelId?: string;
   replies: MessageBranch;
 }
 

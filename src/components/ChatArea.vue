@@ -189,6 +189,7 @@ watch(
   () => {
     if (currentChat.value) {
       isMaximized.value = false;
+      fetchModels();
       nextTick(() => {
         scrollToBottom();
         focusInput();
@@ -200,6 +201,9 @@ watch(
 
 onMounted(() => {
   window.addEventListener('resize', adjustTextareaHeight);
+  if (currentChat.value) {
+    fetchModels();
+  }
   nextTick(() => {
     scrollToBottom();
     adjustTextareaHeight(); // Call adjustTextareaHeight on mount
@@ -373,7 +377,7 @@ onUnmounted(() => {
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="streaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
-          class="w-full border dark:border-gray-700 rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-200 resize-none"
+          class="w-full border dark:border-gray-700 rounded-lg pl-4 pr-[150px] sm:pr-[260px] py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-200 resize-none"
           data-testid="chat-input"
         ></textarea>
         <!-- Maximize/Minimize Button inside input area -->
@@ -387,22 +391,38 @@ onUnmounted(() => {
           <Minimize2 v-if="isMaximized" class="w-4 h-4" />
           <Maximize2 v-else class="w-4 h-4" />
         </button>
-        <button 
-          @click="streaming ? chatStore.abortChat() : handleSend()"
-          :disabled="!streaming && !input.trim()"
-          class="absolute right-3 bottom-3 px-3 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors shadow-sm"
-          :title="streaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
-          :data-testid="streaming ? 'abort-button' : 'send-button'"
-        >
-          <template v-if="streaming">
-            <span class="text-xs font-medium opacity-90 hidden sm:inline">Esc</span>
-            <Square class="w-4 h-4 fill-white text-white" />
-          </template>
-          <template v-else>
-            <span class="text-xs font-medium opacity-90 hidden sm:inline">{{ sendShortcutText }}</span>
-            <Send class="w-4 h-4" />
-          </template>
-        </button>
+        <div class="absolute right-3 bottom-3 flex items-center gap-2">
+          <div class="relative flex items-center">
+            <select 
+              v-model="currentChat.overrideModelId"
+              class="text-xs border dark:border-gray-700 rounded-lg pl-2 pr-8 py-2.5 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none max-w-[80px] sm:max-w-[150px] truncate cursor-pointer shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              title="Override Model"
+              data-testid="model-override-select"
+            >
+              <option :value="undefined">Default</option>
+              <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+            </select>
+            <Loader2 v-if="fetchingModels" class="w-3.5 h-3.5 animate-spin absolute right-2.5 pointer-events-none text-gray-400" />
+            <Settings2 v-else class="w-3.5 h-3.5 absolute right-2.5 pointer-events-none text-gray-400" />
+          </div>
+
+          <button 
+            @click="streaming ? chatStore.abortChat() : handleSend()"
+            :disabled="!streaming && !input.trim()"
+            class="px-3 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors shadow-sm whitespace-nowrap"
+            :title="streaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
+            :data-testid="streaming ? 'abort-button' : 'send-button'"
+          >
+            <template v-if="streaming">
+              <span class="text-xs font-medium opacity-90 hidden sm:inline">Esc</span>
+              <Square class="w-4 h-4 fill-white text-white" />
+            </template>
+            <template v-else>
+              <span class="text-xs font-medium opacity-90 hidden sm:inline">{{ sendShortcutText }}</span>
+              <Send class="w-4 h-4" />
+            </template>
+          </button>
+        </div>
       </div>
     </div>
   </div>
