@@ -365,11 +365,11 @@ export function useChat() {
       let resolvedModel = baseModel;
       const available = await fetchAvailableModels();
       if (available.length > 0 && !available.includes(baseModel)) {
-          if (settings.value.defaultModelId && available.includes(settings.value.defaultModelId)) {
-              resolvedModel = settings.value.defaultModelId;
-          } else {
-              resolvedModel = available[0] || baseModel;
-          }
+        if (settings.value.defaultModelId && available.includes(settings.value.defaultModelId)) {
+          resolvedModel = settings.value.defaultModelId;
+        } else {
+          resolvedModel = available[0] || baseModel;
+        }
       }
 
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();

@@ -37,6 +37,7 @@ export default tseslint.config(
       'comma-dangle': ['warn', 'always-multiline'],
       'max-len': 'off',
       'vue/html-indent': ['warn', 2],
+      'indent': ['warn', 2],
     },
   },
   ensureFileProtocolInit,

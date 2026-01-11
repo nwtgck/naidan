@@ -25,10 +25,10 @@ import type {
 
 export const roleToDomain = (dto: RoleDto): Role => {
   switch (dto) {
-    case 'user': return 'user';
-    case 'assistant': return 'assistant';
-    case 'system': return 'system';
-    default: throw new Error(`Unknown role: ${dto}`);
+  case 'user': return 'user';
+  case 'assistant': return 'assistant';
+  case 'system': return 'system';
+  default: throw new Error(`Unknown role: ${dto}`);
   }
 };
 

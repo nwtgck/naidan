@@ -30,7 +30,7 @@ export function useSettings() {
     const currentProviderType = storageService.getCurrentType();
     
     if (newSettings.storageType !== currentProviderType) {
-       await storageService.switchProvider(newSettings.storageType);
+      await storageService.switchProvider(newSettings.storageType);
     }
     
     // Save to the (potentially new) provider

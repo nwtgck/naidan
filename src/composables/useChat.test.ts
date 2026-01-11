@@ -62,30 +62,30 @@ describe('useChat Composable Logic', () => {
     
     // Setup persistence mocks to actually reorder mockRootItems if index is different
     vi.mocked(storageService.saveChat).mockImplementation((chat: Chat, index: number) => {
-        const currentIdx = mockRootItems.findIndex(item => item.type === 'chat' && item.chat.id === chat.id);
-        if (currentIdx !== -1 && currentIdx !== index) {
-            const item = mockRootItems.splice(currentIdx, 1)[0]!;
-            mockRootItems.splice(index, 0, item);
-        } else if (currentIdx === -1) {
-            mockRootItems.splice(index, 0, { id: `chat:${chat.id}`, type: 'chat', chat: { id: chat.id, title: chat.title, updatedAt: chat.updatedAt, groupId: chat.groupId } });
-        }
-        return Promise.resolve();
+      const currentIdx = mockRootItems.findIndex(item => item.type === 'chat' && item.chat.id === chat.id);
+      if (currentIdx !== -1 && currentIdx !== index) {
+        const item = mockRootItems.splice(currentIdx, 1)[0]!;
+        mockRootItems.splice(index, 0, item);
+      } else if (currentIdx === -1) {
+        mockRootItems.splice(index, 0, { id: `chat:${chat.id}`, type: 'chat', chat: { id: chat.id, title: chat.title, updatedAt: chat.updatedAt, groupId: chat.groupId } });
+      }
+      return Promise.resolve();
     });
 
     vi.mocked(storageService.saveGroup).mockImplementation((group: ChatGroup, index: number) => {
-        const currentIdx = mockRootItems.findIndex(item => item.type === 'group' && item.group.id === group.id);
-        if (currentIdx !== -1 && currentIdx !== index) {
-            const item = mockRootItems.splice(currentIdx, 1)[0]!;
-            mockRootItems.splice(index, 0, item);
-        } else if (currentIdx === -1) {
-            mockRootItems.splice(index, 0, { id: `group:${group.id}`, type: 'group', group });
-        }
-        return Promise.resolve();
+      const currentIdx = mockRootItems.findIndex(item => item.type === 'group' && item.group.id === group.id);
+      if (currentIdx !== -1 && currentIdx !== index) {
+        const item = mockRootItems.splice(currentIdx, 1)[0]!;
+        mockRootItems.splice(index, 0, item);
+      } else if (currentIdx === -1) {
+        mockRootItems.splice(index, 0, { id: `group:${group.id}`, type: 'group', group });
+      }
+      return Promise.resolve();
     });
 
     vi.mocked(storageService.loadChat).mockImplementation((id) => {
-        if (currentChat.value?.id === id) return Promise.resolve(currentChat.value);
-        return Promise.resolve(null);
+      if (currentChat.value?.id === id) return Promise.resolve(currentChat.value);
+      return Promise.resolve(null);
     });
   });
 
@@ -390,9 +390,9 @@ describe('useChat Composable Logic', () => {
     
     // Override local mock for this specific test
     vi.mocked(storageService.saveChat).mockImplementation(() => {
-        mockRootItems.length = 0;
-        mockRootItems.push(...JSON.parse(JSON.stringify(rootItems.value)));
-        return Promise.resolve();
+      mockRootItems.length = 0;
+      mockRootItems.push(...JSON.parse(JSON.stringify(rootItems.value)));
+      return Promise.resolve();
     });
 
     const { rootItems: items } = useChat();
@@ -415,9 +415,9 @@ describe('useChat Composable Logic', () => {
     
     // Override local mock
     vi.mocked(storageService.saveGroup).mockImplementation(() => {
-        mockRootItems.length = 0;
-        mockRootItems.push(...JSON.parse(JSON.stringify(rootItems.value)));
-        return Promise.resolve();
+      mockRootItems.length = 0;
+      mockRootItems.push(...JSON.parse(JSON.stringify(rootItems.value)));
+      return Promise.resolve();
     });
 
     const { createGroup, rootItems: items } = useChat();
@@ -429,9 +429,9 @@ describe('useChat Composable Logic', () => {
     expect(items.value[0]?.type).toBe('group');
     const firstItem = items.value[0];
     if (firstItem?.type === 'group') {
-        expect(firstItem.group.name).toBe('New Group');
+      expect(firstItem.group.name).toBe('New Group');
     } else {
-        throw new Error('First item should be a group');
+      throw new Error('First item should be a group');
     }
     expect(items.value[1]?.id).toBe('chat:c1');
   });
@@ -512,13 +512,13 @@ describe('useChat Composable Logic', () => {
       vi.mocked(storageService.saveChat).mockImplementation(async (chat: Chat, index: number) => {
         const item: SidebarItem = { id: `chat:${chat.id}`, type: 'chat', chat: { id: chat.id, title: chat.title, updatedAt: chat.updatedAt, groupId: chat.groupId } };
         const targetList = chat.groupId 
-            ? mockRootItems.find(i => i.type === 'group' && i.group.id === chat.groupId)
-            : null;
+          ? mockRootItems.find(i => i.type === 'group' && i.group.id === chat.groupId)
+          : null;
         
         if (targetList && targetList.type === 'group') {
-            targetList.group.items.splice(index, 0, item);
+          targetList.group.items.splice(index, 0, item);
         } else {
-            mockRootItems.splice(index, 0, item);
+          mockRootItems.splice(index, 0, item);
         }
         return Promise.resolve();
       });

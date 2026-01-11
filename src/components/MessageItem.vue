@@ -141,10 +141,10 @@ const marked = new Marked(
                   <pre class="mermaid-raw hljs language-mermaid" style="display: ${mode === 'preview' ? 'none' : 'block'}"><code>${hljs.highlight(code, { language: 'plaintext' }).value}</code></pre>
                 </div>`;
       }
-                                    const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-                                    const highlighted = hljs.highlight(code, { language }).value;
+      const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+      const highlighted = hljs.highlight(code, { language }).value;
                                     
-                                    return `<div class="code-block-wrapper my-4 rounded-lg overflow-hidden border border-gray-700/50 bg-[#0d1117] group/code">` +
+      return `<div class="code-block-wrapper my-4 rounded-lg overflow-hidden border border-gray-700/50 bg-[#0d1117] group/code">` +
                                                               `<div class="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700/50 text-xs text-gray-400">` +
                                                                 `<span class="font-mono">${language}</span>` +
                                                                 `<button class="code-copy-btn flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer" title="Copy code">` +
@@ -155,9 +155,9 @@ const marked = new Marked(
                                                               `<pre class="!m-0 !p-4 !bg-transparent !rounded-b-lg overflow-x-auto"><code class="!bg-transparent !p-0 !border-none text-sm font-mono leading-relaxed text-gray-200 hljs language-${language}">${highlighted}</code></pre>` +
                                                             `</div>`;
                                               
-                                  },
+    },
                               
-                                      }),
+  }),
 );
 
 marked.use(markedKatex({

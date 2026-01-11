@@ -143,7 +143,7 @@ describe('Sidebar Logic Stability', () => {
     // Verify group has handle
     const groupItem = wrapper.find('[data-testid="group-item"]');
     if (!groupItem.exists()) {
-        console.log('DOM:', wrapper.html());
+      console.log('DOM:', wrapper.html());
     }
     expect(groupItem.classes()).toContain('handle');
 

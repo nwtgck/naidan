@@ -105,11 +105,11 @@ watch(
   () => activeMessages.value[activeMessages.value.length - 1]?.content,
   (newContent) => {
     if (streaming.value && newContent && newContent.length < 400 && container.value) {
-        const { scrollTop, scrollHeight, clientHeight } = container.value;
-        // Only auto-scroll if user is already at the bottom (within 50px)
-        if (scrollHeight - scrollTop - clientHeight < 50) {
-            nextTick(scrollToBottom);
-        }
+      const { scrollTop, scrollHeight, clientHeight } = container.value;
+      // Only auto-scroll if user is already at the bottom (within 50px)
+      if (scrollHeight - scrollTop - clientHeight < 50) {
+        nextTick(scrollToBottom);
+      }
     }
   },
   { deep: true },
@@ -126,10 +126,10 @@ watch(
 );
 
 onMounted(() => {
-    nextTick(scrollToBottom);
-    if (currentChat.value) {
-      focusInput();
-    }
+  nextTick(scrollToBottom);
+  if (currentChat.value) {
+    focusInput();
+  }
 });
 </script>
 

@@ -70,8 +70,8 @@ describe('useChat Reactivity', () => {
 
     // Ensure onChunkCallback is defined before calling it
     if (typeof onChunkCallback !== 'function') {
-        // Wait a bit more if needed
-        await new Promise(r => setTimeout(r, 10));
+      // Wait a bit more if needed
+      await new Promise(r => setTimeout(r, 10));
     }
 
     // Simulate chunk

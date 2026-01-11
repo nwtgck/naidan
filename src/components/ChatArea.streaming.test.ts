@@ -72,7 +72,7 @@ describe('ChatArea Streaming DOM Test', () => {
     await nextTick();
 
     if (!triggerChunk) {
-       throw new Error('LLM chat was not triggered');
+      throw new Error('LLM chat was not triggered');
     }
     
     triggerChunk('Live');

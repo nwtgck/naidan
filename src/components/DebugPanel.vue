@@ -63,19 +63,19 @@ function stringifyDetails(details: unknown): string {
 
 function getEventStyle(type: GlobalEvent['type']) {
   switch (type) {
-    case 'error': return 'border-red-500 bg-red-500/5 text-red-400';
-    case 'warn':  return 'border-yellow-500 bg-yellow-500/5 text-yellow-400';
-    case 'info':  return 'border-blue-500 bg-blue-500/5 text-blue-400';
-    default:      return 'border-gray-500 bg-gray-500/5 text-gray-400';
+  case 'error': return 'border-red-500 bg-red-500/5 text-red-400';
+  case 'warn':  return 'border-yellow-500 bg-yellow-500/5 text-yellow-400';
+  case 'info':  return 'border-blue-500 bg-blue-500/5 text-blue-400';
+  default:      return 'border-gray-500 bg-gray-500/5 text-gray-400';
   }
 }
 
 function getEventIcon(type: GlobalEvent['type']) {
   switch (type) {
-    case 'error': return AlertCircle;
-    case 'warn':  return AlertTriangle;
-    case 'info':  return Info;
-    default:      return Bug;
+  case 'error': return AlertCircle;
+  case 'warn':  return AlertTriangle;
+  case 'info':  return Info;
+  default:      return Bug;
   }
 }
 

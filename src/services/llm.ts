@@ -175,12 +175,12 @@ export class OllamaProvider implements LLMProvider {
           if (content) onChunk(content);
           if (validated.done) return;
         } catch (e) {
-           addErrorEvent({
-             source: 'OllamaProvider',
-             message: 'Failed to parse or validate Ollama JSON',
-             details: { line, error: e instanceof Error ? e : String(e) },
-           });
-           console.warn('Failed to parse or validate Ollama JSON', line, e);
+          addErrorEvent({
+            source: 'OllamaProvider',
+            message: 'Failed to parse or validate Ollama JSON',
+            details: { line, error: e instanceof Error ? e : String(e) },
+          });
+          console.warn('Failed to parse or validate Ollama JSON', line, e);
         }
       }
     }

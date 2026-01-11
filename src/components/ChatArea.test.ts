@@ -305,8 +305,8 @@ describe('ChatArea Focus', () => {
 });
 
 describe('ChatArea Export Functionality', () => {
-    // Mock browser APIs for file download
-    const mockCreateObjectURL: typeof URL.createObjectURL = vi.fn((blob: Blob | MediaSource) => {
+  // Mock browser APIs for file download
+  const mockCreateObjectURL: typeof URL.createObjectURL = vi.fn((blob: Blob | MediaSource) => {
       type MockBlobWithText = Blob & { text?: Mock };
       let _storedBlob: MockBlobWithText | null = null;
       if (blob instanceof Blob) {
@@ -322,189 +322,189 @@ describe('ChatArea Export Functionality', () => {
         }) as Mock;
       }
       return 'blob:mockurl';
-    });
-    const mockRevokeObjectURL = vi.fn();
-    const mockAnchorClick = vi.fn();
-    const mockAppendChild = vi.fn();
-    const mockRemoveChild = vi.fn();
-            let originalCreateElement: (tagName: string, options?: ElementCreationOptions) => HTMLElement;
+  });
+  const mockRevokeObjectURL = vi.fn();
+  const mockAnchorClick = vi.fn();
+  const mockAppendChild = vi.fn();
+  const mockRemoveChild = vi.fn();
+  let originalCreateElement: (tagName: string, options?: ElementCreationOptions) => HTMLElement;
         
-            beforeAll(() => {
-              // Capture the original createElement once, before any mocks are applied
-              originalCreateElement = global.document.createElement;
-            });
+  beforeAll(() => {
+    // Capture the original createElement once, before any mocks are applied
+    originalCreateElement = global.document.createElement;
+  });
         
-            beforeEach(() => {
-                  vi.clearAllMocks();
-                  mockStreaming.value = false;
-                  mockActiveMessages.value = [];
-                  mockCurrentChat.value = { 
-                    id: '1', 
-                    title: 'Test Chat', 
-                    root: { items: [] } as { items: MessageNode[] },
-                    currentLeafId: undefined,
-                    debugEnabled: false, 
-                  };
-                  document.body.innerHTML = '<div id="app"></div>';
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStreaming.value = false;
+    mockActiveMessages.value = [];
+    mockCurrentChat.value = { 
+      id: '1', 
+      title: 'Test Chat', 
+      root: { items: [] } as { items: MessageNode[] },
+      currentLeafId: undefined,
+      debugEnabled: false, 
+    };
+    document.body.innerHTML = '<div id="app"></div>';
         
-              // Restore all mocks to their original state to ensure a clean slate before applying new mocks
-              vi.restoreAllMocks();
+    // Restore all mocks to their original state to ensure a clean slate before applying new mocks
+    vi.restoreAllMocks();
         
-              // Setup browser API spies/mocks
-              vi.spyOn(global.URL, 'createObjectURL').mockImplementation(mockCreateObjectURL);
-              vi.spyOn(global.URL, 'revokeObjectURL').mockImplementation(mockRevokeObjectURL);
+    // Setup browser API spies/mocks
+    vi.spyOn(global.URL, 'createObjectURL').mockImplementation(mockCreateObjectURL);
+    vi.spyOn(global.URL, 'revokeObjectURL').mockImplementation(mockRevokeObjectURL);
               
-              // Directly assign the mock to global.document.createElement
-              global.document.createElement = vi.fn((tagName: string, options?: ElementCreationOptions) => {
-                if (tagName === 'a') {
-                  const mockAnchor = {
-                    href: '',
-                    download: '',
-                    click: mockAnchorClick,
-                    ownerDocument: global.document,
-                    nodeName: 'A',
-                    // Minimal properties to satisfy appendChild on a real JSDOM body
-                    appendChild: vi.fn(),
-                    removeChild: vi.fn(),
-                    setAttribute: vi.fn(),
-                    getAttribute: vi.fn(),
-                    dataset: {},
-                    style: {},
-                    classList: { add: vi.fn(), remove: vi.fn() },
-                  } as unknown as HTMLAnchorElement; 
-                  return mockAnchor;
-                }
-                // For other elements, call the stored original createElement
-                return originalCreateElement.call(global.document, tagName, options);
-              });
+    // Directly assign the mock to global.document.createElement
+    global.document.createElement = vi.fn((tagName: string, options?: ElementCreationOptions) => {
+      if (tagName === 'a') {
+        const mockAnchor = {
+          href: '',
+          download: '',
+          click: mockAnchorClick,
+          ownerDocument: global.document,
+          nodeName: 'A',
+          // Minimal properties to satisfy appendChild on a real JSDOM body
+          appendChild: vi.fn(),
+          removeChild: vi.fn(),
+          setAttribute: vi.fn(),
+          getAttribute: vi.fn(),
+          dataset: {},
+          style: {},
+          classList: { add: vi.fn(), remove: vi.fn() },
+        } as unknown as HTMLAnchorElement; 
+        return mockAnchor;
+      }
+      // For other elements, call the stored original createElement
+      return originalCreateElement.call(global.document, tagName, options);
+    });
         
-              vi.spyOn(global.document.body, 'appendChild').mockImplementation(mockAppendChild);
-              vi.spyOn(global.document.body, 'removeChild').mockImplementation(mockRemoveChild);
-            });
+    vi.spyOn(global.document.body, 'appendChild').mockImplementation(mockAppendChild);
+    vi.spyOn(global.document.body, 'removeChild').mockImplementation(mockRemoveChild);
+  });
 
-    it('should export chat as Markdown (.txt)', async () => {
-      mockCurrentChat.value = {
-        id: 'test-chat-id',
-        title: 'Predefined Chat Title',
-        root: { items: [] },
-        currentLeafId: 'msg-2',
-        debugEnabled: false,
-      };
-      mockActiveMessages.value = [
-        { id: 'msg-1', role: 'user', content: 'Hello AI', timestamp: Date.now(), replies: { items: [] } },
-        { id: 'msg-2', role: 'assistant', content: 'Hello User', timestamp: Date.now(), replies: { items: [] } },
-      ];
+  it('should export chat as Markdown (.txt)', async () => {
+    mockCurrentChat.value = {
+      id: 'test-chat-id',
+      title: 'Predefined Chat Title',
+      root: { items: [] },
+      currentLeafId: 'msg-2',
+      debugEnabled: false,
+    };
+    mockActiveMessages.value = [
+      { id: 'msg-1', role: 'user', content: 'Hello AI', timestamp: Date.now(), replies: { items: [] } },
+      { id: 'msg-2', role: 'assistant', content: 'Hello User', timestamp: Date.now(), replies: { items: [] } },
+    ];
 
-      const wrapper = shallowMount(ChatArea, {
-        attachTo: document.getElementById('app')!,
-        global: { plugins: [router] },
-      });
+    const wrapper = shallowMount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
       
-      await nextTick(); // Ensure component is rendered and mocks are applied
+    await nextTick(); // Ensure component is rendered and mocks are applied
 
-      const exportButton = wrapper.find('button[title="Export Chat"]');
-      expect(exportButton.exists()).toBe(true);
-      await exportButton.trigger('click');
+    const exportButton = wrapper.find('button[title="Export Chat"]');
+    expect(exportButton.exists()).toBe(true);
+    await exportButton.trigger('click');
 
-      expect(mockCreateObjectURL).toHaveBeenCalledOnce();
-      expect(mockAnchorClick).toHaveBeenCalledOnce();
-      expect(mockAppendChild).toHaveBeenCalledWith(expect.any(Object));
-      expect(mockRemoveChild).toHaveBeenCalledWith(expect.any(Object));
+    expect(mockCreateObjectURL).toHaveBeenCalledOnce();
+    expect(mockAnchorClick).toHaveBeenCalledOnce();
+    expect(mockAppendChild).toHaveBeenCalledWith(expect.any(Object));
+    expect(mockRemoveChild).toHaveBeenCalledWith(expect.any(Object));
 
-      const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
-      expect(blob).toBeInstanceOf(Blob);
-      expect(blob.type).toBe('text/plain;charset=utf-8');
+    const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe('text/plain;charset=utf-8');
 
-      const text = await blob.text();
-      expect(text).toContain('# Predefined Chat Title');
-      expect(text).toContain('## User:\nHello AI');
-      expect(text).toContain('## AI:\nHello User');
+    const text = await blob.text();
+    expect(text).toContain('# Predefined Chat Title');
+    expect(text).toContain('## User:\nHello AI');
+    expect(text).toContain('## AI:\nHello User');
 
-      const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-      expect(link.download).toBe('Predefined Chat Title.txt');
+    const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
+    expect(link.download).toBe('Predefined Chat Title.txt');
+  });
+
+  it('should handle empty chat for markdown export (no current chat)', async () => {
+    // @ts-expect-error - explicitly setting to null for test
+    mockCurrentChat.value = null; 
+    mockActiveMessages.value = [];
+
+    const wrapper = shallowMount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
     });
 
-    it('should handle empty chat for markdown export (no current chat)', async () => {
-      // @ts-expect-error - explicitly setting to null for test
-      mockCurrentChat.value = null; 
-      mockActiveMessages.value = [];
+    await nextTick();
 
-      const wrapper = shallowMount(ChatArea, {
-        attachTo: document.getElementById('app')!,
-        global: { plugins: [router] },
-      });
+    // Header (and export button) should not exist if currentChat is null
+    const exportButton = wrapper.find('button[title="Export Chat"]');
+    expect(exportButton.exists()).toBe(false);
 
-      await nextTick();
+    expect(mockCreateObjectURL).not.toHaveBeenCalled();
+    expect(mockAnchorClick).not.toHaveBeenCalled();
+  });
 
-      // Header (and export button) should not exist if currentChat is null
-      const exportButton = wrapper.find('button[title="Export Chat"]');
-      expect(exportButton.exists()).toBe(false);
+  it('should export with default title if current chat title is empty', async () => {
+    mockCurrentChat.value = {
+      id: 'test-chat-id-2',
+      title: '', // Empty title
+      root: { items: [] },
+      currentLeafId: 'msg-3',
+      debugEnabled: false,
+    };
+    mockActiveMessages.value = [
+      { id: 'msg-3', role: 'user', content: 'Another message', timestamp: Date.now(), replies: { items: [] } },
+    ];
 
-      expect(mockCreateObjectURL).not.toHaveBeenCalled();
-      expect(mockAnchorClick).not.toHaveBeenCalled();
+    const wrapper = shallowMount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
     });
 
-    it('should export with default title if current chat title is empty', async () => {
-      mockCurrentChat.value = {
-        id: 'test-chat-id-2',
-        title: '', // Empty title
-        root: { items: [] },
-        currentLeafId: 'msg-3',
-        debugEnabled: false,
-      };
-      mockActiveMessages.value = [
-        { id: 'msg-3', role: 'user', content: 'Another message', timestamp: Date.now(), replies: { items: [] } },
-      ];
+    await nextTick();
 
-      const wrapper = shallowMount(ChatArea, {
-        attachTo: document.getElementById('app')!,
-        global: { plugins: [router] },
-      });
+    const exportButton = wrapper.find('button[title="Export Chat"]');
+    await exportButton.trigger('click');
 
-      await nextTick();
+    const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
+    const text = await blob.text();
+    expect(text).toContain('# Untitled Chat');
+    expect(text).toContain('## User:\nAnother message');
 
-      const exportButton = wrapper.find('button[title="Export Chat"]');
-      await exportButton.trigger('click');
+    const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
+    expect(link.download).toBe('untitled_chat.txt');
+  });
 
-      const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
-      const text = await blob.text();
-      expect(text).toContain('# Untitled Chat');
-      expect(text).toContain('## User:\nAnother message');
+  it('should handle empty active messages for export', async () => {
+    mockCurrentChat.value = {
+      id: 'test-chat-id-3',
+      title: 'Chat with no messages',
+      root: { items: [] },
+      currentLeafId: undefined,
+      debugEnabled: false,
+    };
+    mockActiveMessages.value = []; // Empty messages
 
-      const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-      expect(link.download).toBe('untitled_chat.txt');
+    const wrapper = shallowMount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
     });
-
-    it('should handle empty active messages for export', async () => {
-      mockCurrentChat.value = {
-        id: 'test-chat-id-3',
-        title: 'Chat with no messages',
-        root: { items: [] },
-        currentLeafId: undefined,
-        debugEnabled: false,
-      };
-      mockActiveMessages.value = []; // Empty messages
-
-      const wrapper = shallowMount(ChatArea, {
-        attachTo: document.getElementById('app')!,
-        global: { plugins: [router] },
-      });
       
-      await nextTick();
+    await nextTick();
 
-      const exportButton = wrapper.find('button[title="Export Chat"]');
-      await exportButton.trigger('click');
+    const exportButton = wrapper.find('button[title="Export Chat"]');
+    await exportButton.trigger('click');
 
-      expect(mockCreateObjectURL).toHaveBeenCalledOnce();
-      expect(mockAnchorClick).toHaveBeenCalledOnce();
+    expect(mockCreateObjectURL).toHaveBeenCalledOnce();
+    expect(mockAnchorClick).toHaveBeenCalledOnce();
 
-      const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
-      const text = await blob.text();
-      expect(text).toContain('# Chat with no messages');
-      expect(text).not.toContain('## User:');
-      expect(text).not.toContain('## AI:');
+    const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
+    const text = await blob.text();
+    expect(text).toContain('# Chat with no messages');
+    expect(text).not.toContain('## User:');
+    expect(text).not.toContain('## AI:');
 
-      const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-      expect(link.download).toBe('Chat with no messages.txt');
-    });
+    const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
+    expect(link.download).toBe('Chat with no messages.txt');
+  });
 });
