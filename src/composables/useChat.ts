@@ -180,7 +180,7 @@ export function useChat() {
       title: null,
       groupId,
       root: { items: [] },
-      modelId: settings.value.defaultModelId || 'gpt-3.5-turbo',
+      modelId: '', // Default to empty to follow global settings
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
@@ -320,7 +320,7 @@ export function useChat() {
     // Determine the intended model early
     const type = currentChat.value.endpointType || settings.value.endpointType;
     const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
-    const baseModel = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
+    const baseModel = currentChat.value.overrideModelId || settings.value.defaultModelId || currentChat.value.modelId || 'gpt-3.5-turbo';
     
     // Dynamic Model Resolution:
     let resolvedModel = baseModel;
