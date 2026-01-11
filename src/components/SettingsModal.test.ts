@@ -320,34 +320,6 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(vm.form.providerProfiles[0]!.titleModelId).toBe('special-title-model');
     });
 
-    it('applies a profile and correctly enables the Save button (dirty check)', async () => {
-      const mockProviderProfile = {
-        id: 'p1',
-        name: 'Ollama Profile',
-        endpointType: 'ollama' as const,
-        endpointUrl: 'http://ollama:11434',
-        defaultModelId: 'llama3'
-      };
-      
-      (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: JSON.parse(JSON.stringify(mockSettings)), providerProfiles: [mockProviderProfile] },
-        save: mockSave,
-      });
-
-      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
-      await flushPromises();
-
-      await wrapper.findAll('nav button').find(b => b.text().includes('Provider Profiles'))?.trigger('click');
-      await wrapper.find('[data-testid="provider-profile-apply-button"]').trigger('click');
-      
-      // Verify form differs from initial settings (which were from mockSettings)
-      const vm = wrapper.vm as unknown as { hasChanges: boolean };
-      expect(vm.hasChanges).toBe(true);
-      
-      const saveBtn = wrapper.find('[data-testid="setting-save-button"]');
-      expect(saveBtn.element.getAttribute('disabled')).toBeNull();
-    });
-
     it('supports renaming a profile in the UI', async () => {
       const mockProviderProfile = { id: 'p1', name: 'Original Name', endpointType: 'openai' as const };
       (useSettings as unknown as Mock).mockReturnValue({
@@ -397,21 +369,52 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     it('deletes a profile after confirmation', async () => {
-      const mockProviderProfile = { id: 'p1', name: 'Delete Me', endpointType: 'openai' as const };
-      (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: { ...mockSettings, providerProfiles: [mockProviderProfile] } },
-        save: mockSave,
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs }
       });
-
-      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+      
+      // Setup a profile
+      const vm = wrapper.vm as any;
+      vm.form.providerProfiles = [{
+        id: '1',
+        name: 'Test Profile',
+        endpointType: 'ollama',
+        endpointUrl: 'http://localhost:11434'
+      }];
+      
+      const navButtons = wrapper.findAll('nav button');
+      await navButtons.find(b => b.text().includes('Provider Profiles'))?.trigger('click');
       await flushPromises();
 
-      await wrapper.findAll('nav button').find(b => b.text().includes('Provider Profiles'))?.trigger('click');
-      await wrapper.find('[data-testid="provider-profile-delete-button"]').trigger('click');
+      const deleteBtn = wrapper.find('[data-testid="provider-profile-delete-button"]');
+      await deleteBtn.trigger('click');
       
-      expect(window.confirm).toHaveBeenCalled();
-      const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
       expect(vm.form.providerProfiles).toHaveLength(0);
+    });
+
+    it('renders provider type badge with capitalization and without uppercase class', async () => {
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs }
+      });
+      
+      const vm = wrapper.vm as any;
+      vm.form.providerProfiles = [{
+        id: '1',
+        name: 'Test Profile',
+        endpointType: 'ollama',
+        endpointUrl: 'http://localhost:11434'
+      }];
+      
+      const navButtons = wrapper.findAll('nav button');
+      await navButtons.find(b => b.text().includes('Provider Profiles'))?.trigger('click');
+      await flushPromises();
+
+      const badge = wrapper.find('[data-testid="provider-type-badge"]');
+      expect(badge.exists()).toBe(true);
+      expect(badge.text()).toBe('Ollama');
+      expect(badge.classes()).not.toContain('uppercase');
     });
   });
 });

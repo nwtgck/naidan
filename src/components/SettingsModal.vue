@@ -1,3 +1,9 @@
+<script lang="ts">
+export function capitalize(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+</script>
+
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { useSettings } from '../composables/useSettings';
@@ -109,7 +115,7 @@ async function handleSave() {
 // Profile Handlers
 function handleCreateProviderProfile() {
   const name = prompt('Enter a name for this profile:', 
-    `${form.value.endpointType.toUpperCase()} - ${form.value.defaultModelId || 'Default'}`);
+    `${capitalize(form.value.endpointType)} - ${form.value.defaultModelId || 'Default'}`);
   
   if (!name) return;
 
@@ -259,7 +265,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                     data-testid="setting-quick-provider-profile-select"
                   >
                     <option value="" disabled>Load from saved profiles...</option>
-                    <option v-for="p in form.providerProfiles" :key="p.id" :value="p.id">{{ p.name }} ({{ p.endpointType }})</option>
+                    <option v-for="p in form.providerProfiles" :key="p.id" :value="p.id">{{ p.name }} ({{ capitalize(p.endpointType) }})</option>
                   </select>
                 </div>
               </div>
@@ -455,7 +461,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                       <div v-else class="flex items-center gap-3">
                         <div class="w-2 h-2 rounded-full" :class="providerProfile.endpointType === 'ollama' ? 'bg-orange-500' : 'bg-green-500'"></div>
                         <h3 class="text-sm font-bold text-gray-900 dark:text-white truncate">{{ providerProfile.name }}</h3>
-                        <span class="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 rounded-full uppercase font-bold">{{ providerProfile.endpointType }}</span>
+                        <span class="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 rounded-full font-bold" data-testid="provider-type-badge">{{ capitalize(providerProfile.endpointType) }}</span>
                       </div>
                       <div class="text-[11px] text-gray-500 mt-1 truncate">{{ providerProfile.endpointUrl }}</div>
                       <div class="text-[11px] text-gray-400 mt-0.5 italic flex items-center gap-2">
@@ -472,14 +478,6 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                         data-testid="provider-profile-rename-button"
                       >
                         <Pencil class="w-3.5 h-3.5" />
-                      </button>
-                      <button 
-                        @click="handleApplyProviderProfile(providerProfile)"
-                        class="p-2 text-gray-400 hover:text-indigo-500 transition-colors"
-                        title="Apply Profile"
-                        data-testid="provider-profile-apply-button"
-                      >
-                        <Target class="w-3.5 h-3.5" />
                       </button>
                       <button 
                         @click="handleDeleteProviderProfile(providerProfile.id)"
