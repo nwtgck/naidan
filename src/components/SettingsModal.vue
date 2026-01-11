@@ -18,6 +18,7 @@ import {
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
   Pencil, Trash, Check, Activity,
 } from 'lucide-vue-next';
+import { useDialog } from '../composables/useDialog'; // Import useDialog
 
 const props = defineProps<{
   isOpen: boolean;
@@ -30,6 +31,7 @@ const emit = defineEmits<{
 const { settings, save } = useSettings();
 const { createSampleChat } = useSampleChat();
 const { addToast } = useToast();
+const { showDialog } = useDialog(); // Initialize useDialog
 
 const form = ref({ ...settings.value });
 const initialFormState = ref('');
@@ -69,15 +71,26 @@ function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
 }
 
 async function handleResetData() {
-  if (confirm('Are you sure you want to reset all app data? This will delete all chats, groups, and settings for the current storage location.')) {
+  const confirmed = await showDialog({
+    title: 'Confirm Data Reset',
+    message: 'Are you sure you want to reset all app data? This will delete all chats, groups, and settings for the current storage location.',
+    confirmButtonText: 'Reset',
+  });
+  if (confirmed) {
     await storageService.clearAll();
     window.location.reload();
   }
 }
 
-function handleCancel() {
+async function handleCancel() { // Make function async
   if (hasChanges.value) {
-    if (confirm('You have unsaved changes. Are you sure you want to discard them?')) {
+    const confirmed = await showDialog({
+      title: 'Discard Unsaved Changes?',
+      message: 'You have unsaved changes. Are you sure you want to discard them?',
+      confirmButtonText: 'Discard',
+      cancelButtonText: 'Keep Editing',
+    });
+    if (confirmed) {
       emit('close');
     }
   } else {
@@ -647,8 +660,11 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
         </div>
       </main>
     </div>
+
+
   </div>
 </template>
+
 
 <style scoped>
 .no-scrollbar::-webkit-scrollbar {

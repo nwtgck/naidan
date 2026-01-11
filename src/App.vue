@@ -4,16 +4,25 @@ import { useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useChat } from './composables/useChat';
 import { useSettings } from './composables/useSettings';
+import { useDialog } from './composables/useDialog'; // Import useDialog
 import Sidebar from './components/Sidebar.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import OnboardingModal from './components/OnboardingModal.vue';
 import DebugPanel from './components/DebugPanel.vue';
 import ToastContainer from './components/ToastContainer.vue';
+import CustomDialog from './components/CustomDialog.vue'; // Import CustomDialog
 
 const isSettingsOpen = ref(false);
 const chatStore = useChat();
 const settingsStore = useSettings();
 const router = useRouter();
+
+// Initialize useDialog
+const { 
+  isDialogOpen, dialogTitle, dialogMessage, 
+  dialogConfirmButtonText, dialogCancelButtonText, 
+  handleConfirm, handleCancel,
+} = useDialog();
 
 onMounted(async () => {
   await settingsStore.init();
@@ -53,6 +62,17 @@ onKeyStroke(['o', 'O'], async (e) => {
     <OnboardingModal v-if="settingsStore.initialized && !settingsStore.settings.value.endpointUrl" />
 
     <ToastContainer />
+
+    <!-- Global Custom Dialog -->
+    <CustomDialog
+      :show="isDialogOpen"
+      :title="dialogTitle"
+      :message="dialogMessage"
+      :confirmButtonText="dialogConfirmButtonText"
+      :cancelButtonText="dialogCancelButtonText"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+    />
   </div>
 </template>
 

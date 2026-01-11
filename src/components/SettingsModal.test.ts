@@ -22,6 +22,14 @@ vi.mock('../composables/useSampleChat', () => ({
   useSampleChat: vi.fn(),
 }));
 
+// Mock useDialog
+const mockShowDialog = vi.fn();
+vi.mock('../composables/useDialog', () => ({
+  useDialog: vi.fn(() => ({
+    showDialog: mockShowDialog,
+  })),
+}));
+
 const mockAddToast = vi.fn();
 vi.mock('../composables/useToast', () => ({
   useToast: vi.fn(() => ({
@@ -93,8 +101,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       createSampleChat: mockCreateSampleChat,
     });
 
-    vi.stubGlobal('confirm', vi.fn(() => true));
+
     vi.stubGlobal('location', { reload: vi.fn() });
+    mockShowDialog.mockClear();
   });
 
   describe('UI / Design Regression', () => {
@@ -314,16 +323,45 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
 
     const urlInput = wrapper.find('[data-testid="setting-url-input"]');
-    await urlInput.setValue('http://new-url');
+    await urlInput.setValue('http://new-url'); // Make changes to trigger unsaved changes dialog
 
-    // Test Cancel button
+    // Test Cancel button: Expect showDialog to be called, then simulate confirmation
+    mockShowDialog.mockResolvedValueOnce(true); // Simulate user clicking 'Discard'
+
     await wrapper.find('[data-testid="setting-cancel-button"]').trigger('click');
-    expect(vi.mocked(confirm)).toHaveBeenCalled();
-    vi.mocked(confirm).mockClear();
+    await flushPromises(); // Wait for showDialog to be called and promise to resolve
 
-    // Test X button
+    expect(mockShowDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Discard Unsaved Changes?',
+        confirmButtonText: 'Discard',
+        cancelButtonText: 'Keep Editing', // Add trailing comma here
+      }),
+    );
+    expect(wrapper.emitted().close).toBeTruthy(); // Should emit close after discard
+
+    mockShowDialog.mockClear();
+    wrapper.emitted().close = []; // Clear emitted events for next part
+
+    // Re-open modal and make changes
+    await wrapper.setProps({ isOpen: true });
+    await urlInput.setValue('http://another-new-url');
+    await flushPromises();
+
+    // Test X button: Expect showDialog to be called, then simulate confirmation
+    mockShowDialog.mockResolvedValueOnce(true); // Simulate user clicking 'Discard'
+
     await wrapper.find('[data-testid="setting-close-x"]').trigger('click');
-    expect(vi.mocked(confirm)).toHaveBeenCalled();
+    await flushPromises(); // Wait for showDialog to be called and promise to resolve
+
+    expect(mockShowDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Discard Unsaved Changes?',
+        confirmButtonText: 'Discard',
+        cancelButtonText: 'Keep Editing', // Add trailing comma here
+      }),
+    );
+    expect(wrapper.emitted().close).toBeTruthy();
   });
 
   it('performs save without closing the modal and shows feedback', async () => {
@@ -352,11 +390,40 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
 
     await wrapper.findAll('nav button').find(b => b.text().includes('Developer'))?.trigger('click');
-    await wrapper.find('[data-testid="setting-reset-data-button"]').trigger('click');
     
-    expect(window.confirm).toHaveBeenCalled();
+    // Simulate user confirming the reset
+    mockShowDialog.mockResolvedValueOnce(true);
+
+    await wrapper.find('[data-testid="setting-reset-data-button"]').trigger('click');
+    await flushPromises(); // Wait for showDialog to be called and promise to resolve
+
+    expect(mockShowDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Confirm Data Reset',
+        confirmButtonText: 'Reset', // Add trailing comma here
+      }),
+    );
     expect(storageService.clearAll).toHaveBeenCalled();
     expect(window.location.reload).toHaveBeenCalled();
+
+    mockShowDialog.mockClear();
+    (storageService.clearAll as Mock).mockClear();
+    (window.location.reload as Mock).mockClear();
+
+    // Simulate user cancelling the reset
+    mockShowDialog.mockResolvedValueOnce(false);
+
+    await wrapper.find('[data-testid="setting-reset-data-button"]').trigger('click');
+    await flushPromises();
+
+    expect(mockShowDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Confirm Data Reset',
+        confirmButtonText: 'Reset', // Add trailing comma here
+      }),
+    );
+    expect(storageService.clearAll).not.toHaveBeenCalled();
+    expect(window.location.reload).not.toHaveBeenCalled();
   });
 
   describe('Auto-Title Integration', () => {
