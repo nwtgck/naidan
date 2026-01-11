@@ -18,6 +18,7 @@ describe('CustomDialog.vue', () => {
         message: 'Test Message',
         confirmButtonText: 'Confirm',
         cancelButtonText: 'Cancel',
+        confirmButtonVariant: 'default', // Add this required prop
       },
       attachTo: attachPoint, // Attach to the new div
     });
@@ -41,6 +42,9 @@ describe('CustomDialog.vue', () => {
     const confirmButton = wrapper.find('button[data-testid="dialog-confirm-button"]');
     expect(confirmButton.classes()).toContain('bg-red-600');
     expect(confirmButton.classes()).toContain('hover:bg-red-700');
+    // Ensure default variant classes are NOT present
+    expect(confirmButton.classes()).not.toContain('bg-indigo-600');
+    expect(confirmButton.classes()).not.toContain('hover:bg-indigo-700');
   });
 
   it('shows input field when showInput is true', async () => {

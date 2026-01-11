@@ -22,6 +22,7 @@ const router = useRouter();
 const { 
   isConfirmOpen, confirmTitle, confirmMessage, 
   confirmConfirmButtonText, confirmCancelButtonText, 
+  confirmButtonVariant, 
   handleConfirm, handleCancel,
 } = useConfirm();
 
@@ -78,6 +79,7 @@ onKeyStroke(['o', 'O'], async (e) => {
       :message="confirmMessage"
       :confirmButtonText="confirmConfirmButtonText"
       :cancelButtonText="confirmCancelButtonText"
+      :confirmButtonVariant="confirmButtonVariant"
       @confirm="handleConfirm"
       @cancel="handleCancel"
     />
@@ -89,6 +91,7 @@ onKeyStroke(['o', 'O'], async (e) => {
       :message="promptMessage"
       :confirmButtonText="promptConfirmButtonText"
       :cancelButtonText="promptCancelButtonText"
+      :confirmButtonVariant="'default'"
       :showInput="true"
       :inputValue="promptInputValue"
       @update:inputValue="promptInputValue = $event"

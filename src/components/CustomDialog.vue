@@ -72,7 +72,7 @@ const _props = defineProps({
   },
   confirmButtonVariant: { // New prop for confirm button styling
     type: String,
-    default: 'default', // 'default' | 'danger'
+    required: true, // Make it required
   },
   showInput: { // New prop for showing input
     type: Boolean,

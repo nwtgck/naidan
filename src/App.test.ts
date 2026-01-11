@@ -4,6 +4,7 @@ import { ref, nextTick } from 'vue';
 import App from './App.vue';
 import { useChat } from './composables/useChat';
 import { useSettings } from './composables/useSettings';
+import { useConfirm } from './composables/useConfirm';
 import { useRouter } from 'vue-router';
 import type { Chat } from './models/types';
 
@@ -15,10 +16,40 @@ vi.mock('./composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
 
+vi.mock('./composables/useConfirm', () => ({
+  useConfirm: vi.fn(() => ({
+    isConfirmOpen: ref(false),
+    confirmTitle: ref(''),
+    confirmMessage: ref(''),
+    confirmConfirmButtonText: ref(''),
+    confirmCancelButtonText: ref(''),
+    confirmButtonVariant: ref('default'),
+    handleConfirm: vi.fn(),
+    handleCancel: vi.fn(),
+  })),
+}));
+
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
   RouterView: {
     template: '<div data-testid="router-view"><slot /></div>',
+  },
+}));
+
+vi.mock('./components/CustomDialog.vue', () => ({
+  default: {
+    name: 'CustomDialog',
+    props: ['show', 'title', 'message', 'confirmButtonText', 'cancelButtonText', 'confirmButtonVariant', 'showInput', 'inputValue'],
+    emits: ['confirm', 'cancel', 'update:inputValue'],
+    template: `
+      <div v-if="show" data-testid="custom-dialog" :data-confirm-variant="confirmButtonVariant">
+        <h3 data-testid="dialog-title">{{ title }}</h3>
+        <p data-testid="dialog-message">{{ message }}</p>
+        <input v-if="showInput" :value="inputValue" @input="$emit('update:inputValue', $event.target.value)" data-testid="dialog-input" />
+        <button @click="$emit('cancel')" data-testid="dialog-cancel-button">{{ cancelButtonText }}</button>
+        <button @click="$emit('confirm')" :class="confirmButtonVariant === 'danger' ? 'bg-red-600' : ''" data-testid="dialog-confirm-button">{{ confirmButtonText }}</button>
+      </div>
+    `,
   },
 }));
 
@@ -212,5 +243,51 @@ describe('App', () => {
 
     expect(localMockCreateNewChat).toHaveBeenCalled();
     expect(mockRouterPush).toHaveBeenCalledWith('/chat/mac-chat-id');
+  });
+
+  it('shows CustomDialog with danger variant for confirm button when requested', async () => {
+    const mockIsConfirmOpen = ref(false);
+    const mockConfirmTitle = ref('');
+    const mockConfirmMessage = ref('');
+    const mockConfirmConfirmButtonText = ref('');
+    const mockConfirmCancelButtonText = ref('');
+    const mockConfirmButtonVariant = ref('default');
+    const mockHandleConfirm = vi.fn();
+    const mockHandleCancel = vi.fn();
+
+    (useConfirm as unknown as Mock).mockReturnValue({
+      isConfirmOpen: mockIsConfirmOpen,
+      confirmTitle: mockConfirmTitle,
+      confirmMessage: mockConfirmMessage,
+      confirmConfirmButtonText: mockConfirmConfirmButtonText,
+      confirmCancelButtonText: mockConfirmCancelButtonText,
+      confirmButtonVariant: mockConfirmButtonVariant,
+      handleConfirm: mockHandleConfirm,
+      handleCancel: mockHandleCancel,
+    });
+
+    const wrapper = mount(App, {
+      global: {
+        stubs: {
+          'router-view': true,
+          'transition': true,
+        },
+      },
+    });
+
+    // Simulate opening the dialog with danger variant
+    mockIsConfirmOpen.value = true;
+    mockConfirmTitle.value = 'Confirm Reset';
+    mockConfirmMessage.value = 'Are you sure you want to reset data?';
+    mockConfirmConfirmButtonText.value = 'Reset';
+    mockConfirmCancelButtonText.value = 'Cancel';
+    mockConfirmButtonVariant.value = 'danger';
+
+    await nextTick();
+
+    const confirmButton = wrapper.find('[data-testid="custom-dialog"] [data-testid="dialog-confirm-button"]');
+    expect(confirmButton.exists()).toBe(true);
+    expect(confirmButton.text()).toBe('Reset');
+    expect(confirmButton.classes()).toContain('bg-red-600');
   });
 });
