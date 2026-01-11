@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
-import { Send, Bug, Settings2, Loader2, ArrowLeft, Square } from 'lucide-vue-next';
+import { Send, Bug, Settings2, Loader2, ArrowLeft, Square, Download } from 'lucide-vue-next';
 
 const chatStore = useChat();
 const {
@@ -24,6 +24,29 @@ const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navig
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 const showChatSettings = ref(false);
+
+
+function exportChat() {
+  if (!currentChat.value || !activeMessages.value) return;
+
+  let markdownContent = `# ${currentChat.value.title || 'Untitled Chat'}\n\n`;
+
+  activeMessages.value.forEach(msg => {
+    const role = msg.role === 'user' ? 'User' : 'AI';
+    markdownContent += `## ${role}:\n${msg.content}\n\n`;
+  });
+
+  const blob = new Blob([markdownContent], { type: 'text/plain;charset=utf-8' });
+  const filename = `${currentChat.value.title || 'untitled_chat'}.txt`;
+
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+}
 
 function focusInput() {
   nextTick(() => {
@@ -145,6 +168,13 @@ onMounted(() => {
         >
           <Bug class="w-5 h-5" />
         </button>
+        <button 
+          @click="exportChat"
+          class="p-2 rounded-md transition-colors text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+          title="Export Chat"
+        >
+          <Download class="w-5 h-5" />
+        </button>
       </div>
     </div>
 
@@ -199,22 +229,23 @@ onMounted(() => {
         <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
           Select or create a chat to start
         </div>
-        <div v-else class="relative p-2">
-          <!-- Removed transition-group to prevent unstable jumping between chats -->
-          <MessageItem 
-            v-for="msg in activeMessages" 
-            :key="msg.id" 
-            :message="msg" 
-            :siblings="chatStore.getSiblings(msg.id)"
-            @fork="handleFork"
-            @edit="handleEdit"
-            @switch-version="handleSwitchVersion"
-            class="animate-in fade-in duration-300"
-          />
-          <div v-if="activeMessages.length === 0" class="p-8 text-center text-gray-500 dark:text-gray-400">
+        <template v-else>
+          <div v-if="activeMessages.length > 0" class="relative p-2">
+            <MessageItem 
+              v-for="msg in activeMessages" 
+              :key="msg.id" 
+              :message="msg" 
+              :siblings="chatStore.getSiblings(msg.id)"
+              @fork="handleFork"
+              @edit="handleEdit"
+              @switch-version="handleSwitchVersion"
+              class="animate-in fade-in duration-300"
+            />
+          </div>
+          <div v-else class="p-8 text-center text-gray-500 dark:text-gray-400">
             Start a conversation...
           </div>
-        </div>
+        </template>
       </div>
 
       <!-- Chat State Inspector (Debug Mode) -->
