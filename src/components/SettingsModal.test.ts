@@ -175,6 +175,25 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(checkBtn.text()).toContain('Connected');
       expect(checkBtn.classes()).toContain('bg-green-100');
     });
+
+    it('uses distinct labels for model fallbacks to clarify different behaviors', async () => {
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs }
+      });
+      await flushPromises();
+
+      // Default Model label should be simple 'None' because it's just an initial selection override.
+      // If not specified, the app doesn't force any specific model on new chats.
+      const modelSelect = wrapper.find('[data-testid="setting-model-select"]');
+      expect(modelSelect.findAll('option')[0]!.text()).toBe('None');
+
+      // Title Generation Model label must be explicit about fallback behavior.
+      // 'Use Current Chat Model (Default)' explains that even if no specific title model is picked,
+      // the generation will still proceed using whichever model is active in the chat.
+      const titleSelect = wrapper.find('[data-testid="setting-title-model-select"]');
+      expect(titleSelect.findAll('option')[0]!.text()).toBe('Use Current Chat Model (Default)');
+    });
   });
 
   it('renders initial settings correctly in the Connection tab', async () => {
@@ -381,8 +400,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(vm.form.providerProfiles[0]!.titleModelId).toBe('special-title-model');
     });
 
-    it('allows selecting "Unspecified" for models and saves it to profile', async () => {
-      vi.stubGlobal('prompt', vi.fn(() => 'Unspecified Profile'));
+    it('allows selecting "None" or "Default" for models and saves it to profile', async () => {
+      vi.stubGlobal('prompt', vi.fn(() => 'None Profile'));
       
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
