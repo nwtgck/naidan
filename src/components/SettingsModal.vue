@@ -4,10 +4,12 @@ import { useSettings } from '../composables/useSettings';
 import { useSampleChat } from '../composables/useSampleChat';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { storageService } from '../services/storage';
+import type { ProviderProfile } from '../models/types';
 import { 
   X, Loader2, FlaskConical, Trash2, Globe, 
   Database, Bot, Type, Settings2, RefreshCw, Save,
-  CheckCircle2, AlertTriangle, Cpu
+  CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
+  Target, Pencil, Trash, Check
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -28,13 +30,19 @@ const fetchingModels = ref(false);
 const error = ref<string | null>(null);
 const saveSuccess = ref(false);
 
+// Profile Editing State
+const editingProviderProfileId = ref<string | null>(null);
+const editingProviderProfileName = ref('');
+
 // Tab State
-type Tab = 'general' | 'storage' | 'developer';
-const activeTab = ref<Tab>('general');
+type Tab = 'connection' | 'profiles' | 'storage' | 'developer';
+const activeTab = ref<Tab>('connection');
 
 const hasChanges = computed(() => {
   return JSON.stringify(form.value) !== initialFormState.value;
 });
+
+const selectedProviderProfileId = ref('');
 
 async function handleResetData() {
   if (confirm('Are you sure you want to reset all app data? This will delete all chats, groups, and settings for the current storage location.')) {
@@ -83,12 +91,68 @@ async function handleSave() {
   }, 2000);
 }
 
+// Profile Handlers
+function handleCreateProviderProfile() {
+  const name = prompt('Enter a name for this profile:', 
+    `${form.value.endpointType.toUpperCase()} - ${form.value.defaultModelId || 'Default'}`);
+  
+  if (!name) return;
+
+  const newProviderProfile: ProviderProfile = {
+    id: crypto.randomUUID(),
+    name,
+    endpointType: form.value.endpointType,
+    endpointUrl: form.value.endpointUrl,
+    defaultModelId: form.value.defaultModelId,
+    titleModelId: form.value.titleModelId
+  };
+
+  if (!form.value.providerProfiles) form.value.providerProfiles = [];
+  form.value.providerProfiles.push(newProviderProfile);
+}
+
+function handleApplyProviderProfile(providerProfile: ProviderProfile) {
+  form.value.endpointType = providerProfile.endpointType;
+  form.value.endpointUrl = providerProfile.endpointUrl;
+  form.value.defaultModelId = providerProfile.defaultModelId;
+  form.value.titleModelId = providerProfile.titleModelId;
+  fetchModels();
+}
+
+function handleDeleteProviderProfile(id: string) {
+  if (!confirm('Are you sure you want to delete this profile?')) return;
+  form.value.providerProfiles = form.value.providerProfiles.filter(p => p.id !== id);
+}
+
+function startRename(providerProfile: ProviderProfile) {
+  editingProviderProfileId.value = providerProfile.id;
+  editingProviderProfileName.value = providerProfile.name;
+}
+
+function saveRename() {
+  if (!editingProviderProfileId.value) return;
+  const providerProfile = form.value.providerProfiles.find(p => p.id === editingProviderProfileId.value);
+  if (providerProfile && editingProviderProfileName.value.trim()) {
+    providerProfile.name = editingProviderProfileName.value.trim();
+  }
+  editingProviderProfileId.value = null;
+}
+
+function handleQuickProviderProfileChange() {
+  const providerProfile = form.value.providerProfiles.find(p => p.id === selectedProviderProfileId.value);
+  if (providerProfile) {
+    handleApplyProviderProfile(providerProfile);
+  }
+  // Reset select after apply to allow re-selection if needed
+  selectedProviderProfileId.value = '';
+}
+
 // Watch for modal open to reset form
 watch(() => props.isOpen, (open) => {
   if (open) {
     form.value = JSON.parse(JSON.stringify(settings.value));
     initialFormState.value = JSON.stringify(form.value);
-    activeTab.value = 'general';
+    activeTab.value = 'connection';
     saveSuccess.value = false;
     fetchModels();
   }
@@ -121,12 +185,20 @@ watch(() => props.isOpen, (open) => {
         <!-- Navigation -->
         <nav class="flex-1 overflow-x-auto md:overflow-y-auto p-2 md:p-4 flex md:flex-col gap-1 no-scrollbar">
           <button 
-            @click="activeTab = 'general'"
+            @click="activeTab = 'connection'"
             class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap text-left"
-            :class="activeTab === 'general' ? 'bg-white dark:bg-gray-800 shadow-sm text-blue-600 dark:text-blue-400 ring-1 ring-black/5 dark:ring-white/5' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+            :class="activeTab === 'connection' ? 'bg-white dark:bg-gray-800 shadow-sm text-blue-600 dark:text-blue-400 ring-1 ring-black/5 dark:ring-white/5' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
           >
-            <Settings2 class="w-4 h-4" />
-            General
+            <Globe class="w-4 h-4" />
+            Connection
+          </button>
+          <button 
+            @click="activeTab = 'profiles'"
+            class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all whitespace-nowrap text-left"
+            :class="activeTab === 'profiles' ? 'bg-white dark:bg-gray-800 shadow-sm text-indigo-600 dark:text-indigo-400 ring-1 ring-black/5 dark:ring-white/5' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+          >
+            <BookmarkPlus class="w-4 h-4" />
+            Provider Profiles
           </button>
           <button 
             @click="activeTab = 'storage'"
@@ -152,8 +224,26 @@ watch(() => props.isOpen, (open) => {
         <div class="flex-1 overflow-y-auto">
           <div class="p-6 md:p-10 space-y-10 max-w-4xl mx-auto">
             
-            <!-- General Tab -->
-            <div v-if="activeTab === 'general'" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <!-- Connection Tab -->
+            <div v-if="activeTab === 'connection'" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              
+              <!-- Quick Switcher (If profiles exist) -->
+              <div v-if="form.providerProfiles && form.providerProfiles.length > 0" class="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 p-4 rounded-2xl space-y-2">
+                <label class="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider ml-1">Quick Profile Switcher</label>
+                <div class="flex gap-2">
+                  <select 
+                    v-model="selectedProviderProfileId"
+                    @change="handleQuickProviderProfileChange"
+                    class="flex-1 bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-800 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white appearance-none"
+                    style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
+                    data-testid="setting-quick-provider-profile-select"
+                  >
+                    <option value="" disabled>Load from saved profiles...</option>
+                    <option v-for="p in form.providerProfiles" :key="p.id" :value="p.id">{{ p.name }} ({{ p.endpointType }})</option>
+                  </select>
+                </div>
+              </div>
+
               <section class="space-y-4">
                 <div class="flex items-center gap-2 pb-2 border-b dark:border-gray-800">
                   <Globe class="w-5 h-5 text-blue-500" />
@@ -215,7 +305,7 @@ watch(() => props.isOpen, (open) => {
                       style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                       data-testid="setting-model-select"
                     >
-                      <option v-if="availableModels.length === 0" :value="form.defaultModelId">{{ form.defaultModelId || 'Custom' }}</option>
+                      <option v-if="!availableModels || availableModels.length === 0" :value="form.defaultModelId">{{ form.defaultModelId || 'Custom' }}</option>
                       <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
                     </select>
                     <p class="text-xs text-gray-400 ml-1">Used for all new conversations unless overridden.</p>
@@ -250,6 +340,105 @@ watch(() => props.isOpen, (open) => {
                         <option :value="undefined">Use Current Chat Model</option>
                         <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
                       </select>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Save as Profile Section -->
+              <div class="pt-6 border-t dark:border-gray-800">
+                <div class="bg-indigo-50/30 dark:bg-indigo-900/5 border border-dashed border-indigo-200/50 dark:border-indigo-800/30 p-6 rounded-3xl flex flex-col md:flex-row items-center gap-6">
+                  <div class="flex-1 text-center md:text-left">
+                    <h3 class="text-sm font-bold text-indigo-900 dark:text-indigo-300">Reusable Connection Profile</h3>
+                    <p class="text-xs text-indigo-600/70 dark:text-indigo-400/60 mt-1">Capture the current provider, URL, and model settings into a reusable profile for quick switching later.</p>
+                  </div>
+                  <button 
+                    @click="handleCreateProviderProfile"
+                    class="shrink-0 flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
+                    data-testid="setting-save-provider-profile-button"
+                  >
+                    <BookmarkPlus class="w-4 h-4" />
+                    Save as New Profile
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Provider Profiles Tab -->
+            <div v-if="activeTab === 'profiles'" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <section class="space-y-4">
+                <div class="flex items-center gap-2 pb-2 border-b dark:border-gray-800">
+                  <BookmarkPlus class="w-5 h-5 text-indigo-500" />
+                  <h2 class="text-lg font-bold text-gray-900 dark:text-white">Provider Profiles</h2>
+                </div>
+                
+                <p class="text-sm text-gray-500">Save and switch between different AI provider configurations easily.</p>
+
+                <div v-if="!form.providerProfiles || form.providerProfiles.length === 0" class="flex flex-col items-center justify-center p-12 bg-gray-50 dark:bg-gray-800/30 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-800">
+                  <BookmarkPlus class="w-12 h-12 text-gray-300 mb-4" />
+                  <p class="text-sm text-gray-500 font-bold mb-4">No profiles saved yet.</p>
+                  <button 
+                    @click="activeTab = 'connection'"
+                    class="px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-colors"
+                  >
+                    Go to Connection to Create One
+                  </button>
+                </div>
+
+                <div v-else class="grid grid-cols-1 gap-4">
+                  <div 
+                    v-for="providerProfile in form.providerProfiles" 
+                    :key="providerProfile.id"
+                    class="group p-5 bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-2xl flex items-center justify-between transition-all hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/5"
+                  >
+                    <div class="flex-1 min-w-0 mr-4">
+                      <div v-if="editingProviderProfileId === providerProfile.id" class="flex items-center gap-2">
+                        <input 
+                          v-model="editingProviderProfileName"
+                          @keyup.enter="saveRename"
+                          @keyup.esc="editingProviderProfileId = null"
+                          class="flex-1 bg-white dark:bg-gray-900 border border-indigo-500 rounded-lg px-3 py-1.5 text-sm outline-none"
+                          autofocus
+                        />
+                        <button @click="saveRename" class="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg"><Check class="w-4 h-4" /></button>
+                      </div>
+                      <div v-else class="flex items-center gap-3">
+                        <div class="w-2 h-2 rounded-full" :class="providerProfile.endpointType === 'ollama' ? 'bg-orange-500' : 'bg-green-500'"></div>
+                        <h3 class="text-sm font-bold text-gray-900 dark:text-white truncate">{{ providerProfile.name }}</h3>
+                        <span class="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 rounded-full uppercase font-bold">{{ providerProfile.endpointType }}</span>
+                      </div>
+                      <div class="text-[11px] text-gray-500 mt-1 truncate">{{ providerProfile.endpointUrl }}</div>
+                      <div class="text-[11px] text-gray-400 mt-0.5 italic flex items-center gap-2">
+                        <span>{{ providerProfile.defaultModelId || 'No default model' }}</span>
+                        <span v-if="providerProfile.titleModelId" class="text-[9px] opacity-60 px-1.5 py-0.5 border border-current rounded">Title: {{ providerProfile.titleModelId }}</span>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        @click="startRename(providerProfile)"
+                        class="p-2 text-gray-400 hover:text-blue-500 transition-colors"
+                        title="Rename Profile"
+                        data-testid="provider-profile-rename-button"
+                      >
+                        <Pencil class="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        @click="handleApplyProviderProfile(providerProfile)"
+                        class="p-2 text-gray-400 hover:text-indigo-500 transition-colors"
+                        title="Apply Profile"
+                        data-testid="provider-profile-apply-button"
+                      >
+                        <Target class="w-3.5 h-3.5" />
+                      </button>
+                      <button 
+                        @click="handleDeleteProviderProfile(providerProfile.id)"
+                        class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                        title="Delete Profile"
+                        data-testid="provider-profile-delete-button"
+                      >
+                        <Trash class="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>

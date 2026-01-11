@@ -59,6 +59,15 @@ export type SidebarItem =
   | { id: string; type: 'chat'; chat: ChatSummary }
   | { id: string; type: 'group'; group: ChatGroup };
 
+export interface ProviderProfile {
+  id: string;
+  name: string;
+  endpointType: EndpointType;
+  endpointUrl?: string;
+  defaultModelId?: string;
+  titleModelId?: string;
+}
+
 export interface Settings {
   endpointType: EndpointType;
   endpointUrl?: string;
@@ -66,10 +75,12 @@ export interface Settings {
   titleModelId?: string;
   autoTitleEnabled: boolean;
   storageType: StorageType;
+  providerProfiles: ProviderProfile[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   endpointType: 'openai',
   autoTitleEnabled: true,
   storageType: 'local',
+  providerProfiles: [],
 };

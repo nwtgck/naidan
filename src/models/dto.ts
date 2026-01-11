@@ -74,6 +74,16 @@ export const ChatSchemaDto = z.object({
 
 export type ChatDto = z.infer<typeof ChatSchemaDto>;
 
+export const ProviderProfileSchemaDto = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  endpointType: EndpointTypeSchemaDto,
+  endpointUrl: z.string().optional(),
+  defaultModelId: z.string().optional(),
+  titleModelId: z.string().optional(),
+});
+export type ProviderProfileDto = z.infer<typeof ProviderProfileSchemaDto>;
+
 export const SettingsSchemaDto = z.object({
   endpointType: EndpointTypeSchemaDto,
   endpointUrl: z.string().optional(),
@@ -81,5 +91,6 @@ export const SettingsSchemaDto = z.object({
   titleModelId: z.string().optional(),
   autoTitleEnabled: z.boolean().default(true),
   storageType: StorageTypeSchemaDto,
+  providerProfiles: z.array(ProviderProfileSchemaDto).optional().default([]),
 });
 export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
