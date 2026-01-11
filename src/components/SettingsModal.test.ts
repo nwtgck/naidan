@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import SettingsModal from './SettingsModal.vue';
-import { Activity } from 'lucide-vue-next';
+import { Loader2 } from 'lucide-vue-next';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
 import { useSampleChat } from '../composables/useSampleChat';
@@ -111,15 +111,50 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(closeBtn.classes()).toContain('right-4');
     });
 
-    it('uses the Activity icon for the connection check button', async () => {
+    it('maintains UI stability during model fetching', async () => {
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
         global: { stubs: globalStubs }
       });
       await flushPromises();
-      
+
+      const vm = wrapper.vm as unknown as { fetchingModels: boolean };
+      vm.fetchingModels = true;
+      await flushPromises();
+
       const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
-      expect(checkBtn.findComponent(Activity).exists()).toBe(true);
+      
+      // Text should remain visible/present even while loading to prevent width jitter
+      expect(checkBtn.text()).toContain('Check Connection');
+      
+      // Spinner should be present alongside the text container
+      expect(checkBtn.findComponent(Loader2).exists()).toBe(true);
+      
+      // Button should be disabled to prevent double-clicks
+      expect(checkBtn.attributes('disabled')).toBeDefined();
+    });
+
+    it('reserves space for error messages to prevent layout shift', async () => {
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs }
+      });
+      await flushPromises();
+
+      // Should find the fixed-height error container
+      const errorContainer = wrapper.find('.h-4.mt-1');
+      expect(errorContainer.exists()).toBe(true);
+      
+      // Initially should not show error text
+      expect(errorContainer.text()).toBe('');
+
+      // Set error
+      const vm = wrapper.vm as unknown as { error: string | null };
+      vm.error = 'Test Error';
+      await flushPromises();
+
+      // Error text should appear inside the container without adding new lines to the parent
+      expect(errorContainer.text()).toBe('Test Error');
     });
   });
 
