@@ -367,7 +367,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                         style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                         data-testid="setting-model-select"
                       >
-                        <option v-if="!availableModels || availableModels.length === 0" :value="form.defaultModelId">{{ form.defaultModelId || 'Custom' }}</option>
+                        <option :value="undefined">Unspecified (None)</option>
                         <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
                       </select>
                       <button 
@@ -409,7 +409,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                         style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                         data-testid="setting-title-model-select"
                       >
-                        <option :value="undefined">Use Current Chat Model</option>
+                        <option :value="undefined">Unspecified (None)</option>
                         <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
                       </select>
                     </div>

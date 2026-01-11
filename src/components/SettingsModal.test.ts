@@ -327,6 +327,30 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(vm.form.providerProfiles[0]!.titleModelId).toBe('special-title-model');
     });
 
+    it('allows selecting "Unspecified" for models and saves it to profile', async () => {
+      vi.stubGlobal('prompt', vi.fn(() => 'Unspecified Profile'));
+      
+      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+      await flushPromises();
+
+      // Select Unspecified for both
+      const modelSelect = wrapper.find('[data-testid="setting-model-select"]');
+      // Vue Test Utils setValue with undefined might not work as expected for native select 
+      // but since we bound v-model to form.defaultModelId, we can also set the value via vm if needed,
+      // but let's try the standard way or setting the value to "" if that matches undefined
+      await modelSelect.setValue(undefined as any);
+
+      const titleSelect = wrapper.find('[data-testid="setting-title-model-select"]');
+      await titleSelect.setValue(undefined as any);
+
+      await wrapper.find('[data-testid="setting-save-provider-profile-button"]').trigger('click');
+      
+      const vm = wrapper.vm as any;
+      const lastProfile = vm.form.providerProfiles[vm.form.providerProfiles.length - 1];
+      expect(lastProfile.defaultModelId).toBeUndefined();
+      expect(lastProfile.titleModelId).toBeUndefined();
+    });
+
     it('supports renaming a profile in the UI', async () => {
       const mockProviderProfile = { id: 'p1', name: 'Original Name', endpointType: 'openai' as const };
       (useSettings as unknown as Mock).mockReturnValue({
