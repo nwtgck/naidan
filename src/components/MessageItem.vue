@@ -87,7 +87,9 @@ async function handleCopy() {
   }
 }
 
-const mermaidIcons = {
+const actionIcons = {
+  copy: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
+  check: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check"><path d="M20 6 9 17l-5-5"/></svg>`,
   preview: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-presentation"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>`,
   code: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-code"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/></svg>`,
   both: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-columns-2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/></svg>`
@@ -117,15 +119,15 @@ const marked = new Marked(
                   <div class="mermaid-ui-overlay">
                     <div class="mermaid-tabs">
                       <button class="mermaid-tab ${mode === 'preview' ? 'active' : ''}" data-mode="preview" title="Preview Only">
-                        ${mermaidIcons.preview}
+                        ${actionIcons.preview}
                         <span>Preview</span>
                       </button>
                       <button class="mermaid-tab ${mode === 'code' ? 'active' : ''}" data-mode="code" title="Code Only">
-                        ${mermaidIcons.code}
+                        ${actionIcons.code}
                         <span>Code</span>
                       </button>
                       <button class="mermaid-tab ${mode === 'both' ? 'active' : ''}" data-mode="both" title="Show Both">
-                        ${mermaidIcons.both}
+                        ${actionIcons.both}
                         <span>Both</span>
                       </button>
                     </div>
@@ -134,10 +136,23 @@ const marked = new Marked(
                   <pre class="mermaid-raw hljs language-mermaid" style="display: ${mode === 'preview' ? 'none' : 'block'}"><code>${hljs.highlight(code, { language: 'plaintext' }).value}</code></pre>
                 </div>`;
       }
-      const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-      return hljs.highlight(code, { language }).value;
-    }
-  })
+                                    const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                                    const highlighted = hljs.highlight(code, { language }).value;
+                                    
+                                    return `<div class="code-block-wrapper my-4 rounded-lg overflow-hidden border border-gray-700/50 bg-[#0d1117] group/code">` +
+                                                              `<div class="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700/50 text-xs text-gray-400">` +
+                                                                `<span class="font-mono">${language}</span>` +
+                                                                `<button class="code-copy-btn flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer" title="Copy code">` +
+                                                                  actionIcons.copy +
+                                                                  `<span>Copy</span>` +
+                                                                `</button>` +
+                                                              `</div>` +
+                                                              `<pre class="!m-0 !p-4 !bg-transparent !rounded-b-lg overflow-x-auto"><code class="!bg-transparent !p-0 !border-none text-sm font-mono leading-relaxed text-gray-200 hljs language-${language}">${highlighted}</code></pre>` +
+                                                            `</div>`;
+                                              
+                                  }
+                              
+                                      })
 );
 
 marked.use(markedKatex({
@@ -162,13 +177,42 @@ const renderMermaid = async () => {
 
 onMounted(() => {
   renderMermaid();
-  // Handle toggle clicks via event delegation
-  messageRef.value?.addEventListener('click', (e) => {
+  // Handle clicks via event delegation
+  messageRef.value?.addEventListener('click', async (e) => {
     const target = e.target as HTMLElement;
+    
+    // Mermaid tabs
     const tab = target.closest('.mermaid-tab') as HTMLElement;
     if (tab) {
       const mode = tab.dataset.mode as MermaidMode;
       if (mode) setMermaidMode(mode);
+      return;
+    }
+
+    // Code copy button
+    const copyBtn = target.closest('.code-copy-btn') as HTMLButtonElement;
+    if (copyBtn && !copyBtn.dataset.copied) {
+      const wrapper = copyBtn.closest('.code-block-wrapper');
+      const codeEl = wrapper?.querySelector('code');
+      
+      if (codeEl) {
+        try {
+          await navigator.clipboard.writeText(codeEl.textContent || '');
+          
+          // Visual feedback
+          copyBtn.innerHTML = actionIcons.check + '<span>Copied</span>';
+          copyBtn.classList.add('!opacity-100');
+          copyBtn.dataset.copied = 'true';
+          
+          setTimeout(() => {
+            copyBtn.innerHTML = actionIcons.copy + '<span>Copy</span>';
+            copyBtn.classList.remove('!opacity-100');
+            delete copyBtn.dataset.copied;
+          }, 2000);
+        } catch (err) {
+          console.error('Failed to copy code:', err);
+        }
+      }
     }
   });
 });

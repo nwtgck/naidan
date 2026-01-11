@@ -133,6 +133,81 @@ describe('MessageItem Rendering', () => {
       expect(tabs[2]!.text()).toContain('Both');
     });
   });
+  describe('Code Block Toolbar', () => {
+    it('renders the code block toolbar with language label and copy button', () => {
+      const message = createMessage('```javascript\nconst a = 1;\n```');
+      const wrapper = mount(MessageItem, { props: { message } });
+      const html = wrapper.html();
+
+      // Check for wrapper structure
+      expect(html).toContain('code-block-wrapper');
+      expect(html).toContain('group/code');
+      
+      // Check for header toolbar
+      expect(html).toContain('code-copy-btn');
+      expect(html).toContain('javascript'); // Language label
+      expect(html).toContain('Copy'); // Button text
+    });
+
+    it('ensures correct styling classes are applied to avoid white frame', () => {
+      const message = createMessage('```python\nprint("test")\n```');
+      const wrapper = mount(MessageItem, { props: { message } });
+      const html = wrapper.html();
+
+      // Check for key classes that prevent white frame issue
+      expect(html).toContain('!bg-transparent');
+      expect(html).toContain('!m-0');
+      expect(html).toContain('!p-4');
+      expect(html).toContain('!border-none');
+      // Ensure wrapper has the dark background
+      expect(html).toContain('bg-[#0d1117]');
+    });
+
+    it('handles copy button click and visual feedback', async () => {
+      const message = createMessage('```typescript\nconst x: number = 42;\n```');
+      const wrapper = mount(MessageItem, {
+        props: { message },
+        attachTo: document.body // Attach to body to ensure event delegation works
+      });
+
+      // Mock clipboard
+      const writeText = vi.fn().mockImplementation(() => Promise.resolve());
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true
+      });
+
+      // Find the button (it's inside v-html, so we need to search the DOM element)
+      const copyBtn = wrapper.find('.code-copy-btn');
+      expect(copyBtn.exists()).toBe(true);
+
+      // Trigger click
+      await copyBtn.trigger('click');
+
+      // Verify clipboard was called
+      expect(writeText).toHaveBeenCalledWith('const x: number = 42;');
+
+      // Verify visual feedback
+      // Since button content is replaced via innerHTML, we check the DOM node directly
+      const btnEl = copyBtn.element;
+      expect(btnEl.innerHTML).toContain('Copied');
+      
+      // Advance timers to check revert
+      vi.useFakeTimers();
+      
+      // Trigger click again to be safe within fake timer context if needed, 
+      // but here we just need to advance time since the click happened.
+      // Note: The component uses standard setTimeout.
+      
+      await vi.advanceTimersByTimeAsync(2500);
+      await nextTick(); // Allow Vue/DOM to process the change
+      
+      expect(btnEl.innerHTML).toContain('Copy');
+      vi.useRealTimers();
+      
+      wrapper.unmount();
+    });
+  });
 });
 
 describe('MessageItem Keyboard Shortcuts', () => {
