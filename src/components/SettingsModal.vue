@@ -35,6 +35,7 @@ const form = ref({ ...settings.value });
 const initialFormState = ref('');
 const availableModels = ref<string[]>([]);
 const fetchingModels = ref(false);
+const connectionSuccess = ref(false);
 const error = ref<string | null>(null);
 const saveSuccess = ref(false);
 
@@ -95,9 +96,16 @@ async function fetchModels() {
     const provider = form.value.endpointType === 'ollama' 
       ? new OllamaProvider() 
       : new OpenAIProvider();
-    availableModels.value = await provider.listModels(form.value.endpointUrl);
-  } catch (e) {
-    console.error(e);
+    
+    const models = await provider.listModels(form.value.endpointUrl);
+    availableModels.value = models;
+    error.value = null;
+    connectionSuccess.value = true;
+    setTimeout(() => {
+      connectionSuccess.value = false;
+    }, 3000);
+  } catch (err) {
+    console.error(err);
     error.value = 'Connection failed. Check URL or provider.';
     availableModels.value = [];
   } finally {
@@ -335,16 +343,22 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                       />
                       <button 
                         @click="fetchModels"
-                        class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl transition-all flex items-center justify-center gap-2 min-w-[160px] disabled:opacity-70"
+                        class="px-4 py-2 rounded-xl transition-all flex items-center justify-center gap-2 min-w-[160px] disabled:opacity-70"
+                        :class="[
+                          connectionSuccess 
+                            ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' 
+                            : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'
+                        ]"
                         title="Check Connection"
                         :disabled="fetchingModels"
                         data-testid="setting-check-connection"
                       >
                         <span class="relative w-4 h-4 flex items-center justify-center">
                           <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin absolute" />
+                          <Check v-else-if="connectionSuccess" class="w-4 h-4 text-green-600 dark:text-green-400 animate-in zoom-in duration-300" />
                           <Activity v-else class="w-4 h-4" />
                         </span>
-                        <span class="text-xs font-bold">Check Connection</span>
+                        <span class="text-xs font-bold">{{ connectionSuccess ? 'Connected' : 'Check Connection' }}</span>
                       </button>
                     </div>
                     <!-- Error message with fixed height to prevent layout shift -->

@@ -156,6 +156,25 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // Error text should appear inside the container without adding new lines to the parent
       expect(errorContainer.text()).toBe('Test Error');
     });
+
+    it('shows success feedback when connection check succeeds', async () => {
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs }
+      });
+      await flushPromises();
+
+      const vm = wrapper.vm as unknown as { fetchModels: () => Promise<void> };
+      // Trigger fetch logic manually to bypass service mock complexities
+      await vm.fetchModels();
+      await flushPromises();
+
+      const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
+      
+      // Should show success state
+      expect(checkBtn.text()).toContain('Connected');
+      expect(checkBtn.classes()).toContain('bg-green-100');
+    });
   });
 
   it('renders initial settings correctly in the Connection tab', async () => {
