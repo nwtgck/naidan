@@ -364,35 +364,12 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(mockListModels).toHaveBeenCalledWith('http://localhost:11434');
   });
 
-  it('shows identical confirmation behavior for both "X" and "Cancel" buttons', async () => {
+  it('shows confirmation behavior for "X" button', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
 
     const urlInput = wrapper.find('[data-testid="setting-url-input"]');
     await urlInput.setValue('http://new-url'); // Make changes to trigger unsaved changes dialog
-
-    // Test Cancel button: Expect showDialog to be called, then simulate confirmation
-    mockShowConfirm.mockResolvedValueOnce(true); // Simulate user clicking 'Discard'
-
-    await wrapper.find('[data-testid="setting-cancel-button"]').trigger('click');
-    await flushPromises(); // Wait for showConfirm to be called and promise to resolve
-
-    expect(mockShowConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Discard Unsaved Changes?',
-        confirmButtonText: 'Discard',
-        cancelButtonText: 'Keep Editing',
-      }),
-    );
-    expect(wrapper.emitted().close).toBeTruthy(); // Should emit close after discard
-
-    mockShowConfirm.mockClear();
-    wrapper.emitted().close = []; // Clear emitted events for next part
-
-    // Re-open modal and make changes
-    await wrapper.setProps({ isOpen: true });
-    await urlInput.setValue('http://another-new-url');
-    await flushPromises();
 
     // Test X button: Expect showConfirm to be called, then simulate confirmation
     mockShowConfirm.mockResolvedValueOnce(true); // Simulate user clicking 'Discard'

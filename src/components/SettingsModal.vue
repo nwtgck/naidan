@@ -648,13 +648,6 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
         <!-- Footer Actions (Right-aligned) -->
         <div class="p-6 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3 bg-gray-50/30 dark:bg-gray-900/30 backdrop-blur-sm">
           <button 
-            @click="handleCancel"
-            class="py-2.5 px-6 text-sm font-bold text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all border border-gray-200 dark:border-gray-700"
-            data-testid="setting-cancel-button"
-          >
-            Cancel
-          </button>
-          <button 
             @click="handleSave"
             :disabled="!hasChanges"
             class="flex items-center justify-center gap-2 py-2.5 px-8 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all"

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
+import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { Send, Bug, Settings2, Loader2, ArrowLeft, Square, Download, Maximize2, Minimize2, MoreVertical } from 'lucide-vue-next';
 
 const chatStore = useChat();
@@ -248,7 +249,7 @@ onUnmounted(() => {
         </button>
 
         <button 
-          @click="showChatSettings = !showChatSettings; if(showChatSettings) fetchModels()"
+          @click="showChatSettings = !showChatSettings"
           class="p-2 rounded-md transition-colors"
           :class="showChatSettings ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
           title="Chat Settings"
@@ -284,49 +285,10 @@ onUnmounted(() => {
     </div>
 
     <!-- Chat Settings Panel -->
-    <div v-if="showChatSettings && currentChat" class="border-b dark:border-gray-800 bg-gray-50 dark:bg-gray-950/50 p-4 animate-in slide-in-from-top duration-200">
-      <div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Endpoint Type</label>
-          <select 
-            v-model="currentChat.endpointType"
-            class="w-full text-sm border dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800"
-          >
-            <option :value="undefined">Global ({{ settings.endpointType }})</option>
-            <option value="openai">OpenAI</option>
-            <option value="ollama">Ollama</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Endpoint URL</label>
-          <input 
-            v-model="currentChat.endpointUrl"
-            type="text"
-            class="w-full text-sm border dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800"
-            :placeholder="settings.endpointUrl"
-          />
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-500 mb-1">Model Override</label>
-          <div class="flex gap-1">
-            <select 
-              v-model="currentChat.overrideModelId"
-              class="flex-1 text-sm border dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800"
-            >
-              <option :value="undefined">Global ({{ settings.defaultModelId || 'Default' }})</option>
-              <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-            </select>
-            <button @click="fetchModels" class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
-              <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
-              <span v-else class="text-xs text-gray-400">Ref</span>
-            </button>
-          </div>
-        </div>
-      </div>
-      <div class="mt-2 flex justify-end">
-        <button @click="showChatSettings = false" class="text-xs text-indigo-600 hover:underline">Close Settings</button>
-      </div>
-    </div>
+    <ChatSettingsPanel 
+      v-if="showChatSettings" 
+      @close="showChatSettings = false" 
+    />
 
     <!-- Messages -->
     <div class="flex-1 flex overflow-hidden">

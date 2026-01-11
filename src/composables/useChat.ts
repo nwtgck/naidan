@@ -599,5 +599,6 @@ export function useChat() {
     renameGroup,
     persistSidebarStructure,
     abortChat,
+    saveCurrentChat,
   };
 }
