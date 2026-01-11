@@ -22,6 +22,13 @@ vi.mock('../composables/useSampleChat', () => ({
   useSampleChat: vi.fn(),
 }));
 
+const mockAddToast = vi.fn();
+vi.mock('../composables/useToast', () => ({
+  useToast: vi.fn(() => ({
+    addToast: mockAddToast
+  })),
+}));
+
 vi.mock('../services/storage', () => ({
   storageService: {
     clearAll: vi.fn(),
@@ -368,20 +375,20 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(vm.selectedProviderProfileId).toBe('');
     });
 
-    it('deletes a profile after confirmation', async () => {
+    it('deletes a profile immediately and allows undo via toast', async () => {
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
         global: { stubs: globalStubs }
       });
       
-      // Setup a profile
       const vm = wrapper.vm as any;
-      vm.form.providerProfiles = [{
-        id: '1',
-        name: 'Test Profile',
+      const initialProfile = {
+        id: 'undo-1',
+        name: 'Undo Me',
         endpointType: 'ollama',
         endpointUrl: 'http://localhost:11434'
-      }];
+      };
+      vm.form.providerProfiles = [initialProfile];
       
       const navButtons = wrapper.findAll('nav button');
       await navButtons.find(b => b.text().includes('Provider Profiles'))?.trigger('click');
@@ -390,7 +397,22 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const deleteBtn = wrapper.find('[data-testid="provider-profile-delete-button"]');
       await deleteBtn.trigger('click');
       
+      // Should be deleted immediately
       expect(vm.form.providerProfiles).toHaveLength(0);
+      
+      // Should show undo toast
+      expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
+        message: expect.stringContaining('Undo Me'),
+        actionLabel: 'Undo'
+      }));
+
+      // Trigger undo
+      const toastCall = mockAddToast.mock.calls[0][0];
+      toastCall.onAction();
+      
+      // Should be restored
+      expect(vm.form.providerProfiles).toHaveLength(1);
+      expect(vm.form.providerProfiles[0]).toEqual(initialProfile);
     });
 
     it('renders provider type badge with capitalization and without uppercase class', async () => {

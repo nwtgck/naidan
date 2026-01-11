@@ -8,6 +8,7 @@ export function capitalize(s: string) {
 import { ref, watch, computed } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import { useSampleChat } from '../composables/useSampleChat';
+import { useToast } from '../composables/useToast';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { storageService } from '../services/storage';
 import type { ProviderProfile } from '../models/types';
@@ -28,6 +29,7 @@ const emit = defineEmits<{
 
 const { settings, save } = useSettings();
 const { createSampleChat } = useSampleChat();
+const { addToast } = useToast();
 
 const form = ref({ ...settings.value });
 const initialFormState = ref('');
@@ -140,8 +142,20 @@ function handleApplyProviderProfile(providerProfile: ProviderProfile) {
 }
 
 function handleDeleteProviderProfile(id: string) {
-  if (!confirm('Are you sure you want to delete this profile?')) return;
-  form.value.providerProfiles = form.value.providerProfiles.filter(p => p.id !== id);
+  const index = form.value.providerProfiles.findIndex(p => p.id === id);
+  if (index === -1) return;
+  
+  const deletedProfile = form.value.providerProfiles[index];
+  form.value.providerProfiles.splice(index, 1);
+  
+  addToast({
+    message: `Profile "${deletedProfile.name}" deleted`,
+    actionLabel: 'Undo',
+    onAction: () => {
+      form.value.providerProfiles.splice(index, 0, deletedProfile);
+    },
+    duration: 5000
+  });
 }
 
 function startRename(providerProfile: ProviderProfile) {
