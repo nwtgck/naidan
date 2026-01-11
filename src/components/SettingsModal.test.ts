@@ -338,17 +338,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // Vue Test Utils setValue with undefined might not work as expected for native select 
       // but since we bound v-model to form.defaultModelId, we can also set the value via vm if needed,
       // but let's try the standard way or setting the value to "" if that matches undefined
-      await modelSelect.setValue(undefined as any);
+      await modelSelect.setValue(undefined as unknown as string);
 
       const titleSelect = wrapper.find('[data-testid="setting-title-model-select"]');
-      await titleSelect.setValue(undefined as any);
+      await titleSelect.setValue(undefined as unknown as string);
 
       await wrapper.find('[data-testid="setting-save-provider-profile-button"]').trigger('click');
       
-      const vm = wrapper.vm as any;
+      const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
       const lastProfile = vm.form.providerProfiles[vm.form.providerProfiles.length - 1];
-      expect(lastProfile.defaultModelId).toBeUndefined();
-      expect(lastProfile.titleModelId).toBeUndefined();
+      expect(lastProfile?.defaultModelId).toBeUndefined();
+      expect(lastProfile?.titleModelId).toBeUndefined();
     });
 
     it('supports renaming a profile in the UI', async () => {
@@ -399,7 +399,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await select.trigger('change');
       await flushPromises();
 
-      const vm = wrapper.vm as any;
+      const vm = wrapper.vm as unknown as { 
+        form: { endpointUrl: string, defaultModelId: string, titleModelId: string },
+        selectedProviderProfileId: string,
+        hasChanges: boolean
+      };
       expect(vm.form.endpointUrl).toBe('http://quick:11434');
       expect(vm.form.defaultModelId).toBe('model-a');
       expect(vm.form.titleModelId).toBe('model-title');
@@ -436,7 +440,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         global: { stubs: globalStubs }
       });
       
-      const vm = wrapper.vm as any;
+      const vm = wrapper.vm as unknown as { form: { providerProfiles: Partial<ProviderProfile>[] } };
       vm.form.providerProfiles = [
         { id: '1', name: 'With Title', endpointType: 'ollama', titleModelId: 't-1' },
         { id: '2', name: 'Without Title', endpointType: 'openai' }
@@ -461,11 +465,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         global: { stubs: globalStubs }
       });
       
-      const vm = wrapper.vm as any;
+      const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
       const initialProfile = {
         id: 'undo-1',
         name: 'Undo Me',
-        endpointType: 'ollama',
+        endpointType: 'ollama' as const,
         endpointUrl: 'http://localhost:11434'
       };
       vm.form.providerProfiles = [initialProfile];
@@ -501,11 +505,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         global: { stubs: globalStubs }
       });
       
-      const vm = wrapper.vm as any;
+      const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
       vm.form.providerProfiles = [{
         id: '1',
         name: 'Test Profile',
-        endpointType: 'ollama',
+        endpointType: 'ollama' as const,
         endpointUrl: 'http://localhost:11434'
       }];
       
