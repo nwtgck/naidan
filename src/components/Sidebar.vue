@@ -145,12 +145,12 @@ async function handleDeleteAll() {
 <template>
   <div class="flex flex-col h-full bg-gray-900 text-white w-64 border-r border-gray-800 select-none">
     <!-- Header -->
-    <div class="p-6 pb-2 flex items-center gap-3">
+    <router-link to="/" class="p-6 pb-2 flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer">
       <Logo :size="28" />
       <h1 class="text-lg font-bold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent">
         LM Web UI
       </h1>
-    </div>
+    </router-link>
 
     <!-- Actions -->
     <div class="p-4 space-y-2">
@@ -336,7 +336,8 @@ async function handleDeleteAll() {
         <button @click="setTheme('system')" class="flex-1 flex justify-center py-1.5 rounded-md transition-all" :class="themeMode === 'system' ? 'bg-gray-700 text-green-400 shadow-sm' : 'text-gray-400 hover:text-gray-200'"><Monitor class="w-4 h-4" /></button>
       </div>
 
-      <button @click="$emit('open-settings')" class="flex items-center gap-2 text-sm text-gray-400 hover:text-white w-full px-2 py-2 rounded hover:bg-gray-800"><SettingsIcon class="w-4 h-4" />Settings</button>
+      <button @click="$emit('open-settings')" class="flex items-center gap-2 text-sm text-gray-400 hover:text-white w-full px-2 py-2 rounded hover:bg-gray-800"><SettingsIcon class="w-4 h-4" />Settings (Modal)</button>
+      <router-link to="/settings" class="flex items-center gap-2 text-sm text-gray-400 hover:text-white w-full px-2 py-2 rounded hover:bg-gray-800"><SettingsIcon class="w-4 h-4" />Settings (Page)</router-link>
     </div>
   </div>
 </template>
