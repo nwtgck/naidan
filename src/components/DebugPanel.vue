@@ -180,7 +180,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Content Area -->
-    <div v-if="isOpen" class="h-54 overflow-y-auto bg-black/30 font-mono text-[11px] p-2 space-y-1" data-testid="debug-content-area">
+    <div v-if="isOpen" class="h-54 overflow-y-auto bg-black/30 font-mono p-2 space-y-1" data-testid="debug-content-area">
       <div v-if="eventCount === 0" class="flex flex-col items-center justify-center h-full text-gray-600 gap-2">
         <X class="w-8 h-8 opacity-20" />
         <p>No events recorded</p>

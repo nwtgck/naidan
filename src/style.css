@@ -8,6 +8,7 @@
     margin: 0;
     padding: 0;
     height: 100%;
+    font-size: 1.125rem;
     @apply bg-gray-50 text-gray-900 antialiased;
   }
   
