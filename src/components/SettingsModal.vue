@@ -335,18 +335,22 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                       />
                       <button 
                         @click="fetchModels"
-                        class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl transition-colors flex items-center justify-center gap-2 min-w-[150px]"
+                        class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl transition-all flex items-center justify-center gap-2 min-w-[160px] disabled:opacity-70"
                         title="Check Connection"
+                        :disabled="fetchingModels"
                         data-testid="setting-check-connection"
                       >
-                        <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
-                        <template v-else>
-                          <Activity class="w-4 h-4" />
-                          <span class="text-xs font-bold">Check Connection</span>
-                        </template>
+                        <span class="relative w-4 h-4 flex items-center justify-center">
+                          <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin absolute" />
+                          <Activity v-else class="w-4 h-4" />
+                        </span>
+                        <span class="text-xs font-bold">Check Connection</span>
                       </button>
                     </div>
-                    <p v-if="error" class="text-xs text-red-500 font-medium ml-1">{{ error }}</p>
+                    <!-- Error message with fixed height to prevent layout shift -->
+                    <div class="h-4 mt-1">
+                      <p v-if="error" class="text-xs text-red-500 font-medium ml-1 animate-in fade-in slide-in-from-top-1 duration-200">{{ error }}</p>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -372,12 +376,15 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                       </select>
                       <button 
                         @click="fetchModels"
-                        class="px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-xl transition-colors flex items-center justify-center gap-2"
+                        class="px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-xl transition-all flex items-center justify-center disabled:opacity-50"
+                        :disabled="fetchingModels"
                         title="Refresh Model List"
                         data-testid="setting-refresh-models"
                       >
-                        <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
-                        <RefreshCw v-else class="w-4 h-4" />
+                        <div class="relative w-4 h-4 flex items-center justify-center">
+                          <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin absolute" />
+                          <RefreshCw v-else class="w-4 h-4" />
+                        </div>
                       </button>
                     </div>
                     <p class="text-xs text-gray-400 ml-1">Used for all new conversations unless overridden.</p>
