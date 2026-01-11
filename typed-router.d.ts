@@ -37,13 +37,6 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
-    '/settings': RouteRecordInfo<
-      '/settings',
-      '/settings',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
   }
 
   /**
@@ -66,12 +59,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/chat/[id].vue': {
       routes:
         | '/chat/[id]'
-      views:
-        | never
-    }
-    'src/pages/settings.vue': {
-      routes:
-        | '/settings'
       views:
         | never
     }

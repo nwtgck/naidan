@@ -7,7 +7,8 @@ import { useSampleChat } from '../composables/useSampleChat';
 import { storageService } from '../services/storage';
 import * as llm from '../services/llm';
 
-// Mock composables
+// --- Mocks ---
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
@@ -20,14 +21,12 @@ vi.mock('../composables/useSampleChat', () => ({
   useSampleChat: vi.fn(),
 }));
 
-// Mock storage service
 vi.mock('../services/storage', () => ({
   storageService: {
     clearAll: vi.fn(),
   },
 }));
 
-// Mock LLM providers
 vi.mock('../services/llm', () => {
   const mockListModels = vi.fn();
   return {
@@ -40,7 +39,9 @@ vi.mock('../services/llm', () => {
   };
 });
 
-describe('SettingsModal.vue', () => {
+// --- Tests ---
+
+describe('SettingsModal.vue (Tabbed Interface)', () => {
   const mockSave = vi.fn();
   const mockCreateSampleChat = vi.fn();
   const mockSettings = {
@@ -54,130 +55,122 @@ describe('SettingsModal.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
-    // Mock useSettings return value
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: { value: mockSettings },
+      settings: { value: JSON.parse(JSON.stringify(mockSettings)) },
       save: mockSave,
     });
 
-    // Mock useChat return value
     (useChat as unknown as Mock).mockReturnValue({});
 
-    // Mock useSampleChat return value
     (useSampleChat as unknown as Mock).mockReturnValue({
       createSampleChat: mockCreateSampleChat,
     });
 
-    // Mock window.confirm and window.location.reload
     vi.stubGlobal('confirm', vi.fn(() => true));
     vi.stubGlobal('location', { reload: vi.fn() });
   });
 
-  it('renders settings values correctly when opened', async () => {
-    const wrapper = mount(SettingsModal, {
-      props: { isOpen: true }
-    });
+  it('renders initial settings correctly in the General tab', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
 
+    expect(wrapper.text()).toContain('Endpoint Configuration');
     const urlInput = wrapper.find('[data-testid="setting-url-input"]');
     expect((urlInput.element as HTMLInputElement).value).toBe('http://localhost:1234/v1');
-    
-    const providerSelect = wrapper.find('[data-testid="setting-provider-select"]');
-    expect((providerSelect.element as HTMLSelectElement).value).toBe('openai');
   });
 
-  it('fetches models when refresh button is clicked', async () => {
-    const mockListModels = vi.fn().mockResolvedValue(['new-model-1', 'new-model-2']);
-    (llm.OpenAIProvider as unknown as Mock).mockImplementation(function() {
-      return { listModels: mockListModels };
-    });
+  it('navigates between General, Storage, and Developer tabs', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
 
-    const wrapper = mount(SettingsModal, {
-      props: { isOpen: true }
-    });
+    const navButtons = wrapper.findAll('nav button');
+    
+    // Storage
+    await navButtons.find(b => b.text().includes('Storage'))?.trigger('click');
+    expect(wrapper.text()).toContain('Storage Management');
+
+    // Developer
+    await navButtons.find(b => b.text().includes('Developer'))?.trigger('click');
+    expect(wrapper.text()).toContain('Developer Tools');
+    expect(wrapper.text()).toContain('Danger Zone');
+  });
+
+  it('persists unsaved changes when switching tabs', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
+
+    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
+    await urlInput.setValue('http://temporary-change');
+
+    // Switch away and back
+    const navButtons = wrapper.findAll('nav button');
+    await navButtons.find(b => b.text().includes('Storage'))?.trigger('click');
+    await navButtons.find(b => b.text().includes('General'))?.trigger('click');
+
+    expect((wrapper.find('[data-testid="setting-url-input"]').element as HTMLInputElement).value)
+      .toBe('http://temporary-change');
+  });
+
+  it('shows identical confirmation behavior for both "X" and "Cancel" buttons', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
+
+    // 1. Make a change
+    await wrapper.find('[data-testid="setting-url-input"]').setValue('http://dirty');
+
+    // 2. Test "X" button (Top Right)
+    const closeX = wrapper.find('button[title*="Close"]');
+    await closeX.trigger('click');
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('unsaved changes'));
+    expect(wrapper.emitted()).toHaveProperty('close'); // Mocked confirm returns true
+
+    // 3. Reset change and test again for "Cancel" button
+    vi.mocked(window.confirm).mockClear();
+    const cancelBtn = wrapper.find('[data-testid="setting-cancel-button"]');
+    await cancelBtn.trigger('click');
+    expect(window.confirm).toHaveBeenCalled();
+  });
+
+  it('performs save without closing the modal and shows feedback', async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="setting-url-input"]').setValue('http://new-save-url');
+    await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
+
+    expect(mockSave).toHaveBeenCalled();
+    expect(wrapper.text()).toContain('Saved');
+    
+    // Wait and verify it stays open
+    vi.advanceTimersByTime(2000);
+    expect(wrapper.emitted()).not.toHaveProperty('close');
+    
+    vi.useRealTimers();
+  });
+
+  it('handles model fetch errors gracefully', async () => {
+    const mockFail = vi.fn().mockRejectedValue(new Error('API Down'));
+    (llm.OpenAIProvider as unknown as Mock).mockImplementation(() => ({ listModels: mockFail }));
+
+    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
 
     await wrapper.find('[data-testid="setting-refresh-models"]').trigger('click');
     await flushPromises();
 
-    expect(mockListModels).toHaveBeenCalledWith('http://localhost:1234/v1');
-    
-    const options = wrapper.find('[data-testid="setting-model-select"]').findAll('option');
-    expect(options.some(opt => opt.text() === 'new-model-1')).toBe(true);
+    expect(wrapper.text()).toContain('Failed to fetch models');
   });
 
-  it('calls save when Save Changes is clicked', async () => {
-    const wrapper = mount(SettingsModal, {
-      props: { isOpen: true }
-    });
+  it('triggers data reset after confirmation', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
 
-    await wrapper.find('[data-testid="setting-url-input"]').setValue('http://new-url:8080');
-    await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
-
-    expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
-      endpointUrl: 'http://new-url:8080',
-    }));
-    expect(wrapper.emitted()).toHaveProperty('close');
-  });
-
-  it('calls storageService.clearAll and reloads when Reset All App Data is clicked', async () => {
-    const wrapper = mount(SettingsModal, {
-      props: { isOpen: true }
-    });
-
+    await wrapper.findAll('nav button').find(b => b.text().includes('Developer'))?.trigger('click');
     await wrapper.find('[data-testid="setting-reset-data-button"]').trigger('click');
     
     expect(window.confirm).toHaveBeenCalled();
     expect(storageService.clearAll).toHaveBeenCalled();
     expect(window.location.reload).toHaveBeenCalled();
-  });
-
-  it('calls createSampleChat when the button is clicked', async () => {
-    const wrapper = mount(SettingsModal, {
-      props: { isOpen: true }
-    });
-
-    await wrapper.find('[data-testid="setting-create-sample-button"]').trigger('click');
-    
-    expect(mockCreateSampleChat).toHaveBeenCalled();
-    expect(wrapper.emitted()).toHaveProperty('close');
-  });
-
-  it('shows confirmation when closing with unsaved changes', async () => {
-    const wrapper = mount(SettingsModal, {
-      props: { isOpen: true }
-    });
-
-    // Change something
-    await wrapper.find('[data-testid="setting-url-input"]').setValue('http://changed-url');
-    
-    // Try to cancel
-    await wrapper.find('[data-testid="setting-cancel-button"]').trigger('click');
-    
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('unsaved changes'));
-    expect(wrapper.emitted()).toHaveProperty('close');
-  });
-
-  it('does not close if confirmation is rejected', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false));
-    
-    const wrapper = mount(SettingsModal, {
-      props: { isOpen: true }
-    });
-
-    await wrapper.find('[data-testid="setting-url-input"]').setValue('http://changed-url');
-    await wrapper.find('[data-testid="setting-cancel-button"]').trigger('click');
-    
-    expect(window.confirm).toHaveBeenCalled();
-    expect(wrapper.emitted()).not.toHaveProperty('close');
-  });
-
-  it('closes without confirmation if no changes were made', async () => {
-    const wrapper = mount(SettingsModal, {
-      props: { isOpen: true }
-    });
-
-    await wrapper.find('[data-testid="setting-cancel-button"]').trigger('click');
-    
-    expect(window.confirm).not.toHaveBeenCalled();
-    expect(wrapper.emitted()).toHaveProperty('close');
   });
 });

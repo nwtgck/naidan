@@ -336,8 +336,7 @@ async function handleDeleteAll() {
         <button @click="setTheme('system')" class="flex-1 flex justify-center py-1.5 rounded-md transition-all" :class="themeMode === 'system' ? 'bg-gray-700 text-green-400 shadow-sm' : 'text-gray-400 hover:text-gray-200'"><Monitor class="w-4 h-4" /></button>
       </div>
 
-      <button @click="$emit('open-settings')" class="flex items-center gap-2 text-sm text-gray-400 hover:text-white w-full px-2 py-2 rounded hover:bg-gray-800"><SettingsIcon class="w-4 h-4" />Settings (Modal)</button>
-      <router-link to="/settings" class="flex items-center gap-2 text-sm text-gray-400 hover:text-white w-full px-2 py-2 rounded hover:bg-gray-800"><SettingsIcon class="w-4 h-4" />Settings (Page)</router-link>
+      <button @click="$emit('open-settings')" class="flex items-center gap-2 text-sm text-gray-400 hover:text-white w-full px-2 py-2 rounded hover:bg-gray-800"><SettingsIcon class="w-4 h-4" />Settings</button>
     </div>
   </div>
 </template>
