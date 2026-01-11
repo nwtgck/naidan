@@ -290,15 +290,18 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
 </script>
 
 <template>
-  <div ref="messageRef" class="flex gap-4 p-4 group" :class="{ 'bg-gray-50 dark:bg-gray-800/50': !isUser }">
-    <div class="flex-shrink-0">
+  <div ref="messageRef" class="flex flex-col gap-2 p-4 group" :class="{ 'bg-gray-50 dark:bg-gray-800/50': !isUser }">
+    <div class="flex items-center gap-3 mb-1">
       <div class="w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
         <User v-if="isUser" class="w-5 h-5 text-gray-600 dark:text-gray-300" />
         <Bird v-else class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
       </div>
+      <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest select-none">
+        {{ isUser ? 'You' : 'Assistant' }}
+      </div>
     </div>
     
-    <div class="flex-1 overflow-hidden">
+    <div class="overflow-hidden">
       <!-- Thinking Block -->
       <div v-if="hasThinking" class="mb-2" data-testid="thinking-block">
         <button 
