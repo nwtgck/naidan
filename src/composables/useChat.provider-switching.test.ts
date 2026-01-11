@@ -49,10 +49,11 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     // Reset Settings
     settings.value = {
       endpointType: 'openai',
-      endpointUrl: 'https://api.openai.com/v1',
+      endpointUrl: 'http://localhost:1234/v1',
       defaultModelId: 'gpt-4',
       autoTitleEnabled: false,
       storageType: 'local',
+      providerProfiles: [],
     };
 
     mockOpenAIModels.mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']);

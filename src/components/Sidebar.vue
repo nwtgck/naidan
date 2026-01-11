@@ -145,12 +145,12 @@ async function handleDeleteAll() {
 <template>
   <div class="flex flex-col h-full bg-gray-900 text-white w-64 border-r border-gray-800 select-none">
     <!-- Header -->
-    <div class="p-6 pb-2 flex items-center gap-3">
+    <router-link to="/" class="p-6 pb-2 flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer">
       <Logo :size="28" />
       <h1 class="text-lg font-bold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent">
         LM Web UI
       </h1>
-    </div>
+    </router-link>
 
     <!-- Actions -->
     <div class="p-4 space-y-2">
