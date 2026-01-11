@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick, ref } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -23,6 +23,7 @@ const mockCurrentChat = ref({
   currentLeafId: undefined as string | undefined,
   debugEnabled: false 
 });
+const mockActiveMessages = ref<MessageNode[]>([]);
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -30,7 +31,7 @@ vi.mock('../composables/useChat', () => ({
     sendMessage: mockSendMessage,
     streaming: mockStreaming,
     toggleDebug: vi.fn(),
-    activeMessages: ref([] as MessageNode[]),
+    activeMessages: mockActiveMessages,
     getSiblings: vi.fn().mockReturnValue([]),
     editMessage: vi.fn(),
     switchVersion: vi.fn(),
@@ -44,10 +45,17 @@ vi.mock('../composables/useSettings', () => ({
   })
 }));
 
+interface ChatAreaExposed {
+  scrollToBottom: () => void;
+  container: HTMLElement | null;
+  handleSend: () => Promise<void>;
+}
+
 describe('ChatArea UI States', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStreaming.value = false;
+    mockActiveMessages.value = [];
     document.body.innerHTML = '<div id="app"></div>';
   });
 
@@ -117,6 +125,144 @@ describe('ChatArea UI States', () => {
   });
 });
 
+describe('ChatArea Scrolling Logic', () => {
+  let scrollSetterSpy: Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStreaming.value = false;
+    mockActiveMessages.value = [];
+    document.body.innerHTML = '';
+    scrollSetterSpy = vi.fn();
+  });
+
+  function setupScrollMock(element: HTMLElement) {
+    Object.defineProperty(element, 'scrollHeight', { configurable: true, value: 1000 });
+    Object.defineProperty(element, 'clientHeight', { configurable: true, value: 500 });
+    
+    let internalScrollTop = 0;
+    Object.defineProperty(element, 'scrollTop', {
+      configurable: true,
+      get: () => internalScrollTop,
+      set: (val) => {
+        internalScrollTop = val;
+        scrollSetterSpy(val);
+      }
+    });
+  }
+
+  it('should scroll to bottom when a new message is added', async () => {
+    const wrapper = mount(ChatArea, { 
+      attachTo: document.body,
+      global: { plugins: [router] } 
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+    
+    // Clear initial mount-time scrolls
+    await flushPromises();
+    await nextTick();
+    scrollSetterSpy.mockClear();
+
+    mockActiveMessages.value = [{ id: '1', role: 'user', content: 'hello', timestamp: Date.now(), replies: { items: [] } }];
+    
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(scrollSetterSpy).toHaveBeenCalledWith(1000);
+    wrapper.unmount();
+  });
+
+  it('should scroll during streaming if user is at the bottom', async () => {
+    mockActiveMessages.value = [{ id: '1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }];
+    
+    const wrapper = mount(ChatArea, { 
+      attachTo: document.body,
+      global: { plugins: [router] } 
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+    
+    // Settle mount-time scrolls
+    await flushPromises();
+    await nextTick();
+    
+    // Set at bottom
+    container.scrollTop = 500; 
+    scrollSetterSpy.mockClear();
+
+    mockStreaming.value = true;
+    mockActiveMessages.value[0]!.content = 'Thinking...';
+    
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    
+    expect(scrollSetterSpy).toHaveBeenCalledWith(1000);
+    wrapper.unmount();
+  });
+
+  it('should NOT scroll during streaming if user has scrolled up', async () => {
+    mockActiveMessages.value = [{ id: '1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }];
+    
+    const wrapper = mount(ChatArea, { 
+      attachTo: document.body,
+      global: { plugins: [router] } 
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+    
+    // Settle mount-time scrolls
+    await flushPromises();
+    await nextTick();
+    
+    // Set scrolled up (not at bottom)
+    container.scrollTop = 100; 
+    scrollSetterSpy.mockClear();
+
+    mockStreaming.value = true;
+    mockActiveMessages.value[0]!.content = 'Thinking...';
+    
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    
+    expect(scrollSetterSpy).not.toHaveBeenCalledWith(1000);
+    expect(container.scrollTop).toBe(100);
+    wrapper.unmount();
+  });
+
+  it('should stop scrolling after content exceeds 400 characters', async () => {
+    mockActiveMessages.value = [{ id: '1', role: 'assistant', content: 'A'.repeat(400), timestamp: Date.now(), replies: { items: [] } }];
+    
+    const wrapper = mount(ChatArea, { 
+      attachTo: document.body,
+      global: { plugins: [router] } 
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+    
+    // Settle mount-time scrolls
+    await flushPromises();
+    await nextTick();
+    
+    container.scrollTop = 500; // at bottom
+    scrollSetterSpy.mockClear();
+
+    mockStreaming.value = true;
+    mockActiveMessages.value[0]!.content += ' exceeded';
+    
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    
+    expect(scrollSetterSpy).not.toHaveBeenCalledWith(1000);
+    expect(container.scrollTop).toBe(500);
+    wrapper.unmount();
+  });
+});
+
 describe('ChatArea Focus', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -135,7 +281,7 @@ describe('ChatArea Focus', () => {
     
     // Manually trigger the send logic to verify focus behavior
     // We already tested UI states separately
-    await (wrapper.vm as unknown as { handleSend: () => Promise<void> }).handleSend();
+    await (wrapper.vm as unknown as ChatAreaExposed).handleSend();
     
     // Wait for focusInput nextTick
     await nextTick();

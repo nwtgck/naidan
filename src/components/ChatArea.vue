@@ -32,6 +32,15 @@ function focusInput() {
   });
 }
 
+function scrollToBottom() {
+  if (container.value) {
+    container.value.scrollTop = container.value.scrollHeight;
+  }
+}
+
+// Expose for testing
+defineExpose({ scrollToBottom, container, handleSend });
+
 async function fetchModels() {
   if (!currentChat.value) return;
   fetchingModels.value = true;
@@ -76,11 +85,6 @@ function jumpToOrigin() {
     router.push(`/chat/${currentChat.value.originChatId}`);
   }
 }
-function scrollToBottom() {
-  if (container.value) {
-    container.value.scrollTop = container.value.scrollHeight;
-  }
-}
 
 watch(
   () => activeMessages.value.length,
@@ -89,11 +93,12 @@ watch(
 
 watch(
   () => activeMessages.value[activeMessages.value.length - 1]?.content,
-  () => {
-    if (container.value) {
+  (newContent) => {
+    if (streaming.value && newContent && newContent.length < 400 && container.value) {
         const { scrollTop, scrollHeight, clientHeight } = container.value;
-        if (scrollHeight - scrollTop - clientHeight < 100) {
-            scrollToBottom();
+        // Only auto-scroll if user is already at the bottom (within 50px)
+        if (scrollHeight - scrollTop - clientHeight < 50) {
+            nextTick(scrollToBottom);
         }
     }
   },
@@ -104,13 +109,14 @@ watch(
   () => currentChat.value?.id,
   () => {
     if (currentChat.value) {
+      nextTick(scrollToBottom);
       focusInput();
     }
   }
 );
 
 onMounted(() => {
-    scrollToBottom();
+    nextTick(scrollToBottom);
     if (currentChat.value) {
       focusInput();
     }
@@ -202,7 +208,7 @@ onMounted(() => {
 
     <!-- Messages -->
     <div class="flex-1 flex overflow-hidden">
-      <div ref="container" class="flex-1 overflow-y-auto relative">
+      <div ref="container" data-testid="scroll-container" class="flex-1 overflow-y-auto relative">
         <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
           Select or create a chat to start
         </div>
