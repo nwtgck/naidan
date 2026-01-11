@@ -116,6 +116,39 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       .toBe('http://temporary-change');
   });
 
+  it('applies endpoint presets correctly and highlights the active one', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
+
+    const lmstudioPreset = wrapper.find('[data-testid="endpoint-preset-lm-studio"]');
+    const ollamaPreset = wrapper.find('[data-testid="endpoint-preset-ollama"]');
+    const llamaPreset = wrapper.find('[data-testid="endpoint-preset-llama-server-(local)"]');
+    
+    expect(lmstudioPreset.exists()).toBe(true);
+    expect(ollamaPreset.exists()).toBe(true);
+    expect(llamaPreset.exists()).toBe(true);
+
+    // Test LM Studio
+    await lmstudioPreset.trigger('click');
+    const vm = wrapper.vm as unknown as { form: { endpointType: string, endpointUrl: string } };
+    expect(vm.form.endpointType).toBe('openai');
+    expect(vm.form.endpointUrl).toBe('http://localhost:1234/v1');
+    expect(lmstudioPreset.attributes('class')).toContain('bg-indigo-600'); // Highlighted
+
+    // Test Ollama
+    await ollamaPreset.trigger('click');
+    expect(vm.form.endpointType).toBe('ollama');
+    expect(vm.form.endpointUrl).toBe('http://localhost:11434');
+    expect(ollamaPreset.attributes('class')).toContain('bg-indigo-600');
+    expect(lmstudioPreset.attributes('class')).not.toContain('bg-indigo-600');
+
+    // Test llama-server
+    await llamaPreset.trigger('click');
+    expect(vm.form.endpointType).toBe('openai');
+    expect(vm.form.endpointUrl).toBe('http://localhost:8080/v1');
+    expect(llamaPreset.attributes('class')).toContain('bg-indigo-600');
+  });
+
   it('shows identical confirmation behavior for both "X" and "Cancel" buttons', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });
     await flushPromises();

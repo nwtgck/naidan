@@ -44,6 +44,22 @@ const hasChanges = computed(() => {
 
 const selectedProviderProfileId = ref('');
 
+const ENDPOINT_PRESETS = [
+  { name: 'Ollama', type: 'ollama', url: 'http://localhost:11434' },
+  { name: 'LM Studio', type: 'openai', url: 'http://localhost:1234/v1' },
+  { name: 'llama-server (local)', type: 'openai', url: 'http://localhost:8080/v1' },
+  // Cloud providers commented out until API key support is added
+  // { name: 'OpenAI', type: 'openai', url: 'https://api.openai.com/v1' },
+  // { name: 'Groq', type: 'openai', url: 'https://api.groq.com/openai/v1' },
+  // { name: 'Mistral', type: 'openai', url: 'https://api.mistral.ai/v1' },
+] as const;
+
+function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
+  form.value.endpointType = preset.type;
+  form.value.endpointUrl = preset.url;
+  fetchModels();
+}
+
 async function handleResetData() {
   if (confirm('Are you sure you want to reset all app data? This will delete all chats, groups, and settings for the current storage location.')) {
     await storageService.clearAll();
@@ -265,9 +281,25 @@ watch(() => props.isOpen, (open) => {
                     </select>
                   </div>
 
-                  <div class="space-y-2">
-                    <label class="block text-xs font-bold text-gray-500 uppercase ml-1">Endpoint URL</label>
-                    <div class="flex gap-2">
+                <!-- Endpoint URL -->
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between ml-1">
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Endpoint URL</label>
+                    <div class="flex flex-wrap gap-1.5">
+                      <button 
+                        v-for="preset in ENDPOINT_PRESETS" 
+                        :key="preset.name"
+                        @click="applyPreset(preset)"
+                        type="button"
+                        class="px-2 py-0.5 text-[9px] font-bold rounded-md border transition-all"
+                        :class="form.endpointUrl === preset.url && form.endpointType === preset.type ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'"
+                        :data-testid="`endpoint-preset-${preset.name.toLowerCase().replace(' ', '-')}`"
+                      >
+                        {{ preset.name }}
+                      </button>
+                    </div>
+                  </div>
+                  <div class="flex gap-2">
                       <input 
                         v-model="form.endpointUrl"
                         type="text"
