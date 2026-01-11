@@ -9,7 +9,7 @@ import {
   X, Loader2, FlaskConical, Trash2, Globe, 
   Database, Bot, Type, Settings2, RefreshCw, Save,
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
-  Target, Pencil, Trash, Check
+  Target, Pencil, Trash, Check, Activity
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -45,8 +45,8 @@ const hasChanges = computed(() => {
 const selectedProviderProfileId = ref('');
 
 const ENDPOINT_PRESETS = [
-  { name: 'Ollama', type: 'ollama', url: 'http://localhost:11434' },
-  { name: 'LM Studio', type: 'openai', url: 'http://localhost:1234/v1' },
+  { name: 'Ollama (local)', type: 'ollama', url: 'http://localhost:11434' },
+  { name: 'LM Studio (local)', type: 'openai', url: 'http://localhost:1234/v1' },
   { name: 'llama-server (local)', type: 'openai', url: 'http://localhost:8080/v1' },
   // Cloud providers commented out until API key support is added
   // { name: 'OpenAI', type: 'openai', url: 'https://api.openai.com/v1' },
@@ -57,7 +57,6 @@ const ENDPOINT_PRESETS = [
 function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
   form.value.endpointType = preset.type;
   form.value.endpointUrl = preset.url;
-  fetchModels();
 }
 
 async function handleResetData() {
@@ -91,7 +90,7 @@ async function fetchModels() {
     availableModels.value = await provider.listModels(form.value.endpointUrl);
   } catch (e) {
     console.error(e);
-    error.value = 'Failed to fetch models. Check URL.';
+    error.value = 'Connection failed. Check URL or provider.';
     availableModels.value = [];
   } finally {
     fetchingModels.value = false;
@@ -132,7 +131,6 @@ function handleApplyProviderProfile(providerProfile: ProviderProfile) {
   form.value.endpointUrl = providerProfile.endpointUrl;
   form.value.defaultModelId = providerProfile.defaultModelId;
   form.value.titleModelId = providerProfile.titleModelId;
-  fetchModels();
 }
 
 function handleDeleteProviderProfile(id: string) {
@@ -168,11 +166,17 @@ watch(() => props.isOpen, (open) => {
   if (open) {
     form.value = JSON.parse(JSON.stringify(settings.value));
     initialFormState.value = JSON.stringify(form.value);
-    activeTab.value = 'connection';
-    saveSuccess.value = false;
     fetchModels();
   }
 });
+
+// Auto-fetch only for localhost
+watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => {
+  if (url && (url.includes('localhost') || url.includes('127.0.0.1'))) {
+    fetchModels();
+  }
+});
+
 </script>
 
 <template>
@@ -182,10 +186,10 @@ watch(() => props.isOpen, (open) => {
       <!-- Persistent Close Button (Top Right) -->
       <button 
         @click="handleCancel"
-        class="absolute top-4 right-4 z-[120] p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors shadow-sm bg-white/50 dark:bg-gray-900/50 backdrop-blur"
-        title="Close (Esc)"
+        class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+        data-testid="setting-close-x"
       >
-        <X class="w-6 h-6" />
+        <X class="w-5 h-5" />
       </button>
 
       <!-- Sidebar (Tabs) -->
@@ -273,7 +277,6 @@ watch(() => props.isOpen, (open) => {
                       v-model="form.endpointType"
                       class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white appearance-none"
                       style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-                      @change="fetchModels"
                       data-testid="setting-provider-select"
                     >
                       <option value="openai">OpenAI Compatible</option>
@@ -281,25 +284,26 @@ watch(() => props.isOpen, (open) => {
                     </select>
                   </div>
 
-                <!-- Endpoint URL -->
-                <div class="space-y-3">
-                  <div class="flex items-center justify-between ml-1">
-                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Endpoint URL</label>
-                    <div class="flex flex-wrap gap-1.5">
-                      <button 
-                        v-for="preset in ENDPOINT_PRESETS" 
-                        :key="preset.name"
-                        @click="applyPreset(preset)"
-                        type="button"
-                        class="px-2 py-0.5 text-[9px] font-bold rounded-md border transition-all"
-                        :class="form.endpointUrl === preset.url && form.endpointType === preset.type ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'"
-                        :data-testid="`endpoint-preset-${preset.name.toLowerCase().replace(' ', '-')}`"
-                      >
-                        {{ preset.name }}
-                      </button>
+                  <!-- Endpoint URL -->
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between ml-1">
+                      <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Endpoint URL</label>
+                      <div class="flex flex-wrap gap-1.5">
+                        <button 
+                          v-for="preset in ENDPOINT_PRESETS" 
+                          :key="preset.name"
+                          @click="applyPreset(preset)"
+                          type="button"
+                          class="px-2 py-0.5 text-[9px] font-bold rounded-md border transition-all"
+                                                  :class="form.endpointUrl === preset.url && form.endpointType === preset.type ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'"
+                                                  :data-testid="`endpoint-preset-${preset.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`"
+                                                >
+                                                  {{ preset.name }}
+                          
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div class="flex gap-2">
+                    <div class="flex gap-2">
                       <input 
                         v-model="form.endpointUrl"
                         type="text"
@@ -309,12 +313,15 @@ watch(() => props.isOpen, (open) => {
                       />
                       <button 
                         @click="fetchModels"
-                        class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl transition-colors flex items-center justify-center gap-2 min-w-[100px]"
-                        title="Refresh Models"
-                        data-testid="setting-refresh-models"
+                        class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl transition-colors flex items-center justify-center gap-2 min-w-[150px]"
+                        title="Check Connection"
+                        data-testid="setting-check-connection"
                       >
                         <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
-                        <RefreshCw v-else class="w-4 h-4" />
+                        <template v-else>
+                          <Activity class="w-4 h-4" />
+                          <span class="text-xs font-bold">Check Connection</span>
+                        </template>
                       </button>
                     </div>
                     <p v-if="error" class="text-xs text-red-500 font-medium ml-1">{{ error }}</p>
@@ -331,15 +338,26 @@ watch(() => props.isOpen, (open) => {
                 <div class="space-y-6">
                   <div class="space-y-2">
                     <label class="block text-xs font-bold text-gray-500 uppercase ml-1">Default Model</label>
-                    <select 
-                      v-model="form.defaultModelId"
-                      class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white appearance-none"
-                      style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-                      data-testid="setting-model-select"
-                    >
-                      <option v-if="!availableModels || availableModels.length === 0" :value="form.defaultModelId">{{ form.defaultModelId || 'Custom' }}</option>
-                      <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-                    </select>
+                    <div class="flex gap-2">
+                      <select 
+                        v-model="form.defaultModelId"
+                        class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white appearance-none"
+                        style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
+                        data-testid="setting-model-select"
+                      >
+                        <option v-if="!availableModels || availableModels.length === 0" :value="form.defaultModelId">{{ form.defaultModelId || 'Custom' }}</option>
+                        <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+                      </select>
+                      <button 
+                        @click="fetchModels"
+                        class="px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-xl transition-colors flex items-center justify-center gap-2"
+                        title="Refresh Model List"
+                        data-testid="setting-refresh-models"
+                      >
+                        <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
+                        <RefreshCw v-else class="w-4 h-4" />
+                      </button>
+                    </div>
                     <p class="text-xs text-gray-400 ml-1">Used for all new conversations unless overridden.</p>
                   </div>
 
