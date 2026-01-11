@@ -31,7 +31,7 @@ describe('OnboardingModal.vue', () => {
     (useSettings as unknown as Mock).mockReturnValue({
       settings: mockSettings,
       save: mockSave,
-      initialized: { value: true }
+      initialized: { value: true },
     });
   });
 

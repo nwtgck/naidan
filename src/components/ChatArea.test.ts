@@ -7,7 +7,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 // Mock router
 const router = createRouter({
   history: createWebHistory(),
-  routes: [{ path: '/', component: {} }]
+  routes: [{ path: '/', component: {} }],
 });
 
 import type { MessageNode } from '../models/types';
@@ -21,7 +21,7 @@ const mockCurrentChat = ref({
   title: 'Test Chat', 
   root: { items: [] } as { items: MessageNode[] },
   currentLeafId: undefined as string | undefined,
-  debugEnabled: false 
+  debugEnabled: false, 
 });
 const mockActiveMessages = ref<MessageNode[]>([]);
 
@@ -35,14 +35,14 @@ vi.mock('../composables/useChat', () => ({
     getSiblings: vi.fn().mockReturnValue([]),
     editMessage: vi.fn(),
     switchVersion: vi.fn(),
-    abortChat: mockAbortChat
-  })
+    abortChat: mockAbortChat,
+  }),
 }));
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost' } }
-  })
+    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost' } },
+  }),
 }));
 
 interface ChatAreaExposed {
@@ -62,7 +62,7 @@ describe('ChatArea UI States', () => {
   it('should keep the input textarea enabled during streaming', async () => {
     mockStreaming.value = true;
     const wrapper = mount(ChatArea, {
-      global: { plugins: [router] }
+      global: { plugins: [router] },
     });
     
     const textarea = wrapper.find('[data-testid="chat-input"]');
@@ -72,7 +72,7 @@ describe('ChatArea UI States', () => {
   it('should show the abort button and hide the send button during streaming', async () => {
     mockStreaming.value = true;
     const wrapper = mount(ChatArea, {
-      global: { plugins: [router] }
+      global: { plugins: [router] },
     });
     
     const abortBtn = wrapper.find('[data-testid="abort-button"]');
@@ -84,7 +84,7 @@ describe('ChatArea UI States', () => {
   it('should call abortChat when Esc is pressed during streaming', async () => {
     mockStreaming.value = true;
     const wrapper = mount(ChatArea, {
-      global: { plugins: [router] }
+      global: { plugins: [router] },
     });
     
     const textarea = wrapper.find('[data-testid="chat-input"]');
@@ -95,7 +95,7 @@ describe('ChatArea UI States', () => {
   it('should show the send button with shortcut text when not streaming', async () => {
     mockStreaming.value = false;
     const wrapper = mount(ChatArea, {
-      global: { plugins: [router] }
+      global: { plugins: [router] },
     });
     
     const sendBtn = wrapper.find('[data-testid="send-button"]');
@@ -107,7 +107,7 @@ describe('ChatArea UI States', () => {
   it('should show the chat inspector when debug mode is enabled', async () => {
     mockCurrentChat.value.debugEnabled = true;
     const wrapper = mount(ChatArea, {
-      global: { plugins: [router] }
+      global: { plugins: [router] },
     });
     
     const inspector = wrapper.find('[data-testid="chat-inspector"]');
@@ -118,7 +118,7 @@ describe('ChatArea UI States', () => {
   it('should hide the chat inspector when debug mode is disabled', async () => {
     mockCurrentChat.value.debugEnabled = false;
     const wrapper = mount(ChatArea, {
-      global: { plugins: [router] }
+      global: { plugins: [router] },
     });
     
     expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
@@ -147,14 +147,14 @@ describe('ChatArea Scrolling Logic', () => {
       set: (val) => {
         internalScrollTop = val;
         scrollSetterSpy(val);
-      }
+      },
     });
   }
 
   it('should scroll to bottom when a new message is added', async () => {
     const wrapper = mount(ChatArea, { 
       attachTo: document.body,
-      global: { plugins: [router] } 
+      global: { plugins: [router] }, 
     });
     const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
     setupScrollMock(container);
@@ -179,7 +179,7 @@ describe('ChatArea Scrolling Logic', () => {
     
     const wrapper = mount(ChatArea, { 
       attachTo: document.body,
-      global: { plugins: [router] } 
+      global: { plugins: [router] }, 
     });
     const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
     setupScrollMock(container);
@@ -208,7 +208,7 @@ describe('ChatArea Scrolling Logic', () => {
     
     const wrapper = mount(ChatArea, { 
       attachTo: document.body,
-      global: { plugins: [router] } 
+      global: { plugins: [router] }, 
     });
     const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
     setupScrollMock(container);
@@ -238,7 +238,7 @@ describe('ChatArea Scrolling Logic', () => {
     
     const wrapper = mount(ChatArea, { 
       attachTo: document.body,
-      global: { plugins: [router] } 
+      global: { plugins: [router] }, 
     });
     const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
     setupScrollMock(container);
@@ -273,8 +273,8 @@ describe('ChatArea Focus', () => {
     const wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: {
-        plugins: [router]
-      }
+        plugins: [router],
+      },
     });
     
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
@@ -294,8 +294,8 @@ describe('ChatArea Focus', () => {
     const wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: {
-        plugins: [router]
-      }
+        plugins: [router],
+      },
     });
     
     await nextTick();

@@ -6,18 +6,18 @@ import { useChat } from '../../composables/useChat';
 import { useRoute } from 'vue-router';
 
 vi.mock('../../composables/useChat', () => ({
-  useChat: vi.fn()
+  useChat: vi.fn(),
 }));
 
 vi.mock('vue-router', () => ({
-  useRoute: vi.fn()
+  useRoute: vi.fn(),
 }));
 
 vi.mock('../../components/ChatArea.vue', () => ({
   default: {
     name: 'ChatArea',
-    template: '<div data-testid="chat-area"></div>'
-  }
+    template: '<div data-testid="chat-area"></div>',
+  },
 }));
 
 describe('ChatPage', () => {
@@ -26,13 +26,13 @@ describe('ChatPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (useChat as unknown as Mock).mockReturnValue({
-      openChat: mockOpenChat
+      openChat: mockOpenChat,
     });
   });
 
   it('calls openChat on mount with id from route', () => {
     (useRoute as unknown as Mock).mockReturnValue({
-      params: reactive({ id: 'chat-123' })
+      params: reactive({ id: 'chat-123' }),
     });
     
     mount(ChatPage);

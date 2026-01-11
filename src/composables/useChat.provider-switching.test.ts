@@ -14,7 +14,7 @@ vi.mock('../services/storage', () => ({
     saveSettings: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     listGroups: vi.fn().mockResolvedValue([]),
-  }
+  },
 }));
 
 const mockOpenAIChat = vi.fn();
@@ -103,7 +103,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
       title: 'Fallback Test',
       root: { items: [] },
       modelId: 'unknown',
-      createdAt: 0, updatedAt: 0, debugEnabled: false
+      createdAt: 0, updatedAt: 0, debugEnabled: false,
     });
 
     await sendMessage('Test');

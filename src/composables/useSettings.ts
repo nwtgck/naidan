@@ -42,6 +42,6 @@ export function useSettings() {
     loading,
     initialized,
     init,
-    save
+    save,
   };
 }

@@ -16,7 +16,7 @@ describe('Legacy Migration (Flat to Tree)', () => {
       ],
       modelId: 'gpt-4',
       createdAt: 1,
-      updatedAt: 2
+      updatedAt: 2,
     };
 
     const domain = chatToDomain(legacyChat as ChatDto);

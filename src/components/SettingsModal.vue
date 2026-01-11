@@ -16,7 +16,7 @@ import {
   X, Loader2, FlaskConical, Trash2, Globe, 
   Database, Bot, Type, Settings2, RefreshCw, Save,
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
-  Pencil, Trash, Check, Activity
+  Pencil, Trash, Check, Activity,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -135,7 +135,7 @@ function handleCreateProviderProfile() {
     endpointType: form.value.endpointType,
     endpointUrl: form.value.endpointUrl,
     defaultModelId: form.value.defaultModelId,
-    titleModelId: form.value.titleModelId
+    titleModelId: form.value.titleModelId,
   };
 
   if (!form.value.providerProfiles) form.value.providerProfiles = [];
@@ -164,7 +164,7 @@ function handleDeleteProviderProfile(id: string) {
     onAction: () => {
       form.value.providerProfiles.splice(index, 0, deletedProfile);
     },
-    duration: 5000
+    duration: 5000,
   });
 }
 
@@ -325,10 +325,10 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                           @click="applyPreset(preset)"
                           type="button"
                           class="px-2 py-0.5 text-[9px] font-bold rounded-md border transition-all"
-                                                  :class="form.endpointUrl === preset.url && form.endpointType === preset.type ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'"
-                                                  :data-testid="`endpoint-preset-${preset.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`"
-                                                >
-                                                  {{ preset.name }}
+                          :class="form.endpointUrl === preset.url && form.endpointType === preset.type ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'"
+                          :data-testid="`endpoint-preset-${preset.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`"
+                        >
+                          {{ preset.name }}
                           
                         </button>
                       </div>

@@ -52,7 +52,7 @@ export function processThinking(node: MessageNode) {
 export function findRestorationIndex(
   items: SidebarItem[],
   prevId: string | null,
-  nextId: string | null
+  nextId: string | null,
 ): number {
   if (items.length === 0) return 0;
 
@@ -129,14 +129,14 @@ export function useChat() {
     const path: MessageNode[] = [];
     const targetId = currentChat.value.currentLeafId;
     let curr: MessageNode | null = currentChat.value.root.items.find(item => 
-      item.id === targetId || findNodeInBranch(item.replies.items, targetId || '')
+      item.id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
     ) || currentChat.value.root.items[currentChat.value.root.items.length - 1] || null;
 
     while (curr) {
       path.push(curr);
       if (curr.id === targetId) break;
       const next: MessageNode | undefined = curr.replies.items.find(item => 
-        item.id === targetId || findNodeInBranch(item.replies.items, targetId || '')
+        item.id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
       ) || curr.replies.items[curr.replies.items.length - 1];
       curr = next || null;
     }
@@ -227,7 +227,7 @@ export function useChat() {
 
   const deleteChat = async (
     id: string, 
-    injectAddToast?: (toast: AddToastOptions) => string
+    injectAddToast?: (toast: AddToastOptions) => string,
   ) => {
     const { useToast } = await import('./useToast');
     const { addToast: originalAddToast } = useToast();
@@ -285,7 +285,7 @@ export function useChat() {
         await storageService.saveChat(chatData, targetIndex);
         await loadData();
         await openChat(chatData.id);
-      }
+      },
     });
   };
 
@@ -322,7 +322,7 @@ export function useChat() {
       role: 'user',
       content,
       timestamp: Date.now(),
-      replies: { items: [] }
+      replies: { items: [] },
     };
 
     const assistantMsg: MessageNode = {
@@ -330,7 +330,7 @@ export function useChat() {
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
-      replies: { items: [] }
+      replies: { items: [] },
     };
     userMsg.replies.items.push(assistantMsg);
 
@@ -392,7 +392,7 @@ export function useChat() {
           const titleGenModel = settings.value.titleModelId || resolvedModel;
           const promptNode: MessageNode = {
             id: uuidv7(), role: 'user', timestamp: Date.now(), replies: { items: [] },
-            content: `Generate a short title (2-3 words) for: "${content}". Respond ONLY with the title.`
+            content: `Generate a short title (2-3 words) for: "${content}". Respond ONLY with the title.`,
           };
           await titleProvider.chat([promptNode], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
           const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
@@ -433,7 +433,7 @@ export function useChat() {
     const forkPath = path.slice(0, idx + 1);
 
     const clonedNodes: MessageNode[] = forkPath.map(n => ({
-      id: n.id, role: n.role, content: n.content, timestamp: n.timestamp, thinking: n.thinking, replies: { items: [] }
+      id: n.id, role: n.role, content: n.content, timestamp: n.timestamp, thinking: n.thinking, replies: { items: [] },
     }));
 
     for (let i = 0; i < clonedNodes.length - 1; i++) {
@@ -468,7 +468,7 @@ export function useChat() {
 
     if (node.role === 'assistant') {
       const correctedNode: MessageNode = {
-        id: uuidv7(), role: 'assistant', content: newContent, timestamp: Date.now(), replies: { items: [] }
+        id: uuidv7(), role: 'assistant', content: newContent, timestamp: Date.now(), replies: { items: [] },
       };
       const parent = findParentInBranch(currentChat.value.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);
@@ -595,6 +595,6 @@ export function useChat() {
     toggleGroupCollapse,
     renameGroup,
     persistSidebarStructure,
-    abortChat
+    abortChat,
   };
 }

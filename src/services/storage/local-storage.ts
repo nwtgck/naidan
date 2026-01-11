@@ -2,14 +2,14 @@ import type {
   Chat, 
   Settings, 
   ChatGroup,
-  SidebarItem
+  SidebarItem,
 } from '../../models/types';
 import { 
   ChatSchemaDto as DtoChatSchema, 
   SettingsSchemaDto as DtoSettingsSchema,
   ChatGroupSchemaDto as DtoChatGroupSchema,
   type ChatGroupDto,
-  type ChatDto
+  type ChatDto,
 } from '../../models/dto';
 import { 
   chatToDomain as mapChatToDomain,
@@ -17,7 +17,7 @@ import {
   settingsToDomain as mapSettingsToDomain,
   settingsToDto as mapSettingsToDto,
   chatGroupToDto as mapGroupToDto,
-  buildSidebarItemsFromDtos
+  buildSidebarItemsFromDtos,
 } from '../../models/mappers';
 import { IStorageProvider } from './interface';
 
@@ -118,7 +118,7 @@ export class LocalStorageProvider extends IStorageProvider {
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
     const [chats, groups] = await Promise.all([
       this.listChatsRaw(),
-      this.listGroupsRaw()
+      this.listGroupsRaw(),
     ]);
     return buildSidebarItemsFromDtos(groups, chats);
   }

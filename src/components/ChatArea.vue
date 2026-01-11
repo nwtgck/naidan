@@ -75,7 +75,7 @@ function jumpToOrigin() {
 
 watch(
   () => activeMessages.value.length,
-  () => nextTick(scrollToBottom)
+  () => nextTick(scrollToBottom),
 );
 
 watch(
@@ -89,7 +89,7 @@ watch(
         }
     }
   },
-  { deep: true }
+  { deep: true },
 );
 
 watch(
@@ -99,7 +99,7 @@ watch(
       nextTick(scrollToBottom);
       focusInput();
     }
-  }
+  },
 );
 
 onMounted(() => {
@@ -114,38 +114,38 @@ onMounted(() => {
   <div class="flex flex-col h-full bg-white dark:bg-gray-900 transition-colors">
     <!-- Header -->
     <div v-if="currentChat" class="border-b dark:border-gray-800 px-6 py-4 flex items-center justify-between bg-white dark:bg-gray-900 shadow-sm z-10">
-        <div class="flex flex-col overflow-hidden">
-          <div class="flex items-center gap-3">
-            <button 
-              v-if="currentChat.originChatId"
-              @click="jumpToOrigin"
-              class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-indigo-600 transition-colors"
-              title="Jump to original chat"
-            >
-              <ArrowLeft class="w-5 h-5" />
-            </button>
-            <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 truncate">{{ currentChat.title || 'Untitled Chat' }}</h2>
-          </div>
-          <p class="text-xs text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
-        </div>
-        <div class="flex items-center gap-2">
+      <div class="flex flex-col overflow-hidden">
+        <div class="flex items-center gap-3">
           <button 
-              @click="showChatSettings = !showChatSettings; if(showChatSettings) fetchModels()"
-              class="p-2 rounded-md transition-colors"
-              :class="showChatSettings ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
-              title="Chat Settings"
+            v-if="currentChat.originChatId"
+            @click="jumpToOrigin"
+            class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-indigo-600 transition-colors"
+            title="Jump to original chat"
           >
-              <Settings2 class="w-5 h-5" />
+            <ArrowLeft class="w-5 h-5" />
           </button>
-          <button 
-              @click="chatStore.toggleDebug"
-              class="p-2 rounded-md transition-colors"
-              :class="currentChat.debugEnabled ? 'text-green-600 bg-green-50 dark:bg-green-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
-              title="Toggle Debug Mode for this Chat"
-          >
-              <Bug class="w-5 h-5" />
-          </button>
+          <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 truncate">{{ currentChat.title || 'Untitled Chat' }}</h2>
         </div>
+        <p class="text-xs text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button 
+          @click="showChatSettings = !showChatSettings; if(showChatSettings) fetchModels()"
+          class="p-2 rounded-md transition-colors"
+          :class="showChatSettings ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+          title="Chat Settings"
+        >
+          <Settings2 class="w-5 h-5" />
+        </button>
+        <button 
+          @click="chatStore.toggleDebug"
+          class="p-2 rounded-md transition-colors"
+          :class="currentChat.debugEnabled ? 'text-green-600 bg-green-50 dark:bg-green-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
+          title="Toggle Debug Mode for this Chat"
+        >
+          <Bug class="w-5 h-5" />
+        </button>
+      </div>
     </div>
 
     <!-- Chat Settings Panel -->
@@ -229,7 +229,7 @@ onMounted(() => {
             <span>Chat Inspector</span>
           </div>
           <button @click="chatStore.toggleDebug" class="text-gray-400 hover:text-white">
-             <Square class="w-3.5 h-3.5" />
+            <Square class="w-3.5 h-3.5" />
           </button>
         </div>
         <div class="space-y-4">

@@ -6,7 +6,7 @@ import {
   settingsToDomain,
   settingsToDto,
   chatGroupToDto,
-  buildSidebarItemsFromDtos
+  buildSidebarItemsFromDtos,
 } from '../../models/mappers';
 import { IStorageProvider } from './interface';
 
@@ -144,7 +144,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
     const [chats, groups] = await Promise.all([
       this.listChatsRaw(),
-      this.listGroupsRaw()
+      this.listGroupsRaw(),
     ]);
     return buildSidebarItemsFromDtos(groups, chats);
   }

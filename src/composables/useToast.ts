@@ -32,7 +32,7 @@ const removeToast = (id: string) => {
 export const toastStore = {
   toasts,
   addToast,
-  removeToast
+  removeToast,
 };
 
 export function useToast() {

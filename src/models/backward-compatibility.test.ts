@@ -16,12 +16,12 @@ describe('DTO Backward Compatibility', () => {
           id: '660e8400-e29b-41d4-a716-446655440001',
           role: 'user',
           content: 'Hello',
-          timestamp: 1700000000000
-        }
+          timestamp: 1700000000000,
+        },
       ],
       modelId: 'gpt-3.5-turbo',
       createdAt: 1700000000000,
-      updatedAt: 1700000000000
+      updatedAt: 1700000000000,
       // Note: debugEnabled, endpointType, etc. are missing
     };
 
@@ -52,7 +52,7 @@ describe('DTO Backward Compatibility', () => {
       modelId: 'gpt-4',
       createdAt: 1700000000000,
       updatedAt: 1700000000000,
-      debugEnabled: true
+      debugEnabled: true,
     };
 
     const dto = ChatSchemaDto.parse(v1_1Data);
@@ -73,7 +73,7 @@ describe('DTO Backward Compatibility', () => {
       createdAt: 1700000000000,
       updatedAt: 1700000000000,
       originChatId: '550e8400-e29b-41d4-a716-446655440000',
-      originMessageId: '660e8400-e29b-41d4-a716-446655440001'
+      originMessageId: '660e8400-e29b-41d4-a716-446655440001',
     };
 
     const dto = ChatSchemaDto.parse(v1_2Data);

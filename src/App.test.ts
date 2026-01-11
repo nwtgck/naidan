@@ -8,18 +8,18 @@ import { useRouter } from 'vue-router';
 import type { Chat } from './models/types';
 
 vi.mock('./composables/useChat', () => ({
-  useChat: vi.fn()
+  useChat: vi.fn(),
 }));
 
 vi.mock('./composables/useSettings', () => ({
-  useSettings: vi.fn()
+  useSettings: vi.fn(),
 }));
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
   RouterView: {
-    template: '<div data-testid="router-view"><slot /></div>'
-  }
+    template: '<div data-testid="router-view"><slot /></div>',
+  },
 }));
 
 // Mock sub-components
@@ -27,33 +27,33 @@ vi.mock('./components/Sidebar.vue', () => ({
   default: {
     name: 'Sidebar',
     template: '<div data-testid="sidebar"><button @click="$emit(\'open-settings\')">Settings</button></div>',
-    emits: ['open-settings']
-  }
+    emits: ['open-settings'],
+  },
 }));
 vi.mock('./components/SettingsModal.vue', () => ({
   default: {
     name: 'SettingsModal',
     template: '<div v-if="isOpen" data-testid="settings-modal"></div>',
-    props: ['isOpen']
-  }
+    props: ['isOpen'],
+  },
 }));
 vi.mock('./components/OnboardingModal.vue', () => ({
   default: {
     name: 'OnboardingModal',
-    template: '<div data-testid="onboarding-modal"></div>'
-  }
+    template: '<div data-testid="onboarding-modal"></div>',
+  },
 }));
 vi.mock('./components/DebugPanel.vue', () => ({
   default: {
     name: 'DebugPanel',
-    template: '<div data-testid="debug-panel"></div>'
-  }
+    template: '<div data-testid="debug-panel"></div>',
+  },
 }));
 vi.mock('./components/ToastContainer.vue', () => ({
   default: {
     name: 'ToastContainer',
-    template: '<div data-testid="toast-container"></div>'
-  }
+    template: '<div data-testid="toast-container"></div>',
+  },
 }));
 
 describe('App', () => {
@@ -64,15 +64,15 @@ describe('App', () => {
     vi.clearAllMocks();
     (useChat as unknown as Mock).mockReturnValue({
       createNewChat: mockCreateNewChat,
-      currentChat: ref(null)
+      currentChat: ref(null),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
       initialized: ref(true),
-      settings: ref({ endpointUrl: 'http://localhost:11434' })
+      settings: ref({ endpointUrl: 'http://localhost:11434' }),
     });
     (useRouter as unknown as Mock).mockReturnValue({
-      push: vi.fn()
+      push: vi.fn(),
     });
   });
 
@@ -81,9 +81,9 @@ describe('App', () => {
       global: {
         stubs: {
           'router-view': true,
-          'transition': true
-        }
-      }
+          'transition': true,
+        },
+      },
     });
     expect(mockInit).toHaveBeenCalled();
   });
@@ -93,9 +93,9 @@ describe('App', () => {
       global: {
         stubs: {
           'router-view': true,
-          'transition': true
-        }
-      }
+          'transition': true,
+        },
+      },
     });
     expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="debug-panel"]').exists()).toBe(true);
@@ -107,9 +107,9 @@ describe('App', () => {
       global: {
         stubs: {
           'router-view': true,
-          'transition': true
-        }
-      }
+          'transition': true,
+        },
+      },
     });
     
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
@@ -123,16 +123,16 @@ describe('App', () => {
     (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
       initialized: ref(true),
-      settings: ref({ endpointUrl: '' })
+      settings: ref({ endpointUrl: '' }),
     });
 
     const wrapper = mount(App, {
       global: {
         stubs: {
           'router-view': true,
-          'transition': true
-        }
-      }
+          'transition': true,
+        },
+      },
     });
     
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
@@ -148,16 +148,16 @@ describe('App', () => {
     (useRouter as unknown as Mock).mockReturnValue({ push: mockRouterPush });
     (useChat as unknown as Mock).mockReturnValue({
       createNewChat: localMockCreateNewChat,
-      currentChat
+      currentChat,
     });
 
     mount(App, {
       global: {
         stubs: {
           'router-view': true,
-          'transition': true
-        }
-      }
+          'transition': true,
+        },
+      },
     });
 
     // Simulate Ctrl+Shift+O
@@ -165,7 +165,7 @@ describe('App', () => {
       key: 'o',
       ctrlKey: true,
       shiftKey: true,
-      bubbles: true
+      bubbles: true,
     });
     window.dispatchEvent(event);
 
@@ -186,16 +186,16 @@ describe('App', () => {
     (useRouter as unknown as Mock).mockReturnValue({ push: mockRouterPush });
     (useChat as unknown as Mock).mockReturnValue({
       createNewChat: localMockCreateNewChat,
-      currentChat
+      currentChat,
     });
 
     mount(App, {
       global: {
         stubs: {
           'router-view': true,
-          'transition': true
-        }
-      }
+          'transition': true,
+        },
+      },
     });
 
     // Simulate Meta+Shift+O (Cmd on Mac)
@@ -203,7 +203,7 @@ describe('App', () => {
       key: 'o',
       metaKey: true,
       shiftKey: true,
-      bubbles: true
+      bubbles: true,
     });
     window.dispatchEvent(event);
 

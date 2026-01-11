@@ -28,7 +28,7 @@ export function useGlobalEvents() {
     events.value.push({
       id: crypto.randomUUID(),
       timestamp: Date.now(),
-      ...params
+      ...params,
     });
   };
 

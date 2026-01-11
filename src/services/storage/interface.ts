@@ -53,7 +53,7 @@ export abstract class IStorageProvider {
   public async getSidebarStructure(): Promise<SidebarItem[]> {
     const [chats, groups] = await Promise.all([
       this.listChatsRaw(),
-      this.listGroupsRaw()
+      this.listGroupsRaw(),
     ]);
     return buildSidebarItemsFromDtos(groups, chats);
   }

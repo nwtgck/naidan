@@ -7,8 +7,8 @@ import ChatArea from '../components/ChatArea.vue';
 vi.mock('../components/ChatArea.vue', () => ({
   default: {
     name: 'ChatArea',
-    template: '<div data-testid="chat-area"></div>'
-  }
+    template: '<div data-testid="chat-area"></div>',
+  },
 }));
 
 describe('IndexPage', () => {

@@ -34,6 +34,6 @@ export function useTheme() {
     themeMode,
     setTheme: (mode: ThemeMode) => {
       themeMode.value = mode;
-    }
+    },
   };
 }

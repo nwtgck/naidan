@@ -45,7 +45,7 @@ const iifeInlinePlugin = () => ({
 
     fs.writeFileSync(htmlPath, dom.serialize())
     console.log('  \u2713 Finalized index.html for file:/// compatibility.')
-  }
+  },
 })
 
 // https://vite.dev/config/

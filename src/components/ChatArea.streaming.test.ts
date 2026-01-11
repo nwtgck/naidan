@@ -9,7 +9,7 @@ import { useChat } from '../composables/useChat';
 
 const router = createRouter({
   history: createWebHistory(),
-  routes: [{ path: '/', component: {} }]
+  routes: [{ path: '/', component: {} }],
 });
 
 let triggerChunk: (chunk: string) => void;
@@ -23,7 +23,7 @@ vi.mock('../services/llm', () => ({
   },
   OllamaProvider: class {
     async listModels() { return []; }
-  }
+  },
 }));
 
 vi.mock('../services/storage', () => ({
@@ -34,7 +34,7 @@ vi.mock('../services/storage', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     listGroups: vi.fn().mockResolvedValue([]),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
-  }
+  },
 }));
 
 describe('ChatArea Streaming DOM Test', () => {
@@ -53,8 +53,8 @@ describe('ChatArea Streaming DOM Test', () => {
     const wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: {
-        plugins: [router]
-      }
+        plugins: [router],
+      },
     });
 
     await nextTick();

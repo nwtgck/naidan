@@ -63,7 +63,7 @@ describe('LocalStorageProvider', () => {
   it('should validate chat DTO schema on save', async () => {
     const invalidChat = {
       id: 'invalid-uuid',
-      title: 'Test Chat'
+      title: 'Test Chat',
     };
 
     await expect(provider.saveChat(invalidChat as unknown as Chat, 0)).rejects.toThrow();

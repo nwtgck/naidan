@@ -14,7 +14,7 @@ export function useSampleChat() {
       role: 'assistant',
       content: sampleContent,
       timestamp: now,
-      replies: { items: [] }
+      replies: { items: [] },
     };
     processThinking(m2);
 
@@ -23,7 +23,7 @@ export function useSampleChat() {
       role: 'assistant',
       content: 'This is an alternative response. You can switch between different versions of assistant replies using the arrows!',
       timestamp: now + 1000,
-      replies: { items: [] }
+      replies: { items: [] },
     };
 
     const m1: MessageNode = {
@@ -31,7 +31,7 @@ export function useSampleChat() {
       role: 'user',
       content: 'Show me your tree-based branching and rendering capabilities!',
       timestamp: now - 5000,
-      replies: { items: [m2, m3] }
+      replies: { items: [m2, m3] },
     };
 
     const sampleChatObj: Chat = {
@@ -51,6 +51,6 @@ export function useSampleChat() {
   };
 
   return {
-    createSampleChat
+    createSampleChat,
   };
 }

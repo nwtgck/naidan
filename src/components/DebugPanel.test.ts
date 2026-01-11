@@ -4,7 +4,7 @@ import DebugPanel from './DebugPanel.vue';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 
 vi.mock('../composables/useGlobalEvents', () => ({
-  useGlobalEvents: vi.fn()
+  useGlobalEvents: vi.fn(),
 }));
 
 describe('DebugPanel', () => {
@@ -20,7 +20,7 @@ describe('DebugPanel', () => {
       errorCount: 0,
       clearEvents: mockClearEvents,
       addErrorEvent: mockAddErrorEvent,
-      addInfoEvent: mockAddInfoEvent
+      addInfoEvent: mockAddInfoEvent,
     });
   });
 
@@ -45,7 +45,7 @@ describe('DebugPanel', () => {
       errorCount: 1,
       clearEvents: mockClearEvents,
       addErrorEvent: mockAddErrorEvent,
-      addInfoEvent: mockAddInfoEvent
+      addInfoEvent: mockAddInfoEvent,
     });
     const wrapper = mount(DebugPanel);
     expect(wrapper.find('[data-testid="debug-error-badge"]').exists()).toBe(true);
@@ -59,7 +59,7 @@ describe('DebugPanel', () => {
       errorCount: 0,
       clearEvents: mockClearEvents,
       addErrorEvent: mockAddErrorEvent,
-      addInfoEvent: mockAddInfoEvent
+      addInfoEvent: mockAddInfoEvent,
     });
     const wrapper = mount(DebugPanel);
     await wrapper.find('[data-testid="debug-panel-toggle"]').trigger('click');
@@ -91,13 +91,13 @@ describe('DebugPanel', () => {
         timestamp: Date.now(), 
         source: 'test', 
         message: 'Something failed',
-        details: error
+        details: error,
       }],
       eventCount: 1,
       errorCount: 1,
       clearEvents: mockClearEvents,
       addErrorEvent: mockAddErrorEvent,
-      addInfoEvent: mockAddInfoEvent
+      addInfoEvent: mockAddInfoEvent,
     });
 
     const wrapper = mount(DebugPanel);
@@ -120,13 +120,13 @@ describe('DebugPanel', () => {
         timestamp: Date.now(), 
         source: 'test', 
         message: 'Circular',
-        details: circular
+        details: circular,
       }],
       eventCount: 1,
       errorCount: 1,
       clearEvents: mockClearEvents,
       addErrorEvent: mockAddErrorEvent,
-      addInfoEvent: mockAddInfoEvent
+      addInfoEvent: mockAddInfoEvent,
     });
 
     const wrapper = mount(DebugPanel);

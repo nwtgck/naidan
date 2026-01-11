@@ -19,14 +19,14 @@ vi.mock('../services/storage', () => ({
     listGroups: vi.fn().mockResolvedValue([]),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
     deleteGroup: vi.fn(),
-  }
+  },
 }));
 
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: true } }
-  })
+    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: true } },
+  }),
 }));
 
 // Mock LLM Provider
@@ -41,14 +41,14 @@ vi.mock('../services/llm', () => {
   }
   return {
     OpenAIProvider: MockOpenAI,
-    OllamaProvider: vi.fn()
+    OllamaProvider: vi.fn(),
   };
 });
 
 describe('useChat Composable Logic', () => {
   const chatStore = useChat();
   const {
-    activeMessages, sendMessage, currentChat, rootItems
+    activeMessages, sendMessage, currentChat, rootItems,
   } = chatStore;
 
   const { errorCount, clearEvents } = useGlobalEvents();
@@ -96,7 +96,7 @@ describe('useChat Composable Logic', () => {
   it('should update activeMessages in real-time during streaming', async () => {
     currentChat.value = reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: 'gpt-4',
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     });
     const sendPromise = sendMessage('Ping');
     await new Promise(r => setTimeout(r, 20)); 
@@ -132,7 +132,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'gpt-4',
       createdAt: 0,
       updatedAt: 0,
-      debugEnabled: false
+      debugEnabled: false,
     };
     
     currentChat.value = reactive(mockChat);
@@ -149,7 +149,7 @@ describe('useChat Composable Logic', () => {
     expect(storageService.saveChat).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Fork of Original',
       root: { items: [expect.objectContaining({ id: 'm1' })] },
-      currentLeafId: 'm1'
+      currentLeafId: 'm1',
     }), 0);
   });
 
@@ -163,7 +163,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      debugEnabled: false
+      debugEnabled: false,
     };
     currentChat.value = reactive(chatObj);
     const initial = [{ id: 'chat:chat-root-test', type: 'chat', chat: { id: 'chat-root-test', title: 'Root Test', updatedAt: Date.now() } }] as SidebarItem[];
@@ -196,7 +196,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      debugEnabled: false
+      debugEnabled: false,
     };
     currentChat.value = reactive(chatObj);
     const initial = [{ id: 'chat:assistant-edit-test', type: 'chat', chat: { id: 'assistant-edit-test', title: 'Assistant Edit', updatedAt: Date.now() } }] as SidebarItem[];
@@ -231,7 +231,7 @@ describe('useChat Composable Logic', () => {
     
     const initial: SidebarItem[] = [
       { id: 'group:g1', type: 'group', group: mockGroup },
-      { id: 'chat:c1', type: 'chat', chat: mockChat }
+      { id: 'chat:c1', type: 'chat', chat: mockChat },
     ];
     rootItems.value = initial;
     mockRootItems.push(...initial);
@@ -241,7 +241,7 @@ describe('useChat Composable Logic', () => {
 
     const newItems: SidebarItem[] = [
       { id: 'chat:c1', type: 'chat' as const, chat: mockChat },
-      { id: 'group:g1', type: 'group' as const, group: { ...mockGroup, items: [] } }
+      { id: 'group:g1', type: 'group' as const, group: { ...mockGroup, items: [] } },
     ];
     
     await persistSidebarStructure(newItems);
@@ -257,7 +257,7 @@ describe('useChat Composable Logic', () => {
     
     const initial: SidebarItem[] = [
       { id: 'group:g1', type: 'group', group: mockGroup },
-      { id: 'chat:c1', type: 'chat', chat: mockChat }
+      { id: 'chat:c1', type: 'chat', chat: mockChat },
     ];
     rootItems.value = initial;
     mockRootItems.push(...initial);
@@ -269,10 +269,10 @@ describe('useChat Composable Logic', () => {
         group: { 
           ...mockGroup, 
           items: [
-            { id: 'chat:c1', type: 'chat' as const, chat: { ...mockChat, groupId: 'g1' } }
-          ] 
-        } 
-      }
+            { id: 'chat:c1', type: 'chat' as const, chat: { ...mockChat, groupId: 'g1' } },
+          ], 
+        }, 
+      },
     ];
 
     await persistSidebarStructure(newItems);
@@ -290,8 +290,8 @@ describe('useChat Composable Logic', () => {
       id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0,
       items: [
         { id: 'chat:c1', type: 'chat' as const, chat: chat1 },
-        { id: 'chat:c2', type: 'chat' as const, chat: chat2 }
-      ]
+        { id: 'chat:c2', type: 'chat' as const, chat: chat2 },
+      ],
     };
     
     const initial: SidebarItem[] = [{ id: 'group:g1', type: 'group', group: mockGroup }];
@@ -306,10 +306,10 @@ describe('useChat Composable Logic', () => {
           ...mockGroup, 
           items: [
             { id: 'chat:c2', type: 'chat' as const, chat: { ...chat2 } },
-            { id: 'chat:c1', type: 'chat' as const, chat: { ...chat1 } }
-          ] 
-        } 
-      }
+            { id: 'chat:c1', type: 'chat' as const, chat: { ...chat1 } },
+          ], 
+        }, 
+      },
     ];
 
     await persistSidebarStructure(newItems);
@@ -324,7 +324,7 @@ describe('useChat Composable Logic', () => {
     const chat1 = { id: 'c1', title: 'C1', updatedAt: 0, groupId: 'g1' };
     const mockGroup = { 
       id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0,
-      items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1 }]
+      items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1 }],
     };
     
     const initial: SidebarItem[] = [{ id: 'group:g1', type: 'group', group: mockGroup }];
@@ -333,7 +333,7 @@ describe('useChat Composable Logic', () => {
 
     const newItems: SidebarItem[] = [
       { id: 'group:g1', type: 'group' as const, group: { ...mockGroup, items: [] } },
-      { id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: null } }
+      { id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: null } },
     ];
 
     await persistSidebarStructure(newItems);
@@ -348,16 +348,16 @@ describe('useChat Composable Logic', () => {
     const chat1 = { id: 'c1', title: 'C1', updatedAt: 0, groupId: 'g1' };
     const groupA = { 
       id: 'g1', name: 'GA', isCollapsed: false, updatedAt: 0,
-      items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1 }]
+      items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1 }],
     };
     const groupB = { 
       id: 'g2', name: 'GB', isCollapsed: false, updatedAt: 0,
-      items: []
+      items: [],
     };
     
     const initial: SidebarItem[] = [
       { id: 'group:g1', type: 'group', group: groupA },
-      { id: 'group:g2', type: 'group', group: groupB }
+      { id: 'group:g2', type: 'group', group: groupB },
     ];
     rootItems.value = initial;
     mockRootItems.push(...initial);
@@ -369,9 +369,9 @@ describe('useChat Composable Logic', () => {
         type: 'group' as const, 
         group: { 
           ...groupB, 
-          items: [{ id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: 'g2' } }] 
-        } 
-      }
+          items: [{ id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: 'g2' } }], 
+        }, 
+      },
     ];
 
     await persistSidebarStructure(newItems);
@@ -384,7 +384,7 @@ describe('useChat Composable Logic', () => {
     // 1. Setup initial state in MOCK storage
     const initial: SidebarItem[] = [
       { id: 'group:g1', type: 'group', group: { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] } },
-      { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }
+      { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
     ];
     mockRootItems.push(...initial);
     
@@ -409,7 +409,7 @@ describe('useChat Composable Logic', () => {
 
   it('should prepend a new group to the rootItems list', async () => {
     const initial: SidebarItem[] = [
-      { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }
+      { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
     ];
     mockRootItems.push(...initial);
     
@@ -442,7 +442,7 @@ describe('useChat Composable Logic', () => {
     const initial: SidebarItem[] = [
       { id: 'group:g1', type: 'group', group: { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] } },
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
-      { id: 'chat:c2', type: 'chat', chat: c2 }
+      { id: 'chat:c2', type: 'chat', chat: c2 },
     ];
     mockRootItems.push(...initial);
     await chatStore.loadChats();
@@ -503,7 +503,7 @@ describe('useChat Composable Logic', () => {
           root: { items: [] }, 
           modelId: 'gpt-4', 
           createdAt: 0, 
-          debugEnabled: false 
+          debugEnabled: false, 
         } as Chat;
         return null;
       });

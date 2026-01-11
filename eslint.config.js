@@ -33,6 +33,10 @@ export default tseslint.config(
       }],
       '@typescript-eslint/consistent-type-imports': 'error',
       'vue/multi-word-component-names': 'off', // Relax for page components
+      'quotes': 'off',
+      'comma-dangle': ['warn', 'always-multiline'],
+      'max-len': 'off',
+      'vue/html-indent': ['warn', 2],
     },
   },
   ensureFileProtocolInit,

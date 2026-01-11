@@ -14,14 +14,14 @@ describe('Zod Schemas', () => {
             role: 'user',
             content: 'Hi',
             timestamp: 123456,
-            replies: { items: [] }
-          }
-        ]
+            replies: { items: [] },
+          },
+        ],
       },
       modelId: 'gpt-4',
       createdAt: 123,
       updatedAt: 123,
-      debugEnabled: false
+      debugEnabled: false,
     };
     
     expect(() => ChatSchemaDto.parse(chat)).not.toThrow();
@@ -35,7 +35,7 @@ describe('Zod Schemas', () => {
       modelId: 'gpt-4',
       createdAt: 123,
       updatedAt: 123,
-      debugEnabled: false
+      debugEnabled: false,
     };
     expect(() => ChatSchemaDto.parse(chat)).toThrow();
   });

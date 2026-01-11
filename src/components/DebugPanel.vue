@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '../composables/useGlobalEvents';
 import { 
   Terminal, ChevronUp, ChevronDown, Trash2, AlertCircle, X, Skull, 
-  Info, AlertTriangle, Bug, MoreVertical
+  Info, AlertTriangle, Bug, MoreVertical,
 } from 'lucide-vue-next';
 
 const { events, eventCount, errorCount, clearEvents, addErrorEvent, addInfoEvent } = useGlobalEvents();
@@ -17,8 +17,8 @@ function triggerTestError() {
     message: 'Intentional test error triggered by user',
     details: {
       hint: 'This is used to verify the error event system UI.',
-      browser: navigator.userAgent
-    }
+      browser: navigator.userAgent,
+    },
   });
   isMenuOpen.value = false;
 }
@@ -29,8 +29,8 @@ function triggerTestInfo() {
     message: 'Application state synchronized',
     details: {
       status: 'success',
-      timestamp: new Date().toISOString()
-    }
+      timestamp: new Date().toISOString(),
+    },
   });
   isMenuOpen.value = false;
 }

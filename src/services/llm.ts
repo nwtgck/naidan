@@ -63,7 +63,7 @@ export class OpenAIProvider implements LLMProvider {
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
     const body = {
@@ -109,7 +109,7 @@ export class OpenAIProvider implements LLMProvider {
           addErrorEvent({
             source: 'OpenAIProvider',
             message: 'Failed to parse or validate SSE line',
-            details: { line, error: e instanceof Error ? e : String(e) }
+            details: { line, error: e instanceof Error ? e : String(e) },
           });
           console.warn('Failed to parse or validate SSE line', line, e);
         }
@@ -134,7 +134,7 @@ export class OllamaProvider implements LLMProvider {
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
     const body = {
@@ -178,7 +178,7 @@ export class OllamaProvider implements LLMProvider {
            addErrorEvent({
              source: 'OllamaProvider',
              message: 'Failed to parse or validate Ollama JSON',
-             details: { line, error: e instanceof Error ? e : String(e) }
+             details: { line, error: e instanceof Error ? e : String(e) },
            });
            console.warn('Failed to parse or validate Ollama JSON', line, e);
         }

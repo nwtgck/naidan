@@ -25,7 +25,7 @@ vi.mock('../composables/useSampleChat', () => ({
 const mockAddToast = vi.fn();
 vi.mock('../composables/useToast', () => ({
   useToast: vi.fn(() => ({
-    addToast: mockAddToast
+    addToast: mockAddToast,
   })),
 }));
 
@@ -76,7 +76,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     Save: true,
     Type: true,
     FlaskConical: true,
-    AlertTriangle: true
+    AlertTriangle: true,
   };
 
   beforeEach(() => {
@@ -101,7 +101,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('positions the close button correctly in the top-right corner', async () => {
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await flushPromises();
       
@@ -114,7 +114,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('maintains UI stability during model fetching', async () => {
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await flushPromises();
 
@@ -137,7 +137,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('reserves space for error messages to prevent layout shift', async () => {
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await flushPromises();
 
@@ -160,7 +160,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('shows success feedback when connection check succeeds', async () => {
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await flushPromises();
 
@@ -179,7 +179,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('uses distinct labels for model fallbacks to clarify different behaviors', async () => {
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await flushPromises();
 
@@ -243,7 +243,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   it('applies endpoint presets correctly and highlights the active one', async () => {
     const wrapper = mount(SettingsModal, { 
       props: { isOpen: true },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
     await flushPromises();
 
@@ -382,7 +382,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const customSettings = { 
         ...mockSettings, 
         titleModelId: 'special-title-model',
-        autoTitleEnabled: true 
+        autoTitleEnabled: true, 
       };
       (useSettings as unknown as Mock).mockReturnValue({
         settings: { value: customSettings },
@@ -455,7 +455,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         endpointType: 'ollama' as const,
         endpointUrl: 'http://quick:11434',
         defaultModelId: 'model-a',
-        titleModelId: 'model-title'
+        titleModelId: 'model-title',
       };
       
       // We need useSettings to return the profile in the initial state so form.value has it
@@ -510,13 +510,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('conditionally renders title model badge in the list', async () => {
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       
       const vm = wrapper.vm as unknown as { form: { providerProfiles: Partial<ProviderProfile>[] } };
       vm.form.providerProfiles = [
         { id: '1', name: 'With Title', endpointType: 'ollama', titleModelId: 't-1' },
-        { id: '2', name: 'Without Title', endpointType: 'openai' }
+        { id: '2', name: 'Without Title', endpointType: 'openai' },
       ];
       
       const navButtons = wrapper.findAll('nav button');
@@ -535,7 +535,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       
       const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
@@ -543,7 +543,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         id: 'undo-1',
         name: 'Undo Me',
         endpointType: 'ollama' as const,
-        endpointUrl: 'http://localhost:11434'
+        endpointUrl: 'http://localhost:11434',
       };
       vm.form.providerProfiles = [initialProfile];
       
@@ -560,7 +560,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // Should show undo toast
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
         message: expect.stringContaining('Undo Me'),
-        actionLabel: 'Undo'
+        actionLabel: 'Undo',
       }));
 
       // Trigger undo
@@ -575,7 +575,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('renders provider type badge with capitalization and without uppercase class', async () => {
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       
       const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
@@ -583,7 +583,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         id: '1',
         name: 'Test Profile',
         endpointType: 'ollama' as const,
-        endpointUrl: 'http://localhost:11434'
+        endpointUrl: 'http://localhost:11434',
       }];
       
       const navButtons = wrapper.findAll('nav button');

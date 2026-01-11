@@ -8,7 +8,7 @@ import type {
   ChatGroupDto,
   SettingsDto,
   EndpointTypeDto,
-  StorageTypeDto
+  StorageTypeDto,
 } from './dto';
 import type { 
   Role, 
@@ -20,7 +20,7 @@ import type {
   SidebarItem,
   Settings,
   EndpointType,
-  StorageType
+  StorageType,
 } from './types';
 
 export const roleToDomain = (dto: RoleDto): Role => {
@@ -42,7 +42,7 @@ export const chatGroupToDomain = (dto: ChatGroupDto, chatDtos: ChatDto[] = []): 
     .map(c => ({
       id: `chat:${c.id}`,
       type: 'chat',
-      chat: chatToSummary(c)
+      chat: chatToSummary(c),
     }));
 
   return {
@@ -69,8 +69,8 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => ({
   timestamp: dto.timestamp,
   thinking: dto.thinking,
   replies: {
-    items: dto.replies.items.map(messageNodeToDomain)
-  }
+    items: dto.replies.items.map(messageNodeToDomain),
+  },
 });
 
 export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => ({
@@ -80,8 +80,8 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => ({
   timestamp: domain.timestamp,
   thinking: domain.thinking,
   replies: {
-    items: domain.replies.items.map(messageNodeToDto)
-  }
+    items: domain.replies.items.map(messageNodeToDto),
+  },
 });
 
 interface LegacyMessage {
@@ -101,7 +101,7 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
     content: m.content,
     timestamp: m.timestamp,
     thinking: m.thinking,
-    replies: { items: [] }
+    replies: { items: [] },
   }));
   for (let i = 0; i < nodes.length - 1; i++) {
     const current = nodes[i];
@@ -202,7 +202,7 @@ export const buildSidebarItemsFromDtos = (groupDtos: ChatGroupDto[], allChatDtos
       id: `group:${gDto.id}`, 
       type: 'group', 
       group: chatGroupToDomain(gDto, groupChats),
-      _order: gDto.order ?? 0
+      _order: gDto.order ?? 0,
     });
   });
   
@@ -213,7 +213,7 @@ export const buildSidebarItemsFromDtos = (groupDtos: ChatGroupDto[], allChatDtos
         id: `chat:${cDto.id}`, 
         type: 'chat', 
         chat: chatToSummary(cDto),
-        _order: cDto.order ?? 0
+        _order: cDto.order ?? 0,
       });
     });
     

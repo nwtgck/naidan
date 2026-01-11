@@ -10,14 +10,14 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     deleteChat: vi.fn(),
-  }
+  },
 }));
 
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost' } }
-  })
+    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost' } },
+  }),
 }));
 
 import type { MessageNode } from '../models/types';
@@ -34,7 +34,7 @@ vi.mock('../services/llm', () => {
   }
   return {
     OpenAIProvider: MockOpenAI,
-    OllamaProvider: vi.fn()
+    OllamaProvider: vi.fn(),
   };
 });
 
@@ -51,7 +51,7 @@ describe('useChat Reactivity', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       order: 0,
-      debugEnabled: false
+      debugEnabled: false,
     });
   });
 

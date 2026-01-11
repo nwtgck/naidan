@@ -12,7 +12,7 @@ describe('MessageItem Rendering', () => {
     role,
     content,
     timestamp: Date.now(),
-    replies: { items: [] }
+    replies: { items: [] },
   });
 
   it('renders basic markdown correctly', () => {
@@ -64,7 +64,7 @@ describe('MessageItem Rendering', () => {
     const writeText = vi.fn().mockImplementation(() => Promise.resolve());
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText },
-      configurable: true
+      configurable: true,
     });
 
     const copyButton = wrapper.find('[data-testid="copy-message-button"]');
@@ -138,7 +138,7 @@ describe('MessageItem Rendering', () => {
       const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
       const wrapper = mount(MessageItem, {
         props: { message },
-        attachTo: document.body
+        attachTo: document.body,
       });
       await nextTick();
       await nextTick();
@@ -146,7 +146,7 @@ describe('MessageItem Rendering', () => {
       const writeText = vi.fn().mockImplementation(() => Promise.resolve());
       Object.defineProperty(navigator, 'clipboard', {
         value: { writeText },
-        configurable: true
+        configurable: true,
       });
 
       const copyBtn = wrapper.find('.mermaid-copy-btn');
@@ -224,14 +224,14 @@ describe('MessageItem Rendering', () => {
       const message = createMessage('```typescript\nconst x: number = 42;\n```');
       const wrapper = mount(MessageItem, {
         props: { message },
-        attachTo: document.body
+        attachTo: document.body,
       });
 
       // Mock clipboard
       const writeText = vi.fn().mockImplementation(() => Promise.resolve());
       Object.defineProperty(navigator, 'clipboard', {
         value: { writeText },
-        configurable: true
+        configurable: true,
       });
 
       const copyBtn = wrapper.find('.code-copy-btn');
@@ -279,7 +279,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
     role,
     content,
     timestamp: Date.now(),
-    replies: { items: [] }
+    replies: { items: [] },
   });
 
   it('cancels editing on Escape key', async () => {

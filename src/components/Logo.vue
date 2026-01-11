@@ -5,7 +5,7 @@ interface Props {
 }
 withDefaults(defineProps<Props>(), {
   size: 32,
-  className: ''
+  className: '',
 });
 </script>
 

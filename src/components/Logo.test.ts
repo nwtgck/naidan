@@ -13,8 +13,8 @@ describe('Logo', () => {
   it('renders with custom size', () => {
     const wrapper = mount(Logo, {
       props: {
-        size: 48
-      }
+        size: 48,
+      },
     });
     const svg = wrapper.find('svg');
     expect(svg.attributes('width')).toBe('48');
@@ -24,8 +24,8 @@ describe('Logo', () => {
   it('applies custom className', () => {
     const wrapper = mount(Logo, {
       props: {
-        className: 'custom-class'
-      }
+        className: 'custom-class',
+      },
     });
     expect(wrapper.classes()).toContain('custom-class');
   });

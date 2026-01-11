@@ -27,14 +27,14 @@ vi.mock('../composables/useChat', () => ({
     loadChats: vi.fn(),
     toggleGroupCollapse: vi.fn(),
     persistSidebarStructure: vi.fn(),
-  })
+  }),
 }));
 
 vi.mock('../composables/useTheme', () => ({
   useTheme: () => ({
     themeMode: ref('dark'),
     setTheme: vi.fn(),
-  })
+  }),
 }));
 
 vi.mock('../composables/useGlobalEvents', () => ({
@@ -46,7 +46,7 @@ vi.mock('../composables/useGlobalEvents', () => ({
     addErrorEvent: vi.fn(),
     addInfoEvent: vi.fn(),
     clearEvents: vi.fn(),
-  })
+  }),
 }));
 
 // Mock draggable component
@@ -54,8 +54,8 @@ vi.mock('vuedraggable', () => ({
   default: {
     name: 'draggable',
     template: '<div class="draggable-mock"><slot name="item" v-for="element in modelValue" :element="element"></slot></div>',
-    props: ['modelValue']
-  }
+    props: ['modelValue'],
+  },
 }));
 
 interface SidebarComponent {
@@ -82,9 +82,9 @@ describe('Sidebar Logic Stability', () => {
         plugins: [router],
         stubs: {
           'lucide-vue-next': true,
-          'Logo': true
-        }
-      }
+          'Logo': true,
+        },
+      },
     });
 
     const vm = wrapper.vm as unknown as SidebarComponent;
@@ -131,9 +131,9 @@ describe('Sidebar Logic Stability', () => {
         plugins: [router],
         stubs: {
           'lucide-vue-next': true,
-          'Logo': true
-        }
-      }
+          'Logo': true,
+        },
+      },
     });
 
     const vm = wrapper.vm as unknown as SidebarComponent;
