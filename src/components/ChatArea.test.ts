@@ -49,6 +49,9 @@ interface ChatAreaExposed {
   scrollToBottom: () => void;
   container: HTMLElement | null;
   handleSend: () => Promise<void>;
+  isMaximized: boolean;
+  adjustTextareaHeight: () => void;
+  input: string;
 }
 
 describe('ChatArea UI States', () => {
@@ -126,14 +129,14 @@ describe('ChatArea UI States', () => {
 });
 
 describe('ChatArea Scrolling Logic', () => {
-  let scrollSetterSpy: Mock;
+  let scrollTopSetterSpy: Mock;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockStreaming.value = false;
     mockActiveMessages.value = [];
-    document.body.innerHTML = '';
-    scrollSetterSpy = vi.fn();
+    document.body.innerHTML = '<div id="app"></div>';
+    scrollTopSetterSpy = vi.fn();
   });
 
   function setupScrollMock(element: HTMLElement) {
@@ -146,7 +149,7 @@ describe('ChatArea Scrolling Logic', () => {
       get: () => internalScrollTop,
       set: (val) => {
         internalScrollTop = val;
-        scrollSetterSpy(val);
+        scrollTopSetterSpy(val);
       },
     });
   }
@@ -159,10 +162,10 @@ describe('ChatArea Scrolling Logic', () => {
     const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
     setupScrollMock(container);
     
-    // Clear initial mount-time scrolls
+    // Settle initial mount scrolls
     await flushPromises();
     await nextTick();
-    scrollSetterSpy.mockClear();
+    scrollTopSetterSpy.mockClear();
 
     mockActiveMessages.value = [{ id: '1', role: 'user', content: 'hello', timestamp: Date.now(), replies: { items: [] } }];
     
@@ -170,7 +173,7 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
 
-    expect(scrollSetterSpy).toHaveBeenCalledWith(1000);
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
     wrapper.unmount();
   });
 
@@ -184,13 +187,12 @@ describe('ChatArea Scrolling Logic', () => {
     const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
     setupScrollMock(container);
     
-    // Settle mount-time scrolls
     await flushPromises();
     await nextTick();
     
-    // Set at bottom
+    // Set at bottom (scrollHeight 1000 - clientHeight 500 = 500)
     container.scrollTop = 500; 
-    scrollSetterSpy.mockClear();
+    scrollTopSetterSpy.mockClear();
 
     mockStreaming.value = true;
     mockActiveMessages.value[0]!.content = 'Thinking...';
@@ -199,7 +201,7 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
     
-    expect(scrollSetterSpy).toHaveBeenCalledWith(1000);
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
     wrapper.unmount();
   });
 
@@ -213,13 +215,12 @@ describe('ChatArea Scrolling Logic', () => {
     const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
     setupScrollMock(container);
     
-    // Settle mount-time scrolls
     await flushPromises();
     await nextTick();
     
     // Set scrolled up (not at bottom)
     container.scrollTop = 100; 
-    scrollSetterSpy.mockClear();
+    scrollTopSetterSpy.mockClear();
 
     mockStreaming.value = true;
     mockActiveMessages.value[0]!.content = 'Thinking...';
@@ -228,7 +229,7 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
     
-    expect(scrollSetterSpy).not.toHaveBeenCalledWith(1000);
+    expect(scrollTopSetterSpy).not.toHaveBeenCalledWith(1000);
     expect(container.scrollTop).toBe(100);
     wrapper.unmount();
   });
@@ -243,12 +244,11 @@ describe('ChatArea Scrolling Logic', () => {
     const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
     setupScrollMock(container);
     
-    // Settle mount-time scrolls
     await flushPromises();
     await nextTick();
     
     container.scrollTop = 500; // at bottom
-    scrollSetterSpy.mockClear();
+    scrollTopSetterSpy.mockClear();
 
     mockStreaming.value = true;
     mockActiveMessages.value[0]!.content += ' exceeded';
@@ -257,7 +257,7 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
     
-    expect(scrollSetterSpy).not.toHaveBeenCalledWith(1000);
+    expect(scrollTopSetterSpy).not.toHaveBeenCalledWith(1000);
     expect(container.scrollTop).toBe(500);
     wrapper.unmount();
   });
@@ -299,6 +299,7 @@ describe('ChatArea Focus', () => {
     });
     
     await nextTick();
+    await nextTick(); // Add extra nextTick for stability
     const textarea = wrapper.find('[data-testid="chat-input"]');
     expect(document.activeElement).toBe(textarea.element);
   });
@@ -506,5 +507,446 @@ describe('ChatArea Export Functionality', () => {
 
     const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
     expect(link.download).toBe('Chat with no messages.txt');
+  });
+});
+
+describe('ChatArea Textarea Sizing', () => {
+  const mockWindowInnerHeight = 1000; // Mock viewport height for 80vh calculation
+  let originalGetComputedStyle: typeof window.getComputedStyle; // Declared here
+
+  // Helper to mock textarea dimensions (scrollHeight, offsetHeight)
+  function mockTextareaDimensions(textarea: HTMLTextAreaElement, scrollHeight: number, offsetHeight?: number) {
+    Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: scrollHeight });
+    Object.defineProperty(textarea, 'offsetHeight', { configurable: true, value: offsetHeight ?? scrollHeight }); // For clientHeight to be non-zero
+    // For clientHeight calculation (offsetHeight - border - padding)
+    // verticalPadding in mock getComputedStyle is 12+12+1+1 = 26
+    Object.defineProperty(textarea, 'clientHeight', { configurable: true, value: (offsetHeight ?? scrollHeight) - 26 }); 
+  }
+
+  beforeAll(() => {
+    originalGetComputedStyle = window.getComputedStyle; // Initialized once
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStreaming.value = false;
+    mockActiveMessages.value = [];
+    mockCurrentChat.value = { 
+      id: '1', 
+      title: 'Test Chat', 
+      root: { items: [] } as { items: MessageNode[] },
+      currentLeafId: undefined,
+      debugEnabled: false, 
+    };
+    document.body.innerHTML = '<div id="app"></div>';
+
+    // Mock window.innerHeight for 80vh calculation
+    Object.defineProperty(window, 'innerHeight', { writable: true, value: mockWindowInnerHeight });
+    
+    // Mock getComputedStyle for textarea to control line-height, padding, border
+    // This is crucial for the new adjustTextareaHeight logic
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((elt: Element, pseudoElt?: string | null) => {
+      // Only return custom computed style for textarea with data-testid='chat-input'
+      if (elt instanceof HTMLTextAreaElement && elt.dataset.testid === 'chat-input') {
+        // Use a base computed style and override
+        return {
+          ...originalGetComputedStyle.call(window, elt, pseudoElt), // Call original for default properties
+          lineHeight: '24px', // Mock line-height for calculation
+          paddingTop: '12px',
+          paddingBottom: '12px',
+          borderTopWidth: '1px',
+          borderBottomWidth: '1px',
+          boxSizing: 'border-box', // Crucial for offsetHeight/clientHeight calculation consistency
+        } as CSSStyleDeclaration;
+      }
+      // For all other elements or if not our target, call the original method
+      return originalGetComputedStyle.call(window, elt, pseudoElt);
+    });
+  });
+
+  it('should initialize textarea height to a single line height', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    
+    // Mock initial dimensions (single line)
+    mockTextareaDimensions(textarea, 24); // scrollHeight for 1 line of text
+    // Manually trigger adjustTextareaHeight after mocking dimensions for initial state
+    (wrapper.vm as unknown as ChatAreaExposed).adjustTextareaHeight();
+    await nextTick();
+
+    const expectedHeight = 50; // 1 line (24) + padding (24) + border (2) = 50
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expectedHeight);
+    expect(textarea.style.overflowY).toBe('hidden');
+  });
+
+  it('should disable standard textarea resize handle', async () => {
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    const textarea = wrapper.find('[data-testid="chat-input"]');
+    expect(textarea.classes()).toContain('resize-none');
+  });
+
+  it('should show maximize button only when content exceeds 6 lines', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    
+    // Initial state: empty input, no button
+    expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
+
+    // Typing 3 lines: still no button
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line 1\nLine 2\nLine 3';
+    mockTextareaDimensions(textarea, 24 * 3);
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
+
+    // Typing 7 lines: button appears
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7';
+    mockTextareaDimensions(textarea, 24 * 7 + 26); // scrollHeight > maxSixLinesHeight (170)
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(true);
+  });
+
+  it('should expand textarea to 80% viewport height when maximized and stay there even with small input', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    
+    // Make it long enough to show button
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'A'.repeat(500);
+    mockTextareaDimensions(textarea, 500); 
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+
+    const maximizeButton = wrapper.find('[data-testid="maximize-button"]');
+    expect(maximizeButton.exists()).toBe(true);
+
+    // Click maximize button
+    await maximizeButton.trigger('click');
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+
+    const expected80vh = mockWindowInnerHeight * 0.8;
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expected80vh);
+    
+    // Typing small content should NOT shrink it while maximized
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'small content';
+    mockTextareaDimensions(textarea, 24); 
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expected80vh);
+
+    // Click minimize button
+    await maximizeButton.trigger('click');
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+
+    // After minimize, it should shrink to content size (single line since input is 'small content')
+    const expectedHeightAfterMinimize = 50;
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expectedHeightAfterMinimize);
+  });
+
+  it('should reset maximized state after sending a message', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    
+    // Fill content and maximize
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'Message to send';
+    mockTextareaDimensions(textarea, 500);
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    
+    const maximizeButton = wrapper.find('[data-testid="maximize-button"]');
+    await maximizeButton.trigger('click');
+    await wrapper.vm.$nextTick();
+    
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(mockWindowInnerHeight * 0.8);
+
+    // Mock sendMessage to be a slow promise so we can control the flow
+    let resolveSendMessage: (val?: void) => void;
+    mockSendMessage.mockReturnValue(new Promise<void>(resolve => {
+      resolveSendMessage = resolve;
+    }));
+
+    // Send the message
+    const sendPromise = (wrapper.vm as unknown as ChatAreaExposed).handleSend();
+    // After sending, the input is cleared, so we must mock the scrollHeight accordingly
+    mockTextareaDimensions(textarea, 24);
+    
+    resolveSendMessage!();
+    await sendPromise;
+    await nextTick();
+    await nextTick();
+
+    // After send, maximized should be false and height should be reset to single line
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
+    expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
+  });
+
+  it('should reset height to minimum when handleSend starts even if it was at 6 lines', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    
+    // Fill content to 6 lines (not maximized)
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6';
+    mockTextareaDimensions(textarea, 24 * 6 + 26); 
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(170);
+
+    // Start sending
+    const sendPromise = (wrapper.vm as unknown as ChatAreaExposed).handleSend();
+    
+    // Clear mock dimensions to represent cleared input
+    mockTextareaDimensions(textarea, 24);
+    await nextTick();
+    await nextTick();
+    
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
+    await sendPromise;
+  });
+
+  it('should reset maximized state IMMEDIATELY when handleSend starts', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    
+    // Fill content and maximize
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'Message to send';
+    mockTextareaDimensions(textarea, 500);
+    await wrapper.vm.$nextTick();
+    
+    const maximizeButton = wrapper.find('[data-testid="maximize-button"]');
+    await maximizeButton.trigger('click');
+    await wrapper.vm.$nextTick();
+    expect((wrapper.vm as unknown as ChatAreaExposed).isMaximized).toBe(true);
+
+    // Mock sendMessage to be a slow promise
+    let resolveSendMessage: (val?: void) => void;
+    mockSendMessage.mockReturnValue(new Promise<void>(resolve => {
+      resolveSendMessage = resolve;
+    }));
+
+    // Start sending but do not await yet
+    const sendPromise = (wrapper.vm as unknown as ChatAreaExposed).handleSend();
+    
+    // Immediate check
+    expect((wrapper.vm as unknown as ChatAreaExposed).isMaximized).toBe(false);
+    
+    // After nextTick, height should already be adjusting back
+    mockTextareaDimensions(textarea, 24); 
+    await nextTick();
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
+
+    // Finally resolve the promise to clean up
+    resolveSendMessage!();
+    await sendPromise;
+  });
+
+  it('should hide maximize button when content is deleted below 6 lines', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    
+    // Fill content to show button
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7';
+    mockTextareaDimensions(textarea, 24 * 7 + 26);
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(true);
+
+    // Clear content
+    (wrapper.vm as unknown as ChatAreaExposed).input = '';
+    mockTextareaDimensions(textarea, 24);
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
+  });
+
+  it('should scroll to bottom when textarea height increases to keep messages visible', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    // Setup scroll mock for container
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 1000 });
+    Object.defineProperty(container, 'clientHeight', { configurable: true, value: 500 });
+    let internalScrollTop = 500; // already at bottom
+    const scrollTopSpy = vi.fn();
+    Object.defineProperty(container, 'scrollTop', {
+      configurable: true,
+      get: () => internalScrollTop,
+      set: (val) => { internalScrollTop = val; scrollTopSpy(val); },
+    });
+
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    mockTextareaDimensions(textarea, 24);
+    await nextTick();
+    scrollTopSpy.mockClear();
+
+    // Simulate textarea expansion (1 line -> 3 lines)
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line 1\nLine 2\nLine 3';
+    mockTextareaDimensions(textarea, 24 * 3);
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+
+    // It should trigger scrollToBottom to compensate for the smaller container
+    expect(scrollTopSpy).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('should not be extremely small when input is empty (reproduce and fix bug)', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    
+    // Type some content to make it expand
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'Some content to expand textarea\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6';
+    mockTextareaDimensions(textarea, 24 * 6 + 26); // Mock full 6 lines
+    (wrapper.vm as unknown as ChatAreaExposed).adjustTextareaHeight();
+    await nextTick();
+    const expandedHeight = parseFloat(textarea.style.height);
+    expect(expandedHeight).toBeCloseTo(170);
+
+    // Clear the input
+    (wrapper.vm as unknown as ChatAreaExposed).input = '';
+    mockTextareaDimensions(textarea, 24); // After clearing, scrollHeight should be single line
+    await wrapper.vm.$nextTick(); // Trigger input watcher
+    await wrapper.vm.$nextTick(); // Allow adjustTextareaHeight to run
+
+    // After clearing, height should revert to initial single-line height, not 0
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
+    expect(textarea.style.overflowY).toBe('hidden');
+  });
+
+  it('should reset maximized state when switching to a different chat', async () => {
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    // Set to maximized
+    (wrapper.vm as unknown as ChatAreaExposed).isMaximized = true;
+    
+    // Simulate chat ID change
+    mockCurrentChat.value = { ...mockCurrentChat.value, id: 'chat-2' };
+    await nextTick();
+    await nextTick();
+
+    expect((wrapper.vm as unknown as ChatAreaExposed).isMaximized).toBe(false);
+  });
+
+  it('should handle large text paste by showing the maximize button immediately', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+
+    // Simulate pasting 50 lines
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line\n'.repeat(50);
+    mockTextareaDimensions(textarea, 24 * 50);
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(true);
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(170); // Max 6 lines
+  });
+
+  it('should recalculate maximized height on window resize', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    
+    // Maximize
+    (wrapper.vm as unknown as ChatAreaExposed).isMaximized = true;
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(800); // 80% of 1000
+
+    // Change window height and trigger resize
+    Object.defineProperty(window, 'innerHeight', { writable: true, value: 500 });
+    window.dispatchEvent(new Event('resize'));
+    await nextTick();
+
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(400); // 80% of 500
+  });
+
+  it('should not use transition-all on textarea to avoid height flickering', async () => {
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    const textarea = wrapper.find('[data-testid="chat-input"]');
+    expect(textarea.classes()).not.toContain('transition-all');
+    expect(textarea.classes()).toContain('transition-colors');
+  });
+
+  it('should remain at minimum height for any 1-line content', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.getElementById('app')!,
+      global: { plugins: [router] },
+    });
+    await nextTick();
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
+    
+    // lineHeight (24) + verticalPadding (12+12+1+1 = 26) = 50
+    // Actually in the test's getComputedStyle mock, padding/border sum to 26px
+    // Let's use 50 as the expected minimum based on the mock values.
+    const expectedMinHeight = 50; 
+
+    // Test with very short text
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'a';
+    mockTextareaDimensions(textarea, 24); // scrollHeight for 1 line content
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expectedMinHeight);
+
+    // Test with longer text that still fits in 1 line
+    (wrapper.vm as unknown as ChatAreaExposed).input = 'This is a longer string but still only one line';
+    mockTextareaDimensions(textarea, 24); 
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expectedMinHeight);
+    
+    // Even if scrollHeight is slightly less (e.g., 20px), it should stay at minHeight (50px)
+    mockTextareaDimensions(textarea, 20);
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expectedMinHeight);
   });
 });

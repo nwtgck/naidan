@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
-import { Send, Bug, Settings2, Loader2, ArrowLeft, Square, Download } from 'lucide-vue-next';
+import { Send, Bug, Settings2, Loader2, ArrowLeft, Square, Download, Maximize2, Minimize2 } from 'lucide-vue-next';
 
 const chatStore = useChat();
 const {
@@ -19,12 +19,64 @@ const router = useRouter();
 const input = ref('');
 const container = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const isMaximized = ref(false); // New state for maximize button
+const isOverLimit = ref(false); // New state to show maximize button only when content is long
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 const showChatSettings = ref(false);
 
+function adjustTextareaHeight() {
+  if (textareaRef.value) {
+    const target = textareaRef.value;
+    
+    if (isMaximized.value) {
+      const maxHeightVh = window.innerHeight * 0.8;
+      target.style.height = maxHeightVh + 'px';
+      target.style.overflowY = target.scrollHeight > maxHeightVh ? 'auto' : 'hidden';
+      return;
+    }
+
+    // Temporarily reset height to auto to measure content height
+    // Using a shadow value to avoid flickering if possible
+    target.style.height = 'auto';
+    const currentScrollHeight = target.scrollHeight;
+    
+    const computedStyle = getComputedStyle(target);
+    const lineHeight = parseFloat(computedStyle.lineHeight);
+    const paddingTop = parseFloat(computedStyle.paddingTop);
+    const paddingBottom = parseFloat(computedStyle.paddingBottom);
+    const borderTop = parseFloat(computedStyle.borderTopWidth);
+    const borderBottom = parseFloat(computedStyle.borderBottomWidth);
+    const verticalPadding = paddingTop + paddingBottom + borderTop + borderBottom;
+    
+    // Minimum 1 line, Maximum 6 lines
+    const minHeight = lineHeight + verticalPadding;
+    const maxSixLinesHeight = (lineHeight * 6) + verticalPadding;
+
+    isOverLimit.value = currentScrollHeight > maxSixLinesHeight;
+
+    const finalHeight = Math.max(minHeight, Math.min(currentScrollHeight, maxSixLinesHeight));
+    target.style.height = finalHeight + 'px';
+    target.style.overflowY = currentScrollHeight > maxSixLinesHeight ? 'auto' : 'hidden';
+
+    if (container.value) {
+      const { scrollTop, scrollHeight, clientHeight } = container.value;
+      if (scrollHeight - scrollTop - clientHeight < 50) {
+        nextTick(scrollToBottom);
+      }
+    }
+  }
+}
+
+function toggleMaximized() {
+  isMaximized.value = !isMaximized.value;
+  nextTick(() => {
+    adjustTextareaHeight();
+    scrollToBottom(); // Re-scroll to bottom after resizing
+  });
+}
 
 function exportChat() {
   if (!currentChat.value || !activeMessages.value) return;
@@ -61,7 +113,7 @@ function scrollToBottom() {
 }
 
 // Expose for testing
-defineExpose({ scrollToBottom, container, handleSend });
+defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight });
 
 async function fetchModels() {
   await chatStore.fetchAvailableModels();
@@ -71,6 +123,12 @@ async function handleSend() {
   if (!input.value.trim() || streaming.value) return;
   const text = input.value;
   input.value = '';
+  isMaximized.value = false; // Reset maximized state immediately upon sending
+  
+  nextTick(() => { // Ensure textarea is cleared before adjusting height
+    adjustTextareaHeight();
+  });
+  
   await chatStore.sendMessage(text);
   focusInput();
 }
@@ -115,21 +173,45 @@ watch(
   { deep: true },
 );
 
+watch(input, () => {
+  adjustTextareaHeight();
+}, { flush: 'post' }); // Ensure DOM is updated before recalculating
+
+watch(isMaximized, () => {
+  nextTick(() => {
+    adjustTextareaHeight();
+    scrollToBottom();
+  });
+});
+
 watch(
   () => currentChat.value?.id,
   () => {
     if (currentChat.value) {
-      nextTick(scrollToBottom);
-      focusInput();
+      isMaximized.value = false;
+      nextTick(() => {
+        scrollToBottom();
+        focusInput();
+        adjustTextareaHeight();
+      });
     }
   },
 );
 
 onMounted(() => {
-  nextTick(scrollToBottom);
-  if (currentChat.value) {
-    focusInput();
-  }
+  window.addEventListener('resize', adjustTextareaHeight);
+  nextTick(() => {
+    scrollToBottom();
+    adjustTextareaHeight(); // Call adjustTextareaHeight on mount
+    if (currentChat.value) {
+      focusInput();
+    }
+  });
+});
+
+import { onUnmounted } from 'vue';
+onUnmounted(() => {
+  window.removeEventListener('resize', adjustTextareaHeight);
 });
 </script>
 
@@ -282,22 +364,34 @@ onMounted(() => {
 
     <!-- Input -->
     <div class="border-t dark:border-gray-800 p-4" v-if="currentChat">
-      <div class="max-w-4xl mx-auto relative">
+      <div class="max-w-4xl mx-auto relative group">
         <textarea
           ref="textareaRef"
           v-model="input"
+          @input="adjustTextareaHeight"
           @keydown.enter.ctrl.prevent="handleSend"
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="streaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
-          class="w-full border dark:border-gray-700 rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-24 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+          class="w-full border dark:border-gray-700 rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-200 resize-none"
           data-testid="chat-input"
         ></textarea>
+        <!-- Maximize/Minimize Button inside input area -->
+        <button
+          v-if="isOverLimit || isMaximized"
+          @click="toggleMaximized"
+          class="absolute right-3 top-3 p-1.5 rounded-md text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors z-20 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm shadow-sm"
+          :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
+          data-testid="maximize-button"
+        >
+          <Minimize2 v-if="isMaximized" class="w-4 h-4" />
+          <Maximize2 v-else class="w-4 h-4" />
+        </button>
         <button 
           @click="streaming ? chatStore.abortChat() : handleSend()"
           :disabled="!streaming && !input.trim()"
           class="absolute right-3 bottom-3 px-3 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors shadow-sm"
-          :title="streaming ? 'Stop generating (Esc)' : `Send message (${sendShortcutText})`"
+          :title="streaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
           :data-testid="streaming ? 'abort-button' : 'send-button'"
         >
           <template v-if="streaming">
