@@ -47,7 +47,7 @@ vi.mock('../composables/useChat', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost' } },
+    settings: ref({ endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'global-default-model' }),
   }),
 }));
 
@@ -976,6 +976,18 @@ describe('ChatArea Model Selection', () => {
     expect(options.length).toBe(3); // Default + 2 models
     expect(options[1]!.text()).toBe('model-1');
     expect(options[2]!.text()).toBe('model-2');
+  });
+
+  it('should display the global default model name in the first option', async () => {
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const select = wrapper.find('[data-testid="model-override-select"]');
+    const firstOption = select.find('option');
+    
+    expect(firstOption.text()).toBe('global-default-model');
+    expect(firstOption.text()).not.toContain('Default');
   });
 
   it('should show loader when fetching models', async () => {

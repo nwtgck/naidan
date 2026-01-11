@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
-import { Send, Bug, Settings2, Loader2, ArrowLeft, Square, Download, Maximize2, Minimize2 } from 'lucide-vue-next';
+import { Send, Bug, Settings2, Loader2, ArrowLeft, Square, Download, Maximize2, Minimize2, MoreVertical } from 'lucide-vue-next';
 
 const chatStore = useChat();
 const {
@@ -26,6 +26,7 @@ const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navig
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 const showChatSettings = ref(false);
+const showMoreMenu = ref(false);
 
 function adjustTextareaHeight() {
   if (textareaRef.value) {
@@ -237,7 +238,15 @@ onUnmounted(() => {
         </div>
         <p class="text-xs text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1 relative">
+        <button 
+          @click="exportChat"
+          class="p-2 rounded-md transition-colors text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+          title="Export Chat"
+        >
+          <Download class="w-5 h-5" />
+        </button>
+
         <button 
           @click="showChatSettings = !showChatSettings; if(showChatSettings) fetchModels()"
           class="p-2 rounded-md transition-colors"
@@ -246,21 +255,31 @@ onUnmounted(() => {
         >
           <Settings2 class="w-5 h-5" />
         </button>
+
         <button 
-          @click="chatStore.toggleDebug"
-          class="p-2 rounded-md transition-colors"
-          :class="currentChat.debugEnabled ? 'text-green-600 bg-green-50 dark:bg-green-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'"
-          title="Toggle Debug Mode for this Chat"
+          @click="showMoreMenu = !showMoreMenu"
+          class="p-2 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          title="More Actions"
+          data-testid="more-actions-button"
         >
-          <Bug class="w-5 h-5" />
+          <MoreVertical class="w-5 h-5" />
         </button>
-        <button 
-          @click="exportChat"
-          class="p-2 rounded-md transition-colors text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-          title="Export Chat"
+
+        <!-- Kebab Menu Dropdown -->
+        <div 
+          v-if="showMoreMenu" 
+          class="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-xl z-50 py-1 animate-in fade-in zoom-in duration-200"
+          @mouseleave="showMoreMenu = false"
         >
-          <Download class="w-5 h-5" />
-        </button>
+          <button 
+            @click="chatStore.toggleDebug(); showMoreMenu = false"
+            class="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            :class="{ 'text-green-600 bg-green-50 dark:bg-green-900/20 font-medium': currentChat.debugEnabled }"
+          >
+            <Bug class="w-4 h-4" />
+            <span>Debug Mode</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -377,7 +396,7 @@ onUnmounted(() => {
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="streaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
-          class="w-full border dark:border-gray-700 rounded-lg pl-4 pr-[150px] sm:pr-[260px] py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-200 resize-none"
+          class="w-full text-base border dark:border-gray-700 rounded-lg pl-4 pr-[150px] sm:pr-[260px] py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-200 resize-none"
           data-testid="chat-input"
         ></textarea>
         <!-- Maximize/Minimize Button inside input area -->
@@ -399,7 +418,7 @@ onUnmounted(() => {
               title="Override Model"
               data-testid="model-override-select"
             >
-              <option :value="undefined">Default</option>
+              <option :value="undefined">{{ settings.defaultModelId || 'None' }}</option>
               <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
             </select>
             <Loader2 v-if="fetchingModels" class="w-3.5 h-3.5 animate-spin absolute right-2.5 pointer-events-none text-gray-400" />
