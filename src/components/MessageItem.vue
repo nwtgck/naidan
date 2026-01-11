@@ -114,9 +114,10 @@ const marked = new Marked(
     highlight(code, lang) {
       if (lang === 'mermaid') {
         const mode = mermaidMode.value;
+        const encodedCode = btoa(unescape(encodeURIComponent(code))); // Base64 to safely store in attribute
         
-        return `<div class="mermaid-block relative group/mermaid" data-mermaid-mode="${mode}">
-                  <div class="mermaid-ui-overlay">
+        return `<div class="mermaid-block relative group/mermaid" data-mermaid-mode="${mode}" data-raw="${encodedCode}">
+                  <div class="mermaid-ui-overlay flex items-center gap-2">
                     <div class="mermaid-tabs">
                       <button class="mermaid-tab ${mode === 'preview' ? 'active' : ''}" data-mode="preview" title="Preview Only">
                         ${actionIcons.preview}
@@ -131,6 +132,10 @@ const marked = new Marked(
                         <span>Both</span>
                       </button>
                     </div>
+                    <button class="mermaid-copy-btn flex items-center gap-1.5 px-2 py-1 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-md shadow-sm text-[10px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all cursor-pointer opacity-0 group-hover/mermaid:opacity-100" title="Copy Mermaid code">
+                      ${actionIcons.copy}
+                      <span>Copy</span>
+                    </button>
                   </div>
                   <pre class="mermaid" style="display: ${mode === 'code' ? 'none' : 'block'}">${code}</pre>
                   <pre class="mermaid-raw hljs language-mermaid" style="display: ${mode === 'preview' ? 'none' : 'block'}"><code>${hljs.highlight(code, { language: 'plaintext' }).value}</code></pre>
@@ -186,6 +191,28 @@ onMounted(() => {
     if (tab) {
       const mode = tab.dataset.mode as MermaidMode;
       if (mode) setMermaidMode(mode);
+      return;
+    }
+
+    // Mermaid copy button
+    const mCopyBtn = target.closest('.mermaid-copy-btn') as HTMLButtonElement;
+    if (mCopyBtn && !mCopyBtn.dataset.copied) {
+      const block = mCopyBtn.closest('.mermaid-block') as HTMLElement;
+      const rawData = block?.dataset.raw;
+      if (rawData) {
+        try {
+          const originalCode = decodeURIComponent(escape(atob(rawData)));
+          await navigator.clipboard.writeText(originalCode);
+          mCopyBtn.innerHTML = actionIcons.check + '<span>Copied</span>';
+          mCopyBtn.dataset.copied = 'true';
+          setTimeout(() => {
+            mCopyBtn.innerHTML = actionIcons.copy + '<span>Copy</span>';
+            delete mCopyBtn.dataset.copied;
+          }, 2000);
+        } catch (err) {
+          console.error('Failed to copy mermaid code:', err);
+        }
+      }
       return;
     }
 

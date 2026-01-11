@@ -132,6 +132,60 @@ describe('MessageItem Rendering', () => {
       expect(tabs[1]!.text()).toContain('Code');
       expect(tabs[2]!.text()).toContain('Both');
     });
+
+    it('handles Mermaid copy button click', async () => {
+      vi.useFakeTimers();
+      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const wrapper = mount(MessageItem, {
+        props: { message },
+        attachTo: document.body
+      });
+      await nextTick();
+      await nextTick();
+
+      const writeText = vi.fn().mockImplementation(() => Promise.resolve());
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true
+      });
+
+      const copyBtn = wrapper.find('.mermaid-copy-btn');
+      expect(copyBtn.exists()).toBe(true);
+
+      await copyBtn.trigger('click');
+      await nextTick();
+
+      expect(writeText).toHaveBeenCalledWith('graph TD; A-->B;');
+      expect(copyBtn.text()).toContain('Copied');
+
+      // Check revert
+      vi.advanceTimersByTime(2100);
+      await nextTick();
+      expect(copyBtn.text()).toContain('Copy');
+
+      vi.useRealTimers();
+      wrapper.unmount();
+    });
+
+    it('has the correct design classes for Mermaid copy button', async () => {
+      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const wrapper = mount(MessageItem, { props: { message } });
+      await nextTick();
+      await nextTick();
+
+      const copyBtn = wrapper.find('.mermaid-copy-btn');
+      expect(copyBtn.exists()).toBe(true);
+      
+      const cls = copyBtn.classes();
+      expect(cls).toContain('bg-white/90');
+      expect(cls).toContain('dark:bg-gray-800/90');
+      expect(cls).toContain('backdrop-blur-sm');
+      expect(cls).toContain('rounded-md');
+      expect(cls).toContain('shadow-sm');
+      expect(cls).toContain('opacity-0'); // Hidden by default
+      expect(cls).toContain('group-hover/mermaid:opacity-100'); // Show on hover
+      expect(copyBtn.attributes('title')).toBe('Copy Mermaid code');
+    });
   });
   describe('Code Block Toolbar', () => {
     it('renders the code block toolbar with language label and copy button', () => {
@@ -164,10 +218,13 @@ describe('MessageItem Rendering', () => {
     });
 
     it('handles copy button click and visual feedback', async () => {
+      // Use fake timers BEFORE the action
+      vi.useFakeTimers();
+      
       const message = createMessage('```typescript\nconst x: number = 42;\n```');
       const wrapper = mount(MessageItem, {
         props: { message },
-        attachTo: document.body // Attach to body to ensure event delegation works
+        attachTo: document.body
       });
 
       // Mock clipboard
@@ -177,35 +234,41 @@ describe('MessageItem Rendering', () => {
         configurable: true
       });
 
-      // Find the button (it's inside v-html, so we need to search the DOM element)
       const copyBtn = wrapper.find('.code-copy-btn');
-      expect(copyBtn.exists()).toBe(true);
+      const btnEl = copyBtn.element;
 
       // Trigger click
       await copyBtn.trigger('click');
+      
+      // The click handler is async, so we need to wait for the promise to resolve
+      // but since it's an event listener, we just need a tick.
+      await nextTick();
 
-      // Verify clipboard was called
+      // Verify clipboard call
       expect(writeText).toHaveBeenCalledWith('const x: number = 42;');
-
-      // Verify visual feedback
-      // Since button content is replaced via innerHTML, we check the DOM node directly
-      const btnEl = copyBtn.element;
       expect(btnEl.innerHTML).toContain('Copied');
       
-      // Advance timers to check revert
-      vi.useFakeTimers();
-      
-      // Trigger click again to be safe within fake timer context if needed, 
-      // but here we just need to advance time since the click happened.
-      // Note: The component uses standard setTimeout.
-      
-      await vi.advanceTimersByTimeAsync(2500);
-      await nextTick(); // Allow Vue/DOM to process the change
+      // Advance timers and wait for Vue to update the DOM
+      vi.advanceTimersByTime(2100);
+      await nextTick();
       
       expect(btnEl.innerHTML).toContain('Copy');
-      vi.useRealTimers();
       
+      vi.useRealTimers();
       wrapper.unmount();
+    });
+
+    it('has the correct design classes for standard code block copy button', () => {
+      const message = createMessage('```js\nconsole.log(1);\n```');
+      const wrapper = mount(MessageItem, { props: { message } });
+      const copyBtn = wrapper.find('.code-copy-btn');
+      
+      expect(copyBtn.classes()).toContain('flex');
+      expect(copyBtn.classes()).toContain('items-center');
+      expect(copyBtn.classes()).toContain('gap-1.5');
+      expect(copyBtn.classes()).toContain('hover:text-white');
+      expect(copyBtn.classes()).toContain('transition-colors');
+      expect(copyBtn.attributes('title')).toBe('Copy code');
     });
   });
 });
