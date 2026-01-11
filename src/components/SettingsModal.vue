@@ -16,7 +16,7 @@ import {
   X, Loader2, FlaskConical, Trash2, Globe, 
   Database, Bot, Type, Settings2, RefreshCw, Save,
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
-  Target, Pencil, Trash, Check, Activity
+  Pencil, Trash, Check, Activity
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -146,6 +146,8 @@ function handleDeleteProviderProfile(id: string) {
   if (index === -1) return;
   
   const deletedProfile = form.value.providerProfiles[index];
+  if (!deletedProfile) return;
+
   form.value.providerProfiles.splice(index, 1);
   
   addToast({
@@ -473,7 +475,6 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                         <button @click="saveRename" class="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg"><Check class="w-4 h-4" /></button>
                       </div>
                       <div v-else class="flex items-center gap-3">
-                        <div class="w-2 h-2 rounded-full" :class="providerProfile.endpointType === 'ollama' ? 'bg-orange-500' : 'bg-green-500'"></div>
                         <h3 class="text-sm font-bold text-gray-900 dark:text-white truncate">{{ providerProfile.name }}</h3>
                         <span class="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 rounded-full font-bold" data-testid="provider-type-badge">{{ capitalize(providerProfile.endpointType) }}</span>
                       </div>

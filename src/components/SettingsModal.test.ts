@@ -407,7 +407,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       }));
 
       // Trigger undo
-      const toastCall = mockAddToast.mock.calls[0][0];
+      const toastCall = mockAddToast.mock.calls[0]![0];
       toastCall.onAction();
       
       // Should be restored
