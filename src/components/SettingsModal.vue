@@ -363,8 +363,8 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                     </div>
                     <!-- Info message about auto-connection check -->
                     <div class="flex items-start gap-2 p-2 bg-blue-50 dark:bg-blue-900/10 text-blue-800 dark:text-blue-300 rounded-lg text-xs border border-blue-100 dark:border-blue-900/30 ml-1">
-                        <Globe class="w-4 h-4 shrink-0 mt-0.5" />
-                        <p>Connection check is automatically performed for localhost URLs.</p>
+                      <Globe class="w-4 h-4 shrink-0 mt-0.5" />
+                      <p>Connection check is automatically performed only for localhost URLs.</p>
                     </div>
                     <!-- Error message with fixed height to prevent layout shift -->
                     <div class="h-4 mt-1">
