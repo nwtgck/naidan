@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useChat } from './composables/useChat';
 import { useSettings } from './composables/useSettings';
-import { useDialog } from './composables/useDialog'; // Import useDialog
+import { useConfirm } from './composables/useConfirm'; // Import useConfirm
+import { usePrompt } from './composables/usePrompt';   // Import usePrompt
 import Sidebar from './components/Sidebar.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import OnboardingModal from './components/OnboardingModal.vue';
@@ -17,12 +18,19 @@ const chatStore = useChat();
 const settingsStore = useSettings();
 const router = useRouter();
 
-// Initialize useDialog
+// Initialize useConfirm
 const { 
-  isDialogOpen, dialogTitle, dialogMessage, 
-  dialogConfirmButtonText, dialogCancelButtonText, 
+  isConfirmOpen, confirmTitle, confirmMessage, 
+  confirmConfirmButtonText, confirmCancelButtonText, 
   handleConfirm, handleCancel,
-} = useDialog();
+} = useConfirm();
+
+// Initialize usePrompt
+const { 
+  isPromptOpen, promptTitle, promptMessage, 
+  promptConfirmButtonText, promptCancelButtonText, promptInputValue,
+  handlePromptConfirm, handlePromptCancel,
+} = usePrompt();
 
 onMounted(async () => {
   await settingsStore.init();
@@ -63,15 +71,29 @@ onKeyStroke(['o', 'O'], async (e) => {
 
     <ToastContainer />
 
-    <!-- Global Custom Dialog -->
+    <!-- Global Custom Confirm Dialog -->
     <CustomDialog
-      :show="isDialogOpen"
-      :title="dialogTitle"
-      :message="dialogMessage"
-      :confirmButtonText="dialogConfirmButtonText"
-      :cancelButtonText="dialogCancelButtonText"
+      :show="isConfirmOpen"
+      :title="confirmTitle"
+      :message="confirmMessage"
+      :confirmButtonText="confirmConfirmButtonText"
+      :cancelButtonText="confirmCancelButtonText"
       @confirm="handleConfirm"
       @cancel="handleCancel"
+    />
+
+    <!-- Global Custom Prompt Dialog -->
+    <CustomDialog
+      :show="isPromptOpen"
+      :title="promptTitle"
+      :message="promptMessage"
+      :confirmButtonText="promptConfirmButtonText"
+      :cancelButtonText="promptCancelButtonText"
+      :showInput="true"
+      :inputValue="promptInputValue"
+      @update:inputValue="promptInputValue = $event"
+      @confirm="handlePromptConfirm"
+      @cancel="handlePromptCancel"
     />
   </div>
 </template>

@@ -18,7 +18,8 @@ import {
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
   Pencil, Trash, Check, Activity,
 } from 'lucide-vue-next';
-import { useDialog } from '../composables/useDialog'; // Import useDialog
+import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
+import { usePrompt } from '../composables/usePrompt';   // Import usePrompt
 
 const props = defineProps<{
   isOpen: boolean;
@@ -31,7 +32,8 @@ const emit = defineEmits<{
 const { settings, save } = useSettings();
 const { createSampleChat } = useSampleChat();
 const { addToast } = useToast();
-const { showDialog } = useDialog(); // Initialize useDialog
+const { showConfirm } = useConfirm(); // Initialize useConfirm
+const { showPrompt } = usePrompt();     // Initialize usePrompt
 
 const form = ref({ ...settings.value });
 const initialFormState = ref('');
@@ -71,10 +73,11 @@ function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
 }
 
 async function handleResetData() {
-  const confirmed = await showDialog({
+  const confirmed = await showConfirm({
     title: 'Confirm Data Reset',
     message: 'Are you sure you want to reset all app data? This will delete all chats, groups, and settings for the current storage location.',
     confirmButtonText: 'Reset',
+    confirmButtonVariant: 'danger', // Add danger variant
   });
   if (confirmed) {
     await storageService.clearAll();
@@ -84,7 +87,7 @@ async function handleResetData() {
 
 async function handleCancel() { // Make function async
   if (hasChanges.value) {
-    const confirmed = await showDialog({
+    const confirmed = await showConfirm({
       title: 'Discard Unsaved Changes?',
       message: 'You have unsaved changes. Are you sure you want to discard them?',
       confirmButtonText: 'Discard',
@@ -136,11 +139,15 @@ async function handleSave() {
 }
 
 // Profile Handlers
-function handleCreateProviderProfile() {
-  const name = prompt('Enter a name for this profile:', 
-    `${capitalize(form.value.endpointType)} - ${form.value.defaultModelId || 'Default'}`);
+async function handleCreateProviderProfile() {
+  const name = await showPrompt({
+    title: 'Create New Profile',
+    message: 'Enter a name for this profile:',
+    defaultValue: `${capitalize(form.value.endpointType)} - ${form.value.defaultModelId || 'Default'}`,
+    confirmButtonText: 'Create',
+  });
   
-  if (!name) return;
+  if (!name) return; // User cancelled or entered empty string
 
   const newProviderProfile: ProviderProfile = {
     id: crypto.randomUUID(),
