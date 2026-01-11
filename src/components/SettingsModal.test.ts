@@ -351,13 +351,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(vm.form.providerProfiles[0]!.name).toBe('Renamed Profile');
     });
 
-    it('clears selection and applies profile when using the Quick Switcher', async () => {
+    it('clears selection and applies profile when using the Quick Switcher and enables save button', async () => {
       const mockProviderProfile = {
         id: 'quick-1',
         name: 'Quick',
         endpointType: 'ollama' as const,
-        endpointUrl: 'http://quick:11434'
+        endpointUrl: 'http://quick:11434',
+        defaultModelId: 'model-a',
+        titleModelId: 'model-title'
       };
+      
+      // We need useSettings to return the profile in the initial state so form.value has it
       (useSettings as unknown as Mock).mockReturnValue({
         settings: { value: { ...mockSettings, providerProfiles: [mockProviderProfile] } },
         save: mockSave,
@@ -369,13 +373,65 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const select = wrapper.find('[data-testid="setting-quick-provider-profile-select"]');
       await select.setValue('quick-1');
       await select.trigger('change');
+      await flushPromises();
 
-      const vm = wrapper.vm as unknown as { form: { endpointUrl: string }, selectedProviderProfileId: string };
+      const vm = wrapper.vm as any;
       expect(vm.form.endpointUrl).toBe('http://quick:11434');
+      expect(vm.form.defaultModelId).toBe('model-a');
+      expect(vm.form.titleModelId).toBe('model-title');
       expect(vm.selectedProviderProfileId).toBe('');
+      
+      // Should enable the global save button
+      expect(vm.hasChanges).toBe(true);
+      const saveBtn = wrapper.find('[data-testid="setting-save-button"]');
+      expect(saveBtn.attributes('disabled')).toBeUndefined();
+    });
+
+    it('shows empty state when no profiles exist', async () => {
+      (useSettings as unknown as Mock).mockReturnValue({
+        settings: { value: { ...mockSettings, providerProfiles: [] } },
+        save: mockSave,
+      });
+
+      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+      await flushPromises();
+
+      const navButtons = wrapper.findAll('nav button');
+      await navButtons.find(b => b.text().includes('Provider Profiles'))?.trigger('click');
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('No profiles saved yet');
+      // Look for the "Go to Connection" button specifically in the empty state area
+      const emptyStateBtn = wrapper.find('main button');
+      expect(emptyStateBtn.text()).toContain('Go to Connection');
+    });
+
+    it('conditionally renders title model badge in the list', async () => {
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs }
+      });
+      
+      const vm = wrapper.vm as any;
+      vm.form.providerProfiles = [
+        { id: '1', name: 'With Title', endpointType: 'ollama', titleModelId: 't-1' },
+        { id: '2', name: 'Without Title', endpointType: 'openai' }
+      ];
+      
+      const navButtons = wrapper.findAll('nav button');
+      await navButtons.find(b => b.text().includes('Provider Profiles'))?.trigger('click');
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('Title: t-1');
+      
+      const profiles = wrapper.findAll('.group');
+      expect(profiles[0]!.text()).toContain('Title: t-1');
+      expect(profiles[1]!.text()).not.toContain('Title:');
     });
 
     it('deletes a profile immediately and allows undo via toast', async () => {
+
+
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
         global: { stubs: globalStubs }
