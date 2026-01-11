@@ -8,6 +8,8 @@ import { useSettings } from './useSettings';
 const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
 const streaming = ref(false);
+const availableModels = ref<string[]>([]);
+const fetchingModels = ref(false);
 let abortController: AbortController | null = null;
 
 // --- Helpers ---
@@ -143,6 +145,26 @@ export function useChat() {
 
   const loadData = async () => {
     rootItems.value = await storageService.getSidebarStructure();
+  };
+
+  const fetchAvailableModels = async () => {
+    const type = currentChat.value?.endpointType || settings.value.endpointType;
+    const url = currentChat.value?.endpointUrl || settings.value.endpointUrl || '';
+    if (!url) return [];
+    
+    fetchingModels.value = true;
+    try {
+      const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+      const models = await provider.listModels(url);
+      const result = Array.isArray(models) ? models : [];
+      availableModels.value = result;
+      return result;
+    } catch (e) {
+      console.warn('Failed to fetch models for resolution:', e);
+      return [];
+    } finally {
+      fetchingModels.value = false;
+    }
   };
 
   const saveCurrentChat = async () => {
@@ -333,10 +355,26 @@ export function useChat() {
     try {
       const type = currentChat.value.endpointType || settings.value.endpointType;
       const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
-      const model = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
+      
+      // Determine the intended model
+      const baseModel = currentChat.value.overrideModelId || currentChat.value.modelId || settings.value.defaultModelId || 'gpt-3.5-turbo';
+      
+      // Dynamic Model Resolution:
+      // Check if the baseModel is actually available at this endpoint.
+      // If not, fallback to the defaultModelId or the first available model.
+      let resolvedModel = baseModel;
+      const available = await fetchAvailableModels();
+      if (available.length > 0 && !available.includes(baseModel)) {
+          if (settings.value.defaultModelId && available.includes(settings.value.defaultModelId)) {
+              resolvedModel = settings.value.defaultModelId;
+          } else {
+              resolvedModel = available[0] || baseModel;
+          }
+      }
+
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
 
-      await provider.chat(activeMessages.value.filter(m => m.id !== assistantMsg.id), model, url, (chunk) => {
+      await provider.chat(activeMessages.value.filter(m => m.id !== assistantMsg.id), resolvedModel, url, (chunk) => {
         assistantNode.content += chunk;
         triggerRef(currentChat);
       }, abortController.signal);
@@ -351,7 +389,7 @@ export function useChat() {
         try {
           let generatedTitle = '';
           const titleProvider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-          const titleGenModel = settings.value.titleModelId || model;
+          const titleGenModel = settings.value.titleModelId || resolvedModel;
           const promptNode: MessageNode = {
             id: uuidv7(), role: 'user', timestamp: Date.now(), replies: { items: [] },
             content: `Generate a short title (2-3 words) for: "${content}". Respond ONLY with the title.`
@@ -535,9 +573,12 @@ export function useChat() {
     currentChat,
     activeMessages,
     streaming,
+    availableModels,
+    fetchingModels,
 
     // --- Actions ---
     loadChats: loadData,
+    fetchAvailableModels,
     createNewChat,
     openChat,
     deleteChat,

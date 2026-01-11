@@ -5,13 +5,14 @@ import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
 import { Send, Bug, Settings2, Loader2, ArrowLeft, Square } from 'lucide-vue-next';
-import { OpenAIProvider, OllamaProvider } from '../services/llm';
 
 const chatStore = useChat();
 const {
   currentChat,
   streaming,
   activeMessages,
+  availableModels,
+  fetchingModels,
 } = chatStore;
 const { settings } = useSettings();
 const router = useRouter();
@@ -23,8 +24,6 @@ const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navig
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 const showChatSettings = ref(false);
-const availableModels = ref<string[]>([]);
-const fetchingModels = ref(false);
 
 function focusInput() {
   nextTick(() => {
@@ -42,19 +41,7 @@ function scrollToBottom() {
 defineExpose({ scrollToBottom, container, handleSend });
 
 async function fetchModels() {
-  if (!currentChat.value) return;
-  fetchingModels.value = true;
-  try {
-    const type = currentChat.value.endpointType || settings.value.endpointType;
-    const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
-    const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-    availableModels.value = await provider.listModels(url);
-  } catch (e) {
-    console.error(e);
-    availableModels.value = [];
-  } finally {
-    fetchingModels.value = false;
-  }
+  await chatStore.fetchAvailableModels();
 }
 
 async function handleSend() {

@@ -30,7 +30,7 @@ vi.mock('../services/llm', () => {
       onChunkCallback = onChunk;
       return new Promise<void>(() => {}); 
     });
-    listModels = vi.fn();
+    listModels = vi.fn().mockResolvedValue([]);
   }
   return {
     OpenAIProvider: MockOpenAI,
@@ -59,12 +59,20 @@ describe('useChat Reactivity', () => {
     // Start sending
     chatStore.sendMessage('Hello');
     
-    // Initial async setup
+    // Initial async setup - need enough ticks to pass through fetchAvailableModels
+    await nextTick();
+    await nextTick();
     await nextTick();
     await nextTick();
 
     expect(chatStore.activeMessages.value).toHaveLength(2);
     expect(chatStore.activeMessages.value[1]?.content).toBe('');
+
+    // Ensure onChunkCallback is defined before calling it
+    if (typeof onChunkCallback !== 'function') {
+        // Wait a bit more if needed
+        await new Promise(r => setTimeout(r, 10));
+    }
 
     // Simulate chunk
     onChunkCallback('A');
