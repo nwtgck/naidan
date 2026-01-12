@@ -296,8 +296,8 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
         <User v-if="isUser" class="w-4 h-4 text-gray-500" />
         <Bird v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
-      <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
-        <span v-if="isUser" class="text-gray-800 dark:text-gray-200">You</span>
+      <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
+        <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
         <span v-else>{{ message.modelId || 'Assistant' }}</span>
       </div>
     </div>

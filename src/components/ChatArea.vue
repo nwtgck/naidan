@@ -251,7 +251,7 @@ onUnmounted(() => {
             </button>
             <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'Untitled Chat' }}</h2>
           </div>
-          <p class="text-[10px] font-bold tracking-widest text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
+          <p class="text-[10px] font-bold text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
         </template>
         <template v-else>
           <h2 class="text-xl font-bold text-gray-400 dark:text-gray-600 tracking-tight">Vibe Local AI</h2>

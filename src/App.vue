@@ -82,7 +82,7 @@ onKeyStroke(['o', 'O'], async (e) => {
       @close="isSettingsOpen = false" 
     />
 
-    <OnboardingModal v-if="settingsStore.initialized && !settingsStore.isOnboardingDismissed.value && !settingsStore.settings.value.endpointUrl" />
+    <OnboardingModal v-if="settingsStore.initialized && !settingsStore.isOnboardingDismissed.value" />
 
     <ToastContainer />
 

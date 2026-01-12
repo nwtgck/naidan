@@ -43,6 +43,33 @@ describe('MessageItem Rendering', () => {
     expect(html).not.toContain('onerror');
   });
 
+  it('displays the assistant model name with correct casing', () => {
+    const modelId = 'gemma3:1b-Assistant-Case';
+    const message: MessageNode = {
+      id: 'msg-1',
+      role: 'assistant',
+      content: 'Hello',
+      modelId,
+      timestamp: Date.now(),
+      replies: { items: [] },
+    };
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.text()).toContain(modelId);
+    expect(wrapper.text()).not.toContain(modelId.toUpperCase());
+    // Ensure "You" is not shown
+    expect(wrapper.text()).not.toContain('You');
+  });
+
+  it('displays "You" for user messages with correct styling', () => {
+    const message = createMessage('Hello', 'user');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    const youSpan = wrapper.find('.uppercase.tracking-widest');
+    expect(youSpan.exists()).toBe(true);
+    expect(youSpan.text()).toBe('You');
+  });
+
   it('correctly separates and displays thinking blocks', async () => {
     const message = createMessage('<think>Internal thought</think>Actual response');
     const wrapper = mount(MessageItem, { props: { message } });

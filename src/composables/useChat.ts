@@ -317,11 +317,33 @@ export function useChat() {
   const sendMessage = async (content: string, parentId?: string | null) => {
     if (!currentChat.value || streaming.value) return;
 
+    const { isOnboardingDismissed, onboardingDraft } = useSettings();
+
     // Determine the intended model early
     const type = currentChat.value.endpointType || settings.value.endpointType;
     const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
-    const baseModel = currentChat.value.overrideModelId || settings.value.defaultModelId || currentChat.value.modelId || 'gpt-3.5-turbo';
+    const baseModel = currentChat.value.overrideModelId || settings.value.defaultModelId || currentChat.value.modelId;
     
+    if (!url) {
+      isOnboardingDismissed.value = false;
+      return;
+    }
+
+    if (!baseModel) {
+      // If we have a URL but no model, try to fetch models to help with onboarding model selection
+      const models = await fetchAvailableModels();
+      if (models.length > 0) {
+        onboardingDraft.value = {
+          url,
+          type,
+          models,
+          selectedModel: models[0] || '',
+        };
+      }
+      isOnboardingDismissed.value = false;
+      return;
+    }
+
     // Dynamic Model Resolution:
     let resolvedModel = baseModel;
     const available = await fetchAvailableModels();

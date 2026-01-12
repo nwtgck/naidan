@@ -12,6 +12,14 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }],
 });
 
+vi.mock('../composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'gpt-4' } },
+    isOnboardingDismissed: { value: true },
+    onboardingDraft: { value: null },
+  }),
+}));
+
 let triggerChunk: (chunk: string) => void;
 vi.mock('../services/llm', () => ({
   OpenAIProvider: class {

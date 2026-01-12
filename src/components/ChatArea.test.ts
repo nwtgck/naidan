@@ -113,8 +113,13 @@ describe('ChatArea UI States', () => {
   });
 
   it('should display the model name with correct casing (not forced to uppercase)', async () => {
+    // Set a specifically lowercase model name in settings to test for uppercase transformation
+    const testModelName = 'gemma3:1b-lowercase';
+    mockCurrentChat.value.overrideModelId = testModelName;
+    
     const wrapper = mount(ChatArea, {
       global: {
+        plugins: [router],
         stubs: {
           'router-link': true,
           'Logo': true,
@@ -125,17 +130,16 @@ describe('ChatArea UI States', () => {
       },
     });
     
-    // The default mocked model ID might be lowercase.
-    // Let's check the text content of the model display area.
-    const headerText = wrapper.text();
-    // Assuming the mock settings or current chat has a model name like 'gemma' or 'openai'
-    // We want to ensure it doesn't appear as 'GEMMA' or 'OPENAI' if it's provided as lowercase.
-    expect(headerText).toContain('Model:');
+    await nextTick();
     
-    // Check for a specific case-sensitive match if we can determine the model ID.
-    // Based on the component logic: currentChat.overrideModelId || settings.defaultModelId || 'Default'
-    // In many tests, it defaults to 'gpt-3.5-turbo' or similar.
-    expect(headerText).not.toMatch(/Model: [A-Z0-0:-]+(?![a-z])/); // Ensure it's not ONLY uppercase after "Model: "
+    const headerText = wrapper.text();
+    expect(headerText).toContain('Model:');
+    expect(headerText).toContain(testModelName);
+    // Explicitly check that it's NOT transformed to uppercase
+    expect(headerText).not.toContain(testModelName.toUpperCase());
+    
+    // Reset for other tests
+    mockCurrentChat.value.overrideModelId = undefined;
   });
 
   it('should call abortChat when Esc is pressed during streaming', async () => {
