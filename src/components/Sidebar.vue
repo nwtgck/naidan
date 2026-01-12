@@ -156,11 +156,13 @@ async function handleDeleteAll() {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-gray-900 text-white w-64 border-r border-gray-800 select-none">
+  <div class="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 w-64 border-r border-gray-100 dark:border-gray-800 select-none transition-colors">
     <!-- Header -->
     <router-link to="/" class="p-6 pb-2 flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer">
-      <Logo :size="28" />
-      <h1 class="text-lg font-bold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent">
+      <div class="p-1.5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+        <Logo :size="20" />
+      </div>
+      <h1 class="text-lg font-bold tracking-tight bg-gradient-to-br from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
         LM Web UI
       </h1>
     </router-link>
@@ -170,17 +172,17 @@ async function handleDeleteAll() {
       <div class="flex gap-2">
         <button 
           @click="handleNewChat(null)"
-          class="flex-1 flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-3 rounded-lg transition-colors text-xs font-medium whitespace-nowrap overflow-hidden"
+          class="flex-1 flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-3 rounded-xl transition-all text-xs font-bold whitespace-nowrap overflow-hidden shadow-lg shadow-blue-500/20"
           :disabled="streaming"
           data-testid="new-chat-button"
         >
           <Plus class="w-3.5 h-3.5 shrink-0" />
           <span>New Chat</span>
-          <span class="text-[9px] opacity-40 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
+          <span class="text-[9px] opacity-60 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
         </button>
         <button 
           @click="isCreatingGroup = true"
-          class="p-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
+          class="p-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
           title="Create Group"
           data-testid="create-group-button"
         >
@@ -188,27 +190,27 @@ async function handleDeleteAll() {
         </button>
       </div>
 
-      <div v-if="isCreatingGroup" class="flex items-center gap-1 p-2 bg-gray-800 rounded-lg border border-indigo-500/50">
+      <div v-if="isCreatingGroup" class="flex items-center gap-1 p-2 bg-white dark:bg-gray-800 rounded-xl border border-blue-500/50 shadow-sm">
         <input 
           v-model="newGroupName"
           @keyup.enter="handleCreateGroup"
           @keyup.esc="isCreatingGroup = false"
           @blur="handleCreateGroup"
-          class="bg-transparent text-sm text-white outline-none w-full px-1"
+          class="bg-transparent text-sm text-gray-800 dark:text-white outline-none w-full px-1"
           placeholder="Group name..."
           auto-focus
           data-testid="group-name-input"
         />
-        <button @click="handleCreateGroup" class="text-green-400 hover:text-green-300" data-testid="confirm-create-group">
+        <button @click="handleCreateGroup" class="text-green-600 dark:text-green-400 hover:opacity-80" data-testid="confirm-create-group">
           <Check class="w-3 h-3" />
         </button>
-        <button @click="isCreatingGroup = false" class="text-red-400 hover:text-red-300">
+        <button @click="isCreatingGroup = false" class="text-red-600 dark:text-red-400 hover:opacity-80">
           <X class="w-3 h-3" />
         </button>
       </div>
     </div>
     <!-- Navigation List -->
-    <div class="flex-1 overflow-y-auto px-2 py-2">
+    <div class="flex-1 overflow-y-auto px-3 py-2">
       <draggable 
         v-model="sidebarItemsLocal" 
         item-key="id"
@@ -226,12 +228,12 @@ async function handleDeleteAll() {
             <div v-if="element.type === 'group'" class="space-y-1">
               <div 
                 @click="chatStore.toggleGroupCollapse(element.group.id)"
-                class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer text-gray-400 group/folder relative transition-all handle"
+                class="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative transition-all handle"
                 data-testid="group-item"
               >
                 <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
                   <component :is="element.group.isCollapsed ? ChevronRight : ChevronDown" class="w-3 h-3 flex-shrink-0" />
-                  <Folder class="w-4 h-4 text-indigo-400/70" />
+                  <Folder class="w-4 h-4 text-blue-500/60" />
                   
                   <input 
                     v-if="editingGroupId === element.group.id"
@@ -240,20 +242,20 @@ async function handleDeleteAll() {
                     @keyup.esc="editingGroupId = null"
                     @blur="saveGroupRename"
                     @click.stop
-                    class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto font-medium"
+                    class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-1 ring-blue-500 pointer-events-auto font-medium shadow-sm"
                     auto-focus
                   />
-                  <span v-else class="truncate text-sm font-semibold tracking-tight">{{ element.group.name }}</span>
+                  <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.group.name }}</span>
                 </div>
                 
                 <div class="flex items-center opacity-0 group-hover/folder:opacity-100 transition-opacity">
-                  <button v-if="editingGroupId !== element.group.id" @click.stop="startEditingGroup(element.group)" class="p-1 hover:text-white"><Pencil class="w-3 h-3" /></button>
-                  <button @click.stop="chatStore.deleteGroup(element.group.id)" class="p-1 hover:text-red-400"><Trash2 class="w-3 h-3" /></button>
+                  <button v-if="editingGroupId !== element.group.id" @click.stop="startEditingGroup(element.group)" class="p-1 hover:text-blue-600 dark:hover:text-white"><Pencil class="w-3 h-3" /></button>
+                  <button @click.stop="chatStore.deleteGroup(element.group.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
                 </div>
               </div>
 
               <!-- Nested Items in Group -->
-              <div v-if="!element.group.isCollapsed" class="ml-4 pl-2 border-l border-gray-800 mt-1 space-y-0.5">
+              <div v-if="!element.group.isCollapsed" class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5">
                 <draggable
                   v-model="element.group.items"
                   :group="{ name: 'sidebar' }"
@@ -267,8 +269,8 @@ async function handleDeleteAll() {
                     <div v-if="nestedItem.type === 'chat'">
                       <div 
                         @click="handleOpenChat(nestedItem.chat.id)"
-                        class="group/chat flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors handle"
-                        :class="currentChat?.id === nestedItem.chat.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'"
+                        class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all handle"
+                        :class="currentChat?.id === nestedItem.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
                         data-testid="sidebar-chat-item"
                       >
                         <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
@@ -279,14 +281,14 @@ async function handleDeleteAll() {
                             @keyup.esc="editingId = null"
                             @blur="saveRename"
                             @click.stop
-                            class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto"
+                            class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-1 ring-blue-500 pointer-events-auto shadow-sm"
                             auto-focus
                           />
                           <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'Untitled Chat' }}</span>
                         </div>
                         <div v-if="editingId !== nestedItem.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                          <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-indigo-400"><Pencil class="w-3 h-3" /></button>
-                          <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-400"><Trash2 class="w-3 h-3" /></button>
+                          <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
+                          <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
                         </div>
                       </div>
                     </div>
@@ -294,7 +296,7 @@ async function handleDeleteAll() {
                 </draggable>
                 <button 
                   @click="handleNewChat(element.group.id)"
-                  class="w-full flex items-center gap-2 text-[10px] text-gray-600 hover:text-gray-400 p-2 transition-colors"
+                  class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
                 >
                   <Plus class="w-3 h-3" /> Add Chat
                 </button>
@@ -305,8 +307,8 @@ async function handleDeleteAll() {
             <div 
               v-else
               @click="handleOpenChat(element.chat.id)"
-              class="group/chat flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors handle"
-              :class="currentChat?.id === element.chat.id ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'"
+              class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all handle"
+              :class="currentChat?.id === element.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
               data-testid="sidebar-chat-item"
             >
               <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
@@ -317,13 +319,13 @@ async function handleDeleteAll() {
                   @keyup.esc="editingId = null"
                   @blur="saveRename"
                   @click.stop
-                  class="bg-gray-700 text-white text-sm px-1 py-0.5 rounded w-full outline-none focus:ring-1 focus:ring-indigo-500 pointer-events-auto"
+                  class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-1 ring-blue-500 pointer-events-auto shadow-sm"
                   auto-focus
                 />                <span v-else class="truncate text-sm">{{ element.chat.title || 'Untitled Chat' }}</span>
               </div>
               <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-indigo-400"><Pencil class="w-3 h-3" /></button>
-                <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-400"><Trash2 class="w-3 h-3" /></button>
+                <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
+                <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
               </div>
             </div>
           </div>
@@ -332,24 +334,24 @@ async function handleDeleteAll() {
     </div>
 
     <!-- Footer -->
-    <div class="p-4 border-t border-gray-800 space-y-4">
+    <div class="p-4 border-t border-gray-100 dark:border-gray-800 space-y-4 bg-gray-50/30 dark:bg-black/20">
       <button 
         v-if="chats.length > 0 || groups.length > 0"
         @click="handleDeleteAll"
-        class="flex items-center gap-2 text-xs text-gray-600 hover:text-red-400 w-full px-2 py-1 rounded hover:bg-red-900/10 transition-colors"
+        class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-gray-400 hover:text-red-500 w-full px-2 py-1 transition-colors"
         data-testid="clear-all-button"
       >
         <Trash2 class="w-3 h-3" />
         Clear All History
       </button>
 
-      <div class="flex items-center justify-between bg-gray-800 p-1 rounded-lg">
-        <button @click="setTheme('light')" class="flex-1 flex justify-center py-1.5 rounded-md transition-all" :class="themeMode === 'light' ? 'bg-gray-700 text-yellow-400 shadow-sm' : 'text-gray-400 hover:text-gray-200'"><Sun class="w-4 h-4" /></button>
-        <button @click="setTheme('dark')" class="flex-1 flex justify-center py-1.5 rounded-md transition-all" :class="themeMode === 'dark' ? 'bg-gray-700 text-indigo-400 shadow-sm' : 'text-gray-400 hover:text-gray-200'"><Moon class="w-4 h-4" /></button>
-        <button @click="setTheme('system')" class="flex-1 flex justify-center py-1.5 rounded-md transition-all" :class="themeMode === 'system' ? 'bg-gray-700 text-green-400 shadow-sm' : 'text-gray-400 hover:text-gray-200'"><Monitor class="w-4 h-4" /></button>
+      <div class="flex items-center justify-between bg-white dark:bg-gray-800 p-1 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+        <button @click="setTheme('light')" class="flex-1 flex justify-center py-1.5 rounded-lg transition-all" :class="themeMode === 'light' ? 'bg-gray-50 dark:bg-gray-700 text-blue-600 dark:text-yellow-400 shadow-sm' : 'text-gray-400 hover:text-gray-600'"><Sun class="w-4 h-4" /></button>
+        <button @click="setTheme('dark')" class="flex-1 flex justify-center py-1.5 rounded-lg transition-all" :class="themeMode === 'dark' ? 'bg-gray-50 dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-400 hover:text-gray-600'"><Moon class="w-4 h-4" /></button>
+        <button @click="setTheme('system')" class="flex-1 flex justify-center py-1.5 rounded-lg transition-all" :class="themeMode === 'system' ? 'bg-gray-50 dark:bg-gray-700 text-blue-600 dark:text-green-400 shadow-sm' : 'text-gray-400 hover:text-gray-600'"><Monitor class="w-4 h-4" /></button>
       </div>
 
-      <button @click="$emit('open-settings')" class="flex items-center gap-2 text-sm text-gray-400 hover:text-white w-full px-2 py-2 rounded hover:bg-gray-800"><SettingsIcon class="w-4 h-4" />Settings</button>
+      <button @click="$emit('open-settings')" class="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white w-full px-2 py-2 rounded-xl hover:bg-gray-100/50 dark:hover:bg-gray-800 transition-colors"><SettingsIcon class="w-4 h-4" />Settings</button>
     </div>
   </div>
 </template>

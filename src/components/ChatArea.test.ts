@@ -91,6 +91,53 @@ describe('ChatArea UI States', () => {
     expect(wrapper.find('[data-testid="send-button"]').exists()).toBe(false);
   });
 
+  it('should display the shortcut text with correct casing (not all uppercase)', () => {
+    const wrapper = mount(ChatArea, {
+      global: {
+        stubs: {
+          'router-link': true,
+          'Logo': true,
+          'MessageItem': true,
+          'WelcomeScreen': true,
+          'ChatSettingsPanel': true,
+        },
+      },
+    });
+    const sendBtn = wrapper.find('[data-testid="send-button"]');
+    const shortcutText = sendBtn.text();
+    
+    // Check for "Enter" with capital E and lowercase nter, 
+    // ensuring "uppercase" class isn't transforming it.
+    expect(shortcutText).toContain('Enter');
+    expect(shortcutText).not.toContain('ENTER');
+  });
+
+  it('should display the model name with correct casing (not forced to uppercase)', async () => {
+    const wrapper = mount(ChatArea, {
+      global: {
+        stubs: {
+          'router-link': true,
+          'Logo': true,
+          'MessageItem': true,
+          'WelcomeScreen': true,
+          'ChatSettingsPanel': true,
+        },
+      },
+    });
+    
+    // The default mocked model ID might be lowercase.
+    // Let's check the text content of the model display area.
+    const headerText = wrapper.text();
+    // Assuming the mock settings or current chat has a model name like 'gemma' or 'openai'
+    // We want to ensure it doesn't appear as 'GEMMA' or 'OPENAI' if it's provided as lowercase.
+    expect(headerText).toContain('Model:');
+    
+    // Check for a specific case-sensitive match if we can determine the model ID.
+    // Based on the component logic: currentChat.overrideModelId || settings.defaultModelId || 'Default'
+    // In many tests, it defaults to 'gpt-3.5-turbo' or similar.
+    expect(headerText).not.toMatch(/Model: [A-Z0-0:-]+(?![a-z])/); // Ensure it's not ONLY uppercase after "Model: "
+  });
+
   it('should call abortChat when Esc is pressed during streaming', async () => {
     mockStreaming.value = true;
     const wrapper = mount(ChatArea, {

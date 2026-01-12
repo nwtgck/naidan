@@ -91,31 +91,31 @@ watch([
 </script>
 
 <template>
-  <div v-if="currentChat" class="border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/50 backdrop-blur-sm animate-in slide-in-from-top duration-300">
+  <div v-if="currentChat" class="border-b border-gray-100 dark:border-gray-800 bg-gray-50/95 dark:bg-gray-950/90 backdrop-blur-md animate-in slide-in-from-top duration-300 shadow-inner">
     <div class="max-w-4xl mx-auto p-6 space-y-8">
       <!-- Title & Close -->
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <div class="p-1.5 bg-indigo-500/10 rounded-lg">
-            <Settings2 class="w-4 h-4 text-indigo-500" />
+          <div class="p-2 bg-blue-600/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
+            <Settings2 class="w-4 h-4 text-blue-600" />
           </div>
-          <h3 class="text-xs font-bold text-gray-900 dark:text-white tracking-widest">Chat Specific Overrides</h3>
+          <h3 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Chat Specific Overrides</h3>
         </div>
-        <button @click="emit('close')" class="text-xs font-bold text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5">
+        <button @click="emit('close')" class="text-[10px] font-bold text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-1.5 uppercase tracking-widest">
           <X class="w-3.5 h-3.5" />
           Close
         </button>
       </div>
 
-      <div class="flex flex-col md:flex-row md:items-end justify-between border-b dark:border-gray-800 pb-6 gap-6">
+      <div class="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-200/50 dark:border-gray-800 pb-8 gap-6">
         <div class="flex flex-col md:flex-row gap-8 flex-1">
           <!-- Quick Switcher (If profiles exist) -->
           <div v-if="settings.providerProfiles && settings.providerProfiles.length > 0" class="w-full md:max-w-[240px] space-y-2">
-            <label class="block text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider ml-1">Quick Profile Switcher</label>
+            <label class="block text-[10px] font-bold text-blue-600/70 dark:text-blue-400 uppercase tracking-wider ml-1">Quick Profile Switcher</label>
             <select 
               v-model="selectedProviderProfileId"
               @change="handleQuickProviderProfileChange"
-              class="w-full bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-800 rounded-xl px-4 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white appearance-none"
+              class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-blue-800 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
               style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
             >
               <option value="" disabled>Load from saved profiles...</option>
@@ -124,16 +124,16 @@ watch([
           </div>
 
           <!-- Endpoint Presets -->
-          <div class="space-y-2">
-            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Quick Endpoint Presets</label>
+          <div class="space-y-2 flex-1">
+            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider ml-1">Quick Endpoint Presets</label>
             <div class="flex flex-wrap gap-1.5">
               <button 
                 v-for="preset in ENDPOINT_PRESETS" 
                 :key="preset.name"
                 @click="applyPreset(preset)"
                 type="button"
-                class="px-3 py-1.5 text-[10px] font-bold rounded-lg border transition-all"
-                :class="currentChat.endpointUrl === preset.url && currentChat.endpointType === preset.type ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 hover:border-gray-300 dark:hover:border-gray-600'"
+                class="px-4 py-2 text-[10px] font-bold rounded-xl border transition-all shadow-sm"
+                :class="currentChat.endpointUrl === preset.url && currentChat.endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
               >
                 {{ preset.name }}
               </button>
@@ -144,11 +144,11 @@ watch([
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div class="space-y-2">
-          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Endpoint Type</label>
+          <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint Type</label>
           <div class="relative">
             <select 
               v-model="currentChat.endpointType"
-              class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white appearance-none"
+              class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
               style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
             >
               <option :value="undefined">Global ({{ settings.endpointType }})</option>
@@ -159,28 +159,28 @@ watch([
         </div>
 
         <div class="space-y-2">
-          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
+          <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
           <input 
             v-model="currentChat.endpointUrl"
             type="text"
-            class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white shadow-sm"
+            class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
             :placeholder="settings.endpointUrl"
             data-testid="chat-setting-url-input"
           />
 
           <!-- Error message with fixed height to prevent layout shift -->
           <div class="h-4 mt-1">
-            <p v-if="error" class="text-[10px] text-red-500 font-medium ml-1 animate-in fade-in slide-in-from-top-1 duration-200">{{ error }}</p>
+            <p v-if="error" class="text-[10px] text-red-500 font-bold ml-1 animate-in fade-in slide-in-from-top-1 duration-200">{{ error }}</p>
           </div>
         </div>
 
         <div class="space-y-2">
-          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
+          <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
           <div class="flex gap-2">
             <div class="relative flex-1">
               <select 
                 v-model="currentChat.overrideModelId"
-                class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all dark:text-white appearance-none"
+                class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                 data-testid="chat-setting-model-select"
               >
@@ -190,11 +190,11 @@ watch([
             </div>
             <button 
               @click="fetchModels" 
-              class="p-2.5 border transition-all flex items-center justify-center disabled:opacity-50 shadow-sm rounded-xl"
+              class="p-3 border transition-all flex items-center justify-center disabled:opacity-50 shadow-sm rounded-xl"
               :class="[
                 connectionSuccess 
-                  ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-600 dark:text-green-400' 
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500'
+                  ? 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800 text-green-600 dark:text-green-400' 
+                  : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-400'
               ]"
               :disabled="fetchingModels"
               title="Refresh Model List"
@@ -210,35 +210,36 @@ watch([
         </div>
       </div>
 
-      <!-- Auto-connection info banner -->
-      <div class="flex items-start gap-4 p-4 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl">
-        <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm">
-          <Globe class="w-4 h-4 text-blue-500" />
+      <!-- Info banners -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="flex items-start gap-4 p-4 bg-white dark:bg-blue-900/10 border border-gray-100 dark:border-blue-900/30 rounded-2xl shadow-sm">
+          <div class="p-2 bg-blue-50 dark:bg-gray-800 rounded-xl border border-blue-100 dark:border-blue-900/20">
+            <Globe class="w-4 h-4 text-blue-500" />
+          </div>
+          <div class="space-y-1">
+            <p class="text-[10px] font-bold text-blue-900/70 dark:text-blue-300 uppercase tracking-widest">Auto-Check</p>
+            <p class="text-[11px] text-gray-500 dark:text-blue-400/70 leading-relaxed font-medium">
+              Connection check is automatically performed only for localhost URLs.
+            </p>
+          </div>
         </div>
-        <div class="space-y-1">
-          <p class="text-xs font-bold text-blue-900 dark:text-blue-300">Auto-Connection Check</p>
-          <p class="text-[11px] text-blue-700/70 dark:text-blue-400/70 leading-relaxed">
-            Connection check is automatically performed only for localhost URLs.
-          </p>
-        </div>
-      </div>
 
-      <div class="flex items-start gap-4 p-4 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl">
-        <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm">
-          <AlertCircle class="w-4 h-4 text-indigo-500" />
-        </div>
-        <div class="space-y-1">
-          <p class="text-xs font-bold text-indigo-900 dark:text-indigo-300">Conversation-Specific Overrides</p>
-          <p class="text-[11px] text-indigo-700/70 dark:text-indigo-400/70 leading-relaxed">
-            These settings will only apply to the current chat session, overriding your global configuration. 
-            To revert back to your default application settings, click 
-            <button 
-              @click="currentChat.endpointType = undefined; currentChat.endpointUrl = undefined; currentChat.overrideModelId = undefined"
-              class="font-bold underline hover:text-indigo-900 dark:hover:text-indigo-100 transition-colors"
-            >
-              Restore to global settings
-            </button>.
-          </p>
+        <div class="flex items-start gap-4 p-4 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm">
+          <div class="p-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+            <AlertCircle class="w-4 h-4 text-gray-400" />
+          </div>
+          <div class="space-y-1">
+            <p class="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Local Overrides</p>
+            <p class="text-[11px] text-gray-500/70 dark:text-gray-400/70 leading-relaxed font-medium">
+              These settings only apply to this chat. 
+              <button 
+                @click="currentChat.endpointType = undefined; currentChat.endpointUrl = undefined; currentChat.overrideModelId = undefined"
+                class="font-bold underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              >
+                Restore defaults
+              </button>.
+            </p>
+          </div>
         </div>
       </div>
     </div>

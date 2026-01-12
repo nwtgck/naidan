@@ -290,30 +290,30 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
 </script>
 
 <template>
-  <div ref="messageRef" class="flex flex-col gap-2 p-4 group" :class="{ 'bg-gray-50 dark:bg-gray-800/50': !isUser }">
+  <div ref="messageRef" class="flex flex-col gap-2 p-5 group transition-colors" :class="{ 'bg-gray-50/30 dark:bg-gray-800/20 border-y border-gray-100 dark:border-gray-800/50': !isUser }">
     <div class="flex items-center gap-3 mb-1">
-      <div class="w-8 h-8 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-        <User v-if="isUser" class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-        <Bird v-else class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+      <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <User v-if="isUser" class="w-4 h-4 text-gray-500" />
+        <Bird v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
-      <div class="text-[10px] font-bold text-gray-400 tracking-widest flex items-center gap-2">
-        <span v-if="isUser">You</span>
+      <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
+        <span v-if="isUser" class="text-gray-800 dark:text-gray-200">You</span>
         <span v-else>{{ message.modelId || 'Assistant' }}</span>
       </div>
     </div>
     
     <div class="overflow-hidden">
       <!-- Thinking Block -->
-      <div v-if="hasThinking" class="mb-2" data-testid="thinking-block">
+      <div v-if="hasThinking" class="mb-3" data-testid="thinking-block">
         <button 
           @click="showThinking = !showThinking"
-          class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded"
+          class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded-lg border border-gray-100 dark:border-gray-700 transition-all"
           data-testid="toggle-thinking"
         >
           <Brain class="w-3 h-3" />
           {{ showThinking ? 'Hide Thought Process' : 'Show Thought Process' }}
         </button>
-        <div v-if="showThinking && displayThinking" class="mt-2 p-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm rounded border-l-4 border-gray-300 dark:border-gray-500 font-mono whitespace-pre-wrap" data-testid="thinking-content">
+        <div v-if="showThinking && displayThinking" class="mt-2 p-4 bg-gray-50 dark:bg-black/20 text-gray-600 dark:text-gray-400 text-xs rounded-xl border-l-4 border-gray-200 dark:border-gray-700 font-mono whitespace-pre-wrap leading-relaxed shadow-inner" data-testid="thinking-content">
           {{ displayThinking }}
         </div>
       </div>
@@ -326,35 +326,35 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
           @keydown.enter.ctrl.prevent="handleSaveEdit"
           @keydown.enter.meta.prevent="handleSaveEdit"
           @keydown.esc.prevent="handleCancelEdit"
-          class="w-full border dark:border-gray-600 rounded-lg p-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 h-32"
+          class="w-full border border-gray-200 dark:border-gray-600 rounded-xl p-4 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-32 shadow-sm transition-all"
           data-testid="edit-textarea"
         ></textarea>
         <div class="flex justify-end gap-2 mt-2">
-          <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors">Cancel</button>
-          <button @click="handleSaveEdit" class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors flex items-center gap-2" data-testid="save-edit">
+          <button @click="handleCancelEdit" class="px-4 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">Cancel</button>
+          <button @click="handleSaveEdit" class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
             <span>Send & Branch</span>
-            <span class="opacity-60 text-[10px] border border-white/20 px-1 rounded">{{ sendShortcutText }}</span>
+            <span class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
           </button>
         </div>
       </div>
       <div v-else>
-        <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto" v-html="parsedContent" data-testid="message-content"></div>
+        <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
         
-        <div class="mt-2 flex items-center justify-between min-h-[28px]">
+        <div class="mt-3 flex items-center justify-between min-h-[28px]">
           <!-- Version Paging -->
-          <div v-if="versionInfo" class="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest" data-testid="version-paging">
+          <div v-if="versionInfo" class="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700" data-testid="version-paging">
             <button 
               @click="versionInfo.prevId && emit('switch-version', versionInfo.prevId)"
               :disabled="!versionInfo.hasPrev"
-              class="p-1 hover:text-indigo-500 disabled:opacity-20 transition-colors"
+              class="p-1 hover:text-blue-600 disabled:opacity-20 transition-colors"
             >
               <ChevronLeft class="w-3 h-3" />
             </button>
-            <span class="min-w-[3rem] text-center">{{ versionInfo.current }} / {{ versionInfo.total }}</span>
+            <span class="min-w-[2.5rem] text-center">{{ versionInfo.current }} / {{ versionInfo.total }}</span>
             <button 
               @click="versionInfo.nextId && emit('switch-version', versionInfo.nextId)"
               :disabled="!versionInfo.hasNext"
-              class="p-1 hover:text-indigo-500 disabled:opacity-20 transition-colors"
+              class="p-1 hover:text-blue-600 disabled:opacity-20 transition-colors"
             >
               <ChevronRight class="w-3 h-3" />
             </button>
@@ -362,10 +362,10 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
           <div v-else></div>
 
           <!-- Message Actions -->
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button 
               @click="handleCopy"
-              class="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
+              class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               :title="copied ? 'Copied!' : 'Copy message'"
               data-testid="copy-message-button"
             >
@@ -374,7 +374,7 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
             </button>
             <button 
               @click="isEditing = true"
-              class="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
+              class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               title="Edit message"
               data-testid="edit-message-button"
             >
@@ -382,10 +382,10 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
             </button>
             <button 
               @click="emit('fork', message.id)"
-              class="flex items-center gap-1.5 px-2 py-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-md transition-all"
+              class="flex items-center gap-1.5 px-3 py-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
               title="Create a new chat branching from this message"
             >
-              <span class="text-[10px] font-bold uppercase tracking-tight hidden lg:inline">Fork</span>
+              <span class="text-[10px] font-bold uppercase tracking-widest hidden lg:inline">Fork</span>
               <GitFork class="w-4 h-4" />
             </button>
           </div>

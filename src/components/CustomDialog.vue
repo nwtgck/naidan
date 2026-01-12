@@ -2,46 +2,54 @@
   <div
     v-if="_props.show"
     data-testid="custom-dialog-overlay"
-    class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/30 backdrop-blur-[2px]"
+    class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px] transition-all"
     @keydown.esc="cancel"
     tabindex="0"
   >
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full p-6">
-      <div class="flex justify-between items-center mb-4">
-        <h3 data-testid="dialog-title" class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ _props.title }}</h3>
-        <button @click="cancel" data-testid="dialog-close-x" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in-95 duration-200">
+      <!-- Header -->
+      <div class="px-6 py-4 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+        <h3 data-testid="dialog-title" class="text-base font-bold text-gray-800 dark:text-white tracking-tight">{{ _props.title }}</h3>
+        <button @click="cancel" data-testid="dialog-close-x" class="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path>
           </svg>
         </button>
       </div>
-      <div data-testid="dialog-message" class="text-gray-700 dark:text-gray-300 mb-6">
-        <slot>{{ _props.message }}</slot>
-        <input
-          v-if="_props.showInput"
-          data-testid="dialog-input"
-          :type="_props.inputType"
-          :placeholder="_props.inputPlaceholder"
-          :value="_props.inputValue"
-          @input="$emit('update:inputValue', ($event.target as HTMLInputElement).value)"
-          class="w-full mt-4 p-2 border border-gray-300 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-      </div>
-      <div class="flex justify-end space-x-3">
-        <button @click="cancel" data-testid="dialog-cancel-button" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-200 dark:bg-gray-700 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600">
-          {{ _props.cancelButtonText }}
-        </button>
-        <button
-          @click="confirm"
-          data-testid="dialog-confirm-button"
-          class="px-4 py-2 text-sm font-medium rounded-md transition-colors"
-          :class="{
-            'text-white bg-indigo-600 hover:bg-indigo-700': _props.confirmButtonVariant === 'default',
-            'text-white bg-red-600 hover:bg-red-700': _props.confirmButtonVariant === 'danger',
-          }"
-        >
-          {{ _props.confirmButtonText }}
-        </button>
+
+      <!-- Content -->
+      <div class="p-6">
+        <div data-testid="dialog-message" class="text-sm font-medium text-gray-600 dark:text-gray-400 leading-relaxed">
+          <slot>{{ _props.message }}</slot>
+          <input
+            v-if="_props.showInput"
+            data-testid="dialog-input"
+            :type="_props.inputType"
+            :placeholder="_props.inputPlaceholder"
+            :value="_props.inputValue"
+            @input="$emit('update:inputValue', ($event.target as HTMLInputElement).value)"
+            @keyup.enter="confirm"
+            class="w-full mt-4 px-4 py-3 border border-gray-100 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+          />
+        </div>
+
+        <!-- Actions -->
+        <div class="flex justify-end gap-3 mt-8">
+          <button @click="cancel" data-testid="dialog-cancel-button" class="px-5 py-2.5 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+            {{ _props.cancelButtonText }}
+          </button>
+          <button
+            @click="confirm"
+            data-testid="dialog-confirm-button"
+            class="px-6 py-2.5 text-xs font-bold rounded-xl transition-all shadow-lg active:scale-95"
+            :class="{
+              'text-white bg-blue-600 hover:bg-blue-700 shadow-blue-500/30': _props.confirmButtonVariant === 'default',
+              'text-white bg-red-600 hover:bg-red-700 shadow-red-500/30': _props.confirmButtonVariant === 'danger',
+            }"
+          >
+            {{ _props.confirmButtonText }}
+          </button>
+        </div>
       </div>
     </div>
   </div>

@@ -235,27 +235,27 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-white dark:bg-gray-900 transition-colors">
+  <div class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors">
     <!-- Header -->
-    <div v-if="currentChat" class="border-b dark:border-gray-800 px-6 py-4 flex items-center justify-between bg-white dark:bg-gray-900 shadow-sm z-10">
+    <div v-if="currentChat" class="border-b border-gray-100 dark:border-gray-800 px-6 py-4 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-10">
       <div class="flex flex-col overflow-hidden">
         <div class="flex items-center gap-3">
           <button 
             v-if="currentChat.originChatId"
             @click="jumpToOrigin"
-            class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-indigo-600 transition-colors"
+            class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
             title="Jump to original chat"
           >
             <ArrowLeft class="w-5 h-5" />
           </button>
-          <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 truncate">{{ currentChat.title || 'Untitled Chat' }}</h2>
+          <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'Untitled Chat' }}</h2>
         </div>
-        <p class="text-xs text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
+        <p class="text-[10px] font-bold tracking-widest text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
       </div>
       <div class="flex items-center gap-1 relative">
         <button 
           @click="exportChat"
-          class="p-2 rounded-md transition-colors text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+          class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
           title="Export Chat"
         >
           <Download class="w-5 h-5" />
@@ -263,8 +263,8 @@ onUnmounted(() => {
 
         <button 
           @click="showChatSettings = !showChatSettings"
-          class="p-2 rounded-md transition-colors"
-          :class="showChatSettings ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+          class="p-2 rounded-xl transition-colors"
+          :class="showChatSettings ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'"
           title="Chat Settings"
         >
           <Settings2 class="w-5 h-5" />
@@ -272,7 +272,7 @@ onUnmounted(() => {
 
         <button 
           @click="showMoreMenu = !showMoreMenu"
-          class="p-2 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           title="More Actions"
           data-testid="more-actions-button"
         >
@@ -282,13 +282,16 @@ onUnmounted(() => {
         <!-- Kebab Menu Dropdown -->
         <div 
           v-if="showMoreMenu" 
-          class="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg shadow-xl z-50 py-1 animate-in fade-in zoom-in duration-200"
+          class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 animate-in fade-in zoom-in duration-200"
           @mouseleave="showMoreMenu = false"
         >
           <button 
             @click="chatStore.toggleDebug(); showMoreMenu = false"
-            class="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            :class="{ 'text-green-600 bg-green-50 dark:bg-green-900/20 font-medium': currentChat.debugEnabled }"
+            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
+            :class="currentChat.debugEnabled 
+              ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
+              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
+            "
           >
             <Bug class="w-4 h-4" />
             <span>Debug Mode</span>
@@ -362,7 +365,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Input -->
-    <div class="border-t dark:border-gray-800 p-4" v-if="currentChat">
+    <div class="border-t border-gray-100 dark:border-gray-800 p-6 bg-white dark:bg-gray-900" v-if="currentChat">
       <div class="max-w-4xl mx-auto relative group">
         <textarea
           ref="textareaRef"
@@ -372,39 +375,39 @@ onUnmounted(() => {
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="streaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
-          class="w-full text-base border dark:border-gray-700 rounded-lg pl-4 pr-[150px] sm:pr-[260px] py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition-colors duration-200 resize-none"
+          class="w-full text-base border border-gray-100 dark:border-gray-700 rounded-2xl pl-5 pr-[150px] sm:pr-[260px] py-4 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 transition-colors duration-200 resize-none shadow-sm group-hover:shadow-md"
           data-testid="chat-input"
         ></textarea>
         <!-- Maximize/Minimize Button inside input area -->
         <button
           v-if="isOverLimit || isMaximized"
           @click="toggleMaximized"
-          class="absolute right-3 top-3 p-1.5 rounded-md text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors z-20 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm shadow-sm"
+          class="absolute right-4 top-4 p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors z-20 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm shadow-sm border border-gray-100 dark:border-gray-700"
           :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
           data-testid="maximize-button"
         >
           <Minimize2 v-if="isMaximized" class="w-4 h-4" />
           <Maximize2 v-else class="w-4 h-4" />
         </button>
-        <div class="absolute right-3 bottom-3 flex items-center gap-2">
+        <div class="absolute right-4 bottom-4 flex items-center gap-2">
           <div class="relative flex items-center">
             <select 
               v-model="currentChat.overrideModelId"
-              class="text-xs border dark:border-gray-700 rounded-lg pl-2 pr-8 py-2.5 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 appearance-none max-w-[80px] sm:max-w-[150px] truncate cursor-pointer shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              class="text-xs font-bold border border-gray-100 dark:border-gray-700 rounded-xl pl-3 pr-9 py-2.5 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none max-w-[100px] sm:max-w-[180px] truncate cursor-pointer shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
               title="Override Model"
               data-testid="model-override-select"
             >
-              <option :value="undefined">{{ settings.defaultModelId || 'None' }}</option>
+              <option :value="undefined">{{ settings.defaultModelId || 'Default Model' }}</option>
               <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
             </select>
-            <Loader2 v-if="fetchingModels" class="w-3.5 h-3.5 animate-spin absolute right-2.5 pointer-events-none text-gray-400" />
-            <Settings2 v-else class="w-3.5 h-3.5 absolute right-2.5 pointer-events-none text-gray-400" />
+            <Loader2 v-if="fetchingModels" class="w-3.5 h-3.5 animate-spin absolute right-3 pointer-events-none text-gray-400" />
+            <Settings2 v-else class="w-3.5 h-3.5 absolute right-3 pointer-events-none text-gray-400" />
           </div>
 
           <button 
             @click="streaming ? chatStore.abortChat() : handleSend()"
             :disabled="!streaming && !input.trim()"
-            class="px-3 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors shadow-sm whitespace-nowrap"
+            class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
             :title="streaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
             :data-testid="streaming ? 'abort-button' : 'send-button'"
           >
@@ -413,7 +416,7 @@ onUnmounted(() => {
               <Square class="w-4 h-4 fill-white text-white" />
             </template>
             <template v-else>
-              <span class="text-xs font-medium opacity-90 hidden sm:inline">{{ sendShortcutText }}</span>
+              <span class="text-[10px] font-bold opacity-90 hidden sm:inline tracking-wider">{{ sendShortcutText }}</span>
               <Send class="w-4 h-4" />
             </template>
           </button>

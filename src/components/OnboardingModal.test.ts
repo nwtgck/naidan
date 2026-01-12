@@ -195,4 +195,25 @@ describe('OnboardingModal.vue', () => {
     // Check for the settings icon (no longer in a separate footer div)
     expect(wrapper.findComponent(Settings).exists()).toBe(true);
   });
+
+  it('applies a lower opacity to the setup guide by default and increases it on hover', () => {
+    const wrapper = mount(OnboardingModal);
+    // Find the container wrapping the ServerSetupGuide
+    const guideWrapper = wrapper.find('.opacity-70.hover\\:opacity-100');
+    
+    expect(guideWrapper.exists()).toBe(true);
+    expect(guideWrapper.classes()).toContain('opacity-70');
+    expect(guideWrapper.classes()).toContain('hover:opacity-100');
+    expect(guideWrapper.classes()).toContain('transition-opacity');
+  });
+
+  it('has a distinct background for the help column to separate it from the main content', () => {
+    const wrapper = mount(OnboardingModal);
+    // Find the right column by its width class
+    const helpColumn = wrapper.find('.lg\\:w-\\[38\\%\\]');
+    
+    expect(helpColumn.exists()).toBe(true);
+    expect(helpColumn.classes()).toContain('bg-gray-50/30');
+    expect(helpColumn.classes()).toContain('border-gray-100');
+  });
 });

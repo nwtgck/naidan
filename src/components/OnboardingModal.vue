@@ -128,7 +128,7 @@ async function handleFinish(isSkipping = false) {
           <Logo class="w-8 h-8" />
         </div>
         <div class="text-left flex-1">
-          <h2 class="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Setup Endpoint</h2>
+          <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Setup Endpoint</h2>
           <p class="text-xs text-gray-600 dark:text-gray-400">Set up your local or remote LLM endpoint to start chatting.</p>
         </div>
       </div>
@@ -162,18 +162,18 @@ async function handleFinish(isSkipping = false) {
               </div>
               <div class="space-y-3">
                 <div class="flex items-center justify-between">
-                  <label class="block text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider">Endpoint Configuration</label>
-                  <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Endpoint Configuration</label>
+                  <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700">
                     <button 
                       @click="selectedType = 'openai'"
                       class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
-                      :class="selectedType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500'"
+                      :class="selectedType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                     >OpenAI-compatible</button>
                                     
                     <button 
                       @click="selectedType = 'ollama'"
                       class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors"
-                      :class="selectedType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500'"
+                      :class="selectedType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                     >Ollama</button>
                   </div>
                   
@@ -245,7 +245,7 @@ async function handleFinish(isSkipping = false) {
                 </div>
 
                 <div class="space-y-2">
-                  <label class="block text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider">
+                  <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Default Model
                   </label>
                   <select

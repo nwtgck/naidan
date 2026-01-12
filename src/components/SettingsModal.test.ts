@@ -202,7 +202,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       
       // Should show success state
       expect(checkBtn.text()).toContain('Connected');
-      expect(checkBtn.classes()).toContain('bg-green-100');
+      expect(checkBtn.classes()).toContain('bg-green-50');
     });
 
     it('uses distinct labels for model fallbacks to clarify different behaviors', async () => {
@@ -326,20 +326,20 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const vm = wrapper.vm as unknown as { form: { endpointType: string, endpointUrl: string } };
     expect(vm.form.endpointType).toBe('openai');
     expect(vm.form.endpointUrl).toBe('http://localhost:1234/v1');
-    expect(lmstudioPreset.attributes('class')).toContain('bg-indigo-600'); // Highlighted
+    expect(lmstudioPreset.attributes('class')).toContain('bg-blue-600'); // Highlighted
 
     // Test Ollama
     await ollamaPreset.trigger('click');
     expect(vm.form.endpointType).toBe('ollama');
     expect(vm.form.endpointUrl).toBe('http://localhost:11434');
-    expect(ollamaPreset.attributes('class')).toContain('bg-indigo-600');
-    expect(lmstudioPreset.attributes('class')).not.toContain('bg-indigo-600');
+    expect(ollamaPreset.attributes('class')).toContain('bg-blue-600');
+    expect(lmstudioPreset.attributes('class')).not.toContain('bg-blue-600');
 
     // Test llama-server
     await llamaPreset.trigger('click');
     expect(vm.form.endpointType).toBe('openai');
     expect(vm.form.endpointUrl).toBe('http://localhost:8080/v1');
-    expect(llamaPreset.attributes('class')).toContain('bg-indigo-600');
+    expect(llamaPreset.attributes('class')).toContain('bg-blue-600');
   });
 
   it('auto-fetches models only when endpoint is localhost', async () => {
@@ -705,7 +705,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const badge = wrapper.find('[data-testid="provider-type-badge"]');
       expect(badge.exists()).toBe(true);
       expect(badge.text()).toBe('Ollama');
-      expect(badge.classes()).not.toContain('uppercase');
+      expect(badge.classes()).toContain('uppercase');
     });
   });
 });

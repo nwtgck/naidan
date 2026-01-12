@@ -64,7 +64,7 @@ onKeyStroke(['o', 'O'], async (e) => {
 </script>
 
 <template>
-  <div class="flex h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-hidden">
+  <div class="flex h-screen bg-gray-50/50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-hidden">
     <Sidebar @open-settings="isSettingsOpen = true" />
     
     <main class="flex-1 relative flex flex-col min-w-0 pb-10 bg-transparent">
