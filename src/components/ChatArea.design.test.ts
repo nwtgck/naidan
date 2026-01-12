@@ -24,6 +24,7 @@ describe('ChatArea Design Specifications', () => {
       availableModels: ref([]),
       fetchingModels: ref(false),
       fetchAvailableModels: vi.fn(),
+      saveCurrentChat: vi.fn(),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),
@@ -43,9 +44,9 @@ describe('ChatArea Design Specifications', () => {
     const wrapper = mount(ChatArea, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
     });
-    const modelP = wrapper.find('p.text-gray-400');
-    expect(modelP.text()).toContain('Model: gemma3n:e2b');
-    expect(modelP.text()).not.toContain('GEMMA3N');
+    const modelTrigger = wrapper.find('[data-testid="model-trigger"]');
+    expect(modelTrigger.text()).toContain('gemma3n:e2b');
+    expect(modelTrigger.text()).not.toContain('GEMMA3N');
   });
 
   it('preserves the case of the keyboard shortcut labels (e.g., Cmd + Enter)', () => {
@@ -82,7 +83,7 @@ describe('ChatArea Design Specifications', () => {
     });
     
     // Toggle settings panel
-    const settingsBtn = wrapper.findAll('button').find(b => b.attributes('title') === 'Chat Settings');
+    const settingsBtn = wrapper.find('[data-testid="model-trigger"]');
     await settingsBtn?.trigger('click');
     
     // Check if the panel text contains the important wording

@@ -134,7 +134,6 @@ describe('ChatArea UI States', () => {
     await nextTick();
     
     const headerText = wrapper.text();
-    expect(headerText).toContain('Model:');
     expect(headerText).toContain(testModelName);
     // Explicitly check that it's NOT transformed to uppercase
     expect(headerText).not.toContain(testModelName.toUpperCase());
@@ -192,7 +191,7 @@ describe('ChatArea UI States', () => {
     });
     
     expect(wrapper.find('button[title="Export Chat"]').exists()).toBe(true);
-    expect(wrapper.find('button[title="Chat Settings"]').exists()).toBe(true);
+    expect(wrapper.find('button[title="Chat Settings & Model Override"]').exists()).toBe(true);
     expect(wrapper.find('button[title="More Actions"]').exists()).toBe(true);
   });
 
