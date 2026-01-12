@@ -3,7 +3,6 @@ import { onMounted, ref, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
-import { useConfirm } from '../composables/useConfirm';
 import Logo from './Logo.vue';
 import ThemeToggle from './ThemeToggle.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
@@ -18,7 +17,6 @@ const {
   currentChat, streaming, groups, chats,
 } = chatStore;
 
-const { showConfirm } = useConfirm();
 const router = useRouter();
 
 defineEmits<{
@@ -163,20 +161,6 @@ async function saveGroupRename() {
     await chatStore.renameGroup(editingGroupId.value, editingGroupName.value.trim());
   }
   editingGroupId.value = null;
-}
-
-async function handleDeleteAll() {
-  const confirmed = await showConfirm({
-    title: 'Clear History',
-    message: 'Are you absolutely sure you want to delete ALL chats and groups? This action cannot be undone.',
-    confirmButtonText: 'Clear All',
-    confirmButtonVariant: 'danger',
-  });
-
-  if (confirmed) {
-    await chatStore.deleteAllChats();
-    router.push('/');
-  }
 }
 </script>
 
@@ -367,16 +351,6 @@ async function handleDeleteAll() {
 
     <!-- Footer -->
     <div class="p-3 border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20">
-      <button 
-        v-if="chats.length > 0 || groups.length > 0"
-        @click="handleDeleteAll"
-        class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-red-500 w-full px-2 py-1 transition-colors"
-        data-testid="clear-all-button"
-      >
-        <Trash2 class="w-3 h-3" />
-        Clear All History
-      </button>
-
       <div class="flex items-center gap-2">
         <button @click="$emit('open-settings')" class="flex-1 flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white px-2 py-3 rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm">
           <SettingsIcon class="w-3.5 h-3.5" />

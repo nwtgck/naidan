@@ -108,12 +108,12 @@ describe('useChat Onboarding Trigger', () => {
     expect(currentChat.value.root.items).toHaveLength(0);
   });
 
-  it('should reset isOnboardingDismissed to false when deleteAllChats is called', async () => {
+  it('should NOT reset isOnboardingDismissed when deleteAllChats is called', async () => {
     const { deleteAllChats } = useChat();
     mockIsOnboardingDismissed.value = true;
 
     await deleteAllChats();
 
-    expect(mockIsOnboardingDismissed.value).toBe(false);
+    expect(mockIsOnboardingDismissed.value).toBe(true);
   });
 });

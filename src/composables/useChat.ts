@@ -290,13 +290,11 @@ export function useChat() {
   };
 
   const deleteAllChats = async () => {
-    const { isOnboardingDismissed } = useSettings();
     const all = await storageService.listChats();
     for (const c of all) await storageService.deleteChat(c.id);
     const allGroups = await storageService.listGroups();
     for (const g of allGroups) await storageService.deleteGroup(g.id);
     currentChat.value = null;
-    isOnboardingDismissed.value = false;
     await loadData();
   };
 

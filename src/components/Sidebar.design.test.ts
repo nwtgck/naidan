@@ -132,30 +132,4 @@ describe('Sidebar Design Specifications', () => {
     expect(activeItem.classes()).toContain('text-blue-600');
     expect(activeItem.classes()).not.toContain('text-indigo-600');
   });
-
-  it('preserves the "Clear All History" wording in the footer', async () => {
-    // Mock chats to ensure the button is visible
-    (useChat as unknown as Mock).mockReturnValue({
-      currentChat: ref(null),
-      sidebarItems: ref([]),
-      chats: ref([{ id: '1' }]),
-      groups: ref([]),
-      loadChats: vi.fn().mockResolvedValue(undefined),
-    });
-    
-    const wrapper = mount(Sidebar, {
-      global: { 
-        stubs: { 
-          'router-link': { template: '<a><slot /></a>' }, 
-          'Logo': true, 
-          'draggable': true, 
-        }, 
-      },
-    });
-    
-    await nextTick();
-    const clearBtn = wrapper.find('[data-testid="clear-all-button"]');
-    expect(clearBtn.exists()).toBe(true);
-    expect(clearBtn.text()).toContain('Clear All History');
-  });
 });

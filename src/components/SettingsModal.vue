@@ -6,7 +6,9 @@ export function capitalize(s: string) {
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { useSettings } from '../composables/useSettings';
+import { useChat } from '../composables/useChat';
 import { useSampleChat } from '../composables/useSampleChat';
 import { useToast } from '../composables/useToast';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
@@ -31,10 +33,12 @@ const emit = defineEmits<{
 }>();
 
 const { settings, save } = useSettings();
+const chatStore = useChat();
 const { createSampleChat } = useSampleChat();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { showPrompt } = usePrompt();     // Initialize usePrompt
+const router = useRouter();
 
 const form = ref({ ...settings.value });
 const initialFormState = ref('');
@@ -64,6 +68,21 @@ const selectedProviderProfileId = ref('');
 function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
   form.value.endpointType = preset.type;
   form.value.endpointUrl = preset.url;
+}
+
+async function handleDeleteAllHistory() {
+  const confirmed = await showConfirm({
+    title: 'Clear History',
+    message: 'Are you absolutely sure you want to delete ALL chats and groups? This action cannot be undone.',
+    confirmButtonText: 'Clear All',
+    confirmButtonVariant: 'danger',
+  });
+
+  if (confirmed) {
+    await chatStore.deleteAllChats();
+    emit('close');
+    router.push('/');
+  }
 }
 
 async function handleResetData() {
@@ -612,6 +631,30 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                     <Info class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
                     <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, groups, and settings to the new location. This process will start automatically after you click <strong>Save Changes</strong>.</p>
                   </div>
+                </div>
+              </section>
+
+              <section class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
+                <div class="flex items-center gap-2 pb-3">
+                  <Trash2 class="w-5 h-5 text-red-500" />
+                  <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Cleanup</h2>
+                </div>
+                
+                <div class="p-6 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-4">
+                  <div>
+                    <h4 class="font-bold text-red-800 dark:text-red-400 text-sm">Clear Conversation History</h4>
+                    <p class="text-xs font-medium text-red-600/70 dark:text-red-400/60 mt-1.5 leading-relaxed">
+                      This will permanently delete all your chats and groups. Your settings and provider profiles will be preserved.
+                    </p>
+                  </div>
+                  <button 
+                    @click="handleDeleteAllHistory"
+                    class="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
+                    data-testid="setting-clear-history-button"
+                  >
+                    <Trash2 class="w-4 h-4" />
+                    Clear All Conversation History
+                  </button>
                 </div>
               </section>
             </div>

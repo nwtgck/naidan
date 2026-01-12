@@ -170,69 +170,6 @@ describe('Sidebar Logic Stability', () => {
     });
   });
 
-  describe('Clear All History', () => {
-    it('should call showConfirm when Clear All History is clicked', async () => {
-      const wrapper = mount(Sidebar, {
-        global: {
-          plugins: [router],
-          stubs: {
-            'lucide-vue-next': true,
-            'Logo': true,
-          },
-        },
-      });
-
-      const clearButton = wrapper.find('[data-testid="clear-all-button"]');
-      expect(clearButton.exists()).toBe(true);
-
-      mockShowConfirm.mockResolvedValueOnce(false);
-      await clearButton.trigger('click');
-
-      expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'Clear History',
-        confirmButtonVariant: 'danger',
-      }));
-    });
-
-    it('should call deleteAllChats and navigate to root when confirmed', async () => {
-      const pushSpy = vi.spyOn(router, 'push');
-      const wrapper = mount(Sidebar, {
-        global: {
-          plugins: [router],
-          stubs: {
-            'lucide-vue-next': true,
-            'Logo': true,
-          },
-        },
-      });
-
-      mockShowConfirm.mockResolvedValueOnce(true);
-      const clearButton = wrapper.find('[data-testid="clear-all-button"]');
-      await clearButton.trigger('click');
-
-      expect(mockDeleteAllChats).toHaveBeenCalled();
-      expect(pushSpy).toHaveBeenCalledWith('/');
-    });
-
-    it('should NOT call deleteAllChats when cancelled', async () => {
-      const wrapper = mount(Sidebar, {
-        global: {
-          plugins: [router],
-          stubs: {
-            'lucide-vue-next': true,
-            'Logo': true,
-          },
-        },
-      });
-
-      mockShowConfirm.mockResolvedValueOnce(false);
-      const clearButton = wrapper.find('[data-testid="clear-all-button"]');
-      await clearButton.trigger('click');
-
-      expect(mockDeleteAllChats).not.toHaveBeenCalled();
-    });
-  });
-
   describe('Group Creation UI', () => {
     it('should show input when create button is clicked', async () => {
       const wrapper = mount(Sidebar, {
