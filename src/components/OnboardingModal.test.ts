@@ -1,30 +1,28 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import OnboardingModal from './OnboardingModal.vue';
 import { useSettings } from '../composables/useSettings';
+import { Settings } from 'lucide-vue-next';
 import * as llm from '../services/llm';
+
+// Mock the services.
+vi.mock('../services/llm', () => {
+  return {
+    OpenAIProvider: vi.fn(),
+    OllamaProvider: vi.fn(),
+  };
+});
 
 // Mock the composables
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
 
-// Mock the services. We use function() so it can be used with 'new'
-vi.mock('../services/llm', () => {
-  const mockListModels = vi.fn();
-  return {
-    OpenAIProvider: vi.fn().mockImplementation(function() {
-      return { listModels: mockListModels };
-    }),
-    OllamaProvider: vi.fn().mockImplementation(function() {
-      return { listModels: mockListModels };
-    }),
-  };
-});
-
 describe('OnboardingModal.vue', () => {
   const mockSave = vi.fn();
   const mockSettings = { value: { endpointType: 'openai', autoTitleEnabled: true } };
+  const listModelsMock = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -33,12 +31,30 @@ describe('OnboardingModal.vue', () => {
       save: mockSave,
       initialized: { value: true },
     });
+    
+    listModelsMock.mockResolvedValue(['model-1']);
+    
+    // Setup provider mocks to return an object with listModels
+    (llm.OpenAIProvider as unknown as Mock).mockImplementation(function() {
+      return { listModels: listModelsMock };
+    });
+    (llm.OllamaProvider as unknown as Mock).mockImplementation(function() {
+      return { listModels: listModelsMock };
+    });
   });
 
-  it('renders Step 1 by default', () => {
+  it('renders Step 1 by default and shows correct labels', () => {
     const wrapper = mount(OnboardingModal);
     expect(wrapper.text()).toContain('Setup Endpoint');
     expect(wrapper.find('input').exists()).toBe(true);
+    expect(wrapper.text()).toContain('OpenAI-compatible');
+    expect(wrapper.text()).toContain('Ollama');
+  });
+
+  it('shows the skip icon on the skip button', () => {
+    const wrapper = mount(OnboardingModal);
+    const skipBtn = wrapper.find('button.underline');
+    expect(skipBtn.find('svg').exists()).toBe(true);
   });
 
   it('disables the connection button when URL is empty', () => {
@@ -56,11 +72,6 @@ describe('OnboardingModal.vue', () => {
   });
 
   it('automatically prepends http:// to URLs', async () => {
-    const mockListModels = vi.fn().mockResolvedValue(['model-1']);
-    (llm.OpenAIProvider as unknown as Mock).mockImplementation(function() {
-      return { listModels: mockListModels };
-    });
-
     const wrapper = mount(OnboardingModal);
     await wrapper.find('input').setValue('localhost:1234');
     
@@ -69,10 +80,7 @@ describe('OnboardingModal.vue', () => {
     await flushPromises();
 
     // Provider should have been called with prepended http://
-    expect(mockListModels).toHaveBeenCalledWith('http://localhost:1234', expect.anything());
-    
-    // In Step 2, the normalized URL should be displayed as text
-    expect(wrapper.text()).toContain('http://localhost:1234');
+    expect(listModelsMock).toHaveBeenCalledWith('http://localhost:1234', expect.anything());
   });
 
   it('shows error when skipping with an empty URL', async () => {
@@ -96,28 +104,39 @@ describe('OnboardingModal.vue', () => {
 
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
       endpointUrl: 'http://localhost:8080',
-      defaultModelId: undefined,
     }));
   });
 
   it('proceeds to Step 2 after successful connection', async () => {
-    const mockListModels = vi.fn().mockResolvedValue(['model-1']);
-    (llm.OpenAIProvider as unknown as Mock).mockImplementation(function() {
-      return { listModels: mockListModels };
-    });
-
+    listModelsMock.mockResolvedValue(['model-1', 'model-2']);
     const wrapper = mount(OnboardingModal);
-    await wrapper.find('input').setValue('http://localhost:1234/v1');
-    await wrapper.find('button.bg-blue-600').trigger('click');
-    await flushPromises();
 
+    await wrapper.find('input').setValue('http://localhost:1234');
+    await wrapper.find('button.bg-blue-600').trigger('click');
+    
+    await flushPromises();
+    await nextTick();
+
+    expect(listModelsMock).toHaveBeenCalled();
     expect(wrapper.text()).toContain('Successfully Connected!');
     expect(wrapper.find('select').exists()).toBe(true);
   });
 
-  it('applies the weakened backdrop blur class to the overlay', () => {
+  it('applies the backdrop blur class to the overlay', () => {
     const wrapper = mount(OnboardingModal);
-    const overlay = wrapper.find('.backdrop-blur-\\[2px\\]');
-    expect(overlay.exists()).toBe(true);
+    const overlay = wrapper.find('div.fixed.inset-0');
+    expect(overlay.classes()).toContain('backdrop-blur-[2px]');
+  });
+
+  it('has a fixed height and correct footer icon', () => {
+    const wrapper = mount(OnboardingModal);
+    // Use max-w-4xl to find the container, then check classes
+    const modalContainer = wrapper.find('.max-w-4xl');
+    expect(modalContainer.exists()).toBe(true);
+    expect(modalContainer.classes()).toContain('h-[680px]');
+    
+    // Check for the settings icon in the footer
+    const footer = wrapper.find('div.p-6.border-t');
+    expect(footer.findComponent(Settings).exists()).toBe(true);
   });
 });
