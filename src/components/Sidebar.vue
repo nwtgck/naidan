@@ -3,12 +3,12 @@ import { onMounted, ref, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
-import { useTheme } from '../composables/useTheme';
 import { useConfirm } from '../composables/useConfirm';
 import Logo from './Logo.vue';
+import ThemeToggle from './ThemeToggle.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
-  Plus, Trash2, Settings as SettingsIcon, Sun, Moon, Monitor, 
+  Plus, Trash2, Settings as SettingsIcon, 
   Pencil, Folder, FolderPlus, 
   ChevronDown, ChevronRight, Check, X,
 } from 'lucide-vue-next';
@@ -18,7 +18,6 @@ const {
   currentChat, streaming, groups, chats,
 } = chatStore;
 
-const { themeMode, setTheme } = useTheme();
 const { showConfirm } = useConfirm();
 const router = useRouter();
 
@@ -334,24 +333,26 @@ async function handleDeleteAll() {
     </div>
 
     <!-- Footer -->
-    <div class="p-4 border-t border-gray-100 dark:border-gray-800 space-y-4 bg-gray-50/30 dark:bg-black/20">
+    <div class="p-3 border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20">
       <button 
         v-if="chats.length > 0 || groups.length > 0"
         @click="handleDeleteAll"
-        class="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-gray-400 hover:text-red-500 w-full px-2 py-1 transition-colors"
+        class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 hover:text-red-500 w-full px-2 py-1 transition-colors"
         data-testid="clear-all-button"
       >
         <Trash2 class="w-3 h-3" />
         Clear All History
       </button>
 
-      <div class="flex items-center justify-between bg-white dark:bg-gray-800 p-1 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
-        <button @click="setTheme('light')" class="flex-1 flex justify-center py-1.5 rounded-lg transition-all" :class="themeMode === 'light' ? 'bg-gray-50 dark:bg-gray-700 text-blue-600 dark:text-yellow-400 shadow-sm' : 'text-gray-400 hover:text-gray-600'"><Sun class="w-4 h-4" /></button>
-        <button @click="setTheme('dark')" class="flex-1 flex justify-center py-1.5 rounded-lg transition-all" :class="themeMode === 'dark' ? 'bg-gray-50 dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-400 hover:text-gray-600'"><Moon class="w-4 h-4" /></button>
-        <button @click="setTheme('system')" class="flex-1 flex justify-center py-1.5 rounded-lg transition-all" :class="themeMode === 'system' ? 'bg-gray-50 dark:bg-gray-700 text-blue-600 dark:text-green-400 shadow-sm' : 'text-gray-400 hover:text-gray-600'"><Monitor class="w-4 h-4" /></button>
+      <div class="flex items-center gap-2">
+        <button @click="$emit('open-settings')" class="flex-1 flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white px-2 py-3 rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm">
+          <SettingsIcon class="w-3.5 h-3.5" />
+          Settings
+        </button>
+        <div class="w-32 flex-shrink-0">
+          <ThemeToggle />
+        </div>
       </div>
-
-      <button @click="$emit('open-settings')" class="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white w-full px-2 py-2 rounded-xl hover:bg-gray-100/50 dark:hover:bg-gray-800 transition-colors"><SettingsIcon class="w-4 h-4" />Settings</button>
     </div>
   </div>
 </template>

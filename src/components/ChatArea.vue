@@ -237,47 +237,54 @@ onUnmounted(() => {
 <template>
   <div class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors">
     <!-- Header -->
-    <div v-if="currentChat" class="border-b border-gray-100 dark:border-gray-800 px-6 py-4 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-10">
-      <div class="flex flex-col overflow-hidden">
-        <div class="flex items-center gap-3">
-          <button 
-            v-if="currentChat.originChatId"
-            @click="jumpToOrigin"
-            class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
-            title="Jump to original chat"
-          >
-            <ArrowLeft class="w-5 h-5" />
-          </button>
-          <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'Untitled Chat' }}</h2>
-        </div>
-        <p class="text-[10px] font-bold tracking-widest text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
+    <div class="border-b border-gray-100 dark:border-gray-800 px-6 py-4 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
+      <div class="flex flex-col overflow-hidden min-h-[44px] justify-center">
+        <template v-if="currentChat">
+          <div class="flex items-center gap-3">
+            <button 
+              v-if="currentChat.originChatId"
+              @click="jumpToOrigin"
+              class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
+              title="Jump to original chat"
+            >
+              <ArrowLeft class="w-5 h-5" />
+            </button>
+            <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'Untitled Chat' }}</h2>
+          </div>
+          <p class="text-[10px] font-bold tracking-widest text-gray-400 dark:text-gray-500 truncate" :class="{ 'ml-8': currentChat.originChatId }">Model: {{ currentChat.overrideModelId || settings.defaultModelId || 'Default' }}</p>
+        </template>
+        <template v-else>
+          <h2 class="text-xl font-bold text-gray-400 dark:text-gray-600 tracking-tight">Vibe Local AI</h2>
+        </template>
       </div>
       <div class="flex items-center gap-1 relative">
-        <button 
-          @click="exportChat"
-          class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-          title="Export Chat"
-        >
-          <Download class="w-5 h-5" />
-        </button>
+        <div v-if="currentChat" class="flex items-center gap-1">
+          <button 
+            @click="exportChat"
+            class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+            title="Export Chat"
+          >
+            <Download class="w-5 h-5" />
+          </button>
 
-        <button 
-          @click="showChatSettings = !showChatSettings"
-          class="p-2 rounded-xl transition-colors"
-          :class="showChatSettings ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'"
-          title="Chat Settings"
-        >
-          <Settings2 class="w-5 h-5" />
-        </button>
+          <button 
+            @click="showChatSettings = !showChatSettings"
+            class="p-2 rounded-xl transition-colors"
+            :class="showChatSettings ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'"
+            title="Chat Settings"
+          >
+            <Settings2 class="w-5 h-5" />
+          </button>
 
-        <button 
-          @click="showMoreMenu = !showMoreMenu"
-          class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          title="More Actions"
-          data-testid="more-actions-button"
-        >
-          <MoreVertical class="w-5 h-5" />
-        </button>
+          <button 
+            @click="showMoreMenu = !showMoreMenu"
+            class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            title="More Actions"
+            data-testid="more-actions-button"
+          >
+            <MoreVertical class="w-5 h-5" />
+          </button>
+        </div>
 
         <!-- Kebab Menu Dropdown -->
         <div 
@@ -288,7 +295,7 @@ onUnmounted(() => {
           <button 
             @click="chatStore.toggleDebug(); showMoreMenu = false"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-            :class="currentChat.debugEnabled 
+            :class="currentChat?.debugEnabled 
               ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
               : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
             "

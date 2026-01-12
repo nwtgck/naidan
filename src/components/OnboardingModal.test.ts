@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import OnboardingModal from './OnboardingModal.vue';
+import ThemeToggle from './ThemeToggle.vue';
 import { useSettings } from '../composables/useSettings';
 import { useToast } from '../composables/useToast';
+import { useTheme } from '../composables/useTheme';
 import { Settings } from 'lucide-vue-next';
 import * as llm from '../services/llm';
 
@@ -24,6 +26,10 @@ vi.mock('../composables/useToast', () => ({
   useToast: vi.fn(),
 }));
 
+vi.mock('../composables/useTheme', () => ({
+  useTheme: vi.fn(),
+}));
+
 describe('OnboardingModal.vue', () => {
   const mockSave = vi.fn();
   const mockSettings = { value: { endpointType: 'openai', autoTitleEnabled: true } };
@@ -42,6 +48,11 @@ describe('OnboardingModal.vue', () => {
 
     (useToast as unknown as Mock).mockReturnValue({
       addToast: mockAddToast,
+    });
+
+    (useTheme as unknown as Mock).mockReturnValue({
+      themeMode: { value: 'system' },
+      setTheme: vi.fn(),
     });
     
     listModelsMock.mockResolvedValue(['model-1']);
@@ -194,6 +205,11 @@ describe('OnboardingModal.vue', () => {
     
     // Check for the settings icon (no longer in a separate footer div)
     expect(wrapper.findComponent(Settings).exists()).toBe(true);
+  });
+
+  it('renders ThemeToggle in the header', () => {
+    const wrapper = mount(OnboardingModal);
+    expect(wrapper.findComponent(ThemeToggle).exists()).toBe(true);
   });
 
   it('applies a lower opacity to the setup guide by default and increases it on hover', () => {

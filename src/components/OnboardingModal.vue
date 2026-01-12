@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useSettings } from '../composables/useSettings';
+import ThemeToggle from './ThemeToggle.vue';
 import { useToast } from '../composables/useToast';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { type EndpointType } from '../models/types';
@@ -130,6 +131,9 @@ async function handleFinish(isSkipping = false) {
         <div class="text-left flex-1">
           <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Setup Endpoint</h2>
           <p class="text-xs text-gray-600 dark:text-gray-400">Set up your local or remote LLM endpoint to start chatting.</p>
+        </div>
+        <div class="w-32 flex-shrink-0">
+          <ThemeToggle />
         </div>
       </div>
 
