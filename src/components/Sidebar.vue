@@ -35,6 +35,12 @@ const isCreatingGroup = ref(false);
 const newGroupName = ref('');
 const editingGroupId = ref<string | null>(null);
 const editingGroupName = ref('');
+const skipLeaveAnimation = ref(false);
+
+// Custom directive for auto-focusing elements
+const vFocus = {
+  mounted: (el: HTMLElement) => el.focus(),
+};
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const newChatShortcutText = isMac ? 'Cmd + Shift + O' : 'Ctrl + Shift + O';
@@ -91,10 +97,30 @@ function checkMove(evt: { draggedContext: { element: SidebarItem }; to: HTMLElem
 // --- Actions ---
 
 async function handleCreateGroup() {
-  const name = newGroupName.value.trim() || 'New Group';
+  const name = newGroupName.value.trim();
+  if (!name) {
+    isCreatingGroup.value = false;
+    return;
+  }
+  skipLeaveAnimation.value = true;
   await chatStore.createGroup(name);
   newGroupName.value = '';
   isCreatingGroup.value = false;
+  // Reset flag after transition would have finished
+  setTimeout(() => { skipLeaveAnimation.value = false; }, 200);
+}
+
+function handleCreateGroupBlur() {
+  if (!newGroupName.value.trim()) {
+    skipLeaveAnimation.value = false;
+    isCreatingGroup.value = false;
+  }
+}
+
+function cancelCreateGroup() {
+  skipLeaveAnimation.value = false;
+  isCreatingGroup.value = false;
+  newGroupName.value = '';
 }
 
 async function handleNewChat(groupId: string | null = null) {
@@ -188,28 +214,35 @@ async function handleDeleteAll() {
           <FolderPlus class="w-4 h-4" />
         </button>
       </div>
-
-      <div v-if="isCreatingGroup" class="flex items-center gap-1 p-2 bg-white dark:bg-gray-800 rounded-xl border border-blue-500/50 shadow-sm">
-        <input 
-          v-model="newGroupName"
-          @keyup.enter="handleCreateGroup"
-          @keyup.esc="isCreatingGroup = false"
-          @blur="handleCreateGroup"
-          class="bg-transparent text-sm text-gray-800 dark:text-white outline-none w-full px-1"
-          placeholder="Group name..."
-          auto-focus
-          data-testid="group-name-input"
-        />
-        <button @click="handleCreateGroup" class="text-green-600 dark:text-green-400 hover:opacity-80" data-testid="confirm-create-group">
-          <Check class="w-3 h-3" />
-        </button>
-        <button @click="isCreatingGroup = false" class="text-red-600 dark:text-red-400 hover:opacity-80">
-          <X class="w-3 h-3" />
-        </button>
-      </div>
     </div>
     <!-- Navigation List -->
     <div class="flex-1 overflow-y-auto px-3 py-2">
+      <Transition name="group-new">
+        <div v-if="isCreatingGroup" :class="{ 'skip-leave': skipLeaveAnimation }" class="flex items-center justify-between p-2 rounded-xl bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 mb-1">
+          <div class="flex items-center gap-2 overflow-hidden flex-1">
+            <Folder class="w-4 h-4 text-blue-500/60 shrink-0" />
+            <input 
+              v-focus
+              v-model="newGroupName"
+              @keyup.enter="handleCreateGroup"
+              @keyup.esc="cancelCreateGroup"
+              @blur="handleCreateGroupBlur"
+              class="bg-transparent text-sm text-gray-800 dark:text-white outline-none w-full px-1 font-bold tracking-tight placeholder:font-normal placeholder:text-gray-400 dark:placeholder:text-gray-500"
+              placeholder="Group name..."
+              data-testid="group-name-input"
+            />
+          </div>
+          <div class="flex items-center gap-0.5 shrink-0 ml-1">
+            <button @click="handleCreateGroup" class="p-1 text-gray-400 hover:text-green-600 dark:text-gray-400 dark:hover:text-white transition-colors" data-testid="confirm-create-group">
+              <Check class="w-4 h-4" />
+            </button>
+            <button @click="cancelCreateGroup" class="p-1 text-gray-400 hover:text-red-500 dark:text-gray-400 dark:hover:text-white transition-colors">
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </Transition>
+
       <draggable 
         v-model="sidebarItemsLocal" 
         item-key="id"
@@ -236,13 +269,13 @@ async function handleDeleteAll() {
                   
                   <input 
                     v-if="editingGroupId === element.group.id"
+                    v-focus
                     v-model="editingGroupName"
                     @keyup.enter="saveGroupRename"
                     @keyup.esc="editingGroupId = null"
                     @blur="saveGroupRename"
                     @click.stop
-                    class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-1 ring-blue-500 pointer-events-auto font-medium shadow-sm"
-                    auto-focus
+                    class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto font-medium shadow-sm"
                   />
                   <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.group.name }}</span>
                 </div>
@@ -275,13 +308,13 @@ async function handleDeleteAll() {
                         <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
                           <input 
                             v-if="editingId === nestedItem.chat.id"
+                            v-focus
                             v-model="editingTitle"
                             @keyup.enter="saveRename"
                             @keyup.esc="editingId = null"
                             @blur="saveRename"
                             @click.stop
-                            class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-1 ring-blue-500 pointer-events-auto shadow-sm"
-                            auto-focus
+                            class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
                           />
                           <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'Untitled Chat' }}</span>
                         </div>
@@ -313,13 +346,13 @@ async function handleDeleteAll() {
               <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
                 <input 
                   v-if="editingId === element.chat.id"
+                  v-focus
                   v-model="editingTitle"
                   @keyup.enter="saveRename"
                   @keyup.esc="editingId = null"
                   @blur="saveRename"
                   @click.stop
-                  class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-1 ring-blue-500 pointer-events-auto shadow-sm"
-                  auto-focus
+                  class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
                 />                <span v-else class="truncate text-sm">{{ element.chat.title || 'Untitled Chat' }}</span>
               </div>
               <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
@@ -365,5 +398,28 @@ async function handleDeleteAll() {
 }
 .nested-draggable {
   min-height: 20px;
+}
+
+/* New group creation transition - seamless swap */
+.group-new-enter-active {
+  transition: all 0.2s ease-out;
+}
+.group-new-leave-active {
+  transition: all 0.2s ease-in;
+}
+
+/* Instant disappearance when skip-leave class is present */
+.skip-leave.group-new-leave-active {
+  transition: none !important;
+}
+
+.group-new-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.group-new-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 </style>

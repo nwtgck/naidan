@@ -20,6 +20,8 @@ const mockSidebarItems = computed<SidebarItem[]>(() => {
 const mockLoadChats = vi.fn();
 const mockDeleteAllChats = vi.fn();
 const mockShowConfirm = vi.fn();
+const mockCreateGroup = vi.fn();
+const mockRenameGroup = vi.fn();
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -29,6 +31,8 @@ vi.mock('../composables/useChat', () => ({
     chats: mockChats,
     sidebarItems: mockSidebarItems,
     loadChats: mockLoadChats,
+    createGroup: mockCreateGroup,
+    renameGroup: mockRenameGroup,
     toggleGroupCollapse: vi.fn(),
     persistSidebarStructure: vi.fn(),
     deleteAllChats: mockDeleteAllChats,
@@ -226,6 +230,125 @@ describe('Sidebar Logic Stability', () => {
       await clearButton.trigger('click');
 
       expect(mockDeleteAllChats).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Group Creation UI', () => {
+    it('should show input when create button is clicked', async () => {
+      const wrapper = mount(Sidebar, {
+        global: {
+          plugins: [router],
+          stubs: { 'lucide-vue-next': true, 'Logo': true },
+        },
+      });
+
+      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(false);
+      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
+      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(true);
+    });
+
+    it('should create group on enter if name is not empty', async () => {
+      const wrapper = mount(Sidebar, {
+        global: {
+          plugins: [router],
+          stubs: { 'lucide-vue-next': true, 'Logo': true },
+        },
+      });
+
+      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="group-name-input"]');
+      
+      await input.setValue('My New Group');
+      await input.trigger('keyup.enter');
+
+      expect(mockCreateGroup).toHaveBeenCalledWith('My New Group');
+      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(false);
+    });
+
+    it('should close input on blur IF empty', async () => {
+      const wrapper = mount(Sidebar, {
+        global: {
+          plugins: [router],
+          stubs: { 'lucide-vue-next': true, 'Logo': true },
+        },
+      });
+
+      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="group-name-input"]');
+      
+      await input.setValue('');
+      await input.trigger('blur');
+
+      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(false);
+    });
+
+    it('should NOT close input on blur IF NOT empty', async () => {
+      const wrapper = mount(Sidebar, {
+        global: {
+          plugins: [router],
+          stubs: { 'lucide-vue-next': true, 'Logo': true },
+        },
+      });
+
+      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="group-name-input"]');
+      
+      await input.setValue('Retain Me');
+      await input.trigger('blur');
+
+      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(true);
+      expect(mockCreateGroup).not.toHaveBeenCalled();
+    });
+
+    it('should cancel on escape', async () => {
+      const wrapper = mount(Sidebar, {
+        global: {
+          plugins: [router],
+          stubs: { 'lucide-vue-next': true, 'Logo': true },
+        },
+      });
+
+      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="group-name-input"]');
+      
+      await input.setValue('Going to escape');
+      await input.trigger('keyup.esc');
+
+      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(false);
+      expect(mockCreateGroup).not.toHaveBeenCalled();
+    });
+
+    it('should apply skip-leave class when confirming', async () => {
+      const wrapper = mount(Sidebar, {
+        global: {
+          plugins: [router],
+          stubs: { 'lucide-vue-next': true, 'Logo': true },
+        },
+      });
+
+      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="group-name-input"]');
+      const container = wrapper.find('.bg-blue-50\\/30');
+
+      await input.setValue('New Group');
+      await input.trigger('keyup.enter');
+      expect(container.classes()).toContain('skip-leave');
+    });
+
+    it('should NOT apply skip-leave class when cancelling', async () => {
+      const wrapper = mount(Sidebar, {
+        global: {
+          plugins: [router],
+          stubs: { 'lucide-vue-next': true, 'Logo': true },
+        },
+      });
+
+      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="group-name-input"]');
+      const container = wrapper.find('.bg-blue-50\\/30');
+      
+      await input.trigger('keyup.esc');
+      expect(container.classes()).not.toContain('skip-leave');
     });
   });
 });
