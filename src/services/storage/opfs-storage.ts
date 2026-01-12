@@ -22,10 +22,12 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
 
 export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
+  private readonly STORAGE_DIR = 'llm-web-ui-storage';
 
   async init(): Promise<void> {
     if (!this.root) {
-      this.root = await navigator.storage.getDirectory();
+      const opfsRoot = await navigator.storage.getDirectory();
+      this.root = await opfsRoot.getDirectoryHandle(this.STORAGE_DIR, { create: true });
     }
   }
 
