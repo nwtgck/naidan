@@ -4,6 +4,7 @@ import { storageService } from '../services/storage';
 
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS });
 const initialized = ref(false);
+const isOnboardingDismissed = ref(false);
 
 export function useSettings() {
   const loading = ref(false);
@@ -41,6 +42,7 @@ export function useSettings() {
     settings,
     loading,
     initialized,
+    isOnboardingDismissed,
     init,
     save,
   };

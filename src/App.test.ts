@@ -111,6 +111,7 @@ describe('App', () => {
     (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
       initialized: ref(true),
+      isOnboardingDismissed: ref(false),
       settings: ref({ endpointUrl: 'http://localhost:11434' }),
     });
     (useRouter as unknown as Mock).mockReturnValue({
@@ -250,6 +251,7 @@ describe('App', () => {
     (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
       initialized: ref(true),
+      isOnboardingDismissed: ref(false),
       settings: ref({ endpointUrl: '' }),
     });
 
@@ -263,6 +265,36 @@ describe('App', () => {
     });
     await nextTick();
     
+    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
+  });
+
+  it('toggles OnboardingModal visibility based on isOnboardingDismissed state', async () => {
+    const isOnboardingDismissed = ref(false);
+    (useSettings as unknown as Mock).mockReturnValue({
+      init: mockInit,
+      initialized: ref(true),
+      isOnboardingDismissed,
+      settings: ref({ endpointUrl: '' }),
+    });
+
+    const wrapper = mount(App, {
+      global: {
+        stubs: { 'router-view': true, 'transition': true },
+      },
+    });
+    await nextTick();
+    
+    // Initially shown
+    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
+
+    // Simulate dismissal (Skip)
+    isOnboardingDismissed.value = true;
+    await nextTick();
+    expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(false);
+
+    // Simulate undoing dismissal
+    isOnboardingDismissed.value = false;
+    await nextTick();
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
   });
 

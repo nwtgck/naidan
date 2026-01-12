@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useSettings } from '../composables/useSettings';
+import { useToast } from '../composables/useToast';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { type EndpointType } from '../models/types';
 import Logo from './Logo.vue';
 import ServerSetupGuide from './ServerSetupGuide.vue';
 import { Play, ArrowLeft, CheckCircle2, Activity, FastForward, Settings } from 'lucide-vue-next';
 
-const { settings, save } = useSettings();
+const { settings, save, isOnboardingDismissed } = useSettings();
+const toast = useToast();
 
 const presets = [
   { name: 'Ollama (local)', type: 'ollama' as EndpointType, url: 'http://localhost:11434' },
@@ -91,10 +93,11 @@ async function handleConnect() {
   }
 }
 
-async function handleFinish() {
+async function handleFinish(isSkipping = false) {
   const url = getNormalizedUrl();
-  if (!url) {
-    error.value = 'Please enter a valid URL before skipping.';
+  
+  if (!isSkipping && !url) {
+    error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
   }
 
@@ -102,10 +105,22 @@ async function handleFinish() {
     await save({
       ...settings.value,
       endpointType: selectedType.value,
-      endpointUrl: url,
+      endpointUrl: url || undefined,
       defaultModelId: selectedModel.value || undefined,
       titleModelId: selectedModel.value || undefined,
     });
+
+    if (isSkipping) {
+      isOnboardingDismissed.value = true;
+      toast.addToast({
+        message: 'Setup skipped. You can always configure it later in settings.',
+        actionLabel: 'Undo',
+        onAction: () => {
+          isOnboardingDismissed.value = false;
+        },
+        duration: 5000,
+      });
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save settings.';
   }
@@ -114,11 +129,15 @@ async function handleFinish() {
 
 <template>
   <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4">
-    <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl h-[680px] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 transition-all">
-      <div class="p-6 text-center border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
-        <Logo class="w-12 h-12 mx-auto mb-2" />
-        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">Setup Endpoint</h2>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Set up your local or remote LLM endpoint to start chatting.</p>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl h-[640px] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 transition-all">
+      <div class="px-10 py-4 flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
+        <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <Logo class="w-8 h-8" />
+        </div>
+        <div class="text-left flex-1">
+          <h2 class="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Setup Endpoint</h2>
+          <p class="text-xs text-gray-600 dark:text-gray-400">Set up your local or remote LLM endpoint to start chatting.</p>
+        </div>
       </div>
 
       <div class="flex-1 overflow-y-auto min-h-0">
@@ -127,7 +146,7 @@ async function handleFinish() {
 
           <!-- Left Column: Configuration (Primary) -->
 
-          <div class="w-full lg:w-[62%] p-8 space-y-6">
+          <div class="w-full lg:w-[62%] p-10 space-y-8">
 
             <template v-if="availableModels.length === 0">
 
@@ -204,12 +223,18 @@ async function handleFinish() {
                 </div>
                 
                 <button
-                  @click="handleFinish"
-                  class="w-full py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors underline decoration-dotted underline-offset-4 flex items-center justify-center gap-1.5"
+                  @click="handleFinish(true)"
+                  class="w-full py-3.5 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
+                  data-testid="skip-onboarding"
                 >
-                  <FastForward class="w-3 h-3" />
-                  Skip connection test and save anyway
+                  <FastForward class="w-4 h-4" />
+                  <span>Setup Later</span>
                 </button>
+
+                <p class="flex items-center justify-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
+                  <Settings class="w-4 h-4 text-blue-500/60" />
+                  You can change these settings later in the settings menu.
+                </p>
               </div>
             </template>
 
@@ -250,13 +275,18 @@ async function handleFinish() {
                     <span>Back</span>
                   </button>
                   <button
-                    @click="handleFinish"
+                    @click="handleFinish(false)"
                     class="flex-1 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2"
                   >
                     <Play class="w-5 h-5 fill-current" />
                     <span>Get Started</span>
                   </button>
                 </div>
+
+                <p class="flex items-center justify-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
+                  <Settings class="w-4 h-4 text-blue-500/60" />
+                  You can change these settings later in the settings menu.
+                </p>
               </div>
             </template>
           </div>
@@ -275,13 +305,6 @@ async function handleFinish() {
             </p>
           </div>
         </div>
-      </div>
-
-      <div class="p-6 border-t border-gray-100 dark:border-gray-800 shrink-0 bg-gray-50/50 dark:bg-black/20">
-        <p class="flex items-center justify-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-          <Settings class="w-3.5 h-3.5 text-blue-500" />
-          You can change these settings later in the settings menu.
-        </p>
       </div>
     </div>
   </div>
