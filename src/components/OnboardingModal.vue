@@ -4,20 +4,13 @@ import { useSettings } from '../composables/useSettings';
 import { useToast } from '../composables/useToast';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { type EndpointType } from '../models/types';
+import { ENDPOINT_PRESETS } from '../models/constants';
 import Logo from './Logo.vue';
 import ServerSetupGuide from './ServerSetupGuide.vue';
 import { Play, ArrowLeft, CheckCircle2, Activity, FastForward, Settings } from 'lucide-vue-next';
 
 const { settings, save, isOnboardingDismissed } = useSettings();
 const toast = useToast();
-
-const presets = [
-  { name: 'Ollama (local)', type: 'ollama' as EndpointType, url: 'http://localhost:11434' },
-  { name: 'LM Studio (local)', type: 'openai' as EndpointType, url: 'http://localhost:1234/v1' },
-  { name: 'llama-server (local)', type: 'openai' as EndpointType, url: 'http://localhost:8080/v1' },
-  // TODO: Uncomment after implementing authentication (API key) settings
-  // { name: 'OpenAI (cloud)', type: 'openai' as EndpointType, url: 'https://api.openai.com/v1' },
-];
 
 const selectedType = ref<EndpointType>('openai');
 const customUrl = ref('');
@@ -44,7 +37,7 @@ function getNormalizedUrl() {
   }
 }
 
-function selectPreset(preset: typeof presets[0]) {
+function selectPreset(preset: typeof ENDPOINT_PRESETS[number]) {
   selectedType.value = preset.type;
   customUrl.value = preset.url;
   // Reset models if user changes preset/url
@@ -157,7 +150,7 @@ async function handleFinish(isSkipping = false) {
                 <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-2 ml-1">Quick Presets</label>
                 <div class="flex flex-wrap gap-1.5">
                   <button
-                    v-for="preset in presets"
+                    v-for="preset in ENDPOINT_PRESETS"
                     :key="preset.name"
                     @click="selectPreset(preset)"
                     class="px-3 py-1.5 text-[11px] font-bold border rounded-lg transition-all duration-200"

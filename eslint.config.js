@@ -38,6 +38,11 @@ export default tseslint.config(
       'max-len': 'off',
       'vue/html-indent': ['warn', 2],
       'indent': ['warn', 2],
+      // Prevents components (like icons) from disappearing silently due to missing imports.
+      // Without this, build succeeds but the component fails to render at runtime.
+      'vue/no-undef-components': ['error', {
+        'ignorePatterns': ['router-link', 'router-view'],
+      }],
     },
   },
   ensureFileProtocolInit,

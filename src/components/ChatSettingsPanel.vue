@@ -3,6 +3,7 @@ import { ref, onMounted, watch } from 'vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import { X, RefreshCw, Loader2, Settings2, AlertCircle, Check, Globe } from 'lucide-vue-next';
+import { ENDPOINT_PRESETS } from '../models/constants';
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -20,12 +21,6 @@ const { settings } = useSettings();
 const selectedProviderProfileId = ref('');
 const connectionSuccess = ref(false);
 const error = ref<string | null>(null);
-
-const ENDPOINT_PRESETS = [
-  { name: 'Ollama (local)', type: 'ollama', url: 'http://localhost:11434' },
-  { name: 'LM Studio (local)', type: 'openai', url: 'http://localhost:1234/v1' },
-  { name: 'llama-server (local)', type: 'openai', url: 'http://localhost:8080/v1' },
-] as const;
 
 function isLocalhost(url: string | undefined) {
   if (!url) return false;

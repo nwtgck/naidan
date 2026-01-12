@@ -22,6 +22,10 @@ const { themeMode, setTheme } = useTheme();
 const { showConfirm } = useConfirm();
 const router = useRouter();
 
+defineEmits<{
+  (e: 'open-settings'): void
+}>();
+
 const sidebarItemsLocal = ref<SidebarItem[]>([]);
 const isDragging = ref(false);
 let isInternalUpdate = false;

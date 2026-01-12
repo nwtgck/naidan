@@ -25,6 +25,7 @@ const mockCurrentChat = ref({
   root: { items: [] } as { items: MessageNode[] },
   currentLeafId: undefined as string | undefined,
   debugEnabled: false, 
+  originChatId: undefined as string | undefined,
 });
 const mockActiveMessages = ref<MessageNode[]>([]);
 
@@ -131,6 +132,27 @@ describe('ChatArea UI States', () => {
     });
     
     expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
+  });
+
+  it('should render header icons (Export, Settings, More)', async () => {
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    expect(wrapper.find('button[title="Export Chat"]').exists()).toBe(true);
+    expect(wrapper.find('button[title="Chat Settings"]').exists()).toBe(true);
+    expect(wrapper.find('button[title="More Actions"]').exists()).toBe(true);
+  });
+
+  it('should show jump to origin button when originChatId is present', async () => {
+    mockCurrentChat.value.originChatId = 'original-id';
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    expect(wrapper.find('button[title="Jump to original chat"]').exists()).toBe(true);
+    // Reset for other tests
+    mockCurrentChat.value.originChatId = undefined;
   });
 });
 
@@ -351,6 +373,7 @@ describe('ChatArea Export Functionality', () => {
       root: { items: [] } as { items: MessageNode[] },
       currentLeafId: undefined,
       debugEnabled: false, 
+      originChatId: undefined,
     };
     document.body.innerHTML = '<div id="app"></div>';
         
@@ -396,6 +419,7 @@ describe('ChatArea Export Functionality', () => {
       root: { items: [] },
       currentLeafId: 'msg-2',
       debugEnabled: false,
+      originChatId: undefined,
     };
     mockActiveMessages.value = [
       { id: 'msg-1', role: 'user', content: 'Hello AI', timestamp: Date.now(), replies: { items: [] } },
@@ -458,6 +482,7 @@ describe('ChatArea Export Functionality', () => {
       root: { items: [] },
       currentLeafId: 'msg-3',
       debugEnabled: false,
+      originChatId: undefined,
     };
     mockActiveMessages.value = [
       { id: 'msg-3', role: 'user', content: 'Another message', timestamp: Date.now(), replies: { items: [] } },
@@ -489,6 +514,7 @@ describe('ChatArea Export Functionality', () => {
       root: { items: [] },
       currentLeafId: undefined,
       debugEnabled: false,
+      originChatId: undefined,
     };
     mockActiveMessages.value = []; // Empty messages
 
@@ -543,6 +569,7 @@ describe('ChatArea Textarea Sizing', () => {
       root: { items: [] } as { items: MessageNode[] },
       currentLeafId: undefined,
       debugEnabled: false, 
+      originChatId: undefined,
     };
     document.body.innerHTML = '<div id="app"></div>';
 

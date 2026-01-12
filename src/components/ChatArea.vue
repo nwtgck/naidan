@@ -6,6 +6,10 @@ import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
+import { 
+  ArrowLeft, Download, Settings2, MoreVertical, Bug, 
+  Square, Loader2, Minimize2, Maximize2, Send,
+} from 'lucide-vue-next';
 
 
 const chatStore = useChat();
