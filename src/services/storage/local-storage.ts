@@ -10,6 +10,7 @@ import {
   ChatGroupSchemaDto as DtoChatGroupSchema,
   type ChatGroupDto,
   type ChatDto,
+  type MigrationChunkDto,
 } from '../../models/dto';
 import { 
   chatToDomain as mapChatToDomain,
@@ -20,8 +21,8 @@ import {
   buildSidebarItemsFromDtos,
 } from '../../models/mappers';
 import { IStorageProvider } from './interface';
+import { STORAGE_KEY_PREFIX as KEY_PREFIX } from '../../models/constants';
 
-const KEY_PREFIX = 'lm-web-ui:';
 const KEY_INDEX = `${KEY_PREFIX}index`;
 const KEY_GROUPS = `${KEY_PREFIX}groups`;
 const KEY_SETTINGS = `${KEY_PREFIX}settings`;
@@ -146,5 +147,82 @@ export class LocalStorageProvider extends IStorageProvider {
       }
     }
     keysToRemove.forEach(k => localStorage.removeItem(k));
+  }
+
+  // --- Migration Implementation ---
+
+  async *dump(): AsyncGenerator<MigrationChunkDto> {
+    // 1. Settings
+    const settings = await this.loadSettings();
+    if (settings) {
+      // Note: We need to convert domain Settings back to DTO for migration
+      // Ideally loadSettings should return DTO or we have a raw accessor.
+      // For now, re-serialize via mapping to ensure Schema validity.
+      const dto = mapSettingsToDto(settings);
+      yield { type: 'settings', data: dto };
+    }
+
+    // 2. Groups
+    const groups = await this.listGroupsRaw();
+    for (const group of groups) {
+      yield { type: 'group', data: group };
+    }
+
+    // 3. Chats
+    const chats = await this.listChatsRaw();
+    for (const chat of chats) {
+      yield { type: 'chat', data: chat };
+    }
+  }
+
+  async restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void> {
+    await this.clearAll();
+
+    for await (const chunk of stream) {
+      switch (chunk.type) {
+      case 'settings': {
+        const domain = mapSettingsToDomain(chunk.data);
+        await this.saveSettings(domain);
+        break;
+      }
+      case 'group': {
+        // We can't easily map back from DTO to Domain without 'index' context in some mappers.
+        // However, saveGroup expects Domain object.
+        // Let's rely on the raw DTO saving mechanism or enhance saveGroup?
+        // LocalStorage saveGroup uses mapGroupToDto. 
+        // It's safer to bypass domain mapping if we just want to write DTOs, 
+        // but our interface methods are saveGroup(ChatGroup).
+          
+        // Workaround: Reconstruct domain object manually or create a rawSave.
+        // Since this is "restore", we trust the DTO structure.
+        // Let's parse strictly to ensure validity.
+          
+        // Actually, mapGroupToDto requires 'index'. 
+        // Let's implement a direct raw write for migration to avoid mapping roundtrips overhead/complexity
+        // OR adapt the mapper. 
+          
+        // Let's do raw write logic here for efficiency and precision.
+        const groups = await this.listGroupsRaw();
+        groups.push(chunk.data);
+        localStorage.setItem(KEY_GROUPS, JSON.stringify(groups));
+        break;
+      }
+      case 'chat': {
+        // Similar raw write strategy for chats
+        const validated = DtoChatSchema.parse(chunk.data);
+        localStorage.setItem(`${KEY_PREFIX}chat:${validated.id}`, JSON.stringify(validated));
+          
+        const indexList = await this.listChatsRaw();
+        indexList.push(validated);
+        localStorage.setItem(KEY_INDEX, JSON.stringify(indexList));
+        break;
+      }
+      default: {
+        const _exhaustiveCheck: never = chunk;
+        throw new Error(`Unhandled migration chunk type: ${JSON.stringify(_exhaustiveCheck)}`);
+      }
+      
+      }
+    }
   }
 }

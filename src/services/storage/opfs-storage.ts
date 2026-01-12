@@ -1,5 +1,11 @@
 import type { Chat, Settings, ChatGroup, SidebarItem } from '../../models/types';
-import { ChatSchemaDto, SettingsSchemaDto, type ChatGroupDto, type ChatDto } from '../../models/dto';
+import { 
+  ChatSchemaDto, 
+  SettingsSchemaDto, 
+  type ChatGroupDto, 
+  type ChatDto, 
+  type MigrationChunkDto, 
+} from '../../models/dto';
 import { 
   chatToDomain,
   chatToDto,
@@ -175,5 +181,105 @@ export class OPFSStorageProvider extends IStorageProvider {
     for await (const key of this.root!.keys()) {
       await this.root!.removeEntry(key, { recursive: true });
     }
+  }
+
+  // --- Migration Implementation ---
+
+  async *dump(): AsyncGenerator<MigrationChunkDto> {
+    await this.init();
+
+    // 1. Settings
+    const settings = await this.loadSettings();
+    if (settings) {
+      // Re-serialize strictly
+      const dto = settingsToDto(settings);
+      yield { type: 'settings', data: dto };
+    }
+
+    // 2. Groups
+    const groups = await this.listGroupsRaw();
+    for (const group of groups) {
+      yield { type: 'group', data: group };
+    }
+
+    // 3. Chats
+    // Iterate manually over files to avoid loading ALL chats into memory via listChatsRaw() 
+    // IF listChatsRaw reads everything.
+    // Looking at listChatsRaw implementation: it reads 'index.json' which is just metadata.
+    // BUT we need the FULL content for migration.
+    // So we iterate the index, then load each full chat file.
+    const index = await this.listChatsRaw();
+    const chatsDir = await this.getChatsDir();
+    
+    for (const meta of index) {
+      try {
+        const fileHandle = await chatsDir.getFileHandle(`${meta.id}.json`);
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        const fullDto = ChatSchemaDto.parse(JSON.parse(text));
+        yield { type: 'chat', data: fullDto };
+      } catch (e) {
+        console.warn(`Failed to export chat ${meta.id}`, e);
+        // Continue to next chat even if one fails
+      }
+    }
+  }
+
+  async restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void> {
+    await this.clearAll();
+    await this.init();
+
+    // Prepare directories
+    const chatsDir = await this.getChatsDir();
+    const groupsDir = await this.getGroupsDir();
+
+    // Cache the chat index to write it once at the end? 
+    // Or update incrementally?
+    // Incremental is safer but slower. 
+    // Let's build an in-memory index and write it periodically or at the end.
+    // For safety against crash during migration, we might want to write regularly.
+    // But since restore() clears all first, a crash leaves us in broken state anyway.
+    // So writing index at the end is acceptable for performance.
+    const chatIndex: ChatDto[] = [];
+
+    for await (const chunk of stream) {
+      switch (chunk.type) {
+      case 'settings': {
+        await this.saveSettings(settingsToDomain(chunk.data));
+        break;
+      }
+      case 'group': {
+        // Direct write
+        const fileHandle = await groupsDir.getFileHandle(`${chunk.data.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(chunk.data));
+        await writable.close();
+        break;
+      }
+      case 'chat': {
+        const dto = chunk.data;
+        // Write chat file
+        const fileHandle = await chatsDir.getFileHandle(`${dto.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(dto));
+        await writable.close();
+          
+        // Add to index
+        chatIndex.push(dto);
+        break;
+      }
+      default: {
+        const _exhaustiveCheck: never = chunk;
+        throw new Error(`Unhandled migration chunk type: ${JSON.stringify(_exhaustiveCheck)}`);
+      }
+      
+      }
+    }
+
+    // Write final chat index
+    const fileHandle = await this.root!.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(chatIndex));
+    await writable.close();
   }
 }

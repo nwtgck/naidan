@@ -16,7 +16,7 @@ import {
   X, Loader2, FlaskConical, Trash2, Globe, 
   Database, Bot, Type, Settings2, RefreshCw, Save,
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
-  Pencil, Trash, Check, Activity,
+  Pencil, Trash, Check, Activity, Info, HardDrive,
 } from 'lucide-vue-next';
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
 import { usePrompt } from '../composables/usePrompt';   // Import usePrompt
@@ -43,6 +43,9 @@ const fetchingModels = ref(false);
 const connectionSuccess = ref(false);
 const error = ref<string | null>(null);
 const saveSuccess = ref(false);
+const isOPFSSupported = typeof navigator !== 'undefined' && 
+                        typeof navigator.storage?.getDirectory === 'function' &&
+                        (typeof window !== 'undefined' ? window.isSecureContext : true);
 
 // Profile Editing State
 const editingProviderProfileId = ref<string | null>(null);
@@ -121,12 +124,21 @@ async function fetchModels() {
 }
 
 async function handleSave() {
-  await save(form.value);
-  initialFormState.value = JSON.stringify(form.value);
-  saveSuccess.value = true;
-  setTimeout(() => {
-    saveSuccess.value = false;
-  }, 2000);
+  try {
+    await save(form.value);
+    initialFormState.value = JSON.stringify(form.value);
+    saveSuccess.value = true;
+    setTimeout(() => {
+      saveSuccess.value = false;
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to save settings:', err);
+    await showConfirm({
+      title: 'Save Failed',
+      message: `Failed to save settings or migrate data. ${err instanceof Error ? err.message : String(err)}`,
+      confirmButtonText: 'Understand',
+    });
+  }
 }
 
 // Profile Handlers
@@ -560,27 +572,45 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div 
                       @click="form.storageType = 'local'"
-                      class="cursor-pointer border-2 rounded-2xl p-6 transition-all shadow-sm"
+                      class="cursor-pointer border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
                       :class="form.storageType === 'local' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700'"
                       data-testid="storage-option-local"
                     >
-                      <div class="font-bold text-base mb-1.5 text-gray-800 dark:text-white">Local Storage</div>
-                      <div class="text-xs font-medium text-gray-500 leading-relaxed">Standard browser storage. Fast but limited size (5-10MB).</div>
+                      <div class="flex items-center justify-between">
+                        <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                          <HardDrive class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                        </div>
+                      </div>
+                      <div>
+                        <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">Local Storage</div>
+                        <div class="text-xs font-medium text-gray-500 leading-relaxed">Standard browser storage. Fast but limited size (5-10MB).</div>
+                      </div>
                     </div>
                     <div 
-                      @click="form.storageType = 'opfs'"
-                      class="cursor-pointer border-2 rounded-2xl p-6 transition-all shadow-sm"
-                      :class="form.storageType === 'opfs' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700'"
+                      @click="isOPFSSupported && (form.storageType = 'opfs')"
+                      class="cursor-pointer border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
+                      :class="[
+                        form.storageType === 'opfs' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700',
+                        !isOPFSSupported ? 'opacity-50 cursor-not-allowed grayscale' : ''
+                      ]"
                       data-testid="storage-option-opfs"
                     >
-                      <div class="font-bold text-base mb-1.5 text-gray-800 dark:text-white">OPFS</div>
-                      <div class="text-xs font-medium text-gray-500 leading-relaxed">Origin Private File System. High capacity, optimized for large data.</div>
+                      <div class="flex items-center justify-between">
+                        <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                          <HardDrive class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                        </div>
+                        <span v-if="!isOPFSSupported" class="text-[10px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Unsupported</span>
+                      </div>
+                      <div>
+                        <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">OPFS</div>
+                        <div class="text-xs font-medium text-gray-500 leading-relaxed">Origin Private File System. High capacity, optimized for large data.</div>
+                      </div>
                     </div>
                   </div>
                   
                   <div class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
-                    <AlertTriangle class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
-                    <p class="leading-relaxed">Switching storage providers will <strong>hide</strong> your current chats. They are not deleted, but you can only access chats from the currently active storage provider.</p>
+                    <Info class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
+                    <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, groups, and settings to the new location. This process will start automatically after you click <strong>Save Changes</strong>.</p>
                   </div>
                 </div>
               </section>

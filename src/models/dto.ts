@@ -96,3 +96,16 @@ export const SettingsSchemaDto = z.object({
   providerProfiles: z.array(ProviderProfileSchemaDto).optional().default([]),
 });
 export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
+
+/**
+ * Migration Data Chunk
+ * 
+ * Represents a single unit of data during storage migration.
+ * IMPORTANT: When adding new persistable DTOs to the application, 
+ * you MUST add them to this union type to ensure they are included 
+ * in the migration process (dump/restore).
+ */
+export type MigrationChunkDto =
+  | { type: 'settings'; data: SettingsDto }
+  | { type: 'group'; data: ChatGroupDto }
+  | { type: 'chat'; data: ChatDto };

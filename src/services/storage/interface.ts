@@ -1,5 +1,5 @@
 import type { Chat, Settings, ChatGroup, ChatSummary, SidebarItem } from '../../models/types';
-import type { ChatDto, ChatGroupDto } from '../../models/dto';
+import type { ChatDto, ChatGroupDto, MigrationChunkDto } from '../../models/dto';
 import { buildSidebarItemsFromDtos } from '../../models/mappers';
 
 export type { ChatSummary };
@@ -15,6 +15,10 @@ export abstract class IStorageProvider {
   // Subclasses implement these to fetch raw DTOs.
   protected abstract listChatsRaw(): Promise<ChatDto[]>;
   protected abstract listGroupsRaw(): Promise<ChatGroupDto[]>;
+
+  // --- Bulk Operations (Migration) ---
+  abstract dump(): AsyncGenerator<MigrationChunkDto>;
+  abstract restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void>;
 
   // --- Public Domain API (Default Implementations) ---
 

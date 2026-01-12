@@ -2,8 +2,10 @@ import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary } from '../../
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
+import { useGlobalEvents } from '../../composables/useGlobalEvents';
+import { STORAGE_BOOTSTRAP_KEY } from '../../models/constants';
 
-class StorageService {
+export class StorageService {
   private provider: IStorageProvider;
   private currentType: 'local' | 'opfs' = 'local';
 
@@ -27,7 +29,48 @@ class StorageService {
 
   async switchProvider(type: 'local' | 'opfs') {
     if (this.currentType === type) return;
-    await this.init(type);
+
+    const oldProvider = this.provider;
+    let newProvider: IStorageProvider;
+
+    // Initialize the target provider
+    if (type === 'opfs' && typeof navigator.storage?.getDirectory === 'function') {
+      newProvider = new OPFSStorageProvider();
+    } else {
+      newProvider = new LocalStorageProvider();
+    }
+
+    try {
+      await newProvider.init();
+      
+      // Migrate data: Dump from old -> Restore to new
+      console.log(`Migrating data from ${this.currentType} to ${type}...`);
+      const dumpStream = oldProvider.dump();
+      await newProvider.restore(dumpStream);
+      
+      // Commit switch only after successful migration
+      this.provider = newProvider;
+      this.currentType = type;
+
+      // Persist active storage type for the next application load
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
+      }
+
+      console.log('Storage migration completed successfully.');
+    } catch (error) {
+      console.error('Storage migration failed. Reverting to previous provider.', error);
+      
+      const { addErrorEvent } = useGlobalEvents();
+      addErrorEvent({
+        source: 'StorageService',
+        message: 'Storage migration failed. Reverting to previous provider.',
+        details: error instanceof Error ? error : new Error(String(error)),
+      });
+
+      // We simply don't update this.provider, so the app continues using the old one.
+      throw error; // Re-throw so UI can handle/display error
+    }
   }
 
   // --- Domain Methods (leveraging base class implementations) ---

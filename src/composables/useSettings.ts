@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { type Settings, type EndpointType, DEFAULT_SETTINGS } from '../models/types';
 import { storageService } from '../services/storage';
+import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
 
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS });
 const initialized = ref(false);
@@ -14,10 +15,20 @@ export function useSettings() {
     if (initialized.value) return;
     loading.value = true;
     try {
-      await storageService.init();
+      // Determine storage type from persisted flag
+      let bootstrapType: 'local' | 'opfs' = 'local';
+      if (typeof localStorage !== 'undefined') {
+        const saved = localStorage.getItem(STORAGE_BOOTSTRAP_KEY);
+        if (saved === 'opfs') bootstrapType = 'opfs';
+      }
+
+      await storageService.init(bootstrapType);
       const s = await storageService.loadSettings();
       if (s) {
         settings.value = s;
+        if (s.endpointUrl) {
+          isOnboardingDismissed.value = true;
+        }
       }
     } finally {
       loading.value = false;
