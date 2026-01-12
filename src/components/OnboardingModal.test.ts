@@ -8,6 +8,7 @@ import { useToast } from '../composables/useToast';
 import { useTheme } from '../composables/useTheme';
 import { Settings } from 'lucide-vue-next';
 import * as llm from '../services/llm';
+import { type EndpointType } from '../models/types';
 
 // Mock the services.
 vi.mock('../services/llm', () => {
@@ -18,32 +19,28 @@ vi.mock('../services/llm', () => {
 });
 
 // Mock the composables
-vi.mock('../composables/useSettings', () => ({
-  useSettings: vi.fn(),
-}));
-
-vi.mock('../composables/useToast', () => ({
-  useToast: vi.fn(),
-}));
-
-vi.mock('../composables/useTheme', () => ({
-  useTheme: vi.fn(),
-}));
+vi.mock('../composables/useSettings', () => ({ useSettings: vi.fn() }));
+vi.mock('../composables/useToast', () => ({ useToast: vi.fn() }));
+vi.mock('../composables/useTheme', () => ({ useTheme: vi.fn() }));
 
 describe('OnboardingModal.vue', () => {
   const mockSave = vi.fn();
   const mockSettings = { value: { endpointType: 'openai', autoTitleEnabled: true } };
   const mockIsOnboardingDismissed = { value: false };
+  const mockOnboardingDraft = { value: null as { url: string, type: EndpointType, models: string[], selectedModel: string } | null };
   const mockAddToast = vi.fn();
   const listModelsMock = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsOnboardingDismissed.value = false;
+    mockOnboardingDraft.value = null;
     (useSettings as unknown as Mock).mockReturnValue({
       settings: mockSettings,
       save: mockSave,
       initialized: { value: true },
       isOnboardingDismissed: mockIsOnboardingDismissed,
+      onboardingDraft: mockOnboardingDraft,
     });
 
     (useToast as unknown as Mock).mockReturnValue({
@@ -57,7 +54,6 @@ describe('OnboardingModal.vue', () => {
     
     listModelsMock.mockResolvedValue(['model-1']);
     
-    // Setup provider mocks to return an object with listModels
     (llm.OpenAIProvider as unknown as Mock).mockImplementation(function() {
       return { listModels: listModelsMock };
     });
@@ -74,15 +70,9 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.text()).toContain('Ollama');
   });
 
-  it('shows the skip icon on the skip button', () => {
-    const wrapper = mount(OnboardingModal);
-    const skipBtn = wrapper.find('[data-testid="skip-onboarding"]');
-    expect(skipBtn.find('svg').exists()).toBe(true);
-  });
-
   it('disables the connection button when URL is empty', () => {
     const wrapper = mount(OnboardingModal);
-    const connectBtn = wrapper.find('button.bg-blue-600');
+    const connectBtn = wrapper.find('[data-testid="onboarding-connect-button"]');
     expect((connectBtn.element as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -90,7 +80,7 @@ describe('OnboardingModal.vue', () => {
     const wrapper = mount(OnboardingModal);
     await wrapper.find('input').setValue('localhost:11434');
     
-    const connectBtn = wrapper.find('button.bg-blue-600');
+    const connectBtn = wrapper.find('[data-testid="onboarding-connect-button"]');
     expect((connectBtn.element as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -99,49 +89,36 @@ describe('OnboardingModal.vue', () => {
     await wrapper.find('input').setValue('localhost:1234');
     
     // Click Connect
-    await wrapper.find('button.bg-blue-600').trigger('click');
+    await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
     await flushPromises();
 
     // Provider should have been called with prepended http://
     expect(listModelsMock).toHaveBeenCalledWith('http://localhost:1234', expect.anything());
   });
 
-  it('allows skipping with an empty URL and shows UNDO toast', async () => {
+  it('dismisses onboarding and saves draft when X is clicked', async () => {
     const wrapper = mount(OnboardingModal);
-    await wrapper.find('input').setValue('');
-    mockIsOnboardingDismissed.value = false;
+    await wrapper.find('input').setValue('http://localhost:11434');
     
-    const skipBtn = wrapper.find('[data-testid="skip-onboarding"]');
-    await skipBtn.trigger('click');
+    const closeBtn = wrapper.find('[data-testid="onboarding-close-x"]');
+    await closeBtn.trigger('click');
     await flushPromises();
 
-    expect(mockSave).toHaveBeenCalled();
+    expect(mockOnboardingDraft.value).toEqual(expect.objectContaining({
+      url: 'http://localhost:11434',
+    }));
+    expect(mockSave).not.toHaveBeenCalled(); // Should NOT save settings permanently
     expect(mockIsOnboardingDismissed.value).toBe(true);
     expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
       actionLabel: 'Undo',
     }));
   });
 
-  it('allows skipping with a valid URL and shows UNDO toast', async () => {
-    const wrapper = mount(OnboardingModal);
-    await wrapper.find('input').setValue('localhost:8080');
-    mockIsOnboardingDismissed.value = false;
-    
-    await wrapper.find('[data-testid="skip-onboarding"]').trigger('click');
-    await flushPromises();
-
-    expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
-      endpointUrl: 'http://localhost:8080',
-    }));
-    expect(mockIsOnboardingDismissed.value).toBe(true);
-    expect(mockAddToast).toHaveBeenCalled();
-  });
-
-  it('re-enables onboarding when UNDO action is triggered', async () => {
+  it('re-enables onboarding when UNDO action is triggered from toast', async () => {
     const wrapper = mount(OnboardingModal);
     mockIsOnboardingDismissed.value = false;
     
-    await wrapper.find('[data-testid="skip-onboarding"]').trigger('click');
+    await wrapper.find('[data-testid="onboarding-close-x"]').trigger('click');
     await flushPromises();
 
     expect(mockIsOnboardingDismissed.value).toBe(true);
@@ -153,41 +130,30 @@ describe('OnboardingModal.vue', () => {
     expect(mockIsOnboardingDismissed.value).toBe(false);
   });
 
-  it('proceeds to Step 2 after successful connection', async () => {
+  it('proceeds to Step 2 and persists settings only on "Get Started"', async () => {
     listModelsMock.mockResolvedValue(['model-1', 'model-2']);
     const wrapper = mount(OnboardingModal);
 
     await wrapper.find('input').setValue('http://localhost:1234');
-    await wrapper.find('button.bg-blue-600').trigger('click');
+    await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
     
     await flushPromises();
     await nextTick();
 
     expect(listModelsMock).toHaveBeenCalled();
     expect(wrapper.text()).toContain('Successfully Connected!');
-    expect(wrapper.find('select').exists()).toBe(true);
+    expect(mockSave).not.toHaveBeenCalled(); // Not saved yet
 
     // Test finishing Step 2
-    await wrapper.find('button.bg-blue-600').trigger('click'); // "Get Started" button
+    await wrapper.find('[data-testid="onboarding-finish-button"]').trigger('click'); // "Get Started" button
     await flushPromises();
 
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
       endpointUrl: 'http://localhost:1234',
       defaultModelId: 'model-1',
     }));
-    expect(mockAddToast).not.toHaveBeenCalled(); // No undo toast for successful setup
-  });
-
-  it('shows error message when saving settings fails', async () => {
-    const wrapper = mount(OnboardingModal);
-    await wrapper.find('input').setValue('localhost:11434');
-    
-    mockSave.mockRejectedValueOnce(new Error('Persistent Storage Error'));
-    
-    await wrapper.find('[data-testid="skip-onboarding"]').trigger('click');
-    await flushPromises();
-
-    expect(wrapper.text()).toContain('Persistent Storage Error');
+    expect(mockOnboardingDraft.value).toBe(null); // Draft cleared on success
+    expect(mockIsOnboardingDismissed.value).toBe(true);
   });
 
   it('applies the backdrop blur class to the overlay', () => {
@@ -198,12 +164,10 @@ describe('OnboardingModal.vue', () => {
 
   it('has a fixed height and correct footer icon', () => {
     const wrapper = mount(OnboardingModal);
-    // Use max-w-4xl to find the container, then check classes
     const modalContainer = wrapper.find('.max-w-4xl');
     expect(modalContainer.exists()).toBe(true);
     expect(modalContainer.classes()).toContain('h-[640px]');
     
-    // Check for the settings icon (no longer in a separate footer div)
     expect(wrapper.findComponent(Settings).exists()).toBe(true);
   });
 
@@ -214,22 +178,125 @@ describe('OnboardingModal.vue', () => {
 
   it('applies a lower opacity to the setup guide by default and increases it on hover', () => {
     const wrapper = mount(OnboardingModal);
-    // Find the container wrapping the ServerSetupGuide
-    const guideWrapper = wrapper.find('.opacity-70.hover\\:opacity-100');
+    // Use substring match for classes with colons or brackets to avoid selector errors
+    const guideWrapper = wrapper.find('div[class*="opacity-70"][class*="hover:opacity-100"]');
     
     expect(guideWrapper.exists()).toBe(true);
     expect(guideWrapper.classes()).toContain('opacity-70');
-    expect(guideWrapper.classes()).toContain('hover:opacity-100');
     expect(guideWrapper.classes()).toContain('transition-opacity');
   });
 
   it('has a distinct background for the help column to separate it from the main content', () => {
     const wrapper = mount(OnboardingModal);
-    // Find the right column by its width class
-    const helpColumn = wrapper.find('.lg\\:w-\\[38\\%\\]');
+    // Find the right column by its structural width class using substring match
+    const helpColumn = wrapper.find('div[class*="lg:w-[38%]"]');
     
     expect(helpColumn.exists()).toBe(true);
     expect(helpColumn.classes()).toContain('bg-gray-50/30');
     expect(helpColumn.classes()).toContain('border-gray-100');
+  });
+
+  it('restores draft state (including models) when reopened', async () => {
+    mockOnboardingDraft.value = { 
+      url: 'http://restored-url:11434', 
+      type: 'ollama',
+      models: ['model-a', 'model-b'],
+      selectedModel: 'model-b',
+    };
+
+    const wrapper = mount(OnboardingModal);
+    
+    // Should be in Step 2 directly because models exist
+    expect(wrapper.text()).toContain('Successfully Connected!');
+    expect(wrapper.text()).toContain('http://restored-url:11434');
+    
+    const select = wrapper.find('select');
+    expect((select.element as HTMLSelectElement).value).toBe('model-b');
+    expect(select.findAll('option').length).toBe(2);
+  });
+
+  it('shows error message when saving settings fails', async () => {
+    const wrapper = mount(OnboardingModal);
+    
+    // Connect successfully first to get to Step 2
+    listModelsMock.mockResolvedValue(['model-1']);
+    await wrapper.find('input').setValue('http://localhost:11434');
+    await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+
+    mockSave.mockRejectedValueOnce(new Error('Persistent Storage Error'));
+    
+    // Click "Get Started"
+    await wrapper.find('[data-testid="onboarding-finish-button"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Persistent Storage Error');
+  });
+
+  it('resets models and returns to Step 1 when Back button is clicked', async () => {
+    // Start at Step 2 by providing models in the draft
+    mockOnboardingDraft.value = { 
+      url: 'http://localhost:11434', 
+      type: 'ollama',
+      models: ['model-1'],
+      selectedModel: 'model-1',
+    };
+    const wrapper = mount(OnboardingModal);
+    
+    expect(wrapper.text()).toContain('Successfully Connected!');
+    
+    // Find and click Back button (the one with ArrowLeft)
+    const backBtn = wrapper.findAll('button').find(b => b.text().includes('Back'));
+    await backBtn?.trigger('click');
+    
+    expect(wrapper.text()).toContain('Setup Endpoint');
+    expect(wrapper.find('input').exists()).toBe(true);
+  });
+
+  it('cancels connection attempt when Cancel is clicked', async () => {
+    const wrapper = mount(OnboardingModal);
+    await wrapper.find('input').setValue('http://localhost:11434');
+    
+    // Mock a slow connection
+    listModelsMock.mockReturnValue(new Promise(() => {})); // Never resolves
+    
+    await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
+    expect(wrapper.text()).toContain('Connecting');
+    
+    const cancelBtn = wrapper.findAll('button').find(b => b.text().includes('Cancel'));
+    await cancelBtn?.trigger('click');
+    
+    expect(wrapper.text()).not.toContain('Connecting');
+    expect(wrapper.text()).toContain('Connection attempt cancelled');
+  });
+
+  it('preserves normalized URL and selected model through a Skip and Undo cycle', async () => {
+    listModelsMock.mockResolvedValue(['model-x', 'model-y']);
+    const wrapper = mount(OnboardingModal);
+    
+    // 1. Connect and go to Step 2
+    await wrapper.find('input').setValue('localhost:11434 '); // With trailing space
+    await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
+    await flushPromises();
+    
+    // 2. Select second model
+    const select = wrapper.find('select');
+    await select.setValue('model-y');
+    
+    // 3. Skip via X
+    await wrapper.find('[data-testid="onboarding-close-x"]').trigger('click');
+    expect(mockIsOnboardingDismissed.value).toBe(true);
+    
+    // 4. Trigger Undo from toast
+    const toastOptions = mockAddToast.mock.calls[0]![0];
+    toastOptions.onAction();
+    expect(mockIsOnboardingDismissed.value).toBe(false);
+    
+    // 5. Verify state is exactly as it was
+    await nextTick();
+    expect(wrapper.text()).toContain('Successfully Connected!');
+    expect(wrapper.text()).toContain('http://localhost:11434'); // Normalized URL shown in text
+    expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('model-y');
   });
 });

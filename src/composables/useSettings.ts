@@ -1,10 +1,11 @@
 import { ref } from 'vue';
-import { type Settings, DEFAULT_SETTINGS } from '../models/types';
+import { type Settings, type EndpointType, DEFAULT_SETTINGS } from '../models/types';
 import { storageService } from '../services/storage';
 
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS });
 const initialized = ref(false);
 const isOnboardingDismissed = ref(false);
+const onboardingDraft = ref<{ url: string, type: EndpointType, models: string[], selectedModel: string } | null>(null);
 
 export function useSettings() {
   const loading = ref(false);
@@ -43,6 +44,7 @@ export function useSettings() {
     loading,
     initialized,
     isOnboardingDismissed,
+    onboardingDraft,
     init,
     save,
   };

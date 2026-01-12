@@ -8,17 +8,17 @@ import { type EndpointType } from '../models/types';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import Logo from './Logo.vue';
 import ServerSetupGuide from './ServerSetupGuide.vue';
-import { Play, ArrowLeft, CheckCircle2, Activity, FastForward, Settings } from 'lucide-vue-next';
+import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X } from 'lucide-vue-next';
 
-const { settings, save, isOnboardingDismissed } = useSettings();
+const { settings, save, isOnboardingDismissed, onboardingDraft } = useSettings();
 const toast = useToast();
 
-const selectedType = ref<EndpointType>('openai');
-const customUrl = ref('');
+const selectedType = ref<EndpointType>(onboardingDraft.value?.type || 'openai');
+const customUrl = ref(onboardingDraft.value?.url || '');
 const isTesting = ref(false);
 const error = ref<string | null>(null);
-const availableModels = ref<string[]>([]);
-const selectedModel = ref('');
+const availableModels = ref<string[]>(onboardingDraft.value?.models || []);
+const selectedModel = ref(onboardingDraft.value?.selectedModel || '');
 let abortController: AbortController | null = null;
 
 const isValidUrl = computed(() => {
@@ -87,10 +87,29 @@ async function handleConnect() {
   }
 }
 
-async function handleFinish(isSkipping = false) {
+async function handleClose() {
+  onboardingDraft.value = { 
+    url: customUrl.value, 
+    type: selectedType.value,
+    models: availableModels.value,
+    selectedModel: selectedModel.value,
+  };
+  isOnboardingDismissed.value = true;
+  
+  toast.addToast({
+    message: 'Setup skipped. You can always configure it later in settings.',
+    actionLabel: 'Undo',
+    onAction: () => {
+      isOnboardingDismissed.value = false;
+    },
+    duration: 5000,
+  });
+}
+
+async function handleFinish() {
   const url = getNormalizedUrl();
   
-  if (!isSkipping && !url) {
+  if (!url) {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
   }
@@ -104,17 +123,8 @@ async function handleFinish(isSkipping = false) {
       titleModelId: selectedModel.value || undefined,
     });
 
-    if (isSkipping) {
-      isOnboardingDismissed.value = true;
-      toast.addToast({
-        message: 'Setup skipped. You can always configure it later in settings.',
-        actionLabel: 'Undo',
-        onAction: () => {
-          isOnboardingDismissed.value = false;
-        },
-        duration: 5000,
-      });
-    }
+    onboardingDraft.value = null;
+    isOnboardingDismissed.value = true;
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save settings.';
   }
@@ -123,7 +133,16 @@ async function handleFinish(isSkipping = false) {
 
 <template>
   <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4">
-    <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl h-[640px] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 transition-all">
+    <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl h-[640px] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 transition-all relative">
+      <!-- Close Button (Top Right) -->
+      <button 
+        @click="handleClose"
+        class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
+        data-testid="onboarding-close-x"
+      >
+        <X class="w-5 h-5" />
+      </button>
+
       <div class="px-10 py-4 flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
         <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <Logo class="w-8 h-8" />
@@ -132,7 +151,7 @@ async function handleFinish(isSkipping = false) {
           <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Setup Endpoint</h2>
           <p class="text-xs text-gray-600 dark:text-gray-400">Set up your local or remote LLM endpoint to start chatting.</p>
         </div>
-        <div class="w-32 flex-shrink-0">
+        <div class="w-32 flex-shrink-0 mr-8">
           <ThemeToggle />
         </div>
       </div>
@@ -200,6 +219,7 @@ async function handleFinish(isSkipping = false) {
                     @click="handleConnect"
                     :disabled="!isValidUrl || isTesting"
                     class="flex-1 py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2"
+                    data-testid="onboarding-connect-button"
                   >
                     <template v-if="isTesting">
                       <span class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
@@ -219,15 +239,6 @@ async function handleFinish(isSkipping = false) {
                   </button>
                 </div>
                 
-                <button
-                  @click="handleFinish(true)"
-                  class="w-full py-3.5 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
-                  data-testid="skip-onboarding"
-                >
-                  <FastForward class="w-4 h-4" />
-                  <span>Setup Later</span>
-                </button>
-
                 <p class="flex items-center justify-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
                   <Settings class="w-4 h-4 text-blue-500/60" />
                   You can change these settings later in the settings menu.
@@ -263,6 +274,10 @@ async function handleFinish(isSkipping = false) {
                   </select>
                 </div>
 
+                <p v-if="error" class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
+                  {{ error }}
+                </p>
+
                 <div class="flex gap-2">
                   <button
                     @click="availableModels = []"
@@ -272,8 +287,9 @@ async function handleFinish(isSkipping = false) {
                     <span>Back</span>
                   </button>
                   <button
-                    @click="handleFinish(false)"
+                    @click="handleFinish"
                     class="flex-1 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2"
+                    data-testid="onboarding-finish-button"
                   >
                     <Play class="w-5 h-5 fill-current" />
                     <span>Get Started</span>
