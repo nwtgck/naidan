@@ -26,6 +26,7 @@ const mockCurrentChat = ref({
   currentLeafId: undefined as string | undefined,
   debugEnabled: false, 
   originChatId: undefined as string | undefined,
+  overrideModelId: undefined as string | undefined,
 });
 const mockActiveMessages = ref<MessageNode[]>([]);
 
@@ -425,6 +426,7 @@ describe('ChatArea Export Functionality', () => {
       currentLeafId: undefined,
       debugEnabled: false, 
       originChatId: undefined,
+      overrideModelId: undefined,
     };
     document.body.innerHTML = '<div id="app"></div>';
         
@@ -471,6 +473,7 @@ describe('ChatArea Export Functionality', () => {
       currentLeafId: 'msg-2',
       debugEnabled: false,
       originChatId: undefined,
+      overrideModelId: undefined,
     };
     mockActiveMessages.value = [
       { id: 'msg-1', role: 'user', content: 'Hello AI', timestamp: Date.now(), replies: { items: [] } },
@@ -534,6 +537,7 @@ describe('ChatArea Export Functionality', () => {
       currentLeafId: 'msg-3',
       debugEnabled: false,
       originChatId: undefined,
+      overrideModelId: undefined,
     };
     mockActiveMessages.value = [
       { id: 'msg-3', role: 'user', content: 'Another message', timestamp: Date.now(), replies: { items: [] } },
@@ -566,6 +570,7 @@ describe('ChatArea Export Functionality', () => {
       currentLeafId: undefined,
       debugEnabled: false,
       originChatId: undefined,
+      overrideModelId: undefined,
     };
     mockActiveMessages.value = []; // Empty messages
 
@@ -621,6 +626,7 @@ describe('ChatArea Textarea Sizing', () => {
       currentLeafId: undefined,
       debugEnabled: false, 
       originChatId: undefined,
+      overrideModelId: undefined,
     };
     document.body.innerHTML = '<div id="app"></div>';
 

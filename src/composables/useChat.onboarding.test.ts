@@ -10,6 +10,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     deleteChat: vi.fn(),
+    listGroups: vi.fn().mockResolvedValue([]),
+    deleteGroup: vi.fn(),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
   },
 }));
@@ -104,5 +106,14 @@ describe('useChat Onboarding Trigger', () => {
     expect(mockIsOnboardingDismissed.value).toBe(false);
     // If it had used gpt-3.5-turbo, currentChat.value.root.items would have 1 item
     expect(currentChat.value.root.items).toHaveLength(0);
+  });
+
+  it('should reset isOnboardingDismissed to false when deleteAllChats is called', async () => {
+    const { deleteAllChats } = useChat();
+    mockIsOnboardingDismissed.value = true;
+
+    await deleteAllChats();
+
+    expect(mockIsOnboardingDismissed.value).toBe(false);
   });
 });
