@@ -99,4 +99,9 @@ describe('CustomDialog.vue', () => {
     await wrapper.setProps({ show: false });
     expect(wrapper.find('[data-testid="custom-dialog-overlay"]').exists()).toBe(false);
   });
+
+  it('applies the weakened backdrop blur class', () => {
+    const overlay = wrapper.find('[data-testid="custom-dialog-overlay"]');
+    expect(overlay.classes()).toContain('backdrop-blur-[2px]');
+  });
 });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useChat } from './composables/useChat';
@@ -35,7 +35,21 @@ const {
 
 onMounted(async () => {
   await settingsStore.init();
+  await chatStore.loadChats();
 });
+
+// Automatically create a new chat if the list becomes empty while on the landing page
+watch(
+  [() => chatStore.chats.value.length, () => router.currentRoute.value.path, () => settingsStore.initialized.value],
+  async ([len, path, initialized]) => {
+    if (initialized && len === 0 && path === '/') {
+      await chatStore.createNewChat();
+      if (chatStore.currentChat.value) {
+        router.push(`/chat/${chatStore.currentChat.value.id}`);
+      }
+    }
+  },
+);
 
 // ChatGPT-style shortcut for New Chat: Ctrl+Shift+O (Cmd+Shift+O on Mac)
 onKeyStroke(['o', 'O'], async (e) => {

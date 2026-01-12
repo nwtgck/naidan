@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
 import { useTheme } from '../composables/useTheme';
+import { useConfirm } from '../composables/useConfirm';
 import Logo from './Logo.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
@@ -18,6 +19,7 @@ const {
 } = chatStore;
 
 const { themeMode, setTheme } = useTheme();
+const { showConfirm } = useConfirm();
 const router = useRouter();
 
 const sidebarItemsLocal = ref<SidebarItem[]>([]);
@@ -135,7 +137,14 @@ async function saveGroupRename() {
 }
 
 async function handleDeleteAll() {
-  if (confirm('Are you absolutely sure you want to delete ALL chats and groups?')) {
+  const confirmed = await showConfirm({
+    title: 'Clear History',
+    message: 'Are you absolutely sure you want to delete ALL chats and groups? This action cannot be undone.',
+    confirmButtonText: 'Clear All',
+    confirmButtonVariant: 'danger',
+  });
+
+  if (confirmed) {
     await chatStore.deleteAllChats();
     router.push('/');
   }

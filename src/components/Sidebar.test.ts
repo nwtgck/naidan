@@ -17,6 +17,10 @@ const mockSidebarItems = computed<SidebarItem[]>(() => {
   return items;
 });
 
+const mockLoadChats = vi.fn();
+const mockDeleteAllChats = vi.fn();
+const mockShowConfirm = vi.fn();
+
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: ref(null),
@@ -24,9 +28,16 @@ vi.mock('../composables/useChat', () => ({
     groups: mockGroups,
     chats: mockChats,
     sidebarItems: mockSidebarItems,
-    loadChats: vi.fn(),
+    loadChats: mockLoadChats,
     toggleGroupCollapse: vi.fn(),
     persistSidebarStructure: vi.fn(),
+    deleteAllChats: mockDeleteAllChats,
+  }),
+}));
+
+vi.mock('../composables/useConfirm', () => ({
+  useConfirm: () => ({
+    showConfirm: mockShowConfirm,
   }),
 }));
 
@@ -152,6 +163,69 @@ describe('Sidebar Logic Stability', () => {
     expect(chatItems.length).toBeGreaterThan(0);
     chatItems.forEach(item => {
       expect(item.classes()).toContain('handle');
+    });
+  });
+
+  describe('Clear All History', () => {
+    it('should call showConfirm when Clear All History is clicked', async () => {
+      const wrapper = mount(Sidebar, {
+        global: {
+          plugins: [router],
+          stubs: {
+            'lucide-vue-next': true,
+            'Logo': true,
+          },
+        },
+      });
+
+      const clearButton = wrapper.find('[data-testid="clear-all-button"]');
+      expect(clearButton.exists()).toBe(true);
+
+      mockShowConfirm.mockResolvedValueOnce(false);
+      await clearButton.trigger('click');
+
+      expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Clear History',
+        confirmButtonVariant: 'danger',
+      }));
+    });
+
+    it('should call deleteAllChats and navigate to root when confirmed', async () => {
+      const pushSpy = vi.spyOn(router, 'push');
+      const wrapper = mount(Sidebar, {
+        global: {
+          plugins: [router],
+          stubs: {
+            'lucide-vue-next': true,
+            'Logo': true,
+          },
+        },
+      });
+
+      mockShowConfirm.mockResolvedValueOnce(true);
+      const clearButton = wrapper.find('[data-testid="clear-all-button"]');
+      await clearButton.trigger('click');
+
+      expect(mockDeleteAllChats).toHaveBeenCalled();
+      expect(pushSpy).toHaveBeenCalledWith('/');
+    });
+
+    it('should NOT call deleteAllChats when cancelled', async () => {
+      const wrapper = mount(Sidebar, {
+        global: {
+          plugins: [router],
+          stubs: {
+            'lucide-vue-next': true,
+            'Logo': true,
+          },
+        },
+      });
+
+      mockShowConfirm.mockResolvedValueOnce(false);
+      const clearButton = wrapper.find('[data-testid="clear-all-button"]');
+      await clearButton.trigger('click');
+
+      expect(mockDeleteAllChats).not.toHaveBeenCalled();
     });
   });
 });

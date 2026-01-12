@@ -957,6 +957,60 @@ describe('ChatArea Textarea Sizing', () => {
   });
 });
 
+describe('ChatArea Welcome Screen & Suggestions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockActiveMessages.value = [];
+    document.body.innerHTML = '<div id="app"></div>';
+  });
+
+  it('should show the welcome screen when there are no messages', async () => {
+    const wrapper = mount(ChatArea, {
+      global: { 
+        plugins: [router],
+        stubs: { WelcomeScreen: { template: '<div data-testid="welcome-screen-stub">Welcome</div>' } },
+      },
+    });
+    
+    expect(wrapper.find('[data-testid="welcome-screen-stub"]').exists()).toBe(true);
+  });
+
+  it('should fill the input and focus when WelcomeScreen emits select-suggestion', async () => {
+    const wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { 
+        plugins: [router],
+        stubs: { WelcomeScreen: true },
+      },
+    });
+    
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    const focusSpy = vi.spyOn(textarea.element, 'focus');
+
+    const welcomeScreen = wrapper.findComponent({ name: 'WelcomeScreen' });
+    await welcomeScreen.vm.$emit('select-suggestion', 'Test Suggestion');
+    
+    await nextTick();
+    await nextTick();
+    
+    expect(textarea.element.value).toBe('Test Suggestion');
+    expect(focusSpy).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('should hide the welcome screen when messages are present', async () => {
+    mockActiveMessages.value = [{ id: '1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } }];
+    const wrapper = mount(ChatArea, {
+      global: { 
+        plugins: [router],
+        stubs: { WelcomeScreen: { template: '<div data-testid="welcome-screen-stub">Welcome</div>' } },
+      },
+    });
+    
+    expect(wrapper.find('[data-testid="welcome-screen-stub"]').exists()).toBe(false);
+  });
+});
+
 describe('ChatArea Model Selection', () => {
   beforeEach(() => {
     vi.clearAllMocks();

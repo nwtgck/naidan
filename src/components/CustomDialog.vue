@@ -2,7 +2,7 @@
   <div
     v-if="_props.show"
     data-testid="custom-dialog-overlay"
-    class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm"
+    class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/30 backdrop-blur-[2px]"
     @keydown.esc="cancel"
     tabindex="0"
   >

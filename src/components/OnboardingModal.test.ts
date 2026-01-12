@@ -114,4 +114,10 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.text()).toContain('Successfully Connected!');
     expect(wrapper.find('select').exists()).toBe(true);
   });
+
+  it('applies the weakened backdrop blur class to the overlay', () => {
+    const wrapper = mount(OnboardingModal);
+    const overlay = wrapper.find('.backdrop-blur-\\[2px\\]');
+    expect(overlay.exists()).toBe(true);
+  });
 });

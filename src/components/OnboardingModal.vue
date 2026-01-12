@@ -112,7 +112,7 @@ async function handleFinish() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur p-4">
+  <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4">
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 transition-all">
       <div class="p-8 text-center border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
         <Logo class="w-16 h-16 mx-auto mb-4" />

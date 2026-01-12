@@ -152,6 +152,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(checkBtn.attributes('disabled')).toBeDefined();
     });
 
+    it('applies the weakened backdrop blur class to the overlay', async () => {
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs },
+      });
+      await flushPromises();
+      
+      const overlay = wrapper.find('.backdrop-blur-\\[2px\\]');
+      expect(overlay.exists()).toBe(true);
+    });
+
     it('reserves space for error messages to prevent layout shift', async () => {
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },

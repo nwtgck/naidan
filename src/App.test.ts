@@ -2,14 +2,26 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
 import App from './App.vue';
-import { useChat } from './composables/useChat';
+import type { Chat } from './models/types';
+
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm';
 import { useRouter } from 'vue-router';
-import type { Chat } from './models/types';
+
+
+// Define mock refs in module scope so they can be shared
+const mockCreateNewChat = vi.fn();
+const mockLoadChats = vi.fn();
+const mockCurrentChat = ref<Chat | null>(null);
+const mockChats = ref<Chat[]>([]);
 
 vi.mock('./composables/useChat', () => ({
-  useChat: vi.fn(),
+  useChat: () => ({
+    createNewChat: mockCreateNewChat,
+    loadChats: mockLoadChats,
+    currentChat: mockCurrentChat,
+    chats: mockChats,
+  }),
 }));
 
 vi.mock('./composables/useSettings', () => ({
@@ -89,25 +101,25 @@ vi.mock('./components/ToastContainer.vue', () => ({
 
 describe('App', () => {
   const mockInit = vi.fn();
-  const mockCreateNewChat = vi.fn();
+  const mockRouterPush = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useChat as unknown as Mock).mockReturnValue({
-      createNewChat: mockCreateNewChat,
-      currentChat: ref(null),
-    });
+    mockCurrentChat.value = null;
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+
     (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
       initialized: ref(true),
       settings: ref({ endpointUrl: 'http://localhost:11434' }),
     });
     (useRouter as unknown as Mock).mockReturnValue({
-      push: vi.fn(),
+      push: mockRouterPush,
+      currentRoute: ref({ path: '/' }),
     });
   });
 
-  it('calls settings.init on mount', () => {
+  it('calls settings.init on mount', async () => {
     mount(App, {
       global: {
         stubs: {
@@ -116,10 +128,11 @@ describe('App', () => {
         },
       },
     });
+    await nextTick();
     expect(mockInit).toHaveBeenCalled();
   });
 
-  it('renders core components', () => {
+  it('renders core components', async () => {
     const wrapper = mount(App, {
       global: {
         stubs: {
@@ -128,9 +141,91 @@ describe('App', () => {
         },
       },
     });
+    await nextTick();
     expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="debug-panel"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="toast-container"]').exists()).toBe(true);
+    expect(mockLoadChats).toHaveBeenCalled();
+  });
+
+  it('automatically creates a new chat if none exist and on root path', async () => {
+    mockChats.value = [];
+    mockCreateNewChat.mockImplementation(async () => {
+      mockCurrentChat.value = { id: 'auto-chat-id' } as unknown as Chat;
+    });
+
+    mount(App, {
+      global: {
+        stubs: {
+          'router-view': true,
+          'transition': true,
+        },
+      },
+    });
+
+    await nextTick();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalled();
+    expect(mockRouterPush).toHaveBeenCalledWith('/chat/auto-chat-id');
+  });
+
+  it('automatically creates a new chat if history is cleared (chats length becomes 0)', async () => {
+    mockChats.value = [{ id: 'existing-chat' } as unknown as Chat];
+    mockCreateNewChat.mockImplementation(async () => {
+      mockCurrentChat.value = { id: 'post-clear-chat-id' } as unknown as Chat;
+    });
+
+    mount(App, {
+      global: {
+        stubs: {
+          'router-view': true,
+          'transition': true,
+        },
+      },
+    });
+
+    await nextTick();
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
+
+    // Simulate clearing history
+    mockChats.value = [];
+    
+    await nextTick();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalled();
+    expect(mockRouterPush).toHaveBeenCalledWith('/chat/post-clear-chat-id');
+  });
+
+  it('automatically creates a new chat when navigating back to root from another path if history is empty', async () => {
+    mockChats.value = [];
+    const currentRoute = ref({ path: '/settings' });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
+    });
+
+    mount(App, {
+      global: {
+        stubs: { 'router-view': true, 'transition': true },
+      },
+    });
+
+    await nextTick();
+    // Clear calls from immediate watch execution on mount
+    mockCreateNewChat.mockClear();
+
+    // Navigate to root
+    currentRoute.value.path = '/';
+    
+    await nextTick();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalled();
   });
 
   it('opens SettingsModal when Sidebar emits open-settings', async () => {
@@ -142,6 +237,7 @@ describe('App', () => {
         },
       },
     });
+    await nextTick();
     
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
     
@@ -165,23 +261,16 @@ describe('App', () => {
         },
       },
     });
+    await nextTick();
     
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
   });
 
   it('triggers createNewChat and navigates on Ctrl+Shift+O', async () => {
-    const mockRouterPush = vi.fn();
-    const currentChat = ref<Chat | null>(null);
-    const localMockCreateNewChat = vi.fn(async () => {
-      currentChat.value = { id: 'new-chat-id' } as Chat;
+    mockCreateNewChat.mockImplementation(async () => {
+      mockCurrentChat.value = { id: 'new-chat-id' } as unknown as Chat;
     });
     
-    (useRouter as unknown as Mock).mockReturnValue({ push: mockRouterPush });
-    (useChat as unknown as Mock).mockReturnValue({
-      createNewChat: localMockCreateNewChat,
-      currentChat,
-    });
-
     mount(App, {
       global: {
         stubs: {
@@ -190,6 +279,7 @@ describe('App', () => {
         },
       },
     });
+    await nextTick();
 
     // Simulate Ctrl+Shift+O
     const event = new KeyboardEvent('keydown', {
@@ -203,23 +293,15 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(localMockCreateNewChat).toHaveBeenCalled();
+    expect(mockCreateNewChat).toHaveBeenCalled();
     expect(mockRouterPush).toHaveBeenCalledWith('/chat/new-chat-id');
   });
 
   it('triggers createNewChat and navigates on Meta+Shift+O (Mac)', async () => {
-    const mockRouterPush = vi.fn();
-    const currentChat = ref<Chat | null>(null);
-    const localMockCreateNewChat = vi.fn(async () => {
-      currentChat.value = { id: 'mac-chat-id' } as Chat;
+    mockCreateNewChat.mockImplementation(async () => {
+      mockCurrentChat.value = { id: 'mac-chat-id' } as unknown as Chat;
     });
     
-    (useRouter as unknown as Mock).mockReturnValue({ push: mockRouterPush });
-    (useChat as unknown as Mock).mockReturnValue({
-      createNewChat: localMockCreateNewChat,
-      currentChat,
-    });
-
     mount(App, {
       global: {
         stubs: {
@@ -228,6 +310,7 @@ describe('App', () => {
         },
       },
     });
+    await nextTick();
 
     // Simulate Meta+Shift+O (Cmd on Mac)
     const event = new KeyboardEvent('keydown', {
@@ -241,7 +324,7 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(localMockCreateNewChat).toHaveBeenCalled();
+    expect(mockCreateNewChat).toHaveBeenCalled();
     expect(mockRouterPush).toHaveBeenCalledWith('/chat/mac-chat-id');
   });
 

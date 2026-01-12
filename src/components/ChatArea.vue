@@ -5,7 +5,8 @@ import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
-import { Send, Bug, Settings2, Loader2, ArrowLeft, Square, Download, Maximize2, Minimize2, MoreVertical } from 'lucide-vue-next';
+import WelcomeScreen from './WelcomeScreen.vue';
+
 
 const chatStore = useChat();
 const {
@@ -28,6 +29,14 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 const showChatSettings = ref(false);
 const showMoreMenu = ref(false);
+
+function applySuggestion(text: string) {
+  input.value = text;
+  nextTick(() => {
+    adjustTextareaHeight();
+    focusInput();
+  });
+}
 
 function adjustTextareaHeight() {
   if (textareaRef.value) {
@@ -309,9 +318,10 @@ onUnmounted(() => {
               class="animate-in fade-in duration-300"
             />
           </div>
-          <div v-else class="p-8 text-center text-gray-500 dark:text-gray-400">
-            Start a conversation...
-          </div>
+          <WelcomeScreen 
+            v-else 
+            @select-suggestion="applySuggestion" 
+          />
         </template>
       </div>
 
@@ -418,7 +428,14 @@ onUnmounted(() => {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@keyframes zoom-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
 .fade-in {
   animation-name: fade-in;
+}
+.zoom-in {
+  animation-name: zoom-in;
 }
 </style>
