@@ -21,11 +21,12 @@ import {
   buildSidebarItemsFromDtos,
 } from '../../models/mappers';
 import { IStorageProvider } from './interface';
-import { STORAGE_KEY_PREFIX as KEY_PREFIX } from '../../models/constants';
+import { STORAGE_KEY_PREFIX } from '../../models/constants';
 
-const KEY_INDEX = `${KEY_PREFIX}index`;
-const KEY_GROUPS = `${KEY_PREFIX}groups`;
-const KEY_SETTINGS = `${KEY_PREFIX}settings`;
+const LSP_STORAGE_PREFIX = `${STORAGE_KEY_PREFIX}lsp:`;
+const KEY_INDEX = `${LSP_STORAGE_PREFIX}index`;
+const KEY_GROUPS = `${LSP_STORAGE_PREFIX}groups`;
+const KEY_SETTINGS = `${LSP_STORAGE_PREFIX}settings`;
 
 export class LocalStorageProvider extends IStorageProvider {
   async init(): Promise<void> {}
@@ -53,7 +54,7 @@ export class LocalStorageProvider extends IStorageProvider {
   async saveChat(chat: Chat, index: number): Promise<void> {
     const dto = mapChatToDto(chat, index);
     const validated = DtoChatSchema.parse(dto);
-    localStorage.setItem(`${KEY_PREFIX}chat:${chat.id}`, JSON.stringify(validated));
+    localStorage.setItem(`${LSP_STORAGE_PREFIX}chat:${chat.id}`, JSON.stringify(validated));
     
     const indexList = await this.listChatsRaw();
     const existingIdx = indexList.findIndex(c => c.id === chat.id);
@@ -64,7 +65,7 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async loadChat(id: string): Promise<Chat | null> {
-    const raw = localStorage.getItem(`${KEY_PREFIX}chat:${id}`);
+    const raw = localStorage.getItem(`${LSP_STORAGE_PREFIX}chat:${id}`);
     if (!raw) return null;
     try {
       const dto = DtoChatSchema.parse(JSON.parse(raw));
@@ -73,7 +74,7 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async deleteChat(id: string): Promise<void> {
-    localStorage.removeItem(`${KEY_PREFIX}chat:${id}`);
+    localStorage.removeItem(`${LSP_STORAGE_PREFIX}chat:${id}`);
     const indexList = (await this.listChatsRaw()).filter(c => c.id !== id);
     localStorage.setItem(KEY_INDEX, JSON.stringify(indexList));
   }
@@ -142,7 +143,7 @@ export class LocalStorageProvider extends IStorageProvider {
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key?.startsWith(KEY_PREFIX)) {
+      if (key?.startsWith(LSP_STORAGE_PREFIX)) {
         keysToRemove.push(key);
       }
     }
@@ -210,7 +211,7 @@ export class LocalStorageProvider extends IStorageProvider {
       case 'chat': {
         // Similar raw write strategy for chats
         const validated = DtoChatSchema.parse(chunk.data);
-        localStorage.setItem(`${KEY_PREFIX}chat:${validated.id}`, JSON.stringify(validated));
+        localStorage.setItem(`${LSP_STORAGE_PREFIX}chat:${validated.id}`, JSON.stringify(validated));
           
         const indexList = await this.listChatsRaw();
         indexList.push(validated);

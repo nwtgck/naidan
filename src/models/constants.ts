@@ -8,5 +8,5 @@ export const ENDPOINT_PRESETS = [
   // { name: 'Mistral', type: 'openai', url: 'https://api.mistral.ai/v1' },
 ] as const;
 
-export const STORAGE_KEY_PREFIX = 'lm-web-ui:';
+export const STORAGE_KEY_PREFIX = 'lwu:';
 export const STORAGE_BOOTSTRAP_KEY = `${STORAGE_KEY_PREFIX}storage-type`;
