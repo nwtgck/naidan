@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import { Loader2 } from 'lucide-vue-next';
@@ -12,7 +13,13 @@ import type { ProviderProfile } from '../models/types';
 // --- Mocks ---
 
 vi.mock('../composables/useSettings', () => ({
-  useSettings: vi.fn(),
+  useSettings: vi.fn(() => ({
+    settings: { value: { storageType: 'local', providerProfiles: [] } },
+    availableModels: { value: [] },
+    isFetchingModels: { value: false },
+    save: vi.fn(),
+    fetchModels: vi.fn(),
+  })),
 }));
 
 vi.mock('../composables/useChat', () => ({
@@ -105,7 +112,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     
     (useSettings as unknown as Mock).mockReturnValue({
       settings: { value: JSON.parse(JSON.stringify(mockSettings)) },
+      availableModels: { value: [] },
+      isFetchingModels: { value: false },
       save: mockSave,
+      fetchModels: vi.fn(),
     });
 
     (useChat as unknown as Mock).mockReturnValue({
@@ -137,14 +147,22 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     it('maintains UI stability during model fetching', async () => {
+      const isFetching = ref(false);
+      (useSettings as unknown as Mock).mockReturnValue({
+        settings: { value: JSON.parse(JSON.stringify(mockSettings)) },
+        availableModels: { value: [] },
+        isFetchingModels: isFetching,
+        save: mockSave,
+        fetchModels: vi.fn(),
+      });
+
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
       await flushPromises();
 
-      const vm = wrapper.vm as unknown as { fetchingModels: boolean };
-      vm.fetchingModels = true;
+      isFetching.value = true;
       await flushPromises();
 
       const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
@@ -556,7 +574,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       };
       (useSettings as unknown as Mock).mockReturnValue({
         settings: { value: customSettings },
+        availableModels: { value: [] },
+        isFetchingModels: { value: false },
         save: mockSave,
+        fetchModels: vi.fn(),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -608,7 +629,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const mockProviderProfile = { id: 'p1', name: 'Original Name', endpointType: 'openai' as const };
       (useSettings as unknown as Mock).mockReturnValue({
         settings: { value: { ...mockSettings, providerProfiles: [mockProviderProfile] } },
+        availableModels: { value: [] },
+        isFetchingModels: { value: false },
         save: mockSave,
+        fetchModels: vi.fn(),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -641,7 +665,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // We need useSettings to return the profile in the initial state so form.value has it
       (useSettings as unknown as Mock).mockReturnValue({
         settings: { value: { ...mockSettings, providerProfiles: [mockProviderProfile] } },
+        availableModels: { value: [] },
+        isFetchingModels: { value: false },
         save: mockSave,
+        fetchModels: vi.fn(),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -671,7 +698,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('shows empty state when no profiles exist', async () => {
       (useSettings as unknown as Mock).mockReturnValue({
         settings: { value: { ...mockSettings, providerProfiles: [] } },
+        availableModels: { value: [] },
+        isFetchingModels: { value: false },
         save: mockSave,
+        fetchModels: vi.fn(),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });

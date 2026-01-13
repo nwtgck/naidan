@@ -3,6 +3,7 @@ import { onMounted, ref, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
+import { useSettings } from '../composables/useSettings';
 import Logo from './Logo.vue';
 import ThemeToggle from './ThemeToggle.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
@@ -10,12 +11,15 @@ import {
   Plus, Trash2, Settings as SettingsIcon, 
   Pencil, Folder, FolderPlus, 
   ChevronDown, ChevronRight, Check, X,
+  Bot, Loader2,
 } from 'lucide-vue-next';
 
 const chatStore = useChat();
 const { 
   currentChat, streaming, groups, chats,
 } = chatStore;
+
+const { settings, availableModels, isFetchingModels, save: saveSettings } = useSettings();
 
 const router = useRouter();
 
@@ -162,6 +166,15 @@ async function saveGroupRename() {
   }
   editingGroupId.value = null;
 }
+
+async function handleGlobalModelChange(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  const newModelId = target.value;
+  await saveSettings({
+    ...settings.value,
+    defaultModelId: newModelId,
+  });
+}
 </script>
 
 <template>
@@ -202,7 +215,7 @@ async function saveGroupRename() {
     <!-- Navigation List -->
     <div class="flex-1 overflow-y-auto px-3 py-2">
       <Transition name="group-new">
-        <div v-if="isCreatingGroup" :class="{ 'skip-leave': skipLeaveAnimation }" class="flex items-center justify-between p-2 rounded-xl bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 mb-1">
+        <div v-if="isCreatingGroup" :class="{ 'skip-leave': skipLeaveAnimation }" class="flex items-center justify-between p-2 rounded-xl bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 mb-1" data-testid="group-creation-container">
           <div class="flex items-center gap-2 overflow-hidden flex-1">
             <Folder class="w-4 h-4 text-blue-500/60 shrink-0" />
             <input 
@@ -350,7 +363,32 @@ async function saveGroupRename() {
     </div>
 
     <!-- Footer -->
-    <div class="p-3 border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20">
+    <div class="p-3 border-t border-gray-100 dark:border-gray-800 space-y-4 bg-gray-50/30 dark:bg-black/20">
+      <!-- Global Model Selector -->
+      <div v-if="settings.endpointUrl" class="px-1 space-y-2">
+        <div class="flex items-center justify-between px-1">
+          <label class="flex items-center gap-2 text-[11px] font-semibold text-gray-400 dark:text-gray-500">
+            <Bot class="w-3 h-3" />
+            Default model
+          </label>
+          <Loader2 v-if="isFetchingModels" class="w-3 h-3 animate-spin text-gray-400" />
+        </div>
+        <div class="relative group/model">
+          <select 
+            :value="settings.defaultModelId"
+            @change="handleGlobalModelChange"
+            class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 outline-none focus:ring-4 focus:ring-blue-500/10 appearance-none cursor-pointer hover:border-gray-300 dark:hover:border-gray-600 transition-all shadow-sm pr-8"
+            data-testid="global-model-select"
+          >
+            <option v-if="availableModels.length === 0" disabled value="">No models found</option>
+            <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+          </select>
+          <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover/model:text-gray-600 dark:group-hover/model:text-gray-300 transition-colors">
+            <ChevronDown class="w-3.5 h-3.5" />
+          </div>
+        </div>
+      </div>
+
       <div class="flex items-center gap-2">
         <button @click="$emit('open-settings')" class="flex-1 flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white px-2 py-3 rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm">
           <SettingsIcon class="w-3.5 h-3.5" />

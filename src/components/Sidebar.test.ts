@@ -2,26 +2,31 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '../models/types';
 
-// Use refs that we can control
+// --- Mocks Data ---
+// We define these in a way that vi.mock can access them safely.
+// Note: Vitest hoists vi.mock, so we use variables that are either 
+// hoisted or defined inside the factory.
+
 const mockGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
-
-// buildSidebarItems logic simplified for testing
-const mockSidebarItems = computed<SidebarItem[]>(() => {
-  const items: SidebarItem[] = [];
-  mockGroups.value.forEach(g => items.push({ id: `group:${g.id}`, type: 'group', group: g }));
-  mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
-  return items;
+const mockSettings = reactive({
+  endpointUrl: 'http://localhost:11434',
+  defaultModelId: 'llama3',
 });
+const mockAvailableModels = ref(['llama3', 'mistral', 'phi3']);
+const mockIsFetchingModels = ref(false);
 
 const mockLoadChats = vi.fn();
 const mockDeleteAllChats = vi.fn();
 const mockShowConfirm = vi.fn();
 const mockCreateGroup = vi.fn();
 const mockRenameGroup = vi.fn();
+const mockSaveSettings = vi.fn();
+
+// --- Vitest Mocks ---
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -29,13 +34,27 @@ vi.mock('../composables/useChat', () => ({
     streaming: ref(false),
     groups: mockGroups,
     chats: mockChats,
-    sidebarItems: mockSidebarItems,
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockGroups.value.forEach(g => items.push({ id: `group:${g.id}`, type: 'group', group: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      return items;
+    }),
     loadChats: mockLoadChats,
     createGroup: mockCreateGroup,
     renameGroup: mockRenameGroup,
     toggleGroupCollapse: vi.fn(),
     persistSidebarStructure: vi.fn(),
     deleteAllChats: mockDeleteAllChats,
+  }),
+}));
+
+vi.mock('../composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: ref(mockSettings),
+    availableModels: mockAvailableModels,
+    isFetchingModels: mockIsFetchingModels,
+    save: mockSaveSettings,
   }),
 }));
 
@@ -85,20 +104,88 @@ describe('Sidebar Logic Stability', () => {
     routes: [{ path: '/', component: { template: 'div' } }],
   });
 
+  const globalStubs = {
+    'lucide-vue-next': true,
+    'Logo': true,
+    'ThemeToggle': true,
+  };
+
   beforeEach(() => {
     mockGroups.value = [];
     mockChats.value = [{ id: '1', title: 'Initial Chat', updatedAt: 0 }];
+    mockSettings.endpointUrl = 'http://localhost:11434';
+    mockSettings.defaultModelId = 'llama3';
+    mockAvailableModels.value = ['llama3', 'mistral', 'phi3'];
     vi.clearAllMocks();
+  });
+
+  describe('Default Model Selector', () => {
+    it('renders the model selector when endpoint is configured', async () => {
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      const selector = wrapper.find('[data-testid="global-model-select"]');
+      expect(selector.exists()).toBe(true);
+      expect(wrapper.text()).toContain('Default model');
+    });
+
+    it('does not render the selector if endpointUrl is missing', async () => {
+      mockSettings.endpointUrl = '';
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      const selector = wrapper.find('[data-testid="global-model-select"]');
+      expect(selector.exists()).toBe(false);
+    });
+
+    it('displays the list of available models', async () => {
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      const options = wrapper.findAll('option');
+      expect(options).toHaveLength(3);
+      expect(options[0]!.text()).toBe('llama3');
+      expect(options[1]!.text()).toBe('mistral');
+      expect(options[2]!.text()).toBe('phi3');
+    });
+
+    it('calls saveSettings when a new model is selected', async () => {
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      const selector = wrapper.find('[data-testid="global-model-select"]');
+      await selector.setValue('mistral');
+      await selector.trigger('change');
+
+      expect(mockSaveSettings).toHaveBeenCalledWith(expect.objectContaining({
+        defaultModelId: 'mistral',
+      }));
+    });
+
+    it('shows a loading spinner when models are being fetched', async () => {
+      mockIsFetchingModels.value = true;
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      expect(wrapper.find('.animate-spin').exists()).toBe(true);
+    });
   });
 
   it('should not update sidebarItemsLocal while dragging to prevent SortableJS crashes', async () => {
     const wrapper = mount(Sidebar, {
       global: {
         plugins: [router],
-        stubs: {
-          'lucide-vue-next': true,
-          'Logo': true,
-        },
+        stubs: globalStubs,
       },
     });
 
@@ -144,10 +231,7 @@ describe('Sidebar Logic Stability', () => {
     const wrapper = mount(Sidebar, {
       global: {
         plugins: [router],
-        stubs: {
-          'lucide-vue-next': true,
-          'Logo': true,
-        },
+        stubs: globalStubs,
       },
     });
 
@@ -157,9 +241,6 @@ describe('Sidebar Logic Stability', () => {
 
     // Verify group has handle
     const groupItem = wrapper.find('[data-testid="group-item"]');
-    if (!groupItem.exists()) {
-      console.log('DOM:', wrapper.html());
-    }
     expect(groupItem.classes()).toContain('handle');
 
     // Verify chat has handle
@@ -265,7 +346,7 @@ describe('Sidebar Logic Stability', () => {
 
       await wrapper.find('[data-testid="create-group-button"]').trigger('click');
       const input = wrapper.find('[data-testid="group-name-input"]');
-      const container = wrapper.find('.bg-blue-50\\/30');
+      const container = wrapper.find('[data-testid="group-creation-container"]');
 
       await input.setValue('New Group');
       await input.trigger('keyup.enter');
@@ -282,7 +363,7 @@ describe('Sidebar Logic Stability', () => {
 
       await wrapper.find('[data-testid="create-group-button"]').trigger('click');
       const input = wrapper.find('[data-testid="group-name-input"]');
-      const container = wrapper.find('.bg-blue-50\\/30');
+      const container = wrapper.find('[data-testid="group-creation-container"]');
       
       await input.trigger('keyup.esc');
       expect(container.classes()).not.toContain('skip-leave');

@@ -283,7 +283,7 @@ onUnmounted(() => {
             </button>
           </template>
           <template v-else>
-            <h2 class="text-xl font-bold text-gray-400 dark:text-gray-600 tracking-tight">Vibe Local AI</h2>
+            <!-- Header empty when no chat is selected -->
           </template>
         </div>
       </div>

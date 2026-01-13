@@ -10,6 +10,9 @@ vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
     settings: { value: { storageType: 'local', providerProfiles: [] } },
     save: vi.fn(),
+    availableModels: { value: [] },
+    isFetchingModels: { value: false },
+    fetchModels: vi.fn(),
   })),
 }));
 vi.mock('../composables/useSampleChat', () => ({
@@ -98,7 +101,10 @@ describe('SettingsModal OPFS and Error Handling', () => {
       initialized: { value: true } as any,
       isOnboardingDismissed: { value: true } as any,
       onboardingDraft: { value: null } as any,
+      availableModels: { value: [] } as any,
+      isFetchingModels: { value: false } as any,
       init: vi.fn(),
+      fetchModels: vi.fn(),
     });
 
     vi.mocked(useConfirm).mockReturnValue({

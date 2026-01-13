@@ -32,7 +32,7 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>();
 
-const { settings, save } = useSettings();
+const { settings, save, availableModels, isFetchingModels, fetchModels: fetchModelsGlobal } = useSettings();
 const chatStore = useChat();
 const { createSampleChat } = useSampleChat();
 const { addToast } = useToast();
@@ -42,8 +42,7 @@ const router = useRouter();
 
 const form = ref({ ...settings.value });
 const initialFormState = ref('');
-const availableModels = ref<string[]>([]);
-const fetchingModels = ref(false);
+const fetchingModels = computed(() => isFetchingModels.value);
 const connectionSuccess = ref(false);
 const error = ref<string | null>(null);
 const saveSuccess = ref(false);
@@ -116,29 +115,29 @@ async function handleCancel() { // Make function async
 
 async function fetchModels() {
   if (!form.value.endpointUrl) {
-    availableModels.value = [];
     return;
   }
-  fetchingModels.value = true;
+  
   error.value = null;
   try {
     const provider = form.value.endpointType === 'ollama' 
       ? new OllamaProvider() 
       : new OpenAIProvider();
     
-    const models = await provider.listModels(form.value.endpointUrl);
-    availableModels.value = models;
+    await provider.listModels(form.value.endpointUrl);
     error.value = null;
     connectionSuccess.value = true;
     setTimeout(() => {
       connectionSuccess.value = false;
     }, 3000);
+    
+    // Also trigger global fetch if it's the current settings
+    if (!hasChanges.value) {
+      await fetchModelsGlobal();
+    }
   } catch (err) {
     console.error(err);
     error.value = 'Connection failed. Check URL or provider.';
-    availableModels.value = [];
-  } finally {
-    fetchingModels.value = false;
   }
 }
 

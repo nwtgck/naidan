@@ -2,11 +2,14 @@ import { ref } from 'vue';
 import { type Settings, type EndpointType, DEFAULT_SETTINGS } from '../models/types';
 import { storageService } from '../services/storage';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
+import { OpenAIProvider, OllamaProvider } from '../services/llm';
 
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS });
 const initialized = ref(false);
 const isOnboardingDismissed = ref(false);
 const onboardingDraft = ref<{ url: string, type: EndpointType, models: string[], selectedModel: string } | null>(null);
+const availableModels = ref<string[]>([]);
+const isFetchingModels = ref(false);
 
 export function useSettings() {
   const loading = ref(false);
@@ -28,6 +31,8 @@ export function useSettings() {
         settings.value = s;
         if (s.endpointUrl) {
           isOnboardingDismissed.value = true;
+          // Initial fetch of models if we have an endpoint
+          fetchModels();
         }
       }
     } finally {
@@ -36,7 +41,32 @@ export function useSettings() {
     }
   }
 
+  async function fetchModels() {
+    if (!settings.value.endpointUrl) {
+      availableModels.value = [];
+      return;
+    }
+    isFetchingModels.value = true;
+    try {
+      const provider = settings.value.endpointType === 'ollama' 
+        ? new OllamaProvider() 
+        : new OpenAIProvider();
+      
+      const models = await provider.listModels(settings.value.endpointUrl);
+      availableModels.value = models;
+    } catch (err) {
+      console.error('Failed to fetch models:', err);
+      // We don't clear availableModels on error if we already have some, 
+      // but maybe we should if it's a connection error.
+    } finally {
+      isFetchingModels.value = false;
+    }
+  }
+
   async function save(newSettings: Settings) {
+    const oldUrl = settings.value.endpointUrl;
+    const oldType = settings.value.endpointType;
+    
     settings.value = { ...newSettings }; // Update state immediately
     
     // Check if storage type changed from what the service is currently using
@@ -48,6 +78,11 @@ export function useSettings() {
     
     // Save to the (potentially new) provider
     await storageService.saveSettings(settings.value);
+
+    // If endpoint changed, refetch models
+    if (newSettings.endpointUrl !== oldUrl || newSettings.endpointType !== oldType) {
+      await fetchModels();
+    }
   }
 
   return {
@@ -56,7 +91,10 @@ export function useSettings() {
     initialized,
     isOnboardingDismissed,
     onboardingDraft,
+    availableModels,
+    isFetchingModels,
     init,
     save,
+    fetchModels,
   };
 }

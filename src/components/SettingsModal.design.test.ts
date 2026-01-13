@@ -32,11 +32,13 @@ describe('SettingsModal Design Specifications', () => {
   beforeEach(() => {
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ providerProfiles: [] }),
+      availableModels: ref([]),
+      isFetchingModels: ref(false),
       save: vi.fn(),
+      fetchModels: vi.fn(),
     });
     (useChat as unknown as Mock).mockReturnValue({
-      availableModels: ref([]),
-      fetchAvailableModels: vi.fn(),
+      deleteAllChats: vi.fn(),
     });
     (useToast as unknown as Mock).mockReturnValue({
       addToast: vi.fn(),
@@ -71,7 +73,10 @@ describe('SettingsModal Design Specifications', () => {
       settings: ref({ 
         providerProfiles: [{ id: '1', name: 'Profile-1', endpointType: 'ollama', endpointUrl: '...' }], 
       }),
+      availableModels: ref([]),
+      isFetchingModels: ref(false),
       save: vi.fn(),
+      fetchModels: vi.fn(),
     });
     
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });
