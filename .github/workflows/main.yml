@@ -2,8 +2,8 @@ name: CI/CD
 
 on:
   push:
-  release:
-    types: [published]
+    tags:
+      - 'v*'
 
 jobs:
   build_and_test:
@@ -26,17 +26,11 @@ jobs:
       - name: Run build
         run: npm run build
 
-      - name: Upload standalone build artifact
+      - name: Upload full dist build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: standalone-build
-          path: dist/standalone/
-
-      - name: Upload standalone zip artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: standalone-zip
-          path: dist/lm-web-ui-standalone.zip
+          name: full-dist-build
+          path: dist/
 
   publish_to_cloudflare:
     needs: build_and_test
@@ -54,11 +48,11 @@ jobs:
         with:
           node-version: 22.x
 
-      - name: Download standalone build artifact
+      - name: Download full dist build artifact
         uses: actions/download-artifact@v4
         with:
-          name: standalone-build
-          path: dist/standalone
+          name: full-dist-build
+          path: dist
 
       - name: Publish to Cloudflare Pages
         id: cloudflare_pages_deploy
@@ -67,7 +61,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           projectName: lm-web-ui
-          directory: dist/standalone
+          directory: dist/hosted
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Add publish URL as commit status
@@ -87,26 +81,38 @@ jobs:
 
   release_to_github:
     needs: build_and_test
-    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'release'
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download standalone zip artifact
+      - name: Download full dist build artifact
         uses: actions/download-artifact@v4
         with:
-          name: standalone-zip
-          path: .
+          name: full-dist-build
+          path: dist
 
       - name: Get tag name
         id: get_tag
         run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
-      - name: Rename zip with tag
-        run: mv lm-web-ui-standalone.zip lm-web-ui-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+      - name: Create lm-web-ui-hosted.zip with tag
+        run: |
+          TAG=${{ steps.get_tag.outputs.TAG_NAME }}
+          mkdir -p temp_zip_dir/lm-web-ui-hosted-${TAG}
+          cp -r dist/hosted/. temp_zip_dir/lm-web-ui-hosted-${TAG}/
+          cd temp_zip_dir
+          zip -r ../dist/lm-web-ui-hosted-${TAG}.zip lm-web-ui-hosted-${TAG}
+          cd ..
+          rm -rf temp_zip_dir
+
+      - name: Rename lm-web-ui-standalone.zip with tag
+        run: mv dist/lm-web-ui-standalone.zip dist/lm-web-ui-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: lm-web-ui-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+          files: |
+            dist/lm-web-ui-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+            dist/lm-web-ui-hosted-${{ steps.get_tag.outputs.TAG_NAME }}.zip
