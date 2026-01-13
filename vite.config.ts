@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
+import pkg from './package.json'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -20,6 +21,7 @@ export default defineConfig(({ mode }) => {
     define: {
       __BUILD_MODE_IS_STANDALONE__: JSON.stringify(isStandalone),
       __BUILD_MODE_IS_HOSTED__: JSON.stringify(!isStandalone),
+      __APP_VERSION__: JSON.stringify(pkg.version),
     },
     plugins: [
       VueRouter({

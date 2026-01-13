@@ -80,6 +80,7 @@ export default tseslint.config(
         ...globals.node,
         __BUILD_MODE_IS_STANDALONE__: 'readonly',
         __BUILD_MODE_IS_HOSTED__: 'readonly',
+        __APP_VERSION__: 'readonly',
       },
     },
     rules: {

@@ -1,14 +1,14 @@
 {
   "name": "lm-web-ui",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0-dev",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && npm run build:all",
     "build:all": "npm run build:standalone && npm run build:hosted",
-    "build:standalone": "vite build --mode standalone",
-    "build:hosted": "vite build --mode hosted",
+    "build:standalone": "vite build --mode standalone --logLevel warn",
+    "build:hosted": "vite build --mode hosted --logLevel warn",
     "preview": "vite preview",
     "test": "vitest",
     "lint": "eslint . --max-warnings 0",

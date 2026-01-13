@@ -8,3 +8,4 @@ declare module '*?raw' {
 // Global constants defined in vite.config.ts for conditional compilation
 declare const __BUILD_MODE_IS_STANDALONE__: boolean
 declare const __BUILD_MODE_IS_HOSTED__: boolean
+declare const __APP_VERSION__: string

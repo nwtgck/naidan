@@ -46,6 +46,7 @@ const vFocus = {
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const newChatShortcutText = isMac ? 'Cmd + Shift + O' : 'Ctrl + Shift + O';
+const appVersion = __APP_VERSION__;
 
 onMounted(() => {
   syncLocalItems();
@@ -183,9 +184,12 @@ async function handleGlobalModelChange(event: Event) {
       <div class="p-1.5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
         <Logo :size="20" />
       </div>
-      <h1 class="text-lg font-bold tracking-tight bg-gradient-to-br from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
-        LM Web UI
-      </h1>
+      <div class="flex items-baseline gap-1.5">
+        <h1 class="text-lg font-bold tracking-tight bg-gradient-to-br from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
+          LM Web UI
+        </h1>
+        <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">v{{ appVersion }}</span>
+      </div>
     </router-link>
 
     <!-- Actions -->

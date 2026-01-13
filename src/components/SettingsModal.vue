@@ -19,7 +19,7 @@ import {
   Database, Bot, Type, Settings2, RefreshCw, Save,
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
   Pencil, Trash, Check, Activity, Info, HardDrive,
-  MessageSquareQuote, Download,
+  MessageSquareQuote, Download, Github, ExternalLink,
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
@@ -272,9 +272,9 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
       </button>
 
       <!-- Sidebar (Tabs) -->
-      <aside class="w-full md:w-72 flex-shrink-0 bg-gray-50/50 dark:bg-black/20 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800/50 flex flex-col transition-colors">
+      <aside class="w-full md:w-72 flex-shrink-0 bg-gray-50/50 dark:bg-black/20 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800/50 flex flex-col min-h-0 transition-colors">
         <!-- Header -->
-        <div class="p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center gap-3">
+        <div class="p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center gap-3 shrink-0">
           <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
             <Settings2 class="w-5 h-5 text-blue-600" />
           </div>
@@ -282,7 +282,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
         </div>
 
         <!-- Navigation -->
-        <nav class="flex-1 overflow-x-auto md:overflow-y-auto p-4 flex md:flex-col gap-1.5 no-scrollbar">
+        <nav class="flex-1 overflow-x-auto md:overflow-y-auto p-4 flex md:flex-col gap-1.5 no-scrollbar min-h-0">
           <button 
             @click="activeTab = 'connection'"
             class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
@@ -317,9 +317,27 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
           </button>
         </nav>
 
-        <!-- Download Footer (Hosted Mode Only) -->
-        <div v-if="isHostedMode" class="p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto">
+        <!-- GitHub & Download Footer -->
+        <div class="p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto space-y-2">
           <a 
+            href="https://github.com/nwtgck/lm-web-ui" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all group no-underline shadow-sm"
+          >
+            <Github class="w-4 h-4 text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
+            <div class="flex-1 min-w-0 text-left">
+              <div class="text-[11px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                GitHub Repository
+                <span class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400">External</span>
+              </div>
+              <div class="text-[10px] text-gray-500/70 dark:text-gray-400/60 font-medium">View source code</div>
+            </div>
+            <ExternalLink class="w-3 h-3 text-gray-400 opacity-50" />
+          </a>
+
+          <a 
+            v-if="isHostedMode"
             href="./lm-web-ui-standalone.zip" 
             download="lm-web-ui-standalone.zip"
             class="flex items-center gap-3 px-4 py-3 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
@@ -337,8 +355,8 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
       </aside>
 
       <!-- Main Content Area -->
-      <main class="flex-1 flex flex-col min-w-0 bg-white dark:bg-gray-900 relative">
-        <div class="flex-1 overflow-y-auto">
+      <main class="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-gray-900 relative">
+        <div class="flex-1 overflow-y-auto min-h-0">
           <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
             
             <!-- Connection Tab -->

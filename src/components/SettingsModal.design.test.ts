@@ -136,4 +136,32 @@ describe('SettingsModal Design Specifications', () => {
       expect(profilesTab?.classes()).not.toContain('border-transparent');
     });
   });
+
+  describe('Responsive and Scrolling (Regression)', () => {
+    it('applies min-h-0 to flex children to ensure scrolling works on small screens', () => {
+      const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      
+      // Main content area
+      const main = wrapper.find('main');
+      expect(main.classes()).toContain('min-h-0');
+
+      // Scrollable inner div
+      const scrollArea = main.find('div.flex-1.overflow-y-auto');
+      expect(scrollArea.classes()).toContain('min-h-0');
+
+      // Sidebar container
+      const aside = wrapper.find('aside');
+      expect(aside.classes()).toContain('min-h-0');
+
+      // Sidebar navigation
+      const nav = aside.find('nav');
+      expect(nav.classes()).toContain('min-h-0');
+    });
+
+    it('uses shrink-0 for the settings header to prevent height collapse', () => {
+      const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      const header = wrapper.find('aside > div.p-6');
+      expect(header.classes()).toContain('shrink-0');
+    });
+  });
 });
