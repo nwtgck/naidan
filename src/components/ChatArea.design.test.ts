@@ -59,12 +59,54 @@ describe('ChatArea Design Specifications', () => {
     expect(sendBtn.text()).not.toContain('ENTER');
   });
 
-  it('uses rounded-2xl for the chat input to match the premium aesthetic', () => {
+  it('uses rounded-2xl for the chat input container to match the premium aesthetic', () => {
     const wrapper = mount(ChatArea, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
     });
+    const container = wrapper.find('.max-w-4xl.mx-auto.relative.group.border');
+    expect(container.classes()).toContain('rounded-2xl');
+  });
+
+  it('ensures the input container stays within viewport when maximized', async () => {
+    // Mock window.innerHeight
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 1000 });
+    
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
+    });
+    
+    // Simulate maximization
+    (wrapper.vm as any).isMaximized = true;
+    await (wrapper.vm as any).adjustTextareaHeight();
+    
     const textarea = wrapper.find('[data-testid="chat-input"]');
-    expect(textarea.classes()).toContain('rounded-2xl');
+    const height = parseFloat((textarea.element as HTMLElement).style.height);
+    
+    // 70% of 1000 is 700. It should be around that and certainly less than 1000.
+    expect(height).toBeLessThan(1000 * 0.8); 
+    expect(height).toBeGreaterThan(100);
+
+    window.innerHeight = originalInnerHeight;
+  });
+
+  it('ensures the textarea and buttons are stacked vertically to avoid overlap', () => {
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
+    });
+    
+    const inputContainer = wrapper.find('.max-w-4xl.mx-auto.relative.group.border');
+    expect(inputContainer.classes()).toContain('flex-col');
+    
+    const textarea = inputContainer.find('[data-testid="chat-input"]');
+    const buttonRow = inputContainer.find('.flex.items-center.justify-end');
+    
+    expect(textarea.exists()).toBe(true);
+    expect(buttonRow.exists()).toBe(true);
+    
+    // Verify vertical order in DOM: textarea should come before buttonRow
+    const html = inputContainer.html();
+    expect(html.indexOf('data-testid="chat-input"')).toBeLessThan(html.indexOf('justify-end'));
   });
 
   it('uses gray-800 for chat content text to ensure eye comfort', () => {

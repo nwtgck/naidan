@@ -769,15 +769,15 @@ describe('ChatArea Textarea Sizing', () => {
     await wrapper.vm.$nextTick();
     await wrapper.vm.$nextTick();
 
-    const expected80vh = mockWindowInnerHeight * 0.8;
-    expect(parseFloat(textarea.style.height)).toBeCloseTo(expected80vh);
+    const expected70vh = mockWindowInnerHeight * 0.7;
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expected70vh);
     
     // Typing small content should NOT shrink it while maximized
     (wrapper.vm as unknown as ChatAreaExposed).input = 'small content';
     mockTextareaDimensions(textarea, 24); 
     await wrapper.vm.$nextTick();
     await wrapper.vm.$nextTick();
-    expect(parseFloat(textarea.style.height)).toBeCloseTo(expected80vh);
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expected70vh);
 
     // Click minimize button
     await maximizeButton.trigger('click');
@@ -807,7 +807,7 @@ describe('ChatArea Textarea Sizing', () => {
     await maximizeButton.trigger('click');
     await wrapper.vm.$nextTick();
     
-    expect(parseFloat(textarea.style.height)).toBeCloseTo(mockWindowInnerHeight * 0.8);
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(mockWindowInnerHeight * 0.7);
 
     // Mock sendMessage to be a slow promise so we can control the flow
     let resolveSendMessage: (val?: void) => void;
@@ -1027,14 +1027,14 @@ describe('ChatArea Textarea Sizing', () => {
     await wrapper.vm.$nextTick();
     await wrapper.vm.$nextTick();
     
-    expect(parseFloat(textarea.style.height)).toBeCloseTo(800); // 80% of 1000
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(700); // 70% of 1000
 
     // Change window height and trigger resize
     Object.defineProperty(window, 'innerHeight', { writable: true, value: 500 });
     window.dispatchEvent(new Event('resize'));
     await nextTick();
 
-    expect(parseFloat(textarea.style.height)).toBeCloseTo(400); // 80% of 500
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(350); // 70% of 500
   });
 
   it('should not use transition-all on textarea to avoid height flickering', async () => {

@@ -47,14 +47,16 @@ function adjustTextareaHeight() {
     const target = textareaRef.value;
     
     if (isMaximized.value) {
-      const maxHeightVh = window.innerHeight * 0.8;
+      // Set a fixed max height on the parent container instead of just the textarea
+      // The parent already has flex-col, so textarea will take available space
+      target.style.height = 'auto'; // Reset for measurement
+      const maxHeightVh = window.innerHeight * 0.7;
       target.style.height = maxHeightVh + 'px';
       target.style.overflowY = target.scrollHeight > maxHeightVh ? 'auto' : 'hidden';
       return;
     }
 
     // Temporarily reset height to auto to measure content height
-    // Using a shadow value to avoid flickering if possible
     target.style.height = 'auto';
     const currentScrollHeight = target.scrollHeight;
     
@@ -400,7 +402,7 @@ onUnmounted(() => {
 
     <!-- Input -->
     <div class="border-t border-gray-100 dark:border-gray-800 p-6 bg-white dark:bg-gray-900" v-if="currentChat">
-      <div class="max-w-4xl mx-auto relative group">
+      <div class="max-w-4xl mx-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-colors duration-200 shadow-sm group-hover:shadow-md flex flex-col">
         <textarea
           ref="textareaRef"
           v-model="input"
@@ -409,7 +411,7 @@ onUnmounted(() => {
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="streaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
-          class="w-full text-base border border-gray-100 dark:border-gray-700 rounded-2xl pl-5 pr-[150px] sm:pr-[260px] py-4 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 transition-colors duration-200 resize-none shadow-sm group-hover:shadow-md"
+          class="w-full text-base pl-5 pr-12 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[60px] transition-colors"
           data-testid="chat-input"
         ></textarea>
         <!-- Maximize/Minimize Button inside input area -->
@@ -423,7 +425,7 @@ onUnmounted(() => {
           <Minimize2 v-if="isMaximized" class="w-4 h-4" />
           <Maximize2 v-else class="w-4 h-4" />
         </button>
-        <div class="absolute right-4 bottom-4 flex items-center gap-2">
+        <div class="flex items-center justify-end gap-2 px-4 pb-4">
           <div class="relative flex items-center">
             <select 
               v-model="currentChat.overrideModelId"
