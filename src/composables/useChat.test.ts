@@ -452,6 +452,19 @@ describe('useChat Composable Logic', () => {
     expect(rootItems.value[2]?.id).toBe('chat:c2');
   });
 
+  it('should set currentChat to loaded chat in openChat, or null if not found', async () => {
+    const { openChat, currentChat } = useChat();
+    const mockChat: Chat = { id: 'found', title: 'Found', root: { items: [] }, modelId: 'm1', createdAt: 0, updatedAt: 0, debugEnabled: false };
+    
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(mockChat);
+    await openChat('found');
+    expect(currentChat.value?.id).toBe('found');
+
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(null);
+    await openChat('missing');
+    expect(currentChat.value).toBeNull();
+  });
+
   describe('findRestorationIndex Logic (Bidirectional Context)', () => {
     const items: SidebarItem[] = [
       { id: 'i1', type: 'chat', chat: { id: 'c1', title: '1', updatedAt: 0 } },

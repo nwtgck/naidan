@@ -3,6 +3,8 @@ import './style.css'
 import App from './App.vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { routes } from 'vue-router/auto-routes'
+import { useSettings } from './composables/useSettings'
+import { useChat } from './composables/useChat'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -34,6 +36,16 @@ app.use(router)
 window.addEventListener('DOMContentLoaded', async () => {
   const appElement = document.querySelector('#app')
   if (!appElement) return
+
+  // Initialize global state (storage, settings, chat list) 
+  // BEFORE the router processes the initial URL.
+  // This prevents race conditions where a child component (like a chat page)
+  // tries to load data before the storage provider is correctly initialized.
+  const settingsStore = useSettings()
+  const chatStore = useChat()
+  
+  await settingsStore.init()
+  await chatStore.loadChats()
 
   await router.isReady()
   app.mount('#app')

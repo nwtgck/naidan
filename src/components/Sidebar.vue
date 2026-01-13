@@ -47,8 +47,7 @@ const vFocus = {
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const newChatShortcutText = isMac ? 'Cmd + Shift + O' : 'Ctrl + Shift + O';
 
-onMounted(async () => {
-  await chatStore.loadChats();
+onMounted(() => {
   syncLocalItems();
 });
 

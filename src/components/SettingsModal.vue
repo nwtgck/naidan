@@ -587,6 +587,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                     v-for="providerProfile in form.providerProfiles" 
                     :key="providerProfile.id"
                     class="group p-6 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-3xl flex items-center justify-between transition-all hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/5"
+                    data-testid="provider-profile-item"
                   >
                     <div class="flex-1 min-w-0 mr-6">
                       <div v-if="editingProviderProfileId === providerProfile.id" class="flex items-center gap-2">

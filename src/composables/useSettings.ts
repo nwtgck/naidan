@@ -11,34 +11,43 @@ const onboardingDraft = ref<{ url: string, type: EndpointType, models: string[],
 const availableModels = ref<string[]>([]);
 const isFetchingModels = ref(false);
 
+let initPromise: Promise<void> | null = null;
+
 export function useSettings() {
   const loading = ref(false);
 
   async function init() {
     if (initialized.value) return;
-    loading.value = true;
-    try {
-      // Determine storage type from persisted flag
-      let bootstrapType: 'local' | 'opfs' = 'local';
-      if (typeof localStorage !== 'undefined') {
-        const saved = localStorage.getItem(STORAGE_BOOTSTRAP_KEY);
-        if (saved === 'opfs') bootstrapType = 'opfs';
-      }
+    if (initPromise) return initPromise;
 
-      await storageService.init(bootstrapType);
-      const s = await storageService.loadSettings();
-      if (s) {
-        settings.value = s;
-        if (s.endpointUrl) {
-          isOnboardingDismissed.value = true;
-          // Initial fetch of models if we have an endpoint
-          fetchModels();
+    initPromise = (async () => {
+      loading.value = true;
+      try {
+        // Determine storage type from persisted flag
+        let bootstrapType: 'local' | 'opfs' = 'local';
+        if (typeof localStorage !== 'undefined') {
+          const saved = localStorage.getItem(STORAGE_BOOTSTRAP_KEY);
+          if (saved === 'opfs') bootstrapType = 'opfs';
         }
+
+        await storageService.init(bootstrapType);
+        const s = await storageService.loadSettings();
+        if (s) {
+          settings.value = s;
+          if (s.endpointUrl) {
+            isOnboardingDismissed.value = true;
+            // Initial fetch of models if we have an endpoint
+            fetchModels();
+          }
+        }
+      } finally {
+        loading.value = false;
+        initialized.value = true;
+        initPromise = null;
       }
-    } finally {
-      loading.value = false;
-      initialized.value = true;
-    }
+    })();
+
+    return initPromise;
   }
 
   async function fetchModels() {

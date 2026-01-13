@@ -120,19 +120,6 @@ describe('App', () => {
     });
   });
 
-  it('calls settings.init on mount', async () => {
-    mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
-    await nextTick();
-    expect(mockInit).toHaveBeenCalled();
-  });
-
   it('renders core components', async () => {
     const wrapper = mount(App, {
       global: {
@@ -146,7 +133,6 @@ describe('App', () => {
     expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="debug-panel"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="toast-container"]').exists()).toBe(true);
-    expect(mockLoadChats).toHaveBeenCalled();
   });
 
   it('automatically creates a new chat if none exist and on root path', async () => {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useChat } from './composables/useChat';
@@ -36,11 +36,6 @@ const {
   promptConfirmButtonText, promptCancelButtonText, promptInputValue,
   handlePromptConfirm, handlePromptCancel,
 } = usePrompt();
-
-onMounted(async () => {
-  await settingsStore.init();
-  await chatStore.loadChats();
-});
 
 // Automatically create a new chat if the list becomes empty while on the landing page
 watch(

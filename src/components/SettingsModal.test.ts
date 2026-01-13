@@ -735,7 +735,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       expect(wrapper.text()).toContain('Title: t-1');
       
-      const profiles = wrapper.findAll('.group');
+      const profiles = wrapper.findAll('[data-testid="provider-profile-item"]');
       expect(profiles[0]!.text()).toContain('Title: t-1');
       expect(profiles[1]!.text()).not.toContain('Title:');
     });

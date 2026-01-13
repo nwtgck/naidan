@@ -84,4 +84,31 @@ describe('useSettings Initialization and Bootstrap', () => {
     // Assert
     expect(isOnboardingDismissed.value).toBe(false);
   });
+
+  it('should handle parallel init calls correctly using the promise guard', async () => {
+    let resolveStorageInit: (value: void | PromiseLike<void>) => void;
+    const storageInitPromise = new Promise<void>((resolve) => {
+      resolveStorageInit = resolve;
+    });
+        
+    // Make storageService.init hang until we manually resolve it
+    mocks.init.mockReturnValue(storageInitPromise);
+    
+    const { init } = useSettings();
+        
+    // Trigger multiple calls in parallel
+    const p1 = init();
+    const p2 = init();
+    const p3 = init();
+    
+    // Verify storageService.init was only called once despite multiple calls to init()
+    expect(mocks.init).toHaveBeenCalledTimes(1);
+    
+    // Resolve the first call
+    resolveStorageInit!();
+        
+    await Promise.all([p1, p2, p3]);
+        
+    expect(initialized.value).toBe(true);
+  });
 });
