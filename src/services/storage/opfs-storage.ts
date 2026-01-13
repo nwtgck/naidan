@@ -1,10 +1,15 @@
 import type { Chat, Settings, ChatGroup, SidebarItem } from '../../models/types';
 import { 
-  ChatSchemaDto, 
-  SettingsSchemaDto, 
+  SettingsSchemaDto,
+  ChatMetaSchemaDto,
+  ChatContentSchemaDto,
+  ChatMetaIndexSchemaDto,
   type ChatGroupDto, 
   type ChatDto, 
-  type MigrationChunkDto, 
+  type ChatMetaDto,
+  type ChatContentDto,
+  type MigrationChunkDto,
+  type ChatMetaIndexDto,
 } from '../../models/dto';
 import { 
   chatToDomain,
@@ -31,9 +36,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  private async getChatsDir(): Promise<FileSystemDirectoryHandle> {
+  private async getChatContentsDir(): Promise<FileSystemDirectoryHandle> {
     await this.init();
-    return await this.root!.getDirectoryHandle('chats', { create: true });
+    return await this.root!.getDirectoryHandle('chat_contents', { create: true });
   }
 
   private async getGroupsDir(): Promise<FileSystemDirectoryHandle> {
@@ -43,15 +48,15 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   // --- Internal Data Access ---
 
-  protected async listChatsRaw(): Promise<ChatDto[]> {
+  protected async listChatMetasRaw(): Promise<ChatMetaDto[]> {
     await this.init();
     try {
-      const fileHandle = await this.root!.getFileHandle('index.json');
+      const fileHandle = await this.root!.getFileHandle('chat_metas.json');
       const file = await fileHandle.getFile();
       const text = await file.text();
       const json = JSON.parse(text);
-      if (Array.isArray(json)) return json as ChatDto[];
-      return [];
+      const validated = ChatMetaIndexSchemaDto.parse(json);
+      return validated.entries;
     } catch { return []; }
   }
 
@@ -74,47 +79,79 @@ export class OPFSStorageProvider extends IStorageProvider {
   // --- Persistence Implementation ---
 
   async saveChat(chat: Chat, index: number): Promise<void> {
-    const dto = chatToDto(chat, index);
-    ChatSchemaDto.parse(dto);
-    const chatsDir = await this.getChatsDir();
-    const fileHandle = await chatsDir.getFileHandle(`${chat.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
-    await writable.close();
-    await this.updateIndex(dto);
+    const fullDto = chatToDto(chat, index);
+    
+    // 1. Extract and Save Content (Large)
+    const contentDto: ChatContentDto = {
+      root: fullDto.root || { items: [] },
+      currentLeafId: fullDto.currentLeafId,
+    };
+    ChatContentSchemaDto.parse(contentDto);
+    
+    const contentsDir = await this.getChatContentsDir();
+    const contentFileHandle = await contentsDir.getFileHandle(`${chat.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
+    const contentWritable = await contentFileHandle.createWritable();
+    await contentWritable.write(JSON.stringify(contentDto));
+    await contentWritable.close();
+
+    // 2. Extract and Save Meta (Small)
+    const { root: _r, currentLeafId: _c, ...metaDto } = fullDto;
+    ChatMetaSchemaDto.parse(metaDto);
+    await this.updateMetaIndex(metaDto as ChatMetaDto);
   }
 
-  private async updateIndex(chatDto: ChatDto): Promise<void> {
+  private async updateMetaIndex(metaDto: ChatMetaDto): Promise<void> {
     await this.init();
-    const index: ChatDto[] = await this.listChatsRaw();
-    const existingIndex = index.findIndex(c => c.id === chatDto.id);
-    if (existingIndex >= 0) index[existingIndex] = chatDto;
-    else index.push(chatDto);
+    const entries: ChatMetaDto[] = await this.listChatMetasRaw();
+    const existingIndex = entries.findIndex(m => m.id === metaDto.id);
+    if (existingIndex >= 0) entries[existingIndex] = metaDto;
+    else entries.push(metaDto);
     
-    const fileHandle = await this.root!.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
+    const indexDto: ChatMetaIndexDto = { entries };
+    
+    const fileHandle = await this.root!.getFileHandle('chat_metas.json', { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(index));
+    await writable.write(JSON.stringify(indexDto));
     await writable.close();
   }
 
   async loadChat(id: string): Promise<Chat | null> {
     try {
-      const chatsDir = await this.getChatsDir();
-      const fileHandle = await chatsDir.getFileHandle(`${id}.json`);
+      // 1. Load Meta from index
+      const metas = await this.listChatMetasRaw();
+      const meta = metas.find(m => m.id === id);
+      if (!meta) return null;
+
+      // 2. Load Content from file
+      const contentsDir = await this.getChatContentsDir();
+      const fileHandle = await contentsDir.getFileHandle(`${id}.json`);
       const file = await fileHandle.getFile();
       const text = await file.text();
-      return chatToDomain(ChatSchemaDto.parse(JSON.parse(text)));
+      const content = ChatContentSchemaDto.parse(JSON.parse(text));
+
+      // 3. Combine
+      const fullDto: ChatDto = {
+        ...meta,
+        ...content,
+      };
+      
+      return chatToDomain(fullDto);
     } catch { return null; }
   }
 
   async deleteChat(id: string): Promise<void> {
     try {
-      const chatsDir = await this.getChatsDir();
-      await chatsDir.removeEntry(`${id}.json`);
-      const indexList = (await this.listChatsRaw()).filter(c => c.id !== id);
-      const fileHandle = await this.root!.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
+      // 1. Remove content file
+      const contentsDir = await this.getChatContentsDir();
+      await contentsDir.removeEntry(`${id}.json`);
+      
+      // 2. Update meta index
+      const entries = (await this.listChatMetasRaw()).filter(m => m.id !== id);
+      const indexDto: ChatMetaIndexDto = { entries };
+      
+      const fileHandle = await this.root!.getFileHandle('chat_metas.json', { create: true }) as FileSystemFileHandleWithWritable;
       const writable = await fileHandle.createWritable();
-      await writable.write(JSON.stringify(indexList));
+      await writable.write(JSON.stringify(indexDto));
       await writable.close();
     } catch { /* ignore */ }
   }
@@ -136,25 +173,33 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       const groupsDir = await this.getGroupsDir();
       await groupsDir.removeEntry(`${id}.json`);
-      const chats = await this.listChatsRaw();
-      for (const c of chats) {
-        if (c.groupId === id) {
-          const fullChat = await this.loadChat(c.id);
-          if (fullChat) {
-            fullChat.groupId = null;
-            await this.saveChat(fullChat, c.order ?? 0);
-          }
+      
+      // Detach chats from this group in the meta index
+      const entries = await this.listChatMetasRaw();
+      let changed = false;
+      for (const m of entries) {
+        if (m.groupId === id) {
+          m.groupId = null;
+          changed = true;
         }
+      }
+      
+      if (changed) {
+        const indexDto: ChatMetaIndexDto = { entries };
+        const fileHandle = await this.root!.getFileHandle('chat_metas.json', { create: true }) as FileSystemFileHandleWithWritable;
+        const writable = await fileHandle.createWritable();
+        await writable.write(JSON.stringify(indexDto));
+        await writable.close();
       }
     } catch { /* ignore */ }
   }
 
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
-    const [chats, groups] = await Promise.all([
-      this.listChatsRaw(),
+    const [metas, groups] = await Promise.all([
+      this.listChatMetasRaw(),
       this.listGroupsRaw(),
     ]);
-    return buildSidebarItemsFromDtos(groups, chats);
+    return buildSidebarItemsFromDtos(groups, metas);
   }
 
   async saveSettings(settings: Settings): Promise<void> {
@@ -193,9 +238,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     // 1. Settings
     const settings = await this.loadSettings();
     if (settings) {
-      // Re-serialize strictly
-      const dto = settingsToDto(settings);
-      yield { type: 'settings', data: dto };
+      yield { type: 'settings', data: settingsToDto(settings) };
     }
 
     // 2. Groups
@@ -204,25 +247,12 @@ export class OPFSStorageProvider extends IStorageProvider {
       yield { type: 'group', data: group };
     }
 
-    // 3. Chats
-    // Iterate manually over files to avoid loading ALL chats into memory via listChatsRaw() 
-    // IF listChatsRaw reads everything.
-    // Looking at listChatsRaw implementation: it reads 'index.json' which is just metadata.
-    // BUT we need the FULL content for migration.
-    // So we iterate the index, then load each full chat file.
-    const index = await this.listChatsRaw();
-    const chatsDir = await this.getChatsDir();
-    
-    for (const meta of index) {
-      try {
-        const fileHandle = await chatsDir.getFileHandle(`${meta.id}.json`);
-        const file = await fileHandle.getFile();
-        const text = await file.text();
-        const fullDto = ChatSchemaDto.parse(JSON.parse(text));
-        yield { type: 'chat', data: fullDto };
-      } catch (e) {
-        console.warn(`Failed to export chat ${meta.id}`, e);
-        // Continue to next chat even if one fails
+    // 3. Chats (Combining Meta and Content for migration)
+    const metas = await this.listChatMetasRaw();
+    for (const meta of metas) {
+      const chat = await this.loadChat(meta.id);
+      if (chat) {
+        yield { type: 'chat', data: chatToDto(chat, meta.order ?? 0) };
       }
     }
   }
@@ -231,18 +261,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await this.clearAll();
     await this.init();
 
-    // Prepare directories
-    const chatsDir = await this.getChatsDir();
-    const groupsDir = await this.getGroupsDir();
-
-    // Cache the chat index to write it once at the end? 
-    // Or update incrementally?
-    // Incremental is safer but slower. 
-    // Let's build an in-memory index and write it periodically or at the end.
-    // For safety against crash during migration, we might want to write regularly.
-    // But since restore() clears all first, a crash leaves us in broken state anyway.
-    // So writing index at the end is acceptable for performance.
-    const chatIndex: ChatDto[] = [];
+    const metas: ChatMetaDto[] = [];
 
     for await (const chunk of stream) {
       switch (chunk.type) {
@@ -251,37 +270,40 @@ export class OPFSStorageProvider extends IStorageProvider {
         break;
       }
       case 'group': {
-        // Direct write
+        // Direct write group file
+        const groupsDir = await this.getGroupsDir();
         const fileHandle = await groupsDir.getFileHandle(`${chunk.data.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
         const writable = await fileHandle.createWritable();
-        await writable.write(JSON.stringify(chunk.data));
+        await writable.write(JSON.stringify(chunk.data as ChatGroupDto));
         await writable.close();
         break;
       }
       case 'chat': {
-        const dto = chunk.data;
-        // Write chat file
-        const fileHandle = await chatsDir.getFileHandle(`${dto.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
-        const writable = await fileHandle.createWritable();
-        await writable.write(JSON.stringify(dto));
-        await writable.close();
+        const fullDto = chunk.data;
+        // Save content file
+        const contentsDir = await this.getChatContentsDir();
+        const contentFileHandle = await contentsDir.getFileHandle(`${fullDto.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
+        const contentWritable = await contentFileHandle.createWritable();
+        const { root, currentLeafId } = fullDto;
+        await contentWritable.write(JSON.stringify({ 
+          root: root || { items: [] }, 
+          currentLeafId 
+        }));
+        await contentWritable.close();
           
-        // Add to index
-        chatIndex.push(dto);
+        // Add to metas
+        const { root: _r, currentLeafId: _c, ...meta } = fullDto;
+        metas.push(meta as ChatMetaDto);
         break;
       }
-      default: {
-        const _exhaustiveCheck: never = chunk;
-        throw new Error(`Unhandled migration chunk type: ${JSON.stringify(_exhaustiveCheck)}`);
-      }
-      
       }
     }
 
-    // Write final chat index
-    const fileHandle = await this.root!.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
+    // Write final meta index
+    const indexDto: ChatMetaIndexDto = { entries: metas };
+    const fileHandle = await this.root!.getFileHandle('chat_metas.json', { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(chatIndex));
+    await writable.write(JSON.stringify(indexDto));
     await writable.close();
   }
 }

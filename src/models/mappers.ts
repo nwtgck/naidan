@@ -5,6 +5,7 @@ import type {
   RoleDto, 
   MessageNodeDto,
   ChatDto, 
+  ChatMetaDto,
   ChatGroupDto,
   SettingsDto,
   EndpointTypeDto,
@@ -33,16 +34,15 @@ export const roleToDomain = (dto: RoleDto): Role => {
 };
 
 /**
- * Converts a Group DTO and associated Chat DTOs into a Domain ChatGroup.
- * Sorting is performed here to ensure the Domain model's array reflects the correct order.
+ * Converts a Group DTO and associated Chat Meta DTOs into a Domain ChatGroup.
  */
-export const chatGroupToDomain = (dto: ChatGroupDto, chatDtos: ChatDto[] = []): ChatGroup => {
-  const nestedItems: SidebarItem[] = chatDtos
+export const chatGroupToDomain = (dto: ChatGroupDto, chatMetaDtos: ChatMetaDto[] = []): ChatGroup => {
+  const nestedItems: SidebarItem[] = chatMetaDtos
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     .map(c => ({
       id: `chat:${c.id}`,
       type: 'chat',
-      chat: chatToSummary(c),
+      chat: chatMetaToSummary(c),
     }));
 
   return {
@@ -119,12 +119,15 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
 
 export const chatToDomain = (dto: ChatDto): Chat => {
   let root: MessageBranch = { items: [] };
+  
   if (dto.root && dto.root.items && dto.root.items.length > 0) {
     root = { items: (dto.root.items as MessageNodeDto[]).map(messageNodeToDomain) };
-  } else if (dto.root && !('items' in dto.root)) {
-    root = { items: [messageNodeToDomain(dto.root as MessageNodeDto)] };
   } else if (dto.messages && dto.messages.length > 0) {
+    // Priority to legacy flat messages if tree is empty
     root = migrateFlatMessagesToTree(dto.messages);
+  } else if (dto.root && !('items' in dto.root)) {
+    // Handle edge case where root might be a single node (unlikely with current Zod but safe)
+    root = { items: [messageNodeToDomain(dto.root as MessageNodeDto)] };
   }
 
   return {
@@ -145,7 +148,7 @@ export const chatToDomain = (dto: ChatDto): Chat => {
   };
 };
 
-export const chatToSummary = (dto: ChatDto): ChatSummary => ({
+export const chatMetaToSummary = (dto: ChatMetaDto): ChatSummary => ({
   id: dto.id,
   title: dto.title,
   updatedAt: dto.updatedAt,
@@ -171,37 +174,15 @@ export const chatToDto = (domain: Chat, index: number): ChatDto => ({
 });
 
 /**
- * Builds the hierarchical Sidebar structure from Domain models.
- * Used by the UI layer. Expects groups and chats to be pre-sorted.
- */
-export const buildSidebarItems = (groups: ChatGroup[], allChats: ChatSummary[]): SidebarItem[] => {
-  const items: SidebarItem[] = [];
-  
-  // 1. Process Groups
-  groups.forEach(g => {
-    items.push({ id: `group:${g.id}`, type: 'group', group: g });
-  });
-  
-  // 2. Process Ungrouped Chats
-  allChats
-    .filter(c => !c.groupId)
-    .forEach(c => {
-      items.push({ id: `chat:${c.id}`, type: 'chat', chat: c });
-    });
-    
-  return items;
-};
-
-/**
  * Builds the hierarchical Sidebar structure from raw DTOs.
- * Used internally by storage providers to return sorted domain structures.
+ * Uses ChatMetaDto for performance.
  */
-export const buildSidebarItemsFromDtos = (groupDtos: ChatGroupDto[], allChatDtos: ChatDto[]): SidebarItem[] => {
+export const buildSidebarItemsFromDtos = (groupDtos: ChatGroupDto[], allChatMetaDtos: ChatMetaDto[]): SidebarItem[] => {
   type SortableSidebarItem = SidebarItem & { _order: number };
   const items: SortableSidebarItem[] = [];
   
   groupDtos.forEach(gDto => {
-    const groupChats = allChatDtos.filter(c => c.groupId === gDto.id);
+    const groupChats = allChatMetaDtos.filter(c => c.groupId === gDto.id);
     items.push({ 
       id: `group:${gDto.id}`, 
       type: 'group', 
@@ -210,13 +191,13 @@ export const buildSidebarItemsFromDtos = (groupDtos: ChatGroupDto[], allChatDtos
     });
   });
   
-  allChatDtos
+  allChatMetaDtos
     .filter(c => !c.groupId)
     .forEach(cDto => {
       items.push({ 
         id: `chat:${cDto.id}`, 
         type: 'chat', 
-        chat: chatToSummary(cDto),
+        chat: chatMetaToSummary(cDto),
         _order: cDto.order ?? 0,
       });
     });

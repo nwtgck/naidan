@@ -1,5 +1,5 @@
 import type { Chat, Settings, ChatGroup, ChatSummary, SidebarItem } from '../../models/types';
-import type { ChatDto, ChatGroupDto, MigrationChunkDto } from '../../models/dto';
+import type { ChatMetaDto, ChatGroupDto, MigrationChunkDto } from '../../models/dto';
 import { buildSidebarItemsFromDtos } from '../../models/mappers';
 
 export type { ChatSummary };
@@ -13,7 +13,7 @@ export abstract class IStorageProvider {
   
   // --- Data Access Methods ---
   // Subclasses implement these to fetch raw DTOs.
-  protected abstract listChatsRaw(): Promise<ChatDto[]>;
+  protected abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;
   protected abstract listGroupsRaw(): Promise<ChatGroupDto[]>;
 
   // --- Bulk Operations (Migration) ---
@@ -55,11 +55,11 @@ export abstract class IStorageProvider {
    * Centralized method to get the full sorted hierarchy using mappers.
    */
   public async getSidebarStructure(): Promise<SidebarItem[]> {
-    const [chats, groups] = await Promise.all([
-      this.listChatsRaw(),
+    const [metas, groups] = await Promise.all([
+      this.listChatMetasRaw(),
       this.listGroupsRaw(),
     ]);
-    return buildSidebarItemsFromDtos(groups, chats);
+    return buildSidebarItemsFromDtos(groups, metas);
   }
 
   // --- Persistence Methods ---

@@ -1,99 +1,115 @@
-import type { 
-  Chat, 
-  Settings, 
-  ChatGroup,
-  SidebarItem,
-} from '../../models/types';
+import type { Chat, Settings, ChatGroup } from '../../models/types';
 import { 
-  ChatSchemaDto as DtoChatSchema, 
-  SettingsSchemaDto as DtoSettingsSchema,
-  ChatGroupSchemaDto as DtoChatGroupSchema,
-  type ChatGroupDto,
-  type ChatDto,
+  SettingsSchemaDto, 
+  ChatMetaIndexSchemaDto,
+  ChatMetaSchemaDto,
+  ChatContentSchemaDto,
+  type ChatGroupDto, 
+  type ChatMetaDto,
+  type ChatContentDto,
   type MigrationChunkDto,
 } from '../../models/dto';
 import { 
-  chatToDomain as mapChatToDomain,
-  chatToDto as mapChatToDto,
-  settingsToDomain as mapSettingsToDomain,
-  settingsToDto as mapSettingsToDto,
-  chatGroupToDto as mapGroupToDto,
-  buildSidebarItemsFromDtos,
+  chatToDomain,
+  chatToDto,
+  settingsToDomain,
+  settingsToDto,
+  chatGroupToDto,
 } from '../../models/mappers';
 import { IStorageProvider } from './interface';
+
 import { STORAGE_KEY_PREFIX } from '../../models/constants';
 
 const LSP_STORAGE_PREFIX = `${STORAGE_KEY_PREFIX}lsp:`;
 const KEY_INDEX = `${LSP_STORAGE_PREFIX}index`;
 const KEY_GROUPS = `${LSP_STORAGE_PREFIX}groups`;
 const KEY_SETTINGS = `${LSP_STORAGE_PREFIX}settings`;
+const KEY_CHAT_PREFIX = `${LSP_STORAGE_PREFIX}chat:`;
 
+/**
+ * LocalStorage Implementation
+ * Optimized by splitting metadata and content.
+ */
 export class LocalStorageProvider extends IStorageProvider {
-  async init(): Promise<void> {}
+  async init(): Promise<void> {
+    // No-op for localStorage
+  }
 
-  // --- Internal Data Access (Implementing abstract protected methods) ---
+  // --- Internal Data Access ---
 
-  protected async listChatsRaw(): Promise<ChatDto[]> {
+  protected async listChatMetasRaw(): Promise<ChatMetaDto[]> {
     const raw = localStorage.getItem(KEY_INDEX);
     if (!raw) return [];
     try {
-      return JSON.parse(raw) as ChatDto[];
+      const json = JSON.parse(raw);
+      const validated = ChatMetaIndexSchemaDto.parse(json);
+      return validated.entries;
     } catch { return []; }
   }
 
   protected async listGroupsRaw(): Promise<ChatGroupDto[]> {
-    const rawGroups = localStorage.getItem(KEY_GROUPS);
-    if (!rawGroups) return [];
+    const raw = localStorage.getItem(KEY_GROUPS);
+    if (!raw) return [];
     try {
-      return JSON.parse(rawGroups) as ChatGroupDto[];
+      return JSON.parse(raw);
     } catch { return []; }
   }
 
   // --- Persistence Implementation ---
 
   async saveChat(chat: Chat, index: number): Promise<void> {
-    const dto = mapChatToDto(chat, index);
-    const validated = DtoChatSchema.parse(dto);
-    localStorage.setItem(`${LSP_STORAGE_PREFIX}chat:${chat.id}`, JSON.stringify(validated));
+    const fullDto = chatToDto(chat, index);
     
-    const indexList = await this.listChatsRaw();
-    const existingIdx = indexList.findIndex(c => c.id === chat.id);
-    if (existingIdx >= 0) indexList[existingIdx] = validated;
-    else indexList.push(validated);
+    // 1. Save Content (Large)
+    const contentDto: ChatContentDto = {
+      root: fullDto.root || { items: [] },
+      currentLeafId: fullDto.currentLeafId,
+    };
+    ChatContentSchemaDto.parse(contentDto);
+    localStorage.setItem(`${KEY_CHAT_PREFIX}${chat.id}`, JSON.stringify(contentDto));
+
+    // 2. Update Meta Index (Small)
+    const { root: _r, currentLeafId: _c, ...metaDto } = fullDto;
+    ChatMetaSchemaDto.parse(metaDto);
     
-    localStorage.setItem(KEY_INDEX, JSON.stringify(indexList));
+    const entries = await this.listChatMetasRaw();
+    const existingIndex = entries.findIndex(m => m.id === chat.id);
+    if (existingIndex >= 0) entries[existingIndex] = metaDto as ChatMetaDto;
+    else entries.push(metaDto as ChatMetaDto);
+    
+    localStorage.setItem(KEY_INDEX, JSON.stringify({ entries }));
   }
 
   async loadChat(id: string): Promise<Chat | null> {
-    const raw = localStorage.getItem(`${LSP_STORAGE_PREFIX}chat:${id}`);
-    if (!raw) return null;
+    const metas = await this.listChatMetasRaw();
+    const meta = metas.find(m => m.id === id);
+    if (!meta) return null;
+
+    const rawContent = localStorage.getItem(`${KEY_CHAT_PREFIX}${id}`);
+    if (!rawContent) return null;
+
     try {
-      const dto = DtoChatSchema.parse(JSON.parse(raw));
-      return mapChatToDomain(dto);
+      const content = ChatContentSchemaDto.parse(JSON.parse(rawContent));
+      return chatToDomain({ ...meta, ...content });
     } catch { return null; }
   }
 
   async deleteChat(id: string): Promise<void> {
-    localStorage.removeItem(`${LSP_STORAGE_PREFIX}chat:${id}`);
-    const indexList = (await this.listChatsRaw()).filter(c => c.id !== id);
-    localStorage.setItem(KEY_INDEX, JSON.stringify(indexList));
+    localStorage.removeItem(`${KEY_CHAT_PREFIX}${id}`);
+    const entries = (await this.listChatMetasRaw()).filter(m => m.id !== id);
+    localStorage.setItem(KEY_INDEX, JSON.stringify({ entries }));
   }
 
   async saveGroup(group: ChatGroup, index: number): Promise<void> {
-    const groups = await this.listGroupsRaw();
-    const idx = groups.findIndex(g => g.id === group.id);
-    
-    const dto = mapGroupToDto(group, index);
-    DtoChatGroupSchema.parse(dto);
-
-    if (idx >= 0) groups[idx] = dto;
-    else groups.push(dto);
-    
-    localStorage.setItem(KEY_GROUPS, JSON.stringify(groups));
+    const dto = chatGroupToDto(group, index);
+    const all = await this.listGroupsRaw();
+    const existingIndex = all.findIndex(g => g.id === group.id);
+    if (existingIndex >= 0) all[existingIndex] = dto;
+    else all.push(dto);
+    localStorage.setItem(KEY_GROUPS, JSON.stringify(all));
   }
 
   async loadGroup(_id: string): Promise<ChatGroup | null> {
-    // Note: Use public listGroups() from base class if full structure is needed.
     return null;
   }
 
@@ -101,45 +117,35 @@ export class LocalStorageProvider extends IStorageProvider {
     const groups = (await this.listGroupsRaw()).filter(g => g.id !== id);
     localStorage.setItem(KEY_GROUPS, JSON.stringify(groups));
     
-    const chats = await this.listChatsRaw();
-    for (const c of chats) {
-      if (c.groupId === id) {
-        const fullChat = await this.loadChat(c.id);
-        if (fullChat) {
-          fullChat.groupId = null;
-          // When removing group, keep original relative order if possible
-          await this.saveChat(fullChat, c.order ?? 0);
-        }
+    // Detach chats
+    const entries = await this.listChatMetasRaw();
+    let changed = false;
+    entries.forEach(m => {
+      if (m.groupId === id) {
+        m.groupId = null;
+        changed = true;
       }
+    });
+    if (changed) {
+      localStorage.setItem(KEY_INDEX, JSON.stringify({ entries }));
     }
   }
 
-  /**
-   * Overriding getSidebarStructure to ensure we use the DTO mapper.
-   */
-  public override async getSidebarStructure(): Promise<SidebarItem[]> {
-    const [chats, groups] = await Promise.all([
-      this.listChatsRaw(),
-      this.listGroupsRaw(),
-    ]);
-    return buildSidebarItemsFromDtos(groups, chats);
-  }
-
   async saveSettings(settings: Settings): Promise<void> {
-    const dto = mapSettingsToDto(settings);
-    localStorage.setItem(KEY_SETTINGS, JSON.stringify(DtoSettingsSchema.parse(dto)));
+    const dto = settingsToDto(settings);
+    localStorage.setItem(KEY_SETTINGS, JSON.stringify(SettingsSchemaDto.parse(dto)));
   }
 
   async loadSettings(): Promise<Settings | null> {
     const raw = localStorage.getItem(KEY_SETTINGS);
     if (!raw) return null;
     try {
-      const dto = DtoSettingsSchema.parse(JSON.parse(raw));
-      return mapSettingsToDomain(dto);
+      return settingsToDomain(SettingsSchemaDto.parse(JSON.parse(raw)));
     } catch { return null; }
   }
 
   async clearAll(): Promise<void> {
+    // Prefix based cleanup to ensure everything under our namespace is gone
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -153,77 +159,39 @@ export class LocalStorageProvider extends IStorageProvider {
   // --- Migration Implementation ---
 
   async *dump(): AsyncGenerator<MigrationChunkDto> {
-    // 1. Settings
     const settings = await this.loadSettings();
-    if (settings) {
-      // Note: We need to convert domain Settings back to DTO for migration
-      // Ideally loadSettings should return DTO or we have a raw accessor.
-      // For now, re-serialize via mapping to ensure Schema validity.
-      const dto = mapSettingsToDto(settings);
-      yield { type: 'settings', data: dto };
-    }
+    if (settings) yield { type: 'settings', data: settingsToDto(settings) };
 
-    // 2. Groups
     const groups = await this.listGroupsRaw();
-    for (const group of groups) {
-      yield { type: 'group', data: group };
-    }
+    for (const g of groups) yield { type: 'group', data: g };
 
-    // 3. Chats
-    const chats = await this.listChatsRaw();
-    for (const chat of chats) {
-      yield { type: 'chat', data: chat };
+    const metas = await this.listChatMetasRaw();
+    for (const m of metas) {
+      const chat = await this.loadChat(m.id);
+      if (chat) yield { type: 'chat', data: chatToDto(chat, m.order ?? 0) };
     }
   }
 
   async restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void> {
     await this.clearAll();
+    const groups: ChatGroupDto[] = [];
+    const metas: ChatMetaDto[] = [];
 
     for await (const chunk of stream) {
-      switch (chunk.type) {
-      case 'settings': {
-        const domain = mapSettingsToDomain(chunk.data);
-        await this.saveSettings(domain);
-        break;
-      }
-      case 'group': {
-        // We can't easily map back from DTO to Domain without 'index' context in some mappers.
-        // However, saveGroup expects Domain object.
-        // Let's rely on the raw DTO saving mechanism or enhance saveGroup?
-        // LocalStorage saveGroup uses mapGroupToDto. 
-        // It's safer to bypass domain mapping if we just want to write DTOs, 
-        // but our interface methods are saveGroup(ChatGroup).
-          
-        // Workaround: Reconstruct domain object manually or create a rawSave.
-        // Since this is "restore", we trust the DTO structure.
-        // Let's parse strictly to ensure validity.
-          
-        // Actually, mapGroupToDto requires 'index'. 
-        // Let's implement a direct raw write for migration to avoid mapping roundtrips overhead/complexity
-        // OR adapt the mapper. 
-          
-        // Let's do raw write logic here for efficiency and precision.
-        const groups = await this.listGroupsRaw();
+      if (chunk.type === 'settings') {
+        await this.saveSettings(settingsToDomain(chunk.data));
+      } else if (chunk.type === 'group') {
         groups.push(chunk.data);
-        localStorage.setItem(KEY_GROUPS, JSON.stringify(groups));
-        break;
-      }
-      case 'chat': {
-        // Similar raw write strategy for chats
-        const validated = DtoChatSchema.parse(chunk.data);
-        localStorage.setItem(`${LSP_STORAGE_PREFIX}chat:${validated.id}`, JSON.stringify(validated));
-          
-        const indexList = await this.listChatsRaw();
-        indexList.push(validated);
-        localStorage.setItem(KEY_INDEX, JSON.stringify(indexList));
-        break;
-      }
-      default: {
-        const _exhaustiveCheck: never = chunk;
-        throw new Error(`Unhandled migration chunk type: ${JSON.stringify(_exhaustiveCheck)}`);
-      }
-      
+      } else if (chunk.type === 'chat') {
+        const fullDto = chunk.data;
+        // Save content
+        const { root, currentLeafId, ...meta } = fullDto;
+        localStorage.setItem(`${KEY_CHAT_PREFIX}${fullDto.id}`, JSON.stringify({ root, currentLeafId }));
+        metas.push(meta as ChatMetaDto);
       }
     }
+
+    localStorage.setItem(KEY_GROUPS, JSON.stringify(groups));
+    localStorage.setItem(KEY_INDEX, JSON.stringify({ entries: metas }));
   }
 }

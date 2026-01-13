@@ -51,20 +51,19 @@ export type MessageNodeDto = {
   };
 };
 
-export const ChatSchemaDto = z.object({
+/**
+ * Chat Metadata
+ * Contains all attributes except the heavy message tree.
+ * Stored in a bundled file for fast sidebar rendering.
+ */
+export const ChatMetaSchemaDto = z.object({
   id: z.uuid(),
   title: z.string().nullable(),
-  groupId: z.uuid().nullable().optional(), // Link to a group
-  order: z.number().default(0), // New: for manual sorting
-  root: MessageBranchSchemaDto.optional().default({ items: [] }),
-  currentLeafId: z.uuid().optional(),
-  
-  // Legacy support field
-  messages: z.array(z.unknown()).optional(),
-
-  modelId: z.string(),
-  createdAt: z.number(),
+  groupId: z.uuid().nullable().optional(),
+  order: z.number().default(0),
   updatedAt: z.number(),
+  createdAt: z.number(),
+  modelId: z.string(),
   debugEnabled: z.boolean().optional().default(false),
   
   endpointType: EndpointTypeSchemaDto.optional(),
@@ -74,7 +73,46 @@ export const ChatSchemaDto = z.object({
   originMessageId: z.uuid().optional(),
 });
 
+export type ChatMetaDto = z.infer<typeof ChatMetaSchemaDto>;
+
+/**
+ * Chat Meta Index
+ * The top-level object stored in chat_metas.json.
+ * Uses an object wrapper for better extensibility.
+ */
+export const ChatMetaIndexSchemaDto = z.object({
+  entries: z.array(ChatMetaSchemaDto),
+});
+
+export type ChatMetaIndexDto = z.infer<typeof ChatMetaIndexSchemaDto>;
+
+/**
+ * Chat Content
+ * Contains the heavy message tree structure.
+ * Stored in individual files to scale.
+ */
+export const ChatContentSchemaDto = z.object({
+  root: MessageBranchSchemaDto,
+  currentLeafId: z.uuid().optional(),
+});
+
+export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
+
+/**
+ * Combined Chat DTO
+ * Used for memory handling and migration (full data export).
+ */
+export const ChatSchemaDto = ChatMetaSchemaDto.extend({
+  root: MessageBranchSchemaDto.optional(),
+  currentLeafId: z.uuid().optional(),
+  
+  // Legacy support field
+  messages: z.array(z.unknown()).optional(),
+});
+
 export type ChatDto = z.infer<typeof ChatSchemaDto>;
+
+// --- Provider Profiles ---
 
 export const ProviderProfileSchemaDto = z.object({
   id: z.string().uuid(),
@@ -101,9 +139,7 @@ export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
  * Migration Data Chunk
  * 
  * Represents a single unit of data during storage migration.
- * IMPORTANT: When adding new persistable DTOs to the application, 
- * you MUST add them to this union type to ensure they are included 
- * in the migration process (dump/restore).
+ * Still uses ChatDto (Combined) for simplicity during export/import processes.
  */
 export type MigrationChunkDto =
   | { type: 'settings'; data: SettingsDto }
