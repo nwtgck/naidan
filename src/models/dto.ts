@@ -12,6 +12,24 @@ export type StorageTypeDto = z.infer<typeof StorageTypeSchemaDto>;
 export const EndpointTypeSchemaDto = z.enum(['openai', 'ollama']);
 export type EndpointTypeDto = z.infer<typeof EndpointTypeSchemaDto>;
 
+// --- Language Model Parameters ---
+
+export const LmParametersSchemaDto = z.object({
+  temperature: z.number().optional(),
+  topP: z.number().optional(),
+  maxCompletionTokens: z.number().optional(),
+  presencePenalty: z.number().optional(),
+  frequencyPenalty: z.number().optional(),
+  stop: z.array(z.string()).optional(),
+});
+export type LmParametersDto = z.infer<typeof LmParametersSchemaDto>;
+
+export const SystemPromptSchemaDto = z.object({
+  content: z.string(),
+  behavior: z.enum(['override', 'append']),
+});
+export type SystemPromptDto = z.infer<typeof SystemPromptSchemaDto>;
+
 // --- Grouping ---
 
 export const ChatGroupSchemaDto = z.object({
@@ -71,6 +89,9 @@ export const ChatMetaSchemaDto = z.object({
   overrideModelId: z.string().optional(),
   originChatId: z.uuid().optional(),
   originMessageId: z.uuid().optional(),
+
+  systemPrompt: SystemPromptSchemaDto.optional(),
+  lmParameters: LmParametersSchemaDto.optional(),
 });
 
 export type ChatMetaDto = z.infer<typeof ChatMetaSchemaDto>;
@@ -121,6 +142,8 @@ export const ProviderProfileSchemaDto = z.object({
   endpointUrl: z.string().optional(),
   defaultModelId: z.string().optional(),
   titleModelId: z.string().optional(),
+  systemPrompt: z.string().optional(),
+  lmParameters: LmParametersSchemaDto.optional(),
 });
 export type ProviderProfileDto = z.infer<typeof ProviderProfileSchemaDto>;
 
@@ -132,6 +155,8 @@ export const SettingsSchemaDto = z.object({
   autoTitleEnabled: z.boolean().default(true),
   storageType: StorageTypeSchemaDto,
   providerProfiles: z.array(ProviderProfileSchemaDto).optional().default([]),
+  systemPrompt: z.string().optional(),
+  lmParameters: LmParametersSchemaDto.optional(),
 });
 export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
 

@@ -9,7 +9,7 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
-import type { MessageNode } from '../models/types';
+import type { LmParameters } from '../models/types';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 
 const { addErrorEvent } = useGlobalEvents();
@@ -47,30 +47,53 @@ const OllamaTagsSchema = z.object({
 
 export interface LLMProvider {
   chat(
-    messages: MessageNode[],
+    messages: { role: string; content: string }[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
+    parameters?: LmParameters,
     signal?: AbortSignal
   ): Promise<void>;
   
   listModels(endpoint: string, signal?: AbortSignal): Promise<string[]>;
 }
 
+interface OpenAICompletionRequest {
+  model: string;
+  messages: { role: string; content: string }[];
+  stream: boolean;
+  temperature?: number;
+  top_p?: number;
+  max_completion_tokens?: number;
+  presence_penalty?: number;
+  frequency_penalty?: number;
+  stop?: string[];
+}
+
 export class OpenAIProvider implements LLMProvider {
   async chat(
-    messages: MessageNode[],
+    messages: { role: string; content: string }[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
+    parameters?: LmParameters,
     signal?: AbortSignal,
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
-    const body = {
+    const body: OpenAICompletionRequest = {
       model,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages,
       stream: true,
     };
+
+    if (parameters) {
+      if (parameters.temperature !== undefined) body.temperature = parameters.temperature;
+      if (parameters.topP !== undefined) body.top_p = parameters.topP;
+      if (parameters.maxCompletionTokens !== undefined) body.max_completion_tokens = parameters.maxCompletionTokens;
+      if (parameters.presencePenalty !== undefined) body.presence_penalty = parameters.presencePenalty;
+      if (parameters.frequencyPenalty !== undefined) body.frequency_penalty = parameters.frequencyPenalty;
+      if (parameters.stop !== undefined) body.stop = parameters.stop;
+    }
 
     const response = await fetch(url, {
       method: 'POST',
@@ -128,20 +151,42 @@ export class OpenAIProvider implements LLMProvider {
   }
 }
 
+interface OllamaChatRequest {
+  model: string;
+  messages: { role: string; content: string }[];
+  stream: boolean;
+  options?: Record<string, unknown>;
+}
+
 export class OllamaProvider implements LLMProvider {
   async chat(
-    messages: MessageNode[],
+    messages: { role: string; content: string }[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
+    parameters?: LmParameters,
     signal?: AbortSignal,
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
-    const body = {
+    const body: OllamaChatRequest = {
       model,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages,
       stream: true,
     };
+
+    if (parameters) {
+      const options: Record<string, unknown> = {};
+      if (parameters.temperature !== undefined) options.temperature = parameters.temperature;
+      if (parameters.topP !== undefined) options.top_p = parameters.topP;
+      if (parameters.maxCompletionTokens !== undefined) options.num_predict = parameters.maxCompletionTokens;
+      if (parameters.presencePenalty !== undefined) options.presence_penalty = parameters.presencePenalty;
+      if (parameters.frequencyPenalty !== undefined) options.frequency_penalty = parameters.frequencyPenalty;
+      if (parameters.stop !== undefined) options.stop = parameters.stop;
+      
+      if (Object.keys(options).length > 0) {
+        body.options = options;
+      }
+    }
 
     const response = await fetch(url, {
       method: 'POST',

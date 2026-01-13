@@ -261,32 +261,81 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   describe('Restore to Global', () => {
-    it('clears all overrides when "Restore to global settings" is clicked', async () => {
+    it('clears all overrides when "Restore defaults" is clicked', async () => {
       Object.assign(mockCurrentChat.value as object, {
         endpointType: 'ollama',
         endpointUrl: 'http://overridden:11434',
         overrideModelId: 'overridden-model',
+        systemPrompt: { content: 'test', behavior: 'override' },
+        lmParameters: { temperature: 0.5 },
       });
       
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
-      const restoreBtn = wrapper.find('button.underline');
+      const restoreBtn = wrapper.find('[data-testid="chat-setting-restore-defaults"]');
       
       await restoreBtn.trigger('click');
 
       expect(mockCurrentChat.value!.endpointType).toBeUndefined();
       expect(mockCurrentChat.value!.endpointUrl).toBeUndefined();
       expect(mockCurrentChat.value!.overrideModelId).toBeUndefined();
+      expect(mockCurrentChat.value!.systemPrompt).toBeUndefined();
+      expect(mockCurrentChat.value!.lmParameters).toBeUndefined();
     });
 
     it('triggers saveCurrentChat when restoring to global settings', async () => {
       mockCurrentChat.value!.endpointType = 'ollama';
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
-      const restoreBtn = wrapper.find('button.underline');
+      const restoreBtn = wrapper.find('[data-testid="chat-setting-restore-defaults"]');
       
       await restoreBtn.trigger('click');
       await flushPromises();
       
       expect(mockSaveCurrentChat).toHaveBeenCalled();
+    });
+  });
+
+  describe('Settings Resolution Indicators', () => {
+    it('shows "Global Default" for system prompt when not overridden', () => {
+      const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
+      const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
+      expect(status.text()).toBe('Global Default');
+      expect(status.classes()).not.toContain('text-blue-500');
+    });
+
+    it('shows "Overriding" for system prompt when overridden with override behavior', async () => {
+      const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
+      const textarea = wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]');
+      
+      await textarea.setValue('Custom prompt');
+      
+      const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
+      expect(status.text()).toBe('Overriding');
+      expect(status.classes()).toContain('text-blue-500');
+    });
+
+    it('shows "Appending" for system prompt when overridden with append behavior', async () => {
+      const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
+      const appendBtn = wrapper.findAll('button').find(b => b.text() === 'Append');
+      await appendBtn?.trigger('click');
+      
+      const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
+      expect(status.text()).toBe('Appending');
+    });
+
+    it('shows "Inherited" for parameters when not overridden', () => {
+      const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
+      const status = wrapper.find('[data-testid="resolution-status-lm-parameters"]');
+      expect(status.text()).toBe('Inherited');
+      expect(status.classes()).not.toContain('text-blue-500');
+    });
+
+    it('shows "Chat Overrides" for parameters when overridden', async () => {
+      mockCurrentChat.value!.lmParameters = { temperature: 0.8 };
+      const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
+      
+      const status = wrapper.find('[data-testid="resolution-status-lm-parameters"]');
+      expect(status.text()).toBe('Chat Overrides');
+      expect(status.classes()).toContain('text-blue-500');
     });
   });
 

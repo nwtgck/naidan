@@ -19,7 +19,9 @@ import {
   Database, Bot, Type, Settings2, RefreshCw, Save,
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
   Pencil, Trash, Check, Activity, Info, HardDrive,
+  MessageSquareQuote,
 } from 'lucide-vue-next';
+import LmParametersEditor from './LmParametersEditor.vue';
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
 import { usePrompt } from '../composables/usePrompt';   // Import usePrompt
 import { ENDPOINT_PRESETS } from '../models/constants';
@@ -177,6 +179,8 @@ async function handleCreateProviderProfile() {
     endpointUrl: form.value.endpointUrl,
     defaultModelId: form.value.defaultModelId,
     titleModelId: form.value.titleModelId,
+    systemPrompt: form.value.systemPrompt,
+    lmParameters: form.value.lmParameters ? JSON.parse(JSON.stringify(form.value.lmParameters)) : undefined,
   };
 
   if (!form.value.providerProfiles) form.value.providerProfiles = [];
@@ -188,6 +192,8 @@ function handleApplyProviderProfile(providerProfile: ProviderProfile) {
   form.value.endpointUrl = providerProfile.endpointUrl;
   form.value.defaultModelId = providerProfile.defaultModelId;
   form.value.titleModelId = providerProfile.titleModelId;
+  form.value.systemPrompt = providerProfile.systemPrompt;
+  form.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;
 }
 
 function handleDeleteProviderProfile(id: string) {
@@ -414,7 +420,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                 </div>
               </section>
 
-              <section class="space-y-6">
+              <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
                 <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
                   <Bot class="w-5 h-5 text-blue-500" />
                   <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Model Selection</h2>
@@ -481,6 +487,33 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                         <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
                       </select>
                     </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
+                <div class="flex items-center gap-2 pb-3">
+                  <MessageSquareQuote class="w-5 h-5 text-blue-500" />
+                  <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Global Context & Parameters</h2>
+                </div>
+
+                <div class="space-y-8">
+                  <!-- System Prompt -->
+                  <div class="space-y-2">
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Global System Prompt</label>
+                    <textarea 
+                      v-model="form.systemPrompt"
+                      rows="4"
+                      class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
+                      placeholder="You are a helpful AI assistant..."
+                      data-testid="setting-system-prompt-textarea"
+                    ></textarea>
+                    <p class="text-[10px] font-medium text-gray-400 ml-1 leading-relaxed">This instruction is applied to all new chats as a baseline identity.</p>
+                  </div>
+
+                  <!-- LM Parameters -->
+                  <div class="bg-gray-50/30 dark:bg-gray-800/20 p-6 rounded-3xl border border-gray-100 dark:border-gray-800">
+                    <LmParametersEditor v-model="form.lmParameters" />
                   </div>
                 </div>
               </section>

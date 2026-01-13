@@ -22,6 +22,7 @@ describe('LocalStorageProvider', () => {
       modelId: 'gpt-3.5-turbo',
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      systemPrompt: undefined,
       debugEnabled: false,
     };
 
@@ -50,6 +51,7 @@ describe('LocalStorageProvider', () => {
       modelId: 'gpt-3.5-turbo',
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      systemPrompt: undefined,
       debugEnabled: false,
     };
 
@@ -66,6 +68,7 @@ describe('LocalStorageProvider', () => {
       modelId: 'gpt-3.5-turbo',
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      systemPrompt: undefined,
       debugEnabled: false,
     };
 
@@ -83,6 +86,7 @@ describe('LocalStorageProvider', () => {
       modelId: 'gpt-3.5-turbo',
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      systemPrompt: undefined,
       debugEnabled: false,
     };
 

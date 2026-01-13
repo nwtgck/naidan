@@ -22,6 +22,7 @@ import type {
   Settings,
   EndpointType,
   StorageType,
+  SystemPrompt,
 } from './types';
 
 export const roleToDomain = (dto: RoleDto): Role => {
@@ -145,6 +146,8 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     overrideModelId: dto.overrideModelId,
     originChatId: dto.originChatId,
     originMessageId: dto.originMessageId,
+    systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
+    lmParameters: dto.lmParameters,
   };
 };
 
@@ -171,6 +174,8 @@ export const chatToDto = (domain: Chat, index: number): ChatDto => ({
   overrideModelId: domain.overrideModelId,
   originChatId: domain.originChatId,
   originMessageId: domain.originMessageId,
+  systemPrompt: domain.systemPrompt,
+  lmParameters: domain.lmParameters,
 });
 
 /**

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock, beforeAll } from 'vitest';
 import { mount, shallowMount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
-import { nextTick, ref } from 'vue';
+import { nextTick, ref, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 // Mock router
@@ -204,6 +204,47 @@ describe('ChatArea UI States', () => {
     expect(wrapper.find('button[title="Jump to original chat"]').exists()).toBe(true);
     // Reset for other tests
     mockCurrentChat.value.originChatId = undefined;
+  });
+
+  describe('Custom Overrides Indicator', () => {
+    it('shows indicator when endpointType is overridden', async () => {
+      mockCurrentChat.value = reactive({
+        id: 'c1', title: 'T', root: { items: [] },
+        endpointType: 'ollama',
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
+      }) as any;
+      const wrapper = mount(ChatArea, { global: { plugins: [router] } });
+      expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
+    });
+
+    it('shows indicator when systemPrompt is overridden', async () => {
+      mockCurrentChat.value = reactive({
+        id: 'c1', title: 'T', root: { items: [] },
+        systemPrompt: { content: 'test', behavior: 'override' },
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
+      }) as any;
+      const wrapper = mount(ChatArea, { global: { plugins: [router] } });
+      expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
+    });
+
+    it('shows indicator when lmParameters are overridden', async () => {
+      mockCurrentChat.value = reactive({
+        id: 'c1', title: 'T', root: { items: [] },
+        lmParameters: { temperature: 0.5 },
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
+      }) as any;
+      const wrapper = mount(ChatArea, { global: { plugins: [router] } });
+      expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
+    });
+
+    it('does not show indicator when no overrides are present', async () => {
+      mockCurrentChat.value = reactive({
+        id: 'c1', title: 'T', root: { items: [] },
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
+      }) as any;
+      const wrapper = mount(ChatArea, { global: { plugins: [router] } });
+      expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(false);
+    });
   });
 });
 

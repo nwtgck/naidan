@@ -394,10 +394,53 @@ export function useChat() {
     try {
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
 
-      await provider.chat(activeMessages.value.filter(m => m.id !== assistantMsg.id), resolvedModel, url, (chunk) => {
+      // --- Resolve System Prompt & Parameters ---
+      const activeProfile = (settings.value.providerProfiles || []).find(p => p.endpointUrl === url && p.endpointType === type);
+      
+      // 1. Resolve System Prompts
+      const globalSystemPrompt = activeProfile?.systemPrompt || settings.value.systemPrompt;
+      const chatPromptObj = currentChat.value.systemPrompt;
+      
+      const finalMessages: { role: string; content: string }[] = [];
+      
+      if (chatPromptObj) {
+        if (chatPromptObj.behavior === 'append') {
+          if (globalSystemPrompt) finalMessages.push({ role: 'system', content: globalSystemPrompt });
+          if (chatPromptObj.content) finalMessages.push({ role: 'system', content: chatPromptObj.content });
+        } else {
+          // override
+          if (chatPromptObj.content) {
+            finalMessages.push({ role: 'system', content: chatPromptObj.content });
+          } else if (globalSystemPrompt) {
+            // content is empty in override mode, technically should we fallback or send nothing?
+            // User concern was behavior existing without content. 
+            // If object exists but content is empty, we respect it (sending nothing or fallback?)
+            // Usually, if they set an override but leave it empty, they might want NO prompt.
+            // But let's assume if content is empty they might still want the global one unless they explicitly cleared it.
+            // Actually, the most natural is: if they have a chat prompt, use it.
+            finalMessages.push({ role: 'system', content: chatPromptObj.content });
+          }
+        }
+      } else if (globalSystemPrompt) {
+        finalMessages.push({ role: 'system', content: globalSystemPrompt });
+      }
+
+      // Add conversation history
+      activeMessages.value.filter(m => m.id !== assistantMsg.id).forEach(m => {
+        finalMessages.push({ role: m.role, content: m.content });
+      });
+
+      // 2. Resolve LM Parameters (Deep Merge: Chat > Profile > Global)
+      const resolvedParams = {
+        ...(settings.value.lmParameters || {}),
+        ...(activeProfile?.lmParameters || {}),
+        ...(currentChat.value.lmParameters || {}),
+      };
+
+      await provider.chat(finalMessages, resolvedModel, url, (chunk) => {
         assistantNode.content += chunk;
         triggerRef(currentChat);
-      }, abortController.signal);
+      }, resolvedParams, abortController.signal);
 
       processThinking(assistantNode);
       currentChat.value.updatedAt = Date.now();

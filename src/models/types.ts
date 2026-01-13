@@ -12,6 +12,20 @@ export type Role = 'user' | 'assistant' | 'system';
 export type StorageType = 'local' | 'opfs';
 export type EndpointType = 'openai' | 'ollama';
 
+export interface LmParameters {
+  temperature?: number;
+  topP?: number;
+  maxCompletionTokens?: number;
+  presencePenalty?: number;
+  frequencyPenalty?: number;
+  stop?: string[];
+}
+
+export interface SystemPrompt {
+  content: string;
+  behavior: 'override' | 'append';
+}
+
 export interface MessageNode {
   id: string;
   role: Role;
@@ -51,6 +65,9 @@ export interface Chat {
   overrideModelId?: string;
   originChatId?: string;
   originMessageId?: string;
+
+  systemPrompt?: SystemPrompt;
+  lmParameters?: LmParameters;
 }
 
 export type ChatSummary = Pick<Chat, 'id' | 'title' | 'updatedAt' | 'groupId'>;
@@ -67,6 +84,8 @@ export interface ProviderProfile {
   endpointUrl?: string;
   defaultModelId?: string;
   titleModelId?: string;
+  systemPrompt?: string;
+  lmParameters?: LmParameters;
 }
 
 export interface Settings {
@@ -77,6 +96,8 @@ export interface Settings {
   autoTitleEnabled: boolean;
   storageType: StorageType;
   providerProfiles: ProviderProfile[];
+  systemPrompt?: string;
+  lmParameters?: LmParameters;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

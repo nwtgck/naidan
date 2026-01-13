@@ -2,7 +2,11 @@
 import { ref, onMounted, watch } from 'vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
-import { X, RefreshCw, Loader2, Settings2, AlertCircle, Check, Globe } from 'lucide-vue-next';
+import { 
+  X, RefreshCw, Loader2, Settings2, Check, 
+  MessageSquareQuote, Layers, Globe, AlertCircle 
+} from 'lucide-vue-next';
+import LmParametersEditor from './LmParametersEditor.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
 
 const emit = defineEmits<{
@@ -41,6 +45,8 @@ function handleQuickProviderProfileChange() {
     currentChat.value.endpointType = providerProfile.endpointType;
     currentChat.value.endpointUrl = providerProfile.endpointUrl;
     currentChat.value.overrideModelId = providerProfile.defaultModelId;
+    currentChat.value.systemPrompt = providerProfile.systemPrompt ? { content: providerProfile.systemPrompt, behavior: 'override' } : undefined;
+    currentChat.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;
   }
   error.value = null;
   // Reset select after apply to allow re-selection if needed
@@ -85,13 +91,37 @@ watch([
   () => currentChat.value?.endpointUrl,
   () => currentChat.value?.endpointType,
   () => currentChat.value?.overrideModelId,
+  () => currentChat.value?.systemPrompt,
+  () => currentChat.value?.lmParameters,
 ], () => {
   saveCurrentChat();
 }, { deep: true });
+
+function updateSystemPromptContent(content: string) {
+  if (!currentChat.value) return;
+  if (!content && (!currentChat.value.systemPrompt || currentChat.value.systemPrompt.behavior === 'override')) {
+    currentChat.value.systemPrompt = undefined;
+    return;
+  }
+  if (!currentChat.value.systemPrompt) {
+    currentChat.value.systemPrompt = { content, behavior: 'override' };
+  } else {
+    currentChat.value.systemPrompt.content = content;
+  }
+}
+
+function updateSystemPromptBehavior(behavior: 'override' | 'append') {
+  if (!currentChat.value) return;
+  if (!currentChat.value.systemPrompt) {
+    currentChat.value.systemPrompt = { content: '', behavior };
+  } else {
+    currentChat.value.systemPrompt.behavior = behavior;
+  }
+}
 </script>
 
 <template>
-  <div v-if="currentChat" class="border-b border-gray-100 dark:border-gray-800 bg-gray-50/95 dark:bg-gray-950/90 backdrop-blur-md animate-in slide-in-from-top duration-300 shadow-inner">
+  <div v-if="currentChat" class="border-b border-gray-100 dark:border-gray-800 bg-gray-50/95 dark:bg-gray-950/90 backdrop-blur-md animate-in slide-in-from-top duration-300 shadow-inner max-h-[75vh] overflow-y-auto">
     <div class="max-w-4xl mx-auto p-6 space-y-8">
       <!-- Title & Close -->
       <div class="flex items-center justify-between">
@@ -109,7 +139,7 @@ watch([
 
       <div class="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-200/50 dark:border-gray-800 pb-8 gap-6">
         <div class="flex flex-col md:flex-row gap-8 flex-1">
-          <!-- Quick Switcher (If profiles exist) -->
+          <!-- Quick Switcher -->
           <div v-if="settings.providerProfiles && settings.providerProfiles.length > 0" class="w-full md:max-w-[240px] space-y-2">
             <label class="block text-[10px] font-bold text-blue-600/70 dark:text-blue-400 uppercase tracking-wider ml-1">Quick Profile Switcher</label>
             <select 
@@ -142,20 +172,18 @@ watch([
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div class="space-y-2">
           <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint Type</label>
-          <div class="relative">
-            <select 
-              v-model="currentChat.endpointType"
-              class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
-              style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-            >
-              <option :value="undefined">Global ({{ settings.endpointType }})</option>
-              <option value="openai">OpenAI Compatible</option>
-              <option value="ollama">Ollama</option>
-            </select>
-          </div>
+          <select 
+            v-model="currentChat.endpointType"
+            class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
+            style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
+          >
+            <option :value="undefined">Global ({{ settings.endpointType }})</option>
+            <option value="openai">OpenAI Compatible</option>
+            <option value="ollama">Ollama</option>
+          </select>
         </div>
 
         <div class="space-y-2">
@@ -167,50 +195,39 @@ watch([
             :placeholder="settings.endpointUrl"
             data-testid="chat-setting-url-input"
           />
-
-          <!-- Error message with fixed height to prevent layout shift -->
           <div class="h-4 mt-1">
-            <p v-if="error" class="text-[10px] text-red-500 font-bold ml-1 animate-in fade-in slide-in-from-top-1 duration-200">{{ error }}</p>
+            <p v-if="error" class="text-[10px] text-red-500 font-bold ml-1">{{ error }}</p>
           </div>
         </div>
 
         <div class="space-y-2">
           <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
           <div class="flex gap-2">
-            <div class="relative flex-1">
-              <select 
-                v-model="currentChat.overrideModelId"
-                class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
-                style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-                data-testid="chat-setting-model-select"
-              >
-                <option :value="undefined">Global ({{ settings.defaultModelId || 'None' }})</option>
-                <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-              </select>
-            </div>
+            <select 
+              v-model="currentChat.overrideModelId"
+              class="flex-1 text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
+              style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
+              data-testid="chat-setting-model-select"
+            >
+              <option :value="undefined">Global ({{ settings.defaultModelId || 'None' }})</option>
+              <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+            </select>
             <button 
               @click="fetchModels" 
               class="p-3 border transition-all flex items-center justify-center disabled:opacity-50 shadow-sm rounded-xl"
-              :class="[
-                connectionSuccess 
-                  ? 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800 text-green-600 dark:text-green-400' 
-                  : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-400'
-              ]"
+              :class="[connectionSuccess ? 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800 text-green-600' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700']"
               :disabled="fetchingModels"
-              title="Refresh Model List"
               data-testid="chat-setting-refresh-models"
             >
-              <div class="relative w-4 h-4 flex items-center justify-center">
-                <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin absolute" />
-                <Check v-else-if="connectionSuccess" class="w-4 h-4 animate-in zoom-in duration-300" data-testid="chat-setting-refresh-success-icon" />
-                <RefreshCw v-else class="w-4 h-4" />
-              </div>
+              <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
+              <Check v-else-if="connectionSuccess" class="w-4 h-4" data-testid="chat-setting-refresh-success-icon" />
+              <RefreshCw v-else class="w-4 h-4" />
             </button>
           </div>
         </div>
       </div>
 
-      <!-- Info banners -->
+      <!-- Info Banners -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="flex items-start gap-4 p-4 bg-white dark:bg-blue-900/10 border border-gray-100 dark:border-blue-900/30 rounded-2xl shadow-sm">
           <div class="p-2 bg-blue-50 dark:bg-gray-800 rounded-xl border border-blue-100 dark:border-blue-900/20">
@@ -218,9 +235,7 @@ watch([
           </div>
           <div class="space-y-1">
             <p class="text-[10px] font-bold text-blue-900/70 dark:text-blue-300 uppercase tracking-widest">Auto-Check</p>
-            <p class="text-[11px] text-gray-500 dark:text-blue-400/70 leading-relaxed font-medium">
-              Connection check is automatically performed only for localhost URLs.
-            </p>
+            <p class="text-[11px] text-gray-500 dark:text-blue-400/70 leading-relaxed font-medium">Connection check is automatically performed only for localhost URLs.</p>
           </div>
         </div>
 
@@ -233,13 +248,79 @@ watch([
             <p class="text-[11px] text-gray-500/70 dark:text-gray-400/70 leading-relaxed font-medium">
               These settings only apply to this chat. 
               <button 
-                @click="currentChat.endpointType = undefined; currentChat.endpointUrl = undefined; currentChat.overrideModelId = undefined"
+                @click="currentChat.endpointType = undefined; currentChat.endpointUrl = undefined; currentChat.overrideModelId = undefined; currentChat.systemPrompt = undefined; currentChat.lmParameters = undefined"
                 class="font-bold underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                data-testid="chat-setting-restore-defaults"
               >
                 Restore defaults
               </button>.
             </p>
           </div>
+        </div>
+      </div>
+
+      <!-- System Prompt and Parameters -->
+      <div class="pt-8 border-t border-gray-200/50 dark:border-gray-800 space-y-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div class="md:col-span-2 space-y-4">
+            <div class="flex items-center justify-between">
+              <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                <MessageSquareQuote class="w-3 h-3" />
+                Chat System Prompt
+              </label>
+              
+              <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+                <button 
+                  @click="updateSystemPromptBehavior('override')"
+                  class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
+                  :class="currentChat.systemPrompt?.behavior !== 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                >
+                  Override
+                </button>
+                <button 
+                  @click="updateSystemPromptBehavior('append')"
+                  class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
+                  :class="currentChat.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                >
+                  Append
+                </button>
+              </div>
+            </div>
+            <textarea 
+              :value="currentChat.systemPrompt?.content || ''"
+              @input="e => updateSystemPromptContent((e.target as HTMLTextAreaElement).value)"
+              rows="4"
+              class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
+              :placeholder="currentChat.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
+              data-testid="chat-setting-system-prompt-textarea"
+            ></textarea>
+          </div>
+
+          <div class="space-y-4">
+            <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <Layers class="w-3 h-3" />
+              Settings Resolution
+            </label>
+            <div class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3">
+              <div class="flex items-center justify-between text-[10px] font-bold">
+                <span class="text-gray-400">System Prompt</span>
+                <span :class="currentChat.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">{{ currentChat.systemPrompt ? (currentChat.systemPrompt.behavior === 'append' ? 'Appending' : 'Overriding') : 'Global Default' }}</span>
+              </div>
+              <div class="flex items-center justify-between text-[10px] font-bold">
+                <span class="text-gray-400">Parameters</span>
+                <span :class="currentChat.lmParameters && Object.keys(currentChat.lmParameters).length > 0 ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-lm-parameters">
+                  {{ currentChat.lmParameters && Object.keys(currentChat.lmParameters).length > 0 ? 'Chat Overrides' : 'Inherited' }}
+                </span>
+              </div>
+              <div class="pt-2 border-t border-gray-50 dark:border-gray-800/50">
+                <p class="text-[9px] text-gray-400 leading-relaxed italic">Chat settings take precedence over Provider Profiles, which take precedence over Global Settings.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-6 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-3xl">
+          <LmParametersEditor v-model="currentChat.lmParameters" />
         </div>
       </div>
     </div>

@@ -279,7 +279,12 @@ onUnmounted(() => {
                 </span>
                 <Settings2 class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
               </div>
-              <div v-if="currentChat.endpointUrl || currentChat.overrideModelId" class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" title="Custom overrides active"></div>
+              <div 
+                v-if="currentChat.endpointUrl || currentChat.endpointType || currentChat.overrideModelId || currentChat.systemPrompt || (currentChat.lmParameters && Object.keys(currentChat.lmParameters).length > 0)" 
+                class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" 
+                title="Custom overrides active"
+                data-testid="custom-overrides-indicator"
+              ></div>
             </button>
           </template>
           <template v-else>
