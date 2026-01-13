@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '../composables/useGlobalEvents';
+import { useOPFSExplorer } from '../composables/useOPFSExplorer';
 import { 
   Terminal, ChevronUp, ChevronDown, Trash2, AlertCircle, X, Skull, 
-  Info, AlertTriangle, Bug, MoreVertical,
+  Info, AlertTriangle, Bug, MoreVertical, HardDrive,
 } from 'lucide-vue-next';
 
 const { events, eventCount, errorCount, clearEvents, addErrorEvent, addInfoEvent } = useGlobalEvents();
+const { openOPFS } = useOPFSExplorer();
 const isOpen = ref(false);
 const isMenuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
@@ -34,6 +36,8 @@ function triggerTestInfo() {
   });
   isMenuOpen.value = false;
 }
+
+
 
 function toggle() {
   isOpen.value = !isOpen.value;
@@ -172,6 +176,15 @@ onUnmounted(() => {
             >
               <Skull class="w-3.5 h-3.5" />
               <span>Trigger Test Error</span>
+            </button>
+            <div class="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
+            <button 
+              @click.stop="openOPFS"
+              class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              data-testid="open-opfs-explorer"
+            >
+              <HardDrive class="w-3.5 h-3.5" />
+              <span>Explore OPFS</span>
             </button>
           </div>
         </template>

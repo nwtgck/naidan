@@ -6,17 +6,21 @@ import { useChat } from './composables/useChat';
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
+import { useOPFSExplorer } from './composables/useOPFSExplorer';
 import Sidebar from './components/Sidebar.vue';
 import SettingsModal from './components/SettingsModal.vue';
 import OnboardingModal from './components/OnboardingModal.vue';
 import DebugPanel from './components/DebugPanel.vue';
 import ToastContainer from './components/ToastContainer.vue';
 import CustomDialog from './components/CustomDialog.vue'; // Import CustomDialog
+import OPFSExplorer from './components/OPFSExplorer.vue';
 
 const isSettingsOpen = ref(false);
 const chatStore = useChat();
 const settingsStore = useSettings();
 const router = useRouter();
+
+const { isOPFSOpen } = useOPFSExplorer();
 
 // Initialize useConfirm
 const { 
@@ -112,6 +116,8 @@ onKeyStroke(['o', 'O'], async (e) => {
       @confirm="handlePromptConfirm"
       @cancel="handlePromptCancel"
     />
+
+    <OPFSExplorer v-model="isOPFSOpen" />
   </div>
 </template>
 
