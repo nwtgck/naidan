@@ -78,6 +78,8 @@ export default tseslint.config(
       globals: {
         ...globals.browser,
         ...globals.node,
+        __BUILD_MODE_IS_STANDALONE__: 'readonly',
+        __BUILD_MODE_IS_HOSTED__: 'readonly',
       },
     },
     rules: {

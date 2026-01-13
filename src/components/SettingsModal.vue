@@ -19,7 +19,7 @@ import {
   Database, Bot, Type, Settings2, RefreshCw, Save,
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
   Pencil, Trash, Check, Activity, Info, HardDrive,
-  MessageSquareQuote,
+  MessageSquareQuote, Download,
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
@@ -41,6 +41,8 @@ const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { showPrompt } = usePrompt();     // Initialize usePrompt
 const router = useRouter();
+
+const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 
 const form = ref({ ...settings.value });
 const initialFormState = ref('');
@@ -314,6 +316,24 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             Developer
           </button>
         </nav>
+
+        <!-- Download Footer (Hosted Mode Only) -->
+        <div v-if="isHostedMode" class="p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto">
+          <a 
+            href="./lm-web-ui-standalone.zip" 
+            download="lm-web-ui-standalone.zip"
+            class="flex items-center gap-3 px-4 py-3 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
+            data-testid="sidebar-download-button"
+          >
+            <div class="p-2 bg-green-100 dark:bg-green-800/50 rounded-lg text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">
+              <Download class="w-4 h-4" />
+            </div>
+            <div class="flex-1 min-w-0 text-left">
+              <div class="text-xs font-bold text-green-800 dark:text-green-300">Offline Standalone</div>
+              <div class="text-[10px] text-green-600/70 dark:text-green-400/60 font-medium truncate">Runs locally via file://</div>
+            </div>
+          </a>
+        </div>
       </aside>
 
       <!-- Main Content Area -->
@@ -419,6 +439,8 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                   </div>
                 </div>
               </section>
+
+
 
               <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
                 <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
