@@ -1,0 +1,122 @@
+name: CI/CD
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Run build
+        run: npm run build
+
+      - name: Upload full dist build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-dist-build
+          path: dist/
+
+  publish_to_cloudflare:
+    needs: build_and_test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      statuses: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Download full dist build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: full-dist-build
+          path: dist
+
+      - name: Publish to Cloudflare Pages
+        id: cloudflare_pages_deploy
+        uses: cloudflare/pages-action@1
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          projectName: lm-web-ui
+          directory: dist/hosted
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add publish URL as commit status
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const sha = context.payload.pull_request?.head.sha ?? context.sha;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              context: 'Cloudflare Pages',
+              description: 'Cloudflare Pages deployment',
+              state: 'success',
+              sha,
+              target_url: "${{ steps.cloudflare_pages_deploy.outputs.url }}",
+            });
+
+  release_to_github:
+    needs: build_and_test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download full dist build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: full-dist-build
+          path: dist
+
+      - name: Get tag name
+        id: get_tag
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Create lm-web-ui-hosted.zip with tag
+        run: |
+          TAG=${{ steps.get_tag.outputs.TAG_NAME }}
+          mkdir -p temp_zip_dir/lm-web-ui-hosted-${TAG}
+          cp -r dist/hosted/. temp_zip_dir/lm-web-ui-hosted-${TAG}/
+          cd temp_zip_dir
+          zip -r ../dist/lm-web-ui-hosted-${TAG}.zip lm-web-ui-hosted-${TAG}
+          cd ..
+          rm -rf temp_zip_dir
+
+      - name: Rename lm-web-ui-standalone.zip with tag
+        run: mv dist/lm-web-ui-standalone.zip dist/lm-web-ui-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/lm-web-ui-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+            dist/lm-web-ui-hosted-${{ steps.get_tag.outputs.TAG_NAME }}.zip
