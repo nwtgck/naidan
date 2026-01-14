@@ -111,7 +111,7 @@ describe('App', () => {
     (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
       initialized: ref(true),
-      isOnboardingDismissed: ref(false),
+      isOnboardingDismissed: ref(true),
       settings: ref({ endpointUrl: 'http://localhost:11434' }),
     });
     (useRouter as unknown as Mock).mockReturnValue({

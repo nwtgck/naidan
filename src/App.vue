@@ -40,16 +40,23 @@ const {
 } = usePrompt();
 
 // Automatically create a new chat if the list becomes empty while on the landing page
+// We wait until onboarding is dismissed to ensure default settings (like modelId) are available
 watch(
-  [() => chatStore.chats.value.length, () => router.currentRoute.value.path, () => settingsStore.initialized.value],
-  async ([len, path, initialized]) => {
-    if (initialized && len === 0 && path === '/') {
+  [
+    () => chatStore.chats.value.length, 
+    () => router.currentRoute.value.path, 
+    () => settingsStore.initialized.value,
+    () => settingsStore.isOnboardingDismissed.value
+  ],
+  async ([len, path, initialized, dismissed]) => {
+    if (initialized && dismissed && len === 0 && path === '/') {
       await chatStore.createNewChat();
       if (chatStore.currentChat.value) {
         router.push(`/chat/${chatStore.currentChat.value.id}`);
       }
     }
   },
+  { immediate: true }
 );
 
 // ChatGPT-style shortcut for New Chat: Ctrl+Shift+O (Cmd+Shift+O on Mac)
