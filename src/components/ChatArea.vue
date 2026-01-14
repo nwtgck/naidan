@@ -33,6 +33,28 @@ const isMaximized = ref(false); // New state for maximize button
 const isOverLimit = ref(false); // New state to show maximize button only when content is long
 
 const attachments = ref<Attachment[]>([]);
+const attachmentUrls = ref<Record<string, string>>({});
+const isDragging = ref(false);
+
+watch(attachments, (newAtts) => {
+  // Revoke URLs for removed attachments
+  Object.keys(attachmentUrls.value).forEach(id => {
+    if (!newAtts.find(a => a.id === id)) {
+      const url = attachmentUrls.value[id];
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+      delete attachmentUrls.value[id];
+    }
+  });
+
+  // Create URLs for new attachments
+  newAtts.forEach(att => {
+    if (att.status === 'memory' && !attachmentUrls.value[att.id]) {
+      attachmentUrls.value[att.id] = URL.createObjectURL(att.blob);
+    }
+  });
+}, { deep: true });
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
@@ -44,11 +66,7 @@ function triggerFileInput() {
   fileInputRef.value?.click();
 }
 
-async function handleFileSelect(event: Event) {
-  const target = event.target as HTMLInputElement;
-  if (!target.files) return;
-
-  const files = Array.from(target.files);
+async function processFiles(files: File[]) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
     
@@ -63,20 +81,47 @@ async function handleFileSelect(event: Event) {
     };
     attachments.value.push(attachment);
   }
-  target.value = ''; // Reset input
   nextTick(adjustTextareaHeight);
+}
+
+async function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement;
+  if (!target.files) return;
+
+  await processFiles(Array.from(target.files));
+  target.value = ''; // Reset input
+}
+
+function handleDragOver(event: DragEvent) {
+  event.preventDefault();
+  isDragging.value = true;
+}
+
+function handleDragLeave(event: DragEvent) {
+  // Only set to false if we are leaving the main container
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  if (
+    event.clientX <= rect.left ||
+    event.clientX >= rect.right ||
+    event.clientY <= rect.top ||
+    event.clientY >= rect.bottom
+  ) {
+    isDragging.value = false;
+  }
+}
+
+async function handleDrop(event: DragEvent) {
+  event.preventDefault();
+  isDragging.value = false;
+  
+  if (event.dataTransfer?.files) {
+    await processFiles(Array.from(event.dataTransfer.files));
+  }
 }
 
 function removeAttachment(id: string) {
   attachments.value = attachments.value.filter(a => a.id !== id);
   nextTick(adjustTextareaHeight);
-}
-
-function getAttachmentUrl(att: Attachment) {
-  if (att.status === 'memory') {
-    return URL.createObjectURL(att.blob);
-  }
-  return '';
 }
 
 function applySuggestion(text: string) {
@@ -281,11 +326,30 @@ onMounted(() => {
 import { onUnmounted } from 'vue';
 onUnmounted(() => {
   window.removeEventListener('resize', adjustTextareaHeight);
+  // Revoke all created URLs
+  Object.values(attachmentUrls.value).forEach(url => URL.revokeObjectURL(url));
 });
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors">
+  <div 
+    class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
+  >
+    <!-- Drag Overlay -->
+    <div 
+      v-if="isDragging"
+      class="absolute inset-0 z-50 bg-blue-500/10 border-2 border-dashed border-blue-500 pointer-events-none flex items-center justify-center"
+      data-testid="drag-overlay"
+    >
+      <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-xl flex items-center gap-3 animate-in zoom-in duration-200">
+        <Paperclip class="w-6 h-6 text-blue-500" />
+        <span class="text-lg font-bold text-gray-800 dark:text-gray-100">Drop images to attach</span>
+      </div>
+    </div>
+
     <!-- Header -->
     <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-3 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
       <div class="flex items-center gap-3 overflow-hidden min-h-[44px]">
@@ -456,7 +520,7 @@ onUnmounted(() => {
         <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
           <div v-for="att in attachments" :key="att.id" class="relative group/att">
             <img 
-              :src="getAttachmentUrl(att)" 
+              :src="attachmentUrls[att.id]" 
               class="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
             />
             <button 

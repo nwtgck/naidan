@@ -11,7 +11,7 @@ const DOMPurify = typeof window !== 'undefined' ? createDOMPurify(window) : crea
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { MessageNode } from '../models/types';
-import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle } from 'lucide-vue-next';
+import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 
 const props = defineProps<{
@@ -317,6 +317,18 @@ const parsedContent = computed(() => {
 
 const isUser = computed(() => props.message.role === 'user');
 const hasThinking = computed(() => !!props.message.thinking || props.message.content.includes('<think>'));
+
+function formatSize(bytes?: number): string {
+  if (bytes === undefined) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
 </script>
 
 <template>
@@ -341,11 +353,20 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
               :src="attachmentUrls[att.id]" 
               class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm"
             />
+            <a 
+              :href="attachmentUrls[att.id]" 
+              :download="att.originalName"
+              class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 group-hover/att:opacity-100 transition-all z-10"
+              title="Download image"
+              data-testid="download-attachment"
+            >
+              <Download class="w-4 h-4" />
+            </a>
           </template>
           <template v-else>
             <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500">
               <AlertTriangle class="w-3.5 h-3.5 text-amber-500" />
-              <span>Image missing ({{ att.originalName }})</span>
+              <span>Image missing ({{ att.originalName }}) - {{ formatSize(att.size) }}</span>
             </div>
           </template>
         </div>

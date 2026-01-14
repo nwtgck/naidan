@@ -436,6 +436,28 @@ describe('MessageItem Attachment Rendering', () => {
 
     expect(wrapper.text()).toContain('Image missing');
     expect(wrapper.text()).toContain('missing.png');
+    expect(wrapper.text()).toContain('30.0 B');
     expect(wrapper.find('img').exists()).toBe(false);
+  });
+
+  it('renders a download button for valid attachments', async () => {
+    const message = createMessageWithAttachments([{
+      id: 'att-mem',
+      status: 'memory',
+      blob: new Blob([''], { type: 'image/png' }),
+      originalName: 'mem.png',
+      mimeType: 'image/png',
+      size: 10,
+      uploadedAt: Date.now()
+    }]);
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+    await nextTick();
+
+    const downloadBtn = wrapper.find('[data-testid="download-attachment"]');
+    expect(downloadBtn.exists()).toBe(true);
+    expect(downloadBtn.attributes('href')).toBe('mock-url');
+    expect(downloadBtn.attributes('download')).toBe('mem.png');
   });
 });

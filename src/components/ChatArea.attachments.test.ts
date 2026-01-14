@@ -191,4 +191,59 @@ describe('ChatArea - Attachment UI', () => {
 
     expect((wrapper.vm as any).attachments.length).toBe(0);
   });
+
+  it('should handle image drop', async () => {
+    const wrapper = mount(ChatArea, {
+      global: {
+        stubs: {
+          'router-link': true,
+          'router-view': true,
+          'LmParametersEditor': true
+        }
+      }
+    });
+
+    const testFile = new File(['hello'], 'hello.png', { type: 'image/png' });
+    const dropEvent = {
+      preventDefault: vi.fn(),
+      dataTransfer: {
+        files: [testFile]
+      }
+    };
+
+    await wrapper.trigger('drop', dropEvent);
+    
+    // Check if attachment was added
+    expect((wrapper.vm as any).attachments.length).toBe(1);
+    expect((wrapper.vm as any).attachments[0].originalName).toBe('hello.png');
+  });
+
+  it('should show drag overlay when dragging over', async () => {
+    const wrapper = mount(ChatArea, {
+      global: {
+        stubs: {
+          'router-link': true,
+          'router-view': true,
+          'LmParametersEditor': true
+        }
+      }
+    });
+
+    expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(false);
+
+    await wrapper.trigger('dragover', {
+      preventDefault: vi.fn(),
+      currentTarget: wrapper.element
+    });
+
+    expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(true);
+
+    await wrapper.trigger('dragleave', {
+      clientX: -10, // Outside
+      clientY: -10,
+      currentTarget: wrapper.element
+    });
+
+    expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(false);
+  });
 });
