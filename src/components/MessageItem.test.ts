@@ -461,3 +461,63 @@ describe('MessageItem Attachment Rendering', () => {
     expect(downloadBtn.attributes('download')).toBe('mem.png');
   });
 });
+
+describe('MessageItem States', () => {
+  const createAssistantMessage = (content: string, error?: string): MessageNode => ({
+    id: uuidv7(),
+    role: 'assistant',
+    content,
+    error,
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  it('displays loading indicator when waiting for response', () => {
+    const message = createAssistantMessage('');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Waiting for response...');
+    expect(wrapper.find('[data-testid="message-content"]').exists()).toBe(false);
+  });
+
+  it('does NOT display loading indicator when content exists', () => {
+    const message = createAssistantMessage('Hello');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="message-content"]').exists()).toBe(true);
+  });
+
+  it('displays error message when generation failed', () => {
+    const message = createAssistantMessage('', 'Network Error');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    const errorEl = wrapper.find('[data-testid="error-message"]');
+    expect(errorEl.exists()).toBe(true);
+    expect(errorEl.text()).toContain('Generation Failed');
+    expect(errorEl.text()).toContain('Network Error');
+    expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
+  });
+
+  it('displays partial content AND error message', () => {
+    const message = createAssistantMessage('Partial content', 'Stream Error');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.find('[data-testid="message-content"]').text()).toBe('Partial content');
+    
+    const errorEl = wrapper.find('[data-testid="error-message"]');
+    expect(errorEl.exists()).toBe(true);
+    expect(errorEl.text()).toContain('Stream Error');
+  });
+
+  it('emits retry event when button clicked', async () => {
+    const message = createAssistantMessage('', 'Error');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    await wrapper.find('[data-testid="retry-button"]').trigger('click');
+    
+    expect(wrapper.emitted('retry')).toBeTruthy();
+    expect(wrapper.emitted('retry')?.[0]).toEqual([message.id]);
+  });
+});

@@ -328,6 +328,127 @@ export function useChat() {
     }
   };
 
+  const generateResponse = async (assistantId: string) => {
+    if (!currentChat.value) return;
+    
+    const assistantNode = findNodeInBranch(currentChat.value.root.items, assistantId);
+    if (!assistantNode) throw new Error('Assistant node not found');
+
+    // Reset error
+    assistantNode.error = undefined;
+    triggerRef(currentChat);
+
+    streaming.value = true;
+    abortController = new AbortController();
+
+    const type = currentChat.value.endpointType || settings.value.endpointType;
+    const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
+    const resolvedModel = assistantNode.modelId || '';
+
+    try {
+      const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+
+      // --- Resolve System Prompt & Parameters ---
+      const activeProfile = (settings.value.providerProfiles || []).find(p => p.endpointUrl === url && p.endpointType === type);
+      
+      const globalSystemPrompt = activeProfile?.systemPrompt || settings.value.systemPrompt;
+      const chatPromptObj = currentChat.value.systemPrompt;
+      
+      const finalMessages: ChatMessage[] = [];
+      
+      if (chatPromptObj) {
+        if (chatPromptObj.behavior === 'append') {
+          if (globalSystemPrompt) finalMessages.push({ role: 'system', content: globalSystemPrompt });
+          if (chatPromptObj.content) finalMessages.push({ role: 'system', content: chatPromptObj.content });
+        } else {
+          // override
+          if (chatPromptObj.content) {
+            finalMessages.push({ role: 'system', content: chatPromptObj.content });
+          } else if (globalSystemPrompt) {
+            finalMessages.push({ role: 'system', content: globalSystemPrompt });
+          }
+        }
+      } else if (globalSystemPrompt) {
+        finalMessages.push({ role: 'system', content: globalSystemPrompt });
+      }
+
+      // Add conversation history
+      const history = activeMessages.value.filter(m => m.id !== assistantId);
+      for (const m of history) {
+        if (m.attachments && m.attachments.length > 0) {
+          const content: MultimodalContent[] = [{ type: 'text', text: m.content }];
+          for (const att of m.attachments) {
+            let blob: Blob | null = null;
+            if (att.status === 'memory') {
+              blob = att.blob;
+            } else if (att.status === 'persisted') {
+              blob = await storageService.getFile(att.id, att.originalName);
+            }
+
+            if (blob && att.mimeType.startsWith('image/')) {
+              const b64 = await fileToDataUrl(blob);
+              content.push({ type: 'image_url', image_url: { url: b64 } });
+            }
+          }
+          finalMessages.push({ role: m.role, content });
+        } else {
+          finalMessages.push({ role: m.role, content: m.content });
+        }
+      }
+
+      // 2. Resolve LM Parameters (Deep Merge: Chat > Profile > Global)
+      const resolvedParams = {
+        ...(settings.value.lmParameters || {}),
+        ...(activeProfile?.lmParameters || {}),
+        ...(currentChat.value.lmParameters || {}),
+      };
+
+      await provider.chat(finalMessages, resolvedModel, url, (chunk) => {
+        assistantNode.content += chunk;
+        triggerRef(currentChat);
+      }, resolvedParams, abortController.signal);
+
+      processThinking(assistantNode);
+      currentChat.value.updatedAt = Date.now();
+      await saveCurrentChat();
+      await loadData();
+
+      if (currentChat.value.title === null && settings.value.autoTitleEnabled) {
+        const chatIdAtStart = currentChat.value.id;
+        try {
+          const content = history[history.length - 1]?.content || '';
+          if (content && typeof content === 'string') {
+            let generatedTitle = '';
+            const titleProvider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+            const titleGenModel = settings.value.titleModelId || resolvedModel;
+            const promptMsg: ChatMessage = {
+              role: 'user',
+              content: `Generate a short title (2-3 words) for: "${content}". Respond ONLY with the title.`,
+            };
+            await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
+            const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
+            if (finalTitle && currentChat.value?.id === chatIdAtStart && currentChat.value.title === null) {
+              currentChat.value.title = finalTitle;
+              await saveCurrentChat();
+              await loadData();
+            }
+          }
+        } catch (_e) { /* ignore */ }
+      }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') {
+        assistantNode.content += '\n\n[Generation Aborted]';
+      } else {
+        assistantNode.error = (e as Error).message;
+      }
+      console.error(e);
+    } finally {
+      streaming.value = false;
+      abortController = null;
+      await saveCurrentChat();
+    }
+  };
+
   const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = []) => {
     if (!currentChat.value || streaming.value) return;
 
@@ -439,111 +560,40 @@ export function useChat() {
     triggerRef(currentChat);
     await saveCurrentChat();
 
-    const assistantNode = findNodeInBranch(currentChat.value.root.items, assistantMsg.id);
-    if (!assistantNode) throw new Error('Assistant node not found');
+    await generateResponse(assistantMsg.id);
+  };
 
-    streaming.value = true;
-    abortController = new AbortController();
-    try {
-      const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+  const retryMessage = async (failedMessageId: string) => {
+    if (!currentChat.value || streaming.value) return;
+    
+    // 1. Find the failed node
+    const failedNode = findNodeInBranch(currentChat.value.root.items, failedMessageId);
+    if (!failedNode || failedNode.role !== 'assistant') return;
 
-      // --- Resolve System Prompt & Parameters ---
-      const activeProfile = (settings.value.providerProfiles || []).find(p => p.endpointUrl === url && p.endpointType === type);
-      
-      // 1. Resolve System Prompts
-      const globalSystemPrompt = activeProfile?.systemPrompt || settings.value.systemPrompt;
-      const chatPromptObj = currentChat.value.systemPrompt;
-      
-      const finalMessages: ChatMessage[] = [];
-      
-      if (chatPromptObj) {
-        if (chatPromptObj.behavior === 'append') {
-          if (globalSystemPrompt) finalMessages.push({ role: 'system', content: globalSystemPrompt });
-          if (chatPromptObj.content) finalMessages.push({ role: 'system', content: chatPromptObj.content });
-        } else {
-          // override
-          if (chatPromptObj.content) {
-            finalMessages.push({ role: 'system', content: chatPromptObj.content });
-          } else if (globalSystemPrompt) {
-            finalMessages.push({ role: 'system', content: chatPromptObj.content });
-          }
-        }
-      } else if (globalSystemPrompt) {
-        finalMessages.push({ role: 'system', content: globalSystemPrompt });
-      }
+    // 2. Find its parent (the User message)
+    const parent = findParentInBranch(currentChat.value.root.items, failedMessageId);
+    if (!parent || parent.role !== 'user') return;
 
-      // Add conversation history
-      const history = activeMessages.value.filter(m => m.id !== assistantMsg.id);
-      for (const m of history) {
-        if (m.attachments && m.attachments.length > 0) {
-          const content: MultimodalContent[] = [{ type: 'text', text: m.content }];
-          for (const att of m.attachments) {
-            let blob: Blob | null = null;
-            if (att.status === 'memory') {
-              blob = att.blob;
-            } else if (att.status === 'persisted') {
-              blob = await storageService.getFile(att.id, att.originalName);
-            }
+    // 3. Create a NEW sibling assistant node
+    const newAssistantMsg: MessageNode = {
+      id: uuidv7(),
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      modelId: failedNode.modelId, // Reuse the same model ID from the failed attempt
+      replies: { items: [] },
+    };
 
-            if (blob && att.mimeType.startsWith('image/')) {
-              const b64 = await fileToDataUrl(blob);
-              content.push({ type: 'image_url', image_url: { url: b64 } });
-            }
-          }
-          finalMessages.push({ role: m.role, content });
-        } else {
-          finalMessages.push({ role: m.role, content: m.content });
-        }
-      }
+    // 4. Add to parent
+    parent.replies.items.push(newAssistantMsg);
 
-      // 2. Resolve LM Parameters (Deep Merge: Chat > Profile > Global)
-      const resolvedParams = {
-        ...(settings.value.lmParameters || {}),
-        ...(activeProfile?.lmParameters || {}),
-        ...(currentChat.value.lmParameters || {}),
-      };
+    // 5. Update state
+    currentChat.value.currentLeafId = newAssistantMsg.id;
+    triggerRef(currentChat);
+    await saveCurrentChat();
 
-      await provider.chat(finalMessages, resolvedModel, url, (chunk) => {
-        assistantNode.content += chunk;
-        triggerRef(currentChat);
-      }, resolvedParams, abortController.signal);
-
-      processThinking(assistantNode);
-      currentChat.value.updatedAt = Date.now();
-      await saveCurrentChat();
-      await loadData();
-
-      if (currentChat.value.title === null && settings.value.autoTitleEnabled) {
-        const chatIdAtStart = currentChat.value.id;
-        try {
-          let generatedTitle = '';
-          const titleProvider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-          const titleGenModel = settings.value.titleModelId || resolvedModel;
-          const promptMsg: ChatMessage = {
-            role: 'user',
-            content: `Generate a short title (2-3 words) for: "${content}". Respond ONLY with the title.`,
-          };
-          await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
-          const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
-          if (finalTitle && currentChat.value?.id === chatIdAtStart && currentChat.value.title === null) {
-            currentChat.value.title = finalTitle;
-            await saveCurrentChat();
-            await loadData();
-          }
-        } catch (_e) { /* ignore */ }
-      }
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') {
-        assistantNode.content += '\n\n[Generation Aborted]';
-      } else {
-        assistantNode.content += '\n\n[Error: ' + (e as Error).message + ']';
-      }
-      console.error(e);
-    } finally {
-      streaming.value = false;
-      abortController = null;
-      await saveCurrentChat();
-    }
+    // 6. Generate
+    await generateResponse(newAssistantMsg.id);
   };
 
   const abortChat = () => {
@@ -567,7 +617,8 @@ export function useChat() {
       content: n.content, 
       attachments: n.attachments,
       timestamp: n.timestamp, 
-      thinking: n.thinking, 
+      thinking: n.thinking,
+      error: n.error,
       modelId: n.modelId,
       replies: { items: [] },
     }));
@@ -731,6 +782,7 @@ export function useChat() {
     deleteAllChats,
     renameChat,
     sendMessage,
+    retryMessage,
     forkChat,
     editMessage,
     switchVersion,

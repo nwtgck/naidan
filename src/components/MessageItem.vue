@@ -11,7 +11,7 @@ const DOMPurify = typeof window !== 'undefined' ? createDOMPurify(window) : crea
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { MessageNode } from '../models/types';
-import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download } from 'lucide-vue-next';
+import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2 } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 
 const props = defineProps<{
@@ -23,6 +23,7 @@ const emit = defineEmits<{
   (e: 'fork', messageId: string): void;
   (e: 'edit', messageId: string, newContent: string): void;
   (e: 'switch-version', messageId: string): void;
+  (e: 'retry', messageId: string): void;
 }>();
 
 const isEditing = ref(false);
@@ -407,7 +408,31 @@ function formatSize(bytes?: number): string {
         </div>
       </div>
       <div v-else>
+        <!-- Content Display (Always shown if present) -->
         <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
+
+        <!-- Loading State (Initial Wait) -->
+        <div v-if="!displayContent && message.role === 'assistant' && !message.error" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
+          <Loader2 class="w-4 h-4 animate-spin" />
+          <span class="text-xs font-medium">Waiting for response...</span>
+        </div>
+
+        <!-- Error State (Appended below content) -->
+        <div v-if="message.error" class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
+          <div class="flex items-center gap-2 font-bold">
+            <AlertTriangle class="w-4 h-4" />
+            <span>Generation Failed</span>
+          </div>
+          <div class="opacity-90">{{ message.error }}</div>
+          <button 
+            @click="emit('retry', message.id)"
+            class="mt-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold transition-colors flex items-center gap-2"
+            data-testid="retry-button"
+          >
+            <RefreshCw class="w-3.5 h-3.5" />
+            <span>Retry</span>
+          </button>
+        </div>
         
         <div class="mt-3 flex items-center justify-between min-h-[28px]">
           <!-- Version Paging -->

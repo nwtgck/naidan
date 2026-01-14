@@ -247,6 +247,10 @@ async function handleEdit(messageId: string, newContent: string) {
   await chatStore.editMessage(messageId, newContent);
 }
 
+async function handleRetry(messageId: string) {
+  await chatStore.retryMessage(messageId);
+}
+
 function handleSwitchVersion(messageId: string) {
   chatStore.switchVersion(messageId);
 }
@@ -480,6 +484,7 @@ onUnmounted(() => {
               @fork="handleFork"
               @edit="handleEdit"
               @switch-version="handleSwitchVersion"
+              @retry="handleRetry"
               class="animate-in fade-in duration-300"
             />
           </div>

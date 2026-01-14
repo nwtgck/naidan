@@ -55,6 +55,7 @@ export interface MessageNode {
   attachments?: Attachment[];
   timestamp: number;
   thinking?: string;
+  error?: string;
   modelId?: string;
   replies: MessageBranch;
 }
