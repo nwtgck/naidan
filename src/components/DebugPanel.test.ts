@@ -2,18 +2,26 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import DebugPanel from './DebugPanel.vue';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
+import { useLayout } from '../composables/useLayout';
+import { ref } from 'vue';
 
 vi.mock('../composables/useGlobalEvents', () => ({
   useGlobalEvents: vi.fn(),
+}));
+
+vi.mock('../composables/useLayout', () => ({
+  useLayout: vi.fn(),
 }));
 
 describe('DebugPanel', () => {
   const mockClearEvents = vi.fn();
   const mockAddErrorEvent = vi.fn();
   const mockAddInfoEvent = vi.fn();
+  const isSidebarOpen = ref(true);
 
   beforeEach(() => {
     vi.clearAllMocks();
+    isSidebarOpen.value = true;
     (useGlobalEvents as unknown as Mock).mockReturnValue({
       events: [],
       eventCount: 0,
@@ -22,6 +30,23 @@ describe('DebugPanel', () => {
       addErrorEvent: mockAddErrorEvent,
       addInfoEvent: mockAddInfoEvent,
     });
+    (useLayout as unknown as Mock).mockReturnValue({
+      isSidebarOpen,
+    });
+  });
+
+  it('adjusts position based on isSidebarOpen (Regression Test)', async () => {
+    const wrapper = mount(DebugPanel);
+    
+    // When sidebar is open (default)
+    expect(wrapper.classes()).toContain('left-64');
+    expect(wrapper.classes()).not.toContain('left-10');
+
+    // When sidebar is collapsed
+    isSidebarOpen.value = false;
+    await wrapper.vm.$nextTick();
+    expect(wrapper.classes()).toContain('left-10');
+    expect(wrapper.classes()).not.toContain('left-64');
   });
 
   it('is collapsed by default', () => {

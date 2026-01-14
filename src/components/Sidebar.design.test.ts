@@ -65,7 +65,6 @@ describe('Sidebar Design Specifications', () => {
     });
     await nextTick();
     expect(wrapper.classes()).toContain('bg-white');
-    expect(wrapper.classes()).toContain('border-gray-100');
   });
 
   it('uses rounded-xl and soft shadows for the primary New Chat button', async () => {

@@ -14,10 +14,12 @@ import DebugPanel from './components/DebugPanel.vue';
 import ToastContainer from './components/ToastContainer.vue';
 import CustomDialog from './components/CustomDialog.vue'; // Import CustomDialog
 import OPFSExplorer from './components/OPFSExplorer.vue';
+import { useLayout } from './composables/useLayout';
 
 const isSettingsOpen = ref(false);
 const chatStore = useChat();
 const settingsStore = useSettings();
+const { isSidebarOpen } = useLayout();
 const router = useRouter();
 
 const { isOPFSOpen } = useOPFSExplorer();
@@ -64,7 +66,12 @@ onKeyStroke(['o', 'O'], async (e) => {
 
 <template>
   <div class="flex h-screen bg-gray-50/50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-hidden transition-colors duration-300">
-    <Sidebar @open-settings="isSettingsOpen = true" />
+    <div 
+      class="border-r border-gray-100 dark:border-gray-800 shrink-0 h-full overflow-hidden transition-all duration-300 ease-in-out"
+      :class="isSidebarOpen ? 'w-64' : 'w-10'"
+    >
+      <Sidebar @open-settings="isSettingsOpen = true" />
+    </div>
     
     <main class="flex-1 relative flex flex-col min-w-0 pb-10 bg-transparent">
       <!-- Use a key based on route to help Vue identify when to remount or transition -->

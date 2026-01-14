@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '../composables/useGlobalEvents';
 import { useOPFSExplorer } from '../composables/useOPFSExplorer';
+import { useLayout } from '../composables/useLayout';
 import { 
   Terminal, ChevronUp, ChevronDown, Trash2, AlertCircle, X, Skull, 
   Info, AlertTriangle, Bug, MoreVertical, HardDrive,
@@ -9,6 +10,7 @@ import {
 
 const { events, eventCount, errorCount, clearEvents, addErrorEvent, addInfoEvent } = useGlobalEvents();
 const { openOPFS } = useOPFSExplorer();
+const { isSidebarOpen } = useLayout();
 const isOpen = ref(false);
 const isMenuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
@@ -101,8 +103,8 @@ onUnmounted(() => {
 
 <template>
   <div 
-    class="fixed bottom-0 right-0 left-64 z-50 border-t border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md transition-all duration-300 shadow-2xl"
-    :class="isOpen ? 'h-64' : 'h-10'"
+    class="fixed bottom-0 right-0 z-50 border-t border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md transition-all duration-300 shadow-2xl"
+    :class="[isOpen ? 'h-64' : 'h-10', isSidebarOpen ? 'left-64' : 'left-10']"
   >
     <!-- Toggle Bar -->
     <div 
