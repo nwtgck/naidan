@@ -37,8 +37,6 @@ export class StorageService {
     if (this.currentType === type) return;
 
     const oldProvider = this.provider;
-    console.log('DEBUG: oldProvider', oldProvider);
-    console.log('DEBUG: oldProvider.dump', oldProvider.dump);
     let newProvider: IStorageProvider;
 
     // Initialize the target provider

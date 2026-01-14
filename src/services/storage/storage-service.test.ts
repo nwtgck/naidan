@@ -86,4 +86,102 @@ describe('StorageService Migration', () => {
     // Should stay as 'local' because migration failed
     expect(storageService.getCurrentType()).toBe('local');
   });
+
+  it('should rescue memory blobs during local -> opfs migration', async () => {
+    // Setup a chat with a memory attachment (not yet persisted in LocalStorage)
+    const mockBlob = new Blob(['test'], { type: 'image/png' });
+    const chat: any = {
+      id: 'chat-1',
+      title: 'Test',
+      root: {
+        items: [{
+          id: 'msg-1',
+          role: 'user',
+          content: 'hello',
+          attachments: [{
+            id: 'att-1',
+            status: 'memory',
+            blob: mockBlob,
+            originalName: 'test.png',
+            mimeType: 'image/png',
+            size: 4,
+            uploadedAt: Date.now()
+          }],
+          replies: { items: [] }
+        }]
+      }
+    };
+
+    mockLocalProvider.dump.mockImplementation(async function* () {
+      yield { type: 'chat', data: { id: 'chat-1' } as any };
+    });
+    mockLocalProvider.loadChat.mockResolvedValue(chat);
+    // OPFS supports binary
+    (mockOpfsProvider as any).canPersistBinary = true;
+
+    const receivedChunks: any[] = [];
+    mockOpfsProvider.restore.mockImplementation(async (stream) => {
+      for await (const chunk of stream) {
+        receivedChunks.push(chunk);
+      }
+    });
+
+    await storageService.switchProvider('opfs');
+
+    // Should have rescued the attachment
+    const attachmentChunk = receivedChunks.find(c => c.type === 'attachment');
+    expect(attachmentChunk).toBeDefined();
+    expect(attachmentChunk.attachmentId).toBe('att-1');
+    expect(attachmentChunk.blob).toBe(mockBlob);
+
+    // Chat chunk should have been updated to 'persisted' status
+    const chatChunk = receivedChunks.find(c => c.type === 'chat');
+    expect(chatChunk.data.root.items[0].attachments[0].status).toBe('persisted');
+  });
+
+  it('should rescue attachments in nested replies (recursion test)', async () => {
+    const mockBlob = new Blob(['nested'], { type: 'image/png' });
+    const chat: any = {
+      id: 'chat-recursive',
+      root: {
+        items: [{
+          id: 'msg-1',
+          replies: {
+            items: [{
+              id: 'msg-2',
+              attachments: [{
+                id: 'att-nested',
+                status: 'memory',
+                blob: mockBlob,
+                originalName: 'nested.png',
+                mimeType: 'image/png',
+                size: 6,
+                uploadedAt: Date.now()
+              }],
+              replies: { items: [] }
+            }]
+          }
+        }]
+      }
+    };
+
+    mockLocalProvider.dump.mockImplementation(async function* () {
+      yield { type: 'chat', data: { id: 'chat-recursive' } as any };
+    });
+    mockLocalProvider.loadChat.mockResolvedValue(chat);
+    (mockOpfsProvider as any).canPersistBinary = true;
+
+    const receivedChunks: any[] = [];
+    mockOpfsProvider.restore.mockImplementation(async (stream) => {
+      for await (const chunk of stream) {
+        receivedChunks.push(chunk);
+      }
+    });
+
+    await storageService.switchProvider('opfs');
+
+    const attachmentChunk = receivedChunks.find(c => c.type === 'attachment');
+    expect(attachmentChunk).toBeDefined();
+    expect(attachmentChunk.attachmentId).toBe('att-nested');
+  });
 });

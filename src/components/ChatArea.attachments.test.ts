@@ -10,12 +10,13 @@ const mockCurrentChat = ref({
   root: { items: [] }
 });
 const mockActiveMessages = ref([]);
+const mockStreaming = ref(false);
 
 // Mock dependencies
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
-    streaming: ref(false),
+    streaming: mockStreaming,
     activeMessages: mockActiveMessages,
     availableModels: ref([]),
     fetchingModels: ref(false),
@@ -111,5 +112,83 @@ describe('ChatArea - Attachment UI', () => {
 
     // Check for the preview container
     expect(wrapper.find('[data-testid="attachment-preview"]').exists()).toBe(true);
+  });
+
+  it('should clear attachments when message is sent', async () => {
+    const wrapper = mount(ChatArea, {
+      global: {
+        stubs: {
+          'router-link': true,
+          'router-view': true,
+          'LmParametersEditor': true
+        }
+      }
+    });
+
+    const attachments = (wrapper.vm as any).attachments;
+    const testFile = new File(['hello'], 'hello.png', { type: 'image/png' });
+    
+    const attachment = {
+      id: 'att-1',
+      originalName: 'hello.png',
+      mimeType: 'image/png',
+      size: 5,
+      uploadedAt: Date.now(),
+      status: 'memory',
+      blob: testFile
+    };
+
+    if (isRef(attachments)) {
+      attachments.value = [attachment];
+    } else {
+      attachments.push(attachment);
+    }
+
+    // Ensure input or attachments exist to pass the guard
+    (wrapper.vm as any).input = 'hello';
+    mockStreaming.value = false;
+    mockCurrentChat.value = { id: 'chat-1', title: 'T', root: { items: [] } } as any;
+
+    // Trigger send
+    await (wrapper.vm as any).handleSend();
+
+    expect((wrapper.vm as any).attachments.length).toBe(0);
+  });
+
+  it('should remove attachment when remove button is clicked', async () => {
+    const wrapper = mount(ChatArea, {
+      global: {
+        stubs: {
+          'router-link': true,
+          'router-view': true,
+          'LmParametersEditor': true
+        }
+      }
+    });
+
+    const attachments = (wrapper.vm as any).attachments;
+    const attachment = {
+      id: 'att-1',
+      originalName: 'hello.png',
+      mimeType: 'image/png',
+      size: 5,
+      uploadedAt: Date.now(),
+      status: 'memory',
+      blob: new File([''], 'hello.png')
+    };
+
+    if (isRef(attachments)) {
+      attachments.value = [attachment];
+    } else {
+      attachments.push(attachment);
+    }
+
+    await wrapper.vm.$nextTick();
+
+    // Call removeAttachment
+    (wrapper.vm as any).removeAttachment('att-1');
+    await wrapper.vm.$nextTick();
+
+    expect((wrapper.vm as any).attachments.length).toBe(0);
   });
 });

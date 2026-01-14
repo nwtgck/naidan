@@ -175,7 +175,7 @@ function scrollToBottom() {
 }
 
 // Expose for testing
-defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight, attachments });
+defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight, attachments, input });
 
 async function fetchModels() {
   await chatStore.fetchAvailableModels();
