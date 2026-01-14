@@ -9,7 +9,7 @@ import WelcomeScreen from './WelcomeScreen.vue';
 import { 
   ArrowUp, Download, Settings2, MoreVertical, Bug, 
   Square, Loader2, Minimize2, Maximize2, Send,
-  Paperclip, X, GitFork,
+  Paperclip, X, GitFork, RefreshCw,
 } from 'lucide-vue-next';
 import { v7 as uuidv7 } from 'uuid';
 import type { Attachment } from '../models/types';
@@ -19,6 +19,7 @@ const chatStore = useChat();
 const {
   currentChat,
   streaming,
+  generatingTitle,
   activeMessages,
   availableModels,
   fetchingModels,
@@ -377,6 +378,17 @@ onUnmounted(() => {
                 <ArrowUp class="w-4 h-4" />
               </button>
               <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
+              <button 
+                v-if="activeMessages.length > 0"
+                @click="chatStore.generateChatTitle()"
+                class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50"
+                :class="{ 'animate-spin': generatingTitle }"
+                :disabled="generatingTitle || streaming"
+                title="Regenerate Title"
+                data-testid="regenerate-title-button"
+              >
+                <RefreshCw class="w-3.5 h-3.5" />
+              </button>
             </div>
             
             <!-- Model Badge/Trigger -->

@@ -18,7 +18,9 @@ const mockAbortChat = vi.fn();
 const mockStreaming = ref(false);
 const mockAvailableModels = ref<string[]>([]);
 const mockFetchingModels = ref(false);
+const mockGeneratingTitle = ref(false);
 const mockFetchAvailableModels = vi.fn();
+const mockGenerateChatTitle = vi.fn();
 const mockCurrentChat = ref<Chat | null>({
   id: '1', 
   title: 'Test Chat', 
@@ -50,7 +52,9 @@ vi.mock('../composables/useChat', () => ({
     abortChat: mockAbortChat,
     availableModels: mockAvailableModels,
     fetchingModels: mockFetchingModels,
+    generatingTitle: mockGeneratingTitle,
     fetchAvailableModels: mockFetchAvailableModels,
+    generateChatTitle: mockGenerateChatTitle,
     forkChat: vi.fn().mockResolvedValue('new-id'),
   }),
 }));
@@ -215,6 +219,31 @@ describe('ChatArea UI States', () => {
     const inspector = wrapper.find('[data-testid="chat-inspector"]');
     expect(inspector.exists()).toBe(true);
     expect(inspector.text()).toContain('Metadata');
+  });
+
+  it('should show the regenerate title button and call generateChatTitle when clicked', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
+    expect(btn.exists()).toBe(true);
+    
+    await btn.trigger('click');
+    expect(mockGenerateChatTitle).toHaveBeenCalled();
+  });
+
+  it('should spin and disable the regenerate title button while generatingTitle is true', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGeneratingTitle.value = true;
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
+    expect(btn.classes()).toContain('animate-spin');
+    expect((btn.element as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('should hide the chat inspector when debug mode is disabled', async () => {

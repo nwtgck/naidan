@@ -9,6 +9,7 @@ import { useConfirm } from './useConfirm';
 const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
 const streaming = ref(false);
+const generatingTitle = ref(false);
 const availableModels = ref<string[]>([]);
 const fetchingModels = ref(false);
 let abortController: AbortController | null = null;
@@ -414,26 +415,7 @@ export function useChat() {
       await loadData();
 
       if (currentChat.value.title === null && settings.value.autoTitleEnabled) {
-        const chatIdAtStart = currentChat.value.id;
-        try {
-          const content = history[history.length - 1]?.content || '';
-          if (content && typeof content === 'string') {
-            let generatedTitle = '';
-            const titleProvider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-            const titleGenModel = settings.value.titleModelId || resolvedModel;
-            const promptMsg: ChatMessage = {
-              role: 'user',
-              content: `Generate a short title (2-3 words) for: "${content}". Respond ONLY with the title.`,
-            };
-            await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
-            const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
-            if (finalTitle && currentChat.value?.id === chatIdAtStart && currentChat.value.title === null) {
-              currentChat.value.title = finalTitle;
-              await saveCurrentChat();
-              await loadData();
-            }
-          }
-        } catch (_e) { /* ignore */ }
+        await generateChatTitle();
       }
     } catch (e) {
       if ((e as Error).name === 'AbortError') {
@@ -594,6 +576,51 @@ export function useChat() {
 
     // 6. Generate
     await generateResponse(newAssistantMsg.id);
+  };
+
+  const generateChatTitle = async () => {
+    if (!currentChat.value) return;
+    const type = currentChat.value.endpointType || settings.value.endpointType;
+    const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
+    if (!url) return;
+
+    const history = activeMessages.value;
+    const content = history[0]?.content || ''; // Use the first user message for title generation
+    if (!content || typeof content !== 'string') return;
+
+    const chatIdAtStart = currentChat.value.id;
+    generatingTitle.value = true;
+    try {
+      let generatedTitle = '';
+      const titleProvider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+      
+      // Determine model to use for title generation
+      let titleGenModel = settings.value.titleModelId;
+      if (!titleGenModel) {
+        // Fallback to current model of the last message or default
+        const lastMsg = history[history.length - 1];
+        titleGenModel = lastMsg?.modelId || settings.value.defaultModelId;
+      }
+
+      if (!titleGenModel) return;
+
+      const promptMsg: ChatMessage = {
+        role: 'user',
+        content: `Generate a short title (2-3 words) for this conversation based on this message: "${content}". Respond ONLY with the title text, no quotes or prefix.`,
+      };
+      await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
+      const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
+      
+      if (finalTitle && currentChat.value?.id === chatIdAtStart) {
+        currentChat.value.title = finalTitle;
+        await saveCurrentChat();
+        await loadData();
+      }
+    } catch (e) {
+      console.warn('Failed to generate title:', e);
+    } finally {
+      generatingTitle.value = false;
+    }
   };
 
   const abortChat = () => {
@@ -770,6 +797,7 @@ export function useChat() {
     currentChat,
     activeMessages,
     streaming,
+    generatingTitle,
     availableModels,
     fetchingModels,
 
@@ -781,6 +809,7 @@ export function useChat() {
     deleteChat,
     deleteAllChats,
     renameChat,
+    generateChatTitle,
     sendMessage,
     retryMessage,
     forkChat,

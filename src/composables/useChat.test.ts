@@ -32,18 +32,26 @@ vi.mock('./useSettings', () => ({
 }));
 
 // Mock LLM Provider
+const mockLlmChat = vi.fn().mockImplementation(async (_msg: any[], _model: string, _url: string, onChunk: (chunk: string) => void) => {
+  onChunk('Hello');
+  await new Promise(r => setTimeout(r, 10)); // Simulate network delay
+  onChunk(' World');
+});
+
 vi.mock('../services/llm', () => {
-  class MockOpenAI {
-    chat = vi.fn().mockImplementation(async (_msg: MessageNode[], _model: string, _url: string, onChunk: (chunk: string) => void) => {
-      onChunk('Hello');
-      await new Promise(r => setTimeout(r, 10)); // Simulate network delay
-      onChunk(' World');
-    });
-    listModels = vi.fn().mockResolvedValue(['gpt-4']);
-  }
   return {
-    OpenAIProvider: MockOpenAI,
-    OllamaProvider: vi.fn(),
+    OpenAIProvider: function() {
+      return {
+        chat: mockLlmChat,
+        listModels: vi.fn().mockResolvedValue(['gpt-4']),
+      };
+    },
+    OllamaProvider: function() {
+      return {
+        chat: mockLlmChat,
+        listModels: vi.fn().mockResolvedValue(['gpt-4']),
+      };
+    },
   };
 });
 
@@ -525,6 +533,35 @@ describe('useChat Composable Logic', () => {
     await sendMessage('Hello');
     await chatStore.loadChats();
     expect(rootItems.value[2]?.id).toBe('chat:c2');
+  });
+
+  it('should generate a chat title based on the first message', async () => {
+    const { generateChatTitle, currentChat, generatingTitle } = useChat();
+    
+    const m1: MessageNode = { id: 'm1', role: 'user', content: 'What is the capital of France?', replies: { items: [] }, timestamp: 0 };
+    currentChat.value = reactive({
+      id: 'title-test-chat',
+      title: null,
+      root: { items: [m1] },
+      modelId: 'gpt-4',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    });
+
+    // Mock the LLM provider for title generation
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      onChunk('Paris');
+      onChunk(' Title');
+    });
+
+    const promise = generateChatTitle();
+    expect(generatingTitle.value).toBe(true);
+    await promise;
+    expect(generatingTitle.value).toBe(false);
+    
+    expect(currentChat.value.title).toBe('Paris Title');
+    expect(storageService.saveChat).toHaveBeenCalled();
   });
 
   it('should set currentChat to loaded chat in openChat, or null if not found', async () => {
