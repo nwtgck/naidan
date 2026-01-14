@@ -83,7 +83,7 @@ describe('SettingsModal GitHub Link', () => {
       }
     });
 
-    const githubLink = wrapper.find('a[href*="github.com/nwtgck/lm-web-ui"]');
+    const githubLink = wrapper.find('a[href*="github.com/nwtgck/naidan"]');
     expect(githubLink.exists()).toBe(true);
     
     // Check for the "External" badge text

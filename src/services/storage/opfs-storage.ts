@@ -29,7 +29,7 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
 
 export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
-  private readonly STORAGE_DIR = 'llm-web-ui-storage';
+  private readonly STORAGE_DIR = 'naidan-storage';
   readonly canPersistBinary = true;
 
   async init(): Promise<void> {

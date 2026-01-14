@@ -84,12 +84,12 @@ const zipPackagerPlugin = (outDir: string) => ({
   async closeBundle() {
     console.log('  \u231B Creating standalone zip package...')
     const distDir = path.resolve(__dirname, outDir)
-    const zipPath = path.resolve(__dirname, 'dist/lm-web-ui-standalone.zip')
+    const zipPath = path.resolve(__dirname, 'dist/naidan-standalone.zip')
     
     if (!fs.existsSync(distDir)) return
 
     const zip = new JSZip()
-    const folder = zip.folder('lm-web-ui-standalone')
+    const folder = zip.folder('naidan-standalone')
     if (folder) {
       addDirectoryToZip(folder, distDir)
     }
@@ -111,9 +111,9 @@ const zipPackagerPlugin = (outDir: string) => ({
 const copyZipPlugin = () => ({
   name: 'copy-zip-plugin',
   async closeBundle() {
-    const zipSourcePath = path.resolve(__dirname, 'dist/lm-web-ui-standalone.zip')
+    const zipSourcePath = path.resolve(__dirname, 'dist/naidan-standalone.zip')
     const hostedDistDir = path.resolve(__dirname, 'dist/hosted')
-    const zipDestPath = path.join(hostedDistDir, 'lm-web-ui-standalone.zip')
+    const zipDestPath = path.join(hostedDistDir, 'naidan-standalone.zip')
 
     if (fs.existsSync(zipSourcePath)) {
       if (!fs.existsSync(hostedDistDir)) fs.mkdirSync(hostedDistDir, { recursive: true })

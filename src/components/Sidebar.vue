@@ -186,7 +186,7 @@ async function handleGlobalModelChange(event: Event) {
       </div>
       <div class="flex items-baseline gap-1.5">
         <h1 class="text-lg font-bold tracking-tight bg-gradient-to-br from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
-          LM Web UI
+          Naidan
         </h1>
         <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">v{{ appVersion }}</span>
       </div>

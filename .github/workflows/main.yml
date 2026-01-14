@@ -62,7 +62,7 @@ jobs:
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          projectName: lm-web-ui
+          projectName: naidan
           directory: dist/hosted
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
@@ -101,22 +101,22 @@ jobs:
         id: get_tag
         run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
-      - name: Create lm-web-ui-hosted.zip with tag
+      - name: Create naidan-hosted.zip with tag
         run: |
           TAG=${{ steps.get_tag.outputs.TAG_NAME }}
-          mkdir -p temp_zip_dir/lm-web-ui-hosted-${TAG}
-          cp -r dist/hosted/. temp_zip_dir/lm-web-ui-hosted-${TAG}/
+          mkdir -p temp_zip_dir/naidan-hosted-${TAG}
+          cp -r dist/hosted/. temp_zip_dir/naidan-hosted-${TAG}/
           cd temp_zip_dir
-          zip -r ../dist/lm-web-ui-hosted-${TAG}.zip lm-web-ui-hosted-${TAG}
+          zip -r ../dist/naidan-hosted-${TAG}.zip naidan-hosted-${TAG}
           cd ..
           rm -rf temp_zip_dir
 
-      - name: Rename lm-web-ui-standalone.zip with tag
-        run: mv dist/lm-web-ui-standalone.zip dist/lm-web-ui-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+      - name: Rename naidan-standalone.zip with tag
+        run: mv dist/naidan-standalone.zip dist/naidan-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            dist/lm-web-ui-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
-            dist/lm-web-ui-hosted-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+            dist/naidan-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+            dist/naidan-hosted-${{ steps.get_tag.outputs.TAG_NAME }}.zip

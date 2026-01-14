@@ -93,7 +93,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     await provider.saveChat(mockChat, 0);
 
     // 1. Verify Meta Index (Should NOT contain message content)
-    const storageDir = mockOpfsRoot.entries.get('llm-web-ui-storage') as MockFileSystemDirectoryHandle;
+    const storageDir = mockOpfsRoot.entries.get('naidan-storage') as MockFileSystemDirectoryHandle;
     const metaFile = storageDir.entries.get('chat_metas.json') as MockFileSystemFileHandle;
     const metaText = await (await metaFile.getFile()).text();
     const metaJson = JSON.parse(metaText);
@@ -145,7 +145,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
 
     await provider.saveChat(mockChat, 0);
     
-    const storageDir = mockOpfsRoot.entries.get('llm-web-ui-storage') as MockFileSystemDirectoryHandle;
+    const storageDir = mockOpfsRoot.entries.get('naidan-storage') as MockFileSystemDirectoryHandle;
     const contentsDir = storageDir.entries.get('chat_contents') as MockFileSystemDirectoryHandle;
     
     expect(contentsDir.entries.has(`${chatId}.json`)).toBe(true);

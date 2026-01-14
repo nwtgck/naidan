@@ -340,7 +340,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
         <!-- GitHub & Download Footer -->
         <div class="p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto space-y-2">
           <a 
-            href="https://github.com/nwtgck/lm-web-ui" 
+            href="https://github.com/nwtgck/naidan" 
             target="_blank" 
             rel="noopener noreferrer"
             class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all group no-underline shadow-sm"
@@ -358,8 +358,8 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
 
           <a 
             v-if="isHostedMode"
-            href="./lm-web-ui-standalone.zip" 
-            download="lm-web-ui-standalone.zip"
+            href="./naidan-standalone.zip" 
+            download="naidan-standalone.zip"
             class="flex items-center gap-3 px-4 py-3 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
             data-testid="sidebar-download-button"
           >
