@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ShieldCheck, Download } from 'lucide-vue-next';
 
+defineProps<{
+  hasInput?: boolean
+}>();
+
 defineEmits<{
   (e: 'select-suggestion', text: string): void
 }>();
@@ -58,7 +62,10 @@ const suggestions = [
       </div>
 
       <!-- Minimal Discovery Links -->
-      <div class="pt-8 flex flex-wrap justify-center gap-x-8 gap-y-3 opacity-40 hover:opacity-100 transition-opacity duration-700">
+      <div 
+        class="pt-8 flex flex-wrap justify-center gap-x-8 gap-y-3 transition-all duration-700"
+        :class="hasInput ? 'opacity-0 pointer-events-none translate-y-2' : 'opacity-40 hover:opacity-100 translate-y-0'"
+      >
         <button 
           v-for="s in suggestions" 
           :key="s.label"

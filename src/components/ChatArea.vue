@@ -485,6 +485,7 @@ onUnmounted(() => {
           </div>
           <WelcomeScreen 
             v-else 
+            :has-input="input.trim().length > 0"
             @select-suggestion="applySuggestion" 
           />
         </template>
