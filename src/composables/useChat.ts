@@ -114,6 +114,26 @@ export function useChat() {
 
   const sidebarItems = computed(() => rootItems.value);
 
+  const insertSidebarItem = (rootItems: SidebarItem[], newItem: SidebarItem, groupId: string | null) => {
+    if (groupId) {
+      const findAndAdd = (items: SidebarItem[]) => {
+        for (const item of items) {
+          if (item.type === 'group' && item.group.id === groupId) {
+            item.group.items.unshift(newItem);
+            return true;
+          }
+          if (item.type === 'group' && findAndAdd(item.group.items)) return true;
+        }
+        return false;
+      };
+      findAndAdd(rootItems);
+    } else {
+      const firstChatIdx = rootItems.findIndex(item => item.type === 'chat');
+      const insertIdx = firstChatIdx !== -1 ? firstChatIdx : rootItems.length;
+      rootItems.splice(insertIdx, 0, newItem);
+    }
+  };
+
   const chats = computed(() => {
     const all: ChatSummary[] = [];
     const collect = (items: SidebarItem[]) => {
@@ -204,23 +224,7 @@ export function useChat() {
     const newSummary: ChatSummary = { id: chatObj.id, title: chatObj.title, updatedAt: chatObj.updatedAt, groupId: chatObj.groupId };
     const newSidebarItem: SidebarItem = { id: `chat:${chatObj.id}`, type: 'chat', chat: newSummary };
 
-    if (groupId) {
-      const findAndAdd = (items: SidebarItem[]) => {
-        for (const item of items) {
-          if (item.type === 'group' && item.group.id === groupId) {
-            item.group.items.unshift(newSidebarItem);
-            return true;
-          }
-          if (item.type === 'group' && findAndAdd(item.group.items)) return true;
-        }
-        return false;
-      };
-      findAndAdd(newRootItems);
-    } else {
-      const firstChatIdx = newRootItems.findIndex(item => item.type === 'chat');
-      const insertIdx = firstChatIdx !== -1 ? firstChatIdx : newRootItems.length;
-      newRootItems.splice(insertIdx, 0, newSidebarItem);
-    }
+    insertSidebarItem(newRootItems, newSidebarItem, groupId);
 
     await persistSidebarStructure(newRootItems);
     await loadData();
@@ -558,7 +562,14 @@ export function useChat() {
     const forkPath = path.slice(0, idx + 1);
 
     const clonedNodes: MessageNode[] = forkPath.map(n => ({
-      id: n.id, role: n.role, content: n.content, timestamp: n.timestamp, thinking: n.thinking, replies: { items: [] },
+      id: n.id, 
+      role: n.role, 
+      content: n.content, 
+      attachments: n.attachments,
+      timestamp: n.timestamp, 
+      thinking: n.thinking, 
+      modelId: n.modelId,
+      replies: { items: [] },
     }));
 
     for (let i = 0; i < clonedNodes.length - 1; i++) {
@@ -571,14 +582,18 @@ export function useChat() {
       title: `Fork of ${currentChat.value.title}`,
       root: { items: [clonedNodes[0]!] },
       currentLeafId: clonedNodes[clonedNodes.length - 1]?.id,
+      originChatId: currentChat.value.id,
+      originMessageId: messageId,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
 
     await storageService.saveChat(newChatObj, 0);
-    const originalIdx = rootItems.value.findIndex(item => item.type === 'chat' && item.chat.id === currentChat.value?.id);
-    const newRootItems = [...rootItems.value];
-    newRootItems.splice(originalIdx + 1, 0, { id: `chat:${newChatObj.id}`, type: 'chat', chat: { id: newChatObj.id, title: newChatObj.title, updatedAt: newChatObj.updatedAt, groupId: newChatObj.groupId } });
+    const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
+    const newSummary: ChatSummary = { id: newChatObj.id, title: newChatObj.title, updatedAt: newChatObj.updatedAt, groupId: newChatObj.groupId };
+    const newSidebarItem: SidebarItem = { id: `chat:${newChatObj.id}`, type: 'chat', chat: newSummary };
+
+    insertSidebarItem(newRootItems, newSidebarItem, newChatObj.groupId ?? null);
     
     await persistSidebarStructure(newRootItems);
     await loadData();
@@ -596,6 +611,7 @@ export function useChat() {
         id: uuidv7(), 
         role: 'assistant', 
         content: newContent, 
+        attachments: node.attachments,
         timestamp: Date.now(), 
         modelId: node.modelId,
         replies: { items: [] },
@@ -608,7 +624,7 @@ export function useChat() {
       triggerRef(currentChat);
     } else {
       const parent = findParentInBranch(currentChat.value.root.items, messageId);
-      await sendMessage(newContent, parent ? parent.id : null);
+      await sendMessage(newContent, parent ? parent.id : null, node.attachments);
     }
   };
 

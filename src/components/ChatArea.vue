@@ -7,9 +7,9 @@ import MessageItem from './MessageItem.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import { 
-  ArrowLeft, Download, Settings2, MoreVertical, Bug, 
+  ArrowUp, Download, Settings2, MoreVertical, Bug, 
   Square, Loader2, Minimize2, Maximize2, Send,
-  Paperclip, X,
+  Paperclip, X, GitFork,
 } from 'lucide-vue-next';
 import { v7 as uuidv7 } from 'uuid';
 import type { Attachment } from '../models/types';
@@ -258,6 +258,13 @@ async function handleFork(messageId: string) {
   }
 }
 
+function handleForkLastMessage() {
+  const lastMsg = activeMessages.value[activeMessages.value.length - 1];
+  if (lastMsg) {
+    handleFork(lastMsg.id);
+  }
+}
+
 function jumpToOrigin() {
   if (currentChat.value?.originChatId) {
     router.push(`/chat/${currentChat.value.originChatId}`);
@@ -353,14 +360,6 @@ onUnmounted(() => {
     <!-- Header -->
     <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-3 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
       <div class="flex items-center gap-3 overflow-hidden min-h-[44px]">
-        <!-- Mobile Back Button -->
-        <button 
-          @click="router.push('/')"
-          class="lg:hidden p-2 -ml-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-        >
-          <ArrowLeft class="w-5 h-5" />
-        </button>
-
         <div class="flex flex-col overflow-hidden">
           <template v-if="currentChat">
             <div class="flex items-center gap-2">
@@ -369,8 +368,9 @@ onUnmounted(() => {
                 @click="jumpToOrigin"
                 class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
                 title="Jump to original chat"
+                data-testid="jump-to-origin-button"
               >
-                <ArrowLeft class="w-4 h-4" />
+                <ArrowUp class="w-4 h-4" />
               </button>
               <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'Untitled Chat' }}</h2>
             </div>
@@ -409,6 +409,16 @@ onUnmounted(() => {
 
       <div class="flex items-center gap-1 relative">
         <div v-if="currentChat" class="flex items-center gap-1">
+          <button 
+            v-if="activeMessages.length > 0"
+            @click="handleForkLastMessage"
+            class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+            title="Fork Chat from last message"
+            data-testid="fork-chat-button"
+          >
+            <GitFork class="w-5 h-5" />
+          </button>
+
           <button 
             @click="exportChat"
             class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"

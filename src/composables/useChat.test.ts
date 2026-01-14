@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat, findRestorationIndex, type AddToastOptions } from './useChat';
 import { storageService } from '../services/storage';
 import { reactive, nextTick, triggerRef } from 'vue';
-import type { Chat, MessageNode, SidebarItem, ChatGroup } from '../models/types';
+import type { Chat, MessageNode, SidebarItem, ChatGroup, Attachment } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 
 // Mock storage service state
@@ -152,7 +152,80 @@ describe('useChat Composable Logic', () => {
       title: 'Fork of Original',
       root: { items: [expect.objectContaining({ id: 'm1' })] },
       currentLeafId: 'm1',
+      originChatId: 'old-chat',
+      originMessageId: 'm1',
     }), 0);
+  });
+
+  it('should inherit attachments and modelId during fork', async () => {
+    const { forkChat, currentChat } = useChat();
+    
+    const att: Attachment = { id: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
+    const m1: MessageNode = { 
+      id: 'm1', 
+      role: 'assistant', 
+      content: 'Msg 1', 
+      attachments: [att],
+      modelId: 'special-model',
+      replies: { items: [] }, 
+      timestamp: 0 
+    };
+    
+    const mockChat: Chat = { 
+      id: 'old-chat', 
+      title: 'Original', 
+      root: { items: [m1] },
+      modelId: 'gpt-4',
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+    };
+    
+    currentChat.value = reactive(mockChat);
+    
+    vi.mocked(storageService.saveChat).mockResolvedValue();
+
+    await forkChat('m1');
+
+    const savedChat = vi.mocked(storageService.saveChat).mock.calls[0]?.[0] as Chat;
+    const clonedNode = savedChat?.root.items[0];
+    expect(clonedNode?.attachments).toEqual([att]);
+    expect(clonedNode?.modelId).toBe('special-model');
+  });
+
+  it('should preserve attachments during editMessage', async () => {
+    const { editMessage, currentChat } = useChat();
+    
+    const att: Attachment = { id: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
+    const m1: MessageNode = { 
+      id: 'm1', 
+      role: 'assistant', 
+      content: 'Original Content', 
+      attachments: [att],
+      modelId: 'm1',
+      replies: { items: [] }, 
+      timestamp: 0 
+    };
+    
+    currentChat.value = reactive({ 
+      id: 'c1', 
+      title: 'T', 
+      root: { items: [m1] },
+      modelId: 'm1',
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+    });
+    
+    vi.mocked(storageService.saveChat).mockResolvedValue();
+
+    // Edit assistant message
+    await editMessage('m1', 'New Content');
+
+    expect(currentChat.value?.root.items).toHaveLength(2);
+    const newMsg = currentChat.value?.root.items[1];
+    expect(newMsg?.content).toBe('New Content');
+    expect(newMsg?.attachments).toEqual([att]);
   });
 
   it('should support rewriting the very first message', async () => {
