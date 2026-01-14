@@ -606,7 +606,9 @@ export function useChat() {
 
       const promptMsg: ChatMessage = {
         role: 'user',
-        content: `Generate a short title (2-3 words) for this conversation based on this message: "${content}". Respond ONLY with the title text, no quotes or prefix.`,
+        content: `Generate a concise title (a short phrase) for this conversation based on the following message. The title MUST be in the same language as the message. Respond ONLY with the title text, no quotes or prefix.
+
+Message: "${content}"`,
       };
       await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
       const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
