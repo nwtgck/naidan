@@ -99,14 +99,14 @@ describe('ChatArea Design Specifications', () => {
     expect(inputContainer.classes()).toContain('flex-col');
     
     const textarea = inputContainer.find('[data-testid="chat-input"]');
-    const buttonRow = inputContainer.find('.flex.items-center.justify-end');
+    const buttonRow = inputContainer.find('.flex.items-center.justify-between');
     
     expect(textarea.exists()).toBe(true);
     expect(buttonRow.exists()).toBe(true);
     
     // Verify vertical order in DOM: textarea should come before buttonRow
     const html = inputContainer.html();
-    expect(html.indexOf('data-testid="chat-input"')).toBeLessThan(html.indexOf('justify-end'));
+    expect(html.indexOf('data-testid="chat-input"')).toBeLessThan(html.indexOf('justify-between'));
   });
 
   it('uses gray-800 for chat content text to ensure eye comfort', () => {

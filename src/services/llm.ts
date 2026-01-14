@@ -9,7 +9,7 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
-import type { LmParameters } from '../models/types';
+import type { LmParameters, ChatMessage } from '../models/types';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 
 const { addErrorEvent } = useGlobalEvents();
@@ -47,7 +47,7 @@ const OllamaTagsSchema = z.object({
 
 export interface LLMProvider {
   chat(
-    messages: { role: string; content: string }[],
+    messages: ChatMessage[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
@@ -60,7 +60,7 @@ export interface LLMProvider {
 
 interface OpenAICompletionRequest {
   model: string;
-  messages: { role: string; content: string }[];
+  messages: ChatMessage[];
   stream: boolean;
   temperature?: number;
   top_p?: number;
@@ -72,7 +72,7 @@ interface OpenAICompletionRequest {
 
 export class OpenAIProvider implements LLMProvider {
   async chat(
-    messages: { role: string; content: string }[],
+    messages: ChatMessage[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
@@ -151,16 +151,22 @@ export class OpenAIProvider implements LLMProvider {
   }
 }
 
+interface OllamaMessage {
+  role: string;
+  content: string;
+  images?: string[];
+}
+
 interface OllamaChatRequest {
   model: string;
-  messages: { role: string; content: string }[];
+  messages: OllamaMessage[];
   stream: boolean;
   options?: Record<string, unknown>;
 }
 
 export class OllamaProvider implements LLMProvider {
   async chat(
-    messages: { role: string; content: string }[],
+    messages: ChatMessage[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
@@ -168,9 +174,31 @@ export class OllamaProvider implements LLMProvider {
     signal?: AbortSignal,
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
+
+    // Transform messages to Ollama format
+    const ollamaMessages: OllamaMessage[] = messages.map(m => {
+      if (typeof m.content === 'string') {
+        return { role: m.role, content: m.content };
+      } else {
+        // Multimodal
+        let content = '';
+        const images: string[] = [];
+        for (const part of m.content) {
+          if (part.type === 'text') {
+            content += part.text;
+          } else if (part.type === 'image_url') {
+            // Strip data URL prefix if present: data:image/png;base64,xxxx
+            const b64 = part.image_url.url.split(',')[1] || part.image_url.url;
+            images.push(b64);
+          }
+        }
+        return { role: m.role, content, images };
+      }
+    });
+    
     const body: OllamaChatRequest = {
       model,
-      messages,
+      messages: ollamaMessages,
       stream: true,
     };
 

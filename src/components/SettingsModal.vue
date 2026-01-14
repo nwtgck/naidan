@@ -147,6 +147,22 @@ async function fetchModels() {
 
 async function handleSave() {
   try {
+    const currentProviderType = storageService.getCurrentType();
+    
+    // Check for potential data loss when switching FROM opfs TO local
+    if (currentProviderType === 'opfs' && form.value.storageType === 'local') {
+      const hasFiles = await storageService.hasAttachments();
+      if (hasFiles) {
+        const confirmed = await showConfirm({
+          title: 'Attachments will be inaccessible',
+          message: 'You have images or files saved in OPFS. Local Storage does not support permanent file storage, so these attachments will not be accessible after switching. Are you sure you want to continue?',
+          confirmButtonText: 'Switch and Lose Attachments',
+          confirmButtonVariant: 'danger',
+        });
+        if (!confirmed) return;
+      }
+    }
+
     await save(form.value);
     initialFormState.value = JSON.stringify(form.value);
     saveSuccess.value = true;
@@ -259,7 +275,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
 </script>
 
 <template>
-  <div v-if="isOpen" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-2 md:p-6 transition-all">
+  <div v-if="isOpen" data-testid="settings-modal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-2 md:p-6 transition-all">
     <div class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-[95vw] h-[95vh] md:h-[90vh] overflow-hidden flex flex-col md:flex-row border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in-95 duration-200 relative">
       
       <!-- Persistent Close Button (Top Right) -->
@@ -287,6 +303,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             @click="activeTab = 'connection'"
             class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
             :class="activeTab === 'connection' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+            data-testid="tab-connection"
           >
             <Globe class="w-4 h-4" />
             Connection
@@ -295,6 +312,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             @click="activeTab = 'profiles'"
             class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
             :class="activeTab === 'profiles' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+            data-testid="tab-profiles"
           >
             <BookmarkPlus class="w-4 h-4" />
             Provider Profiles
@@ -303,6 +321,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             @click="activeTab = 'storage'"
             class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
             :class="activeTab === 'storage' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+            data-testid="tab-storage"
           >
             <Database class="w-4 h-4" />
             Storage
@@ -311,6 +330,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             @click="activeTab = 'developer'"
             class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
             :class="activeTab === 'developer' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+            data-testid="tab-developer"
           >
             <Cpu class="w-4 h-4" />
             Developer
@@ -578,7 +598,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             </div>
 
             <!-- Provider Profiles Tab -->
-            <div v-if="activeTab === 'profiles'" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
+            <div v-if="activeTab === 'profiles'" data-testid="profiles-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
               <section class="space-y-6">
                 <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
                   <BookmarkPlus class="w-5 h-5 text-blue-500" />
@@ -652,7 +672,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             </div>
 
             <!-- Storage Tab -->
-            <div v-if="activeTab === 'storage'" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
+            <div v-if="activeTab === 'storage'" data-testid="storage-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
               <section class="space-y-6">
                 <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
                   <Database class="w-5 h-5 text-blue-500" />
@@ -662,11 +682,12 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                 <div class="space-y-6">
                   <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Active Storage Provider</label>
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div 
+                    <button 
                       @click="form.storageType = 'local'"
-                      class="cursor-pointer border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
+                      type="button"
+                      class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
                       :class="form.storageType === 'local' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700'"
-                      data-testid="storage-option-local"
+                      data-testid="storage-local"
                     >
                       <div class="flex items-center justify-between">
                         <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
@@ -677,15 +698,17 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                         <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">Local Storage</div>
                         <div class="text-xs font-medium text-gray-500 leading-relaxed">Standard browser storage. Fast but limited size (5-10MB).</div>
                       </div>
-                    </div>
-                    <div 
+                    </button>
+                    <button 
                       @click="isOPFSSupported && (form.storageType = 'opfs')"
-                      class="cursor-pointer border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
+                      type="button"
+                      :disabled="!isOPFSSupported"
+                      class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
                       :class="[
                         form.storageType === 'opfs' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700',
                         !isOPFSSupported ? 'opacity-50 cursor-not-allowed grayscale' : ''
                       ]"
-                      data-testid="storage-option-opfs"
+                      data-testid="storage-opfs"
                     >
                       <div class="flex items-center justify-between">
                         <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
@@ -697,7 +720,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                         <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">OPFS</div>
                         <div class="text-xs font-medium text-gray-500 leading-relaxed">Origin Private File System. High capacity, optimized for large data.</div>
                       </div>
-                    </div>
+                    </button>
                   </div>
                   
                   <div class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
@@ -733,7 +756,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             </div>
 
             <!-- Developer Tab -->
-            <div v-if="activeTab === 'developer'" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
+            <div v-if="activeTab === 'developer'" data-testid="developer-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
               <section class="space-y-8">
                 <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
                   <Cpu class="w-5 h-5 text-blue-500" />

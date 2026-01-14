@@ -6,6 +6,7 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
     init: vi.fn().mockResolvedValue(undefined),
     dump: vi.fn(),
     restore: vi.fn(),
+    loadChat: vi.fn().mockResolvedValue(null),
     listChats: vi.fn().mockResolvedValue([]),
     clearAll: vi.fn().mockResolvedValue(undefined),
   },
@@ -13,6 +14,7 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
     init: vi.fn().mockResolvedValue(undefined),
     dump: vi.fn(),
     restore: vi.fn(),
+    loadChat: vi.fn().mockResolvedValue(null),
     clearAll: vi.fn().mockResolvedValue(undefined),
   },
 }));
@@ -39,15 +41,22 @@ describe('StorageService Migration', () => {
     vi.stubGlobal('navigator', {
       storage: { getDirectory: vi.fn() },
     });
-    // Force reset the singleton state
+    
+    // Force reset the singleton state and inject our mock
     const service = storageService as unknown as { currentType: string; provider: unknown };
     service.currentType = 'local';
     service.provider = mockLocalProvider;
-    
+
     mockLocalProvider.init.mockResolvedValue(undefined);
     mockOpfsProvider.init.mockResolvedValue(undefined);
-    mockLocalProvider.dump.mockReturnValue('mock-stream');
-    mockOpfsProvider.restore.mockResolvedValue(undefined);
+    mockLocalProvider.dump.mockImplementation(async function* () {
+      yield { type: 'settings', data: {} as any };
+    });
+    mockOpfsProvider.restore.mockImplementation(async (stream) => {
+      for await (const _chunk of stream) {
+        // consume stream
+      }
+    });
   });
 
   it('should migrate data when switching from local to opfs', async () => {
@@ -56,7 +65,7 @@ describe('StorageService Migration', () => {
 
     // Assert
     expect(mockLocalProvider.dump).toHaveBeenCalled();
-    expect(mockOpfsProvider.restore).toHaveBeenCalledWith('mock-stream');
+    expect(mockOpfsProvider.restore).toHaveBeenCalled();
     expect(storageService.getCurrentType()).toBe('opfs');
   });
 

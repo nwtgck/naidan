@@ -43,10 +43,23 @@ export type ChatGroupDto = z.infer<typeof ChatGroupSchemaDto>;
 
 // --- Tree-based Message Structure (Recursive) ---
 
+export const AttachmentStatusSchemaDto = z.enum(['persisted', 'memory', 'missing']);
+
+export const AttachmentSchemaDto = z.object({
+  id: z.string().uuid(),
+  originalName: z.string(),
+  mimeType: z.string(),
+  size: z.number(),
+  uploadedAt: z.number(),
+  status: z.enum(['persisted', 'memory', 'missing']),
+});
+export type AttachmentDto = z.infer<typeof AttachmentSchemaDto>;
+
 export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() => z.object({
   id: z.uuid(),
   role: RoleSchemaDto,
   content: z.string(),
+  attachments: z.array(AttachmentSchemaDto).optional(),
   timestamp: z.number(),
   thinking: z.string().optional(),
   modelId: z.string().optional(),
@@ -61,6 +74,7 @@ export type MessageNodeDto = {
   id: string;
   role: RoleDto;
   content: string;
+  attachments?: AttachmentDto[];
   timestamp: number;
   thinking?: string;
   modelId?: string;
@@ -155,6 +169,7 @@ export const SettingsSchemaDto = z.object({
   autoTitleEnabled: z.boolean().default(true),
   storageType: StorageTypeSchemaDto,
   providerProfiles: z.array(ProviderProfileSchemaDto).optional().default([]),
+  heavyContentAlertDismissed: z.boolean().optional(),
   systemPrompt: z.string().optional(),
   lmParameters: LmParametersSchemaDto.optional(),
 });
@@ -166,7 +181,18 @@ export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
  * Represents a single unit of data during storage migration.
  * Still uses ChatDto (Combined) for simplicity during export/import processes.
  */
-export type MigrationChunkDto =
+export type MigrationChunkDto = 
   | { type: 'settings'; data: SettingsDto }
   | { type: 'group'; data: ChatGroupDto }
-  | { type: 'chat'; data: ChatDto };
+  | { type: 'chat'; data: ChatDto }
+    | { 
+        type: 'attachment'; 
+        chatId: string; 
+        attachmentId: string; 
+        originalName: string; 
+        mimeType: string;
+        size: number;
+        uploadedAt: number;
+        blob: Blob 
+      };
+  

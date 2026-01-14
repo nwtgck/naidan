@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, SidebarItem } from '../../models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode } from '../../models/types';
 import { 
   SettingsSchemaDto,
   ChatMetaSchemaDto,
@@ -10,6 +10,7 @@ import {
   type ChatContentDto,
   type MigrationChunkDto,
   type ChatMetaIndexDto,
+  type MessageNodeDto,
 } from '../../models/dto';
 import { 
   chatToDomain,
@@ -17,6 +18,7 @@ import {
   settingsToDomain,
   settingsToDto,
   chatGroupToDto,
+  chatGroupToDomain,
   buildSidebarItemsFromDtos,
 } from '../../models/mappers';
 import { IStorageProvider } from './interface';
@@ -28,6 +30,7 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
 export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
   private readonly STORAGE_DIR = 'llm-web-ui-storage';
+  readonly canPersistBinary = true;
 
   async init(): Promise<void> {
     if (!this.root) {
@@ -202,6 +205,46 @@ export class OPFSStorageProvider extends IStorageProvider {
     return buildSidebarItemsFromDtos(groups, metas);
   }
 
+  // --- File Storage ---
+
+  private async getUploadedFilesDir(): Promise<FileSystemDirectoryHandle> {
+    await this.init();
+    return await this.root!.getDirectoryHandle('uploaded_files', { create: true });
+  }
+
+  async saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void> {
+    const uploadedFilesDir = await this.getUploadedFilesDir();
+    const fileDir = await uploadedFilesDir.getDirectoryHandle(attachmentId, { create: true });
+    const fileHandle = await fileDir.getFileHandle(originalName, { create: true }) as FileSystemFileHandleWithWritable;
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+  }
+
+  async getFile(attachmentId: string, originalName: string): Promise<Blob | null> {
+    try {
+      const uploadedFilesDir = await this.getUploadedFilesDir();
+      const fileDir = await uploadedFilesDir.getDirectoryHandle(attachmentId);
+      const fileHandle = await fileDir.getFileHandle(originalName);
+      return await fileHandle.getFile();
+    } catch {
+      return null;
+    }
+  }
+
+  async hasAttachments(): Promise<boolean> {
+    try {
+      const uploadedFilesDir = await this.getUploadedFilesDir();
+      // @ts-expect-error: values() is missing in some types
+      for await (const entry of uploadedFilesDir.values()) {
+        if (entry) return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   async saveSettings(settings: Settings): Promise<void> {
     await this.init();
     const dto = settingsToDto(settings);
@@ -253,6 +296,35 @@ export class OPFSStorageProvider extends IStorageProvider {
       const chat = await this.loadChat(meta.id);
       if (chat) {
         yield { type: 'chat', data: chatToDto(chat, meta.order ?? 0) };
+
+        // Yield attachments
+        const findAndYieldFiles = async function* (this: OPFSStorageProvider, nodes: MessageNode[]): AsyncGenerator<MigrationChunkDto> {
+          for (const node of nodes) {
+            if (node.attachments) {
+              for (const att of node.attachments) {
+                if (att.status === 'persisted') {
+                  const blob = await this.getFile(att.id, att.originalName);
+                  if (blob) {
+                    yield {
+                      type: 'attachment',
+                      chatId: chat.id,
+                      attachmentId: att.id,
+                      originalName: att.originalName,
+                      mimeType: att.mimeType,
+                      size: att.size,
+                      uploadedAt: att.uploadedAt,
+                      blob
+                    };
+                  }
+                }
+              }
+            }
+            if (node.replies?.items) {
+              yield* findAndYieldFiles.call(this, node.replies.items);
+            }
+          }
+        };
+        yield* findAndYieldFiles.call(this, chat.root.items);
       }
     }
   }
@@ -262,6 +334,8 @@ export class OPFSStorageProvider extends IStorageProvider {
     await this.init();
 
     const metas: ChatMetaDto[] = [];
+    const chats = new Map<string, ChatDto>();
+    const pendingAttachments = new Map<string, { attachmentId: string; blob: Blob; originalName: string; mimeType: string; size: number; uploadedAt: number }[]>();
 
     for await (const chunk of stream) {
       switch (chunk.type) {
@@ -270,33 +344,91 @@ export class OPFSStorageProvider extends IStorageProvider {
         break;
       }
       case 'group': {
-        // Direct write group file
-        const groupsDir = await this.getGroupsDir();
-        const fileHandle = await groupsDir.getFileHandle(`${chunk.data.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
-        const writable = await fileHandle.createWritable();
-        await writable.write(JSON.stringify(chunk.data as ChatGroupDto));
-        await writable.close();
+        await this.saveGroup(chatGroupToDomain(chunk.data), chunk.data.order ?? 0);
         break;
       }
       case 'chat': {
-        const fullDto = chunk.data;
-        // Save content file
-        const contentsDir = await this.getChatContentsDir();
-        const contentFileHandle = await contentsDir.getFileHandle(`${fullDto.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
-        const contentWritable = await contentFileHandle.createWritable();
-        const { root, currentLeafId } = fullDto;
-        await contentWritable.write(JSON.stringify({ 
-          root: root || { items: [] }, 
-          currentLeafId 
-        }));
-        await contentWritable.close();
-          
-        // Add to metas
-        const { root: _r, currentLeafId: _c, ...meta } = fullDto;
-        metas.push(meta as ChatMetaDto);
+        chats.set(chunk.data.id, chunk.data);
+        // Process any pending attachments for this chat
+        const pending = pendingAttachments.get(chunk.data.id);
+        if (pending) {
+          for (const att of pending) {
+            await this.saveFile(att.blob, att.attachmentId, att.originalName);
+            const updateStatus = (nodes: MessageNodeDto[]) => {
+              for (const node of nodes) {
+                if (node.attachments) {
+                  for (const a of node.attachments) {
+                    if (a.id === att.attachmentId) {
+                      a.status = 'persisted';
+                      a.mimeType = att.mimeType;
+                      a.size = att.size;
+                      a.uploadedAt = att.uploadedAt;
+                    }
+                  }
+                }
+                if (node.replies?.items) updateStatus(node.replies.items);
+              }
+            };
+            if (chunk.data.root?.items) updateStatus(chunk.data.root.items);
+          }
+          pendingAttachments.delete(chunk.data.id);
+        }
+        break;
+      }
+      case 'attachment': {
+        const chatDto = chats.get(chunk.chatId);
+        if (chatDto) {
+          await this.saveFile(chunk.blob, chunk.attachmentId, chunk.originalName);
+          const updateStatus = (nodes: MessageNodeDto[]) => {
+            for (const node of nodes) {
+              if (node.attachments) {
+                for (const att of node.attachments) {
+                  if (att.id === chunk.attachmentId) {
+                    att.status = 'persisted';
+                    att.mimeType = chunk.mimeType;
+                    att.size = chunk.size;
+                    att.uploadedAt = chunk.uploadedAt;
+                  }
+                }
+              }
+              if (node.replies?.items) updateStatus(node.replies.items);
+            }
+          };
+          if (chatDto.root?.items) updateStatus(chatDto.root.items);
+          // Re-set to ensure the map reflects the change (important for immutability/reactivity if needed)
+          chats.set(chunk.chatId, { ...chatDto });
+        } else {
+          // Store for later when 'chat' chunk arrives
+          const pending = pendingAttachments.get(chunk.chatId) || [];
+          pending.push({ 
+            attachmentId: chunk.attachmentId, 
+            blob: chunk.blob, 
+            originalName: chunk.originalName,
+            mimeType: chunk.mimeType,
+            size: chunk.size,
+            uploadedAt: chunk.uploadedAt
+          });
+          pendingAttachments.set(chunk.chatId, pending);
+        }
         break;
       }
       }
+    }
+
+    // After all chunks are processed, save the (potentially updated) chats
+    for (const [id, fullDto] of chats.entries()) {
+      const contentsDir = await this.getChatContentsDir();
+      const contentFileHandle = await contentsDir.getFileHandle(`${id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
+      const contentWritable = await contentFileHandle.createWritable();
+      const { root, currentLeafId } = fullDto;
+      await contentWritable.write(JSON.stringify({ 
+        root: root || { items: [] }, 
+        currentLeafId 
+      }));
+      await contentWritable.close();
+          
+      const { root: _r, currentLeafId: _c, ...meta } = fullDto;
+      metas.push(meta as ChatMetaDto);
     }
 
     // Write final meta index

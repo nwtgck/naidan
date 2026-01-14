@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup } from '../../models/types';
+import type { Chat, Settings, ChatGroup, MessageNode } from '../../models/types';
 import { 
   SettingsSchemaDto, 
   ChatMetaIndexSchemaDto,
@@ -29,8 +29,13 @@ const KEY_CHAT_PREFIX = `${LSP_STORAGE_PREFIX}chat:`;
 /**
  * LocalStorage Implementation
  * Optimized by splitting metadata and content.
+ * Includes a session-level memory cache for Blobs to support "rescuing" them
+ * during migration or provider switching.
  */
 export class LocalStorageProvider extends IStorageProvider {
+  readonly canPersistBinary = false;
+  private blobCache = new Map<string, Blob>();
+
   async init(): Promise<void> {
     // No-op for localStorage
   }
@@ -58,6 +63,23 @@ export class LocalStorageProvider extends IStorageProvider {
   // --- Persistence Implementation ---
 
   async saveChat(chat: Chat, index: number): Promise<void> {
+    // Collect memory blobs before stringifying
+    const findAndCacheBlobs = (nodes: MessageNode[]) => {
+      for (const node of nodes) {
+        if (node.attachments) {
+          for (const att of node.attachments) {
+            if (att.status === 'memory' && att.blob) {
+              this.blobCache.set(att.id, att.blob);
+            }
+          }
+        }
+        if (node.replies?.items) {
+          findAndCacheBlobs(node.replies.items);
+        }
+      }
+    };
+    findAndCacheBlobs(chat.root.items);
+
     const fullDto = chatToDto(chat, index);
     
     // 1. Save Content (Large)
@@ -90,7 +112,31 @@ export class LocalStorageProvider extends IStorageProvider {
 
     try {
       const content = ChatContentSchemaDto.parse(JSON.parse(rawContent));
-      return chatToDomain({ ...meta, ...content });
+      const chat = chatToDomain({ ...meta, ...content });
+
+      // Restore blobs from cache if available
+      const restoreBlobs = (nodes: MessageNode[]) => {
+        for (const node of nodes) {
+          if (node.attachments) {
+            for (const att of node.attachments) {
+              if (att.status === 'memory') {
+                const cached = this.blobCache.get(att.id);
+                if (cached) {
+                  // Re-assigning to avoid TS error on readonly/union types if necessary
+                  // but status is already checked, so blob should be available if we cast
+                  (att as unknown as { blob: Blob }).blob = cached;
+                }
+              }
+            }
+          }
+          if (node.replies?.items) {
+            restoreBlobs(node.replies.items);
+          }
+        }
+      };
+      restoreBlobs(chat.root.items);
+
+      return chat;
     } catch { return null; }
   }
 
@@ -98,6 +144,8 @@ export class LocalStorageProvider extends IStorageProvider {
     localStorage.removeItem(`${KEY_CHAT_PREFIX}${id}`);
     const entries = (await this.listChatMetasRaw()).filter(m => m.id !== id);
     localStorage.setItem(KEY_INDEX, JSON.stringify({ entries }));
+    // Note: We don't easily know which blobs belong to this chat here without loading it,
+    // but session-level cache is small enough that we can just let it be.
   }
 
   async saveGroup(group: ChatGroup, index: number): Promise<void> {
@@ -144,6 +192,22 @@ export class LocalStorageProvider extends IStorageProvider {
     } catch { return null; }
   }
 
+  // --- File Storage ---
+  
+  async saveFile(_blob: Blob, _attachmentId: string, _originalName: string): Promise<void> {
+    // LocalStorage does not support heavy file persistence.
+    // The StorageService should delegate to OPFS or handle this restriction.
+    throw new Error('File persistence is not supported in LocalStorage provider.');
+  }
+
+  async getFile(_attachmentId: string, _originalName: string): Promise<Blob | null> {
+    return null;
+  }
+
+  async hasAttachments(): Promise<boolean> {
+    return false;
+  }
+
   async clearAll(): Promise<void> {
     // Prefix based cleanup to ensure everything under our namespace is gone
     const keysToRemove: string[] = [];
@@ -154,6 +218,7 @@ export class LocalStorageProvider extends IStorageProvider {
       }
     }
     keysToRemove.forEach(k => localStorage.removeItem(k));
+    this.blobCache.clear();
   }
 
   // --- Migration Implementation ---
@@ -168,7 +233,9 @@ export class LocalStorageProvider extends IStorageProvider {
     const metas = await this.listChatMetasRaw();
     for (const m of metas) {
       const chat = await this.loadChat(m.id);
-      if (chat) yield { type: 'chat', data: chatToDto(chat, m.order ?? 0) };
+      if (chat) {
+        yield { type: 'chat', data: chatToDto(chat, m.order ?? 0) };
+      }
     }
   }
 
@@ -188,6 +255,9 @@ export class LocalStorageProvider extends IStorageProvider {
         const { root, currentLeafId, ...meta } = fullDto;
         localStorage.setItem(`${KEY_CHAT_PREFIX}${fullDto.id}`, JSON.stringify({ root, currentLeafId }));
         metas.push(meta as ChatMetaDto);
+      } else if (chunk.type === 'attachment') {
+        // LocalStorage does not support binary files.
+        // We could theoretically store as base64 but we decided to keep it clean.
       }
     }
 

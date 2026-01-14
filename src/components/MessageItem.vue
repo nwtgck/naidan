@@ -11,7 +11,8 @@ const DOMPurify = typeof window !== 'undefined' ? createDOMPurify(window) : crea
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { MessageNode } from '../models/types';
-import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check } from 'lucide-vue-next';
+import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle } from 'lucide-vue-next';
+import { storageService } from '../services/storage';
 
 const props = defineProps<{
   message: MessageNode;
@@ -28,6 +29,27 @@ const isEditing = ref(false);
 const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const copied = ref(false);
+
+const attachmentUrls = ref<Record<string, string>>({});
+
+async function loadAttachments() {
+  if (!props.message.attachments) return;
+
+  for (const att of props.message.attachments) {
+    if (att.status === 'memory') {
+      attachmentUrls.value[att.id] = URL.createObjectURL(att.blob);
+    } else if (att.status === 'persisted') {
+      try {
+        const blob = await storageService.getFile(att.id, att.originalName);
+        if (blob) {
+          attachmentUrls.value[att.id] = URL.createObjectURL(blob);
+        }
+      } catch (e) {
+        console.error('Failed to load persisted attachment:', e);
+      }
+    }
+  }
+}
 
 type MermaidMode = 'preview' | 'code' | 'both';
 const mermaidMode = ref<MermaidMode>('preview');
@@ -182,6 +204,7 @@ const renderMermaid = async () => {
 
 onMounted(() => {
   renderMermaid();
+  loadAttachments();
   // Handle clicks via event delegation
   messageRef.value?.addEventListener('click', async (e) => {
     const target = e.target as HTMLElement;
@@ -244,6 +267,13 @@ onMounted(() => {
   });
 });
 
+import { onUnmounted } from 'vue';
+
+onUnmounted(() => {
+  // Revoke all created URLs
+  Object.values(attachmentUrls.value).forEach(url => URL.revokeObjectURL(url));
+});
+
 watch(() => props.message.content, renderMermaid);
 
 const messageRef = ref<HTMLElement | null>(null);
@@ -303,6 +333,24 @@ const hasThinking = computed(() => !!props.message.thinking || props.message.con
     </div>
     
     <div class="overflow-hidden">
+      <!-- Attachments -->
+      <div v-if="message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
+        <div v-for="att in message.attachments" :key="att.id" class="relative group/att">
+          <template v-if="att.status !== 'missing' && attachmentUrls[att.id]">
+            <img 
+              :src="attachmentUrls[att.id]" 
+              class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm"
+            />
+          </template>
+          <template v-else>
+            <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500">
+              <AlertTriangle class="w-3.5 h-3.5 text-amber-500" />
+              <span>Image missing ({{ att.originalName }})</span>
+            </div>
+          </template>
+        </div>
+      </div>
+
       <!-- Thinking Block -->
       <div v-if="hasThinking" class="mb-3" data-testid="thinking-block">
         <button 

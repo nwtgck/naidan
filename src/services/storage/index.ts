@@ -1,9 +1,11 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary } from '../../models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, MessageNode } from '../../models/types';
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 import { useGlobalEvents } from '../../composables/useGlobalEvents';
 import { STORAGE_BOOTSTRAP_KEY } from '../../models/constants';
+import { chatToDto } from '../../models/mappers';
+import type { MigrationChunkDto } from '../../models/dto';
 
 export class StorageService {
   private provider: IStorageProvider;
@@ -27,10 +29,16 @@ export class StorageService {
     return this.currentType;
   }
 
+  get canPersistBinary(): boolean {
+    return this.provider.canPersistBinary;
+  }
+
   async switchProvider(type: 'local' | 'opfs') {
     if (this.currentType === type) return;
 
     const oldProvider = this.provider;
+    console.log('DEBUG: oldProvider', oldProvider);
+    console.log('DEBUG: oldProvider.dump', oldProvider.dump);
     let newProvider: IStorageProvider;
 
     // Initialize the target provider
@@ -45,13 +53,84 @@ export class StorageService {
       
       // Migrate data: Dump from old -> Restore to new
       console.log(`Migrating data from ${this.currentType} to ${type}...`);
-      const dumpStream = oldProvider.dump();
-      await newProvider.restore(dumpStream);
       
-      // Commit switch only after successful migration
+      // Define a wrapper generator to inject memory blobs if we're moving from Local to OPFS
+      async function* migrationStream(): AsyncGenerator<MigrationChunkDto> {
+        for await (const chunk of oldProvider.dump()) {
+          if (chunk.type === 'chat' && newProvider.canPersistBinary) {
+            const rescuedAttachments: MigrationChunkDto[] = [];
+
+            // We MUST use the domain object to get the BLOBS, because DTOs don't have them
+            // We use oldProvider directly to be sure we get the correct data
+            const chat = await oldProvider.loadChat(chunk.data.id);
+            if (!chat) {
+              yield chunk;
+              continue;
+            }
+
+            const findAndRescueBlobs = (nodes: MessageNode[]) => {
+              for (const node of nodes) {
+                if (node.attachments) {
+                  for (let i = 0; i < node.attachments.length; i++) {
+                    const att = node.attachments[i];
+                    if (att && att.status === 'memory' && 'blob' in att && att.blob) {
+                      rescuedAttachments.push({
+                        type: 'attachment',
+                        chatId: chat.id,
+                        attachmentId: att.id,
+                        originalName: att.originalName,
+                        mimeType: att.mimeType,
+                        size: att.size,
+                        uploadedAt: att.uploadedAt,
+                        blob: att.blob
+                      });
+                      // Replace with persisted version
+                      node.attachments[i] = {
+                        id: att.id,
+                        originalName: att.originalName,
+                        mimeType: att.mimeType,
+                        size: att.size,
+                        uploadedAt: att.uploadedAt,
+                        status: 'persisted'
+                      };
+                    }
+                  }
+                }
+                if (node.replies?.items) {
+                  findAndRescueBlobs(node.replies.items);
+                }
+              }
+            };
+
+            findAndRescueBlobs(chat.root.items);
+
+            // Yield rescued attachments FIRST
+            for (const attChunk of rescuedAttachments) {
+              yield attChunk;
+            }
+            
+            // Yield the updated chat (converted back to DTO with 'persisted' status) AFTER
+            yield { type: 'chat', data: chatToDto(chat, chunk.data.order ?? 0) };
+          } else {
+            yield chunk;
+          }
+        }
+      }
+
+      // We temporary switch provider so restore() works correctly if it relies on instance methods
+      const oldType = this.currentType;
       this.provider = newProvider;
       this.currentType = type;
 
+      try {
+        await newProvider.restore(migrationStream());
+      } catch (e) {
+        // Rollback
+        this.provider = oldProvider;
+        this.currentType = oldType;
+        throw e;
+      }
+      
       // Persist active storage type for the next application load
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
@@ -68,8 +147,7 @@ export class StorageService {
         details: error instanceof Error ? error : new Error(String(error)),
       });
 
-      // We simply don't update this.provider, so the app continues using the old one.
-      throw error; // Re-throw so UI can handle/display error
+      throw error; 
     }
   }
 
@@ -123,6 +201,20 @@ export class StorageService {
 
   async clearAll(): Promise<void> {
     return this.provider.clearAll();
+  }
+
+  // --- File Storage Methods ---
+
+  async saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void> {
+    return this.provider.saveFile(blob, attachmentId, originalName);
+  }
+
+  async getFile(attachmentId: string, originalName: string): Promise<Blob | null> {
+    return this.provider.getFile(attachmentId, originalName);
+  }
+
+  async hasAttachments(): Promise<boolean> {
+    return this.provider.hasAttachments();
   }
 }
 
