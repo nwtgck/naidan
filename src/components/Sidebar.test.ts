@@ -369,4 +369,49 @@ describe('Sidebar Logic Stability', () => {
       expect(container.classes()).not.toContain('skip-leave');
     });
   });
+
+  it('should display the New Chat shortcut key when sidebar is open', async () => {
+    const wrapper = mount(Sidebar, {
+      global: {
+        plugins: [router],
+        stubs: globalStubs,
+      },
+    });
+
+    // Sidebar is open by default in Sidebar.vue (actually it depends on useLayout)
+    // In our test, useLayout is not mocked, so it uses the real one.
+    // Let's ensure it's open.
+    const newChatButton = wrapper.find('[data-testid="new-chat-button"]');
+    expect(newChatButton.exists()).toBe(true);
+    
+    // The shortcut text is platform dependent. 
+    // In the test environment, we can check for either Ctrl+Shift+O or ⌘⇧O 
+    // depending on what navigator.platform returns.
+    const text = newChatButton.text();
+    expect(text).toContain('New Chat');
+    expect(text).toMatch(/(Ctrl\+Shift\+O|⌘⇧O)/);
+  });
+
+  it("should display 'New Chat' when a chat title is empty in the sidebar", async () => {
+    mockChats.value = [
+      { id: 'chat-empty-1', title: '', updatedAt: 0 },
+      { id: 'chat-null-1', title: null as any, updatedAt: 0 },
+    ];
+    
+    const wrapper = mount(Sidebar, {
+      global: {
+        plugins: [router],
+        stubs: globalStubs,
+      },
+    });
+
+    const vm = wrapper.vm as unknown as SidebarComponent;
+    vm.syncLocalItems();
+    await nextTick();
+
+    const chatItems = wrapper.findAll('[data-testid="sidebar-chat-item"]');
+    expect(chatItems).toHaveLength(2);
+    expect(chatItems[0]!.text()).toContain('New Chat');
+    expect(chatItems[1]!.text()).toContain('New Chat');
+  });
 });

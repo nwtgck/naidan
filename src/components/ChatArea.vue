@@ -188,7 +188,7 @@ function toggleMaximized() {
 function exportChat() {
   if (!currentChat.value || !activeMessages.value) return;
 
-  let markdownContent = `# ${currentChat.value.title || 'Untitled Chat'}\n\n`;
+  let markdownContent = `# ${currentChat.value.title || 'New Chat'}\n\n`;
 
   activeMessages.value.forEach(msg => {
     const role = msg.role === 'user' ? 'User' : 'AI';
@@ -196,7 +196,7 @@ function exportChat() {
   });
 
   const blob = new Blob([markdownContent], { type: 'text/plain;charset=utf-8' });
-  const filename = `${currentChat.value.title || 'untitled_chat'}.txt`;
+  const filename = `${currentChat.value.title || 'new_chat'}.txt`;
 
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
@@ -376,7 +376,7 @@ onUnmounted(() => {
               >
                 <ArrowUp class="w-4 h-4" />
               </button>
-              <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'Untitled Chat' }}</h2>
+              <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
             </div>
             
             <!-- Model Badge/Trigger -->

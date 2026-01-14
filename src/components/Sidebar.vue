@@ -46,6 +46,8 @@ const vFocus = {
   mounted: (el: HTMLElement) => el.focus(),
 };
 
+const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+const newChatShortcutText = isMac ? '⌘⇧O' : 'Ctrl+Shift+O';
 const appVersion = __APP_VERSION__;
 
 onMounted(() => {
@@ -214,7 +216,10 @@ async function handleGlobalModelChange(event: Event) {
           :title="!isSidebarOpen ? 'New Chat' : ''"
         >
           <SquarePen class="w-4 h-4 shrink-0" />
-          <span v-if="isSidebarOpen" class="whitespace-nowrap overflow-hidden">New Chat</span>
+          <template v-if="isSidebarOpen">
+            <span class="whitespace-nowrap overflow-hidden">New Chat</span>
+            <span class="text-[9px] opacity-60 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
+          </template>
         </button>
         <button 
           v-if="isSidebarOpen"
@@ -329,7 +334,7 @@ async function handleGlobalModelChange(event: Event) {
                               @click.stop
                               class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
                             />
-                            <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'Untitled Chat' }}</span>
+                            <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'New Chat' }}</span>
                           </div>
                           <div v-if="editingId !== nestedItem.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
                             <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
@@ -367,7 +372,7 @@ async function handleGlobalModelChange(event: Event) {
                     @click.stop
                     class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
                   />
-                  <span v-else class="truncate text-sm">{{ element.chat.title || 'Untitled Chat' }}</span>
+                  <span v-else class="truncate text-sm">{{ element.chat.title || 'New Chat' }}</span>
                 </div>
                 <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
                   <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>

@@ -637,11 +637,11 @@ describe('ChatArea Export Functionality', () => {
 
     const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
     const text = await blob.text();
-    expect(text).toContain('# Untitled Chat');
+    expect(text).toContain('# New Chat');
     expect(text).toContain('## User:\nAnother message');
 
     const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-    expect(link.download).toBe('untitled_chat.txt');
+    expect(link.download).toBe('new_chat.txt');
   });
 
   it('should handle empty active messages for export', async () => {
