@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref } from 'vue';
+import { ref, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import { Loader2 } from 'lucide-vue-next';
@@ -17,7 +17,12 @@ vi.mock('../composables/useSettings', () => ({
     settings: { value: { storageType: 'local', providerProfiles: [] } },
     availableModels: { value: [] },
     isFetchingModels: { value: false },
-    save: vi.fn(),
+    save: vi.fn().mockImplementation(async (newSettings) => {
+      const currentType = storageService.getCurrentType();
+      if (newSettings.storageType !== currentType) {
+        await storageService.switchProvider(newSettings.storageType);
+      }
+    }),
     fetchModels: vi.fn(),
   })),
 }));
@@ -60,6 +65,9 @@ vi.mock('../composables/useToast', () => ({
 vi.mock('../services/storage', () => ({
   storageService: {
     clearAll: vi.fn(),
+    getCurrentType: vi.fn(),
+    switchProvider: vi.fn().mockResolvedValue(undefined),
+    hasAttachments: vi.fn().mockResolvedValue(false),
   },
 }));
 
@@ -74,6 +82,11 @@ vi.mock('../services/llm', () => {
 // --- Tests ---
 
 describe('SettingsModal.vue (Tabbed Interface)', () => {
+  async function wait() {
+    await new Promise(r => setTimeout(r, 100));
+    await nextTick();
+  }
+
   const mockSave = vi.fn();
   const mockCreateSampleChat = vi.fn();
   const mockSettings = {
@@ -110,11 +123,23 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
+    vi.mocked(storageService.getCurrentType).mockReturnValue('local');
+
+    (useRouter as Mock).mockReturnValue({
+      push: vi.fn(),
+      currentRoute: { value: { path: '/' } }
+    });
+
     (useSettings as unknown as Mock).mockReturnValue({
       settings: { value: JSON.parse(JSON.stringify(mockSettings)) },
       availableModels: { value: [] },
       isFetchingModels: { value: false },
-      save: mockSave,
+      save: mockSave.mockImplementation(async (newSettings) => {
+        const currentType = storageService.getCurrentType();
+        if (newSettings.storageType !== currentType) {
+          await storageService.switchProvider(newSettings.storageType);
+        }
+      }),
       fetchModels: vi.fn(),
     });
 
@@ -428,7 +453,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
 
     await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
-    expect(wrapper.text()).toContain('Saved');
+    expect(wrapper.text()).toContain('Settings Saved');
   });
 
   it('handles model fetch errors gracefully', async () => {
@@ -509,11 +534,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       (useChat as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
       });
-      (vi.mocked(useRouter) as Mock).mockReturnValue({
+      (useRouter as Mock).mockReturnValue({
         push: mockPush,
+        currentRoute: { value: { path: '/' } }
       });
 
-      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true }, 
+        global: { 
+          stubs: globalStubs,
+        } 
+      });
       await flushPromises();
 
       await wrapper.findAll('nav button').find(b => b.text().includes('Storage'))?.trigger('click');
@@ -545,6 +576,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const mockDeleteAllChats = vi.fn();
       (useChat as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
+      });
+      (useRouter as Mock).mockReturnValue({
+        push: vi.fn(),
+        currentRoute: { value: { path: '/' } }
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -804,6 +839,105 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(badge.exists()).toBe(true);
       expect(badge.text()).toBe('Ollama');
       expect(badge.classes()).toContain('uppercase');
+    });
+  });
+
+  describe('Storage Management & OPFS', () => {
+    it('successfully triggers migration when switching to OPFS', async () => {
+      vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn() } });
+      vi.stubGlobal('isSecureContext', true);
+      vi.mocked(storageService.getCurrentType).mockReturnValue('local');
+
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true }, 
+        global: { 
+          stubs: globalStubs,
+          provide: {
+            'Symbol(router)': {
+              push: vi.fn(),
+              currentRoute: { value: { path: '/' } }
+            }
+          }
+        } 
+      });
+      await wait();
+
+      // Trigger hasChanges by changing URL
+      await wrapper.find('input[data-testid="setting-url-input"]').setValue('http://example.com');
+
+      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
+      await nextTick();
+
+      await wrapper.find('[data-testid="storage-opfs"]').trigger('click');
+      await nextTick();
+
+      await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
+      await wait();
+
+      expect(storageService.switchProvider).toHaveBeenCalledWith('opfs');
+    });
+
+    it('warns about attachment loss when switching from OPFS to Local', async () => {
+      vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
+      vi.mocked(storageService.hasAttachments).mockResolvedValue(true);
+      
+      const settingsAsOpfs = { ...mockSettings, storageType: 'opfs' as const };
+      (useSettings as unknown as Mock).mockReturnValue({
+        settings: { value: settingsAsOpfs },
+        availableModels: { value: [] },
+        isFetchingModels: { value: false },
+        save: vi.fn(),
+        fetchModels: vi.fn(),
+      });
+
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true }, 
+        global: { 
+          stubs: globalStubs,
+          provide: {
+            'Symbol(router)': {
+              push: vi.fn(),
+              currentRoute: { value: { path: '/' } }
+            }
+          }
+        } 
+      });
+      await wait();
+
+      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
+      await nextTick();
+
+      await wrapper.find('[data-testid="storage-local"]').trigger('click');
+      await nextTick();
+
+      mockShowConfirm.mockResolvedValueOnce(false); 
+      await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
+      
+      expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Attachments will be inaccessible'
+      }));
+    });
+
+    it('disables OPFS option if environment is not secure', async () => {
+      vi.stubGlobal('isSecureContext', false);
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true }, 
+        global: { 
+          stubs: globalStubs,
+          provide: {
+            'Symbol(router)': {
+              push: vi.fn(),
+              currentRoute: { value: { path: '/' } }
+            }
+          }
+        } 
+      });
+      await wait();
+      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
+      await nextTick();
+      
+      const opfsBtn = wrapper.find('[data-testid="storage-opfs"]');
+      expect(opfsBtn.attributes('disabled')).toBeDefined();
     });
   });
 });

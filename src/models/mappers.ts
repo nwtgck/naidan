@@ -10,6 +10,7 @@ import type {
   SettingsDto,
   EndpointTypeDto,
   StorageTypeDto,
+  AttachmentDto,
 } from './dto';
 import type { 
   Role, 
@@ -23,6 +24,7 @@ import type {
   EndpointType,
   StorageType,
   SystemPrompt,
+  Attachment,
 } from './types';
 
 export const roleToDomain = (dto: RoleDto): Role => {
@@ -63,10 +65,39 @@ export const chatGroupToDto = (domain: ChatGroup, index: number): ChatGroupDto =
   order: index,
 });
 
+const attachmentToDomain = (dto: AttachmentDto): Attachment => {
+  const base = {
+    id: dto.id,
+    originalName: dto.originalName,
+    mimeType: dto.mimeType,
+    size: dto.size,
+    uploadedAt: dto.uploadedAt,
+  };
+
+  if (dto.status === 'persisted') return { ...base, status: 'persisted' };
+  if (dto.status === 'missing') return { ...base, status: 'missing' };
+  
+  // For 'memory' status from DTO, we might not have the blob yet.
+  // We cast to unknown then Attachment to allow this intermediate state which is restored by providers.
+  return { ...base, status: 'memory' } as unknown as Attachment;
+};
+
+const attachmentToDto = (domain: Attachment): AttachmentDto => {
+  return {
+    id: domain.id,
+    originalName: domain.originalName,
+    mimeType: domain.mimeType,
+    size: domain.size,
+    uploadedAt: domain.uploadedAt,
+    status: domain.status,
+  };
+};
+
 export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => ({
   id: dto.id,
   role: roleToDomain(dto.role),
   content: dto.content,
+  attachments: dto.attachments?.map(attachmentToDomain),
   timestamp: dto.timestamp,
   thinking: dto.thinking,
   modelId: dto.modelId,
@@ -79,6 +110,7 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => ({
   id: domain.id,
   role: domain.role as RoleDto,
   content: domain.content,
+  attachments: domain.attachments?.map(attachmentToDto),
   timestamp: domain.timestamp,
   thinking: domain.thinking,
   modelId: domain.modelId,

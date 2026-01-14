@@ -33,6 +33,8 @@ const mockSettings = {
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
     settings: { value: mockSettings },
+    isOnboardingDismissed: { value: true },
+    onboardingDraft: { value: null },
   }),
 }));
 

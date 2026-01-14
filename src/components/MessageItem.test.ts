@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode } from '../models/types';
@@ -357,5 +357,107 @@ describe('MessageItem Keyboard Shortcuts', () => {
     
     expect(wrapper.emitted('edit')).toBeTruthy();
     expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Meta content']);
+  });
+});
+
+describe('MessageItem Attachment Rendering', () => {
+  const createMessageWithAttachments = (attachments: any[]): MessageNode => ({
+    id: uuidv7(),
+    role: 'user',
+    content: 'Message with images',
+    timestamp: Date.now(),
+    attachments,
+    replies: { items: [] },
+  });
+
+  beforeEach(() => {
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn().mockReturnValue('mock-url'),
+      revokeObjectURL: vi.fn(),
+    });
+  });
+
+  it('renders memory attachments using local blobs', async () => {
+    const message = createMessageWithAttachments([{
+      id: 'att-mem',
+      status: 'memory',
+      blob: new Blob([''], { type: 'image/png' }),
+      originalName: 'mem.png',
+      mimeType: 'image/png',
+      size: 10,
+      uploadedAt: Date.now()
+    }]);
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+    await nextTick();
+
+    const img = wrapper.find('img');
+    expect(img.exists()).toBe(true);
+    expect(img.attributes('src')).toBe('mock-url');
+  });
+
+  it('renders persisted attachments by fetching from storage', async () => {
+    // Mock storageService
+    const { storageService } = await import('../services/storage');
+    vi.spyOn(storageService, 'getFile').mockResolvedValue(new Blob([''], { type: 'image/png' }));
+
+    const message = createMessageWithAttachments([{
+      id: 'att-persisted',
+      status: 'persisted',
+      originalName: 'persisted.png',
+      mimeType: 'image/png',
+      size: 20,
+      uploadedAt: Date.now()
+    }]);
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+    await nextTick();
+    await nextTick(); // Wait for loadAttachments async
+
+    const img = wrapper.find('img');
+    expect(img.exists()).toBe(true);
+    expect(storageService.getFile).toHaveBeenCalledWith('att-persisted', 'persisted.png');
+  });
+
+  it('renders a fallback for missing attachments', async () => {
+    const message = createMessageWithAttachments([{
+      id: 'att-missing',
+      status: 'missing',
+      originalName: 'missing.png',
+      mimeType: 'image/png',
+      size: 30,
+      uploadedAt: Date.now()
+    }]);
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+
+    expect(wrapper.text()).toContain('Image missing');
+    expect(wrapper.text()).toContain('missing.png');
+    expect(wrapper.text()).toContain('30.0 B');
+    expect(wrapper.find('img').exists()).toBe(false);
+  });
+
+  it('renders a download button for valid attachments', async () => {
+    const message = createMessageWithAttachments([{
+      id: 'att-mem',
+      status: 'memory',
+      blob: new Blob([''], { type: 'image/png' }),
+      originalName: 'mem.png',
+      mimeType: 'image/png',
+      size: 10,
+      uploadedAt: Date.now()
+    }]);
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+    await nextTick();
+
+    const downloadBtn = wrapper.find('[data-testid="download-attachment"]');
+    expect(downloadBtn.exists()).toBe(true);
+    expect(downloadBtn.attributes('href')).toBe('mock-url');
+    expect(downloadBtn.attributes('download')).toBe('mem.png');
   });
 });

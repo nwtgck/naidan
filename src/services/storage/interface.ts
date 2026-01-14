@@ -11,6 +11,12 @@ export type { ChatSummary };
 export abstract class IStorageProvider {
   abstract init(): Promise<void>;
   
+  /**
+   * Whether this provider supports efficient binary persistence (e.g. OPFS).
+   * LocalStorage returns false to indicate potential capacity issues.
+   */
+  abstract readonly canPersistBinary: boolean;
+
   // --- Data Access Methods ---
   // Subclasses implement these to fetch raw DTOs.
   protected abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;
@@ -75,4 +81,9 @@ export abstract class IStorageProvider {
   abstract saveSettings(settings: Settings): Promise<void>;
   abstract loadSettings(): Promise<Settings | null>;
   abstract clearAll(): Promise<void>;
+
+  // --- File Storage ---
+  abstract saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void>;
+  abstract getFile(attachmentId: string, originalName: string): Promise<Blob | null>;
+  abstract hasAttachments(): Promise<boolean>;
 }

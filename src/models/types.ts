@@ -26,10 +26,33 @@ export interface SystemPrompt {
   behavior: 'override' | 'append';
 }
 
+export type MultimodalContent = 
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
+export interface ChatMessage {
+  role: string;
+  content: string | MultimodalContent[];
+}
+
+export interface AttachmentBase {
+  id: string;           // UUID (directory name)
+  originalName: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: number;
+}
+
+export type Attachment = 
+  | (AttachmentBase & { status: 'persisted' })
+  | (AttachmentBase & { status: 'memory'; blob: Blob })
+  | (AttachmentBase & { status: 'missing' });
+
 export interface MessageNode {
   id: string;
   role: Role;
   content: string;
+  attachments?: Attachment[];
   timestamp: number;
   thinking?: string;
   modelId?: string;
@@ -96,6 +119,7 @@ export interface Settings {
   autoTitleEnabled: boolean;
   storageType: StorageType;
   providerProfiles: ProviderProfile[];
+  heavyContentAlertDismissed?: boolean;
   systemPrompt?: string;
   lmParameters?: LmParameters;
 }
@@ -105,4 +129,5 @@ export const DEFAULT_SETTINGS: Settings = {
   autoTitleEnabled: true,
   storageType: 'local',
   providerProfiles: [],
+  heavyContentAlertDismissed: false,
 };

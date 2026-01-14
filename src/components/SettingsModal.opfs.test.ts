@@ -28,10 +28,23 @@ vi.mock('../composables/usePrompt', () => ({
   usePrompt: () => ({ showPrompt: vi.fn() }),
 }));
 vi.mock('../services/storage', () => ({
-  storageService: { clearAll: vi.fn() },
+  storageService: { 
+    clearAll: vi.fn(),
+    getCurrentType: vi.fn().mockReturnValue('local'),
+    hasAttachments: vi.fn().mockResolvedValue(false),
+  },
 }));
 
 describe('SettingsModal OPFS and Error Handling', () => {
+  const globalMocks = {
+    provide: {
+      'Symbol(router)': {
+        push: vi.fn(),
+        currentRoute: { value: { path: '/' } }
+      }
+    }
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
@@ -43,13 +56,14 @@ describe('SettingsModal OPFS and Error Handling', () => {
     
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
+      global: globalMocks
     });
     
     const tabs = wrapper.findAll('button');
     const storageTab = tabs.find(b => b.text().includes('Storage'));
     if (storageTab) await storageTab.trigger('click');
     
-    const opfsOption = wrapper.find('[data-testid="storage-option-opfs"]');
+    const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
     expect(opfsOption.text()).toContain('Unsupported');
   });
@@ -60,13 +74,14 @@ describe('SettingsModal OPFS and Error Handling', () => {
     
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
+      global: globalMocks
     });
     
     const tabs = wrapper.findAll('button');
     const storageTab = tabs.find(b => b.text().includes('Storage'));
     if (storageTab) await storageTab.trigger('click');
     
-    const opfsOption = wrapper.find('[data-testid="storage-option-opfs"]');
+    const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
     expect(opfsOption.text()).toContain('Unsupported');
   });
@@ -77,13 +92,14 @@ describe('SettingsModal OPFS and Error Handling', () => {
     
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
+      global: globalMocks
     });
     
     const tabs = wrapper.findAll('button');
     const storageTab = tabs.find(b => b.text().includes('Storage'));
     if (storageTab) await storageTab.trigger('click');
     
-    const opfsOption = wrapper.find('[data-testid="storage-option-opfs"]');
+    const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).not.toContain('cursor-not-allowed');
     expect(opfsOption.text()).not.toContain('Unsupported');
   });
@@ -121,6 +137,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
+      global: globalMocks
     });
 
     // Simulate a change to enable save button

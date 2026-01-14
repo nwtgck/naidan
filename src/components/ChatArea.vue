@@ -9,7 +9,10 @@ import WelcomeScreen from './WelcomeScreen.vue';
 import { 
   ArrowLeft, Download, Settings2, MoreVertical, Bug, 
   Square, Loader2, Minimize2, Maximize2, Send,
+  Paperclip, X,
 } from 'lucide-vue-next';
+import { v7 as uuidv7 } from 'uuid';
+import type { Attachment } from '../models/types';
 
 
 const chatStore = useChat();
@@ -25,14 +28,101 @@ const router = useRouter();
 const input = ref('');
 const container = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
 const isMaximized = ref(false); // New state for maximize button
 const isOverLimit = ref(false); // New state to show maximize button only when content is long
+
+const attachments = ref<Attachment[]>([]);
+const attachmentUrls = ref<Record<string, string>>({});
+const isDragging = ref(false);
+
+watch(attachments, (newAtts) => {
+  // Revoke URLs for removed attachments
+  Object.keys(attachmentUrls.value).forEach(id => {
+    if (!newAtts.find(a => a.id === id)) {
+      const url = attachmentUrls.value[id];
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+      delete attachmentUrls.value[id];
+    }
+  });
+
+  // Create URLs for new attachments
+  newAtts.forEach(att => {
+    if (att.status === 'memory' && !attachmentUrls.value[att.id]) {
+      attachmentUrls.value[att.id] = URL.createObjectURL(att.blob);
+    }
+  });
+}, { deep: true });
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 const showChatSettings = ref(false);
 const showMoreMenu = ref(false);
+
+function triggerFileInput() {
+  fileInputRef.value?.click();
+}
+
+async function processFiles(files: File[]) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    
+    const attachment: Attachment = {
+      id: uuidv7(),
+      originalName: file.name,
+      mimeType: file.type,
+      size: file.size,
+      uploadedAt: Date.now(),
+      status: 'memory',
+      blob: file,
+    };
+    attachments.value.push(attachment);
+  }
+  nextTick(adjustTextareaHeight);
+}
+
+async function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement;
+  if (!target.files) return;
+
+  await processFiles(Array.from(target.files));
+  target.value = ''; // Reset input
+}
+
+function handleDragOver(event: DragEvent) {
+  event.preventDefault();
+  isDragging.value = true;
+}
+
+function handleDragLeave(event: DragEvent) {
+  // Only set to false if we are leaving the main container
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  if (
+    event.clientX <= rect.left ||
+    event.clientX >= rect.right ||
+    event.clientY <= rect.top ||
+    event.clientY >= rect.bottom
+  ) {
+    isDragging.value = false;
+  }
+}
+
+async function handleDrop(event: DragEvent) {
+  event.preventDefault();
+  isDragging.value = false;
+  
+  if (event.dataTransfer?.files) {
+    await processFiles(Array.from(event.dataTransfer.files));
+  }
+}
+
+function removeAttachment(id: string) {
+  attachments.value = attachments.value.filter(a => a.id !== id);
+  nextTick(adjustTextareaHeight);
+}
 
 function applySuggestion(text: string) {
   input.value = text;
@@ -130,23 +220,26 @@ function scrollToBottom() {
 }
 
 // Expose for testing
-defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight });
+defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight, attachments, input });
 
 async function fetchModels() {
   await chatStore.fetchAvailableModels();
 }
 
 async function handleSend() {
-  if (!input.value.trim() || streaming.value) return;
+  if ((!input.value.trim() && attachments.value.length === 0) || streaming.value) return;
   const text = input.value;
+  const currentAttachments = [...attachments.value];
+  
   input.value = '';
+  attachments.value = [];
   isMaximized.value = false; // Reset maximized state immediately upon sending
   
   nextTick(() => { // Ensure textarea is cleared before adjusting height
     adjustTextareaHeight();
   });
   
-  await chatStore.sendMessage(text);
+  await chatStore.sendMessage(text, undefined, currentAttachments);
   focusInput();
 }
 
@@ -233,11 +326,30 @@ onMounted(() => {
 import { onUnmounted } from 'vue';
 onUnmounted(() => {
   window.removeEventListener('resize', adjustTextareaHeight);
+  // Revoke all created URLs
+  Object.values(attachmentUrls.value).forEach(url => URL.revokeObjectURL(url));
 });
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors">
+  <div 
+    class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
+  >
+    <!-- Drag Overlay -->
+    <div 
+      v-if="isDragging"
+      class="absolute inset-0 z-50 bg-blue-500/10 border-2 border-dashed border-blue-500 pointer-events-none flex items-center justify-center"
+      data-testid="drag-overlay"
+    >
+      <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-xl flex items-center gap-3 animate-in zoom-in duration-200">
+        <Paperclip class="w-6 h-6 text-blue-500" />
+        <span class="text-lg font-bold text-gray-800 dark:text-gray-100">Drop images to attach</span>
+      </div>
+    </div>
+
     <!-- Header -->
     <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-3 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
       <div class="flex items-center gap-3 overflow-hidden min-h-[44px]">
@@ -403,6 +515,23 @@ onUnmounted(() => {
     <!-- Input -->
     <div class="border-t border-gray-100 dark:border-gray-800 p-6 bg-white dark:bg-gray-900" v-if="currentChat">
       <div class="max-w-4xl mx-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-colors duration-200 shadow-sm group-hover:shadow-md flex flex-col">
+        
+        <!-- Attachment Previews -->
+        <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
+          <div v-for="att in attachments" :key="att.id" class="relative group/att">
+            <img 
+              :src="attachmentUrls[att.id]" 
+              class="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+            />
+            <button 
+              @click="removeAttachment(att.id)"
+              class="absolute -top-2 -right-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm opacity-0 group-hover/att:opacity-100 transition-opacity"
+            >
+              <X class="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+
         <textarea
           ref="textareaRef"
           v-model="input"
@@ -425,24 +554,42 @@ onUnmounted(() => {
           <Minimize2 v-if="isMaximized" class="w-4 h-4" />
           <Maximize2 v-else class="w-4 h-4" />
         </button>
-        <div class="flex items-center justify-end gap-2 px-4 pb-4">
-          <div class="relative flex items-center">
-            <select 
-              v-model="currentChat.overrideModelId"
-              class="text-xs font-bold border border-gray-100 dark:border-gray-700 rounded-xl pl-3 pr-9 py-2.5 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none max-w-[100px] sm:max-w-[180px] truncate cursor-pointer shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
-              title="Override Model"
-              data-testid="model-override-select"
+        <div class="flex items-center justify-between px-4 pb-4">
+          <div class="flex items-center gap-2">
+            <input 
+              ref="fileInputRef"
+              type="file" 
+              accept="image/*" 
+              multiple 
+              class="hidden" 
+              @change="handleFileSelect"
+            />
+            <button 
+              @click="triggerFileInput"
+              class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              title="Attach images"
             >
-              <option :value="undefined">{{ settings.defaultModelId || 'Default Model' }}</option>
-              <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-            </select>
-            <Loader2 v-if="fetchingModels" class="w-3.5 h-3.5 animate-spin absolute right-3 pointer-events-none text-gray-400" />
-            <Settings2 v-else class="w-3.5 h-3.5 absolute right-3 pointer-events-none text-gray-400" />
+              <Paperclip class="w-5 h-5" />
+            </button>
+
+            <div class="relative flex items-center">
+              <select 
+                v-model="currentChat.overrideModelId"
+                class="text-xs font-bold border border-gray-100 dark:border-gray-700 rounded-xl pl-3 pr-9 py-2.5 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none max-w-[100px] sm:max-w-[180px] truncate cursor-pointer shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
+                title="Override Model"
+                data-testid="model-override-select"
+              >
+                <option :value="undefined">{{ settings.defaultModelId || 'Default Model' }}</option>
+                <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+              </select>
+              <Loader2 v-if="fetchingModels" class="w-3.5 h-3.5 animate-spin absolute right-3 pointer-events-none text-gray-400" />
+              <Settings2 v-else class="w-3.5 h-3.5 absolute right-3 pointer-events-none text-gray-400" />
+            </div>
           </div>
 
           <button 
             @click="streaming ? chatStore.abortChat() : handleSend()"
-            :disabled="!streaming && !input.trim()"
+            :disabled="!streaming && !input.trim() && attachments.length === 0"
             class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
             :title="streaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
             :data-testid="streaming ? 'abort-button' : 'send-button'"

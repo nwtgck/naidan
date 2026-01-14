@@ -25,7 +25,9 @@ vi.mock('../services/storage', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: true } },
+    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: true, defaultModelId: 'gpt-4' } },
+    isOnboardingDismissed: { value: true },
+    onboardingDraft: { value: null },
   }),
 }));
 

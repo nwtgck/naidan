@@ -1,9 +1,10 @@
 import { ref, computed, shallowRef, reactive, triggerRef } from 'vue';
 import { v7 as uuidv7 } from 'uuid';
-import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, Attachment, MultimodalContent, ChatMessage } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
+import { useConfirm } from './useConfirm';
 
 const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
@@ -13,6 +14,15 @@ const fetchingModels = ref(false);
 let abortController: AbortController | null = null;
 
 // --- Helpers ---
+
+async function fileToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 function findNodeInBranch(items: MessageNode[], targetId: string): MessageNode | null {
   for (const item of items) {
@@ -314,44 +324,82 @@ export function useChat() {
     }
   };
 
-  const sendMessage = async (content: string, parentId?: string | null) => {
+  const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = []) => {
     if (!currentChat.value || streaming.value) return;
 
-    const { isOnboardingDismissed, onboardingDraft } = useSettings();
+    const { isOnboardingDismissed, onboardingDraft, settings: globalSettings } = useSettings();
+    const { showConfirm } = useConfirm();
 
-    // Determine the intended model early
+    // --- Model & Endpoint Resolution ---
     const type = currentChat.value.endpointType || settings.value.endpointType;
     const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
-    const baseModel = currentChat.value.overrideModelId || settings.value.defaultModelId || currentChat.value.modelId;
     
-    if (!url) {
-      isOnboardingDismissed.value = false;
-      return;
-    }
+    let resolvedModel = currentChat.value.overrideModelId || settings.value.defaultModelId || '';
 
-    if (!baseModel) {
-      // If we have a URL but no model, try to fetch models to help with onboarding model selection
+    if (url) {
       const models = await fetchAvailableModels();
       if (models.length > 0) {
-        onboardingDraft.value = {
-          url,
-          type,
-          models,
-          selectedModel: models[0] || '',
-        };
+        const preferredModel = currentChat.value.overrideModelId || settings.value.defaultModelId;
+        if (preferredModel && models.includes(preferredModel)) {
+          resolvedModel = preferredModel;
+        } else if (preferredModel) {
+          // If a preferred model was set but is not available, fallback to first
+          resolvedModel = models[0] || '';
+        }
+        // If NO preferred model was set at all, resolvedModel remains '', triggering onboarding below
       }
+    }
+
+    if (!url || !resolvedModel) {
+      const models = await fetchAvailableModels();
+      onboardingDraft.value = { 
+        url, 
+        type, 
+        models, 
+        selectedModel: models[0] || '',
+      };
       isOnboardingDismissed.value = false;
       return;
     }
 
-    // Dynamic Model Resolution:
-    let resolvedModel = baseModel;
-    const available = await fetchAvailableModels();
-    if (available.length > 0 && !available.includes(baseModel)) {
-      if (settings.value.defaultModelId && available.includes(settings.value.defaultModelId)) {
-        resolvedModel = settings.value.defaultModelId;
+    // Process attachments for saving
+    const processedAttachments: Attachment[] = [];
+    const canPersist = storageService.canPersistBinary;
+    
+    // Check if we need to ask for permission for LocalStorage persistence
+    if (attachments.length > 0 && !canPersist && globalSettings.value.heavyContentAlertDismissed === false) {
+      const confirmed = await showConfirm({
+        title: 'Attachments cannot be saved',
+        message: 'You are using Local Storage, which has a 5MB limit. Attachments will be available during this session but will NOT be saved to your history. Switch to OPFS storage in Settings to enable permanent saving.',
+        confirmButtonText: 'Continue anyway',
+        cancelButtonText: 'Cancel',
+      });
+      if (!confirmed) return;
+      globalSettings.value.heavyContentAlertDismissed = true;
+    }
+
+    for (const att of attachments) {
+      if (att.status === 'memory') {
+        if (canPersist) {
+          try {
+            await storageService.saveFile(att.blob, att.id, att.originalName);
+            processedAttachments.push({
+              id: att.id,
+              originalName: att.originalName,
+              mimeType: att.mimeType,
+              size: att.size,
+              uploadedAt: att.uploadedAt,
+              status: 'persisted',
+            });
+          } catch (e) {
+            console.error('Failed to save file to OPFS:', e);
+            processedAttachments.push(att); // keep as memory
+          }
+        } else {
+          processedAttachments.push(att); // keep as memory (skipped from persistence by mapper)
+        }
       } else {
-        resolvedModel = available[0] || baseModel;
+        processedAttachments.push(att);
       }
     }
 
@@ -359,6 +407,7 @@ export function useChat() {
       id: uuidv7(),
       role: 'user',
       content,
+      attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
       timestamp: Date.now(),
       replies: { items: [] },
     };
@@ -401,7 +450,7 @@ export function useChat() {
       const globalSystemPrompt = activeProfile?.systemPrompt || settings.value.systemPrompt;
       const chatPromptObj = currentChat.value.systemPrompt;
       
-      const finalMessages: { role: string; content: string }[] = [];
+      const finalMessages: ChatMessage[] = [];
       
       if (chatPromptObj) {
         if (chatPromptObj.behavior === 'append') {
@@ -412,12 +461,6 @@ export function useChat() {
           if (chatPromptObj.content) {
             finalMessages.push({ role: 'system', content: chatPromptObj.content });
           } else if (globalSystemPrompt) {
-            // content is empty in override mode, technically should we fallback or send nothing?
-            // User concern was behavior existing without content. 
-            // If object exists but content is empty, we respect it (sending nothing or fallback?)
-            // Usually, if they set an override but leave it empty, they might want NO prompt.
-            // But let's assume if content is empty they might still want the global one unless they explicitly cleared it.
-            // Actually, the most natural is: if they have a chat prompt, use it.
             finalMessages.push({ role: 'system', content: chatPromptObj.content });
           }
         }
@@ -426,9 +469,28 @@ export function useChat() {
       }
 
       // Add conversation history
-      activeMessages.value.filter(m => m.id !== assistantMsg.id).forEach(m => {
-        finalMessages.push({ role: m.role, content: m.content });
-      });
+      const history = activeMessages.value.filter(m => m.id !== assistantMsg.id);
+      for (const m of history) {
+        if (m.attachments && m.attachments.length > 0) {
+          const content: MultimodalContent[] = [{ type: 'text', text: m.content }];
+          for (const att of m.attachments) {
+            let blob: Blob | null = null;
+            if (att.status === 'memory') {
+              blob = att.blob;
+            } else if (att.status === 'persisted') {
+              blob = await storageService.getFile(att.id, att.originalName);
+            }
+
+            if (blob && att.mimeType.startsWith('image/')) {
+              const b64 = await fileToDataUrl(blob);
+              content.push({ type: 'image_url', image_url: { url: b64 } });
+            }
+          }
+          finalMessages.push({ role: m.role, content });
+        } else {
+          finalMessages.push({ role: m.role, content: m.content });
+        }
+      }
 
       // 2. Resolve LM Parameters (Deep Merge: Chat > Profile > Global)
       const resolvedParams = {
@@ -453,11 +515,11 @@ export function useChat() {
           let generatedTitle = '';
           const titleProvider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
           const titleGenModel = settings.value.titleModelId || resolvedModel;
-          const promptNode: MessageNode = {
-            id: uuidv7(), role: 'user', timestamp: Date.now(), replies: { items: [] },
+          const promptMsg: ChatMessage = {
+            role: 'user',
             content: `Generate a short title (2-3 words) for: "${content}". Respond ONLY with the title.`,
           };
-          await titleProvider.chat([promptNode], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
+          await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
           const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
           if (finalTitle && currentChat.value?.id === chatIdAtStart && currentChat.value.title === null) {
             currentChat.value.title = finalTitle;
