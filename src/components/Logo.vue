@@ -10,34 +10,31 @@ withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
-  <svg 
-    :width="size" 
-    :height="size" 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    xmlns="http://www.w3.org/2000/svg"
+  <div 
+    :style="{ 
+      width: size + 'px', 
+      height: size + 'px', 
+      backgroundColor: 'currentColor',
+      maskImage: `url('./logo.svg')`,
+      maskRepeat: 'no-repeat',
+      maskPosition: 'center',
+      maskSize: 'contain',
+      WebkitMaskImage: `url('./logo.svg')`,
+      WebkitMaskRepeat: 'no-repeat',
+      WebkitMaskPosition: 'center',
+      WebkitMaskSize: 'contain'
+    }"
     :class="className"
-    class="transition-transform duration-300 hover:scale-110"
-  >
-    <!-- Geometric Bird / Wing Shape -->
-    <path 
-      d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" 
-      class="fill-indigo-600/10 dark:fill-indigo-400/10"
-    />
-    <path 
-      d="M17.5 7.5L9 12L17.5 16.5L15 12L17.5 7.5Z" 
-      class="fill-indigo-600 dark:fill-indigo-400"
-      stroke="currentColor" 
-      stroke-width="0.5" 
-      stroke-linejoin="round"
-    />
-    <path 
-      d="M6.5 12L15 7.5L12.5 12L15 16.5L6.5 12Z" 
-      class="fill-indigo-500 dark:fill-indigo-300"
-      stroke="currentColor" 
-      stroke-width="0.5" 
-      stroke-linejoin="round"
-    />
-    <circle cx="10" cy="12" r="1" fill="white" class="opacity-80" />
-  </svg>
+    class="text-blue-600 dark:text-blue-400 transition-transform duration-300 hover:scale-110"
+    role="img"
+    aria-label="Naidan Logo"
+  />
 </template>
+
+<style scoped>
+/* 
+  Using mask-image allows us to use an external SVG file as a source of truth 
+  for the shape, while still controlling the color via CSS 'currentColor'.
+  This ensures perfect dark mode support without complex filters.
+*/
+</style>
