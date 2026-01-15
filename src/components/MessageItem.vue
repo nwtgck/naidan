@@ -23,7 +23,7 @@ const emit = defineEmits<{
   (e: 'fork', messageId: string): void;
   (e: 'edit', messageId: string, newContent: string): void;
   (e: 'switch-version', messageId: string): void;
-  (e: 'retry', messageId: string): void;
+  (e: 'regenerate', messageId: string): void;
 }>();
 
 const isEditing = ref(false);
@@ -463,7 +463,7 @@ function formatSize(bytes?: number): string {
           </div>
           <div class="opacity-90">{{ message.error }}</div>
           <button 
-            @click="emit('retry', message.id)"
+            @click="emit('regenerate', message.id)"
             class="mt-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold transition-colors flex items-center gap-2"
             data-testid="retry-button"
           >
@@ -495,6 +495,15 @@ function formatSize(bytes?: number): string {
 
           <!-- Message Actions -->
           <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button 
+              v-if="!isUser"
+              @click="emit('regenerate', message.id)"
+              class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              title="Regenerate response"
+              data-testid="regenerate-button"
+            >
+              <RefreshCw class="w-3.5 h-3.5" />
+            </button>
             <button 
               @click="handleCopy"
               class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"

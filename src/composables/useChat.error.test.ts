@@ -67,7 +67,7 @@ describe('useChat Error Handling', () => {
   });
 
   it('should retry message by creating a sibling node', async () => {
-    const { createNewChat, sendMessage, activeMessages, retryMessage, currentChat } = useChat();
+    const { createNewChat, sendMessage, activeMessages, regenerateMessage, currentChat } = useChat();
     await createNewChat();
 
     // 1. Fail first
@@ -83,7 +83,7 @@ describe('useChat Error Handling', () => {
       onChunk('Success');
     });
 
-    await retryMessage(failedMsg!.id);
+    await regenerateMessage(failedMsg!.id);
 
     // Should have a NEW assistant message at the end
     const newMsg = activeMessages.value[activeMessages.value.length - 1];

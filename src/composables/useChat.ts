@@ -547,7 +547,7 @@ export function useChat() {
     await generateResponse(assistantMsg.id);
   };
 
-  const retryMessage = async (failedMessageId: string) => {
+  const regenerateMessage = async (failedMessageId: string) => {
     if (!currentChat.value || streaming.value) return;
     
     // 1. Find the failed node
@@ -815,7 +815,7 @@ Message: "${content}"`,
     renameChat,
     generateChatTitle,
     sendMessage,
-    retryMessage,
+    regenerateMessage,
     forkChat,
     editMessage,
     switchVersion,

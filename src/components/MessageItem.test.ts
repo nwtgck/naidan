@@ -550,13 +550,23 @@ describe('MessageItem States', () => {
     expect(errorEl.text()).toContain('Stream Error');
   });
 
-  it('emits retry event when button clicked', async () => {
+  it('emits regenerate event when button clicked', async () => {
     const message = createAssistantMessage('', 'Error');
     const wrapper = mount(MessageItem, { props: { message } });
     
     await wrapper.find('[data-testid="retry-button"]').trigger('click');
     
-    expect(wrapper.emitted('retry')).toBeTruthy();
-    expect(wrapper.emitted('retry')?.[0]).toEqual([message.id]);
+    expect(wrapper.emitted('regenerate')).toBeTruthy();
+    expect(wrapper.emitted('regenerate')?.[0]).toEqual([message.id]);
+  });
+
+  it('emits regenerate event when action bar button clicked', async () => {
+    const message = createAssistantMessage('Existing content');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    await wrapper.find('[data-testid="regenerate-button"]').trigger('click');
+    
+    expect(wrapper.emitted('regenerate')).toBeTruthy();
+    expect(wrapper.emitted('regenerate')?.[0]).toEqual([message.id]);
   });
 });

@@ -306,6 +306,45 @@ describe('useChat Composable Logic', () => {
     expect(activeMessages.value[1]?.content).toBe('Manually corrected answer');
   });
 
+  it('should branch into a new version when regenerateMessage is called', async () => {
+    const { sendMessage, regenerateMessage, currentChat } = useChat();
+    
+    currentChat.value = reactive({
+      id: 'regen-test', title: 'Regen', root: { items: [] }, modelId: 'gpt-4',
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    });
+
+    // 1. Send first message and get first response
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      onChunk('First Response');
+    });
+    await sendMessage('Hello');
+    triggerRef(currentChat);
+
+    const userMsg = currentChat.value?.root.items[0];
+    const firstAssistantMsg = userMsg?.replies.items[0];
+    expect(userMsg?.replies.items).toHaveLength(1);
+    expect(firstAssistantMsg?.content).toBe('First Response');
+    expect(currentChat.value.currentLeafId).toBe(firstAssistantMsg?.id);
+
+    // 2. Regenerate
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      onChunk('Second Response');
+    });
+    await regenerateMessage(firstAssistantMsg!.id);
+    triggerRef(currentChat);
+
+    // 3. Verify branching
+    expect(userMsg?.replies.items).toHaveLength(2);
+    const secondAssistantMsg = userMsg?.replies.items[1];
+    expect(secondAssistantMsg?.content).toBe('Second Response');
+    expect(secondAssistantMsg?.id).not.toBe(firstAssistantMsg?.id);
+    
+    // 4. Verify current view points to the new version
+    expect(currentChat.value.currentLeafId).toBe(secondAssistantMsg?.id);
+    expect(activeMessages.value[1]?.content).toBe('Second Response');
+  });
+
   it('should maintain the new order after reordering items', async () => {
     const { sidebarItems, persistSidebarStructure, rootItems } = useChat();
     
