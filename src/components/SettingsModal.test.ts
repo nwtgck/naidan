@@ -12,10 +12,23 @@ import type { ProviderProfile } from '../models/types';
 
 // --- Mocks ---
 
+const mockListModels = vi.fn().mockResolvedValue(['model-1']);
+vi.mock('../services/llm', () => {
+  return {
+    OpenAIProvider: class {
+      listModels = mockListModels;
+    },
+    OllamaProvider: class {
+      listModels = mockListModels;
+    },
+  };
+});
+
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
     settings: { value: { storageType: 'local', providerProfiles: [] } },
-    availableModels: { value: [] },
+    availableModels: { value: ['model-a', 'model-b'] },
     isFetchingModels: { value: false },
     save: vi.fn().mockImplementation(async (newSettings) => {
       const currentType = storageService.getCurrentType();
@@ -70,14 +83,6 @@ vi.mock('../services/storage', () => ({
     hasAttachments: vi.fn().mockResolvedValue(false),
   },
 }));
-
-const mockListModels = vi.fn().mockResolvedValue(['model-1']);
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: class { listModels = mockListModels; },
-    OllamaProvider: class { listModels = mockListModels; },
-  };
-});
 
 // --- Tests ---
 
@@ -247,6 +252,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // Trigger fetch logic manually to bypass service mock complexities
       await vm.fetchModels();
       await flushPromises();
+      await nextTick();
 
       const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
       
@@ -256,22 +262,25 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     it('uses distinct labels for model fallbacks to clarify different behaviors', async () => {
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: { stubs: globalStubs },
       });
-      await flushPromises();
 
-      // Default Model label should be simple 'None' because it's just an initial selection override.
-      // If not specified, the app doesn't force any specific model on new chats.
+      // Clear values first to see placeholders/None
+      const vm = wrapper.vm as any;
+      vm.form.defaultModelId = undefined;
+      vm.form.titleModelId = undefined;
+      await nextTick();
+
+      // Default Model label should just be "None" when empty
       const modelSelect = wrapper.find('[data-testid="setting-model-select"]');
-      expect(modelSelect.findAll('option')[0]!.text()).toBe('None');
+      const trigger = modelSelect.find('[data-testid="model-selector-trigger"]');
+      expect(trigger.text()).toBe('None');
 
       // Title Generation Model label must be explicit about fallback behavior.
-      // 'Use Current Chat Model (Default)' explains that even if no specific title model is picked,
-      // the generation will still proceed using whichever model is active in the chat.
       const titleSelect = wrapper.find('[data-testid="setting-title-model-select"]');
-      expect(titleSelect.findAll('option')[0]!.text()).toBe('Use Current Chat Model (Default)');
+      const titleTrigger = titleSelect.find('[data-testid="model-selector-trigger"]');
+      expect(titleTrigger.text()).toBe('Use Current Chat Model (Default)');
     });
 
 
@@ -411,14 +420,6 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(mockListModels).toHaveBeenCalledWith('https://remote-api.com');
     mockListModels.mockClear();
 
-    // Test manual fetch for remote URL via Refresh Models button (next to dropdown)
-    const refreshBtn = wrapper.find('[data-testid="setting-refresh-models"]');
-    expect(refreshBtn.exists()).toBe(true);
-    await refreshBtn.trigger('click');
-    await flushPromises();
-    expect(mockListModels).toHaveBeenCalledWith('https://remote-api.com');
-    mockListModels.mockClear();
-
     // Test localhost URL (SHOULD auto-fetch)
     await urlInput.setValue('http://localhost:11434');
     await flushPromises();
@@ -517,12 +518,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const checkbox = wrapper.find('[data-testid="setting-auto-title-checkbox"]');
       const select = wrapper.find('[data-testid="setting-title-model-select"]');
+      const trigger = select.find('[data-testid="model-selector-trigger"]');
 
       expect((checkbox.element as HTMLInputElement).checked).toBe(true);
-      expect((select.element as HTMLSelectElement).disabled).toBe(false);
+      expect((trigger.element as HTMLButtonElement).disabled).toBe(false);
 
       await checkbox.setValue(false);
-      expect((select.element as HTMLSelectElement).disabled).toBe(true);
+      expect((trigger.element as HTMLButtonElement).disabled).toBe(true);
     });
   });
 
@@ -642,20 +644,29 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
 
-      // Select Unspecified for both
+      // Ensure some values are set first so clear button appears
+      const vm = wrapper.vm as any;
+      vm.form.defaultModelId = 'some-model';
+      vm.form.titleModelId = 'some-model';
+      await nextTick();
+
+      // Select "None" for Default Model
       const modelSelect = wrapper.find('[data-testid="setting-model-select"]');
-      // Vue Test Utils setValue with undefined might not work as expected for native select 
-      // but since we bound v-model to form.defaultModelId, we can also set the value via vm if needed,
-      // but let's try the standard way or setting the value to "" if that matches undefined
-      await modelSelect.setValue(undefined as unknown as string);
+      await modelSelect.find('[data-testid="model-selector-trigger"]').trigger('click');
+      const clearBtn = modelSelect.find('[data-testid="model-selector-clear"]');
+      if (clearBtn.exists()) await clearBtn.trigger('click');
 
+      // Select "Use Current Chat Model" for Title Model
       const titleSelect = wrapper.find('[data-testid="setting-title-model-select"]');
-      await titleSelect.setValue(undefined as unknown as string);
-
-      await wrapper.find('[data-testid="setting-save-provider-profile-button"]').trigger('click');
-      await flushPromises(); // Wait for showPrompt to be called and promise to resolve
+      await titleSelect.find('[data-testid="model-selector-trigger"]').trigger('click');
+      const titleClearBtn = titleSelect.find('[data-testid="model-selector-clear"]');
+      if (titleClearBtn.exists()) await titleClearBtn.trigger('click');
       
-      const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
+      await flushPromises();
+
+      // Click Create Profile
+      await wrapper.find('[data-testid="setting-save-provider-profile-button"]').trigger('click');
+      
       const lastProfile = vm.form.providerProfiles[vm.form.providerProfiles.length - 1];
       expect(lastProfile?.defaultModelId).toBeUndefined();
       expect(lastProfile?.titleModelId).toBeUndefined();

@@ -8,6 +8,7 @@ import { type EndpointType } from '../models/types';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import Logo from './Logo.vue';
 import ServerSetupGuide from './ServerSetupGuide.vue';
+import ModelSelector from './ModelSelector.vue';
 import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X } from 'lucide-vue-next';
 
 const { settings, save, isOnboardingDismissed, onboardingDraft } = useSettings();
@@ -263,15 +264,11 @@ async function handleFinish() {
                   <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                     Default Model
                   </label>
-                  <select
+                  <ModelSelector
                     v-model="selectedModel"
-                    class="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white appearance-none"
-                    style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-                  >
-                    <option v-for="model in availableModels" :key="model" :value="model">
-                      {{ model }}
-                    </option>
-                  </select>
+                    :models="availableModels"
+                    placeholder="Select a model"
+                  />
                 </div>
 
                 <p v-if="error" class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">

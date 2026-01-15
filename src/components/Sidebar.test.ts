@@ -108,6 +108,21 @@ describe('Sidebar Logic Stability', () => {
     'lucide-vue-next': true,
     'Logo': true,
     'ThemeToggle': true,
+    'ModelSelector': {
+      name: 'ModelSelector',
+      template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear">{{ modelValue }}<div v-if="loading" class="animate-spin-mock"></div></div>',
+      props: {
+        modelValue: String,
+        loading: {
+          type: Boolean,
+          default: false
+        },
+        allowClear: {
+          type: Boolean,
+          default: false
+        }
+      }
+    },
   };
 
   beforeEach(() => {
@@ -126,7 +141,7 @@ describe('Sidebar Logic Stability', () => {
       });
       await nextTick();
 
-      const selector = wrapper.find('[data-testid="global-model-select"]');
+      const selector = wrapper.find('[data-testid="model-selector-mock"]');
       expect(selector.exists()).toBe(true);
       expect(wrapper.text()).toContain('Default model');
     });
@@ -138,32 +153,38 @@ describe('Sidebar Logic Stability', () => {
       });
       await nextTick();
 
-      const selector = wrapper.find('[data-testid="global-model-select"]');
+      const selector = wrapper.find('[data-testid="model-selector-mock"]');
       expect(selector.exists()).toBe(false);
     });
 
-    it('displays the list of available models', async () => {
+    it('displays the current model via ModelSelector', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
       await nextTick();
 
-      const options = wrapper.findAll('option');
-      expect(options).toHaveLength(3);
-      expect(options[0]!.text()).toBe('llama3');
-      expect(options[1]!.text()).toBe('mistral');
-      expect(options[2]!.text()).toBe('phi3');
+      const selector = wrapper.get('[data-testid="model-selector-mock"]');
+      expect(selector.attributes('model-value')).toBe('llama3');
     });
 
-    it('calls saveSettings when a new model is selected', async () => {
+    it('does not enable allowClear for the global model selector', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
       await nextTick();
 
-      const selector = wrapper.find('[data-testid="global-model-select"]');
-      await selector.setValue('mistral');
-      await selector.trigger('change');
+      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      expect(selector.props('allowClear')).toBe(false);
+    });
+
+    it('calls saveSettings when ModelSelector emits update:modelValue', async () => {
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      await selector.vm.$emit('update:modelValue', 'mistral');
 
       expect(mockSaveSettings).toHaveBeenCalledWith(expect.objectContaining({
         defaultModelId: 'mistral',
@@ -177,7 +198,7 @@ describe('Sidebar Logic Stability', () => {
       });
       await nextTick();
 
-      expect(wrapper.find('.animate-spin').exists()).toBe(true);
+      expect(wrapper.find('.animate-spin-mock').exists()).toBe(true);
     });
   });
 

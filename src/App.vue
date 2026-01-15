@@ -74,7 +74,7 @@ onKeyStroke(['o', 'O'], async (e) => {
 <template>
   <div class="flex h-screen bg-gray-50/50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-hidden transition-colors duration-300">
     <div 
-      class="border-r border-gray-100 dark:border-gray-800 shrink-0 h-full overflow-hidden transition-all duration-300 ease-in-out"
+      class="border-r border-gray-100 dark:border-gray-800 shrink-0 h-full transition-all duration-300 ease-in-out relative z-30"
       :class="isSidebarOpen ? 'w-64' : 'w-10'"
     >
       <Sidebar @open-settings="isSettingsOpen = true" />

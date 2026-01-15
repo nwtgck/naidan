@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 import OnboardingModal from './OnboardingModal.vue';
 import ThemeToggle from './ThemeToggle.vue';
 import { useSettings } from '../composables/useSettings';
@@ -41,6 +41,9 @@ describe('OnboardingModal.vue', () => {
       initialized: { value: true },
       isOnboardingDismissed: mockIsOnboardingDismissed,
       onboardingDraft: mockOnboardingDraft,
+      availableModels: ref([]),
+      isFetchingModels: ref(false),
+      fetchModels: vi.fn(),
     });
 
     (useToast as unknown as Mock).mockReturnValue({
@@ -210,9 +213,14 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.text()).toContain('Successfully Connected!');
     expect(wrapper.text()).toContain('http://restored-url:11434');
     
-    const select = wrapper.find('select');
-    expect((select.element as HTMLSelectElement).value).toBe('model-b');
-    expect(select.findAll('option').length).toBe(2);
+    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toBe('model-b');
+    
+    await trigger.trigger('click');
+    const modelButtons = wrapper.findAll('.custom-scrollbar button').filter(b => 
+      ['model-a', 'model-b'].includes(b.text())
+    );
+    expect(modelButtons.length).toBe(2);
   });
 
   it('shows error message when saving settings fails', async () => {
@@ -281,8 +289,10 @@ describe('OnboardingModal.vue', () => {
     await flushPromises();
     
     // 2. Select second model
-    const select = wrapper.find('select');
-    await select.setValue('model-y');
+    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+    await trigger.trigger('click');
+    const modelYBtn = wrapper.findAll('button').find(b => b.text() === 'model-y');
+    await modelYBtn?.trigger('click');
     
     // 3. Skip via X
     await wrapper.find('[data-testid="onboarding-close-x"]').trigger('click');
@@ -297,6 +307,6 @@ describe('OnboardingModal.vue', () => {
     await nextTick();
     expect(wrapper.text()).toContain('Successfully Connected!');
     expect(wrapper.text()).toContain('http://localhost:11434'); // Normalized URL shown in text
-    expect((wrapper.find('select').element as HTMLSelectElement).value).toBe('model-y');
+    expect(wrapper.find('[data-testid="model-selector-trigger"]').text()).toBe('model-y');
   });
 });

@@ -6,12 +6,13 @@ import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import Logo from './Logo.vue';
 import ThemeToggle from './ThemeToggle.vue';
+import ModelSelector from './ModelSelector.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
   Plus, Trash2, Settings as SettingsIcon, 
   Pencil, Folder, FolderPlus, 
   ChevronDown, ChevronRight, Check, X,
-  Bot, Loader2, PanelLeft, SquarePen,
+  Bot, PanelLeft, SquarePen,
 } from 'lucide-vue-next';
 import { useLayout } from '../composables/useLayout';
 
@@ -20,7 +21,7 @@ const {
   currentChat, streaming, groups, chats,
 } = chatStore;
 
-const { settings, availableModels, isFetchingModels, save: saveSettings } = useSettings();
+const { settings, isFetchingModels, save: saveSettings } = useSettings();
 const { isSidebarOpen, toggleSidebar } = useLayout();
 
 const router = useRouter();
@@ -169,9 +170,8 @@ async function saveGroupRename() {
   editingGroupId.value = null;
 }
 
-async function handleGlobalModelChange(event: Event) {
-  const target = event.target as HTMLSelectElement;
-  const newModelId = target.value;
+async function handleGlobalModelChange(newModelId: string | undefined) {
+  if (!newModelId) return;
   await saveSettings({
     ...settings.value,
     defaultModelId: newModelId,
@@ -386,7 +386,7 @@ async function handleGlobalModelChange(event: Event) {
     </div>
 
     <!-- Footer -->
-    <div class="border-t border-gray-100 dark:border-gray-800 space-y-4 bg-gray-50/30 dark:bg-black/20 overflow-hidden" :class="isSidebarOpen ? 'p-3' : 'py-3 px-1'">
+    <div class="border-t border-gray-100 dark:border-gray-800 space-y-4 bg-gray-50/30 dark:bg-black/20" :class="isSidebarOpen ? 'p-3' : 'py-3 px-1'">
       <!-- Global Model Selector -->
       <div v-if="isSidebarOpen && settings.endpointUrl" class="px-1 space-y-2 animate-in fade-in duration-300">
         <div class="flex items-center justify-between px-1">
@@ -394,22 +394,13 @@ async function handleGlobalModelChange(event: Event) {
             <Bot class="w-3 h-3" />
             Default model
           </label>
-          <Loader2 v-if="isFetchingModels" class="w-3 h-3 animate-spin text-gray-400" />
         </div>
-        <div class="relative group/model">
-          <select 
-            :value="settings.defaultModelId"
-            @change="handleGlobalModelChange"
-            class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 outline-none focus:ring-4 focus:ring-blue-500/10 appearance-none cursor-pointer hover:border-gray-300 dark:hover:border-gray-600 transition-all shadow-sm pr-8"
-            data-testid="global-model-select"
-          >
-            <option v-if="availableModels.length === 0" disabled value="">No models found</option>
-            <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-          </select>
-          <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 group-hover/model:text-gray-600 dark:group-hover/model:text-gray-300 transition-colors">
-            <ChevronDown class="w-3.5 h-3.5" />
-          </div>
-        </div>
+        <ModelSelector 
+          :model-value="settings.defaultModelId || ''"
+          :loading="isFetchingModels"
+          @update:model-value="handleGlobalModelChange"
+          placeholder="Select default model"
+        />
       </div>
 
       <div class="flex items-center gap-2" :class="{ 'flex-col items-center': !isSidebarOpen }">

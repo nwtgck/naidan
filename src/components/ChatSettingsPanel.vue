@@ -3,10 +3,11 @@ import { ref, onMounted, watch } from 'vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import { 
-  X, RefreshCw, Loader2, Settings2, Check, 
+  X, Settings2, 
   MessageSquareQuote, Layers, Globe, AlertCircle 
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
+import ModelSelector from './ModelSelector.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
 
 const emit = defineEmits<{
@@ -16,7 +17,6 @@ const emit = defineEmits<{
 const chatStore = useChat();
 const {
   currentChat,
-  availableModels,
   fetchingModels,
   saveCurrentChat,
 } = chatStore;
@@ -202,28 +202,14 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
 
         <div class="space-y-2">
           <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
-          <div class="flex gap-2">
-            <select 
-              v-model="currentChat.overrideModelId"
-              class="flex-1 text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
-              style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-              data-testid="chat-setting-model-select"
-            >
-              <option :value="undefined">Global ({{ settings.defaultModelId || 'None' }})</option>
-              <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-            </select>
-            <button 
-              @click="fetchModels" 
-              class="p-3 border transition-all flex items-center justify-center disabled:opacity-50 shadow-sm rounded-xl"
-              :class="[connectionSuccess ? 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800 text-green-600' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700']"
-              :disabled="fetchingModels"
-              data-testid="chat-setting-refresh-models"
-            >
-              <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin" />
-              <Check v-else-if="connectionSuccess" class="w-4 h-4" data-testid="chat-setting-refresh-success-icon" />
-              <RefreshCw v-else class="w-4 h-4" />
-            </button>
-          </div>
+          <ModelSelector 
+            v-model="currentChat.overrideModelId"
+            :loading="fetchingModels"
+            :placeholder="'Global (' + (settings.defaultModelId || 'None') + ')'"
+            :allow-clear="true"
+            @refresh="fetchModels"
+            data-testid="chat-setting-model-select"
+          />
         </div>
       </div>
 

@@ -6,10 +6,11 @@ import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
+import ModelSelector from './ModelSelector.vue';
 import { 
-  ArrowUp, Download, Settings2, MoreVertical, Bug, 
-  Square, Loader2, Minimize2, Maximize2, Send,
+  Square, Minimize2, Maximize2, Send,
   Paperclip, X, GitFork, RefreshCw,
+  ArrowUp, Settings2, Download, MoreVertical, Bug,
 } from 'lucide-vue-next';
 import { v7 as uuidv7 } from 'uuid';
 import type { Attachment } from '../models/types';
@@ -21,7 +22,6 @@ const {
   streaming,
   generatingTitle,
   activeMessages,
-  availableModels,
   fetchingModels,
 } = chatStore;
 const { settings } = useSettings();
@@ -600,18 +600,14 @@ onUnmounted(() => {
               <Paperclip class="w-5 h-5" />
             </button>
 
-            <div class="relative flex items-center">
-              <select 
+            <div class="w-[100px] sm:w-[180px]">
+              <ModelSelector 
                 v-model="currentChat.overrideModelId"
-                class="text-xs font-bold border border-gray-100 dark:border-gray-700 rounded-xl pl-3 pr-9 py-2.5 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none max-w-[100px] sm:max-w-[180px] truncate cursor-pointer shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
-                title="Override Model"
+                :placeholder="settings.defaultModelId || 'Default Model'"
+                :loading="fetchingModels"
+                allow-clear
                 data-testid="model-override-select"
-              >
-                <option :value="undefined">{{ settings.defaultModelId || 'Default Model' }}</option>
-                <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-              </select>
-              <Loader2 v-if="fetchingModels" class="w-3.5 h-3.5 animate-spin absolute right-3 pointer-events-none text-gray-400" />
-              <Settings2 v-else class="w-3.5 h-3.5 absolute right-3 pointer-events-none text-gray-400" />
+              />
             </div>
           </div>
 

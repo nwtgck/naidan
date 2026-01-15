@@ -62,6 +62,9 @@ vi.mock('../composables/useChat', () => ({
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({ endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'global-default-model' }),
+    availableModels: mockAvailableModels,
+    isFetchingModels: mockFetchingModels,
+    fetchModels: mockFetchAvailableModels,
   }),
 }));
 
@@ -1228,24 +1231,29 @@ describe('ChatArea Model Selection', () => {
       global: { plugins: [router] },
     });
     
-    const select = wrapper.find('[data-testid="model-override-select"]');
-    const options = select.findAll('option');
+    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+    expect(trigger.exists()).toBe(true);
     
-    expect(options.length).toBe(3); // Default + 2 models
-    expect(options[1]!.text()).toBe('model-1');
-    expect(options[2]!.text()).toBe('model-2');
+    await trigger.trigger('click');
+    
+    // The items are buttons in ModelSelector
+    const buttons = wrapper.findAll('button');
+    const modelButtons = buttons.filter(b => 
+      mockAvailableModels.value.includes(b.text())
+    );
+    
+    expect(modelButtons.length).toBe(2);
+    expect(modelButtons[0]!.text()).toBe('model-1');
+    expect(modelButtons[1]!.text()).toBe('model-2');
   });
 
-  it('should display the global default model name in the first option', async () => {
+  it('should display the global default model name as placeholder', async () => {
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
-    const select = wrapper.find('[data-testid="model-override-select"]');
-    const firstOption = select.find('option');
-    
-    expect(firstOption.text()).toBe('global-default-model');
-    expect(firstOption.text()).not.toContain('Default');
+    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toBe('global-default-model');
   });
 
   it('should show loader when fetching models', async () => {

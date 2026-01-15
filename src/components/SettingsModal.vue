@@ -16,12 +16,13 @@ import { storageService } from '../services/storage';
 import type { ProviderProfile } from '../models/types';
 import { 
   X, Loader2, FlaskConical, Trash2, Globe, 
-  Database, Bot, Type, Settings2, RefreshCw, Save,
+  Database, Bot, Type, Settings2, Save,
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
   Pencil, Trash, Check, Activity, Info, HardDrive,
   MessageSquareQuote, Download, Github, ExternalLink,
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
+import ModelSelector from './ModelSelector.vue';
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
 import { usePrompt } from '../composables/usePrompt';   // Import usePrompt
 import { ENDPOINT_PRESETS } from '../models/constants';
@@ -489,29 +490,16 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                 <div class="space-y-8">
                   <div class="space-y-2">
                     <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Default Model</label>
-                    <div class="flex gap-2">
-                      <select 
-                        v-model="form.defaultModelId"
-                        class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
-                        style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
-                        data-testid="setting-model-select"
-                      >
-                        <option :value="undefined">None</option>
-                        <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-                      </select>
-                      <button 
-                        @click="fetchModels"
-                        class="px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 rounded-xl transition-all flex items-center justify-center disabled:opacity-50 shadow-sm"
-                        :disabled="fetchingModels"
-                        title="Refresh Model List"
-                        data-testid="setting-refresh-models"
-                      >
-                        <div class="relative w-4 h-4 flex items-center justify-center">
-                          <Loader2 v-if="fetchingModels" class="w-4 h-4 animate-spin absolute" />
-                          <RefreshCw v-else class="w-4 h-4" />
-                        </div>
-                      </button>
-                    </div>
+                    <ModelSelector 
+                      v-model="form.defaultModelId"
+                      :models="availableModels"
+                      :loading="fetchingModels"
+                      placeholder="None"
+                      allow-clear
+                      clear-label="None"
+                      @refresh="fetchModels"
+                      data-testid="setting-model-select"
+                    />
                     <p class="text-[11px] font-medium text-gray-400 ml-1">Used for all new conversations unless overridden.</p>
                   </div>
 
@@ -536,16 +524,17 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                     
                     <div class="space-y-2 opacity-50 transition-all duration-300" :class="{ 'opacity-100': form.autoTitleEnabled }">
                       <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Title Generation Model</label>
-                      <select 
+                      <ModelSelector 
                         v-model="form.titleModelId"
+                        :models="availableModels"
+                        :loading="fetchingModels"
                         :disabled="!form.autoTitleEnabled"
-                        class="w-full bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none disabled:cursor-not-allowed shadow-sm"
-                        style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
+                        placeholder="Use Current Chat Model (Default)"
+                        allow-clear
+                        clear-label="Use Current Chat Model (Default)"
+                        @refresh="fetchModels"
                         data-testid="setting-title-model-select"
-                      >
-                        <option :value="undefined">Use Current Chat Model (Default)</option>
-                        <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
-                      </select>
+                      />
                     </div>
                   </div>
                 </div>
