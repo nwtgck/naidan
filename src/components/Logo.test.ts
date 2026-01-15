@@ -5,9 +5,9 @@ import Logo from './Logo.vue';
 describe('Logo', () => {
   it('renders with default size', () => {
     const wrapper = mount(Logo);
-    const svg = wrapper.find('svg');
-    expect(svg.attributes('width')).toBe('32');
-    expect(svg.attributes('height')).toBe('32');
+    const logoDiv = wrapper.find('[role="img"]');
+    expect((logoDiv.element as HTMLElement).style.width).toBe('32px');
+    expect((logoDiv.element as HTMLElement).style.height).toBe('32px');
   });
 
   it('renders with custom size', () => {
@@ -16,9 +16,9 @@ describe('Logo', () => {
         size: 48,
       },
     });
-    const svg = wrapper.find('svg');
-    expect(svg.attributes('width')).toBe('48');
-    expect(svg.attributes('height')).toBe('48');
+    const logoDiv = wrapper.find('[role="img"]');
+    expect((logoDiv.element as HTMLElement).style.width).toBe('48px');
+    expect((logoDiv.element as HTMLElement).style.height).toBe('48px');
   });
 
   it('applies custom className', () => {
@@ -27,6 +27,8 @@ describe('Logo', () => {
         className: 'custom-class',
       },
     });
-    expect(wrapper.classes()).toContain('custom-class');
+    // The className is applied to the logoDiv in the new implementation
+    const logoDiv = wrapper.find('[role="img"]');
+    expect(logoDiv.classes()).toContain('custom-class');
   });
 });
