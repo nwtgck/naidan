@@ -10,9 +10,9 @@ vi.mock('../services/storage', () => ({
     getSidebarStructure: vi.fn(),
     saveChat: vi.fn().mockResolvedValue(undefined),
     loadChat: vi.fn(),
-    saveGroup: vi.fn().mockResolvedValue(undefined),
+    saveChatGroup: vi.fn().mockResolvedValue(undefined),
     listChats: vi.fn().mockResolvedValue([]),
-    listGroups: vi.fn().mockResolvedValue([]),
+    listChatGroups: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -30,11 +30,11 @@ describe('useChat Fork Insertion Logic', () => {
     chat.currentChat.value = null;
   });
 
-  it('should insert fork at the top of the chat block when not in a group', async () => {
+  it('should insert fork at the top of the chat block when not in a chat group', async () => {
     const chat = useChat();
     
     chat.rootItems.value = [
-      { id: 'group:1', type: 'group', group: { id: 'g1', name: 'G1', items: [], isCollapsed: false, updatedAt: 0 } } as SidebarItem,
+      { id: 'chat_group:1', type: 'chat_group', chatGroup: { id: 'g1', name: 'G1', items: [], isCollapsed: false, updatedAt: 0 } } as SidebarItem,
       { id: 'chat:a', type: 'chat', chat: { id: 'a', title: 'A', updatedAt: 0, groupId: null } } as SidebarItem,
     ];
     
@@ -56,8 +56,8 @@ describe('useChat Fork Insertion Logic', () => {
 
     await chat.forkChat('m1');
 
-    // Expected: Group, Fork, Chat A
-    expect(chat.rootItems.value[0]?.type).toBe('group');
+    // Expected: Chat Group, Fork, Chat A
+    expect(chat.rootItems.value[0]?.type).toBe('chat_group');
     const item1 = chat.rootItems.value[1];
     if (item1?.type === 'chat') {
       expect(item1.chat.title).toBe('Fork of A');
@@ -73,14 +73,14 @@ describe('useChat Fork Insertion Logic', () => {
     }
   });
 
-  it('should insert fork at the top of the group when parent is in a group', async () => {
+  it('should insert fork at the top of the chat group when parent is in a chat group', async () => {
     const chat = useChat();
     
     chat.rootItems.value = [
       { 
-        id: 'group:1', 
-        type: 'group', 
-        group: { 
+        id: 'chat_group:1', 
+        type: 'chat_group', 
+        chatGroup: { 
           id: 'g1', 
           name: 'G1', 
           items: [{ id: 'chat:a', type: 'chat', chat: { id: 'a', title: 'A', updatedAt: 0, groupId: 'g1' } } as SidebarItem], 
@@ -110,24 +110,24 @@ describe('useChat Fork Insertion Logic', () => {
 
     await chat.forkChat('m1');
 
-    // Expected: Group with [Fork, Chat A]
+    // Expected: Chat Group with [Fork, Chat A]
     const groupItem = chat.rootItems.value[0];
-    if (groupItem?.type === 'group') {
-      const firstChat = groupItem.group.items[0];
+    if (groupItem?.type === 'chat_group') {
+      const firstChat = groupItem.chatGroup.items[0];
       if (firstChat?.type === 'chat') {
         expect(firstChat.chat.title).toBe('Fork of A');
       } else {
-        throw new Error('Expected chat item at group index 0');
+        throw new Error('Expected chat item at chat group index 0');
       }
       
-      const secondChat = groupItem.group.items[1];
+      const secondChat = groupItem.chatGroup.items[1];
       if (secondChat?.type === 'chat') {
         expect(secondChat.chat.id).toBe('a');
       } else {
-        throw new Error('Expected chat item at group index 1');
+        throw new Error('Expected chat item at chat group index 1');
       }
     } else {
-      throw new Error('Expected group at index 0');
+      throw new Error('Expected chat group at index 0');
     }
   });
 });

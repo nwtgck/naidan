@@ -88,7 +88,7 @@ const mockChat: Chat = {
   debugEnabled: false,
 };
 
-const mockGroup: ChatGroup = {
+const mockChatGroup: ChatGroup = {
   id: '987fcdeb-51a2-43d1-9456-426614174000',
   name: 'Test Group',
   updatedAt: Date.now(),
@@ -112,8 +112,8 @@ describe('Storage Migration (Round-Trip)', () => {
     await provider.init();
     await provider.clearAll();
     await provider.saveSettings(mockSettings);
-    await provider.saveGroup(mockGroup, 0);
-    // Link chat to group to test relationships? 
+    await provider.saveChatGroup(mockChatGroup, 0);
+    // Link chat to chat group to test relationships? 
     // For simplicity, just saving them individually first.
     // Ideally we should test the relationship preservation but DTOs handle IDs.
     await provider.saveChat(mockChat, 0);
@@ -127,7 +127,7 @@ describe('Storage Migration (Round-Trip)', () => {
 
     // Verify dump content minimally
     expect(chunks.find(c => c.type === 'settings')).toBeDefined();
-    expect(chunks.find(c => c.type === 'group')).toBeDefined();
+    expect(chunks.find(c => c.type === 'chat_group')).toBeDefined();
     expect(chunks.find(c => c.type === 'chat')).toBeDefined();
 
     // 3. Clear (Simulate fresh install)
@@ -145,10 +145,10 @@ describe('Storage Migration (Round-Trip)', () => {
     const loadedSettings = await provider.loadSettings();
     expect(loadedSettings).toEqual(mockSettings);
 
-    const groups = await provider.listGroups();
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.id).toBe(mockGroup.id);
-    expect(groups[0]?.name).toBe(mockGroup.name);
+    const chatGroups = await provider.listChatGroups();
+    expect(chatGroups).toHaveLength(1);
+    expect(chatGroups[0]?.id).toBe(mockChatGroup.id);
+    expect(chatGroups[0]?.name).toBe(mockChatGroup.name);
     
     // Check Chat
     const loadedChat = await provider.loadChat(mockChat.id);

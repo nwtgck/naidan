@@ -10,8 +10,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     deleteChat: vi.fn(),
-    listGroups: vi.fn().mockResolvedValue([]),
-    deleteGroup: vi.fn(),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    deleteChatGroup: vi.fn(),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
   },
 }));

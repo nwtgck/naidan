@@ -21,7 +21,7 @@ vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: ref(null),
     streaming: ref(false),
-    groups: ref([]),
+    chatGroups: ref([]),
     chats: ref([{ id: '1', title: 'Test Chat' }]),
     sidebarItems: ref([{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Test Chat' } }]),
     loadChats: vi.fn(),

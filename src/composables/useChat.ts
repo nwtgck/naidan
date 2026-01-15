@@ -104,10 +104,10 @@ export function useChat() {
     const rootIdx = rootItems.value.findIndex(item => item.type === 'chat' && item.chat.id === chatId);
     if (rootIdx !== -1) return { index: rootIdx };
 
-    // 2. Check inside groups
+    // 2. Check inside chat groups
     for (const item of rootItems.value) {
-      if (item.type === 'group') {
-        const nestedIdx = item.group.items.findIndex(n => n.type === 'chat' && n.chat.id === chatId);
+      if (item.type === 'chat_group') {
+        const nestedIdx = item.chatGroup.items.findIndex(n => n.type === 'chat' && n.chat.id === chatId);
         if (nestedIdx !== -1) return { index: nestedIdx };
       }
     }
@@ -117,15 +117,15 @@ export function useChat() {
 
   const sidebarItems = computed(() => rootItems.value);
 
-  const insertSidebarItem = (rootItems: SidebarItem[], newItem: SidebarItem, groupId: string | null) => {
-    if (groupId) {
+  const insertSidebarItem = (rootItems: SidebarItem[], newItem: SidebarItem, chatGroupId: string | null) => {
+    if (chatGroupId) {
       const findAndAdd = (items: SidebarItem[]) => {
         for (const item of items) {
-          if (item.type === 'group' && item.group.id === groupId) {
-            item.group.items.unshift(newItem);
+          if (item.type === 'chat_group' && item.chatGroup.id === chatGroupId) {
+            item.chatGroup.items.unshift(newItem);
             return true;
           }
-          if (item.type === 'group' && findAndAdd(item.group.items)) return true;
+          if (item.type === 'chat_group' && findAndAdd(item.chatGroup.items)) return true;
         }
         return false;
       };
@@ -142,17 +142,17 @@ export function useChat() {
     const collect = (items: SidebarItem[]) => {
       items.forEach(item => {
         if (item.type === 'chat') all.push(item.chat);
-        else collect(item.group.items);
+        else collect(item.chatGroup.items);
       });
     };
     collect(rootItems.value);
     return all;
   });
 
-  const groups = computed(() => {
+  const chatGroups = computed(() => {
     const all: ChatGroup[] = [];
     rootItems.value.forEach(item => {
-      if (item.type === 'group') all.push(item.group);
+      if (item.type === 'chat_group') all.push(item.chatGroup);
     });
     return all;
   });
@@ -207,11 +207,11 @@ export function useChat() {
     await storageService.saveChat(currentChat.value, index);
   };
 
-  const createNewChat = async (groupId: string | null = null) => {
+  const createNewChat = async (chatGroupId: string | null = null) => {
     const chatObj: Chat = {
       id: uuidv7(),
       title: null,
-      groupId,
+      groupId: chatGroupId,
       root: { items: [] },
       modelId: '', // Default to empty to follow global settings
       createdAt: Date.now(),
@@ -227,7 +227,7 @@ export function useChat() {
     const newSummary: ChatSummary = { id: chatObj.id, title: chatObj.title, updatedAt: chatObj.updatedAt, groupId: chatObj.groupId };
     const newSidebarItem: SidebarItem = { id: `chat:${chatObj.id}`, type: 'chat', chat: newSummary };
 
-    insertSidebarItem(newRootItems, newSidebarItem, groupId);
+    insertSidebarItem(newRootItems, newSidebarItem, chatGroupId);
 
     await persistSidebarStructure(newRootItems);
     await loadData();
@@ -267,7 +267,7 @@ export function useChat() {
         return true;
       }
       for (const item of items) {
-        if (item.type === 'group' && findContext(item.group.items, item.group.id)) return true;
+        if (item.type === 'chat_group' && findContext(item.chatGroup.items, item.chatGroup.id)) return true;
       }
       return false;
     };
@@ -285,16 +285,16 @@ export function useChat() {
         let targetList: SidebarItem[] | null = null;
 
         if (parentId) {
-          // Robustly find the group in the latest rootItems
-          const groupItem = rootItems.value.find(item => item.type === 'group' && item.group.id === parentId);
-          if (groupItem && groupItem.type === 'group') {
-            targetList = groupItem.group.items;
+          // Robustly find the chat group in the latest rootItems
+          const groupItem = rootItems.value.find(item => item.type === 'chat_group' && item.chatGroup.id === parentId);
+          if (groupItem && groupItem.type === 'chat_group') {
+            targetList = groupItem.chatGroup.items;
           }
         } else {
           targetList = rootItems.value;
         }
 
-        // If targetList is still null (e.g. parent group was also deleted), fallback to rootItems
+        // If targetList is still null (e.g. parent chat group was also deleted), fallback to rootItems
         const finalTargetList = targetList || rootItems.value;
         targetIndex = findRestorationIndex(finalTargetList, prevId, nextId);
 
@@ -309,8 +309,8 @@ export function useChat() {
   const deleteAllChats = async () => {
     const all = await storageService.listChats();
     for (const c of all) await storageService.deleteChat(c.id);
-    const allGroups = await storageService.listGroups();
-    for (const g of allGroups) await storageService.deleteGroup(g.id);
+    const allGroups = await storageService.listChatGroups();
+    for (const g of allGroups) await storageService.deleteChatGroup(g.id);
     currentChat.value = null;
     await loadData();
   };
@@ -734,33 +734,33 @@ Message: "${content}"`,
     await saveCurrentChat();
   };
 
-  const createGroup = async (name: string) => {
+  const createChatGroup = async (name: string) => {
     const newGroup: ChatGroup = {
       id: uuidv7(), name, updatedAt: Date.now(), isCollapsed: false, items: [],
     };
-    const newRootItems = [{ id: `group:${newGroup.id}`, type: 'group' as const, group: newGroup }, ...rootItems.value];
+    const newRootItems = [{ id: `chat_group:${newGroup.id}`, type: 'chat_group' as const, chatGroup: newGroup }, ...rootItems.value];
     await persistSidebarStructure(newRootItems);
     await loadData();
   };
 
-  const deleteGroup = async (id: string) => {
-    await storageService.deleteGroup(id);
+  const deleteChatGroup = async (id: string) => {
+    await storageService.deleteChatGroup(id);
     await loadData();
   };
 
-  const toggleGroupCollapse = async (groupId: string) => {
-    const group = groups.value.find(g => g.id === groupId);
-    if (group) {
-      group.isCollapsed = !group.isCollapsed;
+  const toggleChatGroupCollapse = async (groupId: string) => {
+    const chatGroup = chatGroups.value.find(g => g.id === groupId);
+    if (chatGroup) {
+      chatGroup.isCollapsed = !chatGroup.isCollapsed;
       await persistSidebarStructure(rootItems.value);
     }
   };
 
-  const renameGroup = async (groupId: string, newName: string) => {
-    const group = groups.value.find(g => g.id === groupId);
-    if (group) {
-      group.name = newName;
-      group.updatedAt = Date.now();
+  const renameChatGroup = async (groupId: string, newName: string) => {
+    const chatGroup = chatGroups.value.find(g => g.id === groupId);
+    if (chatGroup) {
+      chatGroup.name = newName;
+      chatGroup.updatedAt = Date.now();
       await persistSidebarStructure(rootItems.value);
       await loadData();
     }
@@ -770,14 +770,14 @@ Message: "${content}"`,
     rootItems.value = topLevelItems;
     for (let i = 0; i < topLevelItems.length; i++) {
       const item = topLevelItems[i]!;
-      if (item.type === 'group') {
-        await storageService.saveGroup(item.group, i);
-        for (let j = 0; j < item.group.items.length; j++) {
-          const nested = item.group.items[j]!;
+      if (item.type === 'chat_group') {
+        await storageService.saveChatGroup(item.chatGroup, i);
+        for (let j = 0; j < item.chatGroup.items.length; j++) {
+          const nested = item.chatGroup.items[j]!;
           if (nested.type === 'chat') {
             const chat = await storageService.loadChat(nested.chat.id);
             if (chat) {
-              chat.groupId = item.group.id;
+              chat.groupId = item.chatGroup.id;
               await storageService.saveChat(chat, j);
             }
           }
@@ -796,7 +796,7 @@ Message: "${content}"`,
     // --- State & Getters ---
     rootItems,
     chats,
-    groups,
+    chatGroups,
     sidebarItems,
     currentChat,
     activeMessages,
@@ -821,10 +821,10 @@ Message: "${content}"`,
     switchVersion,
     getSiblings,
     toggleDebug,
-    createGroup,
-    deleteGroup,
-    toggleGroupCollapse,
-    renameGroup,
+    createChatGroup,
+    deleteChatGroup,
+    toggleChatGroupCollapse,
+    renameChatGroup,
     persistSidebarStructure,
     abortChat,
     saveCurrentChat,

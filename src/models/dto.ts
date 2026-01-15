@@ -183,7 +183,7 @@ export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
  */
 export type MigrationChunkDto = 
   | { type: 'settings'; data: SettingsDto }
-  | { type: 'group'; data: ChatGroupDto }
+  | { type: 'chat_group'; data: ChatGroupDto }
   | { type: 'chat'; data: ChatDto }
     | { 
         type: 'attachment'; 

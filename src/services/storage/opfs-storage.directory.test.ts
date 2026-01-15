@@ -73,7 +73,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
     });
   });
 
-  it('should create and use "naidan-storage" directory within OPFS root', async () => {
+  it('should create and use "naidan_storage" directory within OPFS root', async () => {
     const provider = new OPFSStorageProvider();
     
     // Initial state: root is empty
@@ -81,8 +81,8 @@ describe('OPFSStorageProvider Directory Isolation', () => {
 
     // After init, the storage directory should exist
     await provider.init();
-    expect(mockOpfsRoot.entries.has('naidan-storage')).toBe(true);
-    const storageDir = mockOpfsRoot.entries.get('naidan-storage') as MockFileSystemDirectoryHandle;
+    expect(mockOpfsRoot.entries.has('naidan_storage')).toBe(true);
+    const storageDir = mockOpfsRoot.entries.get('naidan_storage') as MockFileSystemDirectoryHandle;
     expect(storageDir.kind).toBe('directory');
 
     // Saving settings should put the file inside the subdirectory, NOT the root
@@ -97,10 +97,10 @@ describe('OPFSStorageProvider Directory Isolation', () => {
     expect(storageDir.entries.has('settings.json')).toBe(true);
   });
 
-  it('should only clear contents within the "naidan-storage" directory', async () => {
+  it('should only clear contents within the "naidan_storage" directory', async () => {
     const provider = new OPFSStorageProvider();
     await provider.init();
-    const storageDir = mockOpfsRoot.entries.get('naidan-storage') as MockFileSystemDirectoryHandle;
+    const storageDir = mockOpfsRoot.entries.get('naidan_storage') as MockFileSystemDirectoryHandle;
 
     // Manually add a file to root (outside our app's control)
     mockOpfsRoot.entries.set('other-app-data.txt', new MockFileSystemFileHandle('other-app-data.txt'));

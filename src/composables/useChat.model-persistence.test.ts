@@ -14,10 +14,11 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     deleteChat: vi.fn(),
-    saveGroup: vi.fn(),
-    listGroups: vi.fn().mockResolvedValue([]),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    saveChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
-    deleteGroup: vi.fn(),
+    saveSettings: vi.fn(),
   },
 }));
 

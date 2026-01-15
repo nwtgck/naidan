@@ -29,7 +29,7 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
 
 export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
-  private readonly STORAGE_DIR = 'naidan-storage';
+  private readonly STORAGE_DIR = 'naidan_storage';
   readonly canPersistBinary = true;
 
   async init(): Promise<void> {
@@ -44,9 +44,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     return await this.root!.getDirectoryHandle('chat_contents', { create: true });
   }
 
-  private async getGroupsDir(): Promise<FileSystemDirectoryHandle> {
+  private async getChatGroupsDir(): Promise<FileSystemDirectoryHandle> {
     await this.init();
-    return await this.root!.getDirectoryHandle('groups', { create: true });
+    return await this.root!.getDirectoryHandle('chat_groups', { create: true });
   }
 
   // --- Internal Data Access ---
@@ -63,9 +63,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     } catch { return []; }
   }
 
-  protected async listGroupsRaw(): Promise<ChatGroupDto[]> {
+  protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
     try {
-      const groupsDir = await this.getGroupsDir();
+      const groupsDir = await this.getChatGroupsDir();
       const dtos: ChatGroupDto[] = [];
       // @ts-expect-error: values() is missing in some types
       for await (const entry of groupsDir.values()) {
@@ -159,25 +159,25 @@ export class OPFSStorageProvider extends IStorageProvider {
     } catch { /* ignore */ }
   }
 
-  async saveGroup(group: ChatGroup, index: number): Promise<void> {
-    const dto = chatGroupToDto(group, index);
-    const groupsDir = await this.getGroupsDir();
-    const fileHandle = await groupsDir.getFileHandle(`${group.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
+  async saveChatGroup(chatGroup: ChatGroup, index: number): Promise<void> {
+    const dto = chatGroupToDto(chatGroup, index);
+    const chatGroupsDir = await this.getChatGroupsDir();
+    const fileHandle = await chatGroupsDir.getFileHandle(`${chatGroup.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(dto));
     await writable.close();
   }
 
-  async loadGroup(_id: string): Promise<ChatGroup | null> {
+  async loadChatGroup(_id: string): Promise<ChatGroup | null> {
     return null;
   }
 
-  async deleteGroup(id: string): Promise<void> {
+  async deleteChatGroup(id: string): Promise<void> {
     try {
-      const groupsDir = await this.getGroupsDir();
-      await groupsDir.removeEntry(`${id}.json`);
+      const chatGroupsDir = await this.getChatGroupsDir();
+      await chatGroupsDir.removeEntry(`${id}.json`);
       
-      // Detach chats from this group in the meta index
+      // Detach chats from this chat group in the meta index
       const entries = await this.listChatMetasRaw();
       let changed = false;
       for (const m of entries) {
@@ -198,11 +198,11 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
-    const [metas, groups] = await Promise.all([
+    const [metas, chatGroups] = await Promise.all([
       this.listChatMetasRaw(),
-      this.listGroupsRaw(),
+      this.listChatGroupsRaw(),
     ]);
-    return buildSidebarItemsFromDtos(groups, metas);
+    return buildSidebarItemsFromDtos(chatGroups, metas);
   }
 
   // --- File Storage ---
@@ -284,10 +284,10 @@ export class OPFSStorageProvider extends IStorageProvider {
       yield { type: 'settings', data: settingsToDto(settings) };
     }
 
-    // 2. Groups
-    const groups = await this.listGroupsRaw();
-    for (const group of groups) {
-      yield { type: 'group', data: group };
+    // 2. Chat Groups
+    const chatGroups = await this.listChatGroupsRaw();
+    for (const chatGroup of chatGroups) {
+      yield { type: 'chat_group', data: chatGroup };
     }
 
     // 3. Chats (Combining Meta and Content for migration)
@@ -343,8 +343,8 @@ export class OPFSStorageProvider extends IStorageProvider {
         await this.saveSettings(settingsToDomain(chunk.data));
         break;
       }
-      case 'group': {
-        await this.saveGroup(chatGroupToDomain(chunk.data), chunk.data.order ?? 0);
+      case 'chat_group': {
+        await this.saveChatGroup(chatGroupToDomain(chunk.data), chunk.data.order ?? 0);
         break;
       }
       case 'chat': {

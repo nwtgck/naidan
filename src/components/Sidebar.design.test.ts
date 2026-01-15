@@ -39,7 +39,7 @@ describe('Sidebar Design Specifications', () => {
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref(null),
       streaming: ref(false),
-      groups: ref([]),
+      chatGroups: ref([]),
       chats: ref([]),
       sidebarItems: ref([]),
       loadChats: vi.fn().mockResolvedValue(undefined),
@@ -108,7 +108,7 @@ describe('Sidebar Design Specifications', () => {
       currentChat,
       sidebarItems,
       loadChats: vi.fn().mockResolvedValue(undefined),
-      groups: ref([]),
+      chatGroups: ref([]),
       chats: ref([]),
     });
     

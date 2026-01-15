@@ -18,7 +18,7 @@ import { useLayout } from '../composables/useLayout';
 
 const chatStore = useChat();
 const { 
-  currentChat, streaming, groups, chats,
+  currentChat, streaming, chatGroups, chats,
 } = chatStore;
 
 const { settings, isFetchingModels, save: saveSettings } = useSettings();
@@ -36,10 +36,10 @@ let isInternalUpdate = false;
 
 const editingId = ref<string | null>(null);
 const editingTitle = ref('');
-const isCreatingGroup = ref(false);
-const newGroupName = ref('');
-const editingGroupId = ref<string | null>(null);
-const editingGroupName = ref('');
+const isCreatingChatGroup = ref(false);
+const newChatGroupName = ref('');
+const editingChatGroupId = ref<string | null>(null);
+const editingChatGroupName = ref('');
 const skipLeaveAnimation = ref(false);
 
 // Custom directive for auto-focusing elements
@@ -62,7 +62,7 @@ function syncLocalItems() {
 }
 
 // Watch for external changes (new chats, deletions) to sync local list
-watch([groups, chats], () => {
+watch([chatGroups, chats], () => {
   syncLocalItems();
 }, { deep: true });
 
@@ -87,11 +87,11 @@ async function onDragEnd() {
 
 /**
  * Move callback to prevent invalid nesting.
- * Only chats can be moved into groups. Groups cannot be nested.
+ * Only chats can be moved into chat groups. Chat groups cannot be nested.
  */
 function checkMove(evt: { draggedContext: { element: SidebarItem }; to: HTMLElement }) {
   const draggedItem = evt.draggedContext.element;
-  // If dragging into a nested list (a group's items)
+  // If dragging into a nested list (a chat group's items)
   if (evt.to.classList.contains('nested-draggable')) {
     // Only allow chats
     return draggedItem.type === 'chat';
@@ -101,35 +101,35 @@ function checkMove(evt: { draggedContext: { element: SidebarItem }; to: HTMLElem
 
 // --- Actions ---
 
-async function handleCreateGroup() {
-  const name = newGroupName.value.trim();
+async function handleCreateChatGroup() {
+  const name = newChatGroupName.value.trim();
   if (!name) {
-    isCreatingGroup.value = false;
+    isCreatingChatGroup.value = false;
     return;
   }
   skipLeaveAnimation.value = true;
-  await chatStore.createGroup(name);
-  newGroupName.value = '';
-  isCreatingGroup.value = false;
+  await chatStore.createChatGroup(name);
+  newChatGroupName.value = '';
+  isCreatingChatGroup.value = false;
   // Reset flag after transition would have finished
   setTimeout(() => { skipLeaveAnimation.value = false; }, 200);
 }
 
-function handleCreateGroupBlur() {
-  if (!newGroupName.value.trim()) {
+function handleCreateChatGroupBlur() {
+  if (!newChatGroupName.value.trim()) {
     skipLeaveAnimation.value = false;
-    isCreatingGroup.value = false;
+    isCreatingChatGroup.value = false;
   }
 }
 
-function cancelCreateGroup() {
+function cancelCreateChatGroup() {
   skipLeaveAnimation.value = false;
-  isCreatingGroup.value = false;
-  newGroupName.value = '';
+  isCreatingChatGroup.value = false;
+  newChatGroupName.value = '';
 }
 
-async function handleNewChat(groupId: string | null = null) {
-  await chatStore.createNewChat(groupId);
+async function handleNewChat(chatGroupId: string | null = null) {
+  await chatStore.createNewChat(chatGroupId);
   if (currentChat.value) {
     router.push(`/chat/${currentChat.value.id}`);
   }
@@ -158,16 +158,16 @@ async function saveRename() {
   editingId.value = null;
 }
 
-function startEditingGroup(group: ChatGroup) {
-  editingGroupId.value = group.id;
-  editingGroupName.value = group.name;
+function startEditingChatGroup(chatGroup: ChatGroup) {
+  editingChatGroupId.value = chatGroup.id;
+  editingChatGroupName.value = chatGroup.name;
 }
 
-async function saveGroupRename() {
-  if (editingGroupId.value && editingGroupName.value.trim()) {
-    await chatStore.renameGroup(editingGroupId.value, editingGroupName.value.trim());
+async function saveChatGroupRename() {
+  if (editingChatGroupId.value && editingChatGroupName.value.trim()) {
+    await chatStore.renameChatGroup(editingChatGroupId.value, editingChatGroupName.value.trim());
   }
-  editingGroupId.value = null;
+  editingChatGroupId.value = null;
 }
 
 async function handleGlobalModelChange(newModelId: string | undefined) {
@@ -223,10 +223,10 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
         </button>
         <button 
           v-if="isSidebarOpen"
-          @click="isCreatingGroup = true"
+          @click="isCreatingChatGroup = true"
           class="p-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
-          title="Create Group"
-          data-testid="create-group-button"
+          title="Create Chat Group"
+          data-testid="create-chat-group-button"
         >
           <FolderPlus class="w-4 h-4" />
         </button>
@@ -235,26 +235,26 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
     <!-- Navigation List -->
     <div class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide" data-testid="sidebar-nav">
       <template v-if="isSidebarOpen">
-        <Transition name="group-new">
-          <div v-if="isCreatingGroup" :class="{ 'skip-leave': skipLeaveAnimation }" class="flex items-center justify-between p-2 rounded-xl bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 mb-1" data-testid="group-creation-container">
+        <Transition name="chat-group-new">
+          <div v-if="isCreatingChatGroup" :class="{ 'skip-leave': skipLeaveAnimation }" class="flex items-center justify-between p-2 rounded-xl bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 mb-1" data-testid="chat-group-creation-container">
             <div class="flex items-center gap-2 overflow-hidden flex-1">
               <Folder class="w-4 h-4 text-blue-500/60 shrink-0" />
               <input 
                 v-focus
-                v-model="newGroupName"
-                @keyup.enter="handleCreateGroup"
-                @keyup.esc="cancelCreateGroup"
-                @blur="handleCreateGroupBlur"
+                v-model="newChatGroupName"
+                @keyup.enter="handleCreateChatGroup"
+                @keyup.esc="cancelCreateChatGroup"
+                @blur="handleCreateChatGroupBlur"
                 class="bg-transparent text-sm text-gray-800 dark:text-white outline-none w-full px-1 font-bold tracking-tight placeholder:font-normal placeholder:text-gray-400 dark:placeholder:text-gray-500"
                 placeholder="Group name..."
-                data-testid="group-name-input"
+                data-testid="chat-group-name-input"
               />
             </div>
             <div class="flex items-center gap-0.5 shrink-0 ml-1">
-              <button @click="handleCreateGroup" class="p-1 text-gray-400 hover:text-green-600 dark:text-gray-400 dark:hover:text-white transition-colors" data-testid="confirm-create-group">
+              <button @click="handleCreateChatGroup" class="p-1 text-gray-400 hover:text-green-600 dark:text-gray-400 dark:hover:text-white transition-colors" data-testid="confirm-create-chat-group">
                 <Check class="w-4 h-4" />
               </button>
-              <button @click="cancelCreateGroup" class="p-1 text-gray-400 hover:text-red-500 dark:text-gray-400 dark:hover:text-white transition-colors">
+              <button @click="cancelCreateChatGroup" class="p-1 text-gray-400 hover:text-red-500 dark:text-gray-400 dark:hover:text-white transition-colors">
                 <X class="w-4 h-4" />
               </button>
             </div>
@@ -273,41 +273,41 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
           class="space-y-1 min-h-[100px]"
         >
           <template #item="{ element }">
-            <div :class="{ 'is-group': element.type === 'group' }">
-              <!-- Group Item -->
-              <div v-if="element.type === 'group'" class="space-y-1">
+            <div :class="{ 'is-group': element.type === 'chat_group' }">
+              <!-- Chat Group Item -->
+              <div v-if="element.type === 'chat_group'" class="space-y-1">
                 <div 
-                  @click="chatStore.toggleGroupCollapse(element.group.id)"
+                  @click="chatStore.toggleChatGroupCollapse(element.chatGroup.id)"
                   class="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative transition-all handle"
-                  data-testid="group-item"
+                  data-testid="chat-group-item"
                 >
                   <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
-                    <component :is="element.group.isCollapsed ? ChevronRight : ChevronDown" class="w-3 h-3 flex-shrink-0" />
+                    <component :is="element.chatGroup.isCollapsed ? ChevronRight : ChevronDown" class="w-3 h-3 flex-shrink-0" />
                     <Folder class="w-4 h-4 text-blue-500/60" />
                     
                     <input 
-                      v-if="editingGroupId === element.group.id"
+                      v-if="editingChatGroupId === element.chatGroup.id"
                       v-focus
-                      v-model="editingGroupName"
-                      @keyup.enter="saveGroupRename"
-                      @keyup.esc="editingGroupId = null"
-                      @blur="saveGroupRename"
+                      v-model="editingChatGroupName"
+                      @keyup.enter="saveChatGroupRename"
+                      @keyup.esc="editingChatGroupId = null"
+                      @blur="saveChatGroupRename"
                       @click.stop
                       class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto font-medium shadow-sm"
                     />
-                    <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.group.name }}</span>
+                    <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
                   </div>
                   
                   <div class="flex items-center opacity-0 group-hover/folder:opacity-100 transition-opacity">
-                    <button v-if="editingGroupId !== element.group.id" @click.stop="startEditingGroup(element.group)" class="p-1 hover:text-blue-600 dark:hover:text-white"><Pencil class="w-3 h-3" /></button>
-                    <button @click.stop="chatStore.deleteGroup(element.group.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
+                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup(element.chatGroup)" class="p-1 hover:text-blue-600 dark:hover:text-white"><Pencil class="w-3 h-3" /></button>
+                    <button @click.stop="chatStore.deleteChatGroup(element.chatGroup.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
                   </div>
                 </div>
 
-                <!-- Nested Items in Group -->
-                <div v-if="!element.group.isCollapsed" class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5">
+                <!-- Nested Items in Chat Group -->
+                <div v-if="!element.chatGroup.isCollapsed" class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5">
                   <draggable
-                    v-model="element.group.items"
+                    v-model="element.chatGroup.items"
                     :group="{ name: 'sidebar' }"
                     item-key="id"
                     @start="onDragStart"
@@ -345,7 +345,7 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                     </template>
                   </draggable>
                   <button 
-                    @click="handleNewChat(element.group.id)"
+                    @click="handleNewChat(element.chatGroup.id)"
                     class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
                   >
                     <Plus class="w-3 h-3" /> Add Chat
@@ -431,25 +431,25 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
   min-height: 20px;
 }
 
-/* New group creation transition - seamless swap */
-.group-new-enter-active {
+/* New chat group creation transition - seamless swap */
+.chat-group-new-enter-active {
   transition: all 0.2s ease-out;
 }
-.group-new-leave-active {
+.chat-group-new-leave-active {
   transition: all 0.2s ease-in;
 }
 
 /* Instant disappearance when skip-leave class is present */
-.skip-leave.group-new-leave-active {
+.skip-leave.chat-group-new-leave-active {
   transition: none !important;
 }
 
-.group-new-enter-from {
+.chat-group-new-enter-from {
   opacity: 0;
   transform: translateY(-10px);
 }
 
-.group-new-leave-to {
+.chat-group-new-leave-to {
   opacity: 0;
   transform: translateY(8px);
 }

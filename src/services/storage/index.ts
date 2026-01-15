@@ -155,8 +155,8 @@ export class StorageService {
     return this.provider.listChats();
   }
 
-  async listGroups(): Promise<ChatGroup[]> {
-    return this.provider.listGroups();
+  async listChatGroups(): Promise<ChatGroup[]> {
+    return this.provider.listChatGroups();
   }
 
   async getSidebarStructure(): Promise<SidebarItem[]> {
@@ -177,16 +177,16 @@ export class StorageService {
     return this.provider.deleteChat(id);
   }
 
-  async saveGroup(group: ChatGroup, index: number): Promise<void> {
-    return this.provider.saveGroup(group, index);
+  async saveChatGroup(chatGroup: ChatGroup, index: number): Promise<void> {
+    return this.provider.saveChatGroup(chatGroup, index);
   }
 
-  async loadGroup(id: string): Promise<ChatGroup | null> {
-    return this.provider.loadGroup(id);
+  async loadChatGroup(id: string): Promise<ChatGroup | null> {
+    return this.provider.loadChatGroup(id);
   }
 
-  async deleteGroup(id: string): Promise<void> {
-    return this.provider.deleteGroup(id);
+  async deleteChatGroup(id: string): Promise<void> {
+    return this.provider.deleteChatGroup(id);
   }
 
   async saveSettings(settings: Settings): Promise<void> {

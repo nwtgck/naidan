@@ -77,7 +77,7 @@ function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
 async function handleDeleteAllHistory() {
   const confirmed = await showConfirm({
     title: 'Clear History',
-    message: 'Are you absolutely sure you want to delete ALL chats and groups? This action cannot be undone.',
+    message: 'Are you absolutely sure you want to delete ALL chats and chat groups? This action cannot be undone.',
     confirmButtonText: 'Clear All',
     confirmButtonVariant: 'danger',
   });
@@ -92,7 +92,7 @@ async function handleDeleteAllHistory() {
 async function handleResetData() {
   const confirmed = await showConfirm({
     title: 'Confirm Data Reset',
-    message: 'Are you sure you want to reset all app data? This will delete all chats, groups, and settings for the current storage location.',
+    message: 'Are you sure you want to reset all app data? This will delete all chats, chat groups, and settings for the current storage location.',
     confirmButtonText: 'Reset',
     confirmButtonVariant: 'danger', // Add danger variant
   });
@@ -714,7 +714,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                   
                   <div class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
                     <Info class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
-                    <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, groups, and settings to the new location. This process will start automatically after you click <strong>Save Changes</strong>.</p>
+                    <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, chat groups, and settings to the new location. This process will start automatically after you click <strong>Save Changes</strong>.</p>
                   </div>
                 </div>
               </section>
@@ -729,7 +729,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                   <div>
                     <h4 class="font-bold text-red-800 dark:text-red-400 text-sm">Clear Conversation History</h4>
                     <p class="text-xs font-medium text-red-600/70 dark:text-red-400/60 mt-1.5 leading-relaxed">
-                      This will permanently delete all your chats and groups. Your settings and provider profiles will be preserved.
+                      This will permanently delete all your chats and chat groups. Your settings and provider profiles will be preserved.
                     </p>
                   </div>
                   <button 
@@ -778,7 +778,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                         <div>
                           <h4 class="font-bold text-red-800 dark:text-red-400 text-sm">Reset All Application Data</h4>
                           <p class="text-xs font-medium text-red-600/70 dark:text-red-400/60 mt-1.5 leading-relaxed">
-                            This action cannot be undone. It will permanently delete all chat history, groups, and settings stored in the <strong>{{ form.storageType }}</strong> provider.
+                            This action cannot be undone. It will permanently delete all chat history, chat groups, and settings stored in the <strong>{{ form.storageType }}</strong> provider.
                           </p>
                         </div>
                       </div>

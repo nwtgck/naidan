@@ -37,7 +37,7 @@ export const roleToDomain = (dto: RoleDto): Role => {
 };
 
 /**
- * Converts a Group DTO and associated Chat Meta DTOs into a Domain ChatGroup.
+ * Converts a Chat Group DTO and associated Chat Meta DTOs into a Domain ChatGroup.
  */
 export const chatGroupToDomain = (dto: ChatGroupDto, chatMetaDtos: ChatMetaDto[] = []): ChatGroup => {
   const nestedItems: SidebarItem[] = chatMetaDtos
@@ -221,9 +221,9 @@ export const buildSidebarItemsFromDtos = (groupDtos: ChatGroupDto[], allChatMeta
   groupDtos.forEach(gDto => {
     const groupChats = allChatMetaDtos.filter(c => c.groupId === gDto.id);
     items.push({ 
-      id: `group:${gDto.id}`, 
-      type: 'group', 
-      group: chatGroupToDomain(gDto, groupChats),
+      id: `chat_group:${gDto.id}`, 
+      type: 'chat_group', 
+      chatGroup: chatGroupToDomain(gDto, groupChats),
       _order: gDto.order ?? 0,
     });
   });

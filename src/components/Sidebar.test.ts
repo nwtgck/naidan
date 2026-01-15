@@ -10,7 +10,7 @@ import type { ChatGroup, ChatSummary, SidebarItem } from '../models/types';
 // Note: Vitest hoists vi.mock, so we use variables that are either 
 // hoisted or defined inside the factory.
 
-const mockGroups = ref<ChatGroup[]>([]);
+const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockSettings = reactive({
   endpointUrl: 'http://localhost:11434',
@@ -22,8 +22,8 @@ const mockIsFetchingModels = ref(false);
 const mockLoadChats = vi.fn();
 const mockDeleteAllChats = vi.fn();
 const mockShowConfirm = vi.fn();
-const mockCreateGroup = vi.fn();
-const mockRenameGroup = vi.fn();
+const mockCreateChatGroup = vi.fn();
+const mockRenameChatGroup = vi.fn();
 const mockSaveSettings = vi.fn();
 
 // --- Vitest Mocks ---
@@ -32,18 +32,18 @@ vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: ref(null),
     streaming: ref(false),
-    groups: mockGroups,
+    chatGroups: mockChatGroups,
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockGroups.value.forEach(g => items.push({ id: `group:${g.id}`, type: 'group', group: g }));
+      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
       mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
       return items;
     }),
     loadChats: mockLoadChats,
-    createGroup: mockCreateGroup,
-    renameGroup: mockRenameGroup,
-    toggleGroupCollapse: vi.fn(),
+    createChatGroup: mockCreateChatGroup,
+    renameChatGroup: mockRenameChatGroup,
+    toggleChatGroupCollapse: vi.fn(),
     persistSidebarStructure: vi.fn(),
     deleteAllChats: mockDeleteAllChats,
   }),
@@ -126,7 +126,7 @@ describe('Sidebar Logic Stability', () => {
   };
 
   beforeEach(() => {
-    mockGroups.value = [];
+    mockChatGroups.value = [];
     mockChats.value = [{ id: '1', title: 'Initial Chat', updatedAt: 0 }];
     mockSettings.endpointUrl = 'http://localhost:11434';
     mockSettings.defaultModelId = 'llama3';
@@ -226,8 +226,8 @@ describe('Sidebar Logic Stability', () => {
     // 2. Simulate drag start
     vm.isDragging = true;
 
-    // 3. Simulate an external data update (e.g. a new group added)
-    mockGroups.value = [{ id: 'g1', name: 'New Group', isCollapsed: false, updatedAt: 0, items: [] }];
+    // 3. Simulate an external data update (e.g. a new chat group added)
+    mockChatGroups.value = [{ id: 'g1', name: 'New Group', isCollapsed: false, updatedAt: 0, items: [] }];
     await nextTick();
 
     // 4. Verification: sidebarItemsLocal should NOT have changed yet
@@ -245,8 +245,8 @@ describe('Sidebar Logic Stability', () => {
     expect(vm.sidebarItemsLocal).toHaveLength(2);
   });
 
-  it('should apply the .handle class to both groups and chats for drag-and-drop', async () => {
-    mockGroups.value = [{ id: 'g1', name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
+  it('should apply the .handle class to both chat groups and chats for drag-and-drop', async () => {
+    mockChatGroups.value = [{ id: 'g1', name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
     mockChats.value = [{ id: 'c1', title: 'Chat', updatedAt: 0 }];
     
     const wrapper = mount(Sidebar, {
@@ -260,9 +260,9 @@ describe('Sidebar Logic Stability', () => {
     vm.syncLocalItems();
     await nextTick();
 
-    // Verify group has handle
-    const groupItem = wrapper.find('[data-testid="group-item"]');
-    expect(groupItem.classes()).toContain('handle');
+    // Verify chat group has handle
+    const chatGroupItem = wrapper.find('[data-testid="chat-group-item"]');
+    expect(chatGroupItem.classes()).toContain('handle');
 
     // Verify chat has handle
     const chatItems = wrapper.findAll('[data-testid="sidebar-chat-item"]');
@@ -272,7 +272,7 @@ describe('Sidebar Logic Stability', () => {
     });
   });
 
-  describe('Group Creation UI', () => {
+  describe('Chat Group Creation UI', () => {
     it('should show input when create button is clicked', async () => {
       const wrapper = mount(Sidebar, {
         global: {
@@ -281,12 +281,12 @@ describe('Sidebar Logic Stability', () => {
         },
       });
 
-      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(false);
-      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
-      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="chat-group-name-input"]').exists()).toBe(false);
+      await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
+      expect(wrapper.find('[data-testid="chat-group-name-input"]').exists()).toBe(true);
     });
 
-    it('should create group on enter if name is not empty', async () => {
+    it('should create chat group on enter if name is not empty', async () => {
       const wrapper = mount(Sidebar, {
         global: {
           plugins: [router],
@@ -294,14 +294,14 @@ describe('Sidebar Logic Stability', () => {
         },
       });
 
-      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
-      const input = wrapper.find('[data-testid="group-name-input"]');
+      await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="chat-group-name-input"]');
       
       await input.setValue('My New Group');
       await input.trigger('keyup.enter');
 
-      expect(mockCreateGroup).toHaveBeenCalledWith('My New Group');
-      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(false);
+      expect(mockCreateChatGroup).toHaveBeenCalledWith('My New Group');
+      expect(wrapper.find('[data-testid="chat-group-name-input"]').exists()).toBe(false);
     });
 
     it('should close input on blur IF empty', async () => {
@@ -312,13 +312,13 @@ describe('Sidebar Logic Stability', () => {
         },
       });
 
-      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
-      const input = wrapper.find('[data-testid="group-name-input"]');
+      await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="chat-group-name-input"]');
       
       await input.setValue('');
       await input.trigger('blur');
 
-      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="chat-group-name-input"]').exists()).toBe(false);
     });
 
     it('should NOT close input on blur IF NOT empty', async () => {
@@ -329,14 +329,14 @@ describe('Sidebar Logic Stability', () => {
         },
       });
 
-      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
-      const input = wrapper.find('[data-testid="group-name-input"]');
+      await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="chat-group-name-input"]');
       
       await input.setValue('Retain Me');
       await input.trigger('blur');
 
-      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(true);
-      expect(mockCreateGroup).not.toHaveBeenCalled();
+      expect(wrapper.find('[data-testid="chat-group-name-input"]').exists()).toBe(true);
+      expect(mockCreateChatGroup).not.toHaveBeenCalled();
     });
 
     it('should cancel on escape', async () => {
@@ -347,14 +347,14 @@ describe('Sidebar Logic Stability', () => {
         },
       });
 
-      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
-      const input = wrapper.find('[data-testid="group-name-input"]');
+      await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="chat-group-name-input"]');
       
       await input.setValue('Going to escape');
       await input.trigger('keyup.esc');
 
-      expect(wrapper.find('[data-testid="group-name-input"]').exists()).toBe(false);
-      expect(mockCreateGroup).not.toHaveBeenCalled();
+      expect(wrapper.find('[data-testid="chat-group-name-input"]').exists()).toBe(false);
+      expect(mockCreateChatGroup).not.toHaveBeenCalled();
     });
 
     it('should apply skip-leave class when confirming', async () => {
@@ -365,9 +365,9 @@ describe('Sidebar Logic Stability', () => {
         },
       });
 
-      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
-      const input = wrapper.find('[data-testid="group-name-input"]');
-      const container = wrapper.find('[data-testid="group-creation-container"]');
+      await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="chat-group-name-input"]');
+      const container = wrapper.find('[data-testid="chat-group-creation-container"]');
 
       await input.setValue('New Group');
       await input.trigger('keyup.enter');
@@ -382,9 +382,9 @@ describe('Sidebar Logic Stability', () => {
         },
       });
 
-      await wrapper.find('[data-testid="create-group-button"]').trigger('click');
-      const input = wrapper.find('[data-testid="group-name-input"]');
-      const container = wrapper.find('[data-testid="group-creation-container"]');
+      await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
+      const input = wrapper.find('[data-testid="chat-group-name-input"]');
+      const container = wrapper.find('[data-testid="chat-group-creation-container"]');
       
       await input.trigger('keyup.esc');
       expect(container.classes()).not.toContain('skip-leave');

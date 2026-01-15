@@ -99,7 +99,7 @@ export type ChatSummary = Pick<Chat, 'id' | 'title' | 'updatedAt' | 'groupId'>;
 // Sidebar hierarchy - order is implicit by position in array
 export type SidebarItem = 
   | { id: string; type: 'chat'; chat: ChatSummary }
-  | { id: string; type: 'group'; group: ChatGroup };
+  | { id: string; type: 'chat_group'; chatGroup: ChatGroup };
 
 export interface ProviderProfile {
   id: string;

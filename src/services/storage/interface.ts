@@ -20,7 +20,7 @@ export abstract class IStorageProvider {
   // --- Data Access Methods ---
   // Subclasses implement these to fetch raw DTOs.
   protected abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;
-  protected abstract listGroupsRaw(): Promise<ChatGroupDto[]>;
+  protected abstract listChatGroupsRaw(): Promise<ChatGroupDto[]>;
 
   // --- Bulk Operations (Migration) ---
   abstract dump(): AsyncGenerator<MigrationChunkDto>;
@@ -31,11 +31,11 @@ export abstract class IStorageProvider {
   /**
    * Returns sorted ChatGroups with their nested items.
    */
-  public async listGroups(): Promise<ChatGroup[]> {
+  public async listChatGroups(): Promise<ChatGroup[]> {
     const sidebar = await this.getSidebarStructure();
     return sidebar
-      .filter((item): item is Extract<SidebarItem, { type: 'group' }> => item.type === 'group')
-      .map(item => item.group);
+      .filter((item): item is Extract<SidebarItem, { type: 'chat_group' }> => item.type === 'chat_group')
+      .map(item => item.chatGroup);
   }
 
   /**
@@ -46,8 +46,8 @@ export abstract class IStorageProvider {
     const allSummaries: ChatSummary[] = [];
     
     sidebar.forEach(item => {
-      if (item.type === 'group') {
-        item.group.items.forEach(nested => {
+      if (item.type === 'chat_group') {
+        item.chatGroup.items.forEach(nested => {
           if (nested.type === 'chat') allSummaries.push(nested.chat);
         });
       } else {
@@ -61,11 +61,11 @@ export abstract class IStorageProvider {
    * Centralized method to get the full sorted hierarchy using mappers.
    */
   public async getSidebarStructure(): Promise<SidebarItem[]> {
-    const [metas, groups] = await Promise.all([
+    const [metas, chatGroups] = await Promise.all([
       this.listChatMetasRaw(),
-      this.listGroupsRaw(),
+      this.listChatGroupsRaw(),
     ]);
-    return buildSidebarItemsFromDtos(groups, metas);
+    return buildSidebarItemsFromDtos(chatGroups, metas);
   }
 
   // --- Persistence Methods ---
@@ -74,9 +74,9 @@ export abstract class IStorageProvider {
   abstract loadChat(id: string): Promise<Chat | null>;
   abstract deleteChat(id: string): Promise<void>;
   
-  abstract saveGroup(group: ChatGroup, index: number): Promise<void>;
-  abstract loadGroup(id: string): Promise<ChatGroup | null>;
-  abstract deleteGroup(id: string): Promise<void>;
+  abstract saveChatGroup(chatGroup: ChatGroup, index: number): Promise<void>;
+  abstract loadChatGroup(id: string): Promise<ChatGroup | null>;
+  abstract deleteChatGroup(id: string): Promise<void>;
   
   abstract saveSettings(settings: Settings): Promise<void>;
   abstract loadSettings(): Promise<Settings | null>;

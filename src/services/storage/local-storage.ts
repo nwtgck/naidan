@@ -22,7 +22,7 @@ import { STORAGE_KEY_PREFIX } from '../../models/constants';
 
 const LSP_STORAGE_PREFIX = `${STORAGE_KEY_PREFIX}lsp:`;
 const KEY_INDEX = `${LSP_STORAGE_PREFIX}index`;
-const KEY_GROUPS = `${LSP_STORAGE_PREFIX}groups`;
+const KEY_CHAT_GROUPS = `${LSP_STORAGE_PREFIX}chat_groups`;
 const KEY_SETTINGS = `${LSP_STORAGE_PREFIX}settings`;
 const KEY_CHAT_PREFIX = `${LSP_STORAGE_PREFIX}chat:`;
 
@@ -52,8 +52,8 @@ export class LocalStorageProvider extends IStorageProvider {
     } catch { return []; }
   }
 
-  protected async listGroupsRaw(): Promise<ChatGroupDto[]> {
-    const raw = localStorage.getItem(KEY_GROUPS);
+  protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
+    const raw = localStorage.getItem(KEY_CHAT_GROUPS);
     if (!raw) return [];
     try {
       return JSON.parse(raw);
@@ -148,22 +148,22 @@ export class LocalStorageProvider extends IStorageProvider {
     // but session-level cache is small enough that we can just let it be.
   }
 
-  async saveGroup(group: ChatGroup, index: number): Promise<void> {
-    const dto = chatGroupToDto(group, index);
-    const all = await this.listGroupsRaw();
-    const existingIndex = all.findIndex(g => g.id === group.id);
+  async saveChatGroup(chatGroup: ChatGroup, index: number): Promise<void> {
+    const dto = chatGroupToDto(chatGroup, index);
+    const all = await this.listChatGroupsRaw();
+    const existingIndex = all.findIndex(g => g.id === chatGroup.id);
     if (existingIndex >= 0) all[existingIndex] = dto;
     else all.push(dto);
-    localStorage.setItem(KEY_GROUPS, JSON.stringify(all));
+    localStorage.setItem(KEY_CHAT_GROUPS, JSON.stringify(all));
   }
 
-  async loadGroup(_id: string): Promise<ChatGroup | null> {
+  async loadChatGroup(_id: string): Promise<ChatGroup | null> {
     return null;
   }
 
-  async deleteGroup(id: string): Promise<void> {
-    const groups = (await this.listGroupsRaw()).filter(g => g.id !== id);
-    localStorage.setItem(KEY_GROUPS, JSON.stringify(groups));
+  async deleteChatGroup(id: string): Promise<void> {
+    const chatGroups = (await this.listChatGroupsRaw()).filter(g => g.id !== id);
+    localStorage.setItem(KEY_CHAT_GROUPS, JSON.stringify(chatGroups));
     
     // Detach chats
     const entries = await this.listChatMetasRaw();
@@ -227,8 +227,8 @@ export class LocalStorageProvider extends IStorageProvider {
     const settings = await this.loadSettings();
     if (settings) yield { type: 'settings', data: settingsToDto(settings) };
 
-    const groups = await this.listGroupsRaw();
-    for (const g of groups) yield { type: 'group', data: g };
+    const chatGroups = await this.listChatGroupsRaw();
+    for (const g of chatGroups) yield { type: 'chat_group', data: g };
 
     const metas = await this.listChatMetasRaw();
     for (const m of metas) {
@@ -241,15 +241,16 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void> {
     await this.clearAll();
-    const groups: ChatGroupDto[] = [];
+    const chatGroups: ChatGroupDto[] = [];
     const metas: ChatMetaDto[] = [];
 
     for await (const chunk of stream) {
       if (chunk.type === 'settings') {
         await this.saveSettings(settingsToDomain(chunk.data));
-      } else if (chunk.type === 'group') {
-        groups.push(chunk.data);
-      } else if (chunk.type === 'chat') {
+      } else if (chunk.type === 'chat_group') {
+        chatGroups.push(chunk.data);
+      }
+      else if (chunk.type === 'chat') {
         const fullDto = chunk.data;
         // Save content
         const { root, currentLeafId, ...meta } = fullDto;
@@ -261,7 +262,7 @@ export class LocalStorageProvider extends IStorageProvider {
       }
     }
 
-    localStorage.setItem(KEY_GROUPS, JSON.stringify(groups));
+    localStorage.setItem(KEY_CHAT_GROUPS, JSON.stringify(chatGroups));
     localStorage.setItem(KEY_INDEX, JSON.stringify({ entries: metas }));
   }
 }
