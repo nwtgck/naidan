@@ -83,6 +83,45 @@ describe('MessageItem Rendering', () => {
     expect(contentArea.text()).not.toContain('Internal thought');
   });
 
+  it('detects active thinking state (isThinkingNow)', () => {
+    const message = createMessage('<think>Ongoing thought...');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Should show "Thinking..." instead of "Show Thought Process"
+    expect(wrapper.text()).toContain('Thinking...');
+    expect(wrapper.find('.thinking-border').exists()).toBe(true);
+  });
+
+  it('handles multiple thinking blocks and case-insensitivity', async () => {
+    const message = createMessage('<THINK>Thought 1</THINK>Response 1<think>Thought 2</think>Response 2');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // displayContent should be cleaned
+    const contentArea = wrapper.find('[data-testid="message-content"]');
+    expect(contentArea.text()).toContain('Response 1');
+    expect(contentArea.text()).toContain('Response 2');
+    expect(contentArea.text()).not.toContain('Thought 1');
+    expect(contentArea.text()).not.toContain('Thought 2');
+
+    // Toggle it to see the content
+    const toggle = wrapper.find('[data-testid="toggle-thinking"]');
+    await toggle.trigger('click');
+    
+    const thinkingArea = wrapper.find('[data-testid="thinking-content"]');
+    expect(thinkingArea.text()).toContain('Thought 1');
+    expect(thinkingArea.text()).toContain('Thought 2');
+    expect(thinkingArea.text()).toContain('---');
+  });
+
+  it('hides loading indicator when thinking is active', () => {
+    // Content is empty, but <think> is present
+    const message = createMessage('<think>Thinking only');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="thinking-block"]').exists()).toBe(true);
+  });
+
   it('copies message content to clipboard', async () => {
     const message = createMessage('Copy me');
     const wrapper = mount(MessageItem, { props: { message } });

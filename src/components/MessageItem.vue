@@ -286,21 +286,23 @@ watch(mermaidMode, async () => {
   }
 });
 
-const showThinking = ref(true); // Default to true during streaming to see progress
+const showThinking = ref(false); // Default to collapsed
 
 const displayThinking = computed(() => {
   if (props.message.thinking) return props.message.thinking;
   
   // Try to extract from content if not yet processed (streaming case)
-  const match = props.message.content.match(/<think>([\s\S]*?)(?:<\/think>|$)/);
-  return (match && match[1]) ? match[1].trim() : '';
+  const matches = [...props.message.content.matchAll(/<think>([\s\S]*?)(?:<\/think>|$)/gi)];
+  if (matches.length === 0) return '';
+  
+  return matches.map(m => m[1]?.trim()).filter(Boolean).join('\n\n---\n\n');
 });
 
 const displayContent = computed(() => {
   let content = props.message.content;
   
   // Remove <think> blocks for display
-  content = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').trim();
+  content = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
   
   return content;
 });
@@ -317,7 +319,14 @@ const parsedContent = computed(() => {
 });
 
 const isUser = computed(() => props.message.role === 'user');
-const hasThinking = computed(() => !!props.message.thinking || props.message.content.includes('<think>'));
+const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content));
+const isThinkingNow = computed(() => {
+  if (props.message.thinking) return false; // Already processed
+  const content = props.message.content;
+  const lastOpen = content.lastIndexOf('<think>');
+  const lastClose = content.lastIndexOf('</think>');
+  return lastOpen > -1 && lastClose < lastOpen;
+});
 
 function formatSize(bytes?: number): string {
   if (bytes === undefined) return '0 B';
@@ -377,13 +386,28 @@ function formatSize(bytes?: number): string {
       <div v-if="hasThinking" class="mb-3" data-testid="thinking-block">
         <button 
           @click="showThinking = !showThinking"
-          class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded-lg border border-gray-100 dark:border-gray-700 transition-all"
+          class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-xl transition-all relative overflow-hidden group/btn shadow-sm border border-blue-100/50 dark:border-blue-800/30"
+          :class="isThinkingNow 
+            ? 'thinking-border bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400' 
+            : 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 bg-white dark:bg-gray-800/50 hover:border-blue-200 dark:hover:border-blue-800 shadow-blue-500/5'"
           data-testid="toggle-thinking"
         >
-          <Brain class="w-3 h-3" />
-          {{ showThinking ? 'Hide Thought Process' : 'Show Thought Process' }}
+          <!-- Content wrapper to ensure z-index above the border effect -->
+          <div class="relative z-20 flex items-center gap-2 opacity-90" :class="{ 'animate-pulse': isThinkingNow }">
+            <Brain class="w-3.5 h-3.5" />
+            <span v-if="isThinkingNow">Thinking...</span>
+            <span v-else>{{ showThinking ? 'Hide Thought Process' : 'Show Thought Process' }}</span>
+          </div>
         </button>
-        <div v-if="showThinking && displayThinking" class="mt-2 p-4 bg-gray-50 dark:bg-black/20 text-gray-600 dark:text-gray-400 text-xs rounded-xl border-l-4 border-gray-200 dark:border-gray-700 font-mono whitespace-pre-wrap leading-relaxed shadow-inner" data-testid="thinking-content">
+        <div 
+          v-if="showThinking && displayThinking" 
+          class="mt-2 p-5 bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 text-gray-600 dark:text-gray-400 text-[11px] rounded-2xl border border-blue-100/50 dark:border-blue-800/30 font-mono whitespace-pre-wrap leading-relaxed shadow-inner relative overflow-hidden" 
+          data-testid="thinking-content"
+        >
+          <!-- Brain watermark -->
+          <div class="absolute top-2 right-4 opacity-[0.03] dark:opacity-[0.07] pointer-events-none">
+            <Brain class="w-16 h-16" />
+          </div>
           {{ displayThinking }}
         </div>
       </div>
@@ -412,7 +436,7 @@ function formatSize(bytes?: number): string {
         <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
 
         <!-- Loading State (Initial Wait) -->
-        <div v-if="!displayContent && message.role === 'assistant' && !message.error" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
+        <div v-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
           <Loader2 class="w-4 h-4 animate-spin" />
           <span class="text-xs font-medium">Waiting for response...</span>
         </div>
@@ -488,3 +512,37 @@ function formatSize(bytes?: number): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+@keyframes shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+.thinking-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px; /* Border thickness */
+  background: linear-gradient(
+    90deg,
+    #3b82f6, /* blue-500 */
+    #60a5fa, /* blue-400 */
+    #3b82f6  /* back to blue-500 */
+  );
+  background-size: 300% 100%;
+  -webkit-mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: shimmer 4s linear infinite;
+  opacity: 0.7; /* Soften the glow without changing the hue */
+  z-index: 0;
+}
+</style>

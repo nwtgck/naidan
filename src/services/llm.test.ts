@@ -107,6 +107,56 @@ describe('OllamaProvider', () => {
     clearEvents();
   });
 
+  it('should handle native thinking field and wrap in <think> tags', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: vi.fn()
+            .mockResolvedValueOnce({
+              done: false,
+              value: new TextEncoder().encode(
+                '{"message":{"thinking":"I am thinking"}}\n' +
+                '{"message":{"thinking":" more"}}\n' +
+                '{"message":{"content":"Final answer"}}\n'
+              ),
+            })
+            .mockResolvedValueOnce({ done: true }),
+        }),
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onChunk = vi.fn();
+    await provider.chat([], 'llama3', 'http://localhost:11434', onChunk);
+
+    const calls = onChunk.mock.calls.map(c => c[0]);
+    expect(calls).toEqual(['<think>', 'I am thinking', ' more', '</think>', 'Final answer']);
+  });
+
+  it('should close <think> tag if stream finishes while thinking', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: vi.fn()
+            .mockResolvedValueOnce({
+              done: false,
+              value: new TextEncoder().encode('{"message":{"thinking":"thought"},"done":true}\n'),
+            })
+            .mockResolvedValueOnce({ done: true }),
+        }),
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onChunk = vi.fn();
+    await provider.chat([], 'llama3', 'http://localhost:11434', onChunk);
+
+    const calls = onChunk.mock.calls.map(c => c[0]);
+    expect(calls).toEqual(['<think>', 'thought', '</think>']);
+  });
+
   afterEach(() => {
     expect(errorCount.value).toBe(0);
   });

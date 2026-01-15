@@ -35,6 +35,7 @@ const OpenAIModelsSchema = z.object({
 const OllamaChatChunkSchema = z.object({
   message: z.object({
     content: z.string().nullable().optional(),
+    thinking: z.string().nullable().optional(),
   }).optional(),
   done: z.boolean().optional(),
 });
@@ -230,6 +231,8 @@ export class OllamaProvider implements LLMProvider {
     const decoder = new TextDecoder();
     let buffer = '';
 
+    let isThinking = false;
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -244,9 +247,32 @@ export class OllamaProvider implements LLMProvider {
           const rawJson = JSON.parse(line);
           // Validate with Zod
           const validated = OllamaChatChunkSchema.parse(rawJson);
+          
+          const thinking = validated.message?.thinking || '';
+          if (thinking) {
+            if (!isThinking) {
+              onChunk('<think>');
+              isThinking = true;
+            }
+            onChunk(thinking);
+          }
+
           const content = validated.message?.content || '';
-          if (content) onChunk(content);
-          if (validated.done) return;
+          if (content) {
+            if (isThinking) {
+              onChunk('</think>');
+              isThinking = false;
+            }
+            onChunk(content);
+          }
+          
+          if (validated.done) {
+            if (isThinking) {
+              onChunk('</think>');
+              isThinking = false;
+            }
+            return;
+          }
         } catch (e) {
           addErrorEvent({
             source: 'OllamaProvider',

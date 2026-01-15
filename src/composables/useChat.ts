@@ -49,10 +49,12 @@ function findDeepestLeaf(node: MessageNode): MessageNode {
 }
 
 export function processThinking(node: MessageNode) {
-  const thinkRegex = /<think>([\s\S]*?)<\/think>/;
-  const match = node.content.match(thinkRegex);
-  if (match && match[1]) {
-    node.thinking = match[1].trim();
+  const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
+  const matches = [...node.content.matchAll(thinkRegex)];
+  
+  if (matches.length > 0) {
+    const thoughts = matches.map(m => m[1]?.trim()).filter(Boolean).join('\n\n---\n\n');
+    node.thinking = node.thinking ? `${node.thinking}\n\n---\n\n${thoughts}` : thoughts;
     node.content = node.content.replace(thinkRegex, '').trim();
   }
 }
