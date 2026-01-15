@@ -157,6 +157,7 @@ const iifeInlinePlugin = (outDir: string) => ({
           // Escape </script> to prevent early script termination
           newScript.textContent = scriptContent.replace(/<\/script>/g, '<\\/script>')
           script.parentNode?.replaceChild(newScript, script)
+          fs.unlinkSync(scriptPath) // Delete the original script file
         }
       }
     }
