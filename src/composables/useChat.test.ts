@@ -153,7 +153,7 @@ describe('useChat Composable Logic', () => {
     vi.mocked(storageService.listChats).mockResolvedValue([]);
 
     // Fork at message 'm1'
-    const newId = await forkChat('m1');
+    const newId = await forkChat(currentChat.value!, 'm1');
 
     expect(newId).toBeDefined();
     expect(storageService.saveChat).toHaveBeenCalledWith(expect.objectContaining({
@@ -193,7 +193,7 @@ describe('useChat Composable Logic', () => {
     
     vi.mocked(storageService.saveChat).mockResolvedValue();
 
-    await forkChat('m1');
+    await forkChat(currentChat.value!, 'm1');
 
     const savedChat = vi.mocked(storageService.saveChat).mock.calls[0]?.[0] as Chat;
     const clonedNode = savedChat?.root.items[0];
@@ -529,6 +529,65 @@ describe('useChat Composable Logic', () => {
     expect(items.value[2]?.id).toBe('chat:c1'); 
   });
 
+  describe('New Chat Insertion Order', () => {
+    it('should insert a new chat AFTER leading groups and BEFORE the first individual chat', async () => {
+      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+      const g2 = { id: 'g2', name: 'G2', isCollapsed: false, updatedAt: 0, items: [] };
+      const c1 = { id: 'c1', title: 'C1', updatedAt: 0 };
+      
+      const initial: SidebarItem[] = [
+        { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
+        { id: 'chat_group:g2', type: 'chat_group', chatGroup: g2 },
+        { id: 'chat:c1', type: 'chat', chat: c1 },
+      ];
+      mockRootItems.push(...initial);
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat();
+
+      expect(rootItems.value).toHaveLength(4);
+      expect(rootItems.value[0]?.id).toBe('chat_group:g1');
+      expect(rootItems.value[1]?.id).toBe('chat_group:g2');
+      expect(rootItems.value[2]?.type).toBe('chat');
+      expect(rootItems.value[2]?.id).not.toBe('chat:c1');
+      expect(rootItems.value[3]?.id).toBe('chat:c1');
+    });
+
+    it('should insert at the very top if the first item is a chat', async () => {
+      const c1 = { id: 'c1', title: 'C1', updatedAt: 0 };
+      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+      
+      const initial: SidebarItem[] = [
+        { id: 'chat:c1', type: 'chat', chat: c1 },
+        { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
+      ];
+      mockRootItems.push(...initial);
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat();
+
+      expect(rootItems.value[0]?.type).toBe('chat');
+      expect(rootItems.value[0]?.id).not.toBe('chat:c1');
+      expect(rootItems.value[1]?.id).toBe('chat:c1');
+    });
+
+    it('should insert at the end if there are only groups', async () => {
+      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+      
+      const initial: SidebarItem[] = [
+        { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
+      ];
+      mockRootItems.push(...initial);
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat();
+
+      expect(rootItems.value).toHaveLength(2);
+      expect(rootItems.value[0]?.id).toBe('chat_group:g1');
+      expect(rootItems.value[1]?.type).toBe('chat');
+    });
+  });
+
   it('should prepend a new chat group to the rootItems list', async () => {
     const initial: SidebarItem[] = [
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
@@ -594,12 +653,36 @@ describe('useChat Composable Logic', () => {
       onChunk(' Title');
     });
 
-    const promise = generateChatTitle();
+    const promise = generateChatTitle(currentChat.value!);
     expect(generatingTitle.value).toBe(true);
     await promise;
     expect(generatingTitle.value).toBe(false);
     
     expect(currentChat.value.title).toBe('Paris Title');
+    expect(storageService.saveChat).toHaveBeenCalled();
+  });
+
+  it('should update the title even if it is already set when generateChatTitle is called', async () => {
+    const { generateChatTitle, currentChat } = useChat();
+    
+    const m1: MessageNode = { id: 'm1', role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
+    currentChat.value = reactive({
+      id: 'chat-1',
+      title: 'Old Title',
+      root: { items: [m1] },
+      modelId: 'gpt-4',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    });
+
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      onChunk('New Better Title');
+    });
+
+    await generateChatTitle(currentChat.value!);
+    
+    expect(currentChat.value.title).toBe('New Better Title');
     expect(storageService.saveChat).toHaveBeenCalled();
   });
 

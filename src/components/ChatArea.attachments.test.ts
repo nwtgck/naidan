@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
-import { ref, isRef } from 'vue';
+import { ref, isRef, reactive } from 'vue';
 
 // Define shared refs for the mock
 const mockCurrentChat = ref({
@@ -17,6 +17,7 @@ vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
     streaming: mockStreaming,
+    activeGenerations: reactive(new Map()),
     activeMessages: mockActiveMessages,
     availableModels: ref([]),
     fetchingModels: ref(false),

@@ -20,11 +20,12 @@ describe('ChatArea Design Specifications', () => {
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref({ id: '1', title: 'Test Chat', overrideModelId: 'gemma3n:e2b' }),
       streaming: ref(false),
+      activeGenerations: new Map(),
       activeMessages: ref([]),
       availableModels: ref([]),
       fetchingModels: ref(false),
       fetchAvailableModels: vi.fn(),
-      saveCurrentChat: vi.fn(),
+      saveChat: vi.fn(),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),

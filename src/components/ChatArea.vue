@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue';
+import { ref, watch, nextTick, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
@@ -20,6 +20,7 @@ const chatStore = useChat();
 const {
   currentChat,
   streaming,
+  activeGenerations,
   generatingTitle,
   activeMessages,
   fetchingModels,
@@ -27,6 +28,11 @@ const {
 const { settings } = useSettings();
 const router = useRouter();
 const input = ref('');
+
+const isCurrentChatStreaming = computed(() => {
+  return currentChat.value ? activeGenerations.has(currentChat.value.id) : false;
+});
+
 const container = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -224,11 +230,13 @@ function scrollToBottom() {
 defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight, attachments, input });
 
 async function fetchModels() {
-  await chatStore.fetchAvailableModels();
+  if (currentChat.value) {
+    await chatStore.fetchAvailableModels(currentChat.value);
+  }
 }
 
 async function handleSend() {
-  if ((!input.value.trim() && attachments.value.length === 0) || streaming.value) return;
+  if ((!input.value.trim() && attachments.value.length === 0) || isCurrentChatStreaming.value) return;
   const text = input.value;
   const currentAttachments = [...attachments.value];
   
@@ -257,7 +265,8 @@ function handleSwitchVersion(messageId: string) {
 }
 
 async function handleFork(messageId: string) {
-  const newId = await chatStore.forkChat(messageId);
+  if (!currentChat.value) return;
+  const newId = await chatStore.forkChat(currentChat.value, messageId);
   if (newId) {
     router.push(`/chat/${newId}`);
   }
@@ -380,10 +389,10 @@ onUnmounted(() => {
               <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button 
                 v-if="activeMessages.length > 0"
-                @click="chatStore.generateChatTitle()"
+                @click="currentChat && chatStore.generateChatTitle(currentChat)"
                 class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50"
                 :class="{ 'animate-spin': generatingTitle }"
-                :disabled="generatingTitle || streaming"
+                :disabled="generatingTitle || isCurrentChatStreaming"
                 title="Regenerate Title"
                 data-testid="regenerate-title-button"
               >
@@ -492,7 +501,7 @@ onUnmounted(() => {
               v-for="msg in activeMessages" 
               :key="msg.id" 
               :message="msg" 
-              :siblings="chatStore.getSiblings(msg.id)"
+              :siblings="currentChat ? chatStore.getSiblings(currentChat, msg.id) : []"
               @fork="handleFork"
               @edit="handleEdit"
               @switch-version="handleSwitchVersion"
@@ -566,11 +575,12 @@ onUnmounted(() => {
           @input="adjustTextareaHeight"
           @keydown.enter.ctrl.prevent="handleSend"
           @keydown.enter.meta.prevent="handleSend"
-          @keydown.esc.prevent="streaming ? chatStore.abortChat() : null"
+          @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
           class="w-full text-base pl-5 pr-12 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[60px] transition-colors"
           data-testid="chat-input"
         ></textarea>
+
         <!-- Maximize/Minimize Button inside input area -->
         <button
           v-if="isOverLimit || isMaximized"
@@ -582,6 +592,7 @@ onUnmounted(() => {
           <Minimize2 v-if="isMaximized" class="w-4 h-4" />
           <Maximize2 v-else class="w-4 h-4" />
         </button>
+
         <div class="flex items-center justify-between px-4 pb-4">
           <div class="flex items-center gap-2">
             <input 
@@ -612,13 +623,13 @@ onUnmounted(() => {
           </div>
 
           <button 
-            @click="streaming ? chatStore.abortChat() : handleSend()"
-            :disabled="!streaming && !input.trim() && attachments.length === 0"
+            @click="isCurrentChatStreaming ? chatStore.abortChat() : handleSend()"
+            :disabled="!isCurrentChatStreaming && !input.trim() && attachments.length === 0"
             class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
-            :title="streaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
-            :data-testid="streaming ? 'abort-button' : 'send-button'"
+            :title="isCurrentChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
+            :data-testid="isCurrentChatStreaming ? 'abort-button' : 'send-button'"
           >
-            <template v-if="streaming">
+            <template v-if="isCurrentChatStreaming">
               <span class="text-xs font-medium opacity-90 hidden sm:inline">Esc</span>
               <Square class="w-4 h-4 fill-white text-white" />
             </template>
@@ -628,6 +639,8 @@ onUnmounted(() => {
             </template>
           </button>
         </div>
+
+        
       </div>
     </div>
   </div>

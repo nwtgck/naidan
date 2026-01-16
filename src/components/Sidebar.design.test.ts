@@ -1,4 +1,4 @@
-import { ref, defineComponent, h, nextTick } from 'vue';
+import { ref, defineComponent, h, nextTick, reactive } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
@@ -39,6 +39,7 @@ describe('Sidebar Design Specifications', () => {
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref(null),
       streaming: ref(false),
+      activeGenerations: reactive(new Map()),
       chatGroups: ref([]),
       chats: ref([]),
       sidebarItems: ref([]),
@@ -107,6 +108,7 @@ describe('Sidebar Design Specifications', () => {
     (useChat as unknown as Mock).mockReturnValue({
       currentChat,
       sidebarItems,
+      activeGenerations: reactive(new Map()),
       loadChats: vi.fn().mockResolvedValue(undefined),
       chatGroups: ref([]),
       chats: ref([]),

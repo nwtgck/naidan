@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, reactive } from 'vue';
 import { useLayout } from '../composables/useLayout';
 
 vi.mock('vuedraggable', () => ({
@@ -21,6 +21,7 @@ vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: ref(null),
     streaming: ref(false),
+    activeGenerations: reactive(new Map()),
     chatGroups: ref([]),
     chats: ref([{ id: '1', title: 'Test Chat' }]),
     sidebarItems: ref([{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Test Chat' } }]),
