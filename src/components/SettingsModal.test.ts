@@ -84,6 +84,11 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
+// Mock the dynamic import for licenses
+vi.mock('../assets/licenses.json', () => ({
+  default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }]
+}));
+
 // --- Tests ---
 
 describe('SettingsModal.vue (Tabbed Interface)', () => {
@@ -123,6 +128,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     Type: true,
     FlaskConical: true,
     AlertTriangle: true,
+    ShieldCheck: true,
+    Logo: true,
   };
 
   beforeEach(() => {
@@ -347,6 +354,56 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     // Developer
     await navButtons.find(b => b.text().includes('Developer'))?.trigger('click');
     expect(wrapper.text()).toContain('Developer Tools');
+
+    // About
+    await navButtons.find(b => b.text().includes('About'))?.trigger('click');
+    expect(wrapper.text()).toContain('About Naidan');
+    expect(wrapper.text()).toContain('Version');
+    expect(wrapper.text()).toContain('Open Source Licenses');
+  });
+
+  it('displays standalone license information when in standalone mode', async () => {
+    // Mock isStandalone to true
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
+    vi.stubGlobal('__BUILD_MODE_IS_HOSTED__', false);
+
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    const navButtons = wrapper.findAll('nav button');
+    await navButtons.find(b => b.text().includes('About'))?.trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Offline License Information');
+    expect(wrapper.text()).toContain('THIRD_PARTY_LICENSES.txt');
+    // In standalone mode, the list/loader should not be visible
+    expect(wrapper.find('.animate-spin').exists()).toBe(false);
+    
+    // Cleanup
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', false);
+    vi.stubGlobal('__BUILD_MODE_IS_HOSTED__', true);
+  });
+
+  it('loads and displays licenses dynamically in hosted mode', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    const navButtons = wrapper.findAll('nav button');
+    await navButtons.find(b => b.text().includes('About'))?.trigger('click');
+    
+    // Initial state should be loading
+    expect(wrapper.text()).toContain('Loading licenses...');
+    
+    // Multiple wait cycles to ensure the dynamic import and subsequent DOM update are processed
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    await wait();
+
+    const text = wrapper.text();
+    expect(text).toContain('test-pkg');
+    expect(text).toContain('v1.0.0');
+    expect(text).toContain('MIT');
   });
 
   it('persists unsaved changes when switching tabs', async () => {

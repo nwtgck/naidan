@@ -8,6 +8,14 @@ import path from 'node:path'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
+import license from 'rollup-plugin-license'
+
+interface LicenseDependency {
+  name: string
+  version: string
+  license: string
+  licenseText: string
+}
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -29,6 +37,37 @@ export default defineConfig(({ mode }) => {
       }),
       VueDevTools(),
       vue(),
+      license({
+        thirdParty: {
+          includePrivate: false,
+          output: [
+            {
+              file: path.resolve(__dirname, 'src/assets/licenses.json'),
+              template(dependencies: LicenseDependency[]) {
+                return JSON.stringify(dependencies.map((dep: LicenseDependency) => ({
+                  name: dep.name,
+                  version: dep.version,
+                  license: dep.license,
+                  licenseText: dep.licenseText,
+                })));
+              },
+            },
+            isStandalone && {
+              file: path.resolve(__dirname, outDir, 'THIRD_PARTY_LICENSES.txt'),
+              template(dependencies: LicenseDependency[]) {
+                return dependencies.map((dep: LicenseDependency) => (
+                  `Name: ${dep.name}\n` +
+                  `Version: ${dep.version}\n` +
+                  `License: ${dep.license}\n` +
+                  `--------------------------------------------------------------------------------\n` +
+                  `${dep.licenseText}\n` +
+                  `================================================================================\n`
+                )).join('\n');
+              },
+            }
+          ].filter((x): x is Exclude<typeof x, false | null | undefined> => !!x) as unknown as never,
+        },
+      }),
       // Standalone: Inline scripts for file:// support, then Zip the result
       isStandalone && iifeInlinePlugin(outDir),
       isStandalone && zipPackagerPlugin(outDir),
