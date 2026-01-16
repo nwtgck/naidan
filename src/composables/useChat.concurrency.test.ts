@@ -61,19 +61,20 @@ vi.mock('./useToast', () => ({
 }));
 
 const mockLlmChat = vi.fn();
+const mockListModels = vi.fn().mockResolvedValue(['gpt-4']);
 
 vi.mock('../services/llm', () => {
   return {
     OpenAIProvider: function() {
       return {
-        chat: mockLlmChat,
-        listModels: vi.fn().mockResolvedValue(['gpt-4']),
+        chat: (...args: any[]) => mockLlmChat(...args),
+        listModels: (...args: any[]) => mockListModels(...args),
       };
     },
     OllamaProvider: function() {
       return {
-        chat: mockLlmChat,
-        listModels: vi.fn().mockResolvedValue(['gpt-4']),
+        chat: (...args: any[]) => mockLlmChat(...args),
+        listModels: (...args: any[]) => mockListModels(...args),
       };
     },
   };
@@ -89,7 +90,12 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
   // Helper to wait for a chat to appear in activeGenerations
   const waitForRegistry = async (id: string) => {
-    await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000 });
+    try {
+      await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000, interval: 50 });
+    } catch (e) {
+      console.error(`Timed out waiting for chat ${id} in activeGenerations. Current keys:`, Array.from(activeGenerations.keys()));
+      throw e;
+    }
   };
 
   beforeEach(() => {
@@ -514,4 +520,92 @@ describe('useChat Concurrency & Stale State Protection', () => {
     expect(activeGenerations.has(chatA.id)).toBe(false);
     expect(chatA.root.items[0]?.replies.items[0]?.error).toBeUndefined();
   });
+
+  it('should prevent multiple simultaneous sendMessage calls for the same chat', async () => {
+    const { createNewChat, currentChat, sendMessage } = useChat();
+
+    await createNewChat();
+    const chat = currentChat.value!;
+    
+    let resolveModels: (v: string[]) => void;
+    const modelPromise = new Promise<string[]>(r => resolveModels = r);
+    mockListModels.mockReturnValueOnce(modelPromise);
+
+    // First send starts and waits for models
+    const p1 = sendMessage('First');
+    
+    // Second send immediately - should be ignored because first is 'processing'
+    const p2 = sendMessage('Second');
+
+    resolveModels!(['gpt-4']);
+    await Promise.all([p1, p2]);
+
+    // Check chat messages - should only have ONE user message
+    expect(chat.root.items.length).toBe(1);
+    expect(chat.root.items[0]?.content).toBe('First');
+  });
+
+  it('should allow creating and using a new chat while another is streaming', async () => {
+    const { createNewChat, currentChat, sendMessage, activeGenerations } = useChat();
+    const flushPromises = () => new Promise(resolve => setTimeout(resolve, 0));
+    mockListModels.mockResolvedValue(['gpt-4']); // Reset for this test
+
+    // 1. Start Chat A (Slow Generation)
+    await createNewChat();
+    const chatA = currentChat.value!;
+    const chatAId = chatA.id;
+    
+    let resolveA: () => void;
+    const pA = new Promise<void>(r => resolveA = r);
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      onChunk('A-Start');
+      await pA;
+      onChunk('A-End');
+    });
+
+    const sendA = sendMessage('Message A');
+    await waitForRegistry(chatAId);
+
+    // 2. Create Chat B while A is still streaming
+    await createNewChat();
+    const chatB = currentChat.value!;
+    const chatBId = chatB.id;
+    expect(chatBId).not.toBe(chatAId);
+    expect(activeGenerations.has(chatAId)).toBe(true);
+
+    // 3. Start Chat B (Concurrent Generation)
+    chatB.endpointUrl = 'http://localhost';
+    chatB.endpointType = 'openai';
+    chatB.overrideModelId = 'gpt-4'; 
+    
+    let resolveBStarted: () => void;
+    const pBStarted = new Promise<void>(r => resolveBStarted = r);
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      onChunk('B-Response');
+      resolveBStarted();
+    });
+
+    // Pass chatB explicitly to sendMessage
+    const sendB = sendMessage('Message B', null, [], chatB);
+    
+    // 4. Verify both are active
+    await pBStarted;
+    expect(activeGenerations.size).toBe(2);
+    expect(activeGenerations.has(chatAId)).toBe(true);
+    expect(activeGenerations.has(chatBId)).toBe(true);
+
+    // 5. Let B finish
+    await sendB;
+    await flushPromises();
+    expect(activeGenerations.has(chatBId)).toBe(false);
+    expect(activeGenerations.size).toBe(1);
+    expect(chatB.root.items[0]?.replies.items[0]?.content).toBe('B-Response');
+
+    // 6. Let A finish
+    resolveA!();
+    await sendA;
+    await flushPromises();
+    expect(activeGenerations.size).toBe(0);
+    expect(chatA.root.items[0]?.replies.items[0]?.content).toBe('A-StartA-End');
+  }, 15000);
 });

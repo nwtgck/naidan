@@ -554,121 +554,126 @@ export function useChat() {
 
   const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = [], chatTarget?: Chat) => {
     const chat = chatTarget || currentChat.value;
-    if (!chat || (activeGenerations.has(chat.id))) return;
+    if (!chat || activeGenerations.has(chat.id) || activeProcessing.has(chat.id)) return;
 
+    activeProcessing.add(chat.id);
     // Register immediately to ensure background tasks are tracked from the start
     registerLiveInstance(chat);
 
-    const { isOnboardingDismissed, onboardingDraft, settings: globalSettings } = useSettings();
-    const { showConfirm } = useConfirm();
+    try {
+      const { isOnboardingDismissed, onboardingDraft, settings: globalSettings } = useSettings();
+      const { showConfirm } = useConfirm();
 
-    // --- Model & Endpoint Resolution ---
-    const type = chat.endpointType || settings.value.endpointType;
-    const url = chat.endpointUrl || settings.value.endpointUrl || '';
-    
-    let resolvedModel = chat.overrideModelId || settings.value.defaultModelId || '';
+      // --- Model & Endpoint Resolution ---
+      const type = chat.endpointType || settings.value.endpointType;
+      const url = chat.endpointUrl || settings.value.endpointUrl || '';
+      
+      let resolvedModel = chat.overrideModelId || settings.value.defaultModelId || '';
 
-    if (url) {
-      const models = await fetchAvailableModels(chat);
-      if (models.length > 0) {
-        const preferredModel = chat.overrideModelId || settings.value.defaultModelId;
-        if (preferredModel && models.includes(preferredModel)) {
-          resolvedModel = preferredModel;
-        } else if (preferredModel) {
-          // If a preferred model was set but is not available, fallback to first
-          resolvedModel = models[0] || '';
+      if (url) {
+        const models = await fetchAvailableModels(chat);
+        if (models.length > 0) {
+          const preferredModel = chat.overrideModelId || settings.value.defaultModelId;
+          if (preferredModel && models.includes(preferredModel)) {
+            resolvedModel = preferredModel;
+          } else if (preferredModel) {
+            // If a preferred model was set but is not available, fallback to first
+            resolvedModel = models[0] || '';
+          }
+          // If NO preferred model was set at all, resolvedModel remains '', triggering onboarding below
         }
-        // If NO preferred model was set at all, resolvedModel remains '', triggering onboarding below
       }
-    }
 
-    if (!url || !resolvedModel) {
-      const models = await fetchAvailableModels(chat);
-      onboardingDraft.value = { 
-        url, 
-        type, 
-        models, 
-        selectedModel: models[0] || '',
-      };
-      isOnboardingDismissed.value = false;
-      unregisterLiveInstance(chat.id);
-      return;
-    }
+      if (!url || !resolvedModel) {
+        const models = await fetchAvailableModels(chat);
+        onboardingDraft.value = { 
+          url, 
+          type, 
+          models, 
+          selectedModel: models[0] || '',
+        };
+        isOnboardingDismissed.value = false;
+        return;
+      }
 
-    // Process attachments for saving
-    const processedAttachments: Attachment[] = [];
-    const canPersist = storageService.canPersistBinary;
-    
-    // Check if we need to ask for permission for LocalStorage persistence
-    if (attachments.length > 0 && !canPersist && globalSettings.value.heavyContentAlertDismissed === false) {
-      const confirmed = await showConfirm({
-        title: 'Attachments cannot be saved',
-        message: 'You are using Local Storage, which has a 5MB limit. Attachments will be available during this session but will NOT be saved to your history. Switch to OPFS storage in Settings to enable permanent saving.',
-        confirmButtonText: 'Continue anyway',
-        cancelButtonText: 'Cancel',
-      });
-      if (!confirmed) return;
-      globalSettings.value.heavyContentAlertDismissed = true;
-    }
+      // Process attachments for saving
+      const processedAttachments: Attachment[] = [];
+      const canPersist = storageService.canPersistBinary;
+      
+      // Check if we need to ask for permission for LocalStorage persistence
+      if (attachments.length > 0 && !canPersist && globalSettings.value.heavyContentAlertDismissed === false) {
+        const confirmed = await showConfirm({
+          title: 'Attachments cannot be saved',
+          message: 'You are using Local Storage, which has a 5MB limit. Attachments will be available during this session but will NOT be saved to your history. Switch to OPFS storage in Settings to enable permanent saving.',
+          confirmButtonText: 'Continue anyway',
+          cancelButtonText: 'Cancel',
+        });
+        if (!confirmed) return;
+        globalSettings.value.heavyContentAlertDismissed = true;
+      }
 
-    for (const att of attachments) {
-      if (att.status === 'memory') {
-        if (canPersist) {
-          try {
-            await storageService.saveFile(att.blob, att.id, att.originalName);
-            processedAttachments.push({
-              id: att.id,
-              originalName: att.originalName,
-              mimeType: att.mimeType,
-              size: att.size,
-              uploadedAt: att.uploadedAt,
-              status: 'persisted',
-            });
-          } catch (e) {
-            console.error('Failed to save file to OPFS:', e);
-            processedAttachments.push(att); // keep as memory
+      for (const att of attachments) {
+        if (att.status === 'memory') {
+          if (canPersist) {
+            try {
+              await storageService.saveFile(att.blob, att.id, att.originalName);
+              processedAttachments.push({
+                id: att.id,
+                originalName: att.originalName,
+                mimeType: att.mimeType,
+                size: att.size,
+                uploadedAt: att.uploadedAt,
+                status: 'persisted',
+              });
+            } catch (e) {
+              console.error('Failed to save file to OPFS:', e);
+              processedAttachments.push(att); // keep as memory
+            }
+          } else {
+            processedAttachments.push(att); // keep as memory (skipped from persistence by mapper)
           }
         } else {
-          processedAttachments.push(att); // keep as memory (skipped from persistence by mapper)
+          processedAttachments.push(att);
         }
-      } else {
-        processedAttachments.push(att);
       }
+
+      const userMsg: MessageNode = {
+        id: uuidv7(),
+        role: 'user',
+        content,
+        attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
+        timestamp: Date.now(),
+        replies: { items: [] },
+      };
+
+      const assistantMsg: MessageNode = {
+        id: uuidv7(),
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        modelId: resolvedModel,
+        replies: { items: [] },
+      };
+      userMsg.replies.items.push(assistantMsg);
+
+      if (parentId === null) {
+        chat.root.items.push(userMsg);
+      } else {
+        const pId = parentId || chat.currentLeafId;
+        const parentNode = pId ? findNodeInBranch(chat.root.items, pId) : null;
+        if (parentNode) parentNode.replies.items.push(userMsg);
+        else chat.root.items.push(userMsg);
+      }
+
+      chat.currentLeafId = assistantMsg.id;
+      if (currentChat.value?.id === chat.id) triggerRef(currentChat);
+      await saveChat(chat);
+
+      await generateResponse(chat, assistantMsg.id);
+    } finally {
+      activeProcessing.delete(chat.id);
+      unregisterLiveInstance(chat.id);
     }
-
-    const userMsg: MessageNode = {
-      id: uuidv7(),
-      role: 'user',
-      content,
-      attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
-      timestamp: Date.now(),
-      replies: { items: [] },
-    };
-
-    const assistantMsg: MessageNode = {
-      id: uuidv7(),
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-      modelId: resolvedModel,
-      replies: { items: [] },
-    };
-    userMsg.replies.items.push(assistantMsg);
-
-    if (parentId === null) {
-      chat.root.items.push(userMsg);
-    } else {
-      const pId = parentId || chat.currentLeafId;
-      const parentNode = pId ? findNodeInBranch(chat.root.items, pId) : null;
-      if (parentNode) parentNode.replies.items.push(userMsg);
-      else chat.root.items.push(userMsg);
-    }
-
-    chat.currentLeafId = assistantMsg.id;
-    if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-    await saveChat(chat);
-
-    await generateResponse(chat, assistantMsg.id);
   };
 
   const regenerateMessage = async (failedMessageId: string) => {
