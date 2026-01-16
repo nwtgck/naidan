@@ -15,6 +15,7 @@ const liveChatRegistry = reactive(new Map<string, Chat>());
 const activeGenerations = reactive(new Map<string, { controller: AbortController, chat: Chat }>());
 const activeTitleGenerations = reactive(new Set<string>());
 const activeModelFetches = reactive(new Set<string>());
+const activeProcessing = reactive(new Set<string>());
 
 const streaming = computed(() => activeGenerations.size > 0);
 const generatingTitle = computed(() => activeTitleGenerations.size > 0);
@@ -45,8 +46,9 @@ function unregisterLiveInstance(chatId: string) {
   const hasGeneration = activeGenerations.has(chatId);
   const hasTitleGen = activeTitleGenerations.has(chatId);
   const hasModelFetch = activeModelFetches.has(chatId);
+  const hasProcessing = activeProcessing.has(chatId);
   
-  if (!hasGeneration && !hasTitleGen && !hasModelFetch) {
+  if (!hasGeneration && !hasTitleGen && !hasModelFetch && !hasProcessing) {
     liveChatRegistry.delete(chatId);
   }
 }
@@ -261,9 +263,10 @@ export function useChat() {
   const createNewChat = async (chatGroupId: string | null = null) => {
     if (creatingChat.value) return;
     creatingChat.value = true;
+    const chatId = uuidv7();
     try {
       const chatObj: Chat = reactive({
-        id: uuidv7(),
+        id: chatId,
         title: null,
         groupId: chatGroupId,
         root: { items: [] },
@@ -289,6 +292,7 @@ export function useChat() {
       await loadData();
     } finally {
       creatingChat.value = false;
+      unregisterLiveInstance(chatId);
     }
   };
 
@@ -671,34 +675,42 @@ export function useChat() {
     const chat = currentChat.value;
     if (!chat || activeGenerations.has(chat.id)) return; 
     
-    // 1. Find the failed node
-    const failedNode = findNodeInBranch(chat.root.items, failedMessageId);
-    if (!failedNode || failedNode.role !== 'assistant') return;
+    activeProcessing.add(chat.id);
+    registerLiveInstance(chat);
 
-    // 2. Find its parent (the User message)
-    const parent = findParentInBranch(chat.root.items, failedMessageId);
-    if (!parent || parent.role !== 'user') return;
+    try {
+      // 1. Find the failed node
+      const failedNode = findNodeInBranch(chat.root.items, failedMessageId);
+      if (!failedNode || failedNode.role !== 'assistant') return;
 
-    // 3. Create a NEW sibling assistant node
-    const newAssistantMsg: MessageNode = {
-      id: uuidv7(),
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-      modelId: failedNode.modelId, // Reuse the same model ID from the failed attempt
-      replies: { items: [] },
-    };
+      // 2. Find its parent (the User message)
+      const parent = findParentInBranch(chat.root.items, failedMessageId);
+      if (!parent || parent.role !== 'user') return;
 
-    // 4. Add to parent
-    parent.replies.items.push(newAssistantMsg);
+      // 3. Create a NEW sibling assistant node
+      const newAssistantMsg: MessageNode = {
+        id: uuidv7(),
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        modelId: failedNode.modelId, // Reuse the same model ID from the failed attempt
+        replies: { items: [] },
+      };
 
-    // 5. Update state
-    chat.currentLeafId = newAssistantMsg.id;
-    if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-    await saveChat(chat);
+      // 4. Add to parent
+      parent.replies.items.push(newAssistantMsg);
 
-    // 6. Generate
-    await generateResponse(chat, newAssistantMsg.id);
+      // 5. Update state
+      chat.currentLeafId = newAssistantMsg.id;
+      if (currentChat.value?.id === chat.id) triggerRef(currentChat);
+      await saveChat(chat);
+
+      // 6. Generate
+      await generateResponse(chat, newAssistantMsg.id);
+    } finally {
+      activeProcessing.delete(chat.id);
+      unregisterLiveInstance(chat.id);
+    }
   };
 
   const generateChatTitle = async (chat: Chat, signal?: AbortSignal) => {
@@ -795,32 +807,37 @@ Message: "${content}"`,
       clonedNodes[i]!.replies.items.push(clonedNodes[i+1]!);
     }
 
-    const newChatObj: Chat = reactive({
-      ...chat,
-      id: uuidv7(),
-      title: `Fork of ${chat.title}`,
-      root: { items: [clonedNodes[0]!] },
-      currentLeafId: clonedNodes[clonedNodes.length - 1]?.id,
-      originChatId: chat.id,
-      originMessageId: messageId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    const newChatId = uuidv7();
+    try {
+      const newChatObj: Chat = reactive({
+        ...chat,
+        id: newChatId,
+        title: `Fork of ${chat.title}`,
+        root: { items: [clonedNodes[0]!] },
+        currentLeafId: clonedNodes[clonedNodes.length - 1]?.id,
+        originChatId: chat.id,
+        originMessageId: messageId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
 
-    // Register immediately so persistSidebarStructure can save its content
-    registerLiveInstance(newChatObj);
+      // Register immediately so persistSidebarStructure can save its content
+      registerLiveInstance(newChatObj);
 
-    const newSummary: ChatSummary = { id: newChatObj.id, title: newChatObj.title, updatedAt: newChatObj.updatedAt, groupId: newChatObj.groupId };
-    const newSidebarItem: SidebarItem = { id: `chat:${newChatObj.id}`, type: 'chat', chat: newSummary };
+      const newSummary: ChatSummary = { id: newChatObj.id, title: newChatObj.title, updatedAt: newChatObj.updatedAt, groupId: newChatObj.groupId };
+      const newSidebarItem: SidebarItem = { id: `chat:${newChatObj.id}`, type: 'chat', chat: newSummary };
 
-    const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
-    insertSidebarItem(newRootItems, newSidebarItem, chat.groupId ?? null);
-    
-    await persistSidebarStructure(newRootItems);
-    
-    await loadData();
-    await openChat(newChatObj.id);
-    return newChatObj.id;
+      const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
+      insertSidebarItem(newRootItems, newSidebarItem, chat.groupId ?? null);
+      
+      await persistSidebarStructure(newRootItems);
+      
+      await loadData();
+      await openChat(newChatObj.id);
+      return newChatObj.id;
+    } finally {
+      unregisterLiveInstance(newChatId);
+    }
   };
 
   const editMessage = async (messageId: string, newContent: string) => {
