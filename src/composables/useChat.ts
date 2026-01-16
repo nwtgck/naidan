@@ -739,6 +739,7 @@ export function useChat() {
       return;
     }
 
+    const hadTitleAtStart = chat.title !== null;
     const chatIdAtStart = chat.id;
     try {
       let generatedTitle = '';
@@ -763,8 +764,8 @@ Message: "${content}"`,
       await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; }, {}, signal);
       const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
       
-      // Only apply if we got a title AND the user hasn't manually set one in the meantime
-      if (finalTitle && chat.title === null) {
+      // Only apply if we got a title AND (it was a manual regeneration OR it's still null)
+      if (finalTitle && (hadTitleAtStart || chat.title === null)) {
         chat.title = finalTitle;
         // Only save and refresh if the chat still exists
         if (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id || liveChatRegistry.has(chat.id)) {

@@ -662,6 +662,30 @@ describe('useChat Composable Logic', () => {
     expect(storageService.saveChat).toHaveBeenCalled();
   });
 
+  it('should update the title even if it is already set when generateChatTitle is called', async () => {
+    const { generateChatTitle, currentChat } = useChat();
+    
+    const m1: MessageNode = { id: 'm1', role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
+    currentChat.value = reactive({
+      id: 'chat-1',
+      title: 'Old Title',
+      root: { items: [m1] },
+      modelId: 'gpt-4',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    });
+
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      onChunk('New Better Title');
+    });
+
+    await generateChatTitle(currentChat.value!);
+    
+    expect(currentChat.value.title).toBe('New Better Title');
+    expect(storageService.saveChat).toHaveBeenCalled();
+  });
+
   it('should set currentChat to loaded chat in openChat, or null if not found', async () => {
     const { openChat, currentChat } = useChat();
     const mockChat: Chat = { id: 'found', title: 'Found', root: { items: [] }, modelId: 'm1', createdAt: 0, updatedAt: 0, debugEnabled: false };
