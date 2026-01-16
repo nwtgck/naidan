@@ -247,4 +247,37 @@ describe('ChatArea - Attachment UI', () => {
 
     expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(false);
   });
+
+  it('should handle image paste in textarea', async () => {
+    const wrapper = mount(ChatArea, {
+      global: {
+        stubs: {
+          'router-link': true,
+          'router-view': true,
+          'LmParametersEditor': true
+        }
+      }
+    });
+
+    const textarea = wrapper.find('[data-testid="chat-input"]');
+    const testFile = new File(['hello'], 'pasted.png', { type: 'image/png' });
+    
+    // Create a mock ClipboardEvent
+    const pasteEvent = {
+      clipboardData: {
+        items: [
+          {
+            type: 'image/png',
+            getAsFile: () => testFile
+          }
+        ]
+      }
+    };
+
+    await textarea.trigger('paste', pasteEvent);
+    
+    // Check if attachment was added
+    expect((wrapper.vm as any).attachments.length).toBe(1);
+    expect((wrapper.vm as any).attachments[0].originalName).toBe('pasted.png');
+  });
 });

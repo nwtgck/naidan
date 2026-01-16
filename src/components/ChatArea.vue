@@ -99,6 +99,26 @@ async function handleFileSelect(event: Event) {
   target.value = ''; // Reset input
 }
 
+async function handlePaste(event: ClipboardEvent) {
+  const items = event.clipboardData?.items;
+  if (!items) return;
+
+  const files: File[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item?.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) {
+        files.push(file);
+      }
+    }
+  }
+
+  if (files.length > 0) {
+    await processFiles(files);
+  }
+}
+
 function handleDragOver(event: DragEvent) {
   event.preventDefault();
   isDragging.value = true;
@@ -573,6 +593,7 @@ onUnmounted(() => {
           ref="textareaRef"
           v-model="input"
           @input="adjustTextareaHeight"
+          @paste="handlePaste"
           @keydown.enter.ctrl.prevent="handleSend"
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
