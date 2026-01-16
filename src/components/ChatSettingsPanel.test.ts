@@ -185,6 +185,48 @@ describe('ChatSettingsPanel.vue', () => {
       const vm = wrapper.vm as unknown as { selectedProviderProfileId: string };
       expect(vm.selectedProviderProfileId).toBe('');
     });
+
+    it('applies headers from a selected profile', async () => {
+      const mockProfileWithHeaders = {
+        id: 'p-h',
+        name: 'Header Profile',
+        endpointType: 'openai',
+        endpointUrl: 'http://h:1234',
+        defaultModelId: 'm1',
+        endpointHttpHeaders: [['X-Header', 'Value']],
+      };
+      mockSettings.value.providerProfiles.push(mockProfileWithHeaders);
+      
+      const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
+      const select = wrapper.find('select');
+      
+      await select.setValue('p-h');
+      await select.trigger('change');
+
+      expect(mockCurrentChat.value!.endpointHttpHeaders).toEqual([['X-Header', 'Value']]);
+    });
+  });
+
+  describe('Custom HTTP Headers', () => {
+    it('supports adding and removing headers directly', async () => {
+      const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
+      
+      const addBtn = wrapper.findAll('button').find(b => b.text().includes('Add Header'));
+      await addBtn?.trigger('click');
+      
+      const inputs = wrapper.findAll('input[type="text"]');
+      // 0: URL, 1: Header Name, 2: Header Value
+      await inputs[1]?.setValue('X-Manual');
+      await inputs[2]?.setValue('Val-Manual');
+      
+      expect(mockCurrentChat.value!.endpointHttpHeaders).toEqual([['X-Manual', 'Val-Manual']]);
+      
+      // Remove
+      const removeBtn = wrapper.findAll('button').find(b => b.findComponent({ name: 'Trash2' }).exists() || b.html().includes('lucide-trash2'));
+      await removeBtn?.trigger('click');
+      
+      expect(mockCurrentChat.value!.endpointHttpHeaders).toHaveLength(0);
+    });
   });
 
   describe('Endpoint Presets', () => {

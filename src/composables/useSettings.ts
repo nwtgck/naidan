@@ -7,7 +7,7 @@ import { OpenAIProvider, OllamaProvider } from '../services/llm';
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS });
 const initialized = ref(false);
 const isOnboardingDismissed = ref(false);
-const onboardingDraft = ref<{ url: string, type: EndpointType, models: string[], selectedModel: string } | null>(null);
+const onboardingDraft = ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>(null);
 const availableModels = ref<string[]>([]);
 const isFetchingModels = ref(false);
 
@@ -61,7 +61,7 @@ export function useSettings() {
         ? new OllamaProvider() 
         : new OpenAIProvider();
       
-      const models = await provider.listModels(settings.value.endpointUrl);
+      const models = await provider.listModels(settings.value.endpointUrl, settings.value.endpointHttpHeaders);
       availableModels.value = models;
     } catch (err) {
       console.error('Failed to fetch models:', err);

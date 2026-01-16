@@ -19,7 +19,7 @@ import {
   Database, Bot, Type, Settings2, Save,
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
   Pencil, Trash, Check, Activity, Info, HardDrive,
-  MessageSquareQuote, Download, Github, ExternalLink,
+  MessageSquareQuote, Download, Github, ExternalLink, Plus
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
@@ -129,7 +129,7 @@ async function fetchModels() {
       ? new OllamaProvider() 
       : new OpenAIProvider();
     
-    await provider.listModels(form.value.endpointUrl);
+    await provider.listModels(form.value.endpointUrl, form.value.endpointHttpHeaders);
     error.value = null;
     connectionSuccess.value = true;
     setTimeout(() => {
@@ -196,6 +196,7 @@ async function handleCreateProviderProfile() {
     name,
     endpointType: form.value.endpointType,
     endpointUrl: form.value.endpointUrl,
+    endpointHttpHeaders: form.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(form.value.endpointHttpHeaders)) : undefined,
     defaultModelId: form.value.defaultModelId,
     titleModelId: form.value.titleModelId,
     systemPrompt: form.value.systemPrompt,
@@ -209,6 +210,7 @@ async function handleCreateProviderProfile() {
 function handleApplyProviderProfile(providerProfile: ProviderProfile) {
   form.value.endpointType = providerProfile.endpointType;
   form.value.endpointUrl = providerProfile.endpointUrl;
+  form.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders ? JSON.parse(JSON.stringify(providerProfile.endpointHttpHeaders)) : undefined;
   form.value.defaultModelId = providerProfile.defaultModelId;
   form.value.titleModelId = providerProfile.titleModelId;
   form.value.systemPrompt = providerProfile.systemPrompt;
@@ -255,6 +257,17 @@ function handleQuickProviderProfileChange() {
   }
   // Reset select after apply to allow re-selection if needed
   selectedProviderProfileId.value = '';
+}
+
+function addHeader() {
+  if (!form.value.endpointHttpHeaders) form.value.endpointHttpHeaders = [];
+  form.value.endpointHttpHeaders.push(['', '']);
+}
+
+function removeHeader(index: number) {
+  if (form.value.endpointHttpHeaders) {
+    form.value.endpointHttpHeaders.splice(index, 1);
+  }
 }
 
 // Watch for modal open to reset form
@@ -475,6 +488,49 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                     <div class="h-4 mt-1">
                       <p v-if="error" class="text-xs text-red-500 font-bold ml-1 animate-in fade-in slide-in-from-top-1 duration-200">{{ error }}</p>
                     </div>
+                  </div>
+
+                  <!-- Custom HTTP Headers -->
+                  <div class="space-y-4">
+                    <div class="flex items-center justify-between ml-1">
+                      <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Custom HTTP Headers</label>
+                      <button 
+                        @click="addHeader"
+                        type="button"
+                        class="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
+                      >
+                        <Plus class="w-3 h-3" />
+                        Add Header
+                      </button>
+                    </div>
+
+                    <div v-if="form.endpointHttpHeaders && form.endpointHttpHeaders.length > 0" class="space-y-2">
+                      <div 
+                        v-for="(header, index) in form.endpointHttpHeaders" 
+                        :key="index"
+                        class="flex gap-2 animate-in fade-in slide-in-from-left-1 duration-200"
+                      >
+                        <input 
+                          v-model="header[0]"
+                          type="text"
+                          class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                          placeholder="Header Name (e.g. X-API-Key)"
+                        />
+                        <input 
+                          v-model="header[1]"
+                          type="text"
+                          class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                          placeholder="Value"
+                        />
+                        <button 
+                          @click="removeHeader(index)"
+                          class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div v-else class="text-[11px] text-gray-400 italic ml-1">No custom headers configured.</div>
                   </div>
                 </div>
               </section>

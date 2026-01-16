@@ -53,10 +53,11 @@ export interface LLMProvider {
     endpoint: string,
     onChunk: (chunk: string) => void,
     parameters?: LmParameters,
-    signal?: AbortSignal
+    headers?: [string, string][],
+    signal?: AbortSignal,
   ): Promise<void>;
   
-  listModels(endpoint: string, signal?: AbortSignal): Promise<string[]>;
+  listModels(endpoint: string, headers?: [string, string][], signal?: AbortSignal): Promise<string[]>;
 }
 
 interface OpenAICompletionRequest {
@@ -78,6 +79,7 @@ export class OpenAIProvider implements LLMProvider {
     endpoint: string,
     onChunk: (chunk: string) => void,
     parameters?: LmParameters,
+    headers?: [string, string][],
     signal?: AbortSignal,
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
@@ -98,7 +100,10 @@ export class OpenAIProvider implements LLMProvider {
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: [
+        ['Content-Type', 'application/json'],
+        ...(headers || []),
+      ],
       body: JSON.stringify(body),
       signal,
     });
@@ -141,9 +146,9 @@ export class OpenAIProvider implements LLMProvider {
     }
   }
 
-  async listModels(endpoint: string, signal?: AbortSignal): Promise<string[]> {
+  async listModels(endpoint: string, headers?: [string, string][], signal?: AbortSignal): Promise<string[]> {
     const url = `${endpoint.replace(/\/$/, '')}/models`;
-    const response = await fetch(url, { signal });
+    const response = await fetch(url, { signal, headers });
     if (!response.ok) throw new Error(`Failed to fetch models: ${response.statusText}`);
     const rawJson = await response.json();
     // Validate with Zod
@@ -172,6 +177,7 @@ export class OllamaProvider implements LLMProvider {
     endpoint: string,
     onChunk: (chunk: string) => void,
     parameters?: LmParameters,
+    headers?: [string, string][],
     signal?: AbortSignal,
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
@@ -219,7 +225,10 @@ export class OllamaProvider implements LLMProvider {
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: [
+        ['Content-Type', 'application/json'],
+        ...(headers || []),
+      ],
       body: JSON.stringify(body),
       signal,
     });
@@ -285,9 +294,9 @@ export class OllamaProvider implements LLMProvider {
     }
   }
 
-  async listModels(endpoint: string, signal?: AbortSignal): Promise<string[]> {
+  async listModels(endpoint: string, headers?: [string, string][], signal?: AbortSignal): Promise<string[]> {
     const url = `${endpoint.replace(/\/$/, '')}/api/tags`;
-    const response = await fetch(url, { signal });
+    const response = await fetch(url, { signal, headers });
     if (!response.ok) throw new Error(`Failed to fetch models: ${response.statusText}`);
     const rawJson = await response.json();
     // Validate with Zod

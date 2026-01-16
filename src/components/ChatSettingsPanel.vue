@@ -4,7 +4,7 @@ import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import { 
   X, Settings2, 
-  MessageSquareQuote, Layers, Globe, AlertCircle 
+  MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
@@ -43,6 +43,7 @@ function handleQuickProviderProfileChange() {
   if (providerProfile) {
     currentChat.value.endpointType = providerProfile.endpointType;
     currentChat.value.endpointUrl = providerProfile.endpointUrl;
+    currentChat.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders ? JSON.parse(JSON.stringify(providerProfile.endpointHttpHeaders)) : undefined;
     currentChat.value.overrideModelId = providerProfile.defaultModelId;
     currentChat.value.systemPrompt = providerProfile.systemPrompt ? { content: providerProfile.systemPrompt, behavior: 'override' } : undefined;
     currentChat.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;
@@ -50,6 +51,18 @@ function handleQuickProviderProfileChange() {
   error.value = null;
   // Reset select after apply to allow re-selection if needed
   selectedProviderProfileId.value = '';
+}
+
+function addHeader() {
+  if (!currentChat.value) return;
+  if (!currentChat.value.endpointHttpHeaders) currentChat.value.endpointHttpHeaders = [];
+  currentChat.value.endpointHttpHeaders.push(['', '']);
+}
+
+function removeHeader(index: number) {
+  if (currentChat.value?.endpointHttpHeaders) {
+    currentChat.value.endpointHttpHeaders.splice(index, 1);
+  }
 }
 
 async function fetchModels() {
@@ -90,6 +103,7 @@ watch([
 watch([
   () => currentChat.value?.endpointUrl,
   () => currentChat.value?.endpointType,
+  () => currentChat.value?.endpointHttpHeaders,
   () => currentChat.value?.overrideModelId,
   () => currentChat.value?.systemPrompt,
   () => currentChat.value?.lmParameters,
@@ -201,6 +215,48 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
           <div class="h-4 mt-1">
             <p v-if="error" class="text-[10px] text-red-500 font-bold ml-1">{{ error }}</p>
           </div>
+        </div>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between ml-1">
+            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
+            <button 
+              @click="addHeader"
+              type="button"
+              class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
+            >
+              <Plus class="w-2.5 h-2.5" />
+              Add Header
+            </button>
+          </div>
+
+          <div v-if="currentChat.endpointHttpHeaders && currentChat.endpointHttpHeaders.length > 0" class="space-y-2">
+            <div 
+              v-for="(header, index) in currentChat.endpointHttpHeaders" 
+              :key="index"
+              class="flex gap-2"
+            >
+              <input 
+                v-model="header[0]"
+                type="text"
+                class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                placeholder="Name"
+              />
+              <input 
+                v-model="header[1]"
+                type="text"
+                class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
+                placeholder="Value"
+              />
+              <button 
+                @click="removeHeader(index)"
+                class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+          <div v-else class="text-[10px] text-gray-400 italic ml-1">No custom headers.</div>
         </div>
 
         <div class="space-y-2">

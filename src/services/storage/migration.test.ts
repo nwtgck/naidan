@@ -98,6 +98,8 @@ const mockChatGroup: ChatGroup = {
 
 const mockSettings: Settings = {
   endpointType: 'openai',
+  endpointUrl: undefined,
+  endpointHttpHeaders: undefined,
   autoTitleEnabled: true,
   storageType: 'local',
   providerProfiles: [],

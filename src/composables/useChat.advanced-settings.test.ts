@@ -82,7 +82,7 @@ describe('useChat Advanced Settings Resolution', () => {
       expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
     });
 
-    it('uses Profile System Prompt if available and matches endpoint', async () => {
+    it('ignores Profile System Prompt at runtime (Resolution is Chat > Global)', async () => {
       settings.value.providerProfiles = [{
         id: 'p1',
         name: 'Profile 1',
@@ -93,7 +93,8 @@ describe('useChat Advanced Settings Resolution', () => {
 
       await sendMessage('Hi');
       const messages = mockOpenAIChat.mock.calls[0]![0];
-      expect(messages[0]).toEqual({ role: 'system', content: 'Profile Prompt' });
+      // Should find Global Default Prompt, NOT Profile Prompt
+      expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
     });
 
     it('overrides with Chat System Prompt when behavior is override', async () => {
@@ -105,17 +106,7 @@ describe('useChat Advanced Settings Resolution', () => {
       expect(messages[0]).toEqual({ role: 'system', content: 'Chat Custom Prompt' });
     });
 
-    it('appends Chat System Prompt when behavior is append', async () => {
-      currentChat.value!.systemPrompt = { content: 'Chat Extra Prompt', behavior: 'append' };
-
-      await sendMessage('Hi');
-      const messages = mockOpenAIChat.mock.calls[0]![0];
-      expect(messages).toHaveLength(3); // Global System + Chat System + User
-      expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
-      expect(messages[1]).toEqual({ role: 'system', content: 'Chat Extra Prompt' });
-    });
-
-    it('appends Chat System Prompt to Profile Prompt when behavior is append', async () => {
+    it('appends Chat System Prompt to Global Prompt, ignoring Profile at runtime', async () => {
       settings.value.providerProfiles = [{
         id: 'p1',
         name: 'Profile 1',
@@ -127,19 +118,21 @@ describe('useChat Advanced Settings Resolution', () => {
 
       await sendMessage('Hi');
       const messages = mockOpenAIChat.mock.calls[0]![0];
-      expect(messages[0]).toEqual({ role: 'system', content: 'Profile Prompt' });
+      // Should find Global Default Prompt + Chat Extra Prompt
+      expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
       expect(messages[1]).toEqual({ role: 'system', content: 'Chat Extra Prompt' });
     });
   });
 
   describe('LM Parameters Resolution (Deep Merge)', () => {
-    it('merges Chat > Profile > Global parameters correctly', async () => {
+    it('merges Chat > Global parameters correctly, ignoring Profile at runtime', async () => {
       settings.value.lmParameters = {
-        temperature: 0.1, // Will be overridden by profile
-        topP: 0.9,        // Will be preserved
+        temperature: 0.1, 
+        topP: 0.9,        
         maxCompletionTokens: 100, // Will be overridden by chat
       };
 
+      // Profile should be ignored at runtime
       settings.value.providerProfiles = [{
         id: 'p1',
         name: 'P1',
@@ -160,12 +153,13 @@ describe('useChat Advanced Settings Resolution', () => {
       const params = mockOpenAIChat.mock.calls[0]![4];
       
       expect(params).toEqual({
-        temperature: 0.5,         // From Profile
+        temperature: 0.1,         // From Global (Profile 0.5 ignored)
         topP: 0.9,                // From Global
         maxCompletionTokens: 500, // From Chat
-        presencePenalty: 1.0,     // From Profile
         frequencyPenalty: 0.5,    // From Chat
+        // presencePenalty: 1.0 from Profile should be missing
       });
+      expect(params.presencePenalty).toBeUndefined();
     });
   });
 

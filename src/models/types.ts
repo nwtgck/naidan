@@ -84,8 +84,11 @@ export interface Chat {
   updatedAt: number;
   debugEnabled: boolean;
   
+  // TODO: Refactor into atomic endpoint object (e.g. endpoint: { type, url, httpHeaders })
+  // to ensure data consistency and prevent invalid states (e.g. type without URL).
   endpointType?: EndpointType;
   endpointUrl?: string;
+  endpointHttpHeaders?: [string, string][];
   overrideModelId?: string;
   originChatId?: string;
   originMessageId?: string;
@@ -101,11 +104,18 @@ export type SidebarItem =
   | { id: string; type: 'chat'; chat: ChatSummary }
   | { id: string; type: 'chat_group'; chatGroup: ChatGroup };
 
+/**
+ * Provider Profile
+ * Represents a reusable template/preset for connection settings.
+ * Profiles are used to quickly populate global settings or chat overrides,
+ * but are NOT directly referenced during runtime request resolution.
+ */
 export interface ProviderProfile {
   id: string;
   name: string;
   endpointType: EndpointType;
   endpointUrl?: string;
+  endpointHttpHeaders?: [string, string][];
   defaultModelId?: string;
   titleModelId?: string;
   systemPrompt?: string;
@@ -115,6 +125,7 @@ export interface ProviderProfile {
 export interface Settings {
   endpointType: EndpointType;
   endpointUrl?: string;
+  endpointHttpHeaders?: [string, string][];
   defaultModelId?: string;
   titleModelId?: string;
   autoTitleEnabled: boolean;

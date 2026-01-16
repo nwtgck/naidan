@@ -9,18 +9,27 @@ import { ENDPOINT_PRESETS } from '../models/constants';
 import Logo from './Logo.vue';
 import ServerSetupGuide from './ServerSetupGuide.vue';
 import ModelSelector from './ModelSelector.vue';
-import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X } from 'lucide-vue-next';
+import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2 } from 'lucide-vue-next';
 
 const { settings, save, isOnboardingDismissed, onboardingDraft } = useSettings();
 const toast = useToast();
 
 const selectedType = ref<EndpointType>(onboardingDraft.value?.type || 'openai');
 const customUrl = ref(onboardingDraft.value?.url || '');
+const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers || []);
 const isTesting = ref(false);
 const error = ref<string | null>(null);
 const availableModels = ref<string[]>(onboardingDraft.value?.models || []);
 const selectedModel = ref(onboardingDraft.value?.selectedModel || '');
 let abortController: AbortController | null = null;
+
+function addHeader() {
+  customHeaders.value.push(['', '']);
+}
+
+function removeHeader(index: number) {
+  customHeaders.value.splice(index, 1);
+}
 
 const isValidUrl = computed(() => {
   return !!getNormalizedUrl();
@@ -68,7 +77,7 @@ async function handleConnect() {
 
   try {
     const provider = selectedType.value === 'openai' ? new OpenAIProvider() : new OllamaProvider();
-    const models = await provider.listModels(url, abortController.signal);
+    const models = await provider.listModels(url, customHeaders.value, abortController.signal);
 
     if (models.length === 0) {
       throw new Error('No models found at this endpoint.');
@@ -92,6 +101,7 @@ async function handleClose() {
   onboardingDraft.value = { 
     url: customUrl.value, 
     type: selectedType.value,
+    headers: customHeaders.value,
     models: availableModels.value,
     selectedModel: selectedModel.value,
   };
@@ -120,6 +130,7 @@ async function handleFinish() {
       ...settings.value,
       endpointType: selectedType.value,
       endpointUrl: url || undefined,
+      endpointHttpHeaders: customHeaders.value.length > 0 ? customHeaders.value : undefined,
       defaultModelId: selectedModel.value || undefined,
       titleModelId: selectedModel.value || undefined,
     });
@@ -209,6 +220,49 @@ async function handleFinish() {
                   class="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all dark:text-white"
                   @keyup.enter="handleConnect"
                 />
+
+                <!-- Custom HTTP Headers -->
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between ml-1">
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
+                    <button 
+                      @click="addHeader"
+                      type="button"
+                      class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
+                    >
+                      <Plus class="w-2.5 h-2.5" />
+                      Add Header
+                    </button>
+                  </div>
+
+                  <div v-if="customHeaders.length > 0" class="space-y-2 max-h-[120px] overflow-y-auto no-scrollbar">
+                    <div 
+                      v-for="(header, index) in customHeaders" 
+                      :key="index"
+                      class="flex gap-2 animate-in fade-in slide-in-from-left-1 duration-200"
+                    >
+                      <input 
+                        v-model="header[0]"
+                        type="text"
+                        class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
+                        placeholder="Name"
+                      />
+                      <input 
+                        v-model="header[1]"
+                        type="text"
+                        class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
+                        placeholder="Value"
+                      />
+                      <button 
+                        @click="removeHeader(index)"
+                        class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <p v-if="error" class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
                   {{ error }}
                 </p>

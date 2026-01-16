@@ -417,13 +417,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
     await checkBtn.trigger('click');
     await flushPromises();
-    expect(mockListModels).toHaveBeenCalledWith('https://remote-api.com');
+    expect(mockListModels).toHaveBeenCalledWith('https://remote-api.com', undefined);
     mockListModels.mockClear();
 
     // Test localhost URL (SHOULD auto-fetch)
     await urlInput.setValue('http://localhost:11434');
     await flushPromises();
-    expect(mockListModels).toHaveBeenCalledWith('http://localhost:11434');
+    expect(mockListModels).toHaveBeenCalledWith('http://localhost:11434', undefined);
   });
 
   it('shows confirmation behavior for "X" button', async () => {
@@ -850,6 +850,49 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(badge.exists()).toBe(true);
       expect(badge.text()).toBe('Ollama');
       expect(badge.classes()).toContain('uppercase');
+    });
+
+    it('supports adding, removing and applying headers through provider profiles', async () => {
+      const mockProfile = {
+        id: 'p-headers',
+        name: 'Header Profile',
+        endpointType: 'openai' as const,
+        endpointUrl: 'http://headers:8080',
+        endpointHttpHeaders: [['X-From-Profile', 'val-1']] as [string, string][],
+      };
+
+      (useSettings as unknown as Mock).mockReturnValue({
+        settings: { value: { ...mockSettings, providerProfiles: [mockProfile] } },
+        availableModels: { value: [] },
+        isFetchingModels: { value: false },
+        save: mockSave,
+        fetchModels: vi.fn(),
+      });
+
+      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+      await flushPromises();
+
+      // 1. Add a header manually in Connection tab
+      await wrapper.find('button').findAll('span').find(s => s.text().includes('Add Header'))?.trigger('click'); // Wait, let's use a more direct way
+      const vm = wrapper.vm as any;
+      vm.addHeader();
+      await nextTick();
+      
+      vm.form.endpointHttpHeaders[0] = ['X-Manual', 'val-manual'];
+      
+      // 2. Switch to profile with headers
+      const select = wrapper.find('[data-testid="setting-quick-provider-profile-select"]');
+      await select.setValue('p-headers');
+      await select.trigger('change');
+      await flushPromises();
+
+      // Verify headers were overwritten by profile
+      expect(vm.form.endpointHttpHeaders).toEqual([['X-From-Profile', 'val-1']]);
+      
+      // 3. Remove header
+      const removeBtn = wrapper.findAll('button').find(b => b.findComponent({ name: 'Trash2' }).exists() || b.html().includes('lucide-trash2'));
+      await removeBtn?.trigger('click');
+      expect(vm.form.endpointHttpHeaders).toHaveLength(0);
     });
   });
 

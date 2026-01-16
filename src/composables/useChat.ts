@@ -231,6 +231,8 @@ export function useChat() {
     
     const type = chat.endpointType || settings.value.endpointType;
     const url = chat.endpointUrl || settings.value.endpointUrl || '';
+    const headers = chat.endpointHttpHeaders || settings.value.endpointHttpHeaders;
+
     if (!url) {
       activeModelFetches.delete(taskId);
       unregisterLiveInstance(taskId);
@@ -239,7 +241,7 @@ export function useChat() {
     
     try {
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-      const models = await provider.listModels(url);
+      const models = await provider.listModels(url, headers);
       const result = Array.isArray(models) ? models : [];
       if (chat.id === currentChat.value?.id) {
         availableModels.value = result;
@@ -445,14 +447,14 @@ export function useChat() {
     const resolvedModel = assistantNode.modelId || '';
 
     try {
+
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
 
       // --- Resolve System Prompt & Parameters ---
-      const activeProfile = (settings.value.providerProfiles || []).find(p => p.endpointUrl === url && p.endpointType === type);
-      
-      const globalSystemPrompt = activeProfile?.systemPrompt || settings.value.systemPrompt;
+      const globalSystemPrompt = settings.value.systemPrompt;
       const chatPromptObj = chat.systemPrompt;
       
+      const headers = chat.endpointHttpHeaders || settings.value.endpointHttpHeaders;
       const finalMessages: ChatMessage[] = [];
       
       if (chatPromptObj) {
@@ -495,17 +497,18 @@ export function useChat() {
         }
       }
 
-      // 2. Resolve LM Parameters (Deep Merge: Chat > Profile > Global)
+      // 2. Resolve LM Parameters (Deep Merge: Chat > Global)
       const resolvedParams = {
         ...(settings.value.lmParameters || {}),
-        ...(activeProfile?.lmParameters || {}),
         ...(chat.lmParameters || {}),
       };
 
       await provider.chat(finalMessages, resolvedModel, url, (chunk) => {
+
+      
         assistantNode.content += chunk;
         if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-      }, resolvedParams, controller.signal);
+      }, resolvedParams, headers, controller.signal);
 
       processThinking(assistantNode);
       chat.updatedAt = Date.now();
@@ -725,6 +728,8 @@ export function useChat() {
 
     const type = chat.endpointType || settings.value.endpointType;
     const url = chat.endpointUrl || settings.value.endpointUrl || '';
+    const headers = chat.endpointHttpHeaders || settings.value.endpointHttpHeaders;
+
     if (!url) {
       activeTitleGenerations.delete(taskId);
       unregisterLiveInstance(taskId);
@@ -761,7 +766,7 @@ export function useChat() {
 
 Message: "${content}"`,
       };
-      await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; }, {}, signal);
+      await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; }, {}, headers, signal);
       const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
       
       // Only apply if we got a title AND (it was a manual regeneration OR it's still null)

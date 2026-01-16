@@ -163,23 +163,30 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     root = { items: [messageNodeToDomain(dto.root as MessageNodeDto)] };
   }
 
+  const { 
+    id, title, groupId, currentLeafId, modelId, createdAt, updatedAt, 
+    debugEnabled, endpoint, overrideModelId, originChatId, originMessageId, 
+    systemPrompt, lmParameters 
+  } = dto;
+
   return {
-    id: dto.id,
-    title: dto.title,
-    groupId: dto.groupId,
+    id,
+    title,
+    groupId,
     root,
-    currentLeafId: dto.currentLeafId,
-    modelId: dto.modelId,
-    createdAt: dto.createdAt,
-    updatedAt: dto.updatedAt,
-    debugEnabled: dto.debugEnabled ?? false,
-    endpointType: dto.endpointType as EndpointType | undefined,
-    endpointUrl: dto.endpointUrl,
-    overrideModelId: dto.overrideModelId,
-    originChatId: dto.originChatId,
-    originMessageId: dto.originMessageId,
-    systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
-    lmParameters: dto.lmParameters,
+    currentLeafId,
+    modelId,
+    createdAt,
+    updatedAt,
+    debugEnabled: debugEnabled ?? false,
+    endpointType: endpoint?.type as EndpointType | undefined,
+    endpointUrl: endpoint?.url,
+    endpointHttpHeaders: endpoint?.httpHeaders,
+    overrideModelId,
+    originChatId,
+    originMessageId,
+    systemPrompt: systemPrompt as SystemPrompt | undefined,
+    lmParameters,
   };
 };
 
@@ -190,25 +197,36 @@ export const chatMetaToSummary = (dto: ChatMetaDto): ChatSummary => ({
   groupId: dto.groupId,
 });
 
-export const chatToDto = (domain: Chat, index: number): ChatDto => ({
-  id: domain.id,
-  title: domain.title,
-  groupId: domain.groupId,
-  order: index,
-  root: { items: domain.root.items.map(messageNodeToDto) },
-  currentLeafId: domain.currentLeafId,
-  modelId: domain.modelId,
-  createdAt: domain.createdAt,
-  updatedAt: domain.updatedAt,
-  debugEnabled: domain.debugEnabled,
-  endpointType: domain.endpointType as EndpointTypeDto | undefined,
-  endpointUrl: domain.endpointUrl,
-  overrideModelId: domain.overrideModelId,
-  originChatId: domain.originChatId,
-  originMessageId: domain.originMessageId,
-  systemPrompt: domain.systemPrompt,
-  lmParameters: domain.lmParameters,
-});
+export const chatToDto = (domain: Chat, index: number): ChatDto => {
+  const { 
+    id, title, groupId, root, currentLeafId, modelId, createdAt, updatedAt, 
+    debugEnabled, endpointType, endpointUrl, endpointHttpHeaders, 
+    overrideModelId, originChatId, originMessageId, systemPrompt, lmParameters 
+  } = domain;
+
+  return {
+    id,
+    title,
+    groupId,
+    order: index,
+    root: { items: root.items.map(messageNodeToDto) },
+    currentLeafId,
+    modelId,
+    createdAt,
+    updatedAt,
+    debugEnabled,
+    endpoint: endpointType ? {
+      type: endpointType as EndpointTypeDto,
+      url: endpointUrl,
+      httpHeaders: endpointHttpHeaders,
+    } : undefined,
+    overrideModelId,
+    originChatId,
+    originMessageId,
+    systemPrompt,
+    lmParameters,
+  };
+};
 
 /**
  * Builds the hierarchical Sidebar structure from raw DTOs.
@@ -247,14 +265,52 @@ export const buildSidebarItemsFromDtos = (groupDtos: ChatGroupDto[], allChatMeta
     });
 };
 
-export const settingsToDomain = (dto: SettingsDto): Settings => ({
-  ...dto,
-  endpointType: dto.endpointType as EndpointType,
-  storageType: dto.storageType as StorageType,
-});
+export const settingsToDomain = (dto: SettingsDto): Settings => {
+  const { endpoint, providerProfiles, storageType, ...rest } = dto;
+  return {
+    ...rest,
+    endpointType: endpoint.type as EndpointType,
+    endpointUrl: endpoint.url,
+    endpointHttpHeaders: endpoint.httpHeaders,
+    storageType: storageType as StorageType,
+    providerProfiles: providerProfiles?.map(p => {
+      const { endpoint: pEndpoint, ...pRest } = p;
+      return {
+        ...pRest,
+        endpointType: pEndpoint.type as EndpointType,
+        endpointUrl: pEndpoint.url,
+        endpointHttpHeaders: pEndpoint.httpHeaders,
+      };
+    }) ?? [],
+  };
+};
 
-export const settingsToDto = (domain: Settings): SettingsDto => ({
-  ...domain,
-  endpointType: domain.endpointType as EndpointTypeDto,
-  storageType: domain.storageType as StorageTypeDto,
-});
+export const settingsToDto = (domain: Settings): SettingsDto => {
+  const { 
+    endpointType, endpointUrl, endpointHttpHeaders, 
+    storageType, providerProfiles, ...rest 
+  } = domain;
+  return {
+    ...rest,
+    endpoint: {
+      type: endpointType as EndpointTypeDto,
+      url: endpointUrl,
+      httpHeaders: endpointHttpHeaders,
+    },
+    storageType: storageType as StorageTypeDto,
+    providerProfiles: providerProfiles.map(p => {
+      const { 
+        endpointType: pType, endpointUrl: pUrl, endpointHttpHeaders: pHeaders, 
+        ...pRest 
+      } = p;
+      return {
+        ...pRest,
+        endpoint: {
+          type: pType as EndpointTypeDto,
+          url: pUrl,
+          httpHeaders: pHeaders,
+        },
+      };
+    }),
+  };
+};

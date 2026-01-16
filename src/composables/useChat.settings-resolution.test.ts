@@ -77,7 +77,7 @@ describe('useChat Settings Resolution Policy', () => {
 
     // Send first message using Global A
     await sendMessage('Message 1');
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'global-gpt', 'http://endpoint-a', expect.anything(), expect.anything(), expect.anything());
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'global-gpt', 'http://endpoint-a', expect.anything(), expect.anything(), undefined, expect.anything());
 
     // 2. Change to Setting B
     settings.value.endpointUrl = 'http://endpoint-b';
@@ -85,7 +85,7 @@ describe('useChat Settings Resolution Policy', () => {
 
     // Send second message in SAME chat - should now use Global B
     await sendMessage('Message 2');
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'model-b', 'http://endpoint-b', expect.anything(), expect.anything(), expect.anything());
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'model-b', 'http://endpoint-b', expect.anything(), expect.anything(), undefined, expect.anything());
     
     // 3. Verify that the chat object itself didn't "lock in" model-b
     expect(currentChat.value.modelId).toBe('');
@@ -100,12 +100,12 @@ describe('useChat Settings Resolution Policy', () => {
     });
 
     await sendMessage('M1');
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'pinned-model', 'http://global-openai', expect.anything(), expect.anything(), expect.anything());
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'pinned-model', 'http://global-openai', expect.anything(), expect.anything(), undefined, expect.anything());
 
     // Change global model - should NOT affect pinned chat
     settings.value.defaultModelId = 'new-global-gpt';
     await sendMessage('M2');
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'pinned-model', 'http://global-openai', expect.anything(), expect.anything(), expect.anything());
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'pinned-model', 'http://global-openai', expect.anything(), expect.anything(), undefined, expect.anything());
   });
 
   it('Policy: Respect chat-level endpoint settings while following global model if not pinned', async () => {
@@ -119,12 +119,12 @@ describe('useChat Settings Resolution Policy', () => {
 
     // Global is OpenAI, but chat endpoint is Ollama. Model should be llama-global because Ollama list results in llama-global
     await sendMessage('M1');
-    expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.anything(), 'llama-global', 'http://pinned-ollama', expect.anything(), expect.anything(), expect.anything());
+    expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.anything(), 'llama-global', 'http://pinned-ollama', expect.anything(), expect.anything(), undefined, expect.anything());
 
     // Change global model to something available in Ollama
     settings.value.defaultModelId = 'llama-other';
     await sendMessage('M2');
-    expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.anything(), 'llama-other', 'http://pinned-ollama', expect.anything(), expect.anything(), expect.anything());
+    expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.anything(), 'llama-other', 'http://pinned-ollama', expect.anything(), expect.anything(), undefined, expect.anything());
   });
 
   it('Policy: Dynamic resolution when preferred model is unavailable', async () => {
@@ -137,6 +137,23 @@ describe('useChat Settings Resolution Policy', () => {
     mockOpenAIModels.mockResolvedValue(['first-available', 'second']);
 
     await sendMessage('M1');
-    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'first-available', 'http://global-openai', expect.anything(), expect.anything(), expect.anything());
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'first-available', 'http://global-openai', expect.anything(), expect.anything(), undefined, expect.anything());
+  });
+
+  it('Policy: Resolve headers hierarchically (Chat > Global)', async () => {
+    // 1. Global only
+    settings.value.endpointHttpHeaders = [['X-Global', '1']];
+    currentChat.value = reactive({
+      id: 'chat-h', title: 'Header Test', root: { items: [] },
+      modelId: 'gpt-4', createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    });
+
+    await sendMessage('G');
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), expect.any(String), expect.any(String), expect.anything(), expect.anything(), [['X-Global', '1']], expect.anything());
+
+    // 2. Chat Override
+    currentChat.value.endpointHttpHeaders = [['X-Chat', '3']];
+    await sendMessage('C');
+    expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), expect.any(String), expect.any(String), expect.anything(), expect.anything(), [['X-Chat', '3']], expect.anything());
   });
 });

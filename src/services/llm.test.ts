@@ -37,6 +37,48 @@ describe('OpenAIProvider', () => {
 
     expect(onChunk).toHaveBeenCalledWith('Hello');
   });
+
+  it('should include custom headers in chat request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: vi.fn()
+            .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n') })
+            .mockResolvedValueOnce({ done: true }),
+        }),
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const headers: [string, string][] = [['X-Custom-Header', 'test-value']];
+    await provider.chat([], 'gpt-3.5', 'http://localhost:8282/v1', vi.fn(), {}, headers);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/chat/completions'),
+      expect.objectContaining({
+        headers: expect.arrayContaining([['X-Custom-Header', 'test-value']]),
+      })
+    );
+  });
+
+  it('should include custom headers in listModels request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: [{ id: 'm1' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const headers: [string, string][] = [['Authorization', 'Bearer secret']];
+    await provider.listModels('http://localhost:8282/v1', headers);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/models'),
+      expect.objectContaining({
+        headers: headers,
+      })
+    );
+  });
 });
 
 describe('OllamaProvider', () => {
@@ -155,6 +197,48 @@ describe('OllamaProvider', () => {
 
     const calls = onChunk.mock.calls.map(c => c[0]);
     expect(calls).toEqual(['<think>', 'thought', '</think>']);
+  });
+
+  it('should include custom headers in chat request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: vi.fn()
+            .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"message":{"content":"Hi"},"done":true}\n') })
+            .mockResolvedValueOnce({ done: true }),
+        }),
+      },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const headers: [string, string][] = [['X-Custom', 'ollama-test']];
+    await provider.chat([], 'llama3', 'http://localhost:11434', vi.fn(), {}, headers);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/chat'),
+      expect.objectContaining({
+        headers: expect.arrayContaining([['X-Custom', 'ollama-test']]),
+      })
+    );
+  });
+
+  it('should include custom headers in listModels request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ models: [{ name: 'm1' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const headers: [string, string][] = [['X-Header', 'val']];
+    await provider.listModels('http://localhost:11434', headers);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/tags'),
+      expect.objectContaining({
+        headers: headers,
+      })
+    );
   });
 
   afterEach(() => {

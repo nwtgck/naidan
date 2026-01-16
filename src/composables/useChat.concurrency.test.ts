@@ -102,6 +102,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     vi.clearAllMocks();
     currentChat.value = null;
     rootItems.value = [];
+    activeGenerations.clear();
     mockRootItems.length = 0;
     mockChatStorage.clear();
     clearEvents();
@@ -468,7 +469,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     
     const pA = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, _on, _p, signal) => {
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, _on, _p, _h, signal) => {
       await pA;
       if (signal?.aborted) throw new Error('Aborted');
     });
@@ -481,7 +482,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatB = currentChat.value!;
     const chatBId = chatB.id;
                             
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk, _p, signal) => {
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk, _p, _h, signal) => {
                             
       onChunk('B-Response');
                             
