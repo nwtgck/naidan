@@ -18,12 +18,11 @@ const chatStore = useChat();
 const {
   currentChat,
   fetchingModels,
-  saveCurrentChat,
+  saveChat,
 } = chatStore;
 const { settings } = useSettings();
 
 const selectedProviderProfileId = ref('');
-const connectionSuccess = ref(false);
 const error = ref<string | null>(null);
 
 function isLocalhost(url: string | undefined) {
@@ -54,16 +53,16 @@ function handleQuickProviderProfileChange() {
 }
 
 async function fetchModels() {
-  error.value = null;
-  try {
-    await chatStore.fetchAvailableModels();
-    connectionSuccess.value = true;
-    setTimeout(() => {
-      connectionSuccess.value = false;
-    }, 3000);
-  } catch (err) {
-    console.error(err);
-    error.value = 'Connection failed. Check URL or provider.';
+  if (currentChat.value) {
+    error.value = null;
+    try {
+      const models = await chatStore.fetchAvailableModels(currentChat.value);
+      if (models.length === 0) {
+        error.value = 'No models found. Check URL or provider.';
+      }
+    } catch (e) {
+      error.value = 'Connection failed. Check URL or provider.';
+    }
   }
 }
 
@@ -81,6 +80,7 @@ watch([
   () => currentChat.value?.endpointUrl, 
   () => currentChat.value?.endpointType,
 ], ([url]) => {
+  error.value = null;
   if (url && isLocalhost(url as string)) {
     fetchModels();
   }
@@ -94,7 +94,9 @@ watch([
   () => currentChat.value?.systemPrompt,
   () => currentChat.value?.lmParameters,
 ], () => {
-  saveCurrentChat();
+  if (currentChat.value) {
+    saveChat(currentChat.value);
+  }
 }, { deep: true });
 
 function updateSystemPromptContent(content: string) {
@@ -190,6 +192,7 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
           <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
           <input 
             v-model="currentChat.endpointUrl"
+            @input="error = null"
             type="text"
             class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
             :placeholder="settings.endpointUrl"

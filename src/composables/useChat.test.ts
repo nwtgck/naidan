@@ -153,7 +153,7 @@ describe('useChat Composable Logic', () => {
     vi.mocked(storageService.listChats).mockResolvedValue([]);
 
     // Fork at message 'm1'
-    const newId = await forkChat('m1');
+    const newId = await forkChat(currentChat.value!, 'm1');
 
     expect(newId).toBeDefined();
     expect(storageService.saveChat).toHaveBeenCalledWith(expect.objectContaining({
@@ -193,7 +193,7 @@ describe('useChat Composable Logic', () => {
     
     vi.mocked(storageService.saveChat).mockResolvedValue();
 
-    await forkChat('m1');
+    await forkChat(currentChat.value!, 'm1');
 
     const savedChat = vi.mocked(storageService.saveChat).mock.calls[0]?.[0] as Chat;
     const clonedNode = savedChat?.root.items[0];
@@ -594,7 +594,7 @@ describe('useChat Composable Logic', () => {
       onChunk(' Title');
     });
 
-    const promise = generateChatTitle();
+    const promise = generateChatTitle(currentChat.value!);
     expect(generatingTitle.value).toBe(true);
     await promise;
     expect(generatingTitle.value).toBe(false);

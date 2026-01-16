@@ -24,7 +24,7 @@ describe('ChatArea Design Specifications', () => {
       availableModels: ref([]),
       fetchingModels: ref(false),
       fetchAvailableModels: vi.fn(),
-      saveCurrentChat: vi.fn(),
+      saveChat: vi.fn(),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),

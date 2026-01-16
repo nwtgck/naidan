@@ -16,8 +16,8 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 describe('ChatSettingsPanel.vue', () => {
-  const mockFetchAvailableModels = vi.fn();
-  const mockSaveCurrentChat = vi.fn();
+  const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-1', 'model-2']);
+  const mockSaveChat = vi.fn();
   const mockCurrentChat = ref<Record<string, unknown> | null>(null);
 
   const mockSettings = reactive({
@@ -68,7 +68,7 @@ describe('ChatSettingsPanel.vue', () => {
       availableModels: ref(['model-1', 'model-2']),
       fetchingModels: ref(false),
       fetchAvailableModels: mockFetchAvailableModels,
-      saveCurrentChat: mockSaveCurrentChat,
+      saveChat: mockSaveChat,
     });
 
     (useSettings as unknown as Mock).mockReturnValue({
@@ -94,7 +94,7 @@ describe('ChatSettingsPanel.vue', () => {
   it('triggers model fetch on mount if URL is localhost', () => {
     mockSettings.value.endpointUrl = 'http://localhost:11434';
     mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
-    expect(mockFetchAvailableModels).toHaveBeenCalled();
+    expect(mockFetchAvailableModels).toHaveBeenCalledWith(mockCurrentChat.value);
   });
 
   it('does not trigger model fetch on mount if URL is not localhost', () => {
@@ -112,7 +112,7 @@ describe('ChatSettingsPanel.vue', () => {
       const ollamaBtn = wrapper.findAll('button').find(b => b.text() === 'Ollama (local)');
       await ollamaBtn?.trigger('click');
 
-      expect(mockFetchAvailableModels).toHaveBeenCalled();
+      expect(mockFetchAvailableModels).toHaveBeenCalledWith(mockCurrentChat.value);
     });
 
     it('triggers fetch when manually entering a localhost URL', async () => {
@@ -121,12 +121,12 @@ describe('ChatSettingsPanel.vue', () => {
       const urlInput = wrapper.find('input[type="text"]');
       
       await urlInput.setValue('http://127.0.0.1:1234');
-      expect(mockFetchAvailableModels).toHaveBeenCalled();
+      expect(mockFetchAvailableModels).toHaveBeenCalledWith(mockCurrentChat.value);
     });
   });
 
   describe('Persistence', () => {
-    it('triggers saveCurrentChat when endpoint settings change', async () => {
+    it('triggers saveChat when endpoint settings change', async () => {
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
       const urlInput = wrapper.find('input[type="text"]');
       
@@ -134,30 +134,30 @@ describe('ChatSettingsPanel.vue', () => {
       // Wait for watch to trigger
       await flushPromises();
       
-      expect(mockSaveCurrentChat).toHaveBeenCalled();
+      expect(mockSaveChat).toHaveBeenCalledWith(mockCurrentChat.value);
     });
 
-    it('triggers saveCurrentChat when model override changes', async () => {
+    it('triggers saveChat when model override changes', async () => {
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
       const selector = wrapper.getComponent({ name: 'ModelSelector' });
       
       await selector.vm.$emit('update:modelValue', 'model-1');
       await flushPromises();
       
-      expect(mockSaveCurrentChat).toHaveBeenCalled();
+      expect(mockSaveChat).toHaveBeenCalledWith(mockCurrentChat.value);
     });
 
-    it('triggers saveCurrentChat when a preset is applied', async () => {
+    it('triggers saveChat when a preset is applied', async () => {
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
       const ollamaBtn = wrapper.findAll('button').find(b => b.text() === 'Ollama (local)');
       
       await ollamaBtn?.trigger('click');
       await flushPromises();
       
-      expect(mockSaveCurrentChat).toHaveBeenCalled();
+      expect(mockSaveChat).toHaveBeenCalledWith(mockCurrentChat.value);
     });
 
-    it('triggers saveCurrentChat when a provider profile is applied', async () => {
+    it('triggers saveChat when a provider profile is applied', async () => {
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
       const select = wrapper.find('select'); // First select is Profile Switcher
       
@@ -165,7 +165,7 @@ describe('ChatSettingsPanel.vue', () => {
       await select.trigger('change');
       await flushPromises();
       
-      expect(mockSaveCurrentChat).toHaveBeenCalled();
+      expect(mockSaveChat).toHaveBeenCalledWith(mockCurrentChat.value);
     });
   });
 
@@ -286,7 +286,7 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockCurrentChat.value!.lmParameters).toBeUndefined();
     });
 
-    it('triggers saveCurrentChat when restoring to global settings', async () => {
+    it('triggers saveChat when restoring to global settings', async () => {
       mockCurrentChat.value!.endpointType = 'ollama';
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
       const restoreBtn = wrapper.find('[data-testid="chat-setting-restore-defaults"]');
@@ -294,7 +294,7 @@ describe('ChatSettingsPanel.vue', () => {
       await restoreBtn.trigger('click');
       await flushPromises();
       
-      expect(mockSaveCurrentChat).toHaveBeenCalled();
+      expect(mockSaveChat).toHaveBeenCalledWith(mockCurrentChat.value);
     });
   });
 
@@ -357,6 +357,7 @@ describe('ChatSettingsPanel.vue', () => {
       // Act: Change URL
       const urlInput = wrapper.find('input[type="text"]');
       await urlInput.setValue('http://localhost:9999');
+      await flushPromises();
       
       // Assert: Error should be cleared by the input watcher/handler
       expect(wrapper.text()).not.toContain('Connection failed');
@@ -396,7 +397,7 @@ describe('ChatSettingsPanel.vue', () => {
         availableModels: ref([]),
         fetchingModels: ref(true),
         fetchAvailableModels: mockFetchAvailableModels,
-        saveCurrentChat: mockSaveCurrentChat,
+        saveChat: mockSaveChat,
       });
 
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
@@ -426,7 +427,7 @@ describe('ChatSettingsPanel.vue', () => {
       // In the template, it was used for the old button's class and Check icon.
       // Since those elements are gone, we verify the internal state or side effect if any.
       // For now, let's at least check that fetch was called.
-      expect(mockFetchAvailableModels).toHaveBeenCalled();
+      expect(mockFetchAvailableModels).toHaveBeenCalledWith(mockCurrentChat.value);
     });
 
     it('shows error message when refresh fails', async () => {

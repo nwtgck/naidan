@@ -118,8 +118,8 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatBId = chatB.id;
 
     mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-       await new Promise(r => setTimeout(r, 100));
-       onChunk('B-Response');
+      await new Promise(r => setTimeout(r, 100));
+      onChunk('B-Response');
     });
 
     const sendPromiseB = sendMessage('Start B');

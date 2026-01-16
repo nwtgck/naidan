@@ -224,7 +224,9 @@ function scrollToBottom() {
 defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight, attachments, input });
 
 async function fetchModels() {
-  await chatStore.fetchAvailableModels();
+  if (currentChat.value) {
+    await chatStore.fetchAvailableModels(currentChat.value);
+  }
 }
 
 async function handleSend() {
@@ -257,7 +259,8 @@ function handleSwitchVersion(messageId: string) {
 }
 
 async function handleFork(messageId: string) {
-  const newId = await chatStore.forkChat(messageId);
+  if (!currentChat.value) return;
+  const newId = await chatStore.forkChat(currentChat.value, messageId);
   if (newId) {
     router.push(`/chat/${newId}`);
   }
@@ -380,7 +383,7 @@ onUnmounted(() => {
               <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button 
                 v-if="activeMessages.length > 0"
-                @click="chatStore.generateChatTitle()"
+                @click="currentChat && chatStore.generateChatTitle(currentChat)"
                 class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50"
                 :class="{ 'animate-spin': generatingTitle }"
                 :disabled="generatingTitle || streaming"
@@ -492,7 +495,7 @@ onUnmounted(() => {
               v-for="msg in activeMessages" 
               :key="msg.id" 
               :message="msg" 
-              :siblings="chatStore.getSiblings(msg.id)"
+              :siblings="currentChat ? chatStore.getSiblings(currentChat, msg.id) : []"
               @fork="handleFork"
               @edit="handleEdit"
               @switch-version="handleSwitchVersion"
