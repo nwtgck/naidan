@@ -570,3 +570,35 @@ describe('MessageItem States', () => {
     expect(wrapper.emitted('regenerate')?.[0]).toEqual([message.id]);
   });
 });
+
+describe('MessageItem Edit Labels', () => {
+  const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
+    id: uuidv7(),
+    role,
+    content: 'Some content',
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  it('shows "Send & Branch" when editing a user message', async () => {
+    const message = createMessage('user');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Enter edit mode
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    
+    const saveBtn = wrapper.find('[data-testid="save-edit"]');
+    expect(saveBtn.text()).toContain('Send & Branch');
+  });
+
+  it('shows "Update & Branch" when editing an assistant message', async () => {
+    const message = createMessage('assistant');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Enter edit mode
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    
+    const saveBtn = wrapper.find('[data-testid="save-edit"]');
+    expect(saveBtn.text()).toContain('Update & Branch');
+  });
+});

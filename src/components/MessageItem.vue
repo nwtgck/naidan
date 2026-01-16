@@ -440,7 +440,7 @@ function formatSize(bytes?: number): string {
         <div class="flex justify-end gap-2 mt-2">
           <button @click="handleCancelEdit" class="px-4 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">Cancel</button>
           <button @click="handleSaveEdit" class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
-            <span>Send & Branch</span>
+            <span>{{ isUser ? 'Send & Branch' : 'Update & Branch' }}</span>
             <span class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
           </button>
         </div>
