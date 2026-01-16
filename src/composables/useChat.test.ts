@@ -529,6 +529,65 @@ describe('useChat Composable Logic', () => {
     expect(items.value[2]?.id).toBe('chat:c1'); 
   });
 
+  describe('New Chat Insertion Order', () => {
+    it('should insert a new chat AFTER leading groups and BEFORE the first individual chat', async () => {
+      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+      const g2 = { id: 'g2', name: 'G2', isCollapsed: false, updatedAt: 0, items: [] };
+      const c1 = { id: 'c1', title: 'C1', updatedAt: 0 };
+      
+      const initial: SidebarItem[] = [
+        { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
+        { id: 'chat_group:g2', type: 'chat_group', chatGroup: g2 },
+        { id: 'chat:c1', type: 'chat', chat: c1 },
+      ];
+      mockRootItems.push(...initial);
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat();
+
+      expect(rootItems.value).toHaveLength(4);
+      expect(rootItems.value[0]?.id).toBe('chat_group:g1');
+      expect(rootItems.value[1]?.id).toBe('chat_group:g2');
+      expect(rootItems.value[2]?.type).toBe('chat');
+      expect(rootItems.value[2]?.id).not.toBe('chat:c1');
+      expect(rootItems.value[3]?.id).toBe('chat:c1');
+    });
+
+    it('should insert at the very top if the first item is a chat', async () => {
+      const c1 = { id: 'c1', title: 'C1', updatedAt: 0 };
+      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+      
+      const initial: SidebarItem[] = [
+        { id: 'chat:c1', type: 'chat', chat: c1 },
+        { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
+      ];
+      mockRootItems.push(...initial);
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat();
+
+      expect(rootItems.value[0]?.type).toBe('chat');
+      expect(rootItems.value[0]?.id).not.toBe('chat:c1');
+      expect(rootItems.value[1]?.id).toBe('chat:c1');
+    });
+
+    it('should insert at the end if there are only groups', async () => {
+      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+      
+      const initial: SidebarItem[] = [
+        { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
+      ];
+      mockRootItems.push(...initial);
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat();
+
+      expect(rootItems.value).toHaveLength(2);
+      expect(rootItems.value[0]?.id).toBe('chat_group:g1');
+      expect(rootItems.value[1]?.type).toBe('chat');
+    });
+  });
+
   it('should prepend a new chat group to the rootItems list', async () => {
     const initial: SidebarItem[] = [
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },

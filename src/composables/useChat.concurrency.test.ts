@@ -314,8 +314,89 @@ describe('useChat Concurrency & Stale State Protection', () => {
     resolveA!();
     await sendA;
 
-    // 5. Verify title preserved
-    // EXPECTED TO FAIL until fixed
+    // Verify title preserved
     expect(mockChatStorage.get(chatAId)?.title).toBe('New Title');
+  });
+
+  it('should not overwrite a manual rename with an auto-generated title', async () => {
+    const { createNewChat, currentChat, sendMessage, renameChat, activeGenerations } = useChat();
+    mockSettings.value.autoTitleEnabled = true;
+
+    // 1. Setup Chat A
+    await createNewChat();
+    const chatA = currentChat.value!;
+    const chatAId = chatA.id;
+    chatA.title = null;
+
+    // Mock response + slow title generation
+    let resolveTitle: () => void;
+    const titleP = new Promise<void>(r => resolveTitle = r);
+    
+    mockLlmChat
+      .mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+        onChunk('Response');
+      })
+      .mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+        await titleP;
+        onChunk('Auto Title');
+      });
+
+    // 2. Start generation (response finishes, title gen starts and waits)
+    const sendPromise = sendMessage('Topic');
+    await vi.waitUntil(() => mockLlmChat.mock.calls.length >= 2); // Wait for title gen to start
+
+    // 3. User manually renames while title gen is "calculating"
+    await renameChat(chatAId, 'User Manual Title');
+    expect(chatA.title).toBe('User Manual Title');
+
+    // 4. Let auto-title finish
+    resolveTitle!();
+    await sendPromise;
+    await vi.waitUntil(() => !activeGenerations.has(chatAId));
+
+    // 5. Verify manual title was NOT overwritten
+    expect(chatA.title).toBe('User Manual Title');
+    expect(mockChatStorage.get(chatAId)?.title).toBe('User Manual Title');
+  });
+
+  it('should maintain the latest group ID even after multiple moves during background generation', async () => {
+    const { createNewChat, currentChat, sendMessage, persistSidebarStructure, activeGenerations } = useChat();
+
+    // 1. Setup Chat A in Group 1
+    await createNewChat();
+    const chatA = currentChat.value!;
+    const chatAId = chatA.id;
+    
+    let resolveA: () => void;
+    const p = new Promise<void>(r => resolveA = r);
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      onChunk('Thinking...');
+      await p;
+    });
+
+    const sendPromise = sendMessage('Moving target');
+    await vi.waitUntil(() => activeGenerations.has(chatAId));
+
+    // 2. Move to Group B
+    const structureB: SidebarItem[] = [
+      { id: 'g-b', type: 'chat_group', chatGroup: { id: 'g-b', name: 'B', items: [{ id: `chat:${chatAId}`, type: 'chat', chat: { id: chatAId, title: 'A', updatedAt: 0, groupId: 'g-b' } }], isCollapsed: false, updatedAt: 0 } }
+    ];
+    await persistSidebarStructure(structureB);
+    expect(chatA.groupId).toBe('g-b');
+
+    // 3. Move to Group C
+    const structureC: SidebarItem[] = [
+      { id: 'g-c', type: 'chat_group', chatGroup: { id: 'g-c', name: 'C', items: [{ id: `chat:${chatAId}`, type: 'chat', chat: { id: chatAId, title: 'A', updatedAt: 0, groupId: 'g-c' } }], isCollapsed: false, updatedAt: 0 } }
+    ];
+    await persistSidebarStructure(structureC);
+    expect(chatA.groupId).toBe('g-c');
+
+    // 4. Finish generation
+    resolveA!();
+    await sendPromise;
+
+    // 5. Verify it stayed in the LATEST group (C)
+    expect(chatA.groupId).toBe('g-c');
+    expect(mockChatStorage.get(chatAId)?.groupId).toBe('g-c');
   });
 });

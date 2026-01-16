@@ -12,13 +12,13 @@ import {
   Plus, Trash2, Settings as SettingsIcon, 
   Pencil, Folder, FolderPlus, 
   ChevronDown, ChevronRight, Check, X,
-  Bot, PanelLeft, SquarePen,
+  Bot, PanelLeft, SquarePen, Loader2,
 } from 'lucide-vue-next';
 import { useLayout } from '../composables/useLayout';
 
 const chatStore = useChat();
 const { 
-  currentChat, chatGroups, chats,
+  currentChat, chatGroups, chats, activeGenerations,
 } = chatStore;
 
 const { settings, isFetchingModels, save: saveSettings } = useSettings();
@@ -335,9 +335,12 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                             />
                             <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'New Chat' }}</span>
                           </div>
-                          <div v-if="editingId !== nestedItem.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                            <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
-                            <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
+                          <div class="flex items-center gap-1">
+                            <Loader2 v-if="activeGenerations.has(nestedItem.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                            <div v-if="editingId !== nestedItem.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                              <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
+                              <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -373,9 +376,12 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                   />
                   <span v-else class="truncate text-sm">{{ element.chat.title || 'New Chat' }}</span>
                 </div>
-                <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                  <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
-                  <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
+                <div class="flex items-center gap-1">
+                  <Loader2 v-if="activeGenerations.has(element.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                  <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                    <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
+                    <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
+                  </div>
                 </div>
               </div>
             </div>

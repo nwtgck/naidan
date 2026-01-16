@@ -8,11 +8,40 @@ import { useConfirm } from './useConfirm';
 
 const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
+
+// Registry for chats with active background tasks (streaming, titling, etc.)
+// This ensures we keep the reactive instance alive and synchronized across the UI.
+const liveChatRegistry = reactive(new Map<string, Chat>());
 const activeGenerations = reactive(new Map<string, { controller: AbortController, chat: Chat }>());
+const activeTitleGenerations = reactive(new Set<string>());
+const activeModelFetches = reactive(new Set<string>());
+
 const streaming = computed(() => !!currentChat.value && activeGenerations.has(currentChat.value.id));
-const generatingTitle = ref(false);
+const generatingTitle = computed(() => !!currentChat.value && activeTitleGenerations.has(currentChat.value.id));
+const fetchingModels = computed(() => {
+  if (!currentChat.value) return activeModelFetches.has('global');
+  return activeModelFetches.has(currentChat.value.id) || activeModelFetches.has('global');
+});
+
+const creatingChat = ref(false);
 const availableModels = ref<string[]>([]);
-const fetchingModels = ref(false);
+
+// --- Registry Helpers ---
+
+function registerLiveInstance(chat: Chat) {
+  liveChatRegistry.set(chat.id, chat);
+}
+
+function unregisterLiveInstance(chatId: string) {
+  // Only remove if no tasks are pending for this chat
+  const hasGeneration = activeGenerations.has(chatId);
+  const hasTitleGen = activeTitleGenerations.has(chatId);
+  const hasModelFetch = activeModelFetches.has(chatId);
+  
+  if (!hasGeneration && !hasTitleGen && !hasModelFetch) {
+    liveChatRegistry.delete(chatId);
+  }
+}
 
 // --- Helpers ---
 
@@ -186,11 +215,18 @@ export function useChat() {
   };
 
   const fetchAvailableModels = async (chat: Chat) => {
+    const taskId = chat.id;
+    activeModelFetches.add(taskId);
+    registerLiveInstance(chat);
+    
     const type = chat.endpointType || settings.value.endpointType;
     const url = chat.endpointUrl || settings.value.endpointUrl || '';
-    if (!url) return [];
+    if (!url) {
+      activeModelFetches.delete(taskId);
+      unregisterLiveInstance(taskId);
+      return [];
+    }
     
-    fetchingModels.value = true;
     try {
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
       const models = await provider.listModels(url);
@@ -203,7 +239,8 @@ export function useChat() {
       console.warn('Failed to fetch models for resolution:', e);
       return [];
     } finally {
-      fetchingModels.value = false;
+      activeModelFetches.delete(taskId);
+      unregisterLiveInstance(taskId);
     }
   };
 
@@ -214,36 +251,43 @@ export function useChat() {
   };
 
   const createNewChat = async (chatGroupId: string | null = null) => {
-    const chatObj: Chat = {
-      id: uuidv7(),
-      title: null,
-      groupId: chatGroupId,
-      root: { items: [] },
-      modelId: '', // Default to empty to follow global settings
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      debugEnabled: false,
-    };
-    
-    // Initial save
-    const newSummary: ChatSummary = { id: chatObj.id, title: chatObj.title, updatedAt: chatObj.updatedAt, groupId: chatObj.groupId };
-    const newSidebarItem: SidebarItem = { id: `chat:${chatObj.id}`, type: 'chat', chat: newSummary };
+    if (creatingChat.value) return;
+    creatingChat.value = true;
+    try {
+      const chatObj: Chat = reactive({
+        id: uuidv7(),
+        title: null,
+        groupId: chatGroupId,
+        root: { items: [] },
+        modelId: '', // Default to empty to follow global settings
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        debugEnabled: false,
+      });
 
-    const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
-    insertSidebarItem(newRootItems, newSidebarItem, chatGroupId);
+      // Register immediately so persistSidebarStructure can save its content
+      registerLiveInstance(chatObj);
+      
+      const newSummary: ChatSummary = { id: chatObj.id, title: chatObj.title, updatedAt: chatObj.updatedAt, groupId: chatObj.groupId };
+      const newSidebarItem: SidebarItem = { id: `chat:${chatObj.id}`, type: 'chat', chat: newSummary };
 
-    // Order matters: persist structure first then the specific chat to ensure storage consistency
-    await persistSidebarStructure(newRootItems);
-    await storageService.saveChat(chatObj, 0);
-    
-    currentChat.value = reactive(chatObj);
-    await loadData();
+      const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
+      insertSidebarItem(newRootItems, newSidebarItem, chatGroupId);
+
+      // Order matters: persist structure first then the specific chat to ensure storage consistency
+      await persistSidebarStructure(newRootItems);
+      
+      currentChat.value = chatObj;
+      await loadData();
+    } finally {
+      creatingChat.value = false;
+    }
   };
 
   const openChat = async (id: string) => {
-    // If there is an active generation for this chat, use the live instance
-    if (activeGenerations.has(id)) {
-      currentChat.value = activeGenerations.get(id)!.chat;
+    // If there is an active background task for this chat, use the live instance
+    if (liveChatRegistry.has(id)) {
+      currentChat.value = liveChatRegistry.get(id)!;
       return;
     }
 
@@ -286,11 +330,14 @@ export function useChat() {
     };
     findContext(rootItems.value, null);
 
-    // Abort active generation if any
+    // Abort and clear from registry if any
     if (activeGenerations.has(id)) {
       activeGenerations.get(id)?.controller.abort();
       activeGenerations.delete(id);
     }
+    activeTitleGenerations.delete(id);
+    activeModelFetches.delete(id);
+    liveChatRegistry.delete(id);
 
     await storageService.deleteChat(id);
     if (currentChat.value?.id === id) currentChat.value = null;
@@ -326,11 +373,14 @@ export function useChat() {
   };
 
   const deleteAllChats = async () => {
-    // Abort all active generations
-    for (const [id, item] of activeGenerations.entries()) {
+    // Clear registry and abort generations
+    for (const [, item] of activeGenerations.entries()) {
       item.controller.abort();
-      activeGenerations.delete(id);
     }
+    activeGenerations.clear();
+    activeTitleGenerations.clear();
+    activeModelFetches.clear();
+    liveChatRegistry.clear();
 
     const all = await storageService.listChats();
     for (const c of all) await storageService.deleteChat(c.id);
@@ -341,8 +391,8 @@ export function useChat() {
   };
 
   const renameChat = async (id: string, newTitle: string) => {
-    // Update live instance if it's currently generating in background
-    const liveChat = activeGenerations.get(id)?.chat;
+    // Update live instance if it exists in registry
+    const liveChat = liveChatRegistry.get(id);
     if (liveChat) {
       liveChat.title = newTitle;
       liveChat.updatedAt = Date.now();
@@ -376,6 +426,7 @@ export function useChat() {
 
     const controller = new AbortController();
     activeGenerations.set(chat.id, { controller, chat });
+    registerLiveInstance(chat);
 
     const type = chat.endpointType || settings.value.endpointType;
     const url = chat.endpointUrl || settings.value.endpointUrl || '';
@@ -448,35 +499,49 @@ export function useChat() {
       chat.updatedAt = Date.now();
       
       // Guarded save: only save if chat wasn't deleted while generating
-      // (It must still be in activeGenerations or be the current chat)
       if (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id) {
         await saveChat(chat);
         await loadData();
       }
 
       if (chat.title === null && settings.value.autoTitleEnabled && (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id)) {
-        await generateChatTitle(chat);
+        await generateChatTitle(chat, controller.signal);
       }
     } catch (e) {
       if ((e as Error).name === 'AbortError') {
         assistantNode.content += '\n\n[Generation Aborted]';
       } else {
         assistantNode.error = (e as Error).message;
+        
+        // Notify user if they are currently viewing a different chat
+        if (currentChat.value?.id !== chat.id) {
+          try {
+            const { useToast } = await import('./useToast');
+            const { addToast } = useToast();
+            addToast({
+              message: `Generation failed in "${chat.title || 'New Chat'}"`,
+              actionLabel: 'View',
+              onAction: () => openChat(chat.id),
+            });
+          } catch (toastErr) {
+            console.error('Failed to show background error toast:', toastErr);
+          }
+        }
       }
       console.error(e);
     } finally {
-      // If the chat was deleted from activeGenerations (e.g. via deleteChat), skip final save
-      // to avoid resurrecting a deleted chat.
+      // Ensure we save the final state BEFORE removing from the registry.
       const isStillActive = activeGenerations.has(chat.id);
-      activeGenerations.delete(chat.id);
       if (isStillActive) {
         await saveChat(chat);
+        activeGenerations.delete(chat.id);
+        unregisterLiveInstance(chat.id);
       }
     }
   };
 
-  const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = []) => {
-    const chat = currentChat.value;
+  const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = [], chatTarget?: Chat) => {
+    const chat = chatTarget || currentChat.value;
     if (!chat || (activeGenerations.has(chat.id))) return;
 
     const { isOnboardingDismissed, onboardingDraft, settings: globalSettings } = useSettings();
@@ -592,7 +657,7 @@ export function useChat() {
 
   const regenerateMessage = async (failedMessageId: string) => {
     const chat = currentChat.value;
-    if (!chat || activeGenerations.has(chat.id)) return;
+    if (!chat || activeGenerations.has(chat.id)) return; 
     
     // 1. Find the failed node
     const failedNode = findNodeInBranch(chat.root.items, failedMessageId);
@@ -624,17 +689,28 @@ export function useChat() {
     await generateResponse(chat, newAssistantMsg.id);
   };
 
-  const generateChatTitle = async (chat: Chat) => {
+  const generateChatTitle = async (chat: Chat, signal?: AbortSignal) => {
+    const taskId = chat.id;
+    activeTitleGenerations.add(taskId);
+    registerLiveInstance(chat);
+
     const type = chat.endpointType || settings.value.endpointType;
     const url = chat.endpointUrl || settings.value.endpointUrl || '';
-    if (!url) return;
+    if (!url) {
+      activeTitleGenerations.delete(taskId);
+      unregisterLiveInstance(taskId);
+      return;
+    }
 
     const history = getChatBranch(chat);
     const content = history[0]?.content || ''; // Use the first user message for title generation
-    if (!content || typeof content !== 'string') return;
+    if (!content || typeof content !== 'string') {
+      activeTitleGenerations.delete(taskId);
+      unregisterLiveInstance(taskId);
+      return;
+    }
 
     const chatIdAtStart = chat.id;
-    if (currentChat.value?.id === chatIdAtStart) generatingTitle.value = true;
     try {
       let generatedTitle = '';
       const titleProvider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
@@ -655,13 +731,14 @@ export function useChat() {
 
 Message: "${content}"`,
       };
-      await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
+      await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; }, {}, signal);
       const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
       
-      if (finalTitle) {
+      // Only apply if we got a title AND the user hasn't manually set one in the meantime
+      if (finalTitle && chat.title === null) {
         chat.title = finalTitle;
-        // Only save and refresh if the chat still exists (not deleted from registry and not current)
-        if (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id) {
+        // Only save and refresh if the chat still exists
+        if (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id || liveChatRegistry.has(chat.id)) {
           await saveChat(chat);
           await loadData();
           if (currentChat.value?.id === chatIdAtStart) {
@@ -672,7 +749,8 @@ Message: "${content}"`,
     } catch (e) {
       console.warn('Failed to generate title:', e);
     } finally {
-      if (currentChat.value?.id === chatIdAtStart) generatingTitle.value = false;
+      activeTitleGenerations.delete(taskId);
+      unregisterLiveInstance(taskId);
     }
   };
 
@@ -705,7 +783,7 @@ Message: "${content}"`,
       clonedNodes[i]!.replies.items.push(clonedNodes[i+1]!);
     }
 
-    const newChatObj: Chat = {
+    const newChatObj: Chat = reactive({
       ...chat,
       id: uuidv7(),
       title: `Fork of ${chat.title}`,
@@ -715,16 +793,18 @@ Message: "${content}"`,
       originMessageId: messageId,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-    };
+    });
+
+    // Register immediately so persistSidebarStructure can save its content
+    registerLiveInstance(newChatObj);
 
     const newSummary: ChatSummary = { id: newChatObj.id, title: newChatObj.title, updatedAt: newChatObj.updatedAt, groupId: newChatObj.groupId };
     const newSidebarItem: SidebarItem = { id: `chat:${newChatObj.id}`, type: 'chat', chat: newSummary };
 
     const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
-    insertSidebarItem(newRootItems, newSidebarItem, newChatObj.groupId ?? null);
+    insertSidebarItem(newRootItems, newSidebarItem, chat.groupId ?? null);
     
     await persistSidebarStructure(newRootItems);
-    await storageService.saveChat(newChatObj, 0);
     
     await loadData();
     await openChat(newChatObj.id);
@@ -755,7 +835,7 @@ Message: "${content}"`,
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
     } else {
       const parent = findParentInBranch(chat.root.items, messageId);
-      await sendMessage(newContent, parent ? parent.id : null, node.attachments);
+      await sendMessage(newContent, parent ? parent.id : null, node.attachments, chat);
     }
   };
 
@@ -825,8 +905,7 @@ Message: "${content}"`,
         for (let j = 0; j < item.chatGroup.items.length; j++) {
           const nested = item.chatGroup.items[j]!;
           if (nested.type === 'chat') {
-            // Use live instance if available to avoid stale state overwrites later
-            const chat = activeGenerations.get(nested.chat.id)?.chat || await storageService.loadChat(nested.chat.id);
+            const chat = liveChatRegistry.get(nested.chat.id) || await storageService.loadChat(nested.chat.id);
             if (chat) {
               chat.groupId = item.chatGroup.id;
               await storageService.saveChat(chat, j);
@@ -834,7 +913,7 @@ Message: "${content}"`,
           }
         }
       } else {
-        const chat = activeGenerations.get(item.chat.id)?.chat || await storageService.loadChat(item.chat.id);
+        const chat = liveChatRegistry.get(item.chat.id) || await storageService.loadChat(item.chat.id);
         if (chat) {
           chat.groupId = null;
           await storageService.saveChat(chat, i);

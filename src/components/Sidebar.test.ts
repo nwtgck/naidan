@@ -32,6 +32,7 @@ vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: ref(null),
     streaming: ref(false),
+    activeGenerations: reactive(new Map()),
     chatGroups: mockChatGroups,
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
