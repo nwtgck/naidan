@@ -18,7 +18,7 @@ import { useLayout } from '../composables/useLayout';
 
 const chatStore = useChat();
 const { 
-  currentChat, streaming, chatGroups, chats,
+  currentChat, chatGroups, chats,
 } = chatStore;
 
 const { settings, isFetchingModels, save: saveSettings } = useSettings();
@@ -211,7 +211,6 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
           @click="handleNewChat(null)"
           class="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
           :class="isSidebarOpen ? 'flex-1 px-3 py-3 text-xs' : 'w-8 h-8'"
-          :disabled="streaming"
           data-testid="new-chat-button"
           :title="!isSidebarOpen ? 'New Chat' : ''"
         >

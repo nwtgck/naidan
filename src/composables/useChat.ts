@@ -8,11 +8,11 @@ import { useConfirm } from './useConfirm';
 
 const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
-const streaming = ref(false);
+const activeGenerations = reactive(new Map<string, { controller: AbortController, chat: Chat }>());
+const streaming = computed(() => !!currentChat.value && activeGenerations.has(currentChat.value.id));
 const generatingTitle = ref(false);
 const availableModels = ref<string[]>([]);
 const fetchingModels = ref(false);
-let abortController: AbortController | null = null;
 
 // --- Helpers ---
 
@@ -23,6 +23,25 @@ async function fileToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+function getChatBranch(chat: Chat): MessageNode[] {
+  if (chat.root.items.length === 0) return [];
+  const path: MessageNode[] = [];
+  const targetId = chat.currentLeafId;
+  let curr: MessageNode | null = chat.root.items.find(item => 
+    item.id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
+  ) || chat.root.items[chat.root.items.length - 1] || null;
+
+  while (curr) {
+    path.push(curr);
+    if (curr.id === targetId) break;
+    const next: MessageNode | undefined = curr.replies.items.find(item => 
+      item.id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
+    ) || curr.replies.items[curr.replies.items.length - 1];
+    curr = next || null;
+  }
+  return path;
 }
 
 function findNodeInBranch(items: MessageNode[], targetId: string): MessageNode | null {
@@ -158,31 +177,18 @@ export function useChat() {
   });
 
   const activeMessages = computed(() => {
-    if (!currentChat.value || currentChat.value.root.items.length === 0) return [];
-    const path: MessageNode[] = [];
-    const targetId = currentChat.value.currentLeafId;
-    let curr: MessageNode | null = currentChat.value.root.items.find(item => 
-      item.id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
-    ) || currentChat.value.root.items[currentChat.value.root.items.length - 1] || null;
-
-    while (curr) {
-      path.push(curr);
-      if (curr.id === targetId) break;
-      const next: MessageNode | undefined = curr.replies.items.find(item => 
-        item.id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
-      ) || curr.replies.items[curr.replies.items.length - 1];
-      curr = next || null;
-    }
-    return path;
+    if (!currentChat.value) return [];
+    return getChatBranch(currentChat.value);
   });
 
   const loadData = async () => {
     rootItems.value = await storageService.getSidebarStructure();
   };
 
-  const fetchAvailableModels = async () => {
-    const type = currentChat.value?.endpointType || settings.value.endpointType;
-    const url = currentChat.value?.endpointUrl || settings.value.endpointUrl || '';
+  const fetchAvailableModels = async (chatTarget?: Chat) => {
+    const chat = chatTarget || currentChat.value;
+    const type = chat?.endpointType || settings.value.endpointType;
+    const url = chat?.endpointUrl || settings.value.endpointUrl || '';
     if (!url) return [];
     
     fetchingModels.value = true;
@@ -190,7 +196,9 @@ export function useChat() {
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
       const models = await provider.listModels(url);
       const result = Array.isArray(models) ? models : [];
-      availableModels.value = result;
+      if (!chatTarget || chatTarget.id === currentChat.value?.id) {
+        availableModels.value = result;
+      }
       return result;
     } catch (e) {
       console.warn('Failed to fetch models for resolution:', e);
@@ -200,11 +208,11 @@ export function useChat() {
     }
   };
 
-  const saveCurrentChat = async () => {
-    if (!currentChat.value) return;
+  const saveCurrentChat = async (chatToSave: Chat | null = currentChat.value) => {
+    if (!chatToSave) return;
     // CRITICAL: Find the correct relative index to avoid "jumping"
-    const { index } = findChatPosition(currentChat.value.id);
-    await storageService.saveChat(currentChat.value, index);
+    const { index } = findChatPosition(chatToSave.id);
+    await storageService.saveChat(chatToSave, index);
   };
 
   const createNewChat = async (chatGroupId: string | null = null) => {
@@ -234,6 +242,12 @@ export function useChat() {
   };
 
   const openChat = async (id: string) => {
+    // If there is an active generation for this chat, use the live instance
+    if (activeGenerations.has(id)) {
+      currentChat.value = activeGenerations.get(id)!.chat;
+      return;
+    }
+
     const loaded = await storageService.loadChat(id);
     if (loaded) {
       currentChat.value = reactive(loaded);
@@ -273,6 +287,12 @@ export function useChat() {
     };
     findContext(rootItems.value, null);
 
+    // Abort active generation if any
+    if (activeGenerations.has(id)) {
+      activeGenerations.get(id)?.controller.abort();
+      activeGenerations.delete(id);
+    }
+
     await storageService.deleteChat(id);
     if (currentChat.value?.id === id) currentChat.value = null;
     await loadData();
@@ -307,6 +327,12 @@ export function useChat() {
   };
 
   const deleteAllChats = async () => {
+    // Abort all active generations
+    for (const [id, item] of activeGenerations.entries()) {
+      item.controller.abort();
+      activeGenerations.delete(id);
+    }
+
     const all = await storageService.listChats();
     for (const c of all) await storageService.deleteChat(c.id);
     const allGroups = await storageService.listChatGroups();
@@ -316,6 +342,18 @@ export function useChat() {
   };
 
   const renameChat = async (id: string, newTitle: string) => {
+    // Update live instance if it's currently generating in background
+    const liveChat = activeGenerations.get(id)?.chat;
+    if (liveChat) {
+      liveChat.title = newTitle;
+      liveChat.updatedAt = Date.now();
+      const { index } = findChatPosition(id);
+      await storageService.saveChat(liveChat, index);
+      if (currentChat.value?.id === id) triggerRef(currentChat);
+      await loadData();
+      return;
+    }
+
     const chat = await storageService.loadChat(id);
     if (chat) {
       chat.title = newTitle;
@@ -331,21 +369,19 @@ export function useChat() {
     }
   };
 
-  const generateResponse = async (assistantId: string) => {
-    if (!currentChat.value) return;
-    
-    const assistantNode = findNodeInBranch(currentChat.value.root.items, assistantId);
+  const generateResponse = async (chat: Chat, assistantId: string) => {
+    const assistantNode = findNodeInBranch(chat.root.items, assistantId);
     if (!assistantNode) throw new Error('Assistant node not found');
 
     // Reset error
     assistantNode.error = undefined;
-    triggerRef(currentChat);
+    if (currentChat.value?.id === chat.id) triggerRef(currentChat);
 
-    streaming.value = true;
-    abortController = new AbortController();
+    const controller = new AbortController();
+    activeGenerations.set(chat.id, { controller, chat });
 
-    const type = currentChat.value.endpointType || settings.value.endpointType;
-    const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
+    const type = chat.endpointType || settings.value.endpointType;
+    const url = chat.endpointUrl || settings.value.endpointUrl || '';
     const resolvedModel = assistantNode.modelId || '';
 
     try {
@@ -355,7 +391,7 @@ export function useChat() {
       const activeProfile = (settings.value.providerProfiles || []).find(p => p.endpointUrl === url && p.endpointType === type);
       
       const globalSystemPrompt = activeProfile?.systemPrompt || settings.value.systemPrompt;
-      const chatPromptObj = currentChat.value.systemPrompt;
+      const chatPromptObj = chat.systemPrompt;
       
       const finalMessages: ChatMessage[] = [];
       
@@ -376,7 +412,7 @@ export function useChat() {
       }
 
       // Add conversation history
-      const history = activeMessages.value.filter(m => m.id !== assistantId);
+      const history = getChatBranch(chat).filter(m => m.id !== assistantId);
       for (const m of history) {
         if (m.attachments && m.attachments.length > 0) {
           const content: MultimodalContent[] = [{ type: 'text', text: m.content }];
@@ -403,21 +439,26 @@ export function useChat() {
       const resolvedParams = {
         ...(settings.value.lmParameters || {}),
         ...(activeProfile?.lmParameters || {}),
-        ...(currentChat.value.lmParameters || {}),
+        ...(chat.lmParameters || {}),
       };
 
       await provider.chat(finalMessages, resolvedModel, url, (chunk) => {
         assistantNode.content += chunk;
-        triggerRef(currentChat);
-      }, resolvedParams, abortController.signal);
+        if (currentChat.value?.id === chat.id) triggerRef(currentChat);
+      }, resolvedParams, controller.signal);
 
       processThinking(assistantNode);
-      currentChat.value.updatedAt = Date.now();
-      await saveCurrentChat();
-      await loadData();
+      chat.updatedAt = Date.now();
+      
+      // Guarded save: only save if chat wasn't deleted while generating
+      // (It must still be in activeGenerations or be the current chat)
+      if (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id) {
+        await saveCurrentChat(chat);
+        await loadData();
+      }
 
-      if (currentChat.value.title === null && settings.value.autoTitleEnabled) {
-        await generateChatTitle();
+      if (chat.title === null && settings.value.autoTitleEnabled && (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id)) {
+        await generateChatTitle(chat);
       }
     } catch (e) {
       if ((e as Error).name === 'AbortError') {
@@ -427,28 +468,33 @@ export function useChat() {
       }
       console.error(e);
     } finally {
-      streaming.value = false;
-      abortController = null;
-      await saveCurrentChat();
+      // If the chat was deleted from activeGenerations (e.g. via deleteChat), skip final save
+      // to avoid resurrecting a deleted chat.
+      const isStillActive = activeGenerations.has(chat.id);
+      activeGenerations.delete(chat.id);
+      if (isStillActive) {
+        await saveCurrentChat(chat);
+      }
     }
   };
 
   const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = []) => {
-    if (!currentChat.value || streaming.value) return;
+    const chat = currentChat.value;
+    if (!chat || (activeGenerations.has(chat.id))) return;
 
     const { isOnboardingDismissed, onboardingDraft, settings: globalSettings } = useSettings();
     const { showConfirm } = useConfirm();
 
     // --- Model & Endpoint Resolution ---
-    const type = currentChat.value.endpointType || settings.value.endpointType;
-    const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
+    const type = chat.endpointType || settings.value.endpointType;
+    const url = chat.endpointUrl || settings.value.endpointUrl || '';
     
-    let resolvedModel = currentChat.value.overrideModelId || settings.value.defaultModelId || '';
+    let resolvedModel = chat.overrideModelId || settings.value.defaultModelId || '';
 
     if (url) {
-      const models = await fetchAvailableModels();
+      const models = await fetchAvailableModels(chat);
       if (models.length > 0) {
-        const preferredModel = currentChat.value.overrideModelId || settings.value.defaultModelId;
+        const preferredModel = chat.overrideModelId || settings.value.defaultModelId;
         if (preferredModel && models.includes(preferredModel)) {
           resolvedModel = preferredModel;
         } else if (preferredModel) {
@@ -460,7 +506,7 @@ export function useChat() {
     }
 
     if (!url || !resolvedModel) {
-      const models = await fetchAvailableModels();
+      const models = await fetchAvailableModels(chat);
       onboardingDraft.value = { 
         url, 
         type, 
@@ -532,30 +578,31 @@ export function useChat() {
     userMsg.replies.items.push(assistantMsg);
 
     if (parentId === null) {
-      currentChat.value.root.items.push(userMsg);
+      chat.root.items.push(userMsg);
     } else {
-      const pId = parentId || currentChat.value.currentLeafId;
-      const parentNode = pId ? findNodeInBranch(currentChat.value.root.items, pId) : null;
+      const pId = parentId || chat.currentLeafId;
+      const parentNode = pId ? findNodeInBranch(chat.root.items, pId) : null;
       if (parentNode) parentNode.replies.items.push(userMsg);
-      else currentChat.value.root.items.push(userMsg);
+      else chat.root.items.push(userMsg);
     }
 
-    currentChat.value.currentLeafId = assistantMsg.id;
-    triggerRef(currentChat);
-    await saveCurrentChat();
+    chat.currentLeafId = assistantMsg.id;
+    if (currentChat.value?.id === chat.id) triggerRef(currentChat);
+    await saveCurrentChat(chat);
 
-    await generateResponse(assistantMsg.id);
+    await generateResponse(chat, assistantMsg.id);
   };
 
   const regenerateMessage = async (failedMessageId: string) => {
-    if (!currentChat.value || streaming.value) return;
+    const chat = currentChat.value;
+    if (!chat || activeGenerations.has(chat.id)) return;
     
     // 1. Find the failed node
-    const failedNode = findNodeInBranch(currentChat.value.root.items, failedMessageId);
+    const failedNode = findNodeInBranch(chat.root.items, failedMessageId);
     if (!failedNode || failedNode.role !== 'assistant') return;
 
     // 2. Find its parent (the User message)
-    const parent = findParentInBranch(currentChat.value.root.items, failedMessageId);
+    const parent = findParentInBranch(chat.root.items, failedMessageId);
     if (!parent || parent.role !== 'user') return;
 
     // 3. Create a NEW sibling assistant node
@@ -572,26 +619,27 @@ export function useChat() {
     parent.replies.items.push(newAssistantMsg);
 
     // 5. Update state
-    currentChat.value.currentLeafId = newAssistantMsg.id;
-    triggerRef(currentChat);
-    await saveCurrentChat();
+    chat.currentLeafId = newAssistantMsg.id;
+    if (currentChat.value?.id === chat.id) triggerRef(currentChat);
+    await saveCurrentChat(chat);
 
     // 6. Generate
-    await generateResponse(newAssistantMsg.id);
+    await generateResponse(chat, newAssistantMsg.id);
   };
 
-  const generateChatTitle = async () => {
-    if (!currentChat.value) return;
-    const type = currentChat.value.endpointType || settings.value.endpointType;
-    const url = currentChat.value.endpointUrl || settings.value.endpointUrl || '';
+  const generateChatTitle = async (chatTarget?: Chat) => {
+    const chat = chatTarget || currentChat.value;
+    if (!chat) return;
+    const type = chat.endpointType || settings.value.endpointType;
+    const url = chat.endpointUrl || settings.value.endpointUrl || '';
     if (!url) return;
 
-    const history = activeMessages.value;
+    const history = getChatBranch(chat);
     const content = history[0]?.content || ''; // Use the first user message for title generation
     if (!content || typeof content !== 'string') return;
 
-    const chatIdAtStart = currentChat.value.id;
-    generatingTitle.value = true;
+    const chatIdAtStart = chat.id;
+    if (currentChat.value?.id === chatIdAtStart) generatingTitle.value = true;
     try {
       let generatedTitle = '';
       const titleProvider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
@@ -615,23 +663,28 @@ Message: "${content}"`,
       await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; });
       const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
       
-      if (finalTitle && currentChat.value?.id === chatIdAtStart) {
-        currentChat.value.title = finalTitle;
-        await saveCurrentChat();
-        await loadData();
+      if (finalTitle) {
+        chat.title = finalTitle;
+        // Only save and refresh if the chat still exists (not deleted from registry and not current)
+        if (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id) {
+          await saveCurrentChat(chat);
+          await loadData();
+          if (currentChat.value?.id === chatIdAtStart) {
+            triggerRef(currentChat);
+          }
+        }
       }
     } catch (e) {
       console.warn('Failed to generate title:', e);
     } finally {
-      generatingTitle.value = false;
+      if (currentChat.value?.id === chatIdAtStart) generatingTitle.value = false;
     }
   };
 
   const abortChat = () => {
-    if (abortController) {
-      abortController.abort();
-      abortController = null;
-      streaming.value = false;
+    if (currentChat.value && activeGenerations.has(currentChat.value.id)) {
+      activeGenerations.get(currentChat.value.id)?.controller.abort();
+      activeGenerations.delete(currentChat.value.id);
     }
   };
 
@@ -684,8 +737,9 @@ Message: "${content}"`,
   };
 
   const editMessage = async (messageId: string, newContent: string) => {
-    if (!currentChat.value) return;
-    const node = findNodeInBranch(currentChat.value.root.items, messageId);
+    const chat = currentChat.value;
+    if (!chat) return;
+    const node = findNodeInBranch(chat.root.items, messageId);
     if (!node) return;
 
     if (node.role === 'assistant') {
@@ -698,25 +752,26 @@ Message: "${content}"`,
         modelId: node.modelId,
         replies: { items: [] },
       };
-      const parent = findParentInBranch(currentChat.value.root.items, messageId);
+      const parent = findParentInBranch(chat.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);
-      else currentChat.value.root.items.push(correctedNode);
-      currentChat.value.currentLeafId = correctedNode.id;
-      await saveCurrentChat();
-      triggerRef(currentChat);
+      else chat.root.items.push(correctedNode);
+      chat.currentLeafId = correctedNode.id;
+      await saveCurrentChat(chat);
+      if (currentChat.value?.id === chat.id) triggerRef(currentChat);
     } else {
-      const parent = findParentInBranch(currentChat.value.root.items, messageId);
+      const parent = findParentInBranch(chat.root.items, messageId);
       await sendMessage(newContent, parent ? parent.id : null, node.attachments);
     }
   };
 
   const switchVersion = async (messageId: string) => {
-    if (!currentChat.value) return;
-    const node = findNodeInBranch(currentChat.value.root.items, messageId);
+    const chat = currentChat.value;
+    if (!chat) return;
+    const node = findNodeInBranch(chat.root.items, messageId);
     if (node) {
-      currentChat.value.currentLeafId = findDeepestLeaf(node).id;
-      triggerRef(currentChat);
-      await saveCurrentChat();
+      chat.currentLeafId = findDeepestLeaf(node).id;
+      if (currentChat.value?.id === chat.id) triggerRef(currentChat);
+      await saveCurrentChat(chat);
     }
   };
 
@@ -728,10 +783,11 @@ Message: "${content}"`,
   };
 
   const toggleDebug = async () => {
-    if (!currentChat.value) return;
-    currentChat.value.debugEnabled = !currentChat.value.debugEnabled;
-    triggerRef(currentChat);
-    await saveCurrentChat();
+    const chat = currentChat.value;
+    if (!chat) return;
+    chat.debugEnabled = !chat.debugEnabled;
+    if (currentChat.value?.id === chat.id) triggerRef(currentChat);
+    await saveCurrentChat(chat);
   };
 
   const createChatGroup = async (name: string) => {
@@ -775,7 +831,8 @@ Message: "${content}"`,
         for (let j = 0; j < item.chatGroup.items.length; j++) {
           const nested = item.chatGroup.items[j]!;
           if (nested.type === 'chat') {
-            const chat = await storageService.loadChat(nested.chat.id);
+            // Use live instance if available to avoid stale state overwrites later
+            const chat = activeGenerations.get(nested.chat.id)?.chat || await storageService.loadChat(nested.chat.id);
             if (chat) {
               chat.groupId = item.chatGroup.id;
               await storageService.saveChat(chat, j);
@@ -783,7 +840,7 @@ Message: "${content}"`,
           }
         }
       } else {
-        const chat = await storageService.loadChat(item.chat.id);
+        const chat = activeGenerations.get(item.chat.id)?.chat || await storageService.loadChat(item.chat.id);
         if (chat) {
           chat.groupId = null;
           await storageService.saveChat(chat, i);
@@ -801,6 +858,7 @@ Message: "${content}"`,
     currentChat,
     activeMessages,
     streaming,
+    activeGenerations,
     generatingTitle,
     availableModels,
     fetchingModels,
