@@ -266,7 +266,7 @@ describe('Sidebar Logic Stability', () => {
     expect(chatGroupItem.classes()).toContain('handle');
 
     // Verify chat has handle
-    const chatItems = wrapper.findAll('[data-testid="sidebar-chat-item"]');
+    const chatItems = wrapper.findAll('.sidebar-chat-item');
     expect(chatItems.length).toBeGreaterThan(0);
     chatItems.forEach(item => {
       expect(item.classes()).toContain('handle');
@@ -431,7 +431,7 @@ describe('Sidebar Logic Stability', () => {
     vm.syncLocalItems();
     await nextTick();
 
-    const chatItems = wrapper.findAll('[data-testid="sidebar-chat-item"]');
+    const chatItems = wrapper.findAll('.sidebar-chat-item');
     expect(chatItems).toHaveLength(2);
     expect(chatItems[0]!.text()).toContain('New Chat');
     expect(chatItems[1]!.text()).toContain('New Chat');

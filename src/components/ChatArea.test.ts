@@ -21,6 +21,7 @@ const mockFetchingModels = ref(false);
 const mockGeneratingTitle = ref(false);
 const mockFetchAvailableModels = vi.fn();
 const mockGenerateChatTitle = vi.fn();
+const mockActiveGenerations = reactive(new Map());
 const mockCurrentChat = ref<Chat | null>({
   id: '1', 
   title: 'Test Chat', 
@@ -40,6 +41,7 @@ vi.mock('../composables/useChat', () => ({
     currentChat: mockCurrentChat,
     sendMessage: mockSendMessage,
     streaming: mockStreaming,
+    activeGenerations: mockActiveGenerations,
     toggleDebug: vi.fn(() => {
       if (mockCurrentChat.value) {
         mockCurrentChat.value.debugEnabled = !mockCurrentChat.value.debugEnabled;
@@ -90,6 +92,7 @@ let wrapper: VueWrapper<any> | null = null;
 function resetMocks() {
   vi.clearAllMocks();
   mockStreaming.value = false;
+  mockActiveGenerations.clear();
   mockActiveMessages.value = [];
   mockAvailableModels.value = ['model-1', 'model-2'];
   mockFetchingModels.value = false;
@@ -133,6 +136,9 @@ describe('ChatArea UI States', () => {
 
   it('should show the abort button and hide the send button during streaming', async () => {
     mockStreaming.value = true;
+    if (mockCurrentChat.value) {
+      mockActiveGenerations.set(mockCurrentChat.value.id, { controller: new AbortController(), chat: mockCurrentChat.value });
+    }
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
@@ -192,6 +198,9 @@ describe('ChatArea UI States', () => {
 
   it('should call abortChat when Esc is pressed during streaming', async () => {
     mockStreaming.value = true;
+    if (mockCurrentChat.value) {
+      mockActiveGenerations.set(mockCurrentChat.value.id, { controller: new AbortController(), chat: mockCurrentChat.value });
+    }
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });

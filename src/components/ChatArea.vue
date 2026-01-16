@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue';
+import { ref, watch, nextTick, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
@@ -20,6 +20,7 @@ const chatStore = useChat();
 const {
   currentChat,
   streaming,
+  activeGenerations,
   generatingTitle,
   activeMessages,
   fetchingModels,
@@ -27,6 +28,11 @@ const {
 const { settings } = useSettings();
 const router = useRouter();
 const input = ref('');
+
+const isCurrentChatStreaming = computed(() => {
+  return currentChat.value ? activeGenerations.has(currentChat.value.id) : false;
+});
+
 const container = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -230,7 +236,7 @@ async function fetchModels() {
 }
 
 async function handleSend() {
-  if ((!input.value.trim() && attachments.value.length === 0) || streaming.value) return;
+  if ((!input.value.trim() && attachments.value.length === 0) || isCurrentChatStreaming.value) return;
   const text = input.value;
   const currentAttachments = [...attachments.value];
   
@@ -386,7 +392,7 @@ onUnmounted(() => {
                 @click="currentChat && chatStore.generateChatTitle(currentChat)"
                 class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50"
                 :class="{ 'animate-spin': generatingTitle }"
-                :disabled="generatingTitle || streaming"
+                :disabled="generatingTitle || isCurrentChatStreaming"
                 title="Regenerate Title"
                 data-testid="regenerate-title-button"
               >
@@ -564,73 +570,142 @@ onUnmounted(() => {
         </div>
 
         <textarea
+
           ref="textareaRef"
+
           v-model="input"
+
           @input="adjustTextareaHeight"
+
           @keydown.enter.ctrl.prevent="handleSend"
+
           @keydown.enter.meta.prevent="handleSend"
-          @keydown.esc.prevent="streaming ? chatStore.abortChat() : null"
+
+          @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
+
           placeholder="Type a message..."
+
           class="w-full text-base pl-5 pr-12 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[60px] transition-colors"
+
           data-testid="chat-input"
+
         ></textarea>
+
         <!-- Maximize/Minimize Button inside input area -->
+
         <button
+
           v-if="isOverLimit || isMaximized"
+
           @click="toggleMaximized"
+
           class="absolute right-4 top-4 p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors z-20 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm shadow-sm border border-gray-100 dark:border-gray-700"
+
           :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
+
           data-testid="maximize-button"
+
         >
+
           <Minimize2 v-if="isMaximized" class="w-4 h-4" />
+
           <Maximize2 v-else class="w-4 h-4" />
+
         </button>
+
         <div class="flex items-center justify-between px-4 pb-4">
+
           <div class="flex items-center gap-2">
+
             <input 
+
               ref="fileInputRef"
+
               type="file" 
+
               accept="image/*" 
+
               multiple 
+
               class="hidden" 
+
               @change="handleFileSelect"
+
             />
+
             <button 
+
               @click="triggerFileInput"
+
               class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+
               title="Attach images"
+
             >
+
               <Paperclip class="w-5 h-5" />
+
             </button>
 
+        
+
             <div class="w-[100px] sm:w-[180px]">
+
               <ModelSelector 
+
                 v-model="currentChat.overrideModelId"
+
                 :placeholder="settings.defaultModelId || 'Default Model'"
+
                 :loading="fetchingModels"
+
                 allow-clear
+
                 data-testid="model-override-select"
+
               />
+
             </div>
+
           </div>
 
+        
+
           <button 
-            @click="streaming ? chatStore.abortChat() : handleSend()"
-            :disabled="!streaming && !input.trim() && attachments.length === 0"
+
+            @click="isCurrentChatStreaming ? chatStore.abortChat() : handleSend()"
+
+            :disabled="!isCurrentChatStreaming && !input.trim() && attachments.length === 0"
+
             class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
-            :title="streaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
-            :data-testid="streaming ? 'abort-button' : 'send-button'"
+
+            :title="isCurrentChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
+
+            :data-testid="isCurrentChatStreaming ? 'abort-button' : 'send-button'"
+
           >
-            <template v-if="streaming">
+
+            <template v-if="isCurrentChatStreaming">
+
               <span class="text-xs font-medium opacity-90 hidden sm:inline">Esc</span>
+
               <Square class="w-4 h-4 fill-white text-white" />
+
             </template>
+
             <template v-else>
+
               <span class="text-[10px] font-bold opacity-90 hidden sm:inline tracking-wider">{{ sendShortcutText }}</span>
+
               <Send class="w-4 h-4" />
+
             </template>
+
           </button>
+
         </div>
+
+        
       </div>
     </div>
   </div>

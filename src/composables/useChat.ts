@@ -16,15 +16,23 @@ const activeGenerations = reactive(new Map<string, { controller: AbortController
 const activeTitleGenerations = reactive(new Set<string>());
 const activeModelFetches = reactive(new Set<string>());
 
-const streaming = computed(() => !!currentChat.value && activeGenerations.has(currentChat.value.id));
-const generatingTitle = computed(() => !!currentChat.value && activeTitleGenerations.has(currentChat.value.id));
-const fetchingModels = computed(() => {
-  if (!currentChat.value) return activeModelFetches.has('global');
-  return activeModelFetches.has(currentChat.value.id) || activeModelFetches.has('global');
-});
+const streaming = computed(() => activeGenerations.size > 0);
+const generatingTitle = computed(() => activeTitleGenerations.size > 0);
+const fetchingModels = computed(() => activeModelFetches.size > 0);
 
 const creatingChat = ref(false);
 const availableModels = ref<string[]>([]);
+
+// --- Lifecycle & Cleanup ---
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    // Abort all active generations on page unload to prevent orphaned requests
+    for (const item of activeGenerations.values()) {
+      item.controller.abort();
+    }
+  });
+}
 
 // --- Registry Helpers ---
 
@@ -544,6 +552,9 @@ export function useChat() {
     const chat = chatTarget || currentChat.value;
     if (!chat || (activeGenerations.has(chat.id))) return;
 
+    // Register immediately to ensure background tasks are tracked from the start
+    registerLiveInstance(chat);
+
     const { isOnboardingDismissed, onboardingDraft, settings: globalSettings } = useSettings();
     const { showConfirm } = useConfirm();
 
@@ -576,6 +587,7 @@ export function useChat() {
         selectedModel: models[0] || '',
       };
       isOnboardingDismissed.value = false;
+      unregisterLiveInstance(chat.id);
       return;
     }
 

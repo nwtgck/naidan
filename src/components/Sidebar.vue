@@ -318,9 +318,9 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                       <div v-if="nestedItem.type === 'chat'">
                         <div 
                           @click="handleOpenChat(nestedItem.chat.id)"
-                          class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all handle"
+                          class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all handle sidebar-chat-item"
                           :class="currentChat?.id === nestedItem.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
-                          data-testid="sidebar-chat-item"
+                          :data-testid="'sidebar-chat-item-' + nestedItem.chat.id"
                         >
                           <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
                             <input 
@@ -359,9 +359,9 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
               <div 
                 v-else
                 @click="handleOpenChat(element.chat.id)"
-                class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all handle"
+                class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer transition-all handle sidebar-chat-item"
                 :class="currentChat?.id === element.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
-                data-testid="sidebar-chat-item"
+                :data-testid="'sidebar-chat-item-' + element.chat.id"
               >
                 <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
                   <input 

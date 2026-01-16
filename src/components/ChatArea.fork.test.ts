@@ -36,6 +36,7 @@ vi.mock('../composables/useChat', () => ({
     currentChat: mockCurrentChat,
     sendMessage: vi.fn(),
     streaming: ref(false),
+    activeGenerations: new Map(),
     toggleDebug: vi.fn(),
     activeMessages: mockActiveMessages,
     getSiblings: vi.fn().mockReturnValue([]),
