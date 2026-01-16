@@ -11,7 +11,7 @@ const DOMPurify = typeof window !== 'undefined' ? createDOMPurify(window) : crea
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { MessageNode } from '../models/types';
-import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2 } from 'lucide-vue-next';
+import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 
 const props = defineProps<{
@@ -87,7 +87,7 @@ const versionInfo = computed(() => {
 });
 
 function handleSaveEdit() {
-  if (editContent.value.trim() && editContent.value !== props.message.content) {
+  if (editContent.value.trim()) {
     emit('edit', props.message.id, editContent.value);
   }
   isEditing.value = false;
@@ -503,6 +503,15 @@ function formatSize(bytes?: number): string {
               data-testid="regenerate-button"
             >
               <RefreshCw class="w-3.5 h-3.5" />
+            </button>
+            <button 
+              v-if="isUser"
+              @click="emit('edit', message.id, message.content)"
+              class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              title="Resend message"
+              data-testid="resend-button"
+            >
+              <Send class="w-3.5 h-3.5" />
             </button>
             <button 
               @click="handleCopy"

@@ -601,4 +601,38 @@ describe('MessageItem Edit Labels', () => {
     const saveBtn = wrapper.find('[data-testid="save-edit"]');
     expect(saveBtn.text()).toContain('Update & Branch');
   });
+
+  it('allows "Send & Branch" even if content is NOT edited', async () => {
+    const message = createMessage('user');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    
+    // Trigger Save without changing setValue
+    await wrapper.find('[data-testid="save-edit"]').trigger('click');
+    
+    expect(wrapper.emitted('edit')).toBeTruthy();
+    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Some content']);
+  });
+
+  it('shows "Resend" button for user messages and emits edit event', async () => {
+    const message = createMessage('user');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    const resendBtn = wrapper.find('[data-testid="resend-button"]');
+    expect(resendBtn.exists()).toBe(true);
+    expect(resendBtn.attributes('title')).toBe('Resend message');
+    
+    await resendBtn.trigger('click');
+    
+    expect(wrapper.emitted('edit')).toBeTruthy();
+    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Some content']);
+  });
+
+  it('does NOT show "Resend" button for assistant messages', () => {
+    const message = createMessage('assistant');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.find('[data-testid="resend-button"]').exists()).toBe(false);
+  });
 });
