@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, defineAsyncComponent } from 'vue';
 import { useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useChat } from './composables/useChat';
@@ -8,14 +8,16 @@ import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
 import { useOPFSExplorer } from './composables/useOPFSExplorer';
 import Sidebar from './components/Sidebar.vue';
-import SettingsModal from './components/SettingsModal.vue';
-import GroupSettingsPanel from './components/GroupSettingsPanel.vue';
 import OnboardingModal from './components/OnboardingModal.vue';
-import DebugPanel from './components/DebugPanel.vue';
 import ToastContainer from './components/ToastContainer.vue';
-import CustomDialog from './components/CustomDialog.vue'; // Import CustomDialog
-import OPFSExplorer from './components/OPFSExplorer.vue';
 import { useLayout } from './composables/useLayout';
+
+// Lazily load components that are definitely not visible on initial mount
+const SettingsModal = defineAsyncComponent(() => import('./components/SettingsModal.vue'));
+const GroupSettingsPanel = defineAsyncComponent(() => import('./components/GroupSettingsPanel.vue'));
+const DebugPanel = defineAsyncComponent(() => import('./components/DebugPanel.vue'));
+const CustomDialog = defineAsyncComponent(() => import('./components/CustomDialog.vue'));
+const OPFSExplorer = defineAsyncComponent(() => import('./components/OPFSExplorer.vue'));
 
 const isSettingsOpen = ref(false);
 const chatStore = useChat();

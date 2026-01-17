@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
 import App from './App.vue';
 import type { Chat } from './models/types';
@@ -7,7 +7,6 @@ import type { Chat } from './models/types';
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm';
 import { useRouter } from 'vue-router';
-
 
 // Define mock refs in module scope so they can be shared
 const mockCreateNewChat = vi.fn();
@@ -49,24 +48,7 @@ vi.mock('vue-router', () => ({
   },
 }));
 
-vi.mock('./components/CustomDialog.vue', () => ({
-  default: {
-    name: 'CustomDialog',
-    props: ['show', 'title', 'message', 'confirmButtonText', 'cancelButtonText', 'confirmButtonVariant', 'showInput', 'inputValue'],
-    emits: ['confirm', 'cancel', 'update:inputValue'],
-    template: `
-      <div v-if="show" data-testid="custom-dialog" :data-confirm-variant="confirmButtonVariant">
-        <h3 data-testid="dialog-title">{{ title }}</h3>
-        <p data-testid="dialog-message">{{ message }}</p>
-        <input v-if="showInput" :value="inputValue" @input="$emit('update:inputValue', $event.target.value)" data-testid="dialog-input" />
-        <button @click="$emit('cancel')" data-testid="dialog-cancel-button">{{ cancelButtonText }}</button>
-        <button @click="$emit('confirm')" :class="confirmButtonVariant === 'danger' ? 'bg-red-600' : ''" data-testid="dialog-confirm-button">{{ confirmButtonText }}</button>
-      </div>
-    `,
-  },
-}));
-
-// Mock sub-components
+// Core components are kept synchronous and mocked simply
 vi.mock('./components/Sidebar.vue', () => ({
   default: {
     name: 'Sidebar',
@@ -74,31 +56,23 @@ vi.mock('./components/Sidebar.vue', () => ({
     emits: ['open-settings'],
   },
 }));
-vi.mock('./components/SettingsModal.vue', () => ({
-  default: {
-    name: 'SettingsModal',
-    template: '<div v-if="isOpen" data-testid="settings-modal"></div>',
-    props: ['isOpen'],
-  },
-}));
+
 vi.mock('./components/OnboardingModal.vue', () => ({
   default: {
     name: 'OnboardingModal',
     template: '<div data-testid="onboarding-modal"></div>',
   },
 }));
-vi.mock('./components/DebugPanel.vue', () => ({
-  default: {
-    name: 'DebugPanel',
-    template: '<div data-testid="debug-panel"></div>',
-  },
-}));
+
 vi.mock('./components/ToastContainer.vue', () => ({
   default: {
     name: 'ToastContainer',
     template: '<div data-testid="toast-container"></div>',
   },
 }));
+
+// We DON'T vi.mock the components that are defineAsyncComponent in App.vue
+// Instead we stub them in the mount options.
 
 describe('App', () => {
   const mockInit = vi.fn();
@@ -113,6 +87,7 @@ describe('App', () => {
       init: mockInit,
       initialized: ref(true),
       isOnboardingDismissed: ref(true),
+      isFetchingModels: ref(false),
       settings: ref({ endpointUrl: 'http://localhost:11434' }),
     });
     (useRouter as unknown as Mock).mockReturnValue({
@@ -121,16 +96,41 @@ describe('App', () => {
     });
   });
 
-  it('renders core components', async () => {
-    const wrapper = mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
+  const mountApp = () => mount(App, {
+    global: {
+      stubs: {
+        'router-view': true,
+        'transition': true,
+        // Stub the async components
+        'SettingsModal': {
+          template: '<div v-if="isOpen" data-testid="settings-modal"></div>',
+          props: ['isOpen']
         },
+        'DebugPanel': {
+          template: '<div data-testid="debug-panel"></div>'
+        },
+        CustomDialog: {
+          props: ['show', 'title', 'message', 'confirmButtonText', 'cancelButtonText', 'confirmButtonVariant', 'showInput', 'inputValue'],
+          emits: ['confirm', 'cancel', 'update:inputValue'],
+          template: `
+            <div v-if="show" data-testid="custom-dialog" :data-confirm-variant="confirmButtonVariant">
+              <h3 data-testid="dialog-title">{{ title }}</h3>
+              <p data-testid="dialog-message">{{ message }}</p>
+              <input v-if="showInput" :value="inputValue" @input="$emit('update:inputValue', $event.target.value)" data-testid="dialog-input" />
+              <button @click="$emit('cancel')" data-testid="dialog-cancel-button">{{ cancelButtonText }}</button>
+              <button @click="$emit('confirm')" :class="confirmButtonVariant === 'danger' ? 'bg-red-600' : ''" data-testid="dialog-confirm-button">{{ confirmButtonText }}</button>
+            </div>
+          `
+        },
+        OPFSExplorer: true,
+        GroupSettingsPanel: true
       },
-    });
-    await nextTick();
+    },
+  });
+
+  it('renders core components', async () => {
+    const wrapper = mountApp();
+    await flushPromises();
     expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="debug-panel"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="toast-container"]').exists()).toBe(true);
@@ -142,16 +142,9 @@ describe('App', () => {
       mockCurrentChat.value = { id: 'auto-chat-id' } as unknown as Chat;
     });
 
-    mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
+    mountApp();
 
-    await nextTick();
+    await flushPromises();
     await nextTick();
     await nextTick();
 
@@ -165,16 +158,9 @@ describe('App', () => {
       mockCurrentChat.value = { id: 'post-clear-chat-id' } as unknown as Chat;
     });
 
-    mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
+    mountApp();
 
-    await nextTick();
+    await flushPromises();
     expect(mockCreateNewChat).not.toHaveBeenCalled();
 
     // Simulate clearing history
@@ -196,13 +182,9 @@ describe('App', () => {
       currentRoute,
     });
 
-    mount(App, {
-      global: {
-        stubs: { 'router-view': true, 'transition': true },
-      },
-    });
+    mountApp();
 
-    await nextTick();
+    await flushPromises();
     // Clear calls from immediate watch execution on mount
     mockCreateNewChat.mockClear();
 
@@ -217,15 +199,8 @@ describe('App', () => {
   });
 
   it('opens SettingsModal when Sidebar emits open-settings', async () => {
-    const wrapper = mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
-    await nextTick();
+    const wrapper = mountApp();
+    await flushPromises();
     
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
     
@@ -242,15 +217,8 @@ describe('App', () => {
       settings: ref({ endpointUrl: '' }),
     });
 
-    const wrapper = mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
-    await nextTick();
+    const wrapper = mountApp();
+    await flushPromises();
     
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
   });
@@ -264,12 +232,8 @@ describe('App', () => {
       settings: ref({ endpointUrl: '' }),
     });
 
-    const wrapper = mount(App, {
-      global: {
-        stubs: { 'router-view': true, 'transition': true },
-      },
-    });
-    await nextTick();
+    const wrapper = mountApp();
+    await flushPromises();
     
     // Initially shown
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
@@ -290,15 +254,8 @@ describe('App', () => {
       mockCurrentChat.value = { id: 'new-chat-id' } as unknown as Chat;
     });
     
-    mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
-    await nextTick();
+    mountApp();
+    await flushPromises();
 
     // Simulate Ctrl+Shift+O
     const event = new KeyboardEvent('keydown', {
@@ -321,15 +278,8 @@ describe('App', () => {
       mockCurrentChat.value = { id: 'mac-chat-id' } as unknown as Chat;
     });
     
-    mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
-    await nextTick();
+    mountApp();
+    await flushPromises();
 
     // Simulate Meta+Shift+O (Cmd on Mac)
     const event = new KeyboardEvent('keydown', {
@@ -368,14 +318,8 @@ describe('App', () => {
       handleCancel: mockHandleCancel,
     });
 
-    const wrapper = mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
+    const wrapper = mountApp();
+    await flushPromises();
 
     // Simulate opening the dialog with danger variant
     mockIsConfirmOpen.value = true;

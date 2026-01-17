@@ -9,7 +9,7 @@ import ThemeToggle from './ThemeToggle.vue';
 import ModelSelector from './ModelSelector.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
-  Plus, Trash2, Settings as SettingsIcon, 
+  Trash2, Settings as SettingsIcon, 
   Pencil, Folder, FolderPlus, 
   ChevronDown, ChevronRight, Check, X,
   Bot, PanelLeft, SquarePen, Loader2,
