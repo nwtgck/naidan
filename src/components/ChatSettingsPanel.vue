@@ -79,10 +79,10 @@ async function fetchModels() {
     try {
       const models = await chatStore.fetchAvailableModels(currentChat.value);
       if (models.length === 0) {
-        error.value = 'No models found. Check URL or provider.';
+        error.value = 'No models found at this endpoint.';
       }
     } catch (e) {
-      error.value = 'Connection failed. Check URL or provider.';
+      error.value = e instanceof Error ? e.message : 'Connection failed. Check URL or provider.';
     }
   }
 }
@@ -225,8 +225,8 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
               :placeholder="formatLabel(resolvedSettings?.endpointUrl, resolvedSettings?.sources.endpointUrl)"
               data-testid="chat-setting-url-input"
             />
-            <div class="h-4 mt-1">
-              <p v-if="error" class="text-[10px] text-red-500 font-bold ml-1">{{ error }}</p>
+            <div v-if="error" class="mt-2">
+              <p class="text-[10px] text-red-500 font-bold ml-1 leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200">{{ error }}</p>
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./public/logo.svg" width="60" height="60" alt="Naidan Logo" />
+  <img src="./src/assets/logo.svg" width="60" height="60" alt="Naidan Logo" />
   <h1 align="center">Naidan</h1>
 </p>
 

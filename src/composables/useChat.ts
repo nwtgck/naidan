@@ -5,6 +5,7 @@ import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
+import { useGlobalEvents } from './useGlobalEvents';
 
 const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
@@ -342,6 +343,12 @@ export function useChat() {
       }
       return result;
     } catch (e) {
+      const { addErrorEvent } = useGlobalEvents();
+      addErrorEvent({
+        source: 'useChat:fetchAvailableModels',
+        message: 'Failed to fetch models for resolution',
+        details: e instanceof Error ? e : String(e),
+      });
       console.warn('Failed to fetch models for resolution:', e);
       return [];
     } finally {
@@ -869,6 +876,15 @@ Message: "${content}"`,
         }
       }
     } catch (e) {
+      const isAbort = e instanceof Error && e.name === 'AbortError';
+      if (!isAbort) {
+        const { addErrorEvent } = useGlobalEvents();
+        addErrorEvent({
+          source: 'useChat:generateChatTitle',
+          message: 'Failed to generate chat title',
+          details: e instanceof Error ? e : String(e),
+        });
+      }
       console.warn('Failed to generate title:', e);
     } finally {
       activeTitleGenerations.delete(taskId);

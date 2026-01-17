@@ -410,7 +410,7 @@ describe('ChatSettingsPanel.vue', () => {
       // Force an error via ModelSelector refresh
       await selector.vm.$emit('refresh');
       await flushPromises();
-      expect(wrapper.text()).toContain('Connection failed');
+      expect(wrapper.text()).toContain('Fail');
 
       // Act: Change URL
       const urlInput = wrapper.find('input[type="text"]');
@@ -418,7 +418,7 @@ describe('ChatSettingsPanel.vue', () => {
       await flushPromises();
       
       // Assert: Error should be cleared by the input watcher/handler
-      expect(wrapper.text()).not.toContain('Connection failed');
+      expect(wrapper.text()).not.toContain('Fail');
     });
 
     it('updates "Global" option labels when global settings change', async () => {
@@ -489,14 +489,15 @@ describe('ChatSettingsPanel.vue', () => {
     });
 
     it('shows error message when refresh fails', async () => {
-      mockFetchAvailableModels.mockRejectedValueOnce(new Error('Network error'));
+      const errorMessage = 'OLLAMA_ORIGINS="*" ollama serve';
+      mockFetchAvailableModels.mockRejectedValueOnce(new Error(errorMessage));
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
       const selector = wrapper.getComponent({ name: 'ModelSelector' });
       
       await selector.vm.$emit('refresh');
       await flushPromises();
 
-      expect(wrapper.text()).toContain('Connection failed. Check URL or provider.');
+      expect(wrapper.text()).toContain(errorMessage);
     });
   });
 });

@@ -98,6 +98,12 @@ export function useSettings() {
       const models = await provider.listModels(settings.value.endpointUrl, settings.value.endpointHttpHeaders);
       availableModels.value = models;
     } catch (err) {
+      const { addErrorEvent } = useGlobalEvents();
+      addErrorEvent({
+        source: 'useSettings:fetchModels',
+        message: 'Failed to fetch models for settings',
+        details: err instanceof Error ? err : String(err),
+      });
       console.error('Failed to fetch models:', err);
       // We don't clear availableModels on error if we already have some, 
       // but maybe we should if it's a connection error.

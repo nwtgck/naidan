@@ -180,7 +180,7 @@ async function fetchModels() {
     }
   } catch (err) {
     console.error(err);
-    error.value = 'Connection failed. Check URL or provider.';
+    error.value = err instanceof Error ? err.message : 'Connection failed. Check URL or provider.';
   }
 }
 
@@ -531,9 +531,9 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                       <Globe class="w-4 h-4 shrink-0 mt-0.5" />
                       <p>Connection check is automatically performed only for localhost URLs.</p>
                     </div>
-                    <!-- Error message with fixed height to prevent layout shift -->
-                    <div class="h-4 mt-1">
-                      <p v-if="error" class="text-xs text-red-500 font-bold ml-1 animate-in fade-in slide-in-from-top-1 duration-200">{{ error }}</p>
+                    <!-- Error message container -->
+                    <div v-if="error" class="mt-2">
+                      <p class="text-xs text-red-500 font-bold ml-1 animate-in fade-in slide-in-from-top-1 duration-200 leading-relaxed">{{ error }}</p>
                     </div>
                   </div>
 

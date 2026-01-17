@@ -46,7 +46,7 @@ const globalStubs = {
   'LmParametersEditor': true,
   'ModelSelector': {
     name: 'ModelSelector',
-    template: '<div data-testid="model-selector-mock"></div>',
+    template: '<div data-testid="model-selector-mock"><button data-testid="refresh-btn" @click="$emit(\'refresh\')">Refresh</button></div>',
     props: ['modelValue', 'models']
   },
 };
@@ -62,6 +62,24 @@ describe('GroupSettingsPanel.vue', () => {
       systemPrompt: undefined,
       lmParameters: {},
     });
+  });
+
+  it('shows detailed error message when refresh fails', async () => {
+    const errorMessage = 'CORS error: OLLAMA_ORIGINS="*"';
+    mockFetchAvailableModels.mockRejectedValueOnce(new Error(errorMessage));
+    
+    // Customize group to have an endpoint so URL input/error exists
+    mockGroup.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
+    
+    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    
+    await wrapper.find('[data-testid="refresh-btn"]').trigger('click');
+    await nextTick();
+    // Use flushPromises if there are more async things, but for this simple error setting, nextTick might be enough if it's awaited.
+    // However, fetchModels is async, so we use a small delay or flushPromises.
+    await new Promise(resolve => setTimeout(resolve, 0)); 
+    
+    expect(wrapper.text()).toContain(errorMessage);
   });
 
   it('renders the group name in the header', () => {

@@ -241,6 +241,39 @@ describe('OllamaProvider', () => {
     );
   });
 
+  it('should include OLLAMA_ORIGINS hint when fetch fails on file:// protocol', async () => {
+    vi.stubGlobal('location', { protocol: 'file:' });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Failed to fetch')));
+
+    await expect(provider.listModels('http://localhost:11434')).rejects.toThrow(
+      /OLLAMA_ORIGINS='\*' ollama serve/
+    );
+
+    expect(errorCount.value).toBe(1);
+    expect(events.value[0]?.message).toContain("OLLAMA_ORIGINS='*'");
+    
+    clearEvents();
+  });
+
+  it('should extract detailed error message from response JSON', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      json: () => Promise.resolve({ error: 'Specific API Error Message' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(provider.listModels('http://localhost:11434')).rejects.toThrow(
+      /Failed to fetch models \(400\): Specific API Error Message/
+    );
+
+    expect(errorCount.value).toBe(1);
+    expect(events.value[0]?.message).toContain('Specific API Error Message');
+    
+    clearEvents();
+  });
+
   afterEach(() => {
     expect(errorCount.value).toBe(0);
   });

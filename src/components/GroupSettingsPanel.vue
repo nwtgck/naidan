@@ -91,10 +91,10 @@ async function fetchModels() {
       const models = await chatStore.fetchAvailableModels(undefined, { type, url, headers });
       groupModels.value = models;
       if (models.length === 0) {
-        error.value = 'No models found. Check URL or provider.';
+        error.value = 'No models found at this endpoint.';
       }
     } catch (e) {
-      error.value = 'Connection failed. Check URL or provider.';
+      error.value = e instanceof Error ? e.message : 'Connection failed. Check URL or provider.';
     }
   }
 }
@@ -256,11 +256,8 @@ function restoreDefaults() {
               :placeholder="settings.endpointUrl"
               data-testid="group-setting-url-input"
             />
-            <div v-else class="text-sm font-bold text-gray-400 p-3 bg-gray-100/50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl italic">
-              {{ settings.endpointUrl || 'No global URL' }}
-            </div>
-            <div class="h-4 mt-1">
-              <p v-if="error" class="text-[10px] text-red-500 font-bold ml-1">{{ error }}</p>
+            <div v-if="error" class="mt-2">
+              <p class="text-[10px] text-red-500 font-bold ml-1 leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200">{{ error }}</p>
             </div>
           </div>
 

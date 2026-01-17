@@ -233,20 +233,16 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
       await flushPromises();
 
-      // Should find the fixed-height error container
-      const errorContainer = wrapper.find('.h-4.mt-1');
-      expect(errorContainer.exists()).toBe(true);
-      
       // Initially should not show error text
-      expect(errorContainer.text()).toBe('');
+      expect(wrapper.text()).not.toContain('Test Error');
 
       // Set error
       const vm = wrapper.vm as unknown as { error: string | null };
       vm.error = 'Test Error';
       await flushPromises();
 
-      // Error text should appear inside the container without adding new lines to the parent
-      expect(errorContainer.text()).toBe('Test Error');
+      // Error text should appear
+      expect(wrapper.text()).toContain('Test Error');
     });
 
     it('shows success feedback when connection check succeeds', async () => {
@@ -525,7 +521,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await wrapper.find('[data-testid="setting-check-connection"]').trigger('click');
     await flushPromises();
 
-    expect(wrapper.text()).toContain('Connection failed. Check URL or provider.');
+    expect(wrapper.text()).toContain('Fetch failed');
   });
 
   it('triggers data reset after confirmation', async () => {
