@@ -54,6 +54,14 @@ export const chatGroupToDomain = (dto: ChatGroupDto, chatMetaDtos: ChatMetaDto[]
     isCollapsed: dto.isCollapsed,
     updatedAt: dto.updatedAt,
     items: nestedItems,
+    endpoint: dto.endpoint ? {
+      type: dto.endpoint.type as EndpointType,
+      url: dto.endpoint.url,
+      httpHeaders: dto.endpoint.httpHeaders,
+    } : undefined,
+    modelId: dto.modelId,
+    systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
+    lmParameters: dto.lmParameters,
   };
 };
 
@@ -63,6 +71,14 @@ export const chatGroupToDto = (domain: ChatGroup, index: number): ChatGroupDto =
   isCollapsed: domain.isCollapsed,
   updatedAt: domain.updatedAt,
   order: index,
+  endpoint: domain.endpoint ? {
+    type: domain.endpoint.type as EndpointTypeDto,
+    url: domain.endpoint.url,
+    httpHeaders: domain.endpoint.httpHeaders,
+  } : undefined,
+  modelId: domain.modelId,
+  systemPrompt: domain.systemPrompt,
+  lmParameters: domain.lmParameters,
 });
 
 const attachmentToDomain = (dto: AttachmentDto): Attachment => {

@@ -349,7 +349,7 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
             <div class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3">
               <div class="flex items-center justify-between text-[10px] font-bold">
                 <span class="text-gray-400">System Prompt</span>
-                <span :class="currentChat.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">{{ currentChat.systemPrompt ? (currentChat.systemPrompt.behavior === 'append' ? 'Appending' : 'Overriding') : 'Global Default' }}</span>
+                <span :class="currentChat.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">{{ currentChat.systemPrompt ? (currentChat.systemPrompt.behavior === 'append' ? 'Appending' : 'Overriding') : 'Group/Global Default' }}</span>
               </div>
               <div class="flex items-center justify-between text-[10px] font-bold">
                 <span class="text-gray-400">Parameters</span>
@@ -358,7 +358,7 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
                 </span>
               </div>
               <div class="pt-2 border-t border-gray-50 dark:border-gray-800/50">
-                <p class="text-[9px] text-gray-400 leading-relaxed italic">Chat settings take precedence over Provider Profiles, which take precedence over Global Settings.</p>
+                <p class="text-[9px] text-gray-400 leading-relaxed italic">Chat settings take precedence over Provider Profiles, which take precedence over Group settings, which take precedence over Global settings.</p>
               </div>
             </div>
           </div>

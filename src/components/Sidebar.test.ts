@@ -31,6 +31,7 @@ const mockSaveSettings = vi.fn();
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: ref(null),
+    currentChatGroup: ref(null),
     streaming: ref(false),
     activeGenerations: reactive(new Map()),
     chatGroups: mockChatGroups,
@@ -44,6 +45,7 @@ vi.mock('../composables/useChat', () => ({
     loadChats: mockLoadChats,
     createChatGroup: mockCreateChatGroup,
     renameChatGroup: mockRenameChatGroup,
+    openChatGroup: vi.fn(),
     toggleChatGroupCollapse: vi.fn(),
     persistSidebarStructure: vi.fn(),
     deleteAllChats: mockDeleteAllChats,

@@ -1,6 +1,6 @@
 import { ref, computed, shallowRef, reactive, triggerRef } from 'vue';
 import { v7 as uuidv7 } from 'uuid';
-import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, Attachment, MultimodalContent, ChatMessage } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, Attachment, MultimodalContent, ChatMessage, Settings, EndpointType } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
@@ -8,6 +8,7 @@ import { useConfirm } from './useConfirm';
 
 const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
+const currentChatGroup = shallowRef<ChatGroup | null>(null);
 
 // Registry for chats with active background tasks (streaming, titling, etc.)
 // This ensures we keep the reactive instance alive and synchronized across the UI.
@@ -104,6 +105,58 @@ function findParentInBranch(items: MessageNode[], childId: string): MessageNode 
 function findDeepestLeaf(node: MessageNode): MessageNode {
   if (node.replies.items.length === 0) return node;
   return findDeepestLeaf(node.replies.items[node.replies.items.length - 1]!);
+}
+
+function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: Settings) {
+  const group = chat.groupId ? groups.find(g => g.id === chat.groupId) : null;
+
+  const endpointType = chat.endpointType || group?.endpoint?.type || globalSettings.endpointType;
+  const endpointUrl = chat.endpointUrl || group?.endpoint?.url || globalSettings.endpointUrl || '';
+  const endpointHttpHeaders = chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || globalSettings.endpointHttpHeaders;
+  const modelId = chat.overrideModelId || group?.modelId || globalSettings.defaultModelId || '';
+
+  // System Prompt Resolution
+  let systemPrompts: string[] = [];
+  const globalPrompt = globalSettings.systemPrompt;
+  const groupPrompt = group?.systemPrompt;
+  const chatPrompt = chat.systemPrompt;
+
+  // Start with Global
+  if (globalPrompt) systemPrompts.push(globalPrompt);
+
+  // Apply Group
+  if (groupPrompt) {
+    if (groupPrompt.behavior === 'override') {
+      systemPrompts = groupPrompt.content ? [groupPrompt.content] : [];
+    } else if (groupPrompt.content) {
+      systemPrompts.push(groupPrompt.content);
+    }
+  }
+
+  // Apply Chat
+  if (chatPrompt) {
+    if (chatPrompt.behavior === 'override') {
+      systemPrompts = chatPrompt.content ? [chatPrompt.content] : [];
+    } else if (chatPrompt.content) {
+      systemPrompts.push(chatPrompt.content);
+    }
+  }
+
+  // LM Parameters Resolution (Deep Merge: Chat > Group > Global)
+  const lmParameters = {
+    ...(globalSettings.lmParameters || {}),
+    ...(group?.lmParameters || {}),
+    ...(chat.lmParameters || {}),
+  };
+
+  return {
+    endpointType,
+    endpointUrl,
+    endpointHttpHeaders,
+    modelId,
+    systemPromptMessages: systemPrompts,
+    lmParameters,
+  };
 }
 
 export function processThinking(node: MessageNode) {
@@ -224,18 +277,33 @@ export function useChat() {
     rootItems.value = await storageService.getSidebarStructure();
   };
 
-  const fetchAvailableModels = async (chat: Chat) => {
-    const taskId = chat.id;
+  const fetchAvailableModels = async (chat?: Chat, customEndpoint?: { type: EndpointType, url: string, headers?: [string, string][] }) => {
+    const taskId = chat?.id || 'custom-fetch';
     activeModelFetches.add(taskId);
-    registerLiveInstance(chat);
+    if (chat) registerLiveInstance(chat);
     
-    const type = chat.endpointType || settings.value.endpointType;
-    const url = chat.endpointUrl || settings.value.endpointUrl || '';
-    const headers = chat.endpointHttpHeaders || settings.value.endpointHttpHeaders;
+    let type: EndpointType;
+    let url: string;
+    let headers: [string, string][] | undefined;
+
+    if (customEndpoint) {
+      type = customEndpoint.type;
+      url = customEndpoint.url;
+      headers = customEndpoint.headers;
+    } else if (chat) {
+      const group = chat.groupId ? chatGroups.value.find(g => g.id === chat.groupId) : null;
+      type = chat.endpointType || group?.endpoint?.type || settings.value.endpointType;
+      url = chat.endpointUrl || group?.endpoint?.url || settings.value.endpointUrl || '';
+      headers = chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || settings.value.endpointHttpHeaders;
+    } else {
+      type = settings.value.endpointType;
+      url = settings.value.endpointUrl || '';
+      headers = settings.value.endpointHttpHeaders;
+    }
 
     if (!url) {
       activeModelFetches.delete(taskId);
-      unregisterLiveInstance(taskId);
+      if (chat) unregisterLiveInstance(taskId);
       return [];
     }
     
@@ -243,7 +311,7 @@ export function useChat() {
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
       const models = await provider.listModels(url, headers);
       const result = Array.isArray(models) ? models : [];
-      if (chat.id === currentChat.value?.id) {
+      if (chat && chat.id === currentChat.value?.id) {
         availableModels.value = result;
       }
       return result;
@@ -252,7 +320,7 @@ export function useChat() {
       return [];
     } finally {
       activeModelFetches.delete(taskId);
-      unregisterLiveInstance(taskId);
+      if (chat) unregisterLiveInstance(taskId);
     }
   };
 
@@ -264,6 +332,7 @@ export function useChat() {
 
   const createNewChat = async (chatGroupId: string | null = null) => {
     if (creatingChat.value) return;
+    currentChatGroup.value = null;
     creatingChat.value = true;
     const chatId = uuidv7();
     try {
@@ -299,6 +368,9 @@ export function useChat() {
   };
 
   const openChat = async (id: string) => {
+    // Clear group settings view when opening a chat
+    currentChatGroup.value = null;
+
     // If there is an active background task for this chat, use the live instance
     if (liveChatRegistry.has(id)) {
       currentChat.value = liveChatRegistry.get(id)!;
@@ -310,6 +382,13 @@ export function useChat() {
       currentChat.value = reactive(loaded);
     } else {
       currentChat.value = null;
+    }
+  };
+
+  const openChatGroup = (id: string) => {
+    const group = chatGroups.value.find(g => g.id === id);
+    if (group) {
+      currentChatGroup.value = group;
     }
   };
 
@@ -442,36 +521,21 @@ export function useChat() {
     activeGenerations.set(chat.id, { controller, chat });
     registerLiveInstance(chat);
 
-    const type = chat.endpointType || settings.value.endpointType;
-    const url = chat.endpointUrl || settings.value.endpointUrl || '';
-    const resolvedModel = assistantNode.modelId || '';
+    const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
+    const type = resolved.endpointType;
+    const url = resolved.endpointUrl;
+    const resolvedModel = assistantNode.modelId || resolved.modelId;
 
     try {
 
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
 
-      // --- Resolve System Prompt & Parameters ---
-      const globalSystemPrompt = settings.value.systemPrompt;
-      const chatPromptObj = chat.systemPrompt;
-      
-      const headers = chat.endpointHttpHeaders || settings.value.endpointHttpHeaders;
+      const headers = resolved.endpointHttpHeaders;
       const finalMessages: ChatMessage[] = [];
       
-      if (chatPromptObj) {
-        if (chatPromptObj.behavior === 'append') {
-          if (globalSystemPrompt) finalMessages.push({ role: 'system', content: globalSystemPrompt });
-          if (chatPromptObj.content) finalMessages.push({ role: 'system', content: chatPromptObj.content });
-        } else {
-          // override
-          if (chatPromptObj.content) {
-            finalMessages.push({ role: 'system', content: chatPromptObj.content });
-          } else if (globalSystemPrompt) {
-            finalMessages.push({ role: 'system', content: globalSystemPrompt });
-          }
-        }
-      } else if (globalSystemPrompt) {
-        finalMessages.push({ role: 'system', content: globalSystemPrompt });
-      }
+      resolved.systemPromptMessages.forEach(content => {
+        finalMessages.push({ role: 'system', content });
+      });
 
       // Add conversation history
       const history = getChatBranch(chat).filter(m => m.id !== assistantId);
@@ -497,11 +561,8 @@ export function useChat() {
         }
       }
 
-      // 2. Resolve LM Parameters (Deep Merge: Chat > Global)
-      const resolvedParams = {
-        ...(settings.value.lmParameters || {}),
-        ...(chat.lmParameters || {}),
-      };
+      // 2. Resolve LM Parameters (Deep Merge: Chat > Group > Global)
+      const resolvedParams = resolved.lmParameters;
 
       await provider.chat(finalMessages, resolvedModel, url, (chunk) => {
 
@@ -568,22 +629,22 @@ export function useChat() {
       const { showConfirm } = useConfirm();
 
       // --- Model & Endpoint Resolution ---
-      const type = chat.endpointType || settings.value.endpointType;
-      const url = chat.endpointUrl || settings.value.endpointUrl || '';
+      const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
+      const type = resolved.endpointType;
+      const url = resolved.endpointUrl;
       
-      let resolvedModel = chat.overrideModelId || settings.value.defaultModelId || '';
+      let resolvedModel = chat.overrideModelId || resolved.modelId;
 
       if (url) {
         const models = await fetchAvailableModels(chat);
         if (models.length > 0) {
-          const preferredModel = chat.overrideModelId || settings.value.defaultModelId;
+          const preferredModel = chat.overrideModelId || resolved.modelId;
           if (preferredModel && models.includes(preferredModel)) {
             resolvedModel = preferredModel;
           } else if (preferredModel) {
             // If a preferred model was set but is not available, fallback to first
             resolvedModel = models[0] || '';
           }
-          // If NO preferred model was set at all, resolvedModel remains '', triggering onboarding below
         }
       }
 
@@ -726,9 +787,10 @@ export function useChat() {
     activeTitleGenerations.add(taskId);
     registerLiveInstance(chat);
 
-    const type = chat.endpointType || settings.value.endpointType;
-    const url = chat.endpointUrl || settings.value.endpointUrl || '';
-    const headers = chat.endpointHttpHeaders || settings.value.endpointHttpHeaders;
+    const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
+    const type = resolved.endpointType;
+    const url = resolved.endpointUrl;
+    const headers = resolved.endpointHttpHeaders;
 
     if (!url) {
       activeTitleGenerations.delete(taskId);
@@ -753,9 +815,9 @@ export function useChat() {
       // Determine model to use for title generation
       let titleGenModel = settings.value.titleModelId;
       if (!titleGenModel) {
-        // Fallback to current model of the last message or default
+        // Fallback to current model of the last message or resolved default
         const lastMsg = history[history.length - 1];
-        titleGenModel = lastMsg?.modelId || settings.value.defaultModelId;
+        titleGenModel = lastMsg?.modelId || resolved.modelId;
       }
 
       if (!titleGenModel) return;
@@ -914,6 +976,9 @@ Message: "${content}"`,
   };
 
   const deleteChatGroup = async (id: string) => {
+    if (currentChatGroup.value?.id === id) {
+      currentChatGroup.value = null;
+    }
     await storageService.deleteChatGroup(id);
     await loadData();
   };
@@ -933,6 +998,14 @@ Message: "${content}"`,
       chatGroup.updatedAt = Date.now();
       await persistSidebarStructure(rootItems.value);
       await loadData();
+    }
+  };
+
+  const saveChatGroup = async (group: ChatGroup) => {
+    // Find its index in rootItems
+    const index = rootItems.value.findIndex(item => item.type === 'chat_group' && item.chatGroup.id === group.id);
+    if (index !== -1) {
+      await storageService.saveChatGroup(group, index);
     }
   };
 
@@ -969,6 +1042,7 @@ Message: "${content}"`,
     chatGroups,
     sidebarItems,
     currentChat,
+    currentChatGroup,
     activeMessages,
     streaming,
     activeGenerations,
@@ -981,6 +1055,7 @@ Message: "${content}"`,
     fetchAvailableModels,
     createNewChat,
     openChat,
+    openChatGroup,
     deleteChat,
     deleteAllChats,
     renameChat,
@@ -997,6 +1072,7 @@ Message: "${content}"`,
     toggleChatGroupCollapse,
     renameChatGroup,
     persistSidebarStructure,
+    saveChatGroup,
     abortChat,
     saveChat,
   };

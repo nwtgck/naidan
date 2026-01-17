@@ -137,6 +137,7 @@ async function handleNewChat(chatGroupId: string | null = null) {
 
 function handleOpenChat(id: string) {
   if (editingId.value === id) return;
+  chatStore.currentChatGroup.value = null;
   router.push(`/chat/${id}`);
 }
 
@@ -276,12 +277,18 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
               <!-- Chat Group Item -->
               <div v-if="element.type === 'chat_group'" class="space-y-1">
                 <div 
-                  @click="chatStore.toggleChatGroupCollapse(element.chatGroup.id)"
+                  @click="chatStore.openChatGroup(element.chatGroup.id)"
                   class="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative transition-all handle"
+                  :class="{ 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm': chatStore.currentChatGroup.value?.id === element.chatGroup.id }"
                   data-testid="chat-group-item"
                 >
                   <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
-                    <component :is="element.chatGroup.isCollapsed ? ChevronRight : ChevronDown" class="w-3 h-3 flex-shrink-0" />
+                    <button 
+                      @click.stop="chatStore.toggleChatGroupCollapse(element.chatGroup.id)"
+                      class="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
+                    >
+                      <component :is="element.chatGroup.isCollapsed ? ChevronRight : ChevronDown" class="w-3 h-3 flex-shrink-0" />
+                    </button>
                     <Folder class="w-4 h-4 text-blue-500/60" />
                     
                     <input 

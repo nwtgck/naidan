@@ -118,7 +118,7 @@ describe('useChat Advanced Settings Resolution', () => {
 
       await sendMessage('Hi');
       const messages = mockOpenAIChat.mock.calls[0]![0];
-      // Should find Global Default Prompt + Chat Extra Prompt
+      // Should find Global Default Prompt + Chat Extra Prompt as separate messages
       expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
       expect(messages[1]).toEqual({ role: 'system', content: 'Chat Extra Prompt' });
     });

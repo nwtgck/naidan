@@ -9,6 +9,7 @@ import { usePrompt } from './composables/usePrompt';   // Import usePrompt
 import { useOPFSExplorer } from './composables/useOPFSExplorer';
 import Sidebar from './components/Sidebar.vue';
 import SettingsModal from './components/SettingsModal.vue';
+import GroupSettingsPanel from './components/GroupSettingsPanel.vue';
 import OnboardingModal from './components/OnboardingModal.vue';
 import DebugPanel from './components/DebugPanel.vue';
 import ToastContainer from './components/ToastContainer.vue';
@@ -81,8 +82,12 @@ onKeyStroke(['o', 'O'], async (e) => {
     </div>
     
     <main class="flex-1 relative flex flex-col min-w-0 pb-10 bg-transparent">
+      <GroupSettingsPanel 
+        v-if="chatStore.currentChatGroup.value" 
+        @close="chatStore.currentChatGroup.value = null" 
+      />
       <!-- Use a key based on route to help Vue identify when to remount or transition -->
-      <router-view v-slot="{ Component, route }">
+      <router-view v-else v-slot="{ Component, route }">
         <transition name="fade" mode="out-in">
           <component :is="Component" :key="route.path" />
         </transition>

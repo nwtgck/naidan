@@ -20,6 +20,7 @@ vi.mock('./composables/useChat', () => ({
     createNewChat: mockCreateNewChat,
     loadChats: mockLoadChats,
     currentChat: mockCurrentChat,
+    currentChatGroup: ref(null),
     chats: mockChats,
   }),
 }));

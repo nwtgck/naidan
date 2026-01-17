@@ -26,6 +26,12 @@ export interface SystemPrompt {
   behavior: 'override' | 'append';
 }
 
+export interface Endpoint {
+  type: EndpointType;
+  url?: string;
+  httpHeaders?: [string, string][];
+}
+
 export type MultimodalContent = 
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
@@ -70,6 +76,11 @@ export interface ChatGroup {
   isCollapsed: boolean;
   items: SidebarItem[]; // Order is defined by array index
   updatedAt: number;
+
+  endpoint?: Endpoint;
+  modelId?: string;
+  systemPrompt?: SystemPrompt;
+  lmParameters?: LmParameters;
 }
 
 export interface Chat {

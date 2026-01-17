@@ -48,6 +48,11 @@ export const ChatGroupSchemaDto = z.object({
   order: z.number(),
   updatedAt: z.number(),
   isCollapsed: z.boolean().default(false),
+
+  endpoint: EndpointSchemaDto.optional(),
+  modelId: z.string().optional(),
+  systemPrompt: SystemPromptSchemaDto.optional(),
+  lmParameters: LmParametersSchemaDto.optional(),
 });
 export type ChatGroupDto = z.infer<typeof ChatGroupSchemaDto>;
 
@@ -109,6 +114,7 @@ export const ChatMetaSchemaDto = z.object({
   debugEnabled: z.boolean().optional().default(false),
   
   endpoint: EndpointSchemaDto.optional(),
+  // TODO: Rename overrideModelId to modelId in a future refactor to align with ChatGroup and Settings.
   overrideModelId: z.string().optional(),
   originChatId: z.uuid().optional(),
   originMessageId: z.uuid().optional(),

@@ -341,10 +341,10 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   describe('Settings Resolution Indicators', () => {
-    it('shows "Global Default" for system prompt when not overridden', () => {
+    it('shows "Global Default" for system prompt when not overridden', async () => {
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
       const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
-      expect(status.text()).toBe('Global Default');
+      expect(status.text()).toBe('Group/Global Default');
       expect(status.classes()).not.toContain('text-blue-500');
     });
 
