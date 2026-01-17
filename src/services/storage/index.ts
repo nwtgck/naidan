@@ -2,45 +2,69 @@ import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, MessageNode }
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
+import { checkOPFSSupport } from './opfs-detection';
 import { useGlobalEvents } from '../../composables/useGlobalEvents';
 import { STORAGE_BOOTSTRAP_KEY } from '../../models/constants';
 import { chatToDto } from '../../models/mappers';
 import type { MigrationChunkDto } from '../../models/dto';
 
 export class StorageService {
-  private provider: IStorageProvider;
-  private currentType: 'local' | 'opfs' = 'local';
+  private provider: IStorageProvider | null = null;
+  private currentType: 'local' | 'opfs' | null = null;
 
-  constructor() {
-    this.provider = new LocalStorageProvider();
+  private getProvider(): IStorageProvider {
+    if (!this.provider) {
+      throw new Error('StorageService not initialized. Call init() first.');
+    }
+    return this.provider;
   }
 
-  async init(type: 'local' | 'opfs' = 'local') {
-    this.currentType = type;
-    if (type === 'opfs' && typeof navigator.storage?.getDirectory === 'function') {
+  async init(type: 'local' | 'opfs') {
+    const isOPFSSupported = await checkOPFSSupport();
+    let targetType: 'local' | 'opfs' = type;
+
+    // Fallback if OPFS is requested but not available in this environment
+    if (targetType === 'opfs' && !isOPFSSupported) {
+      targetType = 'local';
+    }
+
+    this.currentType = targetType;
+
+    switch (this.currentType) {
+    case 'opfs':
       this.provider = new OPFSStorageProvider();
-    } else {
+      break;
+    case 'local':
       this.provider = new LocalStorageProvider();
+      break;
+    default: {
+      const _exhaustiveCheck: never = this.currentType;
+      throw new Error(`Unhandled currentType: ${_exhaustiveCheck}`);
+    }
     }
     await this.provider.init();
   }
 
   getCurrentType(): 'local' | 'opfs' {
+    if (!this.currentType) {
+      throw new Error('StorageService not initialized. Call init() first.');
+    }
     return this.currentType;
   }
 
   get canPersistBinary(): boolean {
-    return this.provider.canPersistBinary;
+    return this.getProvider().canPersistBinary;
   }
 
   async switchProvider(type: 'local' | 'opfs') {
+    const activeProvider = this.getProvider();
     if (this.currentType === type) return;
 
-    const oldProvider = this.provider;
+    const oldProvider = activeProvider;
     let newProvider: IStorageProvider;
 
     // Initialize the target provider
-    if (type === 'opfs' && typeof navigator.storage?.getDirectory === 'function') {
+    if (type === 'opfs' && await checkOPFSSupport()) {
       newProvider = new OPFSStorageProvider();
     } else {
       newProvider = new LocalStorageProvider();
@@ -152,67 +176,67 @@ export class StorageService {
   // --- Domain Methods (leveraging base class implementations) ---
 
   async listChats(): Promise<ChatSummary[]> {
-    return this.provider.listChats();
+    return this.getProvider().listChats();
   }
 
   async listChatGroups(): Promise<ChatGroup[]> {
-    return this.provider.listChatGroups();
+    return this.getProvider().listChatGroups();
   }
 
   async getSidebarStructure(): Promise<SidebarItem[]> {
-    return this.provider.getSidebarStructure();
+    return this.getProvider().getSidebarStructure();
   }
 
   // --- Persistence Methods ---
 
   async saveChat(chat: Chat, index: number): Promise<void> {
-    return this.provider.saveChat(chat, index);
+    return this.getProvider().saveChat(chat, index);
   }
 
   async loadChat(id: string): Promise<Chat | null> {
-    return this.provider.loadChat(id);
+    return this.getProvider().loadChat(id);
   }
 
   async deleteChat(id: string): Promise<void> {
-    return this.provider.deleteChat(id);
+    return this.getProvider().deleteChat(id);
   }
 
   async saveChatGroup(chatGroup: ChatGroup, index: number): Promise<void> {
-    return this.provider.saveChatGroup(chatGroup, index);
+    return this.getProvider().saveChatGroup(chatGroup, index);
   }
 
   async loadChatGroup(id: string): Promise<ChatGroup | null> {
-    return this.provider.loadChatGroup(id);
+    return this.getProvider().loadChatGroup(id);
   }
 
   async deleteChatGroup(id: string): Promise<void> {
-    return this.provider.deleteChatGroup(id);
+    return this.getProvider().deleteChatGroup(id);
   }
 
   async saveSettings(settings: Settings): Promise<void> {
-    return this.provider.saveSettings(settings);
+    return this.getProvider().saveSettings(settings);
   }
 
   async loadSettings(): Promise<Settings | null> {
-    return this.provider.loadSettings();
+    return this.getProvider().loadSettings();
   }
 
   async clearAll(): Promise<void> {
-    return this.provider.clearAll();
+    return this.getProvider().clearAll();
   }
 
   // --- File Storage Methods ---
 
   async saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void> {
-    return this.provider.saveFile(blob, attachmentId, originalName);
+    return this.getProvider().saveFile(blob, attachmentId, originalName);
   }
 
   async getFile(attachmentId: string, originalName: string): Promise<Blob | null> {
-    return this.provider.getFile(attachmentId, originalName);
+    return this.getProvider().getFile(attachmentId, originalName);
   }
 
   async hasAttachments(): Promise<boolean> {
-    return this.provider.hasAttachments();
+    return this.getProvider().hasAttachments();
   }
 }
 

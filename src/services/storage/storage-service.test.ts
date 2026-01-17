@@ -35,6 +35,49 @@ vi.mock('../../composables/useGlobalEvents', () => ({
   }),
 }));
 
+describe('StorageService Initialization Protection', () => {
+  it('should throw error when getCurrentType is called before init', () => {
+    // We need a fresh instance for this test
+    const freshService = new (storageService.constructor as any)();
+    expect(() => freshService.getCurrentType()).toThrow('StorageService not initialized');
+  });
+
+  it('should throw error when a domain method is called before init', async () => {
+    const freshService = new (storageService.constructor as any)();
+    await expect(freshService.listChats()).rejects.toThrow('StorageService not initialized');
+  });
+});
+
+describe('StorageService Initialization Defaults', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal('navigator', {
+      storage: { getDirectory: vi.fn() },
+    });
+  });
+
+  it('should use opfs when requested and supported', async () => {
+    (navigator.storage.getDirectory as any).mockResolvedValue({});
+    
+    await storageService.init('opfs');
+    expect(storageService.getCurrentType()).toBe('opfs');
+  });
+
+  it('should use local when requested even if opfs is supported', async () => {
+    (navigator.storage.getDirectory as any).mockResolvedValue({});
+    
+    await storageService.init('local');
+    expect(storageService.getCurrentType()).toBe('local');
+  });
+
+  it('should fallback to "local" if "opfs" was requested but is no longer supported', async () => {
+    (navigator.storage.getDirectory as any).mockRejectedValue(new Error('No OPFS'));
+    
+    await storageService.init('opfs');
+    expect(storageService.getCurrentType()).toBe('local');
+  });
+});
+
 describe('StorageService Migration', () => {
   beforeEach(async () => {
     vi.clearAllMocks();

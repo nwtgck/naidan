@@ -1,7 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useSettings } from './useSettings';
-import { DEFAULT_SETTINGS } from '../models/types';
+import { DEFAULT_SETTINGS, type Settings } from '../models/types';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
+import { flushPromises } from '@vue/test-utils';
+
+const { mockAddErrorEvent } = vi.hoisted(() => ({
+  mockAddErrorEvent: vi.fn(),
+}));
+
+vi.mock('./useGlobalEvents', () => ({
+  useGlobalEvents: () => ({
+    addErrorEvent: mockAddErrorEvent,
+  }),
+}));
 
 // Mock storageService using vi.hoisted for the implementation
 const mocks = vi.hoisted(() => ({
@@ -16,6 +27,10 @@ vi.mock('../services/storage', () => ({
   storageService: mocks,
 }));
 
+vi.mock('../services/storage/opfs-detection', () => ({
+  checkOPFSSupport: vi.fn().mockResolvedValue(true),
+}));
+
 describe('useSettings Initialization and Bootstrap', () => {
   // Access refs to reset them
   const { initialized, isOnboardingDismissed, settings } = useSettings();
@@ -26,7 +41,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     // Reset shared state
     initialized.value = false;
     isOnboardingDismissed.value = false;
-    settings.value = { ...DEFAULT_SETTINGS };
+    settings.value = { ...DEFAULT_SETTINGS, storageType: 'local', endpointType: 'openai' } as Settings;
   });
 
   it('should initialize StorageService with correct type from bootstrap key', async () => {
@@ -36,10 +51,68 @@ describe('useSettings Initialization and Bootstrap', () => {
     expect(mocks.init).toHaveBeenCalledWith('opfs');
   });
 
-  it('should default to local storage if bootstrap key is missing', async () => {
+  it('should determine, persist and pass opfs to StorageService if bootstrap key is missing (new user)', async () => {
+    localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+    
     const { init } = useSettings();
     await init();
-    expect(mocks.init).toHaveBeenCalledWith('local');
+    
+    expect(mocks.init).toHaveBeenCalledWith('opfs');
+    expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('opfs');
+  });
+
+  it('should sync settings.value.storageType with detected bootstrapType during init', async () => {
+    localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+    localStorage.clear();
+    
+    // Ensure initial state is different (though it defaults to local in the ref definition)
+    settings.value.storageType = 'local';
+    
+    const { init } = useSettings();
+    await init();
+    
+    // After init, it should have been updated to 'opfs' (from detection)
+    expect(settings.value.storageType).toBe('opfs');
+  });
+
+  it('should preserve detected storageType when saving settings (onboarding simulation)', async () => {
+    localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+    localStorage.clear();
+    
+    const { init, save } = useSettings();
+    await init(); // This detects 'opfs' and sets settings.value.storageType = 'opfs'
+    
+    // Simulate finishing onboarding: save new URL/Type but don't explicitly mention storageType
+    // (spread of settings.value should include the detected 'opfs')
+    await save({
+      ...settings.value,
+      endpointUrl: 'http://new-endpoint',
+      endpointType: 'ollama'
+    });
+    
+    expect(settings.value.storageType).toBe('opfs');
+    expect(mocks.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      storageType: 'opfs',
+      endpointUrl: 'http://new-endpoint'
+    }));
+  });
+
+  it('should report error and fallback if invalid storage type is in localStorage', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'invalid-type');
+    
+    const { init } = useSettings();
+    await init();
+    
+    expect(consoleSpy).toHaveBeenCalled();
+    expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'SettingsService',
+      message: expect.stringContaining('Invalid storage type'),
+    }));
+    // Should fallback to detection (opfs in this mock environment)
+    expect(mocks.init).toHaveBeenCalledWith('opfs');
+    
+    consoleSpy.mockRestore();
   });
 
   it('should set isOnboardingDismissed to true if endpointUrl is present in loaded settings', async () => {
@@ -101,6 +174,9 @@ describe('useSettings Initialization and Bootstrap', () => {
     const p2 = init();
     const p3 = init();
     
+    // Wait for microtasks (like checkOPFSSupport) to settle
+    await flushPromises();
+
     // Verify storageService.init was only called once despite multiple calls to init()
     expect(mocks.init).toHaveBeenCalledTimes(1);
     

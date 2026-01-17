@@ -146,10 +146,8 @@ export interface Settings {
   lmParameters?: LmParameters;
 }
 
-export const DEFAULT_SETTINGS: Settings = {
-  endpointType: 'openai',
+export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpointType'> = {
   autoTitleEnabled: true,
-  storageType: 'local',
   providerProfiles: [],
   heavyContentAlertDismissed: false,
 };

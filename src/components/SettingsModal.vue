@@ -13,7 +13,9 @@ import { useSampleChat } from '../composables/useSampleChat';
 import { useToast } from '../composables/useToast';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { storageService } from '../services/storage';
+import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import type { ProviderProfile } from '../models/types';
+import { computedAsync } from '@vueuse/core';
 import { 
   X, Loader2, FlaskConical, Trash2, Globe, 
   Database, Bot, Type, Settings2, Save,
@@ -55,9 +57,9 @@ const fetchingModels = computed(() => isFetchingModels.value);
 const connectionSuccess = ref(false);
 const error = ref<string | null>(null);
 const saveSuccess = ref(false);
-const isOPFSSupported = typeof navigator !== 'undefined' && 
-                        typeof navigator.storage?.getDirectory === 'function' &&
-                        (typeof window !== 'undefined' ? window.isSecureContext : true);
+const isOPFSSupported = computedAsync(async () => {
+  return await checkOPFSSupport();
+}, false);
 
 // OSS Licenses State
 interface OssLicense {
