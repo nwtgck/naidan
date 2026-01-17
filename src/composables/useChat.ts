@@ -1034,6 +1034,54 @@ Message: "${content}"`,
     }
   };
 
+  const moveChatToGroup = async (chatId: string, targetGroupId: string | null) => {
+    const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
+    let chatItem: SidebarItem | undefined;
+
+    const removeFromList = (items: SidebarItem[]): boolean => {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item) continue;
+        if (item.type === 'chat' && item.chat.id === chatId) {
+          chatItem = items.splice(i, 1)[0];
+          return true;
+        }
+        if (item.type === 'chat_group' && removeFromList(item.chatGroup.items)) return true;
+      }
+      return false;
+    };
+    removeFromList(newRootItems);
+
+    if (chatItem && chatItem.type === 'chat') {
+      const chatToMove = chatItem;
+      chatToMove.chat.groupId = targetGroupId;
+
+      if (targetGroupId) {
+        const groupItem = newRootItems.find(item => item.type === 'chat_group' && item.chatGroup.id === targetGroupId);
+        if (groupItem && groupItem.type === 'chat_group') {
+          groupItem.chatGroup.items.push(chatToMove);
+        } else {
+          newRootItems.unshift(chatToMove);
+        }
+      } else {
+        const firstChatIdx = newRootItems.findIndex(item => item.type === 'chat');
+        if (firstChatIdx !== -1) newRootItems.splice(firstChatIdx, 0, chatToMove);
+        else newRootItems.push(chatToMove);
+      }
+    }
+
+    await persistSidebarStructure(newRootItems);
+    // CRITICAL: We need to ensure rootItems.value is updated. 
+    // persistSidebarStructure already does rootItems.value = topLevelItems;
+    // but in tests, module state might be tricky.
+    
+    // Update currentChat's groupId if it's the one being moved
+    if (currentChat.value?.id === chatId) {
+      currentChat.value.groupId = targetGroupId;
+      triggerRef(currentChat);
+    }
+  };
+
   return {
     // --- State & Getters ---
     rootItems,
@@ -1074,5 +1122,6 @@ Message: "${content}"`,
     saveChatGroup,
     abortChat,
     saveChat,
+    moveChatToGroup,
   };
 }

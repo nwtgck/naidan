@@ -35,9 +35,16 @@ const mockCurrentChat = ref<Chat | null>({
 });
 const mockActiveMessages = ref<MessageNode[]>([]);
 
+const mockOpenChatGroup = vi.fn();
+const mockMoveChatToGroup = vi.fn();
+const mockCurrentChatGroup = ref<any>(null);
+const mockChatGroups = ref<any[]>([]);
+
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
+    currentChatGroup: mockCurrentChatGroup,
+    chatGroups: mockChatGroups,
     sendMessage: mockSendMessage,
     streaming: mockStreaming,
     activeGenerations: mockActiveGenerations,
@@ -57,6 +64,8 @@ vi.mock('../composables/useChat', () => ({
     fetchAvailableModels: mockFetchAvailableModels,
     generateChatTitle: mockGenerateChatTitle,
     forkChat: vi.fn().mockResolvedValue('new-id'),
+    openChatGroup: mockOpenChatGroup,
+    moveChatToGroup: mockMoveChatToGroup,
   }),
 }));
 
@@ -282,6 +291,28 @@ describe('ChatArea UI States', () => {
     });
     
     expect(wrapper.find('button[title="Jump to original chat"]').exists()).toBe(true);
+  });
+
+  it('should show move to group menu and call moveChatToGroup when a group is selected', async () => {
+    mockChatGroups.value = [{ id: 'group-1', name: 'Group 1' }];
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const btn = wrapper.find('[data-testid="move-to-group-button"]');
+    expect(btn.exists()).toBe(true);
+    
+    // Open menu
+    await btn.trigger('click');
+    expect(wrapper.text()).toContain('Move to Group');
+    expect(wrapper.text()).toContain('Group 1');
+    expect(wrapper.text()).toContain('Top Level');
+
+    // Select group
+    const groupBtn = wrapper.findAll('button').find(b => b.text().includes('Group 1'));
+    await groupBtn?.trigger('click');
+    
+    expect(mockMoveChatToGroup).toHaveBeenCalledWith('1', 'group-1');
   });
 
   describe('Custom Overrides Indicator', () => {

@@ -11,6 +11,7 @@ import {
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
+  Folder, FolderInput, ChevronRight,
 } from 'lucide-vue-next';
 import { v7 as uuidv7 } from 'uuid';
 import type { Attachment } from '../models/types';
@@ -68,6 +69,13 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 const showChatSettings = ref(false);
 const showMoreMenu = ref(false);
+const showMoveMenu = ref(false);
+
+async function handleMoveToGroup(groupId: string | null) {
+  if (!currentChat.value) return;
+  await chatStore.moveChatToGroup(currentChat.value.id, groupId);
+  showMoveMenu.value = false;
+}
 
 function triggerFileInput() {
   fileInputRef.value?.click();
@@ -454,6 +462,56 @@ onUnmounted(() => {
 
       <div class="flex items-center gap-1 relative">
         <div v-if="currentChat" class="flex items-center gap-1">
+          <!-- Move to Group Dropdown -->
+          <div class="relative">
+            <button 
+              @click="showMoveMenu = !showMoveMenu"
+              class="p-2 rounded-xl transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
+              :class="showMoveMenu ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'"
+              title="Move to Group"
+              data-testid="move-to-group-button"
+            >
+              <FolderInput class="w-5 h-5" />
+            </button>
+
+            <div 
+              v-if="showMoveMenu" 
+              class="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 animate-in fade-in zoom-in duration-200"
+              @mouseleave="showMoveMenu = false"
+            >
+              <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
+                Move to Group
+              </div>
+              <div class="max-h-64 overflow-y-auto">
+                <button 
+                  @click="handleMoveToGroup(null)"
+                  class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
+                  :class="!currentChat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                >
+                  <div class="flex items-center gap-2">
+                    <X class="w-4 h-4 opacity-50" />
+                    <span>Top Level</span>
+                  </div>
+                  <ChevronRight v-if="!currentChat.groupId" class="w-4 h-4" />
+                </button>
+
+                <button 
+                  v-for="group in chatStore.chatGroups.value" 
+                  :key="group.id"
+                  @click="handleMoveToGroup(group.id)"
+                  class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
+                  :class="currentChat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                >
+                  <div class="flex items-center gap-2 overflow-hidden">
+                    <Folder class="w-4 h-4 opacity-50 shrink-0" />
+                    <span class="truncate">{{ group.name }}</span>
+                  </div>
+                  <ChevronRight v-if="currentChat.groupId === group.id" class="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
           <button 
             v-if="activeMessages.length > 0"
             @click="handleForkLastMessage"
