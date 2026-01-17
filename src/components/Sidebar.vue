@@ -15,6 +15,7 @@ import {
   Bot, PanelLeft, SquarePen, Loader2,
 } from 'lucide-vue-next';
 import { useLayout } from '../composables/useLayout';
+import { useConfirm } from '../composables/useConfirm';
 
 const chatStore = useChat();
 const { 
@@ -23,6 +24,7 @@ const {
 
 const { settings, isFetchingModels, save: saveSettings } = useSettings();
 const { isSidebarOpen, toggleSidebar } = useLayout();
+const { showConfirm } = useConfirm();
 
 const router = useRouter();
 
@@ -126,6 +128,24 @@ function cancelCreateChatGroup() {
   skipLeaveAnimation.value = false;
   isCreatingChatGroup.value = false;
   newChatGroupName.value = '';
+}
+
+async function handleDeleteChatGroup(group: ChatGroup) {
+  const hasItems = group.items && group.items.length > 0;
+  const hasCustomSettings = !!(group.systemPrompt || group.modelId || group.endpoint || group.lmParameters);
+
+  if (hasItems || hasCustomSettings) {
+    const confirmed = await showConfirm({
+      title: 'Delete Group?',
+      message: `Are you sure you want to delete "${group.name}"? This will permanently delete all ${group.items.length} chats inside it.`,
+      confirmButtonText: 'Delete Group',
+      cancelButtonText: 'Cancel',
+      confirmButtonVariant: 'danger',
+    });
+    if (!confirmed) return;
+  }
+  
+  await chatStore.deleteChatGroup(group.id);
 }
 
 async function handleNewChat(chatGroupId: string | null = null) {
@@ -307,7 +327,7 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                   
                   <div class="flex items-center opacity-0 group-hover/folder:opacity-100 transition-opacity">
                     <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup(element.chatGroup)" class="p-1 hover:text-blue-600 dark:hover:text-white"><Pencil class="w-3 h-3" /></button>
-                    <button @click.stop="chatStore.deleteChatGroup(element.chatGroup.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
+                    <button @click.stop="handleDeleteChatGroup(element.chatGroup)" class="p-1 hover:text-red-500" data-testid="delete-group-button"><Trash2 class="w-3 h-3" /></button>
                   </div>
                 </div>
 

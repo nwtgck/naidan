@@ -24,6 +24,7 @@ const mockDeleteAllChats = vi.fn();
 const mockShowConfirm = vi.fn();
 const mockCreateChatGroup = vi.fn();
 const mockRenameChatGroup = vi.fn();
+const mockDeleteChatGroup = vi.fn();
 const mockSaveSettings = vi.fn();
 
 // --- Vitest Mocks ---
@@ -45,6 +46,7 @@ vi.mock('../composables/useChat', () => ({
     loadChats: mockLoadChats,
     createChatGroup: mockCreateChatGroup,
     renameChatGroup: mockRenameChatGroup,
+    deleteChatGroup: mockDeleteChatGroup,
     openChatGroup: vi.fn(),
     toggleChatGroupCollapse: vi.fn(),
     persistSidebarStructure: vi.fn(),
@@ -437,5 +439,118 @@ describe('Sidebar Logic Stability', () => {
     expect(chatItems).toHaveLength(2);
     expect(chatItems[0]!.text()).toContain('New Chat');
     expect(chatItems[1]!.text()).toContain('New Chat');
+  });
+
+  describe('Group Deletion Confirmation', () => {
+    it('should prompt for confirmation when deleting a group with chats', async () => {
+      // Setup group with items
+      const groupWithChats: ChatGroup = { 
+        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0,
+        items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }] 
+      };
+      mockChatGroups.value = [groupWithChats];
+      
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      const vm = wrapper.vm as unknown as SidebarComponent;
+      vm.syncLocalItems();
+      await nextTick();
+
+      // Find delete button and click
+      const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
+      await deleteBtn.trigger('click');
+
+      expect(mockShowConfirm).toHaveBeenCalled();
+    });
+
+    it('should prompt for confirmation when deleting an empty group with custom settings', async () => {
+      // Setup group with custom settings but no items
+      const groupWithSettings: ChatGroup = { 
+        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [],
+        systemPrompt: { content: 'sys', behavior: 'append' }
+      };
+      mockChatGroups.value = [groupWithSettings];
+      
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      const vm = wrapper.vm as unknown as SidebarComponent;
+      vm.syncLocalItems();
+      await nextTick();
+
+      const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
+      await deleteBtn.trigger('click');
+
+      expect(mockShowConfirm).toHaveBeenCalled();
+    });
+
+    it('should delete IMMEDIATELY without confirmation for an empty group with no settings', async () => {
+      // Setup vanilla group
+      const emptyGroup: ChatGroup = { 
+        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] 
+      };
+      mockChatGroups.value = [emptyGroup];
+      
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      const vm = wrapper.vm as unknown as SidebarComponent;
+      vm.syncLocalItems();
+      await nextTick();
+
+      const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
+      await deleteBtn.trigger('click');
+
+      expect(mockShowConfirm).not.toHaveBeenCalled();
+      expect(mockDeleteChatGroup).toHaveBeenCalledWith('g1');
+    });
+
+    it('should call deleteChatGroup after confirmation is accepted', async () => {
+      const group: ChatGroup = { 
+        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, 
+        items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }]
+      };
+      mockChatGroups.value = [group];
+      mockShowConfirm.mockResolvedValue(true); // User accepts
+
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      const vm = wrapper.vm as unknown as SidebarComponent;
+      vm.syncLocalItems();
+      await nextTick();
+
+      await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
+      
+      // Wait for promise resolution
+      await nextTick();
+      await nextTick();
+
+      expect(mockDeleteChatGroup).toHaveBeenCalledWith('g1');
+    });
+
+    it('should NOT call deleteChatGroup if confirmation is cancelled', async () => {
+      const group: ChatGroup = { 
+        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, 
+        items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }]
+      };
+      mockChatGroups.value = [group];
+      mockShowConfirm.mockResolvedValue(false); // User cancels
+
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      const vm = wrapper.vm as unknown as SidebarComponent;
+      vm.syncLocalItems();
+      await nextTick();
+
+      await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
+      
+      await nextTick();
+      await nextTick();
+
+      expect(mockDeleteChatGroup).not.toHaveBeenCalled();
+    });
   });
 });

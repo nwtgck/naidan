@@ -1001,9 +1001,26 @@ Message: "${content}"`,
   };
 
   const deleteChatGroup = async (id: string) => {
+    // 1. Find the group and its chats
+    const group = chatGroups.value.find(g => g.id === id);
+    if (!group) return;
+
+    // 2. Delete all chats within the group
+    // We clone the items array to avoid modification issues during iteration if that were to happen
+    const items = [...group.items];
+    for (const item of items) {
+      if (item.type === 'chat') {
+        // Pass a dummy toast handler to suppress individual "Undo" toasts
+        await deleteChat(item.chat.id, () => ''); 
+      }
+    }
+
+    // 3. Handle active group selection
     if (currentChatGroup.value?.id === id) {
       currentChatGroup.value = null;
     }
+
+    // 4. Delete the group itself
     await storageService.deleteChatGroup(id);
     await loadData();
   };
