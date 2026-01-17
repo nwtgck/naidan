@@ -10,6 +10,23 @@ import JSZip from 'jszip'
 import pkg from './package.json'
 import license from 'rollup-plugin-license'
 
+// Ensure src/assets/licenses.json exists even in a fresh clone (it's gitignored)
+// This prevents Vite from failing during import analysis in tests.
+const licensesPath = path.resolve(__dirname, 'src/assets/licenses.json')
+if (!fs.existsSync(licensesPath)) {
+  const assetsDir = path.dirname(licensesPath)
+  if (!fs.existsSync(assetsDir)) {
+    fs.mkdirSync(assetsDir, { recursive: true })
+  }
+  // Create a dummy file because it's gitignored but needed for Vite import analysis in tests
+  fs.writeFileSync(licensesPath, JSON.stringify([{ 
+    name: "dummy-package-for-tests", 
+    version: "0.0.0", 
+    license: "DUMMY-LICENSE", 
+    licenseText: "This is a placeholder for CI tests." 
+  }]))
+}
+
 interface LicenseDependency {
   name: string
   version: string
@@ -42,7 +59,7 @@ export default defineConfig(({ mode }) => {
           includePrivate: false,
           output: [
             {
-              file: path.resolve(__dirname, 'src/assets/licenses.json'),
+              file: licensesPath,
               template(dependencies: LicenseDependency[]) {
                 return JSON.stringify(dependencies.map((dep: LicenseDependency) => ({
                   name: dep.name,
