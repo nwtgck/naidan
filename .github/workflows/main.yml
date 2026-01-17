@@ -83,6 +83,55 @@ jobs:
               target_url: "${{ steps.cloudflare_pages_deploy.outputs.url }}",
             });
 
+  publish_to_cloudflare_local_only:
+    needs: build_and_test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      statuses: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download full dist build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: full-dist-build
+          path: dist
+
+      - name: Create CSP headers for local-only
+        run: |
+          cat << 'EOF' > dist/hosted/_headers
+          /*
+            Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'; form-action 'none';
+          EOF
+
+      - name: Publish to Cloudflare Pages (Local API Only)
+        id: cloudflare_pages_deploy_local
+        uses: cloudflare/pages-action@1
+        with:
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          apiToken: ${{ secrets.ONLY_LOCAL_CLOUDFLARE_API_TOKEN }}
+          projectName: naidan-only-local
+          directory: dist/hosted
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add publish URL as commit status
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const sha = context.payload.pull_request?.head.sha ?? context.sha;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              context: 'Cloudflare Pages (Local API Only)',
+              description: 'Local-only version deployment',
+              state: 'success',
+              sha,
+              target_url: "${{ steps.cloudflare_pages_deploy_local.outputs.url }}",
+            });
+
   release_to_github:
     needs: build_and_test
     if: startsWith(github.ref, 'refs/tags/v')
