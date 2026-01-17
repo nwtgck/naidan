@@ -30,7 +30,6 @@ const mockCurrentChat = ref<Chat | null>({
   debugEnabled: false, 
   originChatId: undefined as string | undefined,
   overrideModelId: undefined as string | undefined,
-  modelId: 'default-model',
   createdAt: Date.now(),
   updatedAt: Date.now(),
 });
@@ -104,7 +103,6 @@ function resetMocks() {
     debugEnabled: false, 
     originChatId: undefined,
     overrideModelId: undefined,
-    modelId: 'default-model',
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -589,7 +587,6 @@ describe('ChatArea Export Functionality', () => {
       debugEnabled: false,
       originChatId: undefined,
       overrideModelId: undefined,
-      modelId: 'default-model',
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -655,7 +652,6 @@ describe('ChatArea Export Functionality', () => {
       debugEnabled: false,
       originChatId: undefined,
       overrideModelId: undefined,
-      modelId: 'default-model',
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -694,7 +690,6 @@ describe('ChatArea Export Functionality', () => {
       debugEnabled: false,
       originChatId: undefined,
       overrideModelId: undefined,
-      modelId: 'default-model',
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

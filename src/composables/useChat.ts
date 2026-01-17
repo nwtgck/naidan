@@ -341,7 +341,6 @@ export function useChat() {
         title: null,
         groupId: chatGroupId,
         root: { items: [] },
-        modelId: '', // Default to empty to follow global settings
         createdAt: Date.now(),
         updatedAt: Date.now(),
         debugEnabled: false,

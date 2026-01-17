@@ -84,7 +84,6 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
           replies: { items: [] }
         }]
       },
-      modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
@@ -116,7 +115,6 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
       id: chatId,
       title: 'Join Test',
       root: { items: [{ id: uuidv7(), role: 'user', content: 'Hello', timestamp: 1, replies: { items: [] } }] },
-      modelId: 'gpt-4',
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: true,
@@ -137,7 +135,6 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
       id: chatId,
       title: 'Delete Me',
       root: { items: [] },
-      modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,

@@ -555,7 +555,7 @@ onUnmounted(() => {
         <div class="space-y-4">
           <section>
             <h3 class="text-gray-500 mb-1 font-bold">Metadata</h3>
-            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ JSON.stringify({ id: currentChat.id, title: currentChat.title, model: currentChat.modelId, currentLeafId: currentChat.currentLeafId }, null, 2) }}</pre>
+            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ JSON.stringify({ id: currentChat.id, title: currentChat.title, currentLeafId: currentChat.currentLeafId }, null, 2) }}</pre>
           </section>
           <section>
             <h3 class="text-gray-500 mb-1 font-bold">Active Branch Path</h3>

@@ -76,7 +76,6 @@ describe('useChat Model Persistence', () => {
       id: 'model-test-chat',
       title: 'Model Test',
       root: { items: [] },
-      modelId: 'gpt-3.5-turbo',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,

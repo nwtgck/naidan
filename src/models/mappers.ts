@@ -180,7 +180,7 @@ export const chatToDomain = (dto: ChatDto): Chat => {
   }
 
   const { 
-    id, title, groupId, currentLeafId, modelId, createdAt, updatedAt, 
+    id, title, groupId, currentLeafId, createdAt, updatedAt, 
     debugEnabled, endpoint, overrideModelId, originChatId, originMessageId, 
     systemPrompt, lmParameters 
   } = dto;
@@ -191,7 +191,6 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     groupId,
     root,
     currentLeafId,
-    modelId,
     createdAt,
     updatedAt,
     debugEnabled: debugEnabled ?? false,
@@ -215,7 +214,7 @@ export const chatMetaToSummary = (dto: ChatMetaDto): ChatSummary => ({
 
 export const chatToDto = (domain: Chat, index: number): ChatDto => {
   const { 
-    id, title, groupId, root, currentLeafId, modelId, createdAt, updatedAt, 
+    id, title, groupId, root, currentLeafId, createdAt, updatedAt, 
     debugEnabled, endpointType, endpointUrl, endpointHttpHeaders, 
     overrideModelId, originChatId, originMessageId, systemPrompt, lmParameters 
   } = domain;
@@ -227,7 +226,6 @@ export const chatToDto = (domain: Chat, index: number): ChatDto => {
     order: index,
     root: { items: root.items.map(messageNodeToDto) },
     currentLeafId,
-    modelId,
     createdAt,
     updatedAt,
     debugEnabled,

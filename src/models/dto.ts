@@ -110,7 +110,6 @@ export const ChatMetaSchemaDto = z.object({
   order: z.number().default(0),
   updatedAt: z.number(),
   createdAt: z.number(),
-  modelId: z.string(),
   debugEnabled: z.boolean().optional().default(false),
   
   endpoint: EndpointSchemaDto.optional(),

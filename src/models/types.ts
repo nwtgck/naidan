@@ -90,7 +90,6 @@ export interface Chat {
   root: MessageBranch;
   currentLeafId?: string;
   
-  modelId: string;
   createdAt: number;
   updatedAt: number;
   debugEnabled: boolean;

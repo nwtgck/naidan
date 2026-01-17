@@ -81,7 +81,6 @@ const mockChat: Chat = {
   id: '123e4567-e89b-12d3-a456-426614174000',
   title: 'Test Chat',
   root: { items: [] },
-  modelId: 'gpt-3.5-turbo',
   createdAt: Date.now(),
   updatedAt: Date.now(),
   systemPrompt: undefined,

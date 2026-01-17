@@ -105,7 +105,7 @@ describe('useChat Composable Logic', () => {
 
   it('should update activeMessages in real-time during streaming', async () => {
     currentChat.value = reactive({
-      id: 'chat-1', title: 'Test', root: { items: [] }, modelId: 'gpt-4',
+      id: 'chat-1', title: 'Test', root: { items: [] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     });
     const sendPromise = sendMessage('Ping');
@@ -119,7 +119,7 @@ describe('useChat Composable Logic', () => {
 
   it('should rename a chat and update storage', async () => {
     const { renameChat, rootItems } = useChat();
-    const mockChat: Chat = { id: '1', title: 'Old', root: { items: [] }, modelId: 'gpt-4', createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const mockChat: Chat = { id: '1', title: 'Old', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
     rootItems.value = [{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Old', updatedAt: 0 } }];
     mockRootItems.push(...rootItems.value);
     vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
@@ -139,7 +139,6 @@ describe('useChat Composable Logic', () => {
       id: 'old-chat', 
       title: 'Original', 
       root: { items: [m1] },
-      modelId: 'gpt-4',
       createdAt: 0,
       updatedAt: 0,
       debugEnabled: false,
@@ -183,7 +182,6 @@ describe('useChat Composable Logic', () => {
       id: 'old-chat', 
       title: 'Original', 
       root: { items: [m1] },
-      modelId: 'gpt-4',
       createdAt: 0,
       updatedAt: 0,
       debugEnabled: false,
@@ -219,7 +217,6 @@ describe('useChat Composable Logic', () => {
       id: 'c1', 
       title: 'T', 
       root: { items: [m1] },
-      modelId: 'm1',
       createdAt: 0,
       updatedAt: 0,
       debugEnabled: false,
@@ -243,7 +240,6 @@ describe('useChat Composable Logic', () => {
       id: 'chat-root-test',
       title: 'Root Test',
       root: { items: [] },
-      modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
@@ -276,7 +272,6 @@ describe('useChat Composable Logic', () => {
       id: 'assistant-edit-test',
       title: 'Assistant Edit',
       root: { items: [] },
-      modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
@@ -310,7 +305,7 @@ describe('useChat Composable Logic', () => {
     const { sendMessage, regenerateMessage, currentChat } = useChat();
     
     currentChat.value = reactive({
-      id: 'regen-test', title: 'Regen', root: { items: [] }, modelId: 'gpt-4',
+      id: 'regen-test', title: 'Regen', root: { items: [] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     });
 
@@ -627,7 +622,7 @@ describe('useChat Composable Logic', () => {
     ];
     mockRootItems.push(...initial);
     await chatStore.loadChats();
-    currentChat.value = reactive({ ...c2, root: { items: [] }, modelId: 'm1', createdAt: 0, updatedAt: 0, debugEnabled: false });
+    currentChat.value = reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false });
     await sendMessage('Hello');
     await chatStore.loadChats();
     expect(rootItems.value[2]?.id).toBe('chat:c2');
@@ -641,7 +636,6 @@ describe('useChat Composable Logic', () => {
       id: 'title-test-chat',
       title: null,
       root: { items: [m1] },
-      modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
@@ -670,7 +664,6 @@ describe('useChat Composable Logic', () => {
       id: 'chat-1',
       title: 'Old Title',
       root: { items: [m1] },
-      modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
@@ -688,7 +681,7 @@ describe('useChat Composable Logic', () => {
 
   it('should set currentChat to loaded chat in openChat, or null if not found', async () => {
     const { openChat, currentChat } = useChat();
-    const mockChat: Chat = { id: 'found', title: 'Found', root: { items: [] }, modelId: 'm1', createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const mockChat: Chat = { id: 'found', title: 'Found', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
     
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(mockChat);
     await openChat('found');
@@ -748,7 +741,6 @@ describe('useChat Composable Logic', () => {
         if (id === chat2Id) return { 
           ...c2, 
           root: { items: [] }, 
-          modelId: 'gpt-4', 
           createdAt: 0, 
           debugEnabled: false, 
         } as Chat;
