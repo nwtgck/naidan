@@ -9,4 +9,4 @@ export const ENDPOINT_PRESETS = [
 ] as const;
 
 export const STORAGE_KEY_PREFIX = 'naidan:';
-export const STORAGE_BOOTSTRAP_KEY = `${STORAGE_KEY_PREFIX}storage-type`;
+export const STORAGE_BOOTSTRAP_KEY = `${STORAGE_KEY_PREFIX}storage_type`;
