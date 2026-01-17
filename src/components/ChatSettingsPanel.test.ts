@@ -443,9 +443,9 @@ describe('ChatSettingsPanel.vue', () => {
   describe('UI State & Actions', () => {
     it('emits close event when close button is clicked', async () => {
       const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
-      const closeBtn = wrapper.findAll('button').find(b => b.text().includes('Close'));
+      const closeBtn = wrapper.find('[data-testid="close-button"]');
       
-      await closeBtn?.trigger('click');
+      await closeBtn.trigger('click');
       expect(wrapper.emitted()).toHaveProperty('close');
     });
 
