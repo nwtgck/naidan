@@ -25,7 +25,10 @@ vi.mock('../composables/useChat', () => ({
     isTyping: ref(false),
     error: ref(null),
     loadChat: vi.fn(),
-    fetchAvailableModels: vi.fn().mockResolvedValue([])
+    fetchAvailableModels: vi.fn().mockResolvedValue([]),
+    saveChat: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    chatGroups: ref([]),
   })
 }));
 

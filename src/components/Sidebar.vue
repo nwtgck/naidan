@@ -313,6 +313,12 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
 
                 <!-- Nested Items in Chat Group -->
                 <div v-if="!element.chatGroup.isCollapsed" class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5">
+                  <button 
+                    @click="handleNewChat(element.chatGroup.id)"
+                    class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
+                  >
+                    <SquarePen class="w-3 h-3" /> Add Chat
+                  </button>
                   <draggable
                     v-model="element.chatGroup.items"
                     :group="{ name: 'sidebar' }"
@@ -355,12 +361,6 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                       </div>
                     </template>
                   </draggable>
-                  <button 
-                    @click="handleNewChat(element.chatGroup.id)"
-                    class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
-                  >
-                    <Plus class="w-3 h-3" /> Add Chat
-                  </button>
                 </div>
               </div>
 

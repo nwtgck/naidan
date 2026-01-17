@@ -24,6 +24,9 @@ vi.mock('../composables/useChat', () => ({
     fetchingModels: ref(false),
     fetchAvailableModels: vi.fn(),
     getSiblings: vi.fn().mockReturnValue([]),
+    saveChat: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    chatGroups: ref([]),
   }),
 }));
 
@@ -101,6 +104,9 @@ describe('ChatArea Concurrency Button State', () => {
       fetchAvailableModels: vi.fn(),
       getSiblings: vi.fn().mockReturnValue([]),
       sendMessage: mockSendMessage, // The spy
+      saveChat: vi.fn(),
+      moveChatToGroup: vi.fn(),
+      chatGroups: ref([]),
     } as any);
 
     const wrapper = mount(ChatArea, {
