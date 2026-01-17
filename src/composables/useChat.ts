@@ -107,7 +107,7 @@ function findDeepestLeaf(node: MessageNode): MessageNode {
   return findDeepestLeaf(node.replies.items[node.replies.items.length - 1]!);
 }
 
-function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: Settings) {
+export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: Settings) {
   const group = chat.groupId ? groups.find(g => g.id === chat.groupId) : null;
 
   const endpointType = chat.endpointType || group?.endpoint?.type || globalSettings.endpointType;
@@ -156,6 +156,11 @@ function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: Se
     modelId,
     systemPromptMessages: systemPrompts,
     lmParameters,
+    sources: {
+      endpointType: chat.endpointType ? 'chat' : (group?.endpoint?.type ? 'chat_group' : 'global'),
+      endpointUrl: chat.endpointUrl ? 'chat' : (group?.endpoint?.url ? 'chat_group' : 'global'),
+      modelId: chat.modelId ? 'chat' : (group?.modelId ? 'chat_group' : 'global'),
+    } as const,
   };
 }
 
@@ -266,6 +271,27 @@ export function useChat() {
       if (item.type === 'chat_group') all.push(item.chatGroup);
     });
     return all;
+  });
+
+  const resolvedSettings = computed(() => {
+    if (!currentChat.value) return null;
+    return resolveChatSettings(currentChat.value, chatGroups.value, settings.value);
+  });
+
+  const inheritedSettings = computed(() => {
+    if (!currentChat.value) return null;
+    const chat = currentChat.value;
+    // Create a virtual chat object without overrides to resolve inherited values
+    const virtualChat: Chat = {
+      ...chat,
+      modelId: undefined,
+      endpointType: undefined,
+      endpointUrl: undefined,
+      endpointHttpHeaders: undefined,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+    };
+    return resolveChatSettings(virtualChat, chatGroups.value, settings.value);
   });
 
   const activeMessages = computed(() => {
@@ -1090,6 +1116,8 @@ Message: "${content}"`,
     sidebarItems,
     currentChat,
     currentChatGroup,
+    resolvedSettings,
+    inheritedSettings,
     activeMessages,
     streaming,
     activeGenerations,

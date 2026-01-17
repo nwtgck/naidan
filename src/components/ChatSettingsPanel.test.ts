@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, reactive, toRef, nextTick } from 'vue';
+import { ref, reactive, toRef, nextTick, computed } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
@@ -63,12 +63,28 @@ describe('ChatSettingsPanel.vue', () => {
       modelId: undefined,
     });
 
+    const mockResolvedSettings = computed(() => {
+      const chat = mockCurrentChat.value as any;
+      const s = mockSettings.value;
+      return {
+        endpointType: chat?.endpointType || s.endpointType,
+        endpointUrl: chat?.endpointUrl || s.endpointUrl,
+        modelId: chat?.modelId || s.defaultModelId,
+        sources: {
+          endpointType: chat?.endpointType ? 'chat' : 'global',
+          endpointUrl: chat?.endpointUrl ? 'chat' : 'global',
+          modelId: chat?.modelId ? 'chat' : 'global',
+        }
+      };
+    });
+
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: mockCurrentChat,
       availableModels: ref(['model-1', 'model-2']),
       fetchingModels: ref(false),
       fetchAvailableModels: mockFetchAvailableModels,
       saveChat: mockSaveChat,
+      resolvedSettings: mockResolvedSettings,
     });
 
     (useSettings as unknown as Mock).mockReturnValue({
@@ -413,14 +429,14 @@ describe('ChatSettingsPanel.vue', () => {
       const typeSelect = wrapper.findAll('select')[1];
       // Value is bound to undefined, but Vue renders it as an empty string or specific internal value
       // The easiest way is to find by the beginning of text
-      const globalOption = typeSelect!.findAll('option').find(opt => opt.text().includes('Global'));
-      expect(globalOption!.text()).toContain('Global (openai)');
+      const globalOption = typeSelect!.findAll('option').find(opt => opt.text().includes('(Global)'));
+      expect(globalOption!.text()).toContain('openai (Global)');
 
       // Update global setting
       mockSettings.value.endpointType = 'ollama';
       await nextTick();
       
-      expect(globalOption!.text()).toContain('Global (ollama)');
+      expect(globalOption!.text()).toContain('ollama (Global)');
     });
   });
 

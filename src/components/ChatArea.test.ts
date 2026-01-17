@@ -37,15 +37,21 @@ const mockActiveMessages = ref<MessageNode[]>([]);
 
 const mockOpenChatGroup = vi.fn();
 const mockMoveChatToGroup = vi.fn();
+const mockSaveChat = vi.fn();
 const mockCurrentChatGroup = ref<any>(null);
 const mockChatGroups = ref<any[]>([]);
+const mockResolvedSettings = ref<any>(null);
+const mockInheritedSettings = ref<any>(null);
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,
     chatGroups: mockChatGroups,
+    resolvedSettings: mockResolvedSettings,
+    inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
+    saveChat: mockSaveChat,
     streaming: mockStreaming,
     activeGenerations: mockActiveGenerations,
     toggleDebug: vi.fn(() => {
@@ -104,6 +110,14 @@ function resetMocks() {
   mockActiveMessages.value = [];
   mockAvailableModels.value = ['model-1', 'model-2'];
   mockFetchingModels.value = false;
+  mockResolvedSettings.value = {
+    modelId: 'global-default-model',
+    sources: { modelId: 'global' }
+  };
+  mockInheritedSettings.value = {
+    modelId: 'global-default-model',
+    sources: { modelId: 'global' }
+  };
   mockCurrentChat.value = {
     id: '1', 
     title: 'Test Chat', 
@@ -1288,7 +1302,24 @@ describe('ChatArea Model Selection', () => {
     });
     
     const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
-    expect(trigger.text()).toBe('global-default-model');
+    expect(trigger.text()).toBe('global-default-model (Global)');
+  });
+
+  it('should trigger saveChat when a model is selected in ModelSelector', async () => {
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    // Open dropdown
+    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+    await trigger.trigger('click');
+    
+    // Select 'model-2'
+    const model2Btn = wrapper.findAll('button').find(b => b.text() === 'model-2');
+    await model2Btn!.trigger('click');
+    
+    expect(mockCurrentChat.value!.modelId).toBe('model-2');
+    expect(mockSaveChat).toHaveBeenCalled();
   });
 
   it('should show loader when fetching models', async () => {

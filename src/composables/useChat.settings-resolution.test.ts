@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
-import { reactive } from 'vue';
+import { reactive, nextTick } from 'vue';
 
 // Mock storage
 vi.mock('../services/storage', () => ({
@@ -68,7 +68,7 @@ describe('useChat Settings Resolution Policy', () => {
   it('Scenario: Global setting change should be reflected in existing chat for subsequent messages', async () => {
     // 1. Setup with Setting A
     settings.value.endpointUrl = 'http://endpoint-a';
-    settings.value.defaultModelId = 'global-gpt'; // This matches the beforeEach
+    settings.value.defaultModelId = 'global-gpt';
     
     currentChat.value = reactive({
       id: 'chat-scenario', title: 'Scenario Test', root: { items: [] },
@@ -153,5 +153,48 @@ describe('useChat Settings Resolution Policy', () => {
     currentChat.value.endpointHttpHeaders = [['X-Chat', '3']];
     await sendMessage('C');
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), expect.any(String), expect.any(String), expect.anything(), expect.anything(), [['X-Chat', '3']], expect.anything());
+  });
+
+  it('Policy: Hierarchy Resolution (Chat > Group > Global) in resolvedSettings metadata', async () => {
+    const { currentChat, rootItems, resolvedSettings } = useChat();
+    
+    // 1. Initial State: Global Default
+    currentChat.value = reactive({
+      id: 'chat-hr', title: 'Hierarchy Test', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    });
+
+    expect(resolvedSettings.value?.modelId).toBe('global-gpt');
+    expect(resolvedSettings.value?.sources.modelId).toBe('global');
+
+    // 2. Add Group Default
+    const group = reactive({
+      id: 'g1', name: 'Group 1', items: [], updatedAt: Date.now(), isCollapsed: false,
+      modelId: 'group-model'
+    }) as any;
+    rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
+    currentChat.value.groupId = 'g1';
+    await nextTick();
+
+    expect(resolvedSettings.value?.modelId).toBe('group-model');
+    expect(resolvedSettings.value?.sources.modelId).toBe('chat_group');
+
+    // 3. Add Chat Override
+    currentChat.value.modelId = 'chat-model';
+    await nextTick();
+    expect(resolvedSettings.value?.modelId).toBe('chat-model');
+    expect(resolvedSettings.value?.sources.modelId).toBe('chat');
+
+    // 4. Remove Chat Override -> Should go back to Group
+    currentChat.value.modelId = undefined;
+    await nextTick();
+    expect(resolvedSettings.value?.modelId).toBe('group-model');
+    expect(resolvedSettings.value?.sources.modelId).toBe('chat_group');
+
+    // 5. Remove Group Override -> Should go back to Global
+    group.modelId = undefined;
+    await nextTick();
+    expect(resolvedSettings.value?.modelId).toBe('global-gpt');
+    expect(resolvedSettings.value?.sources.modelId).toBe('global');
   });
 });

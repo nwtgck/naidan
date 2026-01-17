@@ -19,8 +19,16 @@ const {
   currentChat,
   fetchingModels,
   saveChat,
+  resolvedSettings,
 } = chatStore;
 const { settings } = useSettings();
+
+function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
+  if (!value) return 'Default';
+  if (source === 'chat_group') return `${value} (Group)`;
+  if (source === 'global') return `${value} (Global)`;
+  return value;
+}
 
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
@@ -196,7 +204,7 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
             class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
             style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
           >
-            <option :value="undefined">Global ({{ settings.endpointType }})</option>
+            <option :value="undefined">{{ formatLabel(resolvedSettings?.endpointType, resolvedSettings?.sources.endpointType) }}</option>
             <option value="openai">OpenAI Compatible</option>
             <option value="ollama">Ollama</option>
           </select>
@@ -209,7 +217,7 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
             @input="error = null"
             type="text"
             class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-            :placeholder="settings.endpointUrl"
+            :placeholder="formatLabel(resolvedSettings?.endpointUrl, resolvedSettings?.sources.endpointUrl)"
             data-testid="chat-setting-url-input"
           />
           <div class="h-4 mt-1">
@@ -264,7 +272,7 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
           <ModelSelector 
             v-model="currentChat.modelId"
             :loading="fetchingModels"
-            :placeholder="'Global (' + (settings.defaultModelId || 'None') + ')'"
+            :placeholder="formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId)"
             :allow-clear="true"
             @refresh="fetchModels"
             data-testid="chat-setting-model-select"

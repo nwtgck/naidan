@@ -27,9 +27,9 @@ vi.mock('../services/llm', () => {
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
-    settings: { value: { storageType: 'local', providerProfiles: [] } },
-    availableModels: { value: ['model-a', 'model-b'] },
-    isFetchingModels: { value: false },
+    settings: ref({ storageType: 'local', providerProfiles: [] }),
+    availableModels: ref(['model-a', 'model-b']),
+    isFetchingModels: ref(false),
     save: vi.fn().mockImplementation(async (newSettings) => {
       const currentType = storageService.getCurrentType();
       if (newSettings.storageType !== currentType) {
@@ -157,6 +157,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     (useChat as unknown as Mock).mockReturnValue({
       deleteAllChats: vi.fn(),
+      resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
     });
 
     (useSampleChat as unknown as Mock).mockReturnValue({
@@ -592,6 +593,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       
       (useChat as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
+        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
       });
       (useRouter as Mock).mockReturnValue({
         push: mockPush,
@@ -635,6 +637,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const mockDeleteAllChats = vi.fn();
       (useChat as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
+        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
       });
       (useRouter as Mock).mockReturnValue({
         push: vi.fn(),

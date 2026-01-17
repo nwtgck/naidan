@@ -39,6 +39,7 @@ describe('SettingsModal Design Specifications', () => {
     });
     (useChat as unknown as Mock).mockReturnValue({
       deleteAllChats: vi.fn(),
+      resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
     });
     (useToast as unknown as Mock).mockReturnValue({
       addToast: vi.fn(),

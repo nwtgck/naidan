@@ -134,15 +134,21 @@ onUnmounted(() => {
 
       <!-- List -->
       <div class="max-h-60 overflow-y-auto py-1 custom-scrollbar">
-        <!-- Clear selection option -->
+        <!-- Inherited / Default option -->
         <button
-          v-if="allowClear && modelValue"
+          v-if="allowClear"
           @click="selectModel(undefined)"
-          class="w-full flex items-center px-3 py-2 text-xs text-left text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-gray-600 transition-colors border-b border-gray-50 dark:border-gray-700/50 mb-1"
+          class="w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors border-b border-gray-50 dark:border-gray-700/50 mb-1"
+          :class="!modelValue 
+            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' 
+            : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-gray-600'"
           data-testid="model-selector-clear"
         >
-          <X class="w-3.5 h-3.5 mr-2" />
-          <span>{{ clearLabel || (placeholder ? (placeholder.startsWith('Use') ? placeholder : `Use ${placeholder}`) : 'Clear override') }}</span>
+          <div class="flex items-center gap-2">
+            <X v-if="modelValue" class="w-3.5 h-3.5" />
+            <span class="truncate">{{ clearLabel || placeholder || 'Inherit' }}</span>
+          </div>
+          <Check v-if="!modelValue" class="w-3.5 h-3.5 shrink-0" />
         </button>
 
         <div v-if="filteredModels.length === 0" class="px-4 py-8 text-center">

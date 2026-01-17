@@ -117,7 +117,7 @@ describe('ModelSelector.vue', () => {
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
     
     const clearBtn = wrapper.get('[data-testid="model-selector-clear"]');
-    expect(clearBtn.text()).toContain('Use Global Default');
+    expect(clearBtn.text()).toContain('Global Default');
     await clearBtn.trigger('click');
 
     expect(wrapper.emitted('update:modelValue')).toBeTruthy();

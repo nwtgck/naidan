@@ -25,10 +25,19 @@ const {
   generatingTitle,
   activeMessages,
   fetchingModels,
+  resolvedSettings,
+  inheritedSettings,
 } = chatStore;
-const { settings } = useSettings();
+useSettings();
 const router = useRouter();
 const input = ref('');
+
+function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
+  if (!value) return 'Default';
+  if (source === 'chat_group') return `${value} (Group)`;
+  if (source === 'global') return `${value} (Global)`;
+  return value;
+}
 
 const isCurrentChatStreaming = computed(() => {
   return currentChat.value ? activeGenerations.has(currentChat.value.id) : false;
@@ -358,6 +367,17 @@ watch(
   },
 );
 
+// Persist overrides on change
+watch([
+  () => currentChat.value?.modelId,
+  () => currentChat.value?.groupId,
+  () => currentChat.value?.title,
+], () => {
+  if (currentChat.value) {
+    chatStore.saveChat(currentChat.value);
+  }
+}, { deep: true });
+
 onMounted(() => {
   window.addEventListener('resize', adjustTextareaHeight);
   if (currentChat.value) {
@@ -442,7 +462,7 @@ onUnmounted(() => {
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200'"
               >
                 <span class="truncate max-w-[120px] sm:max-w-[200px]">
-                  {{ currentChat.modelId || settings.defaultModelId || 'Default Model' }}
+                  {{ formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId) }}
                 </span>
                 <Settings2 class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
               </div>
@@ -693,7 +713,7 @@ onUnmounted(() => {
             <div class="w-[100px] sm:w-[180px]">
               <ModelSelector 
                 v-model="currentChat.modelId"
-                :placeholder="settings.defaultModelId || 'Default Model'"
+                :placeholder="formatLabel(inheritedSettings?.modelId, inheritedSettings?.sources.modelId)"
                 :loading="fetchingModels"
                 allow-clear
                 data-testid="model-override-select"
