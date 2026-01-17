@@ -1030,7 +1030,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     it('disables OPFS option if environment is not secure', async () => {
-      vi.stubGlobal('isSecureContext', false);
+      // Mock failure of getDirectory which would happen in insecure contexts or certain environments
+      vi.stubGlobal('navigator', {
+        storage: {
+          getDirectory: vi.fn().mockRejectedValue(new Error('Security Error'))
+        }
+      });
+
       const wrapper = mount(SettingsModal, { 
         props: { isOpen: true }, 
         global: { 
@@ -1043,7 +1049,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
           }
         } 
       });
-      await wait();
+      await flushPromises();
       await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await nextTick();
       

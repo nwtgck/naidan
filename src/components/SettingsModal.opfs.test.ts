@@ -1,6 +1,6 @@
  
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '../composables/useSettings';
 import { useConfirm } from '../composables/useConfirm';
@@ -58,6 +58,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
       props: { isOpen: true },
       global: globalMocks
     });
+    await flushPromises();
     
     const tabs = wrapper.findAll('button');
     const storageTab = tabs.find(b => b.text().includes('Storage'));
@@ -69,13 +70,17 @@ describe('SettingsModal OPFS and Error Handling', () => {
   });
 
   it('should disable OPFS option if not in secure context', async () => {
-    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn() } });
-    vi.stubGlobal('isSecureContext', false);
+    vi.stubGlobal('navigator', { 
+      storage: { 
+        getDirectory: vi.fn().mockRejectedValue(new Error('Security Error')) 
+      } 
+    });
     
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
       global: globalMocks
     });
+    await flushPromises();
     
     const tabs = wrapper.findAll('button');
     const storageTab = tabs.find(b => b.text().includes('Storage'));
@@ -87,13 +92,14 @@ describe('SettingsModal OPFS and Error Handling', () => {
   });
 
   it('should enable OPFS option if supported and secure', async () => {
-    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn() } });
+    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue({}) } });
     vi.stubGlobal('isSecureContext', true);
     
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
       global: globalMocks
     });
+    await flushPromises();
     
     const tabs = wrapper.findAll('button');
     const storageTab = tabs.find(b => b.text().includes('Storage'));
@@ -106,6 +112,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
   it('should show error dialog if save/migration fails', async () => {
     vi.stubGlobal('isSecureContext', true);
+    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue({}) } });
     const error = new Error('Migration Security Error');
     const mockSave = vi.fn().mockRejectedValue(error);
     const mockShowConfirm = vi.fn().mockResolvedValue(true);
@@ -139,6 +146,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
       props: { isOpen: true },
       global: globalMocks
     });
+    await flushPromises();
 
     // Simulate a change to enable save button
     (wrapper.vm as any).form.endpointUrl = 'http://new-url';

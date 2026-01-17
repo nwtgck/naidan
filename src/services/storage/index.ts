@@ -2,6 +2,7 @@ import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, MessageNode }
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
+import { checkOPFSSupport } from './opfs-detection';
 import { useGlobalEvents } from '../../composables/useGlobalEvents';
 import { STORAGE_BOOTSTRAP_KEY } from '../../models/constants';
 import { chatToDto } from '../../models/mappers';
@@ -17,7 +18,7 @@ export class StorageService {
 
   async init(type: 'local' | 'opfs' = 'local') {
     this.currentType = type;
-    if (type === 'opfs' && typeof navigator.storage?.getDirectory === 'function') {
+    if (type === 'opfs' && await checkOPFSSupport()) {
       this.provider = new OPFSStorageProvider();
     } else {
       this.provider = new LocalStorageProvider();
@@ -40,7 +41,7 @@ export class StorageService {
     let newProvider: IStorageProvider;
 
     // Initialize the target provider
-    if (type === 'opfs' && typeof navigator.storage?.getDirectory === 'function') {
+    if (type === 'opfs' && await checkOPFSSupport()) {
       newProvider = new OPFSStorageProvider();
     } else {
       newProvider = new LocalStorageProvider();
