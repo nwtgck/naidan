@@ -1,10 +1,17 @@
 import { ref } from 'vue';
 import { type Settings, type EndpointType, DEFAULT_SETTINGS } from '../models/types';
 import { storageService } from '../services/storage';
+import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
+import { StorageTypeSchemaDto } from '../models/dto';
+import { useGlobalEvents } from './useGlobalEvents';
 
-const settings = ref<Settings>({ ...DEFAULT_SETTINGS });
+const settings = ref<Settings>({ 
+  ...DEFAULT_SETTINGS, 
+  storageType: 'local',
+  endpointType: 'openai'
+} as Settings);
 const initialized = ref(false);
 const isOnboardingDismissed = ref(false);
 const onboardingDraft = ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>(null);
@@ -24,11 +31,35 @@ export function useSettings() {
       loading.value = true;
       try {
         // Determine storage type from persisted flag
-        let bootstrapType: 'local' | 'opfs' = 'local';
-        if (typeof localStorage !== 'undefined') {
-          const saved = localStorage.getItem(STORAGE_BOOTSTRAP_KEY);
-          if (saved === 'opfs') bootstrapType = 'opfs';
+        const rawSavedType = typeof localStorage !== 'undefined' 
+          ? localStorage.getItem(STORAGE_BOOTSTRAP_KEY)
+          : null;
+        
+        const validatedType = StorageTypeSchemaDto.safeParse(rawSavedType);
+        let bootstrapType: 'local' | 'opfs' | null = validatedType.success ? validatedType.data : null;
+
+        if (rawSavedType !== null && !validatedType.success) {
+          console.warn(`Invalid storage type found in localStorage: "${rawSavedType}". Falling back to detection.`, validatedType.error);
+          const { addErrorEvent } = useGlobalEvents();
+          addErrorEvent({
+            source: 'SettingsService',
+            message: 'Invalid storage type found in localStorage. Falling back to default detection.',
+            details: validatedType.error,
+          });
         }
+
+        if (!bootstrapType) {
+          // First run or cleared state: detect best available storage
+          const isSupported = await checkOPFSSupport();
+          bootstrapType = isSupported ? 'opfs' : 'local';
+          
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(STORAGE_BOOTSTRAP_KEY, bootstrapType);
+          }
+        }
+
+        // Sync local settings ref with determined storage type
+        settings.value.storageType = bootstrapType;
 
         await storageService.init(bootstrapType);
         const s = await storageService.loadSettings();
@@ -39,6 +70,9 @@ export function useSettings() {
             // Initial fetch of models if we have an endpoint
             fetchModels();
           }
+        } else {
+          // If no settings saved yet (new user), ensure defaults are clean but functional
+          settings.value.endpointType = 'openai';
         }
       } finally {
         loading.value = false;
