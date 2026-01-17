@@ -721,10 +721,11 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                       <div v-if="editingProviderProfileId === providerProfile.id" class="flex items-center gap-2">
                         <input 
                           v-model="editingProviderProfileName"
-                          @keyup.enter="saveRename"
+                          @keydown.enter="$event => !$event.isComposing && saveRename()"
                           @keyup.esc="editingProviderProfileId = null"
                           class="flex-1 bg-white dark:bg-gray-900 border-2 border-blue-500 rounded-xl px-4 py-2 text-sm font-bold text-gray-800 outline-none shadow-sm"
                           autofocus
+                          data-testid="provider-profile-rename-input"
                         />
                         <button @click="saveRename" class="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-xl transition-colors"><Check class="w-5 h-5" /></button>
                       </div>

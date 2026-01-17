@@ -28,7 +28,7 @@
             :placeholder="_props.inputPlaceholder"
             :value="_props.inputValue"
             @input="$emit('update:inputValue', ($event.target as HTMLInputElement).value)"
-            @keyup.enter="confirm"
+            @keydown.enter="$event => !$event.isComposing && confirm()"
             class="w-full mt-4 px-4 py-3 border border-gray-100 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
           />
         </div>

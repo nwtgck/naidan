@@ -301,7 +301,7 @@ describe('Sidebar Logic Stability', () => {
       const input = wrapper.find('[data-testid="chat-group-name-input"]');
       
       await input.setValue('My New Group');
-      await input.trigger('keyup.enter');
+      await input.trigger('keydown.enter');
 
       expect(mockCreateChatGroup).toHaveBeenCalledWith('My New Group');
       expect(wrapper.find('[data-testid="chat-group-name-input"]').exists()).toBe(false);
@@ -373,7 +373,7 @@ describe('Sidebar Logic Stability', () => {
       const container = wrapper.find('[data-testid="chat-group-creation-container"]');
 
       await input.setValue('New Group');
-      await input.trigger('keyup.enter');
+      await input.trigger('keydown.enter');
       expect(container.classes()).toContain('skip-leave');
     });
 

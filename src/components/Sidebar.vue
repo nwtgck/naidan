@@ -242,7 +242,7 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
               <input 
                 v-focus
                 v-model="newChatGroupName"
-                @keyup.enter="handleCreateChatGroup"
+                @keydown.enter="$event => !$event.isComposing && handleCreateChatGroup()"
                 @keyup.esc="cancelCreateChatGroup"
                 @blur="handleCreateChatGroupBlur"
                 class="bg-transparent text-sm text-gray-800 dark:text-white outline-none w-full px-1 font-bold tracking-tight placeholder:font-normal placeholder:text-gray-400 dark:placeholder:text-gray-500"
@@ -295,11 +295,12 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                       v-if="editingChatGroupId === element.chatGroup.id"
                       v-focus
                       v-model="editingChatGroupName"
-                      @keyup.enter="saveChatGroupRename"
+                      @keydown.enter="$event => !$event.isComposing && saveChatGroupRename()"
                       @keyup.esc="editingChatGroupId = null"
                       @blur="saveChatGroupRename"
                       @click.stop
                       class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto font-medium shadow-sm"
+                      data-testid="chat-group-rename-input"
                     />
                     <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
                   </div>
@@ -334,11 +335,12 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                               v-if="editingId === nestedItem.chat.id"
                               v-focus
                               v-model="editingTitle"
-                              @keyup.enter="saveRename"
+                              @keydown.enter="$event => !$event.isComposing && saveRename()"
                               @keyup.esc="editingId = null"
                               @blur="saveRename"
                               @click.stop
                               class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
+                              data-testid="chat-rename-input"
                             />
                             <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'New Chat' }}</span>
                           </div>
@@ -375,11 +377,12 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                     v-if="editingId === element.chat.id"
                     v-focus
                     v-model="editingTitle"
-                    @keyup.enter="saveRename"
+                    @keydown.enter="$event => !$event.isComposing && saveRename()"
                     @keyup.esc="editingId = null"
                     @blur="saveRename"
                     @click.stop
                     class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
+                    data-testid="chat-rename-input"
                   />
                   <span v-else class="truncate text-sm">{{ element.chat.title || 'New Chat' }}</span>
                 </div>
