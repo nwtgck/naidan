@@ -39,7 +39,6 @@ export function useSampleChat() {
       title: '🚀 Sample: Tree Showcase',
       root: { items: [m1] },
       currentLeafId: m2.id,
-      modelId: 'gpt-4-showcase',
       createdAt: now,
       updatedAt: now,
       debugEnabled: true,

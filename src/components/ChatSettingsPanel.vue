@@ -44,7 +44,7 @@ function handleQuickProviderProfileChange() {
     currentChat.value.endpointType = providerProfile.endpointType;
     currentChat.value.endpointUrl = providerProfile.endpointUrl;
     currentChat.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders ? JSON.parse(JSON.stringify(providerProfile.endpointHttpHeaders)) : undefined;
-    currentChat.value.overrideModelId = providerProfile.defaultModelId;
+    currentChat.value.modelId = providerProfile.defaultModelId;
     currentChat.value.systemPrompt = providerProfile.systemPrompt ? { content: providerProfile.systemPrompt, behavior: 'override' } : undefined;
     currentChat.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;
   }
@@ -104,7 +104,7 @@ watch([
   () => currentChat.value?.endpointUrl,
   () => currentChat.value?.endpointType,
   () => currentChat.value?.endpointHttpHeaders,
-  () => currentChat.value?.overrideModelId,
+  () => currentChat.value?.modelId,
   () => currentChat.value?.systemPrompt,
   () => currentChat.value?.lmParameters,
 ], () => {
@@ -262,7 +262,7 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
         <div class="space-y-2">
           <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
           <ModelSelector 
-            v-model="currentChat.overrideModelId"
+            v-model="currentChat.modelId"
             :loading="fetchingModels"
             :placeholder="'Global (' + (settings.defaultModelId || 'None') + ')'"
             :allow-clear="true"
@@ -293,7 +293,7 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
             <p class="text-[11px] text-gray-500/70 dark:text-gray-400/70 leading-relaxed font-medium">
               These settings only apply to this chat. 
               <button 
-                @click="currentChat.endpointType = undefined; currentChat.endpointUrl = undefined; currentChat.overrideModelId = undefined; currentChat.systemPrompt = undefined; currentChat.lmParameters = undefined"
+                @click="currentChat.endpointType = undefined; currentChat.endpointUrl = undefined; currentChat.modelId = undefined; currentChat.systemPrompt = undefined; currentChat.lmParameters = undefined"
                 class="font-bold underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                 data-testid="chat-setting-restore-defaults"
               >

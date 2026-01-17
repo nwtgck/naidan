@@ -72,7 +72,7 @@ describe('useChat Settings Resolution Policy', () => {
     
     currentChat.value = reactive({
       id: 'chat-scenario', title: 'Scenario Test', root: { items: [] },
-      modelId: '', createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     });
 
     // Send first message using Global A
@@ -88,14 +88,13 @@ describe('useChat Settings Resolution Policy', () => {
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'model-b', 'http://endpoint-b', expect.anything(), expect.anything(), undefined, expect.anything());
     
     // 3. Verify that the chat object itself didn't "lock in" model-b
-    expect(currentChat.value.modelId).toBe('');
-    expect(currentChat.value.overrideModelId).toBeUndefined();
+    expect(currentChat.value.modelId).toBeUndefined();
   });
 
-  it('Policy: Prioritize chat-level overrideModelId (Pinning)', async () => {
+  it('Policy: Prioritize chat-level modelId (Pinning)', async () => {
     currentChat.value = reactive({
       id: 'chat-2', title: 'Pinned Model Chat', root: { items: [] },
-      modelId: '', overrideModelId: 'pinned-model',
+      modelId: 'pinned-model',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     });
 
@@ -111,7 +110,6 @@ describe('useChat Settings Resolution Policy', () => {
   it('Policy: Respect chat-level endpoint settings while following global model if not pinned', async () => {
     currentChat.value = reactive({
       id: 'chat-3', title: 'Pinned Endpoint Chat', root: { items: [] },
-      modelId: '', 
       endpointType: 'ollama' as const,
       endpointUrl: 'http://pinned-ollama',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
@@ -130,7 +128,7 @@ describe('useChat Settings Resolution Policy', () => {
   it('Policy: Dynamic resolution when preferred model is unavailable', async () => {
     currentChat.value = reactive({
       id: 'chat-4', title: 'Fallback Chat', root: { items: [] },
-      modelId: '', createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     });
 
     settings.value.defaultModelId = 'non-existent';
@@ -145,7 +143,7 @@ describe('useChat Settings Resolution Policy', () => {
     settings.value.endpointHttpHeaders = [['X-Global', '1']];
     currentChat.value = reactive({
       id: 'chat-h', title: 'Header Test', root: { items: [] },
-      modelId: 'gpt-4', createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     });
 
     await sendMessage('G');

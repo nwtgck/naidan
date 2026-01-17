@@ -434,12 +434,12 @@ onUnmounted(() => {
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200'"
               >
                 <span class="truncate max-w-[120px] sm:max-w-[200px]">
-                  {{ currentChat.overrideModelId || settings.defaultModelId || 'Default Model' }}
+                  {{ currentChat.modelId || settings.defaultModelId || 'Default Model' }}
                 </span>
                 <Settings2 class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
               </div>
               <div 
-                v-if="currentChat.endpointUrl || currentChat.endpointType || currentChat.overrideModelId || currentChat.systemPrompt || (currentChat.lmParameters && Object.keys(currentChat.lmParameters).length > 0)" 
+                v-if="currentChat.endpointUrl || currentChat.endpointType || currentChat.modelId || currentChat.systemPrompt || (currentChat.lmParameters && Object.keys(currentChat.lmParameters).length > 0)" 
                 class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" 
                 title="Custom overrides active"
                 data-testid="custom-overrides-indicator"
@@ -555,7 +555,7 @@ onUnmounted(() => {
         <div class="space-y-4">
           <section>
             <h3 class="text-gray-500 mb-1 font-bold">Metadata</h3>
-            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ JSON.stringify({ id: currentChat.id, title: currentChat.title, model: currentChat.modelId, currentLeafId: currentChat.currentLeafId }, null, 2) }}</pre>
+            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ JSON.stringify({ id: currentChat.id, title: currentChat.title, currentLeafId: currentChat.currentLeafId }, null, 2) }}</pre>
           </section>
           <section>
             <h3 class="text-gray-500 mb-1 font-bold">Active Branch Path</h3>
@@ -634,7 +634,7 @@ onUnmounted(() => {
 
             <div class="w-[100px] sm:w-[180px]">
               <ModelSelector 
-                v-model="currentChat.overrideModelId"
+                v-model="currentChat.modelId"
                 :placeholder="settings.defaultModelId || 'Default Model'"
                 :loading="fetchingModels"
                 allow-clear

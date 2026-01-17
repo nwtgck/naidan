@@ -577,7 +577,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     // 3. Start Chat B (Concurrent Generation)
     chatB.endpointUrl = 'http://localhost';
     chatB.endpointType = 'openai';
-    chatB.overrideModelId = 'gpt-4'; 
+    chatB.modelId = 'gpt-4'; 
     
     let resolveBStarted: () => void;
     const pBStarted = new Promise<void>(r => resolveBStarted = r);

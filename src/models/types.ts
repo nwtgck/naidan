@@ -90,7 +90,6 @@ export interface Chat {
   root: MessageBranch;
   currentLeafId?: string;
   
-  modelId: string;
   createdAt: number;
   updatedAt: number;
   debugEnabled: boolean;
@@ -100,7 +99,7 @@ export interface Chat {
   endpointType?: EndpointType;
   endpointUrl?: string;
   endpointHttpHeaders?: [string, string][];
-  overrideModelId?: string;
+  modelId?: string;
   originChatId?: string;
   originMessageId?: string;
 

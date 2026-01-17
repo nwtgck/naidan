@@ -60,7 +60,7 @@ describe('ChatSettingsPanel.vue', () => {
       id: 'chat-1',
       endpointType: undefined,
       endpointUrl: undefined,
-      overrideModelId: undefined,
+      modelId: undefined,
     });
 
     (useChat as unknown as Mock).mockReturnValue({
@@ -179,7 +179,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       expect(mockCurrentChat.value!.endpointType).toBe('ollama');
       expect(mockCurrentChat.value!.endpointUrl).toBe('http://ollama:11434');
-      expect(mockCurrentChat.value!.overrideModelId).toBe('llama3');
+      expect(mockCurrentChat.value!.modelId).toBe('llama3');
       
       // Should reset selection after apply
       const vm = wrapper.vm as unknown as { selectedProviderProfileId: string };
@@ -311,7 +311,7 @@ describe('ChatSettingsPanel.vue', () => {
       Object.assign(mockCurrentChat.value as object, {
         endpointType: 'ollama',
         endpointUrl: 'http://overridden:11434',
-        overrideModelId: 'overridden-model',
+        modelId: 'overridden-model',
         systemPrompt: { content: 'test', behavior: 'override' },
         lmParameters: { temperature: 0.5 },
       });
@@ -323,7 +323,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       expect(mockCurrentChat.value!.endpointType).toBeUndefined();
       expect(mockCurrentChat.value!.endpointUrl).toBeUndefined();
-      expect(mockCurrentChat.value!.overrideModelId).toBeUndefined();
+      expect(mockCurrentChat.value!.modelId).toBeUndefined();
       expect(mockCurrentChat.value!.systemPrompt).toBeUndefined();
       expect(mockCurrentChat.value!.lmParameters).toBeUndefined();
     });

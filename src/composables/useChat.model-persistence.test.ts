@@ -76,7 +76,6 @@ describe('useChat Model Persistence', () => {
       id: 'model-test-chat',
       title: 'Model Test',
       root: { items: [] },
-      modelId: 'gpt-3.5-turbo',
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
@@ -93,7 +92,7 @@ describe('useChat Model Persistence', () => {
     expect(activeMessages.value[1]?.content).toContain('Response from gpt-3.5-turbo');
 
     // 3. Change the model for the chat
-    currentChat.value.overrideModelId = 'gpt-4';
+    currentChat.value.modelId = 'gpt-4';
     
     // 4. Send second message with new model
     await sendMessage('Hello with 4');

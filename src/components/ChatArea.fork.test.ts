@@ -19,7 +19,7 @@ const mockCurrentChat = ref<{
   currentLeafId: string | undefined;
   debugEnabled: boolean;
   originChatId: string | undefined;
-  overrideModelId: string | undefined;
+  modelId: string | undefined;
 }>({
   id: '1', 
   title: 'Test Chat', 
@@ -27,7 +27,7 @@ const mockCurrentChat = ref<{
   currentLeafId: undefined,
   debugEnabled: false, 
   originChatId: undefined,
-  overrideModelId: undefined,
+  modelId: undefined,
 });
 const mockActiveMessages = ref<any[]>([]);
 
