@@ -29,7 +29,7 @@ const mockCurrentChat = ref<Chat | null>({
   currentLeafId: undefined as string | undefined,
   debugEnabled: false, 
   originChatId: undefined as string | undefined,
-  overrideModelId: undefined as string | undefined,
+  modelId: undefined as string | undefined,
   createdAt: Date.now(),
   updatedAt: Date.now(),
 });
@@ -102,7 +102,7 @@ function resetMocks() {
     currentLeafId: undefined,
     debugEnabled: false, 
     originChatId: undefined,
-    overrideModelId: undefined,
+    modelId: undefined,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -171,7 +171,7 @@ describe('ChatArea UI States', () => {
   it('should display the model name with correct casing (not forced to uppercase)', async () => {
     // Set a specifically lowercase model name in settings to test for uppercase transformation
     const testModelName = 'gemma3:1b-lowercase';
-    if (mockCurrentChat.value) mockCurrentChat.value.overrideModelId = testModelName;
+    if (mockCurrentChat.value) mockCurrentChat.value.modelId = testModelName;
     
     wrapper = mount(ChatArea, {
       global: {
@@ -289,8 +289,8 @@ describe('ChatArea UI States', () => {
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
         endpointType: 'ollama',
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
-        modelId: 'm1', createdAt: 0, updatedAt: 0
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
+        modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
       wrapper = mount(ChatArea, { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -300,8 +300,8 @@ describe('ChatArea UI States', () => {
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
         systemPrompt: { content: 'test', behavior: 'override' },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
-        modelId: 'm1', createdAt: 0, updatedAt: 0
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
+        modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
       wrapper = mount(ChatArea, { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -311,8 +311,8 @@ describe('ChatArea UI States', () => {
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
         lmParameters: { temperature: 0.5 },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
-        modelId: 'm1', createdAt: 0, updatedAt: 0
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
+        modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
       wrapper = mount(ChatArea, { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -321,8 +321,8 @@ describe('ChatArea UI States', () => {
     it('does not show indicator when no overrides are present', async () => {
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
-        modelId: 'm1', createdAt: 0, updatedAt: 0
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
+        modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
       wrapper = mount(ChatArea, { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(false);
@@ -586,7 +586,7 @@ describe('ChatArea Export Functionality', () => {
       currentLeafId: 'msg-2',
       debugEnabled: false,
       originChatId: undefined,
-      overrideModelId: undefined,
+      modelId: undefined,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -651,7 +651,7 @@ describe('ChatArea Export Functionality', () => {
       currentLeafId: 'msg-3',
       debugEnabled: false,
       originChatId: undefined,
-      overrideModelId: undefined,
+      modelId: undefined,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -689,7 +689,7 @@ describe('ChatArea Export Functionality', () => {
       currentLeafId: undefined,
       debugEnabled: false,
       originChatId: undefined,
-      overrideModelId: undefined,
+      modelId: undefined,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

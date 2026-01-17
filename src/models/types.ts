@@ -99,7 +99,7 @@ export interface Chat {
   endpointType?: EndpointType;
   endpointUrl?: string;
   endpointHttpHeaders?: [string, string][];
-  overrideModelId?: string;
+  modelId?: string;
   originChatId?: string;
   originMessageId?: string;
 

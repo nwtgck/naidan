@@ -18,7 +18,7 @@ vi.mock('vue-router', () => ({
 describe('ChatArea Design Specifications', () => {
   beforeEach(() => {
     (useChat as unknown as Mock).mockReturnValue({
-      currentChat: ref({ id: '1', title: 'Test Chat', overrideModelId: 'gemma3n:e2b' }),
+      currentChat: ref({ id: '1', title: 'Test Chat', modelId: 'gemma3n:e2b' }),
       streaming: ref(false),
       activeGenerations: new Map(),
       activeMessages: ref([]),

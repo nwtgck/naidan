@@ -113,8 +113,7 @@ export const ChatMetaSchemaDto = z.object({
   debugEnabled: z.boolean().optional().default(false),
   
   endpoint: EndpointSchemaDto.optional(),
-  // TODO: Rename overrideModelId to modelId in a future refactor to align with ChatGroup and Settings.
-  overrideModelId: z.string().optional(),
+  modelId: z.string().optional(),
   originChatId: z.uuid().optional(),
   originMessageId: z.uuid().optional(),
 

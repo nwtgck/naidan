@@ -181,7 +181,7 @@ export const chatToDomain = (dto: ChatDto): Chat => {
 
   const { 
     id, title, groupId, currentLeafId, createdAt, updatedAt, 
-    debugEnabled, endpoint, overrideModelId, originChatId, originMessageId, 
+    debugEnabled, endpoint, modelId, originChatId, originMessageId, 
     systemPrompt, lmParameters 
   } = dto;
 
@@ -197,7 +197,7 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     endpointType: endpoint?.type as EndpointType | undefined,
     endpointUrl: endpoint?.url,
     endpointHttpHeaders: endpoint?.httpHeaders,
-    overrideModelId,
+    modelId,
     originChatId,
     originMessageId,
     systemPrompt: systemPrompt as SystemPrompt | undefined,
@@ -216,7 +216,7 @@ export const chatToDto = (domain: Chat, index: number): ChatDto => {
   const { 
     id, title, groupId, root, currentLeafId, createdAt, updatedAt, 
     debugEnabled, endpointType, endpointUrl, endpointHttpHeaders, 
-    overrideModelId, originChatId, originMessageId, systemPrompt, lmParameters 
+    modelId, originChatId, originMessageId, systemPrompt, lmParameters 
   } = domain;
 
   return {
@@ -234,7 +234,7 @@ export const chatToDto = (domain: Chat, index: number): ChatDto => {
       url: endpointUrl,
       httpHeaders: endpointHttpHeaders,
     } : undefined,
-    overrideModelId,
+    modelId,
     originChatId,
     originMessageId,
     systemPrompt,

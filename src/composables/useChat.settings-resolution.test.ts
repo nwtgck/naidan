@@ -88,13 +88,13 @@ describe('useChat Settings Resolution Policy', () => {
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'model-b', 'http://endpoint-b', expect.anything(), expect.anything(), undefined, expect.anything());
     
     // 3. Verify that the chat object itself didn't "lock in" model-b
-    expect(currentChat.value.overrideModelId).toBeUndefined();
+    expect(currentChat.value.modelId).toBeUndefined();
   });
 
-  it('Policy: Prioritize chat-level overrideModelId (Pinning)', async () => {
+  it('Policy: Prioritize chat-level modelId (Pinning)', async () => {
     currentChat.value = reactive({
       id: 'chat-2', title: 'Pinned Model Chat', root: { items: [] },
-      overrideModelId: 'pinned-model',
+      modelId: 'pinned-model',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     });
 

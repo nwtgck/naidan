@@ -87,7 +87,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
 
     // 3. Custom Override (gpt-3.5-turbo)
     currentChat.value.endpointType = 'openai';
-    currentChat.value.overrideModelId = 'gpt-3.5-turbo';
+    currentChat.value.modelId = 'gpt-3.5-turbo';
     await sendMessage('M3');
     expect(mockOpenAIChat.mock.calls[1]![1]).toBe('gpt-3.5-turbo');
   });

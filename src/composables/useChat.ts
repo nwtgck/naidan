@@ -113,7 +113,7 @@ function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: Se
   const endpointType = chat.endpointType || group?.endpoint?.type || globalSettings.endpointType;
   const endpointUrl = chat.endpointUrl || group?.endpoint?.url || globalSettings.endpointUrl || '';
   const endpointHttpHeaders = chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || globalSettings.endpointHttpHeaders;
-  const modelId = chat.overrideModelId || group?.modelId || globalSettings.defaultModelId || '';
+  const modelId = chat.modelId || group?.modelId || globalSettings.defaultModelId || '';
 
   // System Prompt Resolution
   let systemPrompts: string[] = [];
@@ -632,12 +632,12 @@ export function useChat() {
       const type = resolved.endpointType;
       const url = resolved.endpointUrl;
       
-      let resolvedModel = chat.overrideModelId || resolved.modelId;
+      let resolvedModel = chat.modelId || resolved.modelId;
 
       if (url) {
         const models = await fetchAvailableModels(chat);
         if (models.length > 0) {
-          const preferredModel = chat.overrideModelId || resolved.modelId;
+          const preferredModel = chat.modelId || resolved.modelId;
           if (preferredModel && models.includes(preferredModel)) {
             resolvedModel = preferredModel;
           } else if (preferredModel) {
