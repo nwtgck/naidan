@@ -12,6 +12,8 @@ vi.mock('./useSettings', () => ({
 
 vi.mock('../services/storage', () => ({
   storageService: {
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn().mockResolvedValue(undefined),
     loadChat: vi.fn().mockResolvedValue(null),
     listChats: vi.fn().mockResolvedValue([]),

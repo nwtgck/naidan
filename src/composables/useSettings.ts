@@ -20,6 +20,22 @@ const isFetchingModels = ref(false);
 
 let initPromise: Promise<void> | null = null;
 
+// --- Synchronization ---
+
+storageService.subscribeToChanges(async (event) => {
+  if (event.type === 'settings' || event.type === 'migration') {
+    const fresh = await storageService.loadSettings();
+    if (fresh) {
+      // Preserve local-only state if necessary, but generally settings are global
+      // We might want to keep the 'storageType' in sync if migration happened
+      settings.value = fresh;
+      
+      // If endpoint changed remotely, we might want to refetch models, 
+      // but maybe lazily? For now let's just update the config.
+    }
+  }
+});
+
 export function useSettings() {
   const loading = ref(false);
 

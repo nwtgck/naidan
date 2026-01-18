@@ -10,6 +10,7 @@ const mockLoadChat = vi.fn().mockResolvedValue(null);
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: (...args: any[]) => mockSaveChat(...args),
     loadChat: (...args: any[]) => mockLoadChat(...args),
     getSidebarStructure: vi.fn().mockResolvedValue([]),

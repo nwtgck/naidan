@@ -3,6 +3,7 @@
 *   **Zod**: Must be used for all data persistence and API communication to ensure safe serialization. All API responses MUST be validated to protect the application from unreliable external data structures. Persisted data must maintain backward compatibility.
 *   **Strong Typing**: Prefer strict static typing to catch errors at build-time. Avoid `any`.
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
+*   **Named Arguments**: Use options objects for functions with multiple parameters to improve clarity at the call site.
 *   **Verification**: Run `npm run build`, `npm run lint:fix` and `npm run test -- --run` before committing to ensure quality and prevent regressions. Use `> /dev/null` or similar to suppress verbosity and save context tokens when appropriate.
 *   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test -- <paths...> --run`.
 *   **Non-interactive Tests**: Always use the `--run` flag (e.g., `npm run test -- --run`) when executing tests as an agent or in CI to ensure the process exits after completion and does not hang in watch mode.

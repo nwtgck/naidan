@@ -62,6 +62,8 @@ vi.mock('../composables/useToast', () => ({
 
 vi.mock('../services/storage', () => ({
   storageService: {
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     canPersistBinary: true,
     saveFile: vi.fn().mockResolvedValue(undefined)
   }

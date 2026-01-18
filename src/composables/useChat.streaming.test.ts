@@ -6,6 +6,7 @@ const mockRootItems: any[] = [];
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn().mockResolvedValue(null),
     saveChat: vi.fn().mockResolvedValue(undefined),

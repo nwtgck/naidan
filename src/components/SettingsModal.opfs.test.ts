@@ -29,6 +29,8 @@ vi.mock('../composables/usePrompt', () => ({
 }));
 vi.mock('../services/storage', () => ({
   storageService: { 
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     clearAll: vi.fn(),
     getCurrentType: vi.fn().mockReturnValue('local'),
     hasAttachments: vi.fn().mockResolvedValue(false),

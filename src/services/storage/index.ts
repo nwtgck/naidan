@@ -7,10 +7,16 @@ import { useGlobalEvents } from '../../composables/useGlobalEvents';
 import { STORAGE_BOOTSTRAP_KEY } from '../../models/constants';
 import { chatToDto } from '../../models/mappers';
 import type { MigrationChunkDto } from '../../models/dto';
+import { StorageSynchronizer, type ChangeListener } from './synchronizer';
 
 export class StorageService {
   private provider: IStorageProvider | null = null;
   private currentType: 'local' | 'opfs' | null = null;
+  private synchronizer: StorageSynchronizer;
+
+  constructor() {
+    this.synchronizer = new StorageSynchronizer();
+  }
 
   private getProvider(): IStorageProvider {
     if (!this.provider) {
@@ -56,120 +62,132 @@ export class StorageService {
     return this.getProvider().canPersistBinary;
   }
 
+  // --- Synchronization ---
+
+  subscribeToChanges(listener: ChangeListener) {
+    return this.synchronizer.subscribe(listener);
+  }
+
+  // --- Migration ---
+
   async switchProvider(type: 'local' | 'opfs') {
-    const activeProvider = this.getProvider();
-    if (this.currentType === type) return;
-
-    const oldProvider = activeProvider;
-    let newProvider: IStorageProvider;
-
-    // Initialize the target provider
-    if (type === 'opfs' && await checkOPFSSupport()) {
-      newProvider = new OPFSStorageProvider();
-    } else {
-      newProvider = new LocalStorageProvider();
-    }
-
+    // We lock the entire migration process to prevent race conditions
+    // Using a longer timeout (60s) for migration as it involves data transfer
     try {
-      await newProvider.init();
-      
-      // Migrate data: Dump from old -> Restore to new
-      console.log(`Migrating data from ${this.currentType} to ${type}...`);
-      
-      // Define a wrapper generator to inject memory blobs if we're moving from Local to OPFS
-      async function* migrationStream(): AsyncGenerator<MigrationChunkDto> {
-        for await (const chunk of oldProvider.dump()) {
-          if (chunk.type === 'chat' && newProvider.canPersistBinary) {
-            const rescuedAttachments: MigrationChunkDto[] = [];
+      await this.synchronizer.withLock(async () => {
+        const activeProvider = this.getProvider();
+        if (this.currentType === type) return;
 
-            // We MUST use the domain object to get the BLOBS, because DTOs don't have them
-            // We use oldProvider directly to be sure we get the correct data
-            const chat = await oldProvider.loadChat(chunk.data.id);
-            if (!chat) {
-              yield chunk;
-              continue;
-            }
+        const oldProvider = activeProvider;
+        let newProvider: IStorageProvider;
 
-            const findAndRescueBlobs = (nodes: MessageNode[]) => {
-              for (const node of nodes) {
-                if (node.attachments) {
-                  for (let i = 0; i < node.attachments.length; i++) {
-                    const att = node.attachments[i];
-                    if (att && att.status === 'memory' && 'blob' in att && att.blob) {
-                      rescuedAttachments.push({
-                        type: 'attachment',
-                        chatId: chat.id,
-                        attachmentId: att.id,
-                        originalName: att.originalName,
-                        mimeType: att.mimeType,
-                        size: att.size,
-                        uploadedAt: att.uploadedAt,
-                        blob: att.blob
-                      });
-                      // Replace with persisted version
-                      node.attachments[i] = {
-                        id: att.id,
-                        originalName: att.originalName,
-                        mimeType: att.mimeType,
-                        size: att.size,
-                        uploadedAt: att.uploadedAt,
-                        status: 'persisted'
-                      };
+        // Initialize the target provider
+        if (type === 'opfs' && await checkOPFSSupport()) {
+          newProvider = new OPFSStorageProvider();
+        } else {
+          newProvider = new LocalStorageProvider();
+        }
+
+        try {
+          await newProvider.init();
+          
+          // Migrate data: Dump from old -> Restore to new
+          console.log(`Migrating data from ${this.currentType} to ${type}...`);
+          
+          // Define a wrapper generator to inject memory blobs if we're moving from Local to OPFS
+          async function* migrationStream(): AsyncGenerator<MigrationChunkDto> {
+            for await (const chunk of oldProvider.dump()) {
+              if (chunk.type === 'chat' && newProvider.canPersistBinary) {
+                const rescuedAttachments: MigrationChunkDto[] = [];
+
+                // We MUST use the domain object to get the BLOBS, because DTOs don't have them
+                // We use oldProvider directly to be sure we get the correct data
+                const chat = await oldProvider.loadChat(chunk.data.id);
+                if (!chat) {
+                  yield chunk;
+                  continue;
+                }
+
+                const findAndRescueBlobs = (nodes: MessageNode[]) => {
+                  for (const node of nodes) {
+                    if (node.attachments) {
+                      for (let i = 0; i < node.attachments.length; i++) {
+                        const att = node.attachments[i];
+                        if (att && att.status === 'memory' && 'blob' in att && att.blob) {
+                          rescuedAttachments.push({
+                            type: 'attachment',
+                            chatId: chat.id,
+                            attachmentId: att.id,
+                            originalName: att.originalName,
+                            mimeType: att.mimeType,
+                            size: att.size,
+                            uploadedAt: att.uploadedAt,
+                            blob: att.blob
+                          });
+                          // Replace with persisted version
+                          node.attachments[i] = {
+                            id: att.id,
+                            originalName: att.originalName,
+                            mimeType: att.mimeType,
+                            size: att.size,
+                            uploadedAt: att.uploadedAt,
+                            status: 'persisted'
+                          };
+                        }
+                      }
+                    }
+                    if (node.replies?.items) {
+                      findAndRescueBlobs(node.replies.items);
                     }
                   }
+                };
+
+                findAndRescueBlobs(chat.root.items);
+
+                // Yield rescued attachments FIRST
+                for (const attChunk of rescuedAttachments) {
+                  yield attChunk;
                 }
-                if (node.replies?.items) {
-                  findAndRescueBlobs(node.replies.items);
-                }
+                
+                // Yield the updated chat (converted back to DTO with 'persisted' status) AFTER
+                yield { type: 'chat', data: chatToDto(chat, chunk.data.order ?? 0) };
+              } else {
+                yield chunk;
               }
-            };
-
-            findAndRescueBlobs(chat.root.items);
-
-            // Yield rescued attachments FIRST
-            for (const attChunk of rescuedAttachments) {
-              yield attChunk;
             }
-            
-            // Yield the updated chat (converted back to DTO with 'persisted' status) AFTER
-            yield { type: 'chat', data: chatToDto(chat, chunk.data.order ?? 0) };
-          } else {
-            yield chunk;
           }
+
+          // We temporary switch provider so restore() works correctly if it relies on instance methods
+          const oldType = this.currentType;
+          this.provider = newProvider;
+          this.currentType = type;
+
+          try {
+            await newProvider.restore(migrationStream());
+          } catch (e) {
+            // Rollback
+            this.provider = oldProvider;
+            this.currentType = oldType;
+            throw e;
+          }
+          
+          // Persist active storage type for the next application load
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
+          }
+
+          console.log('Storage migration completed successfully.');
+        } catch (error) {
+          console.error('Storage migration failed. Reverting to previous provider.', error);
+          throw error; 
         }
-      }
+      }, { timeoutMs: 60000 });
 
-      // We temporary switch provider so restore() works correctly if it relies on instance methods
-      const oldType = this.currentType;
-      this.provider = newProvider;
-      this.currentType = type;
-
-      try {
-        await newProvider.restore(migrationStream());
-      } catch (e) {
-        // Rollback
-        this.provider = oldProvider;
-        this.currentType = oldType;
-        throw e;
-      }
-      
-      // Persist active storage type for the next application load
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
-      }
-
-      console.log('Storage migration completed successfully.');
-    } catch (error) {
-      console.error('Storage migration failed. Reverting to previous provider.', error);
-      
-      const { addErrorEvent } = useGlobalEvents();
-      addErrorEvent({
-        source: 'StorageService',
-        message: 'Storage migration failed. Reverting to previous provider.',
-        details: error instanceof Error ? error : new Error(String(error)),
-      });
-
-      throw error; 
+      // Notify others that a migration happened (they should reload everything)
+      this.synchronizer.notify('migration');
+    } catch (e) {
+      this.handleStorageError(e, 'switchProvider');
+      throw e;
     }
   }
 
@@ -187,22 +205,48 @@ export class StorageService {
     return this.getProvider().getSidebarStructure();
   }
 
-  // --- Persistence Methods ---
+  // --- Persistence Methods (Guarded by Locks) ---
 
   async saveChat(chat: Chat, index: number): Promise<void> {
-    return this.getProvider().saveChat(chat, index);
+    try {
+      await this.synchronizer.withLock(async () => {
+        await this.getProvider().saveChat(chat, index);
+      });
+      this.synchronizer.notify('chat', chat.id);
+    } catch (e) {
+      this.handleStorageError(e, 'saveChat');
+      throw e;
+    }
   }
 
   async loadChat(id: string): Promise<Chat | null> {
+    // Reads don't strictly need locks for consistency in this model 
+    // as long as writes are atomic.
     return this.getProvider().loadChat(id);
   }
 
   async deleteChat(id: string): Promise<void> {
-    return this.getProvider().deleteChat(id);
+    try {
+      await this.synchronizer.withLock(async () => {
+        await this.getProvider().deleteChat(id);
+      });
+      this.synchronizer.notify('chat', id);
+    } catch (e) {
+      this.handleStorageError(e, 'deleteChat');
+      throw e;
+    }
   }
 
   async saveChatGroup(chatGroup: ChatGroup, index: number): Promise<void> {
-    return this.getProvider().saveChatGroup(chatGroup, index);
+    try {
+      await this.synchronizer.withLock(async () => {
+        await this.getProvider().saveChatGroup(chatGroup, index);
+      });
+      this.synchronizer.notify('chat_group', chatGroup.id);
+    } catch (e) {
+      this.handleStorageError(e, 'saveChatGroup');
+      throw e;
+    }
   }
 
   async loadChatGroup(id: string): Promise<ChatGroup | null> {
@@ -210,11 +254,27 @@ export class StorageService {
   }
 
   async deleteChatGroup(id: string): Promise<void> {
-    return this.getProvider().deleteChatGroup(id);
+    try {
+      await this.synchronizer.withLock(async () => {
+        await this.getProvider().deleteChatGroup(id);
+      });
+      this.synchronizer.notify('chat_group', id);
+    } catch (e) {
+      this.handleStorageError(e, 'deleteChatGroup');
+      throw e;
+    }
   }
 
   async saveSettings(settings: Settings): Promise<void> {
-    return this.getProvider().saveSettings(settings);
+    try {
+      await this.synchronizer.withLock(async () => {
+        await this.getProvider().saveSettings(settings);
+      });
+      this.synchronizer.notify('settings');
+    } catch (e) {
+      this.handleStorageError(e, 'saveSettings');
+      throw e;
+    }
   }
 
   async loadSettings(): Promise<Settings | null> {
@@ -222,13 +282,28 @@ export class StorageService {
   }
 
   async clearAll(): Promise<void> {
-    return this.getProvider().clearAll();
+    try {
+      await this.synchronizer.withLock(async () => {
+        await this.getProvider().clearAll();
+      });
+      this.synchronizer.notify('migration'); // Treat as migration (full reset)
+    } catch (e) {
+      this.handleStorageError(e, 'clearAll');
+      throw e;
+    }
   }
 
   // --- File Storage Methods ---
 
   async saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void> {
-    return this.getProvider().saveFile(blob, attachmentId, originalName);
+    try {
+      await this.synchronizer.withLock(async () => {
+        await this.getProvider().saveFile(blob, attachmentId, originalName);
+      });
+    } catch (e) {
+      this.handleStorageError(e, 'saveFile');
+      throw e;
+    }
   }
 
   async getFile(attachmentId: string, originalName: string): Promise<Blob | null> {
@@ -237,6 +312,19 @@ export class StorageService {
 
   async hasAttachments(): Promise<boolean> {
     return this.getProvider().hasAttachments();
+  }
+
+  private handleStorageError(e: unknown, source: string) {
+    const { addErrorEvent } = useGlobalEvents();
+    const isTimeout = e instanceof Error && e.message.includes('Lock acquisition timed out');
+    
+    addErrorEvent({
+      source: `StorageService:${source}`,
+      message: isTimeout 
+        ? 'Storage operation timed out. Another tab might be performing a long operation.' 
+        : 'An error occurred during a storage operation.',
+      details: e instanceof Error ? e : String(e),
+    });
   }
 }
 

@@ -77,6 +77,8 @@ vi.mock('../composables/useToast', () => ({
 
 vi.mock('../services/storage', () => ({
   storageService: {
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     clearAll: vi.fn(),
     getCurrentType: vi.fn(),
     switchProvider: vi.fn().mockResolvedValue(undefined),

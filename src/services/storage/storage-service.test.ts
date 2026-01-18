@@ -121,8 +121,8 @@ describe('StorageService Migration', () => {
     await expect(storageService.switchProvider('opfs')).rejects.toThrow(error);
     
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
-      source: 'StorageService',
-      message: expect.stringContaining('failed'),
+      source: 'StorageService:switchProvider',
+      message: 'An error occurred during a storage operation.',
       details: error,
     }));
     

@@ -37,6 +37,7 @@ vi.mock('../services/llm', () => ({
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn(),
     loadChat: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),

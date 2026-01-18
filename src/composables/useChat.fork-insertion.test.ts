@@ -7,6 +7,8 @@ import type { SidebarItem } from '../models/types';
 // Mock storage
 vi.mock('../services/storage', () => ({
   storageService: {
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     getSidebarStructure: vi.fn(),
     saveChat: vi.fn().mockResolvedValue(undefined),
     loadChat: vi.fn(),

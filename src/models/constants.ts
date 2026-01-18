@@ -10,3 +10,7 @@ export const ENDPOINT_PRESETS = [
 
 export const STORAGE_KEY_PREFIX = 'naidan:';
 export const STORAGE_BOOTSTRAP_KEY = `${STORAGE_KEY_PREFIX}storage_type`;
+
+// Synchronization keys
+export const SYNC_SIGNAL_KEY = `${STORAGE_KEY_PREFIX}sync:signal`;
+export const SYNC_LOCK_KEY = `${STORAGE_KEY_PREFIX}sync:lock`;

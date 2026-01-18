@@ -37,6 +37,39 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// --- Synchronization ---
+
+storageService.subscribeToChanges(async (event) => {
+  if (event.type === 'chat' || event.type === 'chat_group' || event.type === 'sidebar') {
+    // 1. Always refresh the sidebar list to reflect new/renamed/deleted items
+    rootItems.value = await storageService.getSidebarStructure();
+
+    // 2. If the current open chat was modified by another tab, reload it
+    // We skip reload if WE are currently generating content for it (lock usually prevents this, but safety first)
+    if (event.type === 'chat' && event.id && currentChat.value?.id === event.id) {
+      if (!activeGenerations.has(event.id)) {
+        const fresh = await storageService.loadChat(event.id);
+        if (fresh) {
+          // Preserve transient UI state if needed, but for now just replace
+          currentChat.value = reactive(fresh);
+        } else {
+          // Chat was deleted
+          currentChat.value = null;
+        }
+      }
+    }
+  } 
+  
+  if (event.type === 'migration') {
+    // Full reload
+    rootItems.value = await storageService.getSidebarStructure();
+    if (currentChat.value) {
+      const fresh = await storageService.loadChat(currentChat.value.id);
+      currentChat.value = fresh ? reactive(fresh) : null;
+    }
+  }
+});
+
 // --- Registry Helpers ---
 
 function registerLiveInstance(chat: Chat) {

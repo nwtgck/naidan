@@ -8,6 +8,7 @@ import type { Chat } from '../models/types';
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn().mockResolvedValue(undefined),
     loadChat: vi.fn(),
     getSidebarStructure: vi.fn().mockResolvedValue([]),

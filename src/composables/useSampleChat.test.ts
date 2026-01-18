@@ -15,6 +15,8 @@ vi.mock('./useChat', async (importOriginal) => {
 
 vi.mock('../services/storage', () => ({
   storageService: {
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn(),
   },
 }));

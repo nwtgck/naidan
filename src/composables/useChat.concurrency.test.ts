@@ -12,6 +12,7 @@ const mockChatStorage = new Map<string, Chat>();
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mockChatStorage.values()))),
     loadChat: vi.fn().mockImplementation((id) => Promise.resolve(mockChatStorage.get(id) || null)),
     saveChat: vi.fn().mockImplementation((chat) => {
