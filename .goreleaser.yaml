@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: naidan-server
+
+dist: ./dist/goreleaser-dist
+
+before:
+  hooks:
+    - sh -c "cd naidan-server && go run build.go --skip-build"
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    dir: ./naidan-server
+    main: ./main.go
+    ldflags:
+      - -X main.version={{.Version}}
+    goos:
+      - linux
+      - windows
+      - darwin
+      - freebsd
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - 386
+      - ppc64le
+      - s390x
+    goarm:
+      - 6
+      - 7
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+nfpms:
+  - file_name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    homepage: https://github.com/nwtgck/naidan
+    maintainer: Ryo Ota <nwtgck@nwtgck.org>
+    formats:
+      - deb
+      - rpm
+    license: MIT
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: nwtgck
+    name: naidan
+  disable: false
+  prerelease: auto
+  mode: replace
+  name_template: "v{{.Version}}"
