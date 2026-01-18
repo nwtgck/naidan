@@ -683,9 +683,9 @@ export function useChat() {
     }
   };
 
-  const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = [], chatTarget?: Chat) => {
+  const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = [], chatTarget?: Chat): Promise<boolean> => {
     const chat = chatTarget || currentChat.value;
-    if (!chat || activeGenerations.has(chat.id) || activeProcessing.has(chat.id)) return;
+    if (!chat || activeGenerations.has(chat.id) || activeProcessing.has(chat.id)) return false;
 
     activeProcessing.add(chat.id);
     // Register immediately to ensure background tasks are tracked from the start
@@ -724,7 +724,7 @@ export function useChat() {
           selectedModel: models[0] || '',
         };
         isOnboardingDismissed.value = false;
-        return;
+        return false;
       }
 
       // Process attachments for saving
@@ -739,7 +739,7 @@ export function useChat() {
           confirmButtonText: 'Continue anyway',
           cancelButtonText: 'Cancel',
         });
-        if (!confirmed) return;
+        if (!confirmed) return false;
         globalSettings.value.heavyContentAlertDismissed = true;
       }
 
@@ -801,6 +801,7 @@ export function useChat() {
       await saveChat(chat);
 
       await generateResponse(chat, assistantMsg.id);
+      return true;
     } finally {
       activeProcessing.delete(chat.id);
       unregisterLiveInstance(chat.id);

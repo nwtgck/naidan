@@ -13,7 +13,7 @@ const router = createRouter({
 import type { MessageNode, Chat } from '../models/types';
 
 // Mock dependencies
-const mockSendMessage = vi.fn();
+const mockSendMessage = vi.fn().mockResolvedValue(true);
 const mockAbortChat = vi.fn();
 const mockStreaming = ref(false);
 const mockAvailableModels = ref<string[]>([]);
@@ -929,8 +929,8 @@ describe('ChatArea Textarea Sizing', () => {
     expect(parseFloat(textarea.style.height)).toBeCloseTo(mockWindowInnerHeight * 0.7);
 
     // Mock sendMessage to be a slow promise so we can control the flow
-    let resolveSendMessage: (val?: void) => void;
-    mockSendMessage.mockReturnValue(new Promise<void>(resolve => {
+    let resolveSendMessage: (val: boolean) => void;
+    mockSendMessage.mockReturnValue(new Promise<boolean>(resolve => {
       resolveSendMessage = resolve;
     }));
 
@@ -939,7 +939,7 @@ describe('ChatArea Textarea Sizing', () => {
     // After sending, the input is cleared, so we must mock the scrollHeight accordingly
     mockTextareaDimensions(textarea, 24);
     
-    resolveSendMessage!();
+    resolveSendMessage!(true);
     await sendPromise;
     await nextTick();
     await nextTick();
@@ -967,13 +967,16 @@ describe('ChatArea Textarea Sizing', () => {
     // Start sending
     const sendPromise = (wrapper.vm as any).handleSend();
     
+    // Height reset now happens AFTER sendMessage resolves
+    await mockSendMessage.mock.results[0]?.value; 
+    await sendPromise;
+
     // Clear mock dimensions to represent cleared input
     mockTextareaDimensions(textarea, 24);
     await nextTick();
     await nextTick();
     
     expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
-    await sendPromise;
   });
 
   it('should reset maximized state IMMEDIATELY when handleSend starts', async () => {
@@ -995,8 +998,8 @@ describe('ChatArea Textarea Sizing', () => {
     expect((wrapper.vm as any).isMaximized).toBe(true);
 
     // Mock sendMessage to be a slow promise
-    let resolveSendMessage: (val?: void) => void;
-    mockSendMessage.mockReturnValue(new Promise<void>(resolve => {
+    let resolveSendMessage: (val: boolean) => void;
+    mockSendMessage.mockReturnValue(new Promise<boolean>(resolve => {
       resolveSendMessage = resolve;
     }));
 
@@ -1006,14 +1009,14 @@ describe('ChatArea Textarea Sizing', () => {
     // Immediate check
     expect((wrapper.vm as any).isMaximized).toBe(false);
     
+    // Resolve sendMessage
+    resolveSendMessage!(true);
+    await sendPromise;
+
     // After nextTick, height should already be adjusting back
     mockTextareaDimensions(textarea, 24); 
     await nextTick();
     expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
-
-    // Finally resolve the promise to clean up
-    resolveSendMessage!();
-    await sendPromise;
   });
 
   it('should hide maximize button when content is deleted below 6 lines', async () => {
@@ -1096,6 +1099,23 @@ describe('ChatArea Textarea Sizing', () => {
     // After clearing, height should revert to initial single-line height, not 0
     expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
     expect(textarea.style.overflowY).toBe('hidden');
+  });
+
+  it('should NOT clear input if sendMessage returns false (regression: onboarding)', async () => {
+    mockSendMessage.mockResolvedValueOnce(false);
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Keep this text');
+    
+    const sendBtn = wrapper.find('[data-testid="send-button"]');
+    await sendBtn.trigger('click');
+
+    await flushPromises();
+
+    expect(textarea.element.value).toBe('Keep this text');
   });
 
   it('should reset maximized state when switching to a different chat', async () => {
@@ -1355,7 +1375,7 @@ describe('ChatArea Model Selection', () => {
   });
 
   it('automatically sends message when autoSendPrompt is provided', async () => {
-    mockCurrentChat.value = { 
+    mockCurrentChat.value = {
       id: '1', 
       title: 'Test Chat', 
       root: { items: [] },
@@ -1368,7 +1388,7 @@ describe('ChatArea Model Selection', () => {
       props: {
         autoSendPrompt: 'automatic message'
       },
-      global: { 
+      global: {
         plugins: [router],
         stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true }
       },

@@ -287,15 +287,19 @@ async function handleSend() {
   const text = input.value;
   const currentAttachments = [...attachments.value];
   
-  input.value = '';
-  attachments.value = [];
-  isMaximized.value = false; // Reset maximized state immediately upon sending
+  isMaximized.value = false; // Reset maximized state immediately
   
-  nextTick(() => { // Ensure textarea is cleared before adjusting height
-    adjustTextareaHeight();
-  });
+  const success = await chatStore.sendMessage(text, undefined, currentAttachments);
   
-  await chatStore.sendMessage(text, undefined, currentAttachments);
+  if (success) {
+    input.value = '';
+    attachments.value = [];
+    
+    nextTick(() => { // Ensure textarea is cleared before adjusting height
+      adjustTextareaHeight();
+    });
+  }
+
   focusInput();
 }
 

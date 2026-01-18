@@ -21,7 +21,7 @@ vi.mock('../composables/useChat', () => ({
     activeMessages: mockActiveMessages,
     availableModels: ref([]),
     fetchingModels: ref(false),
-    sendMessage: vi.fn(),
+    sendMessage: vi.fn().mockResolvedValue(true),
     isTyping: ref(false),
     error: ref(null),
     loadChat: vi.fn(),
