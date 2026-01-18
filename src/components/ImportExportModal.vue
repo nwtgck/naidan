@@ -25,6 +25,14 @@ const emit = defineEmits<{
 const service = new ImportExportService(storageService);
 const { addToast } = useToast();
 
+/**
+ * Directional icons chosen based on data flow relative to the application:
+ * - Export: Sending data OUT of the app (represented by Upload/Up arrow)
+ * - Import: Bringing data IN to the app (represented by Download/Down arrow)
+ */
+const ExportIcon = Upload;
+const ImportIcon = Download;
+
 // --- State ---
 const mode = ref<'menu' | 'export' | 'import_preview' | 'import_config' | 'processing'>('menu');
 const processingMessage = ref('');
@@ -34,9 +42,8 @@ const error = ref<string | null>(null);
 const exportName = ref('');
 const previewFilename = computed(() => {
   const dateStr = new Date().toISOString().split('T')[0];
-  /* eslint-disable no-control-regex */
+  // eslint-disable-next-line no-control-regex
   const sanitized = exportName.value.replace(/[/?%*:|"<>\x00-\x1F]/g, '_').trim();
-  /* eslint-enable no-control-regex */
   const midSegment = sanitized ? `_${sanitized}` : '';
   return `naidan_data${midSegment}_${dateStr}.zip`;
 });
@@ -238,7 +245,7 @@ async function handleImportExecute() {
               Import / Export
               <span class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">Experimental</span>
             </h2>
-            <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Manage your data transfers and portability</p>
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Portable Data</p>
           </div>
         </div>
       </div>
@@ -256,17 +263,15 @@ async function handleImportExecute() {
         </div>
 
         <!-- MENU MODE -->
-        <!-- Icons are chosen based on data flow relative to the application: 
-             Export = Sending data OUT (Upload icon), Import = Bringing data IN (Download icon) -->
         <div v-if="mode === 'menu'" class="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
           <!-- Export Card -->
           <div class="p-6 rounded-3xl border-2 border-gray-100 dark:border-gray-800 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50/10 dark:hover:bg-blue-900/5 transition-all cursor-pointer group flex flex-col gap-4" @click="mode = 'export'">
             <div class="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-2xl w-fit text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
-              <Upload class="w-6 h-6" />
+              <component :is="ExportIcon" class="w-6 h-6" />
             </div>
             <div>
               <h3 class="text-lg font-bold text-gray-800 dark:text-white text-left">Export</h3>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed text-left">Save all your chats, settings, and attachments to a ZIP file.</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed text-left">Download a full backup of your chats and settings.</p>
             </div>
           </div>
 
@@ -274,11 +279,11 @@ async function handleImportExecute() {
           <label class="p-6 rounded-3xl border-2 border-gray-100 dark:border-gray-800 hover:border-green-500 dark:hover:border-green-500 hover:bg-green-50/10 dark:hover:bg-green-900/5 transition-all cursor-pointer group flex flex-col gap-4 relative">
             <input type="file" accept=".zip" class="hidden" @change="handleFileSelect" />
             <div class="p-3 bg-green-100 dark:bg-green-900/30 rounded-2xl w-fit text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">
-              <Download class="w-6 h-6" />
+              <component :is="ImportIcon" class="w-6 h-6" />
             </div>
             <div>
               <h3 class="text-lg font-bold text-gray-800 dark:text-white text-left">Import</h3>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed text-left">Restore or merge data from a previously exported ZIP file.</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed text-left">Upload a backup ZIP to restore or merge your data.</p>
             </div>
           </label>
         </div>
@@ -291,7 +296,7 @@ async function handleImportExecute() {
             </div>
             <div class="space-y-1">
               <h3 class="text-lg font-bold text-gray-800 dark:text-white">Ready to Export</h3>
-              <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">Your chat history, settings, and profiles will be bundled into a single ZIP file.</p>
+              <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">Prepare a ZIP file containing all your chats, groups, attachments, and configuration.</p>
             </div>
 
             <div class="w-full space-y-3 pt-2">
@@ -314,7 +319,7 @@ async function handleImportExecute() {
                 </div>
                 
                 <button @click="handleExport" class="w-full sm:w-auto px-10 py-4 rounded-2xl font-black bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-3">
-                  <Upload class="w-6 h-6" />
+                  <component :is="ExportIcon" class="w-6 h-6" />
                   Export Now
                 </button>
               </div>
@@ -379,7 +384,7 @@ async function handleImportExecute() {
             <div class="flex items-center justify-between">
               <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
                 <Database class="w-4 h-4 text-blue-500" />
-                Import Strategy
+                Mode & Data Strategy
               </h3>
               <div class="flex gap-2">
                 <button v-if="activePreset === 'custom'" 
@@ -433,28 +438,48 @@ async function handleImportExecute() {
           </section>
 
           <!-- Settings Strategy -->
-          <section class="space-y-4" v-if="importPreview?.stats.hasSettings">
-            <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
-              <Settings2 class="w-4 h-4 text-blue-500" />
-              Settings & Profiles
-            </h3>
+          <section class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <Settings2 class="w-4 h-4 text-blue-500" />
+                Settings & Profiles
+              </h3>
+            </div>
             
-            <div class="space-y-3 p-4 border border-gray-100 dark:border-gray-700 rounded-2xl">
+            <div v-if="importPreview?.stats.hasSettings" class="space-y-3 p-4 border border-gray-100 dark:border-gray-700 rounded-2xl flex flex-col gap-1">
               <!-- Endpoint -->
               <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-gray-600 dark:text-gray-300">Connection (URL & Key)</span>
-                <select v-model="importConfig.settings.endpoint" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1">
-                  <option value="replace">Overwrite Current</option>
-                  <option value="none">Keep Current</option>
+                <span class="text-xs font-bold text-gray-600 dark:text-gray-300">URL & HTTP Headers</span>
+                <select v-model="importConfig.settings.endpoint" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
+                  <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
+                  <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
+                </select>
+              </div>
+
+              <!-- Default Model -->
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-gray-600 dark:text-gray-300">Default Model</span>
+                <select v-model="importConfig.settings.model" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
+                  <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
+                  <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
+                </select>
+              </div>
+
+              <!-- Title Model -->
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-gray-600 dark:text-gray-300">Title Generation Model</span>
+                <select v-model="importConfig.settings.titleModel" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
+                  <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
+                  <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
                 </select>
               </div>
               
               <!-- Profiles -->
               <div class="flex items-center justify-between">
                 <span class="text-xs font-bold text-gray-600 dark:text-gray-300">Provider Profiles</span>
-                <select v-model="importConfig.settings.providerProfiles" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1">
-                  <option value="append">Append (Add New)</option>
-                  <option value="replace">Replace All</option>
+                <select v-model="importConfig.settings.providerProfiles" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
+                  <option value="append">Add New {{ activePreset === 'append' ? '(Default)' : '' }}</option>
+                  <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
                   <option value="none">Ignore</option>
                 </select>
               </div>
@@ -462,11 +487,23 @@ async function handleImportExecute() {
               <!-- System Prompt -->
               <div class="flex items-center justify-between">
                 <span class="text-xs font-bold text-gray-600 dark:text-gray-300">Global System Prompt</span>
-                <select v-model="importConfig.settings.systemPrompt" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1">
-                  <option value="replace">Overwrite Current</option>
-                  <option value="none">Keep Current</option>
+                <select v-model="importConfig.settings.systemPrompt" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
+                  <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
+                  <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
                 </select>
               </div>
+
+              <!-- LM Parameters -->
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-gray-600 dark:text-gray-300">LM Parameters (Temp, etc.)</span>
+                <select v-model="importConfig.settings.lmParameters" class="text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[160px]">
+                  <option value="replace">Overwrite {{ activePreset === 'replace' ? '(Default)' : '' }}</option>
+                  <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
+                </select>
+              </div>
+            </div>
+            <div v-else class="p-6 border-2 border-dashed border-gray-100 dark:border-gray-800 rounded-2xl text-center">
+              <p class="text-xs font-bold text-gray-400">No settings or profiles found in this backup.</p>
             </div>
           </section>
 

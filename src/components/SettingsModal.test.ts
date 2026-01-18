@@ -384,32 +384,22 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   });
 
   it('loads and displays licenses dynamically in hosted mode', async () => {
-    // Mock the dynamic import
-    vi.mock('../assets/licenses.json', () => ({
-      default: [
-        {
-          name: 'test-pkg',
-          version: 'v1.0.0',
-          license: 'MIT',
-          licenseText: 'Test License Text'
-        }
-      ]
-    }));
-
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
 
     const navButtons = wrapper.findAll('nav button');
     await navButtons.find(b => b.text().includes('About'))?.trigger('click');
     
-    // Initial state might show loading if we don't await enough
-    // But since we mocked the module, it might be instant or require nextTick
+    // Dynamic import might take a moment to resolve in some environments
     await flushPromises();
     await nextTick();
+    // Wait a bit more if needed
+    await new Promise(resolve => setTimeout(resolve, 50));
+    await flushPromises();
 
     const text = wrapper.text();
     expect(text).toContain('test-pkg');
-    expect(text).toContain('v1.0.0');
+    expect(text).toContain('1.0.0'); // Global mock has 1.0.0 not v1.0.0
     expect(text).toContain('MIT');
   });
 

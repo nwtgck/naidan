@@ -63,6 +63,7 @@ export interface IImportExportStorage {
 export class ImportExportService {
   private globalEvents = useGlobalEvents();
 
+  // Accept a subset of IStorageProvider that handles the necessary persistence
   constructor(private storage: IImportExportStorage) {}
 
   /**
@@ -101,7 +102,6 @@ export class ImportExportService {
     const chatMetas: ChatMetaDto[] = [];
 
     try {
-      // Use dumpWithoutLock for efficient streaming export.
       for await (const chunk of this.storage.dumpWithoutLock()) {
         switch (chunk.type) {
         case 'settings':
@@ -317,15 +317,21 @@ export class ImportExportService {
   private async applySettingsImport(zipSettings: SettingsDto, strategies: ImportConfig['settings']) {
     const currentSettings = await this.storage.loadSettings();
     const newSettingsDomain = settingsToDomain(zipSettings);
-    const finalSettings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
+    
+    // Fallback if current settings are null (unlikely but possible during onboarding)
+    const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
 
-    const applyField = <K extends keyof typeof finalSettings>(strategy: ImportFieldStrategy, newValue: (typeof finalSettings)[K], targetKey: K) => {
-      if (strategy === 'replace') finalSettings[targetKey] = newValue;
+    const applyField = <K extends keyof Settings>(strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K) => {
+      if (strategy === 'replace' && newValue !== undefined) {
+        finalSettings[targetKey] = newValue;
+      }
     };
 
+    // Mapping between strategy fields and domain fields
     applyField(strategies.endpoint, newSettingsDomain.endpointType, 'endpointType');
     applyField(strategies.endpoint, newSettingsDomain.endpointUrl, 'endpointUrl');
     applyField(strategies.endpoint, newSettingsDomain.endpointHttpHeaders, 'endpointHttpHeaders');
+    
     applyField(strategies.model, newSettingsDomain.defaultModelId, 'defaultModelId');
     applyField(strategies.titleModel, newSettingsDomain.titleModelId, 'titleModelId');
     applyField(strategies.systemPrompt, newSettingsDomain.systemPrompt, 'systemPrompt');
@@ -334,6 +340,7 @@ export class ImportExportService {
     switch (strategies.providerProfiles) {
     case 'replace': finalSettings.providerProfiles = newSettingsDomain.providerProfiles; break;
     case 'append': {
+      // Regenerate IDs for imported profiles to prevent collisions
       const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: uuidv7() }));
       finalSettings.providerProfiles.push(...appended);
       break;
