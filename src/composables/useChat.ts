@@ -363,7 +363,7 @@ export function useChat() {
     await storageService.saveChat(chat, index);
   };
 
-  const createNewChat = async (chatGroupId: string | null = null) => {
+  const createNewChat = async (chatGroupId: string | null = null, modelId: string | null = null) => {
     if (creatingChat.value) return null;
     currentChatGroup.value = null;
     creatingChat.value = true;
@@ -377,6 +377,7 @@ export function useChat() {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         debugEnabled: false,
+        modelId: modelId ?? undefined,
       });
 
       // Register immediately so persistSidebarStructure can save its content

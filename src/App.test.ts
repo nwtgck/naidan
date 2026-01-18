@@ -244,7 +244,7 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalledWith('group-123');
+    expect(mockCreateNewChat).toHaveBeenCalledWith('group-123', null);
     expect(mockRouterPush).toHaveBeenCalledWith({
       path: '/chat/grouped-chat-id',
       query: { q: 'hello' }
@@ -269,7 +269,7 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalledWith('group-uuid-123');
+    expect(mockCreateNewChat).toHaveBeenCalledWith('group-uuid-123', null);
   });
 
   it('automatically creates a new group if chat_group name does not exist', async () => {
@@ -292,7 +292,31 @@ describe('App', () => {
     await nextTick();
 
     expect(mockCreateChatGroup).toHaveBeenCalledWith('New Group Name');
-    expect(mockCreateNewChat).toHaveBeenCalledWith('new-group-uuid');
+    expect(mockCreateNewChat).toHaveBeenCalledWith('new-group-uuid', null);
+  });
+
+  it('automatically creates a new chat with model override when q and model are present', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    const currentRoute = ref({ path: '/', query: { q: 'hello', model: 'special-model' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
+    });
+    mockCreateNewChat.mockImplementation(async (groupId, modelId) => {
+      mockCurrentChat.value = { id: 'model-chat-id', groupId, modelId } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalledWith(null, 'special-model');
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      path: '/chat/model-chat-id',
+      query: { q: 'hello' }
+    });
   });
 
   it('opens SettingsModal when Sidebar emits open-settings', async () => {

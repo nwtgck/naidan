@@ -50,10 +50,11 @@ watch(
     () => router.currentRoute.value?.path,
     () => router.currentRoute.value?.query?.q,
     () => router.currentRoute.value?.query?.chat_group,
+    () => router.currentRoute.value?.query?.model,
     () => settingsStore.initialized.value,
     () => settingsStore.isOnboardingDismissed.value
   ],
-  async ([len, path, q, chatGroupId, initialized, dismissed]) => {
+  async ([len, path, q, chatGroupId, modelId, initialized, dismissed]) => {
     if (!initialized || !dismissed || path !== '/') return;
 
     if (q || len === 0) {
@@ -66,7 +67,9 @@ watch(
           targetGroupId = await chatStore.createChatGroup(chatGroupId);
         }
       }
-      await chatStore.createNewChat(targetGroupId);
+
+      const targetModelId = (q && typeof modelId === 'string') ? modelId : null;
+      await chatStore.createNewChat(targetGroupId, targetModelId);
       
       if (chatStore.currentChat.value) {
         const id = chatStore.currentChat.value.id;
