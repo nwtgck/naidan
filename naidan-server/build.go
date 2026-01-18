@@ -14,6 +14,13 @@ type PackageJSON struct {
 }
 
 func main() {
+	skipBuild := false
+	for _, arg := range os.Args {
+		if arg == "--skip-build" {
+			skipBuild = true
+		}
+	}
+
 	src := filepath.Join("..", "dist", "hosted")
 	dst := "public"
 
@@ -24,6 +31,11 @@ func main() {
 	if err := copyDir(src, dst); err != nil {
 		fmt.Fprintf(os.Stderr, "Error copying assets: %v\n", err)
 		os.Exit(1)
+	}
+
+	if skipBuild {
+		fmt.Println("Asset preparation successful (build skipped)")
+		return
 	}
 
 	version := getVersion()
