@@ -771,65 +771,8 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             <div v-if="activeTab === 'storage'" data-testid="storage-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
               <section class="space-y-6">
                 <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-                  <Database class="w-5 h-5 text-blue-500" />
-                  <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Storage Management</h2>
-                </div>
-                
-                <div class="space-y-6">
-                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Active Storage Provider</label>
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <button 
-                      @click="form.storageType = 'local'"
-                      type="button"
-                      class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
-                      :class="form.storageType === 'local' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700'"
-                      data-testid="storage-local"
-                    >
-                      <div class="flex items-center justify-between">
-                        <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                          <HardDrive class="w-4 h-4 text-gray-600 dark:text-gray-300" />
-                        </div>
-                      </div>
-                      <div>
-                        <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">Local Storage</div>
-                        <div class="text-xs font-medium text-gray-500 leading-relaxed">Standard browser storage. Fast but limited size (5-10MB).</div>
-                      </div>
-                    </button>
-                    <button 
-                      @click="isOPFSSupported && (form.storageType = 'opfs')"
-                      type="button"
-                      :disabled="!isOPFSSupported"
-                      class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
-                      :class="[
-                        form.storageType === 'opfs' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700',
-                        !isOPFSSupported ? 'opacity-50 cursor-not-allowed grayscale' : ''
-                      ]"
-                      data-testid="storage-opfs"
-                    >
-                      <div class="flex items-center justify-between">
-                        <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                          <HardDrive class="w-4 h-4 text-gray-600 dark:text-gray-300" />
-                        </div>
-                        <span v-if="!isOPFSSupported" class="text-[10px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Unsupported</span>
-                      </div>
-                      <div>
-                        <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">OPFS</div>
-                        <div class="text-xs font-medium text-gray-500 leading-relaxed">Origin Private File System. High capacity, optimized for large data.</div>
-                      </div>
-                    </button>
-                  </div>
-                  
-                  <div class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
-                    <Info class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
-                    <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, chat groups, and settings to the new location. This process will start automatically after you click <strong>Save Changes</strong>.</p>
-                  </div>
-                </div>
-              </section>
-
-              <section class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
-                <div class="flex items-center gap-2 pb-3">
                   <FileArchive class="w-5 h-5 text-blue-500" />
-                  <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Portability</h2>
+                  <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Backup & Restore</h2>
                 </div>
                 
                 <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
@@ -850,6 +793,64 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                     <FileArchive class="w-4 h-4" />
                     Manage Data
                   </button>
+                </div>
+              </section>
+
+              <section class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
+                <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
+                  <Database class="w-5 h-5 text-blue-500" />
+                  <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Storage Management</h2>
+                </div>
+                
+                <div class="space-y-6">
+                  <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Active Storage Provider</label>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <button 
+                      @click="isOPFSSupported && (form.storageType = 'opfs')"
+                      type="button"
+                      :disabled="!isOPFSSupported"
+                      class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
+                      :class="[
+                        form.storageType === 'opfs' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700',
+                        !isOPFSSupported ? 'opacity-50 cursor-not-allowed grayscale' : ''
+                      ]"
+                      data-testid="storage-opfs"
+                    >
+                      <div class="flex items-center justify-between">
+                        <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                          <HardDrive class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                        </div>
+                        <span v-if="isOPFSSupported" class="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600/80 dark:text-green-500/80 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Recommended</span>
+                        <span v-else class="text-[10px] bg-red-50 dark:bg-red-900/20 text-red-600/80 dark:text-red-500/80 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Unsupported</span>
+                      </div>
+                      <div>
+                        <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">Origin Private File System (OPFS)</div>
+                        <div class="text-xs font-medium text-gray-500 leading-relaxed">Save locally in the browser's high-capacity file system. Optimized for large data and attachments.</div>
+                      </div>
+                    </button>
+                    <button 
+                      @click="form.storageType = 'local'"
+                      type="button"
+                      class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
+                      :class="form.storageType === 'local' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700'"
+                      data-testid="storage-local"
+                    >
+                      <div class="flex items-center justify-between">
+                        <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                          <HardDrive class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                        </div>
+                      </div>
+                      <div>
+                        <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">Local Storage</div>
+                        <div class="text-xs font-medium text-gray-500 leading-relaxed">Save locally in the standard browser storage. Limited size (5-10MB). Sent images are NOT persisted.</div>
+                      </div>
+                    </button>
+                  </div>
+                  
+                  <div class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
+                    <Info class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
+                    <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, chat groups, and settings to the new location. This process will start automatically after you click <strong>Save Changes</strong>.</p>
+                  </div>
                 </div>
               </section>
 
