@@ -636,3 +636,27 @@ describe('MessageItem Edit Labels', () => {
     expect(wrapper.find('[data-testid="resend-button"]').exists()).toBe(false);
   });
 });
+
+describe('MessageItem Action Visibility', () => {
+  const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
+    id: uuidv7(),
+    role,
+    content: 'Some content',
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  it('ensures message actions are always visible (no hover-only opacity classes)', () => {
+    const message = createMessage('assistant');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Find the container of message actions. It's the sibling of version paging or an empty div.
+    // In our template it's: <div class="flex items-center gap-1">
+    // We can find it by looking for one of the buttons inside it.
+    const copyButton = wrapper.find('[data-testid="copy-message-button"]');
+    const container = copyButton.element.parentElement;
+    
+    expect(container?.className).not.toContain('opacity-0');
+    expect(container?.className).not.toContain('group-hover:opacity-100');
+  });
+});

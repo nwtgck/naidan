@@ -494,7 +494,7 @@ function formatSize(bytes?: number): string {
           <div v-else></div>
 
           <!-- Message Actions -->
-          <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="flex items-center gap-1">
             <button 
               v-if="!isUser"
               @click="emit('regenerate', message.id)"
