@@ -13,6 +13,7 @@ const mockCreateNewChat = vi.fn();
 const mockLoadChats = vi.fn();
 const mockCurrentChat = ref<Chat | null>(null);
 const mockChats = ref<Chat[]>([]);
+const mockChatGroups = ref<any[]>([]);
 
 vi.mock('./composables/useChat', () => ({
   useChat: () => ({
@@ -21,6 +22,7 @@ vi.mock('./composables/useChat', () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: ref(null),
     chats: mockChats,
+    chatGroups: mockChatGroups,
   }),
 }));
 
@@ -220,6 +222,52 @@ describe('App', () => {
       path: '/chat/q-chat-id',
       query: { q: 'hello' }
     });
+  });
+
+  it('automatically creates a new chat in a group when both q and chat_group are present', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    mockChatGroups.value = [{ id: 'group-123', name: 'Existing Group' }];
+    const currentRoute = ref({ path: '/', query: { q: 'hello', chat_group: 'group-123' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
+    });
+    mockCreateNewChat.mockImplementation(async (groupId) => {
+      mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalledWith('group-123');
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      path: '/chat/grouped-chat-id',
+      query: { q: 'hello' }
+    });
+  });
+
+  it('automatically creates a new chat in a group by name when chat_group matches a group name', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    mockChatGroups.value = [{ id: 'group-uuid-123', name: 'Query Group' }];
+    const currentRoute = ref({ path: '/', query: { q: 'hello', chat_group: 'Query Group' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
+    });
+    mockCreateNewChat.mockImplementation(async (groupId) => {
+      mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalledWith('group-uuid-123');
   });
 
   it('opens SettingsModal when Sidebar emits open-settings', async () => {

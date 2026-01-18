@@ -47,22 +47,29 @@ const {
 watch(
   [
     () => chatStore.chats.value.length, 
-    () => router.currentRoute.value.path, 
+    () => router.currentRoute.value?.path,
+    () => router.currentRoute.value?.query?.q,
+    () => router.currentRoute.value?.query?.chat_group,
     () => settingsStore.initialized.value,
     () => settingsStore.isOnboardingDismissed.value
   ],
-  async ([len, path, initialized, dismissed]) => {
+  async ([len, path, q, chatGroupId, initialized, dismissed]) => {
     if (!initialized || !dismissed || path !== '/') return;
 
-    const q = router.currentRoute.value.query?.q;
     if (q || len === 0) {
-      await chatStore.createNewChat();
+      let targetGroupId: string | null = null;
+      if (q && typeof chatGroupId === 'string') {
+        const group = chatStore.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
+        targetGroupId = group ? group.id : null;
+      }
+      await chatStore.createNewChat(targetGroupId);
+      
       if (chatStore.currentChat.value) {
         const id = chatStore.currentChat.value.id;
         if (q) {
           router.push({
             path: `/chat/${id}`,
-            query: { q }
+            query: { q: q.toString() }
           });
         } else {
           router.push(`/chat/${id}`);
