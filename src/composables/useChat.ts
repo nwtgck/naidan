@@ -1009,12 +1009,14 @@ Message: "${content}"`,
   };
 
   const createChatGroup = async (name: string) => {
+    const id = uuidv7();
     const newGroup: ChatGroup = {
-      id: uuidv7(), name, updatedAt: Date.now(), isCollapsed: false, items: [],
+      id, name, updatedAt: Date.now(), isCollapsed: false, items: [],
     };
     const newRootItems = [{ id: `chat_group:${newGroup.id}`, type: 'chat_group' as const, chatGroup: newGroup }, ...rootItems.value];
     await persistSidebarStructure(newRootItems);
     await loadData();
+    return id;
   };
 
   const deleteChatGroup = async (id: string) => {

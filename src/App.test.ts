@@ -10,6 +10,7 @@ import { useRouter } from 'vue-router';
 
 // Define mock refs in module scope so they can be shared
 const mockCreateNewChat = vi.fn();
+const mockCreateChatGroup = vi.fn();
 const mockLoadChats = vi.fn();
 const mockCurrentChat = ref<Chat | null>(null);
 const mockChats = ref<Chat[]>([]);
@@ -18,6 +19,7 @@ const mockChatGroups = ref<any[]>([]);
 vi.mock('./composables/useChat', () => ({
   useChat: () => ({
     createNewChat: mockCreateNewChat,
+    createChatGroup: mockCreateChatGroup,
     loadChats: mockLoadChats,
     currentChat: mockCurrentChat,
     currentChatGroup: ref(null),
@@ -268,6 +270,29 @@ describe('App', () => {
     await nextTick();
 
     expect(mockCreateNewChat).toHaveBeenCalledWith('group-uuid-123');
+  });
+
+  it('automatically creates a new group if chat_group name does not exist', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    mockChatGroups.value = [];
+    const currentRoute = ref({ path: '/', query: { q: 'hello', chat_group: 'New Group Name' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
+    });
+    mockCreateChatGroup.mockResolvedValue('new-group-uuid');
+    mockCreateNewChat.mockImplementation(async (groupId) => {
+      mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateChatGroup).toHaveBeenCalledWith('New Group Name');
+    expect(mockCreateNewChat).toHaveBeenCalledWith('new-group-uuid');
   });
 
   it('opens SettingsModal when Sidebar emits open-settings', async () => {

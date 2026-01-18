@@ -60,7 +60,11 @@ watch(
       let targetGroupId: string | null = null;
       if (q && typeof chatGroupId === 'string') {
         const group = chatStore.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
-        targetGroupId = group ? group.id : null;
+        if (group) {
+          targetGroupId = group.id;
+        } else {
+          targetGroupId = await chatStore.createChatGroup(chatGroupId);
+        }
       }
       await chatStore.createNewChat(targetGroupId);
       
