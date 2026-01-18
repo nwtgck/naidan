@@ -29,11 +29,27 @@ jobs:
       - name: Run build
         run: npm run build
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: naidan-server/go.mod
+
+      - name: Verify naidan-server build
+        run: |
+          cd naidan-server
+          go run build.go
+
       - name: Upload full dist build artifact
         uses: actions/upload-artifact@v4
         with:
           name: full-dist-build
           path: dist/
+
+      - name: Upload naidan-server binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: naidan-server-binary
+          path: naidan-server/naidan-server
 
   publish_to_cloudflare:
     needs: build_and_test
@@ -165,9 +181,16 @@ jobs:
       - name: Rename naidan-standalone.zip with tag
         run: mv dist/naidan-standalone.zip dist/naidan-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          files: |
-            dist/naidan-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
-            dist/naidan-hosted-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+          go-version-file: naidan-server/go.mod
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6.2.1
+        with:
+          distribution: goreleaser
+          version: v2.7.0
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
