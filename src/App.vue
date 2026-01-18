@@ -43,7 +43,7 @@ const {
 } = usePrompt();
 
 // Automatically create a new chat if the list becomes empty while on the landing page
-// We wait until onboarding is dismissed to ensure default settings (like modelId) are available
+// OR if a query parameter 'q' is provided on the landing page
 watch(
   [
     () => chatStore.chats.value.length, 
@@ -52,10 +52,21 @@ watch(
     () => settingsStore.isOnboardingDismissed.value
   ],
   async ([len, path, initialized, dismissed]) => {
-    if (initialized && dismissed && len === 0 && path === '/') {
+    if (!initialized || !dismissed || path !== '/') return;
+
+    const q = router.currentRoute.value.query?.q;
+    if (q || len === 0) {
       await chatStore.createNewChat();
       if (chatStore.currentChat.value) {
-        router.push(`/chat/${chatStore.currentChat.value.id}`);
+        const id = chatStore.currentChat.value.id;
+        if (q) {
+          router.push({
+            path: `/chat/${id}`,
+            query: { q }
+          });
+        } else {
+          router.push(`/chat/${id}`);
+        }
       }
     }
   },

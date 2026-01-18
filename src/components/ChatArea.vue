@@ -31,6 +31,15 @@ const {
 } = chatStore;
 useSettings();
 const router = useRouter();
+
+const props = defineProps<{
+  autoSendPrompt?: string
+}>();
+
+const emit = defineEmits<{
+  (e: 'auto-sent'): void
+}>();
+
 const input = ref('');
 
 function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
@@ -379,11 +388,32 @@ watch([
   }
 }, { deep: true });
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('resize', adjustTextareaHeight);
   if (currentChat.value) {
     fetchModels();
   }
+
+  if (props.autoSendPrompt) {
+    const doAutoSend = async () => {
+      await nextTick();
+      input.value = props.autoSendPrompt!;
+      await handleSend();
+      emit('auto-sent');
+    };
+
+    if (currentChat.value) {
+      doAutoSend();
+    } else {
+      const unwatch = watch(() => currentChat.value, (chat) => {
+        if (chat) {
+          unwatch();
+          doAutoSend();
+        }
+      });
+    }
+  }
+
   nextTick(() => {
     scrollToBottom();
     adjustTextareaHeight(); // Call adjustTextareaHeight on mount

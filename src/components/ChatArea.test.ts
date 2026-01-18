@@ -1353,4 +1353,32 @@ describe('ChatArea Model Selection', () => {
 
     expect(mockFetchAvailableModels).toHaveBeenCalled();
   });
+
+  it('automatically sends message when autoSendPrompt is provided', async () => {
+    mockCurrentChat.value = { 
+      id: '1', 
+      title: 'Test Chat', 
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    } as Chat;
+    
+    wrapper = mount(ChatArea, {
+      props: {
+        autoSendPrompt: 'automatic message'
+      },
+      global: { 
+        plugins: [router],
+        stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true }
+      },
+    });
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockSendMessage).toHaveBeenCalledWith('automatic message', undefined, []);
+    expect(wrapper.emitted('auto-sent')).toBeTruthy();
+  });
 });

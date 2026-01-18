@@ -198,6 +198,30 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalled();
   });
 
+  it('automatically creates a new chat and preserves query param when q is present on root path', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    const currentRoute = ref({ path: '/', query: { q: 'hello' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
+    });
+    mockCreateNewChat.mockImplementation(async () => {
+      mockCurrentChat.value = { id: 'q-chat-id' } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalled();
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      path: '/chat/q-chat-id',
+      query: { q: 'hello' }
+    });
+  });
+
   it('opens SettingsModal when Sidebar emits open-settings', async () => {
     const wrapper = mountApp();
     await flushPromises();

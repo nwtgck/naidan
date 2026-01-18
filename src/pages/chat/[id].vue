@@ -1,21 +1,37 @@
 <script setup lang="ts">
-import { watch, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { watch, onMounted, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { useChat } from '../../composables/useChat';
 import ChatArea from '../../components/ChatArea.vue';
 
-const route = useRoute('/chat/[id]');
+const router = useRouter();
+const currentRoute = computed(() => router?.currentRoute?.value);
 const { openChat } = useChat();
 
+const chatId = computed(() => {
+  const params = currentRoute.value?.params;
+  // Use a type guard or check property existence to satisfy TS
+  if (params && 'id' in params) {
+    return params.id as string;
+  }
+  return undefined;
+});
+
 async function syncChat() {
-  const id = route.params.id;
+  const id = chatId.value;
   if (id) {
-    await openChat(id as string);
+    await openChat(id);
   }
 }
 
+function handleAutoSent() {
+  const query = { ...currentRoute.value?.query };
+  delete query.q;
+  router.replace({ query });
+}
+
 onMounted(syncChat);
-watch(() => route.params.id, syncChat);
+watch(chatId, syncChat);
 </script>
 
 <template>
@@ -23,7 +39,12 @@ watch(() => route.params.id, syncChat);
     name="fade"
     appear
   >
-    <ChatArea :key="route.params.id as string" />
+    <ChatArea 
+      v-if="chatId"
+      :key="chatId" 
+      :auto-send-prompt="currentRoute?.query?.q?.toString()"
+      @auto-sent="handleAutoSent"
+    />
   </transition>
 </template>
 

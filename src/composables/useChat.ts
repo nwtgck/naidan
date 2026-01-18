@@ -364,7 +364,7 @@ export function useChat() {
   };
 
   const createNewChat = async (chatGroupId: string | null = null) => {
-    if (creatingChat.value) return;
+    if (creatingChat.value) return null;
     currentChatGroup.value = null;
     creatingChat.value = true;
     const chatId = uuidv7();
@@ -393,6 +393,7 @@ export function useChat() {
       
       currentChat.value = chatObj;
       await loadData();
+      return chatId;
     } finally {
       creatingChat.value = false;
       unregisterLiveInstance(chatId);
