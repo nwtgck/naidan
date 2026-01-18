@@ -22,11 +22,12 @@ import {
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
   Pencil, Trash, Check, Activity, Info, HardDrive,
   MessageSquareQuote, Download, Github, ExternalLink, Plus,
-  ShieldCheck
+  ShieldCheck, FileArchive
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
 import Logo from './Logo.vue';
+import ImportExportModal from './ImportExportModal.vue';
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
 import { usePrompt } from '../composables/usePrompt';   // Import usePrompt
 import { ENDPOINT_PRESETS } from '../models/constants';
@@ -60,6 +61,8 @@ const saveSuccess = ref(false);
 const isOPFSSupported = computedAsync(async () => {
   return await checkOPFSSupport();
 }, false);
+
+const showImportExportModal = ref(false);
 
 // OSS Licenses State
 interface OssLicense {
@@ -825,6 +828,33 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
 
               <section class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
                 <div class="flex items-center gap-2 pb-3">
+                  <FileArchive class="w-5 h-5 text-blue-500" />
+                  <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Portability</h2>
+                </div>
+                
+                <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
+                  <div class="space-y-1">
+                    <h4 class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
+                      Export / Import
+                      <span class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">Experimental</span>
+                    </h4>
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 leading-relaxed">
+                      Backup your entire chat history and settings to a ZIP file, or restore from a previous export.
+                    </p>
+                  </div>
+                  <button 
+                    @click="showImportExportModal = true"
+                    class="shrink-0 flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+                    data-testid="setting-import-export-button"
+                  >
+                    <FileArchive class="w-4 h-4" />
+                    Manage Data
+                  </button>
+                </div>
+              </section>
+
+              <section class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
+                <div class="flex items-center gap-2 pb-3">
                   <Trash2 class="w-5 h-5 text-red-500" />
                   <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Cleanup</h2>
                 </div>
@@ -993,6 +1023,11 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
         </div>
       </main>
     </div>
+    
+    <ImportExportModal 
+      :is-open="showImportExportModal" 
+      @close="showImportExportModal = false" 
+    />
   </div>
 </template>
 

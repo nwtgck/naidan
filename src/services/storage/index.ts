@@ -18,6 +18,15 @@ export class StorageService {
     this.synchronizer = new StorageSynchronizer();
   }
 
+  /**
+   * Returns the current storage provider.
+   * 
+   * WARNING: This method returns the raw provider WITHOUT any locking or 
+   * concurrency protection. Calling methods directly on the provider is 
+   * NOT thread-safe and can lead to data corruption or race conditions.
+   * Use the public methods of StorageService instead, as they are guarded 
+   * by the synchronizer.
+   */
   private getProvider(): IStorageProvider {
     if (!this.provider) {
       throw new Error('StorageService not initialized. Call init() first.');
@@ -312,6 +321,34 @@ export class StorageService {
 
   async hasAttachments(): Promise<boolean> {
     return this.getProvider().hasAttachments();
+  }
+
+  // --- Bulk Operations (Migration / Backup) ---
+
+  /**
+   * Dumps the entire storage content.
+   * WARNING: This generator does not hold a global lock while yielding to allow
+   * for memory-efficient streaming. For a consistent snapshot, the caller
+   * should ensure no concurrent writes are happening.
+   */
+  dumpWithoutLock(): AsyncGenerator<MigrationChunkDto> {
+    return this.getProvider().dump();
+  }
+
+  /**
+   * Restores storage content from a stream.
+   * This operation is guarded by an exclusive lock as it is destructive.
+   */
+  async restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void> {
+    try {
+      await this.synchronizer.withLock(async () => {
+        await this.getProvider().restore(stream);
+      }, { timeoutMs: 60000 });
+      this.synchronizer.notify('migration');
+    } catch (e) {
+      this.handleStorageError(e, 'restore');
+      throw e;
+    }
   }
 
   private handleStorageError(e: unknown, source: string) {
