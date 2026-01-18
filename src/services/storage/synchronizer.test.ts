@@ -26,7 +26,10 @@ describe('StorageSynchronizer', () => {
     });
 
     it('should use navigator.locks if available', async () => {
-      const mockRequest = vi.fn((_name, _options, callback) => callback());
+      const mockRequest = vi.fn((...args) => {
+        const callback = args[args.length - 1];
+        return callback();
+      });
       const originalLocks = navigator.locks;
       
       // Mock navigator.locks
@@ -38,7 +41,7 @@ describe('StorageSynchronizer', () => {
       const task = async () => 'done';
       await synchronizer.withLock(task);
 
-      expect(mockRequest).toHaveBeenCalledWith(SYNC_LOCK_KEY, expect.any(Object), expect.any(Function));
+      expect(mockRequest).toHaveBeenCalledWith(SYNC_LOCK_KEY, expect.any(Function));
 
       // Restore
       Object.defineProperty(navigator, 'locks', {
@@ -65,6 +68,69 @@ describe('StorageSynchronizer', () => {
         configurable: true,
         value: originalLocks
       });
+    });
+
+    it('should trigger onLockWait if lock acquisition is delayed', async () => {
+      vi.useFakeTimers();
+      
+      // Mock request that never resolves
+      const mockRequest = vi.fn(() => new Promise(() => {}));
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: { request: mockRequest }
+      });
+
+      const onLockWait = vi.fn();
+      synchronizer.withLock(async () => {}, { onLockWait, notifyLockWaitAfterMs: 100 });
+
+      await vi.advanceTimersByTimeAsync(150);
+      expect(onLockWait).toHaveBeenCalled();
+      
+      vi.useRealTimers();
+    });
+
+    it('should trigger onTaskSlow if task execution is delayed', async () => {
+      vi.useFakeTimers();
+      
+      // Mock request that executes task
+      const mockRequest = vi.fn((_name, cb) => cb());
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: { request: mockRequest }
+      });
+
+      const onTaskSlow = vi.fn();
+      const task = () => new Promise((resolve) => setTimeout(resolve, 1000));
+      
+      synchronizer.withLock(task, { onTaskSlow, notifyTaskSlowAfterMs: 500 });
+
+      await vi.advanceTimersByTimeAsync(600);
+      expect(onTaskSlow).toHaveBeenCalled();
+      
+      vi.useRealTimers();
+    });
+
+    it('should trigger onFinalize if any delay occurred', async () => {
+      vi.useFakeTimers();
+      
+      const mockRequest = vi.fn((_name, cb) => cb());
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: { request: mockRequest }
+      });
+
+      const onFinalize = vi.fn();
+      const task = () => new Promise((resolve) => setTimeout(resolve, 1000));
+      
+      const promise = synchronizer.withLock(task, { onFinalize, notifyTaskSlowAfterMs: 500 });
+
+      await vi.advanceTimersByTimeAsync(600);
+      await vi.advanceTimersByTimeAsync(500); // Complete task
+      await promise;
+
+      expect(onFinalize).toHaveBeenCalled();
+      
+      vi.useRealTimers();
     });
   });
 

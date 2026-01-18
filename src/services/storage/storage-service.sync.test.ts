@@ -9,9 +9,11 @@ const { mockWithLock, mockNotify, mockSubscribe } = vi.hoisted(() => ({
 }));
 
 const mockAddErrorEvent = vi.fn();
+const mockAddInfoEvent = vi.fn();
 vi.mock('../../composables/useGlobalEvents', () => ({
   useGlobalEvents: () => ({
     addErrorEvent: mockAddErrorEvent,
+    addInfoEvent: mockAddInfoEvent,
   }),
 }));
 
@@ -62,7 +64,19 @@ describe('StorageService Synchronization Wrapper', () => {
   let service: StorageService;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    
+    // Restore default mock implementations after reset
+    mockWithLock.mockImplementation((fn) => fn());
+    mockProvider.saveChat.mockResolvedValue(undefined);
+    mockProvider.deleteChat.mockResolvedValue(undefined);
+    mockProvider.saveChatGroup.mockResolvedValue(undefined);
+    mockProvider.deleteChatGroup.mockResolvedValue(undefined);
+    mockProvider.saveSettings.mockResolvedValue(undefined);
+    mockProvider.clearAll.mockResolvedValue(undefined);
+    mockProvider.saveFile.mockResolvedValue(undefined);
+    mockProvider.init.mockResolvedValue(undefined);
+
     service = new StorageService();
     await service.init('local');
   });
@@ -71,7 +85,11 @@ describe('StorageService Synchronization Wrapper', () => {
     const chat = { id: 'c1' } as any;
     await service.saveChat(chat, 0);
 
-    expect(mockWithLock).toHaveBeenCalled();
+    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+      onLockWait: expect.any(Function),
+      onTaskSlow: expect.any(Function),
+      onFinalize: expect.any(Function),
+    }));
     expect(mockProvider.saveChat).toHaveBeenCalledWith(chat, 0);
     expect(mockNotify).toHaveBeenCalledWith('chat', 'c1');
   });
@@ -136,25 +154,32 @@ describe('StorageService Synchronization Wrapper', () => {
     expect(mockNotify).not.toHaveBeenCalled();
   });
 
-  it('should notify migration after switchProvider with 60s timeout', async () => {
+  it('should trigger info events via callbacks from withLock', async () => {
+    const chat = { id: 'c1' } as any;
+    
+    // Extract the callbacks passed to withLock
+    await service.saveChat(chat, 0);
+    const options = mockWithLock.mock.calls[0]?.[1];
+    
+    options.onLockWait();
+    expect(mockAddInfoEvent).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('busy') }));
+    
+    options.onTaskSlow();
+    expect(mockAddInfoEvent).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('longer than expected') }));
+    
+    options.onFinalize();
+    expect(mockAddInfoEvent).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('completed') }));
+  });
+
+  it('should notify migration after switchProvider with custom lock options', async () => {
     mockProvider.dump.mockImplementation(async function* () {});
     
     await service.switchProvider('opfs');
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), { timeoutMs: 60000 });
-    expect(mockNotify).toHaveBeenCalledWith('migration');
-  });
-
-  it('should report timeout error via addErrorEvent', async () => {
-    const timeoutError = new Error('Lock acquisition timed out after 10000ms');
-    mockWithLock.mockRejectedValueOnce(timeoutError);
-
-    await expect(service.saveChat({ id: 'c1' } as any, 0)).rejects.toThrow(timeoutError);
-
-    expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
-      message: expect.stringContaining('timed out'),
-      details: timeoutError,
+    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+      notifyLockWaitAfterMs: 5000,
     }));
+    expect(mockNotify).toHaveBeenCalledWith('migration');
   });
 
   it('should report generic storage error via addErrorEvent', async () => {

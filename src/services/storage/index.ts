@@ -81,7 +81,6 @@ export class StorageService {
 
   async switchProvider(type: 'local' | 'opfs') {
     // We lock the entire migration process to prevent race conditions
-    // Using a longer timeout (60s) for migration as it involves data transfer
     try {
       await this.synchronizer.withLock(async () => {
         const activeProvider = this.getProvider();
@@ -190,7 +189,7 @@ export class StorageService {
           console.error('Storage migration failed. Reverting to previous provider.', error);
           throw error; 
         }
-      }, { timeoutMs: 60000 });
+      }, this.getLockOptions('switchProvider', { notifyLockWaitAfterMs: 5000 }));
 
       // Notify others that a migration happened (they should reload everything)
       this.synchronizer.notify('migration');
@@ -220,7 +219,7 @@ export class StorageService {
     try {
       await this.synchronizer.withLock(async () => {
         await this.getProvider().saveChat(chat, index);
-      });
+      }, this.getLockOptions('saveChat'));
       this.synchronizer.notify('chat', chat.id);
     } catch (e) {
       this.handleStorageError(e, 'saveChat');
@@ -238,7 +237,7 @@ export class StorageService {
     try {
       await this.synchronizer.withLock(async () => {
         await this.getProvider().deleteChat(id);
-      });
+      }, this.getLockOptions('deleteChat'));
       this.synchronizer.notify('chat', id);
     } catch (e) {
       this.handleStorageError(e, 'deleteChat');
@@ -250,7 +249,7 @@ export class StorageService {
     try {
       await this.synchronizer.withLock(async () => {
         await this.getProvider().saveChatGroup(chatGroup, index);
-      });
+      }, this.getLockOptions('saveChatGroup'));
       this.synchronizer.notify('chat_group', chatGroup.id);
     } catch (e) {
       this.handleStorageError(e, 'saveChatGroup');
@@ -266,7 +265,7 @@ export class StorageService {
     try {
       await this.synchronizer.withLock(async () => {
         await this.getProvider().deleteChatGroup(id);
-      });
+      }, this.getLockOptions('deleteChatGroup'));
       this.synchronizer.notify('chat_group', id);
     } catch (e) {
       this.handleStorageError(e, 'deleteChatGroup');
@@ -278,7 +277,7 @@ export class StorageService {
     try {
       await this.synchronizer.withLock(async () => {
         await this.getProvider().saveSettings(settings);
-      });
+      }, this.getLockOptions('saveSettings'));
       this.synchronizer.notify('settings');
     } catch (e) {
       this.handleStorageError(e, 'saveSettings');
@@ -294,7 +293,7 @@ export class StorageService {
     try {
       await this.synchronizer.withLock(async () => {
         await this.getProvider().clearAll();
-      });
+      }, this.getLockOptions('clearAll'));
       this.synchronizer.notify('migration'); // Treat as migration (full reset)
     } catch (e) {
       this.handleStorageError(e, 'clearAll');
@@ -308,7 +307,7 @@ export class StorageService {
     try {
       await this.synchronizer.withLock(async () => {
         await this.getProvider().saveFile(blob, attachmentId, originalName);
-      });
+      }, this.getLockOptions('saveFile'));
     } catch (e) {
       this.handleStorageError(e, 'saveFile');
       throw e;
@@ -343,7 +342,7 @@ export class StorageService {
     try {
       await this.synchronizer.withLock(async () => {
         await this.getProvider().restore(stream);
-      }, { timeoutMs: 60000 });
+      }, this.getLockOptions('restore', { notifyLockWaitAfterMs: 5000 }));
       this.synchronizer.notify('migration');
     } catch (e) {
       this.handleStorageError(e, 'restore');
@@ -351,15 +350,38 @@ export class StorageService {
     }
   }
 
+  private getLockOptions(source: string, custom: { notifyLockWaitAfterMs?: number } = {}) {
+    return {
+      ...custom,
+      onLockWait: () => {
+        const { addInfoEvent } = useGlobalEvents();
+        addInfoEvent({
+          source: `StorageService:${source}`,
+          message: 'Storage is busy. Waiting for other tabs to finish...',
+        });
+      },
+      onTaskSlow: () => {
+        const { addInfoEvent } = useGlobalEvents();
+        addInfoEvent({
+          source: `StorageService:${source}`,
+          message: 'Storage operation is taking longer than expected...',
+        });
+      },
+      onFinalize: () => {
+        const { addInfoEvent } = useGlobalEvents();
+        addInfoEvent({
+          source: `StorageService:${source}`,
+          message: 'Storage operation completed.',
+        });
+      },
+    };
+  }
+
   private handleStorageError(e: unknown, source: string) {
     const { addErrorEvent } = useGlobalEvents();
-    const isTimeout = e instanceof Error && e.message.includes('Lock acquisition timed out');
-    
     addErrorEvent({
       source: `StorageService:${source}`,
-      message: isTimeout 
-        ? 'Storage operation timed out. Another tab might be performing a long operation.' 
-        : 'An error occurred during a storage operation.',
+      message: 'An error occurred during a storage operation.',
       details: e instanceof Error ? e : String(e),
     });
   }

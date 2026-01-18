@@ -45,30 +45,59 @@ export class StorageSynchronizer {
   /**
    * Executes a function with an exclusive lock.
    * Uses navigator.locks (Web Locks API).
+   * 
+   * This version does not force a failure but monitors the time taken.
+   * It provides callbacks to notify if lock acquisition or task execution is taking too long.
    */
   async withLock<T>(
     fn: () => Promise<T>, 
-    { timeoutMs = 10000 }: { timeoutMs?: number } = {}
+    { 
+      notifyLockWaitAfterMs = 3000, 
+      notifyTaskSlowAfterMs = 5000,
+      onLockWait,
+      onTaskSlow,
+      onFinalize
+    }: { 
+      notifyLockWaitAfterMs?: number;
+      notifyTaskSlowAfterMs?: number;
+      onLockWait?: () => void;
+      onTaskSlow?: () => void;
+      onFinalize?: () => void;
+    } = {}
   ): Promise<T> {
+    let wasSlow = false;
+
     if (typeof navigator !== 'undefined' && navigator.locks?.request) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      // 1. Monitor Lock Acquisition
+      const lockTimer = setTimeout(() => {
+        wasSlow = true;
+        onLockWait?.();
+      }, notifyLockWaitAfterMs);
 
       try {
-        return await navigator.locks.request(SYNC_LOCK_KEY, { signal: controller.signal }, async () => {
-          clearTimeout(timer);
-          return await fn();
+        return await navigator.locks.request(SYNC_LOCK_KEY, async () => {
+          clearTimeout(lockTimer);
+
+          // 2. Monitor Task Execution
+          const taskTimer = setTimeout(() => {
+            wasSlow = true;
+            onTaskSlow?.();
+          }, notifyTaskSlowAfterMs);
+
+          try {
+            return await fn();
+          } finally {
+            clearTimeout(taskTimer);
+          }
         });
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          throw new Error(`Lock acquisition timed out after ${timeoutMs}ms. Another tab might be performing a long operation.`);
-        }
-        throw err;
       } finally {
-        clearTimeout(timer);
+        clearTimeout(lockTimer);
+        if (wasSlow) {
+          onFinalize?.();
+        }
       }
     } else {
-      // Fallback for environments without Web Locks (should be rare in modern browsers)
+      // Fallback for environments without Web Locks
       return await fn();
     }
   }
