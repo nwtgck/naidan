@@ -43,7 +43,7 @@ class MockFileSystemDirectoryHandle {
       if (options?.create) {
         this.entries.set(name, new MockFileSystemFileHandle(name));
       } else {
-        throw new Error('File not found');
+        return undefined; // Real API behavior
       }
     }
     return this.entries.get(name);
@@ -80,11 +80,20 @@ vi.stubGlobal('navigator', { storage: mockNavigatorStorage });
 const mockChat: Chat = {
   id: '123e4567-e89b-12d3-a456-426614174000',
   title: 'Test Chat',
+  groupId: '987fcdeb-51a2-43d1-9456-426614174000',
   root: { items: [] },
   createdAt: Date.now(),
   updatedAt: Date.now(),
   systemPrompt: undefined,
   debugEnabled: false,
+  currentLeafId: undefined,
+  endpointType: undefined,
+  endpointUrl: undefined,
+  endpointHttpHeaders: undefined,
+  lmParameters: undefined,
+  modelId: undefined,
+  originChatId: undefined,
+  originMessageId: undefined,
 };
 
 const mockChatGroup: ChatGroup = {
@@ -114,10 +123,12 @@ describe('Storage Migration (Round-Trip)', () => {
     await provider.clearAll();
     await provider.saveSettings(mockSettings);
     await provider.saveChatGroup(mockChatGroup);
-    // Link chat to chat group to test relationships? 
-    // For simplicity, just saving them individually first.
-    // Ideally we should test the relationship preservation but DTOs handle IDs.
     await provider.saveChat(mockChat, 0);
+    await provider.saveHierarchy({
+      items: [
+        { type: 'chat_group', id: mockChatGroup.id, chat_ids: [mockChat.id] }
+      ]
+    });
 
     // 2. Dump
     const dumpStream = provider.dump();
@@ -130,6 +141,7 @@ describe('Storage Migration (Round-Trip)', () => {
     expect(chunks.find(c => c.type === 'settings')).toBeDefined();
     expect(chunks.find(c => c.type === 'chat_group')).toBeDefined();
     expect(chunks.find(c => c.type === 'chat')).toBeDefined();
+    expect(chunks.find(c => c.type === 'hierarchy')).toBeDefined();
 
     // 3. Clear (Simulate fresh install)
     await provider.clearAll();
@@ -154,6 +166,11 @@ describe('Storage Migration (Round-Trip)', () => {
     // Check Chat
     const loadedChat = await provider.loadChat(mockChat.id);
     expect(loadedChat).toEqual(mockChat);
+
+    // Check Hierarchy
+    const loadedHierarchy = await provider.loadHierarchy();
+    expect(loadedHierarchy?.items).toBeDefined();
+    expect(loadedHierarchy?.items.length).toBeGreaterThan(0);
   };
 
   describe('LocalStorageProvider', () => {

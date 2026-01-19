@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, Hierarchy } from '../../models/types';
+import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem } from '../../models/types';
 import { 
   type ChatMetaDto,
   type ChatGroupDto,
@@ -75,10 +75,8 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async loadHierarchy(): Promise<HierarchyDto | null> {
     const raw = localStorage.getItem(KEY_HIERARCHY);
-    if (!raw) return null;
-    try {
-      return HierarchySchemaDto.parse(JSON.parse(raw));
-    } catch { return null; }
+    if (!raw) return { items: [] };
+    return HierarchySchemaDto.parse(JSON.parse(raw));
   }
 
   async saveHierarchy(hierarchy: HierarchyDto): Promise<void> {
@@ -187,21 +185,11 @@ export class LocalStorageProvider extends IStorageProvider {
       this.listChatGroupsRaw(),
     ]);
 
-    const hierarchy = rawHierarchy ? hierarchyToDomain(rawHierarchy) : this.buildDefaultHierarchy(rawMetas, rawGroups);
+    const hierarchy = hierarchyToDomain(rawHierarchy || { items: [] });
     const chatMetas = rawMetas.map(m => chatToDomain({ ...m, root: { items: [] } }));
     const chatGroups = rawGroups.map(g => chatGroupToDomain(g));
 
     return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
-  }
-
-  private buildDefaultHierarchy(metas: ChatMetaDto[], groups: ChatGroupDto[]): Hierarchy {
-    // Migration helper: builds a flat hierarchy if one doesn't exist
-    return {
-      items: [
-        ...groups.map(g => ({ type: 'chat_group' as const, id: g.id, chat_ids: [] })),
-        ...metas.map(m => ({ type: 'chat' as const, id: m.id })),
-      ]
-    };
   }
 
   async saveSettings(settings: Settings): Promise<void> {
@@ -248,7 +236,7 @@ export class LocalStorageProvider extends IStorageProvider {
     if (settings) yield { type: 'settings', data: settingsToDto(settings) };
 
     const hierarchy = await this.loadHierarchy();
-    if (hierarchy) yield { type: 'hierarchy', data: hierarchy };
+    yield { type: 'hierarchy', data: hierarchy || { items: [] } };
 
     const chatGroups = await this.listChatGroupsRaw();
     for (const g of chatGroups) yield { type: 'chat_group', data: g };

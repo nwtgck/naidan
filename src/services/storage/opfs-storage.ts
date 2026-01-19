@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, Hierarchy } from '../../models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent } from '../../models/types';
 import { 
   type ChatMetaDto,
   type ChatGroupDto,
@@ -84,7 +84,10 @@ export class OPFSStorageProvider extends IStorageProvider {
       const fileHandle = await this.root!.getFileHandle('hierarchy.json');
       const file = await fileHandle.getFile();
       return HierarchySchemaDto.parse(JSON.parse(await file.text()));
-    } catch { return null; }
+    } catch { 
+      // If file doesn't exist or is invalid, return empty hierarchy
+      return { items: [] }; 
+    }
   }
 
   async saveHierarchy(hierarchy: HierarchyDto): Promise<void> {
@@ -187,20 +190,11 @@ export class OPFSStorageProvider extends IStorageProvider {
       this.listChatGroupsRaw(),
     ]);
 
-    const hierarchy = rawHierarchy ? hierarchyToDomain(rawHierarchy) : this.buildDefaultHierarchy(rawMetas, rawGroups);
+    const hierarchy = hierarchyToDomain(rawHierarchy || { items: [] });
     const chatMetas = rawMetas.map(m => chatToDomain({ ...m, root: { items: [] } }));
     const chatGroups = rawGroups.map(g => chatGroupToDomain(g));
 
     return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
-  }
-
-  private buildDefaultHierarchy(metas: ChatMetaDto[], groups: ChatGroupDto[]): Hierarchy {
-    return {
-      items: [
-        ...groups.map(g => ({ type: 'chat_group' as const, id: g.id, chat_ids: [] })),
-        ...metas.map(m => ({ type: 'chat' as const, id: m.id })),
-      ]
-    };
   }
 
   // --- File Storage ---
@@ -271,7 +265,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     if (settings) yield { type: 'settings', data: settingsToDto(settings) };
 
     const hierarchy = await this.loadHierarchy();
-    if (hierarchy) yield { type: 'hierarchy', data: hierarchy };
+    yield { type: 'hierarchy', data: hierarchy || { items: [] } };
 
     const chatGroups = await this.listChatGroupsRaw();
     for (const chatGroup of chatGroups) yield { type: 'chat_group', data: chatGroup };

@@ -77,7 +77,7 @@ describe('useChat Composable Logic', () => {
     mockHierarchy = { items: [] };
     clearEvents();
     
-    // Setup persistence mocks to actually update mockHierarchy
+    // Setup persistence mocks
     vi.mocked(storageService.saveChatMeta).mockResolvedValue(undefined);
     vi.mocked(storageService.saveChatContent).mockResolvedValue(undefined);
     vi.mocked(storageService.saveChatGroup).mockResolvedValue(undefined);
@@ -86,8 +86,7 @@ describe('useChat Composable Logic', () => {
 
     vi.mocked(storageService.updateHierarchy).mockImplementation(async (updater) => {
       mockHierarchy = await updater(mockHierarchy);
-      // For tests, we also need to update mockRootItems to reflect the hierarchy
-      // This is a simplification
+      // Synchronize mockRootItems ONLY when hierarchy is explicitly updated
       mockRootItems.length = 0;
       mockHierarchy.items.forEach(node => {
         if (node.type === 'chat') {

@@ -164,4 +164,27 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     // Verify content file removed
     expect(contentsDir.entries.has(`${chatId}.json`)).toBe(false);
   });
+
+  describe('Hierarchy Persistence', () => {
+    it('should save and load hierarchy from naidan_storage/hierarchy.json', async () => {
+      const mockHierarchy = {
+        items: [
+          { type: 'chat' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb1' },
+          { type: 'chat_group' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb2', chat_ids: ['019bd241-2d57-716b-a9fd-1efbba88cfb3'] }
+        ]
+      };
+
+      await provider.saveHierarchy(mockHierarchy);
+      const loaded = await provider.loadHierarchy();
+      expect(loaded).toEqual(mockHierarchy);
+
+      const storageDir = mockOpfsRoot.entries.get('naidan_storage') as MockFileSystemDirectoryHandle;
+      expect(storageDir.entries.has('hierarchy.json')).toBe(true);
+    });
+
+    it('should return empty items if hierarchy is missing', async () => {
+      const loaded = await provider.loadHierarchy();
+      expect(loaded).toEqual({ items: [] });
+    });
+  });
 });
