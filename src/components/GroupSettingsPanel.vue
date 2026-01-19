@@ -18,7 +18,6 @@ const chatStore = useChat();
 const {
   currentChatGroup,
   fetchingModels,
-  saveChatGroup,
 } = chatStore;
 const { settings } = useSettings();
 
@@ -127,7 +126,7 @@ watch([
   () => currentChatGroup.value?.lmParameters,
 ], () => {
   if (currentChatGroup.value) {
-    saveChatGroup(currentChatGroup.value);
+    chatStore.updateChatGroup(currentChatGroup.value.id, () => currentChatGroup.value!);
   }
 }, { deep: true });
 

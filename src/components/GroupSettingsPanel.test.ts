@@ -23,14 +23,14 @@ const mockSettings = {
   providerProfiles: [],
 };
 
-const mockSaveChatGroup = vi.fn();
+const mockUpdateChatGroup = vi.fn();
 const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-a', 'model-b']);
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChatGroup: ref(mockGroup),
     fetchingModels: ref(false),
-    saveChatGroup: mockSaveChatGroup,
+    updateChatGroup: mockUpdateChatGroup,
     fetchAvailableModels: mockFetchAvailableModels,
   }),
 }));
@@ -142,13 +142,13 @@ describe('GroupSettingsPanel.vue', () => {
     expect(status.text()).toBe('Overriding');
   });
 
-  it('calls saveChatGroup when settings change', async () => {
+  it('calls updateChatGroup when settings change', async () => {
     mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
     
     mockGroup.modelId = 'new-model';
     await nextTick();
     // Watcher is deep, so it triggers
-    expect(mockSaveChatGroup).toHaveBeenCalled();
+    expect(mockUpdateChatGroup).toHaveBeenCalled();
   });
 
   it('restores defaults when the button is clicked', async () => {

@@ -20,7 +20,7 @@ vi.mock('../services/storage', () => ({
     updateHierarchy: vi.fn(),
     loadHierarchy: vi.fn(),
     deleteChat: vi.fn(),
-    saveChatGroup: vi.fn(),
+    updateChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
     deleteChatGroup: vi.fn(),
@@ -80,7 +80,7 @@ describe('useChat Composable Logic', () => {
     // Setup persistence mocks
     vi.mocked(storageService.saveChatMeta).mockResolvedValue(undefined);
     vi.mocked(storageService.saveChatContent).mockResolvedValue(undefined);
-    vi.mocked(storageService.saveChatGroup).mockResolvedValue(undefined);
+    vi.mocked(storageService.updateChatGroup).mockResolvedValue(undefined);
 
     vi.mocked(storageService.loadHierarchy).mockImplementation(() => Promise.resolve(mockHierarchy));
 

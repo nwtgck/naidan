@@ -38,7 +38,7 @@ vi.mock('../services/storage', () => ({
       mockGetSidebarStructure.mockResolvedValue(newSidebar);
     }),
     deleteChat: vi.fn(),
-    saveChatGroup: vi.fn(),
+    updateChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
     getSidebarStructure: () => mockGetSidebarStructure(),
     deleteChatGroup: vi.fn(),

@@ -46,8 +46,10 @@ vi.mock('../services/storage', () => ({
       mocks.mockChatStorage.delete(id);
       return Promise.resolve();
     }),
-    saveChatGroup: vi.fn().mockImplementation((g) => {
-      mocks.mockGroupStorage.set(g.id, JSON.parse(JSON.stringify(g)));
+    updateChatGroup: vi.fn().mockImplementation(async (id, updater) => {
+      const current = mocks.mockGroupStorage.get(id) || null;
+      const updated = await updater(current);
+      mocks.mockGroupStorage.set(id, JSON.parse(JSON.stringify(updated)));
       return Promise.resolve();
     }),
     listChatGroups: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mocks.mockGroupStorage.values()))),

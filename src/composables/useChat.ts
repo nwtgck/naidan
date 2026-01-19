@@ -789,7 +789,7 @@ export function useChat() {
   const createChatGroup = async (name: string) => {
     const id = uuidv7();
     const newGroup: ChatGroup = { id, name, updatedAt: Date.now(), isCollapsed: false, items: [], };
-    await storageService.saveChatGroup(newGroup);
+    await storageService.updateChatGroup(id, () => newGroup);
     await storageService.updateHierarchy((curr) => {
       curr.items.unshift({ type: 'chat_group', id, chat_ids: [] });
       return curr;
@@ -813,23 +813,26 @@ export function useChat() {
   };
 
   const toggleChatGroupCollapse = async (groupId: string) => {
-    const chatGroup = chatGroups.value.find(g => g.id === groupId);
-    if (chatGroup) {
+    await storageService.updateChatGroup(groupId, (chatGroup) => {
+      if (!chatGroup) throw new Error('Chat group not found');
       chatGroup.isCollapsed = !chatGroup.isCollapsed;
-      await storageService.saveChatGroup(chatGroup);
-    }
+      return chatGroup;
+    });
   };
 
   const renameChatGroup = async (groupId: string, newName: string) => {
-    const chatGroup = chatGroups.value.find(g => g.id === groupId);
-    if (chatGroup) {
-      chatGroup.name = newName; chatGroup.updatedAt = Date.now();
-      await storageService.saveChatGroup(chatGroup);
-      await loadData();
-    }
+    await storageService.updateChatGroup(groupId, (chatGroup) => {
+      if (!chatGroup) throw new Error('Chat group not found');
+      chatGroup.name = newName; 
+      chatGroup.updatedAt = Date.now();
+      return chatGroup;
+    });
+    await loadData();
   };
 
-  const saveChatGroup = async (group: ChatGroup) => { await storageService.saveChatGroup(group); };
+  const updateChatGroup = async (id: string, updater: (current: ChatGroup | null) => ChatGroup | Promise<ChatGroup>) => {
+    await storageService.updateChatGroup(id, updater);
+  };
 
   const persistSidebarStructure = async (topLevelItems: SidebarItem[]) => {
     rootItems.value = topLevelItems;
@@ -878,6 +881,6 @@ export function useChat() {
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, activeGenerations, generatingTitle, availableModels, fetchingModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, persistSidebarStructure, saveChatGroup, abortChat, saveChatMeta, saveChatContent, moveChatToGroup, saveChat,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, persistSidebarStructure, updateChatGroup, abortChat, saveChatMeta, saveChatContent, moveChatToGroup, saveChat,
   };
 }

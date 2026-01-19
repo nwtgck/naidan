@@ -96,7 +96,7 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     listChatGroups: vi.fn().mockResolvedValue([]),
-    saveChatGroup: vi.fn(),
+    updateChatGroup: vi.fn(),
     deleteChatGroup: vi.fn(),
   },
 }));
