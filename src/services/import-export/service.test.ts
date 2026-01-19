@@ -34,7 +34,10 @@ describe('ImportExportService', () => {
       restore: vi.fn(),
       clearAll: vi.fn(),
       loadSettings: vi.fn(),
-      saveSettings: vi.fn(),
+      updateSettings: vi.fn().mockImplementation(async (updater) => {
+        const current = await mockStorage.loadSettings();
+        await updater(current);
+      }),
       listChats: vi.fn(),
       listChatGroups: vi.fn(),
       loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
@@ -231,7 +234,10 @@ describe('ImportExportService', () => {
 
       await service.executeImport(zipBlob, config);
 
-      expect(mockStorage.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mockStorage.updateSettings).toHaveBeenCalled();
+      const updater = mockStorage.updateSettings.mock.calls[0]![0];
+      const result = await updater(await mockStorage.loadSettings());
+      expect(result).toEqual(expect.objectContaining({
         lmParameters: {
           temperature: 0.1,
           stop: ['ZIP']
@@ -257,7 +263,10 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'append' }
       });
 
-      expect(mockStorage.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mockStorage.updateSettings).toHaveBeenCalled();
+      const updater = mockStorage.updateSettings.mock.calls[0]![0];
+      const result = await updater(await mockStorage.loadSettings());
+      expect(result).toEqual(expect.objectContaining({
         providerProfiles: [
           expect.objectContaining({ id: '018d476a-7b3a-73fd-8000-000000000009' }),
           expect.objectContaining({ id: NEW_UUID, name: 'Imported' })

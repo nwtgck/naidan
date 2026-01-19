@@ -56,7 +56,7 @@ function truncateByByteLength(str: string, maxBytes: number): string {
  */
 export interface IImportExportStorage {
   loadSettings(): Promise<Settings | null>;
-  saveSettings(settings: Settings): Promise<void>;
+  updateSettings(updater: (current: Settings | null) => Settings | Promise<Settings>): Promise<void>;
   listChats(): Promise<ChatSummary[]>;
   listChatGroups(): Promise<ChatGroup[]>;
   loadChat(id: string): Promise<Chat | null>;
@@ -369,31 +369,42 @@ export class ImportExportService {
   }
 
   private async applySettingsImport(zipSettings: SettingsDto, strategies: ImportConfig['settings']) {
-    const currentSettings = await this.storage.loadSettings();
-    const newSettingsDomain = settingsToDomain(zipSettings);
-    const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
+    await this.storage.updateSettings((currentSettings) => {
+      const newSettingsDomain = settingsToDomain(zipSettings);
+      const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
 
-    const applyField = <K extends keyof Settings>(strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K) => {
-      if (strategy === 'replace' && newValue !== undefined) {
-        finalSettings[targetKey] = newValue;
+      const applyField = <K extends keyof Settings>(strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K) => {
+        if (strategy === 'replace' && newValue !== undefined) {
+          finalSettings[targetKey] = newValue;
+        }
+      };
+
+      applyField(strategies.endpoint, newSettingsDomain.endpointType, 'endpointType');
+      applyField(strategies.endpoint, newSettingsDomain.endpointUrl, 'endpointUrl');
+      applyField(strategies.endpoint, newSettingsDomain.endpointHttpHeaders, 'endpointHttpHeaders');
+      applyField(strategies.model, newSettingsDomain.defaultModelId, 'defaultModelId');
+      applyField(strategies.titleModel, newSettingsDomain.titleModelId, 'titleModelId');
+      applyField(strategies.systemPrompt, newSettingsDomain.systemPrompt, 'systemPrompt');
+      applyField(strategies.lmParameters, newSettingsDomain.lmParameters, 'lmParameters');
+      
+      switch (strategies.providerProfiles) {
+      case 'replace':
+        finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
+        break;
+      case 'append': {
+        const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: uuidv7() }));
+        finalSettings.providerProfiles = [...finalSettings.providerProfiles, ...appended];
+        break;
       }
-    };
-
-    applyField(strategies.endpoint, newSettingsDomain.endpointType, 'endpointType');
-    applyField(strategies.endpoint, newSettingsDomain.endpointUrl, 'endpointUrl');
-    applyField(strategies.endpoint, newSettingsDomain.endpointHttpHeaders, 'endpointHttpHeaders');
-    applyField(strategies.model, newSettingsDomain.defaultModelId, 'defaultModelId');
-    applyField(strategies.titleModel, newSettingsDomain.titleModelId, 'titleModelId');
-    applyField(strategies.systemPrompt, newSettingsDomain.systemPrompt, 'systemPrompt');
-    applyField(strategies.lmParameters, newSettingsDomain.lmParameters, 'lmParameters');
-
-    if (strategies.providerProfiles === 'replace') finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
-    else if (strategies.providerProfiles === 'append') {
-      const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: uuidv7() }));
-      finalSettings.providerProfiles.push(...appended);
-    }
-    await this.storage.saveSettings(finalSettings);
-  }
+      case 'none':
+        break;
+      default: {
+        const _ex: never = strategies.providerProfiles;
+        throw new Error(`Unhandled providerProfiles strategy: ${_ex}`);
+      }
+      }
+      return finalSettings;
+    });  }
 
   private async createRestoreSnapshot(zip: JSZip, rootPath: string): Promise<StorageSnapshot> {
     const hierarchyFile = zip.file(rootPath + 'hierarchy.json');

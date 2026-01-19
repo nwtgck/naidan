@@ -67,13 +67,13 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     await storageService.init('local');
 
     // Setup valid settings to avoid Zod validation errors during switchProvider
-    await storageService.saveSettings({
+    await storageService.updateSettings(() => ({
       endpointType: 'openai',
       endpointUrl: 'http://localhost:11434',
       autoTitleEnabled: true,
       storageType: 'local',
       providerProfiles: []
-    });
+    }));
     
     const mockBlob = new Blob(['binary-content'], { type: 'image/png' });
     const chat = {

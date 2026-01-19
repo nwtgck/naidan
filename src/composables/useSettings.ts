@@ -142,7 +142,7 @@ export function useSettings() {
     }
     
     // Save to the (potentially new) provider
-    await storageService.saveSettings(settings.value);
+    await storageService.updateSettings(() => settings.value);
 
     // If endpoint changed, refetch models
     if (newSettings.endpointUrl !== oldUrl || newSettings.endpointType !== oldType) {

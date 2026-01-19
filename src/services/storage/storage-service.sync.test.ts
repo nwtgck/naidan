@@ -134,13 +134,15 @@ describe('StorageService Synchronization Wrapper', () => {
     expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'g1');
   });
 
-  it('should wrap saveSettings with lock and notify after success', async () => {
+  it('should wrap updateSettings with lock and notify after success', async () => {
     const settings = { endpointUrl: 'test' } as any;
-    await service.saveSettings(settings);
+    const updater = vi.fn().mockResolvedValue(settings);
+    await service.updateSettings(updater);
 
     expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
       lockKey: SYNC_LOCK_KEY,
     }));
+    expect(updater).toHaveBeenCalled();
     expect(mockProvider.saveSettings).toHaveBeenCalledWith(settings);
     expect(mockNotify).toHaveBeenCalledWith('settings');
   });

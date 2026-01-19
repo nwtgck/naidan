@@ -182,7 +182,7 @@ describe('Sidebar Logic Stability', () => {
       expect(selector.props('allowClear')).toBe(false);
     });
 
-    it('calls saveSettings when ModelSelector emits update:modelValue', async () => {
+    it('calls save when ModelSelector emits update:modelValue', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });

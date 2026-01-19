@@ -203,14 +203,19 @@ export class StorageService {
 
   // --- Settings & Bulk ---
 
-  async saveSettings(settings: Settings): Promise<void> {
+  /**
+   * Performs an atomic update on the global settings.
+   */
+  async updateSettings(updater: (current: Settings | null) => Settings | Promise<Settings>): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        await this.getProvider().saveSettings(settings);
-      }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('saveSettings') });
+        const current = await this.loadSettings();
+        const updated = await updater(current);
+        await this.getProvider().saveSettings(updated);
+      }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('updateSettings') });
       this.synchronizer.notify('settings');
     } catch (e) {
-      this.handleStorageError(e, 'saveSettings');
+      this.handleStorageError(e, 'updateSettings');
       throw e;
     }
   }

@@ -15,7 +15,7 @@ vi.mock('../services/storage', () => ({
     updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
-    saveSettings: vi.fn(),
+    updateSettings: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     listChatGroups: vi.fn().mockResolvedValue([]),
   },

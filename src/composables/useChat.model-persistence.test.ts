@@ -23,7 +23,7 @@ vi.mock('../services/storage', () => ({
     saveChatGroup: vi.fn(),
     deleteChatGroup: vi.fn(),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
-    saveSettings: vi.fn(),
+    updateSettings: vi.fn(),
   },
 }));
 

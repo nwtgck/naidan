@@ -18,7 +18,10 @@ vi.mock('./useGlobalEvents', () => ({
 const mocks = vi.hoisted(() => ({
   init: vi.fn(),
   loadSettings: vi.fn(),
-  saveSettings: vi.fn(),
+  updateSettings: vi.fn().mockImplementation(async (updater) => {
+    const current = await mocks.loadSettings();
+    return await updater(current);
+  }),
   switchProvider: vi.fn(),
   getCurrentType: vi.fn().mockReturnValue('local'),
   subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -92,7 +95,11 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
     
     expect(settings.value.storageType).toBe('opfs');
-    expect(mocks.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.updateSettings).toHaveBeenCalled();
+    // Verify the result of the updater (which we know in this test)
+    const updater = mocks.updateSettings.mock.calls[0]![0];
+    const updated = await updater();
+    expect(updated).toEqual(expect.objectContaining({
       storageType: 'opfs',
       endpointUrl: 'http://new-endpoint'
     }));
