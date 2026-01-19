@@ -65,6 +65,15 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
   it('should rescue memory blobs during switchProvider from Local to OPFS', async () => {
     // Force re-init to ensure we start fresh with LocalStorage
     await storageService.init('local');
+
+    // Setup valid settings to avoid Zod validation errors during switchProvider
+    await storageService.saveSettings({
+      endpointType: 'openai',
+      endpointUrl: 'http://localhost:11434',
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: []
+    });
     
     const mockBlob = new Blob(['binary-content'], { type: 'image/png' });
     const chat = {
@@ -95,6 +104,10 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     };
     
     await storageService.saveChat(chat as any, 0);
+    await storageService.updateHierarchy((curr) => {
+      curr.items.push({ type: 'chat', id: chat.id });
+      return curr;
+    });
     await storageService.switchProvider('opfs');
     
     const loadedChat = await storageService.loadChat('550e8400-e29b-41d4-a716-446655440000');

@@ -66,7 +66,7 @@ describe('useChat moveChatToGroup', () => {
     vi.clearAllMocks();
   });
 
-  it('moves a top-level chat to a group (appends to end)', async () => {
+  it('moves a top-level chat to a group (prepends to start)', async () => {
     const group: ChatGroup = {
       id: 'g1',
       name: 'Group 1',
@@ -94,12 +94,12 @@ describe('useChat moveChatToGroup', () => {
     const g1Items = (g1Item as any).chatGroup.items;
     
     expect(g1Items).toHaveLength(2);
-    expect(g1Items[1]?.chat.id).toBe('c1'); 
+    expect(g1Items[0]?.chat.id).toBe('c1'); 
     
     expect(rootItems.find(i => i.id === 'chat:c1')).toBeUndefined();
   });
 
-  it('moves a chat from one group to another (appends to end)', async () => {
+  it('moves a chat from one group to another (prepends to start)', async () => {
     const group1: ChatGroup = {
       id: 'g1',
       name: 'Group 1',
@@ -133,7 +133,7 @@ describe('useChat moveChatToGroup', () => {
     
     expect((g1Item as any).chatGroup.items).toHaveLength(0);
     expect((g2Item as any).chatGroup.items).toHaveLength(2);
-    expect((g2Item as any).chatGroup.items[1]?.chat.id).toBe('c1');
+    expect((g2Item as any).chatGroup.items[0]?.chat.id).toBe('c1');
   });
 
   it('moves a chat from a group to top level', async () => {

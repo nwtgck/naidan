@@ -1,9 +1,8 @@
-import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem } from '../../models/types';
+import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot } from '../../models/types';
 import { 
   type ChatMetaDto,
   type ChatGroupDto,
   type HierarchyDto,
-  type MigrationChunkDto,
   ChatMetaSchemaDto,
   ChatGroupSchemaDto,
   SettingsSchemaDto,
@@ -19,6 +18,7 @@ import {
   settingsToDto,
   hierarchyToDomain,
   chatMetaToDto,
+  chatMetaToDomain,
   chatContentToDto,
   buildSidebarItemsFromHierarchy,
 } from '../../models/mappers';import { IStorageProvider } from './interface';
@@ -170,7 +170,13 @@ export class LocalStorageProvider extends IStorageProvider {
     const raw = localStorage.getItem(`${KEY_GROUP_PREFIX}${id}`);
     if (!raw) return null;
     try {
-      return chatGroupToDomain(ChatGroupSchemaDto.parse(JSON.parse(raw)));
+      const [hierarchy, allMetas] = await Promise.all([
+        this.loadHierarchy(),
+        this.listChatMetasRaw()
+      ]);
+      const chatMetas = allMetas.map(chatMetaToDomain);
+      const h = hierarchy || { items: [] };
+      return chatGroupToDomain(ChatGroupSchemaDto.parse(JSON.parse(raw)), h, chatMetas);
     } catch { return null; }
   }
 
@@ -186,8 +192,8 @@ export class LocalStorageProvider extends IStorageProvider {
     ]);
 
     const hierarchy = hierarchyToDomain(rawHierarchy || { items: [] });
-    const chatMetas = rawMetas.map(m => chatToDomain({ ...m, root: { items: [] } }));
-    const chatGroups = rawGroups.map(g => chatGroupToDomain(g));
+    const chatMetas = rawMetas.map(chatMetaToDomain);
+    const chatGroups = rawGroups.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
 
     return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
   }
@@ -231,40 +237,57 @@ export class LocalStorageProvider extends IStorageProvider {
 
   // --- Migration Implementation ---
 
-  async *dump(): AsyncGenerator<MigrationChunkDto> {
-    const settings = await this.loadSettings();
-    if (settings) yield { type: 'settings', data: settingsToDto(settings) };
+  async dump(): Promise<StorageSnapshot> {
+    const [settings, hierarchy, rawMetas, rawGroups] = await Promise.all([
+      this.loadSettings(),
+      this.loadHierarchy(),
+      this.listChatMetasRaw(),
+      this.listChatGroupsRaw(),
+    ]);
 
-    const hierarchy = await this.loadHierarchy();
-    yield { type: 'hierarchy', data: hierarchy || { items: [] } };
+    const chatMetas = rawMetas.map(chatMetaToDomain);
+    const h = hierarchy || { items: [] };
+    const chatGroups = rawGroups.map(g => chatGroupToDomain(g, h, chatMetas));
 
-    const chatGroups = await this.listChatGroupsRaw();
-    for (const g of chatGroups) yield { type: 'chat_group', data: g };
+    const contentStream = async function* (this: LocalStorageProvider) {
+      for (const m of rawMetas) {
+        const chat = await this.loadChat(m.id);
+        if (chat) yield { type: 'chat' as const, data: chatToDto(chat) };
+      }
+    };
 
-    const metas = await this.listChatMetasRaw();
-    for (const m of metas) {
-      const chat = await this.loadChat(m.id);
-      if (chat) yield { type: 'chat', data: chatToDto(chat) };
-    }
+    return {
+      structure: {
+        settings: settings || ({} as Settings),
+        hierarchy: h,
+        chatMetas,
+        chatGroups,
+      },
+      contentStream: contentStream.call(this),
+    };
   }
 
-  async restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void> {
-    await this.clearAll();
-    for await (const chunk of stream) {
+  async restore(snapshot: StorageSnapshot): Promise<void> {
+    const { structure, contentStream } = snapshot;
+
+    // 1. Restore Structural Metadata (skeleton)
+    if (structure.settings) await this.saveSettings(structure.settings);
+    if (structure.hierarchy) await this.saveHierarchy(structure.hierarchy);
+    if (structure.chatMetas) {
+      for (const meta of structure.chatMetas) await this.saveChatMeta(meta);
+    }
+    if (structure.chatGroups) {
+      for (const group of structure.chatGroups) await this.saveChatGroup(group);
+    }
+
+    // 2. Restore Heavy Content (trees)
+    for await (const chunk of contentStream) {
       const type = chunk.type;
       switch (type) {
-      case 'settings':
-        await this.saveSettings(settingsToDomain(chunk.data));
-        break;
-      case 'hierarchy':
-        await this.saveHierarchy(chunk.data);
-        break;
-      case 'chat_group':
-        await this.saveChatGroup(chatGroupToDomain(chunk.data));
-        break;
       case 'chat': {
         const domainChat = chatToDomain(chunk.data);
         await this.saveChatContent(domainChat.id, domainChat);
+        // Ensure meta is consistent with content
         await this.saveChatMeta(domainChat);
         break;
       }

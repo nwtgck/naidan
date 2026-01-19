@@ -9,25 +9,27 @@ import type {
   PreviewChat,
   ImportFieldStrategy
 } from './types';
-import { 
-  ChatGroupSchemaDto, 
+import {
+  ChatGroupSchemaDto,
   ChatMetaSchemaDto,
   ChatContentSchemaDto,
   SettingsSchemaDto,
   HierarchySchemaDto,
   type ChatMetaDto,
-  type ChatContentDto,
   type MigrationChunkDto,
   type SettingsDto,
   type ChatDto,
-  type ChatGroupDto,
   type MessageNodeDto,
-  type AttachmentDto,
-  type HierarchyDto
+  type HierarchyDto,
+  type ChatGroupDto
 } from '../../models/dto';
-import { settingsToDomain } from '../../models/mappers';
+import {
+  settingsToDomain,
+  chatGroupToDomain,
+  chatMetaToDomain 
+} from '../../models/mappers';
 import { useGlobalEvents } from '../../composables/useGlobalEvents';
-import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode } from '../../models/types';
+import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '../../models/types';
 
 // Helper to format date YYYY-MM-DD
 function formatDate(date: Date): string {
@@ -51,17 +53,17 @@ function truncateByByteLength(str: string, maxBytes: number): string {
 
 /**
  * Interface for the storage dependency of ImportExportService.
- * This matches the public API of StorageService to ensure concurrency protection.
  */
 export interface IImportExportStorage {
-  dumpWithoutLock(): AsyncGenerator<MigrationChunkDto>;
-  restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void>;
-  clearAll(): Promise<void>;
   loadSettings(): Promise<Settings | null>;
   saveSettings(settings: Settings): Promise<void>;
   listChats(): Promise<ChatSummary[]>;
   listChatGroups(): Promise<ChatGroup[]>;
-  loadHierarchy(): Promise<Hierarchy>;
+  loadChat(id: string): Promise<Chat | null>;
+  loadHierarchy(): Promise<Hierarchy | null>;
+  clearAll(): Promise<void>;
+  dumpWithoutLock(): Promise<StorageSnapshot>;
+  restore(snapshot: StorageSnapshot): Promise<void>;
 }
 
 export class ImportExportService {
@@ -101,35 +103,40 @@ export class ImportExportService {
     const root = zip.folder(finalBaseName);
     if (!root) throw new Error('Failed to create root folder in ZIP');
 
-    root.file('export_manifest.json', JSON.stringify({ app_version: __APP_VERSION__, exportedAt: Date.now() }, null, 2));
+    root.file('export_manifest.json', JSON.stringify({ app_version: '0.1.0-dev', exportedAt: Date.now() }, null, 2));
 
-    const chatMetas: ChatMetaDto[] = [];
+    const snapshot = await this.storage.dumpWithoutLock();
+    const { structure, contentStream } = snapshot;
+
+    const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('../../models/mappers');
+
+    root.file('settings.json', JSON.stringify(settingsToDto(structure.settings), null, 2));
+    root.file('hierarchy.json', JSON.stringify(hierarchyToDto(structure.hierarchy), null, 2));
+
+    const groupFolder = root.folder('chat_groups');
+    for (const group of structure.chatGroups) {
+      groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto(group), null, 2));
+    }
+
+    const metasDto = structure.chatMetas.map(chatMetaToDto);
+    root.file('chat_metas.json', JSON.stringify({ entries: metasDto }, null, 2));
 
     try {
-      for await (const chunk of this.storage.dumpWithoutLock()) {
-        switch (chunk.type) {
-        case 'settings':
-          root.file('settings.json', JSON.stringify(chunk.data, null, 2));
+      for await (const chunk of contentStream) {
+        const type = chunk.type;
+        switch (type) {
+        case 'chat':
+          root.folder('chat_contents')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
           break;
-        case 'hierarchy':
-          root.file('hierarchy.json', JSON.stringify(chunk.data, null, 2));
-          break;
-        case 'chat_group':
-          root.folder('chat_groups')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
-          break;
-        case 'chat': {
-          const { root: chatRoot, currentLeafId, ...meta } = chunk.data;
-          chatMetas.push(meta as ChatMetaDto);
-          const contentDto: ChatContentDto = { root: chatRoot || { items: [] }, currentLeafId };
-          root.folder('chat_contents')!.file(`${chunk.data.id}.json`, JSON.stringify(contentDto, null, 2));
-          break;
-        }
         case 'attachment':
           root.folder('uploaded_files')!.folder(chunk.attachmentId)!.file(chunk.originalName, chunk.blob);
           break;
+        default: {
+          const _ex: never = type;
+          throw new Error(`Unknown chunk type: ${_ex}`);
+        }
         }
       }
-      root.file('chat_metas.json', JSON.stringify({ entries: chatMetas }, null, 2));
     } catch (err) {
       this.globalEvents.addErrorEvent({ source: 'ImportExportService', message: 'Export dump failed', details: err as Error });
       throw err;
@@ -158,7 +165,7 @@ export class ImportExportService {
     const stats = { chatsCount: 0, chatGroupsCount: 0, attachmentsCount: 0, hasSettings: false, providerProfilesCount: 0 };
     const items: ImportPreviewItem[] = [];
     const chatGroupsMap = new Map<string, PreviewChatGroup>();
-    const chatsMap = new Map<string, PreviewChat & { _groupId?: string | null, _order?: number }>();
+    const chatsMap = new Map<string, PreviewChat & { _groupId?: string | null }>();
 
     // 1. Settings
     let previewSettings;
@@ -187,13 +194,12 @@ export class ImportExportService {
         if (result.success) {
           const dto = result.data;
           stats.chatGroupsCount++;
-          const json = JSON.parse(await zip.file(filename)!.async('string'));
-          chatGroupsMap.set(dto.id, { id: dto.id, name: dto.name, updatedAt: dto.updatedAt, items: [], isCollapsed: dto.isCollapsed, _order: (json as { order?: number }).order ?? 0 });
+          chatGroupsMap.set(dto.id, { id: dto.id, name: dto.name, updatedAt: dto.updatedAt, items: [], isCollapsed: dto.isCollapsed, _order: 0 });
         }
       } catch (e) { /* Ignore */ }
     }
 
-    // 4. Chat Metas & Contents
+    // 4. Chat Metas
     const metasFile = zip.file(rootPath + 'chat_metas.json');
     if (metasFile) {
       try {
@@ -218,8 +224,8 @@ export class ImportExportService {
                 title: dto.title, 
                 updatedAt: dto.updatedAt, 
                 messageCount, 
-                _groupId: (meta as { groupId?: string | null }).groupId ?? null, 
-                _order: (meta as { order?: number }).order ?? 0 
+                _groupId: (meta as { groupId?: string | null }).groupId ?? null,
+                _order: 0
               });
             }
           }
@@ -232,23 +238,29 @@ export class ImportExportService {
     if (hierarchyFile) {
       try {
         const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')));
-        for (const node of hDto.items) {
+        hDto.items.forEach((node, nodeIdx) => {
           if (node.type === 'chat') {
             const chat = chatsMap.get(node.id);
-            if (chat) items.push({ type: 'chat', data: chat });
+            if (chat) {
+              chat._order = nodeIdx;
+              items.push({ type: 'chat', data: chat });
+            }
           } else {
             const group = chatGroupsMap.get(node.id);
             if (group) {
-              for (const cid of node.chat_ids) {
+              group._order = nodeIdx;
+              node.chat_ids.forEach((cid, chatIdx) => {
                 const chat = chatsMap.get(cid);
-                if (chat) group.items.push(chat);
-              }
+                if (chat) {
+                  chat._order = chatIdx;
+                  group.items.push(chat);
+                }
+              });
               items.push({ type: 'chat_group', data: group });
             }
           }
-        }
+        });
       } catch (e) { 
-        // Fallback to legacy
         this.assembleLegacyHierarchy(chatsMap, chatGroupsMap, items);
       }
     } else {
@@ -270,40 +282,42 @@ export class ImportExportService {
   }
 
   private assembleLegacyHierarchy(
-    chatsMap: Map<string, PreviewChat & { _groupId?: string | null, _order?: number }>,
+    chatsMap: Map<string, PreviewChat & { _groupId?: string | null }>,
     chatGroupsMap: Map<string, PreviewChatGroup>,
     items: ImportPreviewItem[]
   ) {
+    let order = 0;
     for (const chat of chatsMap.values()) {
-      if (chat._groupId && chatGroupsMap.has(chat._groupId)) chatGroupsMap.get(chat._groupId)!.items.push(chat);
-      else items.push({ type: 'chat', data: chat });
+      if (chat._groupId && chatGroupsMap.has(chat._groupId)) {
+        chat._order = chatGroupsMap.get(chat._groupId)!.items.length;
+        chatGroupsMap.get(chat._groupId)!.items.push(chat);
+      } else {
+        chat._order = order++;
+        items.push({ type: 'chat', data: chat });
+      }
     }
     for (const group of chatGroupsMap.values()) {
-      group.items.sort((a, b) => (a._order ?? 0) - (b._order ?? 0));
+      group._order = order++;
       items.push({ type: 'chat_group', data: group });
     }
-    items.sort((a, b) => ((a.data as { _order?: number })._order ?? 0) - ((b.data as { _order?: number })._order ?? 0));
   }
 
   /**
-   * Verify that the ZIP content is valid by dry-running the restoration generators.
+   * Verify that the ZIP content is valid by dry-running the restoration snapshots.
    */
   async verify(zipFile: Blob, config: ImportConfig): Promise<void> {
     const zip = await this.loadZip(zipFile);
     const rootPath = this.findRootPath(zip);
     
-    let stream: AsyncGenerator<MigrationChunkDto>;
+    let snapshot: StorageSnapshot;
     const mode = config.data.mode;
-    switch (mode) {
-    case 'replace': stream = this.createRestoreStream(zip, rootPath); break;
-    case 'append': stream = this.createAppendStream(zip, rootPath, config); break;
-    default: {
-      const _ex: never = mode;
-      throw new Error(`Unknown mode: ${_ex}`);
-    }
+    if (mode === 'replace') {
+      snapshot = await this.createRestoreSnapshot(zip, rootPath);
+    } else {
+      snapshot = await this.createAppendSnapshot(zip, rootPath, config);
     }
 
-    for await (const _ of stream) { /* dry run */ }
+    for await (const _ of snapshot.contentStream) { /* dry run */ }
   }
 
   /**
@@ -315,8 +329,7 @@ export class ImportExportService {
     const settingsFile = zip.file(rootPath + 'settings.json');
 
     const mode = config.data.mode;
-    switch (mode) {
-    case 'replace': {
+    if (mode === 'replace') {
       await this.storage.clearAll();
       if (settingsFile) {
         try {
@@ -324,23 +337,17 @@ export class ImportExportService {
           if (result.success) await this.applySettingsImport(result.data, config.settings);
         } catch (e) { /* Ignore */ }
       }
-      await this.storage.restore(this.createRestoreStream(zip, rootPath));
-      break;
-    }
-    case 'append': {
+      const snapshot = await this.createRestoreSnapshot(zip, rootPath);
+      await this.storage.restore(snapshot);
+    } else {
       if (settingsFile) {
         try {
           const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
           if (result.success) await this.applySettingsImport(result.data, config.settings);
         } catch (e) { /* Ignore */ }
       }
-      await this.storage.restore(this.createAppendStream(zip, rootPath, config));
-      break;
-    }
-    default: {
-      const _ex: never = mode;
-      throw new Error(`Unknown mode: ${_ex}`);
-    }
+      const snapshot = await this.createAppendSnapshot(zip, rootPath, config);
+      await this.storage.restore(snapshot);
     }
   }
 
@@ -364,8 +371,6 @@ export class ImportExportService {
   private async applySettingsImport(zipSettings: SettingsDto, strategies: ImportConfig['settings']) {
     const currentSettings = await this.storage.loadSettings();
     const newSettingsDomain = settingsToDomain(zipSettings);
-    
-    // Fallback if current settings are null (unlikely but possible during onboarding)
     const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
 
     const applyField = <K extends keyof Settings>(strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K) => {
@@ -374,218 +379,224 @@ export class ImportExportService {
       }
     };
 
-    // Mapping between strategy fields and domain fields
     applyField(strategies.endpoint, newSettingsDomain.endpointType, 'endpointType');
     applyField(strategies.endpoint, newSettingsDomain.endpointUrl, 'endpointUrl');
     applyField(strategies.endpoint, newSettingsDomain.endpointHttpHeaders, 'endpointHttpHeaders');
-    
     applyField(strategies.model, newSettingsDomain.defaultModelId, 'defaultModelId');
     applyField(strategies.titleModel, newSettingsDomain.titleModelId, 'titleModelId');
     applyField(strategies.systemPrompt, newSettingsDomain.systemPrompt, 'systemPrompt');
     applyField(strategies.lmParameters, newSettingsDomain.lmParameters, 'lmParameters');
 
-    switch (strategies.providerProfiles) {
-    case 'replace': finalSettings.providerProfiles = newSettingsDomain.providerProfiles; break;
-    case 'append': {
-      // Regenerate IDs for imported profiles to prevent collisions
+    if (strategies.providerProfiles === 'replace') finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
+    else if (strategies.providerProfiles === 'append') {
       const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: uuidv7() }));
       finalSettings.providerProfiles.push(...appended);
-      break;
-    }
-    case 'none': break;
-    default: {
-      const _ex: never = strategies.providerProfiles;
-      return _ex;
-    }
     }
     await this.storage.saveSettings(finalSettings);
   }
 
-  private async *createRestoreStream(zip: JSZip, rootPath: string): AsyncGenerator<MigrationChunkDto> {
-    const attachmentMetadata = new Map<string, { originalName: string, mimeType: string, size: number, uploadedAt: number }>();
-    
+  private async createRestoreSnapshot(zip: JSZip, rootPath: string): Promise<StorageSnapshot> {
     const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
-    if (hierarchyFile) {
-      try {
-        const json = JSON.parse(await hierarchyFile.async('string'));
-        yield { type: 'hierarchy', data: json };
-      } catch (e) { /* Ignore */ }
-    }
+    const hierarchyDto: HierarchyDto = hierarchyFile 
+      ? HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')))
+      : { items: [] };
 
     const metasFile = zip.file(rootPath + 'chat_metas.json');
-    const metas: ChatMetaDto[] = [];
+    const metasDto: ChatMetaDto[] = [];
     if (metasFile) {
       try {
         const json = JSON.parse(await metasFile.async('string'));
         if (json.entries) {
           for (const m of json.entries) {
             const res = ChatMetaSchemaDto.safeParse(m);
-            if (res.success) metas.push(res.data);
+            if (res.success) metasDto.push(res.data);
           }
         }
       } catch (e) { /* Ignore */ }
     }
 
-    for (const meta of metas) {
-      const contentFile = zip.file(`${rootPath}chat_contents/${meta.id}.json`);
-      if (contentFile) {
+    const groupsPrefix = rootPath + 'chat_groups/';
+    const groupsDto: ChatGroupDto[] = [];
+    for (const filename of Object.keys(zip.files)) {
+      if (filename.startsWith(groupsPrefix) && !filename.endsWith('/') && filename !== groupsPrefix) {
         try {
-          const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
-          const chatDto: ChatDto = { ...meta, ...content };
-          const extractFromNode = (node: MessageNodeDto) => {
-            if (node.attachments) {
-              node.attachments.forEach((a) => attachmentMetadata.set(a.id, {
-                originalName: a.originalName, mimeType: a.mimeType, size: a.size, uploadedAt: a.uploadedAt
-              }));
-            }
-            if (node.replies?.items) node.replies.items.forEach(extractFromNode);
-          };
-          if (chatDto.root?.items) chatDto.root.items.forEach(extractFromNode);
-          yield { type: 'chat', data: chatDto };
+          const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
+          if (result.success) groupsDto.push(result.data);
         } catch (e) { /* Ignore */ }
       }
     }
 
-    const groupsPrefix = rootPath + 'chat_groups/';
-    for (const filename of Object.keys(zip.files)) {
-      if (!filename.startsWith(groupsPrefix) || filename === groupsPrefix || filename.endsWith('/')) continue;
-      try {
-        const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
-        if (result.success) yield { type: 'chat_group', data: result.data };
-      } catch (e) { /* Ignore */ }
-    }
+    const settingsFile = zip.file(rootPath + 'settings.json');
+    const settingsDto = settingsFile ? SettingsSchemaDto.parse(JSON.parse(await settingsFile.async('string'))) : null;
 
-    const attPrefix = rootPath + 'uploaded_files/';
-    for (const filename of Object.keys(zip.files)) {
-      if (!filename.startsWith(attPrefix) || filename === attPrefix || filename.endsWith('/')) continue;
-      const relativePath = filename.substring(attPrefix.length);
-      const parts = relativePath.split('/');
-      if (parts.length === 2) {
-        const attachmentId = parts[0];
-        const meta = attachmentId ? attachmentMetadata.get(attachmentId) : undefined;
-        if (attachmentId && meta) {
-          const blob = await zip.file(filename)!.async('blob');
-          yield { type: 'attachment', chatId: '', attachmentId, originalName: meta.originalName, mimeType: meta.mimeType, size: meta.size, uploadedAt: meta.uploadedAt, blob };
+    const chatMetas = metasDto.map(chatMetaToDomain);
+    const hierarchy = hierarchyDto;
+    const chatGroups = groupsDto.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
+
+    const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
+      const attachmentMetadata = new Map<string, { originalName: string, mimeType: string, size: number, uploadedAt: number }>();
+      for (const meta of metasDto) {
+        const contentFile = zip.file(`${rootPath}chat_contents/${meta.id}.json`);
+        if (contentFile) {
+          try {
+            const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
+            const chatDto: ChatDto = { ...meta, ...content };
+            const extract = (node: MessageNodeDto) => {
+              if (node.attachments) node.attachments.forEach(a => attachmentMetadata.set(a.id, a));
+              if (node.replies?.items) node.replies.items.forEach(extract);
+            };
+            if (chatDto.root?.items) chatDto.root.items.forEach(extract);
+            yield { type: 'chat' as const, data: chatDto };
+          } catch (e) { /* Ignore */ }
         }
       }
-    }
+
+      const attPrefix = rootPath + 'uploaded_files/';
+      for (const filename of Object.keys(zip.files)) {
+        if (filename.startsWith(attPrefix) && !filename.endsWith('/') && filename !== attPrefix) {
+          const parts = filename.substring(attPrefix.length).split('/');
+          if (parts.length === 2) {
+            const attachmentId = parts[0];
+            const meta = attachmentId ? attachmentMetadata.get(attachmentId) : undefined;
+            if (attachmentId && meta) {
+              const blob = await zip.file(filename)!.async('blob');
+              yield { type: 'attachment' as const, chatId: '', attachmentId, ...meta, blob };
+            }
+          }
+        }
+      }
+    };
+
+    return {
+      structure: {
+        settings: settingsDto ? settingsToDomain(settingsDto) : ({} as Settings),
+        hierarchy,
+        chatMetas,
+        chatGroups,
+      },
+      contentStream: contentStream(),
+    };
   }
 
-  private async *createAppendStream(zip: JSZip, rootPath: string, config: ImportConfig): AsyncGenerator<MigrationChunkDto> {
-    const idMap = new Map<string, string>(); 
+  private async createAppendSnapshot(zip: JSZip, rootPath: string, config: ImportConfig): Promise<StorageSnapshot> {
+    const groupIdMap = new Map<string, string>();
+    const chatIdMap = new Map<string, string>();
+    const attachmentIdMap = new Map<string, string>();
+    
+    // 1. Groups
     const groupsPrefix = rootPath + 'chat_groups/';
-    const importedGroups: ChatGroupDto[] = [];
-
+    const importedGroupsDto: ChatGroupDto[] = [];
     for (const filename of Object.keys(zip.files)) {
-      if (!filename.startsWith(groupsPrefix) || filename === groupsPrefix || filename.endsWith('/')) continue;
-      try {
-        const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
-        if (result.success) {
-          const dto = result.data;
-          const newId = uuidv7();
-          idMap.set(dto.id, newId);
-          dto.id = newId;
-          if (config.data.chatGroupNamePrefix) dto.name = `${config.data.chatGroupNamePrefix}${dto.name}`;
-          importedGroups.push(dto);
-          yield { type: 'chat_group', data: dto };
-        }
-      } catch (e) { /* Ignore */ }
+      if (filename.startsWith(groupsPrefix) && !filename.endsWith('/') && filename !== groupsPrefix) {
+        try {
+          const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
+          if (result.success) {
+            const dto = result.data;
+            const newId = uuidv7();
+            groupIdMap.set(dto.id, newId);
+            dto.id = newId;
+            if (config.data.chatGroupNamePrefix) dto.name = `${config.data.chatGroupNamePrefix}${dto.name}`;
+            importedGroupsDto.push(dto);
+          }
+        } catch (e) { /* Ignore */ }
+      }
     }
 
-    const attachmentMetadata = new Map<string, { originalName: string, mimeType: string, size: number, uploadedAt: number }>();
-    const attachmentIdMap = new Map<string, string>();
+    // 2. Metas
     const metasFile = zip.file(rootPath + 'chat_metas.json');
-    const importedChatIds: string[] = [];
-
+    const importedMetas: { dto: ChatMetaDto, originalId: string }[] = [];
     if (metasFile) {
       try {
-        const metasJson = JSON.parse(await metasFile.async('string'));
-        for (const meta of (metasJson.entries || [])) {
-          const metaRes = ChatMetaSchemaDto.safeParse(meta);
-          if (!metaRes.success) continue;
-          const contentFile = zip.file(`${rootPath}chat_contents/${metaRes.data.id}.json`);
-          if (contentFile) {
-            const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
-            const dto: ChatDto = { ...metaRes.data, ...content };
+        const json = JSON.parse(await metasFile.async('string'));
+        for (const meta of (json.entries || [])) {
+          const res = ChatMetaSchemaDto.safeParse(meta);
+          if (res.success) {
+            const dto = res.data;
+            const originalId = dto.id;
             const newId = uuidv7();
-            idMap.set(dto.id, newId);
+            chatIdMap.set(originalId, newId);
             dto.id = newId;
-            importedChatIds.push(newId);
             if (config.data.chatTitlePrefix && dto.title) dto.title = `${config.data.chatTitlePrefix}${dto.title}`;
-            
-            const processAttachments = (attachments: AttachmentDto[]): AttachmentDto[] => {
-              return attachments.map((att) => {
-                if (!attachmentIdMap.has(att.id)) {
-                  const newAttId = uuidv7();
-                  attachmentIdMap.set(att.id, newAttId);
-                  attachmentMetadata.set(newAttId, { originalName: att.originalName, mimeType: att.mimeType, size: att.size, uploadedAt: att.uploadedAt }); 
-                }
-                const mappedId = attachmentIdMap.get(att.id);
-                return { ...att, id: mappedId || uuidv7() };
-              });
-            };
-            const processNode = (node: MessageNodeDto) => {
-              if (node.attachments) node.attachments = processAttachments(node.attachments);
-              if (node.replies?.items) node.replies.items.forEach(processNode);
-            };
-            if (dto.root?.items) dto.root.items.forEach(processNode);
-            yield { type: 'chat', data: dto };
+            importedMetas.push({ dto, originalId });
           }
         }
       } catch (e) { /* Ignore */ }
     }
 
-    // Reconstruction of Hierarchy for 'append' mode
-    const currentHierarchy = await this.storage.loadHierarchy();
+    // 3. Hierarchy
+    const currentHierarchy = await this.storage.loadHierarchy() || { items: [] };
     const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
     let importedHierarchyItems: HierarchyNode[] = [];
-
     if (hierarchyFile) {
       try {
         const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')));
         importedHierarchyItems = hDto.items.map(node => {
-          if (node.type === 'chat') {
-            return { type: 'chat', id: idMap.get(node.id) || node.id };
-          } else {
-            return { 
-              type: 'chat_group', 
-              id: idMap.get(node.id) || node.id, 
-              chat_ids: node.chat_ids.map(cid => idMap.get(cid) || cid) 
-            };
-          }
+          if (node.type === 'chat') return { type: 'chat', id: chatIdMap.get(node.id) || node.id };
+          return { type: 'chat_group', id: groupIdMap.get(node.id) || node.id, chat_ids: node.chat_ids.map(cid => chatIdMap.get(cid) || cid) };
         });
       } catch (e) { /* fallback below */ }
     }
 
     if (importedHierarchyItems.length === 0) {
-      // Legacy or missing hierarchy fallback: append groups then chats
       importedHierarchyItems = [
-        ...importedGroups.map(g => ({ type: 'chat_group' as const, id: g.id, chat_ids: [] })),
-        ...importedChatIds.map(id => ({ type: 'chat' as const, id }))
+        ...importedGroupsDto.map(g => ({ type: 'chat_group' as const, id: g.id, chat_ids: [] })),
+        ...importedMetas.map(m => ({ type: 'chat' as const, id: m.dto.id }))
       ];
     }
 
-    const mergedHierarchy: HierarchyDto = {
-      items: [...currentHierarchy.items, ...importedHierarchyItems]
-    };
-    yield { type: 'hierarchy', data: mergedHierarchy };
+    const mergedHierarchy: Hierarchy = { items: [...currentHierarchy.items, ...importedHierarchyItems] };
+    const chatMetas = importedMetas.map(m => chatMetaToDomain(m.dto));
+    const chatGroups = importedGroupsDto.map(g => chatGroupToDomain(g, mergedHierarchy, chatMetas));
 
-    const attPrefix = rootPath + 'uploaded_files/';
-    for (const filename of Object.keys(zip.files)) {
-      if (!filename.startsWith(attPrefix) || filename === attPrefix || filename.endsWith('/')) continue;
-      const relativePath = filename.substring(attPrefix.length);
-      const parts = relativePath.split('/');
-      if (parts.length === 2) {
-        const oldId = parts[0];
-        if (oldId && attachmentIdMap.has(oldId)) {
-          const newId = attachmentIdMap.get(oldId);
-          const meta = newId ? attachmentMetadata.get(newId) : undefined;
-          if (newId && meta) {
-            const blob = await zip.file(filename)!.async('blob');
-            yield { type: 'attachment', chatId: '', attachmentId: newId, originalName: meta.originalName, mimeType: meta.mimeType, size: meta.size, uploadedAt: meta.uploadedAt, blob };
+    const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
+      const attachmentMetadata = new Map<string, { originalName: string, mimeType: string, size: number, uploadedAt: number }>();
+      for (const { dto: meta, originalId } of importedMetas) {
+        const contentFile = zip.file(`${rootPath}chat_contents/${originalId}.json`);
+        if (contentFile) {
+          try {
+            const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
+            const dto: ChatDto = { ...meta, ...content };
+            const process = (node: MessageNodeDto) => {
+              node.id = uuidv7();
+              if (node.attachments) {
+                node.attachments.forEach(a => {
+                  if (!attachmentIdMap.has(a.id)) {
+                    const newAttId = uuidv7();
+                    attachmentIdMap.set(a.id, newAttId);
+                    attachmentMetadata.set(newAttId, a);
+                  }
+                  a.id = attachmentIdMap.get(a.id)!;
+                });
+              }
+              if (node.replies?.items) node.replies.items.forEach(process);
+            };
+            if (dto.root?.items) dto.root.items.forEach(process);
+            yield { type: 'chat' as const, data: dto };
+          } catch (e) { /* Ignore */ }
+        }
+      }
+
+      const attPrefix = rootPath + 'uploaded_files/';
+      for (const filename of Object.keys(zip.files)) {
+        if (filename.startsWith(attPrefix) && !filename.endsWith('/') && filename !== attPrefix) {
+          const parts = filename.substring(attPrefix.length).split('/');
+          if (parts.length === 2) {
+            const oldId = parts[0];
+            const newId = oldId ? attachmentIdMap.get(oldId) : null;
+            const meta = newId ? attachmentMetadata.get(newId) : null;
+            if (newId && meta) {
+              const blob = await zip.file(filename)!.async('blob');
+              yield { type: 'attachment' as const, chatId: '', attachmentId: newId, ...meta, blob };
+            }
           }
         }
       }
-    }
+    };
+
+    const settings = await this.storage.loadSettings();
+    return {
+      structure: { settings: settings || ({} as Settings), hierarchy: mergedHierarchy, chatMetas, chatGroups },
+      contentStream: contentStream(),
+    };
   }
 }

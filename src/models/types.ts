@@ -116,6 +116,7 @@ export interface ChatMeta {
   id: string;
   title: string | null;
   groupId?: string | null;
+  currentLeafId?: string;
   createdAt: number;
   updatedAt: number;
   debugEnabled: boolean;
@@ -162,6 +163,24 @@ export type HierarchyNode = HierarchyChatNode | HierarchyChatGroupNode;
 
 export interface Hierarchy {
   items: HierarchyNode[];
+}
+
+/**
+ * Storage Snapshot
+ * Represents a complete snapshot of the storage for migration or backup.
+ */
+export interface StorageSnapshot {
+  structure: {
+    settings: Settings;
+    hierarchy: Hierarchy;
+    chatMetas: ChatMeta[];
+    chatGroups: ChatGroup[];
+  };
+  /**
+   * Stream of heavy content (full message trees and binary attachments).
+   * This is kept as a generator to manage memory efficiency.
+   */
+  contentStream: AsyncGenerator<import('./dto').MigrationChunkDto>;
 }
 
 /**

@@ -131,17 +131,17 @@ describe('Storage Migration (Round-Trip)', () => {
     });
 
     // 2. Dump
-    const dumpStream = provider.dump();
+    const snapshot = await provider.dump();
     const chunks: MigrationChunkDto[] = [];
-    for await (const chunk of dumpStream) {
+    for await (const chunk of snapshot.contentStream) {
       chunks.push(chunk);
     }
 
-    // Verify dump content minimally
-    expect(chunks.find(c => c.type === 'settings')).toBeDefined();
-    expect(chunks.find(c => c.type === 'chat_group')).toBeDefined();
-    expect(chunks.find(c => c.type === 'chat')).toBeDefined();
-    expect(chunks.find(c => c.type === 'hierarchy')).toBeDefined();
+    // Verify snapshot structure
+    expect(snapshot.structure.settings).toEqual(mockSettings);
+    expect(snapshot.structure.chatGroups).toHaveLength(1);
+    expect(snapshot.structure.chatMetas).toHaveLength(1);
+    expect(snapshot.structure.hierarchy.items).toHaveLength(1);
 
     // 3. Clear (Simulate fresh install)
     await provider.clearAll();
@@ -152,7 +152,10 @@ describe('Storage Migration (Round-Trip)', () => {
     async function* arrayToGenerator(array: MigrationChunkDto[]) {
       for (const item of array) yield item;
     }
-    await provider.restore(arrayToGenerator(chunks));
+    await provider.restore({
+      structure: snapshot.structure,
+      contentStream: arrayToGenerator(chunks)
+    });
 
     // 5. Verify Data Integrity
     const loadedSettings = await provider.loadSettings();

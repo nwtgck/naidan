@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, MessageNode, ChatMeta, ChatContent, Hierarchy } from '../../models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot } from '../../models/types';
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
@@ -259,8 +259,9 @@ export class StorageService {
         if (this.currentType === type) return;
 
         const oldProvider = activeProvider;
-        let newProvider: IStorageProvider;
+        const snapshot = await oldProvider.dump();
 
+        let newProvider: IStorageProvider;
         if (type === 'opfs' && await checkOPFSSupport()) {
           newProvider = new OPFSStorageProvider();
         } else {
@@ -273,9 +274,9 @@ export class StorageService {
         this.provider = newProvider;
         this.currentType = type;
 
-        // Define a wrapper generator to rescue memory blobs during migration
-        const migrationStream = async function* (this: StorageService): AsyncGenerator<MigrationChunkDto> {
-          for await (const chunk of oldProvider.dump()) {
+        // Wrap content stream to rescue memory blobs
+        const migrationStream = async function* (): AsyncGenerator<MigrationChunkDto> {
+          for await (const chunk of snapshot.contentStream) {
             if (chunk.type === 'chat' && newProvider.canPersistBinary) {
               const chat = await oldProvider.loadChat(chunk.data.id);
               if (!chat) { yield chunk; continue; }
@@ -297,7 +298,6 @@ export class StorageService {
                           uploadedAt: att.uploadedAt,
                           blob: att.blob
                         });
-                        // Update status to persisted for the new storage
                         node.attachments[i] = { ...att, status: 'persisted' as const };
                       }
                     }
@@ -315,7 +315,10 @@ export class StorageService {
         };
 
         try {
-          await newProvider.restore(migrationStream.call(this));
+          await newProvider.restore({
+            structure: snapshot.structure,
+            contentStream: migrationStream(),
+          });
         } catch (e) {
           this.provider = oldProvider;
           this.currentType = oldType;
@@ -337,23 +340,23 @@ export class StorageService {
   // --- Bulk Operations (Migration / Backup) ---
 
   /**
-   * Dumps the entire storage content.
+   * Dumps the entire storage content as a structured snapshot.
    * WARNING: This generator does not hold a global lock while yielding to allow
    * for memory-efficient streaming. For a consistent snapshot, the caller
    * should ensure no concurrent writes are happening.
    */
-  dumpWithoutLock(): AsyncGenerator<MigrationChunkDto> {
+  async dumpWithoutLock(): Promise<StorageSnapshot> {
     return this.getProvider().dump();
   }
 
   /**
-   * Restores storage content from a stream.
+   * Restores storage content from a snapshot.
    * This operation is guarded by an exclusive lock as it is destructive.
    */
-  async restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void> {
+  async restore(snapshot: StorageSnapshot): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        await this.getProvider().restore(stream);
+        await this.getProvider().restore(snapshot);
       }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('restore', { notifyLockWaitAfterMs: 5000 }) });
       this.synchronizer.notify('migration');
     } catch (e) {

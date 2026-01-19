@@ -126,6 +126,7 @@ export type MessageNodeDto = {
 export const ChatMetaSchemaDto = z.object({
   id: z.string().uuid(),
   title: z.string().nullable(),
+  currentLeafId: z.string().uuid().optional(),
   updatedAt: z.number(),
   createdAt: z.number(),
   debugEnabled: z.boolean().optional().default(false),
@@ -205,20 +206,19 @@ export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
 /**
  * Migration Data Chunk
  * 
- * Represents a single unit of data during storage migration.
+ * Represents a single unit of heavy data during storage migration.
+ * Structural metadata (Settings, Hierarchy, Groups) are handled as 
+ * complete domain objects during the restoration process.
  */
 export type MigrationChunkDto = 
-  | { type: 'settings'; data: SettingsDto }
-  | { type: 'hierarchy'; data: HierarchyDto }
-  | { type: 'chat_group'; data: ChatGroupDto }
   | { type: 'chat'; data: ChatDto }
-    | { 
-        type: 'attachment'; 
-        chatId: string; 
-        attachmentId: string; 
-        originalName: string; 
-        mimeType: string;
-        size: number;
-        uploadedAt: number;
-        blob: Blob 
-      };
+  | { 
+      type: 'attachment'; 
+      chatId: string; 
+      attachmentId: string; 
+      originalName: string; 
+      mimeType: string;
+      size: number;
+      uploadedAt: number;
+      blob: Blob 
+    };

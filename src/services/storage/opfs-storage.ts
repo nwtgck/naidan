@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent } from '../../models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot } from '../../models/types';
 import { 
   type ChatMetaDto,
   type ChatGroupDto,
@@ -19,6 +19,7 @@ import {
   settingsToDto,
   hierarchyToDomain,
   chatMetaToDto,
+  chatMetaToDomain,
   chatContentToDto,
   buildSidebarItemsFromHierarchy,
 } from '../../models/mappers';import { IStorageProvider } from './interface';
@@ -172,7 +173,16 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       const dir = await this.getDir('chat_groups');
       const file = await (await dir.getFileHandle(`${id}.json`)).getFile();
-      return chatGroupToDomain(ChatGroupSchemaDto.parse(JSON.parse(await file.text())));
+      const groupDto = ChatGroupSchemaDto.parse(JSON.parse(await file.text()));
+      
+      const [hierarchy, allMetas] = await Promise.all([
+        this.loadHierarchy(),
+        this.listChatMetasRaw()
+      ]);
+
+      const chatMetas = allMetas.map(chatMetaToDomain);
+      const h = hierarchy || { items: [] };
+      return chatGroupToDomain(groupDto, h, chatMetas);
     } catch { return null; }
   }
 
@@ -191,8 +201,8 @@ export class OPFSStorageProvider extends IStorageProvider {
     ]);
 
     const hierarchy = hierarchyToDomain(rawHierarchy || { items: [] });
-    const chatMetas = rawMetas.map(m => chatToDomain({ ...m, root: { items: [] } }));
-    const chatGroups = rawGroups.map(g => chatGroupToDomain(g));
+    const chatMetas = rawMetas.map(chatMetaToDomain);
+    const chatGroups = rawGroups.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
 
     return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
   }
@@ -259,49 +269,70 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   // --- Migration Implementation ---
 
-  async *dump(): AsyncGenerator<MigrationChunkDto> {
+  async dump(): Promise<StorageSnapshot> {
     await this.init();
-    const settings = await this.loadSettings();
-    if (settings) yield { type: 'settings', data: settingsToDto(settings) };
+    const [settings, hierarchy, rawMetas, rawGroups] = await Promise.all([
+      this.loadSettings(),
+      this.loadHierarchy(),
+      this.listChatMetasRaw(),
+      this.listChatGroupsRaw(),
+    ]);
 
-    const hierarchy = await this.loadHierarchy();
-    yield { type: 'hierarchy', data: hierarchy || { items: [] } };
+    const chatGroups = rawGroups.map(g => chatGroupToDomain(g, hierarchy || { items: [] }, []));
+    const chatMetas = rawMetas.map(chatMetaToDomain);
 
-    const chatGroups = await this.listChatGroupsRaw();
-    for (const chatGroup of chatGroups) yield { type: 'chat_group', data: chatGroup };
-
-    const metas = await this.listChatMetasRaw();
-    for (const meta of metas) {
-      const chat = await this.loadChat(meta.id);
-      if (chat) {
-        yield { type: 'chat', data: chatToDto(chat) };
-        const findAndYieldFiles = async function* (this: OPFSStorageProvider, nodes: MessageNode[]): AsyncGenerator<MigrationChunkDto> {
-          for (const node of nodes) {
-            if (node.attachments) {
-              for (const att of node.attachments) {
-                if (att.status === 'persisted') {
-                  const blob = await this.getFile(att.id, att.originalName);
-                  if (blob) yield { type: 'attachment', chatId: chat.id, attachmentId: att.id, originalName: att.originalName, mimeType: att.mimeType, size: att.size, uploadedAt: att.uploadedAt, blob };
+    const contentStream = async function* (this: OPFSStorageProvider): AsyncGenerator<MigrationChunkDto> {
+      for (const meta of rawMetas) {
+        const chat = await this.loadChat(meta.id);
+        if (chat) {
+          yield { type: 'chat' as const, data: chatToDto(chat) };
+          const findAndYieldFiles = async function* (this: OPFSStorageProvider, nodes: MessageNode[]): AsyncGenerator<MigrationChunkDto> {
+            for (const node of nodes) {
+              if (node.attachments) {
+                for (const att of node.attachments) {
+                  if (att.status === 'persisted') {
+                    const blob = await this.getFile(att.id, att.originalName);
+                    if (blob) yield { type: 'attachment' as const, chatId: chat.id, attachmentId: att.id, originalName: att.originalName, mimeType: att.mimeType, size: att.size, uploadedAt: att.uploadedAt, blob };
+                  }
                 }
               }
+              if (node.replies?.items) yield* findAndYieldFiles.call(this, node.replies.items);
             }
-            if (node.replies?.items) yield* findAndYieldFiles.call(this, node.replies.items);
-          }
-        };
-        yield* findAndYieldFiles.call(this, chat.root.items);
+          };
+          yield* findAndYieldFiles.call(this, chat.root.items);
+        }
       }
-    }
+    };
+
+    return {
+      structure: {
+        settings: settings || ({} as Settings),
+        hierarchy: hierarchy || { items: [] },
+        chatMetas,
+        chatGroups,
+      },
+      contentStream: contentStream.call(this),
+    };
   }
 
-  async restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void> {
-    await this.clearAll();
+  async restore(snapshot: StorageSnapshot): Promise<void> {
+    const { structure, contentStream } = snapshot;
     await this.init();
-    for await (const chunk of stream) {
+
+    // 1. Restore Structural Metadata
+    if (structure.settings) await this.saveSettings(structure.settings);
+    if (structure.hierarchy) await this.saveHierarchy(structure.hierarchy);
+    if (structure.chatMetas) {
+      for (const meta of structure.chatMetas) await this.saveChatMeta(meta);
+    }
+    if (structure.chatGroups) {
+      for (const group of structure.chatGroups) await this.saveChatGroup(group);
+    }
+
+    // 2. Restore Heavy Content
+    for await (const chunk of contentStream) {
       const type = chunk.type;
       switch (type) {
-      case 'settings': await this.saveSettings(settingsToDomain(chunk.data)); break;
-      case 'hierarchy': await this.saveHierarchy(chunk.data); break;
-      case 'chat_group': await this.saveChatGroup(chatGroupToDomain(chunk.data)); break;
       case 'chat': {
         const domainChat = chatToDomain(chunk.data);
         await this.saveChatContent(domainChat.id, domainChat);

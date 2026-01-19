@@ -1,5 +1,5 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent } from '../../models/types';
-import type { MigrationChunkDto, ChatMetaDto, ChatGroupDto, HierarchyDto } from '../../models/dto';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot } from '../../models/types';
+import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '../../models/dto';
 
 export type { ChatSummary };
 
@@ -25,8 +25,8 @@ export abstract class IStorageProvider {
   abstract saveHierarchy(hierarchy: HierarchyDto): Promise<void>;
 
   // --- Bulk Operations (Migration) ---
-  abstract dump(): AsyncGenerator<MigrationChunkDto>;
-  abstract restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void>;
+  abstract dump(): Promise<StorageSnapshot>;
+  abstract restore(snapshot: StorageSnapshot): Promise<void>;
 
   // --- Public Domain API (Default Implementations) ---
 

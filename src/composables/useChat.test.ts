@@ -168,6 +168,31 @@ describe('useChat Composable Logic', () => {
     expect(storageService.updateHierarchy).toHaveBeenCalled();
   });
 
+  it('should insert forked chat at the correct position (g1, g2, c_new, c1) matching createNewChat', async () => {
+    const { forkChat, currentChat } = useChat();
+    
+    // Initial state: g1, c1
+    mockHierarchy.items = [
+      { type: 'chat_group', id: 'g1', chat_ids: [] },
+      { type: 'chat', id: 'c1' }
+    ];
+    
+    const m1: MessageNode = { id: 'm1', role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
+    currentChat.value = reactive({ 
+      id: 'c1', title: 'C1', root: { items: [m1] }, 
+      createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null 
+    });
+
+    await forkChat(currentChat.value!, 'm1');
+
+    // Expected: g1, fork_of_c1, c1
+    expect(mockHierarchy.items).toHaveLength(3);
+    expect(mockHierarchy.items[0]?.id).toBe('g1');
+    expect(mockHierarchy.items[1]?.type).toBe('chat');
+    expect(mockHierarchy.items[1]?.id).not.toBe('c1');
+    expect(mockHierarchy.items[2]?.id).toBe('c1');
+  });
+
   it('should inherit attachments and modelId during fork', async () => {
     const { forkChat, currentChat } = useChat();
     
@@ -556,6 +581,44 @@ describe('useChat Composable Logic', () => {
       expect(mockHierarchy.items[0]?.id).toBe('g1');
       expect(mockHierarchy.items[1]?.id).toBe('g2');
       expect(mockHierarchy.items[2]?.type).toBe('chat');
+      expect(mockHierarchy.items[3]?.id).toBe('c1');
+    });
+
+    it('should insert before the first chat even if groups exist later in the list', async () => {
+      // g1, g2, c1, c2, g3
+      mockHierarchy.items = [
+        { type: 'chat_group', id: 'g1', chat_ids: [] },
+        { type: 'chat_group', id: 'g2', chat_ids: [] },
+        { type: 'chat', id: 'c1' },
+        { type: 'chat', id: 'c2' },
+        { type: 'chat_group', id: 'g3', chat_ids: [] },
+      ];
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat();
+
+      expect(mockHierarchy.items[1]?.id).toBe('g2');
+      expect(mockHierarchy.items[2]?.type).toBe('chat');
+      expect(mockHierarchy.items[3]?.id).toBe('c1');
+    });
+
+    it('should insert before the first chat in a complex mixed list (g1, g2, c1, c2, g3)', async () => {
+      mockHierarchy.items = [
+        { type: 'chat_group', id: 'g1', chat_ids: [] },
+        { type: 'chat_group', id: 'g2', chat_ids: [] },
+        { type: 'chat', id: 'c1' },
+        { type: 'chat', id: 'c2' },
+        { type: 'chat_group', id: 'g3', chat_ids: [] },
+      ];
+      await chatStore.loadChats();
+
+      await chatStore.createNewChat();
+
+      // Should be: g1, g2, NEW, c1, c2, g3
+      expect(mockHierarchy.items).toHaveLength(6);
+      expect(mockHierarchy.items[2]?.type).toBe('chat');
+      expect(mockHierarchy.items[2]?.id).not.toBe('c1');
+      expect(mockHierarchy.items[2]?.id).not.toBe('c2');
       expect(mockHierarchy.items[3]?.id).toBe('c1');
     });
 

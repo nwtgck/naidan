@@ -31,6 +31,7 @@ import type {
   ChatContent,
   Hierarchy,
   HierarchyNode,
+  HierarchyChatGroupNode,
 } from './types';
 
 export const roleToDomain = (dto: RoleDto): Role => {
@@ -65,17 +66,60 @@ export const hierarchyToDto = (domain: Hierarchy): HierarchyDto => ({
   }),
 });
 
+export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
+  id: dto.id,
+  title: dto.title,
+  createdAt: dto.createdAt,
+  updatedAt: dto.updatedAt,
+  debugEnabled: dto.debugEnabled,
+  modelId: dto.modelId,
+  endpoint: dto.endpoint ? {
+    type: dto.endpoint.type as EndpointType,
+    url: dto.endpoint.url,
+    httpHeaders: dto.endpoint.httpHeaders,
+  } : undefined,
+  systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
+  lmParameters: dto.lmParameters,
+  currentLeafId: dto.currentLeafId,
+  originChatId: dto.originChatId,
+  originMessageId: dto.originMessageId,
+});
+
 /**
  * Converts a Chat Group DTO into a Domain ChatGroup.
- * Note: items are populated during sidebar assembly.
+ * Resolves nested items using the hierarchy and provided chat metadata.
  */
-export const chatGroupToDomain = (dto: ChatGroupDto): ChatGroup => {
+export const chatGroupToDomain = (
+  dto: ChatGroupDto, 
+  hierarchy: Hierarchy, 
+  chatMetas: ChatMeta[]
+): ChatGroup => {
+  const node = hierarchy.items.find(
+    i => i.type === 'chat_group' && i.id === dto.id
+  ) as HierarchyChatGroupNode | undefined;
+  
+  const chatIds = node?.chat_ids || [];
+  
+  const items: SidebarItem[] = chatIds.map(cid => {
+    const meta = chatMetas.find(m => m.id === cid);
+    return {
+      id: `chat:${cid}`,
+      type: 'chat',
+      chat: { 
+        id: cid, 
+        title: meta?.title || null, 
+        updatedAt: meta?.updatedAt || 0,
+        groupId: dto.id
+      }
+    };
+  });
+
   return {
     id: dto.id,
     name: dto.name,
     isCollapsed: dto.isCollapsed,
     updatedAt: dto.updatedAt,
-    items: [], // Populated by builder
+    items,
     endpoint: dto.endpoint ? {
       type: dto.endpoint.type as EndpointType,
       url: dto.endpoint.url,
@@ -288,7 +332,7 @@ export const chatToDto = (domain: Chat): ChatDto => {
 export const buildSidebarItemsFromHierarchy = (
   hierarchy: Hierarchy,
   chatMetas: ChatMeta[],
-  chatGroups: ChatGroup[]
+  chatGroups: Omit<ChatGroup, 'items'>[]
 ): SidebarItem[] => {
   const metaMap = new Map(chatMetas.map(m => [m.id, m]));
   const groupMap = new Map(chatGroups.map(g => [g.id, g]));
@@ -303,8 +347,8 @@ export const buildSidebarItemsFromHierarchy = (
         chat: { ...chatMetaToSummary(meta), groupId: null } 
       };
     } else {
-      const group = groupMap.get(node.id);
-      if (!group) return null;
+      const groupMeta = groupMap.get(node.id);
+      if (!groupMeta) return null;
       
       const nestedItems: SidebarItem[] = node.chat_ids
         .map(cid => {
@@ -313,7 +357,7 @@ export const buildSidebarItemsFromHierarchy = (
           return { 
             id: `chat:${cid}`, 
             type: 'chat' as const, 
-            chat: { ...chatMetaToSummary(m), groupId: group.id } 
+            chat: { ...chatMetaToSummary(m), groupId: groupMeta.id } 
           } as SidebarItem;
         })
         .filter((i): i is SidebarItem => i !== null);
@@ -321,7 +365,7 @@ export const buildSidebarItemsFromHierarchy = (
       return {
         id: `chat_group:${node.id}`,
         type: 'chat_group',
-        chatGroup: { ...group, items: nestedItems }
+        chatGroup: { ...groupMeta, items: nestedItems }
       };
     }
   };
@@ -364,7 +408,7 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
       httpHeaders: endpointHttpHeaders,
     },
     storageType: storageType as StorageTypeDto,
-    providerProfiles: providerProfiles.map(p => {
+    providerProfiles: (providerProfiles || []).map(p => {
       const { 
         endpointType: pType, endpointUrl: pUrl, endpointHttpHeaders: pHeaders, 
         ...pRest 

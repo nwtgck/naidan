@@ -344,13 +344,15 @@ export function useChat() {
       await storageService.updateHierarchy((current) => {
         if (chatGroupId) {
           const group = current.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
-          if (group) group.chat_ids.unshift(chatId);
-          else current.items.push({ type: 'chat', id: chatId });
-        } else {
-          const firstChatIdx = current.items.findIndex(i => i.type === 'chat');
-          const insertIdx = firstChatIdx !== -1 ? firstChatIdx : current.items.length;
-          current.items.splice(insertIdx, 0, { type: 'chat', id: chatId });
+          if (group) {
+            group.chat_ids.unshift(chatId);
+            return current;
+          }
         }
+        
+        const firstChatIdx = current.items.findIndex(i => i.type === 'chat');
+        const insertIdx = firstChatIdx !== -1 ? firstChatIdx : current.items.length;
+        current.items.splice(insertIdx, 0, { type: 'chat', id: chatId });
         return current;
       });
       
@@ -727,13 +729,15 @@ export function useChat() {
 
         if (chatGroupId) {
           const group = curr.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
-          if (group) group.chat_ids.unshift(newChatId);
-          else curr.items.push(node);
-        } else {
-          const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
-          const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
-          curr.items.splice(insertIdx, 0, node);
+          if (group) {
+            group.chat_ids.unshift(newChatId);
+            return curr;
+          }
         }
+
+        const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
+        const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
+        curr.items.splice(insertIdx, 0, node);
         return curr;
       });
       await loadData();
@@ -850,12 +854,16 @@ export function useChat() {
       });
       if (targetGroupId) {
         const g = curr.items.find(i => i.type === 'chat_group' && i.id === targetGroupId) as HierarchyChatGroupNode;
-        if (g) g.chat_ids.push(chatId);
-        else curr.items.push(node);
+        if (g) g.chat_ids.unshift(chatId);
+        else {
+          const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
+          const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
+          curr.items.splice(insertIdx, 0, node);
+        }
       } else {
         const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
-        if (firstChatIdx !== -1) curr.items.splice(firstChatIdx, 0, node);
-        else curr.items.push(node);
+        const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
+        curr.items.splice(insertIdx, 0, node);
       }
       return curr;
     });

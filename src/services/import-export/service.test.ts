@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { SettingsDto, ChatMetaDto, ChatGroupDto } from '../../models/dto';
 import type { ImportConfig } from './types';
 import type { Mocked } from 'vitest';
+import type { StorageSnapshot } from '../../models/types';
 
 const UUID_G1 = '018d476a-7b3a-73fd-8000-000000000001';
 const UUID_C1 = '018d476a-7b3a-73fd-8000-000000000002';
@@ -60,7 +61,10 @@ describe('ImportExportService', () => {
 
   describe('exportData', () => {
     it('handles empty storage gracefully and uses dumpWithoutLock', async () => {
-      mockStorage.dumpWithoutLock.mockImplementation(async function* () { /* yields nothing */ });
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: { settings: {} as any, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
+        contentStream: (async function* () {})()
+      });
       const { filename } = await service.exportData({});
       expect(filename).toMatch(/^naidan_data_\d{4}-\d{2}-\d{2}\.zip$/);
       expect(mockStorage.dumpWithoutLock).toHaveBeenCalled();
@@ -83,7 +87,7 @@ describe('ImportExportService', () => {
       await service.executeImport(zipBlob, config);
 
       expect(mockStorage.clearAll).toHaveBeenCalled();
-      expect(mockStorage.restore).toHaveBeenCalled();
+      expect(mockStorage.restore).toHaveBeenCalledWith(expect.anything());
     });
   });
 
@@ -101,9 +105,9 @@ describe('ImportExportService', () => {
       await service.executeImport(zipBlob, { data: { mode: 'append' }, settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' } });
 
       const calls = mockStorage.restore.mock.calls;
-      const generator = calls[0]![0];
+      const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
-      for await (const chunk of generator) { chunks.push(chunk); }
+      for await (const chunk of snapshot.contentStream) { chunks.push(chunk); }
 
       const chatChunk = chunks.find(c => c.type === 'chat');
       if (chatChunk?.type === 'chat') {
@@ -145,9 +149,10 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
       });
 
-      const generator = mockStorage.restore.mock.calls[0]![0];
+      const calls = mockStorage.restore.mock.calls;
+      const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
-      for await (const chunk of generator) { chunks.push(chunk); }
+      for await (const chunk of snapshot.contentStream) { chunks.push(chunk); }
 
       const chatChunk = chunks.find(c => c.type === 'chat');
       if (chatChunk?.type === 'chat' && chatChunk.data.root) {
@@ -173,12 +178,35 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
       });
 
-      const generator = mockStorage.restore.mock.calls[0]![0];
+      const calls = mockStorage.restore.mock.calls;
+      const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
-      for await (const chunk of generator) { chunks.push(chunk); }
+      for await (const chunk of snapshot.contentStream) { chunks.push(chunk); }
 
-      expect(chunks.find(c => c.type === 'chat_group')?.data.name).toBe('[Group] General');
+      expect(snapshot.structure.chatGroups.find(g => g.name === '[Group] General')).toBeDefined();
       expect(chunks.find(c => c.type === 'chat')?.data.title).toBe('[Chat] Old Title');
+    });
+
+    it('does NOT call clearAll and preserves existing hierarchy during append', async () => {
+      const zip = new JSZip();
+      zip.file('export_manifest.json', '{}');
+      zip.file('chat_metas.json', JSON.stringify({ entries: [] }));
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+      // Mock existing storage state
+      const existingHierarchy = { items: [{ type: 'chat', id: 'existing-chat' }] };
+      mockStorage.loadHierarchy.mockResolvedValue(existingHierarchy as any);
+
+      await service.executeImport(zipBlob, { 
+        data: { mode: 'append' }, 
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' } 
+      });
+
+      expect(mockStorage.clearAll).not.toHaveBeenCalled();
+      
+      // Verify that the hierarchy sent to restore contains the existing item
+      const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
+      expect(snapshot.structure.hierarchy.items).toContainEqual({ type: 'chat', id: 'existing-chat' });
     });
   });
 
