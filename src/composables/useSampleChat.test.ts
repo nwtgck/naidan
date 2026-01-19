@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { useSampleChat } from './useSampleChat';
 import { useChat } from './useChat';
 import { storageService } from '../services/storage';
-import type { Chat } from '../models/types';
 
 // Mock dependencies
 vi.mock('./useChat', async (importOriginal) => {
@@ -17,7 +16,9 @@ vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
-    saveChat: vi.fn(),
+    updateChatContent: vi.fn(),
+    updateChatMeta: vi.fn(),
+    updateHierarchy: vi.fn(),
   },
 }));
 
@@ -31,24 +32,34 @@ describe('useSampleChat', () => {
       loadChats: mockLoadChats,
       openChat: mockOpenChat,
     });
+    // Mock updateHierarchy to just call the callback
+    vi.mocked(storageService.updateHierarchy).mockImplementation(async (updater) => {
+      await updater({ items: [] });
+    });
   });
 
   it('creates a sample chat with rich markdown, thinking process, and branches', async () => {
     const { createSampleChat } = useSampleChat();
     await createSampleChat();
 
-    // Verify storage call
-    const saveCall = vi.mocked(storageService.saveChat).mock.calls[0];
-    expect(saveCall).toBeDefined();
-    const chat = saveCall![0] as Chat;
-    const index = saveCall![1];
+    // Verify storage calls
+    const contentCall = vi.mocked(storageService.updateChatContent).mock.calls[0];
+    expect(contentCall).toBeDefined();
+    const content = await contentCall![1](null);
 
-    expect(index).toBe(0);
-    expect(chat.title).toBe('🚀 Sample: Tree Showcase');
-    expect(chat.debugEnabled).toBe(true);
+    const metaCall = vi.mocked(storageService.updateChatMeta).mock.calls[0];
+    expect(metaCall).toBeDefined();
+    const meta = await metaCall![1](null);
+    const chatId = metaCall![0];
+
+    expect(chatId).toBeDefined();
+    expect(meta.title).toBe('🚀 Sample: Tree Showcase');
+    expect(meta.debugEnabled).toBe(true);
+
+    expect(storageService.updateHierarchy).toHaveBeenCalled();
 
     // 1. Verify Structure (m1 -> [m2, m3])
-    const rootItems = chat.root.items;
+    const rootItems = content.root.items;
     expect(rootItems).toHaveLength(1);
     const m1 = rootItems[0]!;
     expect(m1.role).toBe('user');
@@ -76,6 +87,6 @@ describe('useSampleChat', () => {
     expect(m3.content).toContain('arrows');
 
     expect(mockLoadChats).toHaveBeenCalled();
-    expect(mockOpenChat).toHaveBeenCalledWith(chat.id);
+    expect(mockOpenChat).toHaveBeenCalledWith(chatId);
   });
 });

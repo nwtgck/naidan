@@ -13,7 +13,6 @@ vi.mock('../services/storage', () => ({
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
-    saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
     loadChatContent: vi.fn().mockResolvedValue(null),
@@ -69,7 +68,6 @@ describe('useChat Model Persistence', () => {
     vi.clearAllMocks();
     mockRootItems.length = 0;
     
-    vi.mocked(storageService.saveChat).mockResolvedValue();
     vi.mocked(storageService.loadChat).mockImplementation((id) => {
       if (currentChat.value?.id === id) return Promise.resolve(currentChat.value);
       return Promise.resolve(null);

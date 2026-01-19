@@ -31,7 +31,6 @@ vi.mock('./synchronizer', () => {
 // Mock providers to avoid real storage access
 const mockProvider = {
   init: vi.fn().mockResolvedValue(undefined),
-  saveChat: vi.fn().mockResolvedValue(undefined),
   saveChatMeta: vi.fn().mockResolvedValue(undefined),
   loadChatMeta: vi.fn().mockResolvedValue(null),
   saveChatContent: vi.fn().mockResolvedValue(undefined),
@@ -76,7 +75,6 @@ describe('StorageService Synchronization Wrapper', () => {
     
     // Restore default mock implementations after reset
     mockWithLock.mockImplementation((fn, _options) => fn());
-    mockProvider.saveChat.mockResolvedValue(undefined);
     mockProvider.saveChatMeta.mockResolvedValue(undefined);
     mockProvider.loadChatMeta.mockResolvedValue(null);
     mockProvider.saveChatContent.mockResolvedValue(undefined);
@@ -92,21 +90,6 @@ describe('StorageService Synchronization Wrapper', () => {
 
     service = new StorageService();
     await service.init('local');
-  });
-
-  it('should wrap saveChat with lock and notify after success', async () => {
-    const chat = { id: 'c1' } as any;
-    await service.saveChat(chat, 0);
-
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
-      lockKey: SYNC_LOCK_KEY,
-      onLockWait: expect.any(Function),
-      onTaskSlow: expect.any(Function),
-      onFinalize: expect.any(Function),
-    }));
-    expect(mockProvider.saveChat).toHaveBeenCalledWith(chat, 0);
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'c1');
-    expect(mockNotify).toHaveBeenCalledWith('chat_content', 'c1');
   });
 
   it('should wrap deleteChat with lock and notify after success', async () => {
@@ -177,19 +160,19 @@ describe('StorageService Synchronization Wrapper', () => {
   });
 
   it('should NOT notify if the operation inside lock fails', async () => {
-    mockProvider.saveChat.mockRejectedValue(new Error('Failed'));
+    mockProvider.saveChatMeta.mockRejectedValue(new Error('Failed'));
 
-    await expect(service.saveChat({ id: 'c1' } as any, 0)).rejects.toThrow('Failed');
+    await expect(service.updateChatMeta('c1', () => ({} as any))).rejects.toThrow('Failed');
 
     expect(mockWithLock).toHaveBeenCalled();
     expect(mockNotify).not.toHaveBeenCalled();
   });
 
   it('should trigger info events via callbacks from withLock', async () => {
-    const chat = { id: 'c1' } as any;
+    const meta = { id: 'c1' } as any;
     
     // Extract the callbacks passed to withLock
-    await service.saveChat(chat, 0);
+    await service.updateChatMeta('c1', () => meta);
     const options = mockWithLock.mock.calls[0]?.[1];
     
     options.onLockWait();
@@ -215,9 +198,9 @@ describe('StorageService Synchronization Wrapper', () => {
 
   it('should report generic storage error via addErrorEvent', async () => {
     const diskError = new Error('Disk full');
-    mockProvider.saveChat.mockRejectedValueOnce(diskError);
+    mockProvider.saveChatMeta.mockRejectedValueOnce(diskError);
 
-    await expect(service.saveChat({ id: 'c1' } as any, 0)).rejects.toThrow(diskError);
+    await expect(service.updateChatMeta('c1', () => ({} as any))).rejects.toThrow(diskError);
 
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
       message: expect.stringContaining('An error occurred'),

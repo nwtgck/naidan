@@ -67,12 +67,7 @@ export abstract class IStorageProvider {
   // --- Persistence Methods ---
   
   /**
-   * @deprecated Use saveChatMeta and saveChatContent for better performance.
-   */
-  abstract saveChat(chat: Chat, index: number): Promise<void>;
-  
-  /**
-   * Saves only the chat metadata (title, model, etc.) to the central index.
+   * Persists chat metadata (title, updated date, etc).
    */
   abstract saveChatMeta(meta: ChatMeta): Promise<void>;
 

@@ -103,7 +103,11 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       debugEnabled: false
     };
     
-    await storageService.saveChat(chat as any, 0);
+    await storageService.updateChatContent(chat.id, () => ({
+      root: chat.root,
+      currentLeafId: undefined
+    } as any));
+    await storageService.updateChatMeta(chat.id, () => chat as any);
     await storageService.updateHierarchy((curr) => {
       curr.items.push({ type: 'chat', id: chat.id });
       return curr;

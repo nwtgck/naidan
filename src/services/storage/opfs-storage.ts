@@ -102,11 +102,6 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   // --- Persistence Implementation ---
 
-  async saveChat(chat: Chat, _index: number): Promise<void> {
-    await this.saveChatContent(chat.id, chat);
-    await this.saveChatMeta(chat);
-  }
-
   async saveChatMeta(meta: ChatMeta): Promise<void> {
     const dto = chatMetaToDto(meta);
     ChatMetaSchemaDto.parse(dto);

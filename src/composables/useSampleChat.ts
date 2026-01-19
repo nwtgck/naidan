@@ -44,7 +44,16 @@ export function useSampleChat() {
       debugEnabled: true,
     };
     
-    await storageService.saveChat(sampleChatObj, 0);
+    await storageService.updateChatContent(sampleChatObj.id, () => ({
+      root: sampleChatObj.root,
+      currentLeafId: sampleChatObj.currentLeafId
+    }));
+    await storageService.updateChatMeta(sampleChatObj.id, () => sampleChatObj);
+    await storageService.updateHierarchy((curr) => {
+      curr.items.push({ type: 'chat', id: sampleChatObj.id });
+      return curr;
+    });
+
     await loadChats();
     await openChat(sampleChatObj.id);
   };

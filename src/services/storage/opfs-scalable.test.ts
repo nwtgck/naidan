@@ -95,7 +95,8 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
 
     // 1. Verify Meta File (Should NOT contain message content)
     const storageDir = mockOpfsRoot.entries.get('naidan_storage') as MockFileSystemDirectoryHandle;
@@ -127,7 +128,8 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
       debugEnabled: true,
     };
 
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
     const loaded = await provider.loadChat(chatId);
 
     expect(loaded).not.toBeNull();
@@ -147,7 +149,8 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
     
     const storageDir = mockOpfsRoot.entries.get('naidan_storage') as MockFileSystemDirectoryHandle;
     const metaDir = storageDir.entries.get('chat_metas') as MockFileSystemDirectoryHandle;

@@ -86,12 +86,6 @@ export class LocalStorageProvider extends IStorageProvider {
 
   // --- Persistence Implementation ---
 
-  async saveChat(chat: Chat, _index: number): Promise<void> {
-    // Index is ignored in new hierarchy-first architecture
-    await this.saveChatContent(chat.id, chat);
-    await this.saveChatMeta(chat);
-  }
-
   async saveChatMeta(meta: ChatMeta): Promise<void> {
     const dto = chatMetaToDto(meta);
     ChatMetaSchemaDto.parse(dto);

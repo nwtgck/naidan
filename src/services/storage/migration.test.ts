@@ -123,7 +123,8 @@ describe('Storage Migration (Round-Trip)', () => {
     await provider.clearAll();
     await provider.saveSettings(mockSettings);
     await provider.saveChatGroup(mockChatGroup);
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
     await provider.saveHierarchy({
       items: [
         { type: 'chat_group', id: mockChatGroup.id, chat_ids: [mockChat.id] }

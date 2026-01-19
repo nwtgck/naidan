@@ -107,20 +107,6 @@ export class StorageService {
 
   // --- Persistence Methods ---
 
-  async saveChat(chat: Chat, index: number): Promise<void> {
-    // Kept for backward compatibility in existing tests
-    try {
-      await this.synchronizer.withLock(async () => {
-        await this.getProvider().saveChat(chat, index);
-      }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('saveChat') });
-      this.synchronizer.notify('chat_meta_and_chat_group', chat.id);
-      this.synchronizer.notify('chat_content', chat.id);
-    } catch (e) {
-      this.handleStorageError(e, 'saveChat');
-      throw e;
-    }
-  }
-
   async updateChatMeta(id: string, updater: (current: ChatMeta | null) => ChatMeta | Promise<ChatMeta>): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {

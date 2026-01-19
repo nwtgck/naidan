@@ -25,7 +25,8 @@ describe('LocalStorageProvider', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
     
     // 1. Verify Meta (Should exist at its own key)
     const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${mockChat.id}`);
@@ -52,7 +53,8 @@ describe('LocalStorageProvider', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
     const loaded = await provider.loadChat(mockChat.id);
     expect(loaded).toEqual(mockChat);
   });
@@ -68,7 +70,8 @@ describe('LocalStorageProvider', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
     await provider.saveHierarchy({ items: [{ type: 'chat', id: mockChat.id }] });
     const list = await provider.listChats();
     expect(list).toHaveLength(1);
@@ -86,7 +89,8 @@ describe('LocalStorageProvider', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
     await provider.deleteChat(mockChat.id);
     const loaded = await provider.loadChat(mockChat.id);
     expect(loaded).toBeNull();
