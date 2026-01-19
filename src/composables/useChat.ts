@@ -1,6 +1,6 @@
 import { ref, computed, shallowRef, reactive, triggerRef } from 'vue';
 import { v7 as uuidv7 } from 'uuid';
-import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, Attachment, MultimodalContent, ChatMessage, Settings, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, Attachment, MultimodalContent, ChatMessage, Settings, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
@@ -322,7 +322,10 @@ export function useChat() {
     }
   };
 
-  const saveChatMeta = async (chat: Chat) => { await storageService.saveChatMeta(chat); };
+  const updateChatMeta = async (id: string, updater: (current: ChatMeta | null) => ChatMeta | Promise<ChatMeta>) => {
+    await storageService.updateChatMeta(id, updater);
+  };
+
   const saveChatContent = async (chat: Chat) => { await storageService.saveChatContent(chat.id, chat); };
 
   const createNewChat = async (chatGroupId: string | null = null, modelId: string | null = null) => {
@@ -339,7 +342,7 @@ export function useChat() {
 
       registerLiveInstance(chatObj);
       await saveChatContent(chatObj);
-      await saveChatMeta(chatObj);
+      await updateChatMeta(chatId, () => chatObj);
 
       await storageService.updateHierarchy((current) => {
         if (chatGroupId) {
@@ -412,7 +415,7 @@ export function useChat() {
       onAction: async () => {
         const originalGroupId = chatData.groupId;
         await saveChatContent(chatData);
-        await saveChatMeta(chatData);
+        await updateChatMeta(chatData.id, () => chatData);
         await storageService.updateHierarchy((curr) => {
           if (originalGroupId) {
             const group = curr.items.find(i => i.type === 'chat_group' && i.id === originalGroupId) as HierarchyChatGroupNode;
@@ -451,21 +454,28 @@ export function useChat() {
     const liveChat = liveChatRegistry.get(id);
     if (liveChat) {
       liveChat.title = newTitle; liveChat.updatedAt = Date.now();
-      await saveChatMeta(liveChat);
+      await updateChatMeta(id, (curr) => {
+        if (!curr) throw new Error('Chat not found');
+        return { ...curr, title: newTitle, updatedAt: Date.now() };
+      });
       if (currentChat.value?.id === id) triggerRef(currentChat);
       await loadData();
       return;
     }
-    const chat = await storageService.loadChat(id);
-    if (chat) {
-      chat.title = newTitle; chat.updatedAt = Date.now();
-      await saveChatMeta(chat);
-      if (currentChat.value?.id === id) {
-        currentChat.value.title = newTitle; currentChat.value.updatedAt = chat.updatedAt;
-        triggerRef(currentChat);
-      }
-      await loadData();
+    
+    await updateChatMeta(id, (meta) => {
+      if (!meta) throw new Error('Chat not found');
+      meta.title = newTitle;
+      meta.updatedAt = Date.now();
+      return meta;
+    });
+
+    if (currentChat.value?.id === id) {
+      currentChat.value.title = newTitle; 
+      currentChat.value.updatedAt = Date.now();
+      triggerRef(currentChat);
     }
+    await loadData();
   };
 
   const generateResponse = async (chat: Chat, assistantId: string) => {
@@ -533,7 +543,10 @@ export function useChat() {
       chat.updatedAt = Date.now();
       
       if (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id) {
-        await saveChatMeta(chat);
+        await updateChatMeta(chat.id, (curr) => {
+          if (!curr) return chat;
+          return { ...curr, updatedAt: chat.updatedAt, currentLeafId: chat.currentLeafId };
+        });
         await loadData();
       }
 
@@ -557,7 +570,10 @@ export function useChat() {
     } finally {
       const isStillActive = activeGenerations.has(chat.id);
       if (isStillActive) {
-        await saveChatMeta(chat);
+        await updateChatMeta(chat.id, (curr) => {
+          if (!curr) return chat;
+          return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
+        });
         activeGenerations.delete(chat.id);
         unregisterLiveInstance(chat.id);
       }
@@ -632,7 +648,10 @@ export function useChat() {
       chat.currentLeafId = assistantMsg.id;
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
       await saveChatContent(chat);
-      await saveChatMeta(chat);
+      await updateChatMeta(chat.id, (curr) => {
+        if (!curr) return chat;
+        return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
+      });
       await generateResponse(chat, assistantMsg.id);
       return true;
     } finally {
@@ -656,7 +675,10 @@ export function useChat() {
       chat.currentLeafId = newAssistantMsg.id;
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
       await saveChatContent(chat);
-      await saveChatMeta(chat);
+      await updateChatMeta(chat.id, (curr) => {
+        if (!curr) return chat;
+        return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
+      });
       await generateResponse(chat, newAssistantMsg.id);
     } finally {
       activeProcessing.delete(chat.id); unregisterLiveInstance(chat.id);
@@ -684,7 +706,10 @@ export function useChat() {
       if (finalTitle && (hadTitleAtStart || chat.title === null)) {
         chat.title = finalTitle;
         if (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id || liveChatRegistry.has(chat.id)) {
-          await saveChatMeta(chat);
+          await updateChatMeta(chat.id, (curr) => {
+            if (!curr) return chat;
+            return { ...curr, title: finalTitle, updatedAt: Date.now() };
+          });
           await loadData();
           if (currentChat.value?.id === chat.id) triggerRef(currentChat);
         }
@@ -722,7 +747,7 @@ export function useChat() {
       });
       registerLiveInstance(newChatObj);
       await saveChatContent(newChatObj);
-      await saveChatMeta(newChatObj);
+      await updateChatMeta(newChatId, () => newChatObj);
       await storageService.updateHierarchy((curr) => {
         const node: HierarchyNode = { type: 'chat', id: newChatId };
         const chatGroupId = chat.groupId;
@@ -783,7 +808,10 @@ export function useChat() {
     const chat = currentChat.value; if (!chat) return;
     chat.debugEnabled = !chat.debugEnabled;
     if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-    await saveChatMeta(chat);
+    await updateChatMeta(chat.id, (curr) => {
+      if (!curr) return chat;
+      return { ...curr, debugEnabled: chat.debugEnabled };
+    });
   };
 
   const createChatGroup = async (name: string) => {
@@ -876,11 +904,11 @@ export function useChat() {
 
   const saveChat = async (chat: Chat) => {
     await saveChatContent(chat);
-    await saveChatMeta(chat);
+    await updateChatMeta(chat.id, () => chat);
   };
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, activeGenerations, generatingTitle, availableModels, fetchingModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, persistSidebarStructure, updateChatGroup, abortChat, saveChatMeta, saveChatContent, moveChatToGroup, saveChat,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, persistSidebarStructure, updateChatGroup, abortChat, updateChatMeta, saveChatContent, moveChatToGroup, saveChat,
   };
 }

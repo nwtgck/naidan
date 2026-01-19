@@ -121,16 +121,22 @@ export class StorageService {
     }
   }
 
-  async saveChatMeta(meta: ChatMeta): Promise<void> {
+  async updateChatMeta(id: string, updater: (current: ChatMeta | null) => ChatMeta | Promise<ChatMeta>): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        await this.getProvider().saveChatMeta(meta);
-      }, { lockKey: LOCK_METADATA, ...this.getLockOptions('saveChatMeta') });
-      this.synchronizer.notify('chat_meta_and_chat_group', meta.id);
+        const current = await this.loadChatMeta(id);
+        const updated = await updater(current);
+        await this.getProvider().saveChatMeta(updated);
+      }, { lockKey: LOCK_METADATA, ...this.getLockOptions('updateChatMeta') });
+      this.synchronizer.notify('chat_meta_and_chat_group', id);
     } catch (e) {
-      this.handleStorageError(e, 'saveChatMeta');
+      this.handleStorageError(e, 'updateChatMeta');
       throw e;
     }
+  }
+
+  async loadChatMeta(id: string): Promise<ChatMeta | null> {
+    return this.getProvider().loadChatMeta(id);
   }
 
   async saveChatContent(id: string, content: ChatContent): Promise<void> {

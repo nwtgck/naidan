@@ -27,9 +27,11 @@ vi.mock('../services/storage', () => ({
       if (!chat) return null;
       return JSON.parse(JSON.stringify(chat));
     }),
-    saveChatMeta: vi.fn().mockImplementation((meta) => {
-      const existing = mocks.mockChatStorage.get(meta.id) || { root: { items: [] } };
-      mocks.mockChatStorage.set(meta.id, { ...existing, ...meta });
+    loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
+    updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
+      const current = mocks.mockChatStorage.get(id) || null;
+      const updated = await updater(current);
+      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
       return Promise.resolve();
     }),
     saveChatContent: vi.fn().mockImplementation((id, content) => {

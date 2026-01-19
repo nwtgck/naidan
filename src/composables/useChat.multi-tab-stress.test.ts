@@ -31,10 +31,16 @@ vi.mock('../services/storage', () => ({
       if (!chat) return null;
       return JSON.parse(JSON.stringify(chat));
     }),
-    saveChatMeta: vi.fn().mockImplementation((meta) => {
-      const existing = mocks.mockChatStorage.get(meta.id) || { root: { items: [] } };
-      mocks.mockChatStorage.set(meta.id, { ...existing, ...meta });
-      if (mocks.mockNotify) mocks.mockNotify({ type: 'chat_meta_and_chat_group', id: meta.id });
+    loadChatMeta: vi.fn().mockImplementation(async (id) => {
+      const chat = mocks.mockChatStorage.get(id);
+      if (!chat) return null;
+      return JSON.parse(JSON.stringify(chat));
+    }),
+    updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
+      const current = mocks.mockChatStorage.get(id) || null;
+      const updated = await updater(current);
+      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
+      if (mocks.mockNotify) mocks.mockNotify({ type: 'chat_meta_and_chat_group', id });
       return Promise.resolve();
     }),
     saveChatContent: vi.fn().mockImplementation((id, content) => {

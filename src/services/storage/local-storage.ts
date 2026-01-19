@@ -155,6 +155,21 @@ export class LocalStorageProvider extends IStorageProvider {
     } catch { return null; }
   }
 
+  async loadChatMeta(id: string): Promise<ChatMeta | null> {
+    const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${id}`);
+    if (!rawMeta) return null;
+    try {
+      const meta = chatMetaToDomain(ChatMetaSchemaDto.parse(JSON.parse(rawMeta)));
+      // Resolve groupId from hierarchy
+      const hierarchy = await this.loadHierarchy();
+      if (hierarchy) {
+        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+        if (group) meta.groupId = group.id;
+      }
+      return meta;
+    } catch { return null; }
+  }
+
   async deleteChat(id: string): Promise<void> {
     localStorage.removeItem(`${KEY_META_PREFIX}${id}`);
     localStorage.removeItem(`${KEY_CONTENT_PREFIX}${id}`);

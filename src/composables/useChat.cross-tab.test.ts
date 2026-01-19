@@ -26,9 +26,11 @@ vi.mock('../services/storage', () => ({
     listChats: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mocks.mockChatStorage.values()).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, groupId: c.groupId })))),
     loadChat: vi.fn().mockImplementation((id) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
     saveChat: vi.fn(),
-    saveChatMeta: vi.fn().mockImplementation((meta) => {
-      const existing = mocks.mockChatStorage.get(meta.id) || {} as Chat;
-      mocks.mockChatStorage.set(meta.id, { ...existing, ...meta });
+    loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
+    updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
+      const current = mocks.mockChatStorage.get(id) || null;
+      const updated = await updater(current);
+      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
       return Promise.resolve();
     }),
     saveChatContent: vi.fn().mockImplementation((id, content) => {
@@ -215,7 +217,7 @@ describe('useChat Cross-Tab Synchronization', () => {
   });
 
   it('should maintain the latest group ID if moved externally while generating', async () => {
-    const { createNewChat, currentChat, activeGenerations, saveChatMeta } = useChat();
+    const { createNewChat, currentChat, activeGenerations, updateChatMeta } = useChat();
     await createNewChat();
     const chat = currentChat.value!;
     const chatId = chat.id;
@@ -236,13 +238,13 @@ describe('useChat Cross-Tab Synchronization', () => {
     await nextTick();
     
     expect(chat.groupId).toBe('group-x');
-    await saveChatMeta(chat);
+    await updateChatMeta(chatId, () => chat);
     expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('group-x');
     activeGenerations.delete(chatId);
   });
 
   it('should maintain group ID if hierarchy changed externally without specific chat ID', async () => {
-    const { createNewChat, currentChat, activeGenerations, saveChatMeta } = useChat();
+    const { createNewChat, currentChat, activeGenerations, updateChatMeta } = useChat();
     await createNewChat();
     const chatId = currentChat.value!.id;
     activeGenerations.set(chatId, { controller: new AbortController(), chat: currentChat.value! });
@@ -254,7 +256,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     await nextTick();
     
     expect(currentChat.value?.groupId).toBe('ge');
-    await saveChatMeta(currentChat.value!);
+    await updateChatMeta(chatId, () => currentChat.value!);
     expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('ge');
     activeGenerations.delete(chatId);
   });

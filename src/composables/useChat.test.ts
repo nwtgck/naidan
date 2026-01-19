@@ -15,7 +15,7 @@ vi.mock('../services/storage', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
-    saveChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
     saveChatContent: vi.fn(),
     updateHierarchy: vi.fn(),
     loadHierarchy: vi.fn(),
@@ -78,7 +78,7 @@ describe('useChat Composable Logic', () => {
     clearEvents();
     
     // Setup persistence mocks
-    vi.mocked(storageService.saveChatMeta).mockResolvedValue(undefined);
+    vi.mocked(storageService.updateChatMeta).mockResolvedValue(undefined);
     vi.mocked(storageService.saveChatContent).mockResolvedValue(undefined);
     vi.mocked(storageService.updateChatGroup).mockResolvedValue(undefined);
 
@@ -130,7 +130,11 @@ describe('useChat Composable Logic', () => {
     vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
     
     await renameChat('1', 'New');
-    expect(storageService.saveChatMeta).toHaveBeenCalledWith(expect.objectContaining({ id: '1', title: 'New' }));
+    expect(storageService.updateChatMeta).toHaveBeenCalled();
+    const [id, updater] = vi.mocked(storageService.updateChatMeta).mock.calls[0]!;
+    expect(id).toBe('1');
+    const result = await (updater as any)({ id: '1', title: 'Old' });
+    expect(result.title).toBe('New');
   });
 
   it('should fork a chat up to a specific message', async () => {
@@ -161,10 +165,11 @@ describe('useChat Composable Logic', () => {
     const newId = await forkChat(currentChat.value!, 'm1');
 
     expect(newId).toBeDefined();
-    expect(storageService.saveChatMeta).toHaveBeenCalledWith(expect.objectContaining({
-      title: 'Fork of Original',
-      currentLeafId: 'm1',
-    }));
+    expect(storageService.updateChatMeta).toHaveBeenCalledWith(newId, expect.any(Function));
+    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(c => c[0] === newId)![1];
+    const result = await (updater as any)({});
+    expect(result.title).toBe('Fork of Original');
+    expect(result.currentLeafId).toBe('m1');
     expect(storageService.updateHierarchy).toHaveBeenCalled();
   });
 
@@ -226,7 +231,8 @@ describe('useChat Composable Logic', () => {
     const clonedNode = savedContent?.root.items[0];
     expect(clonedNode?.attachments).toEqual([att]);
     
-    const savedMeta = vi.mocked(storageService.saveChatMeta).mock.calls.find(call => (call[0] as Chat).id === newId)?.[0] as Chat;
+    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => call[0] === newId)?.[1];
+    const savedMeta = await (updater as any)({});
     expect(savedMeta?.modelId).toBe('special-model');
   });
 
@@ -719,7 +725,7 @@ describe('useChat Composable Logic', () => {
     expect(chatStore.generatingTitle.value).toBe(false);
     
     expect(currentChat.value.title).toBe('Paris Title');
-    expect(storageService.saveChatMeta).toHaveBeenCalled();
+    expect(storageService.updateChatMeta).toHaveBeenCalled();
   });
 
   it('should update the title even if it is already set when generateChatTitle is called', async () => {
@@ -742,7 +748,7 @@ describe('useChat Composable Logic', () => {
     await generateChatTitle(currentChat.value!);
     
     expect(currentChat.value.title).toBe('New Better Title');
-    expect(storageService.saveChatMeta).toHaveBeenCalled();
+    expect(storageService.updateChatMeta).toHaveBeenCalled();
   });
 
   it('should set currentChat to loaded chat in openChat, or null if not found', async () => {

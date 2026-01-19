@@ -14,23 +14,32 @@ vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
-    listChats: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mockChatStorage.values()))),
+    listChats: vi.fn().mockImplementation(() => {
+      return Promise.resolve(Array.from(mockChatStorage.values()).map(c => {
+        const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(c.id));
+        return { ...c, groupId: group?.id || null };
+      }));
+    }),
     loadChat: vi.fn().mockImplementation(async (id) => {
       const chat = mockChatStorage.get(id);
       if (!chat) return null;
-      const cloned = JSON.parse(JSON.stringify(chat));
-      // Simulate resolver in loadChat
-      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && (i as any).chat_ids.includes(id));
-      cloned.groupId = group ? group.id : null;
-      return cloned;
+      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+      return { ...chat, groupId: group?.id || null };
     }),
     saveChat: vi.fn().mockImplementation((chat) => {
       mockChatStorage.set(chat.id, JSON.parse(JSON.stringify(chat)));
       return Promise.resolve();
     }),
-    saveChatMeta: vi.fn().mockImplementation((meta) => {
-      const existing = mockChatStorage.get(meta.id) || { root: { items: [] } };
-      mockChatStorage.set(meta.id, JSON.parse(JSON.stringify({ ...existing, ...meta })));
+    loadChatMeta: vi.fn().mockImplementation(async (id) => {
+      const chat = mockChatStorage.get(id);
+      if (!chat) return null;
+      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+      return { ...chat, groupId: group?.id || null };
+    }),
+    updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
+      const current = mockChatStorage.get(id) || null;
+      const updated = await updater(current);
+      mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
       return Promise.resolve();
     }),
     saveChatContent: vi.fn().mockImplementation((id, content) => {
@@ -225,7 +234,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatA = currentChat.value!;
     const chatAId = chatA.id;
     chatA.title = 'Original Title';
-    await storageService.saveChatMeta(chatA);
+    await storageService.updateChatMeta(chatAId, () => chatA);
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
@@ -323,7 +332,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatA = currentChat.value!;
     const chatAId = chatA.id;
     chatA.title = 'Original';
-    await storageService.saveChatMeta(chatA);
+    await storageService.updateChatMeta(chatAId, () => chatA);
 
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);

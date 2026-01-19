@@ -33,6 +33,7 @@ const mockProvider = {
   init: vi.fn().mockResolvedValue(undefined),
   saveChat: vi.fn().mockResolvedValue(undefined),
   saveChatMeta: vi.fn().mockResolvedValue(undefined),
+  loadChatMeta: vi.fn().mockResolvedValue(null),
   saveChatContent: vi.fn().mockResolvedValue(undefined),
   deleteChat: vi.fn().mockResolvedValue(undefined),
   saveChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -76,6 +77,7 @@ describe('StorageService Synchronization Wrapper', () => {
     mockWithLock.mockImplementation((fn, _options) => fn());
     mockProvider.saveChat.mockResolvedValue(undefined);
     mockProvider.saveChatMeta.mockResolvedValue(undefined);
+    mockProvider.loadChatMeta.mockResolvedValue(null);
     mockProvider.saveChatContent.mockResolvedValue(undefined);
     mockProvider.deleteChat.mockResolvedValue(undefined);
     mockProvider.saveChatGroup.mockResolvedValue(undefined);
@@ -223,13 +225,15 @@ describe('StorageService Synchronization Wrapper', () => {
 
   // --- New Atomic APIs (Granular Locking) ---
 
-  it('should wrap saveChatMeta with metadata lock and notify', async () => {
+  it('should wrap updateChatMeta with metadata lock and notify', async () => {
     const meta = { id: 'c1' } as any;
-    await service.saveChatMeta(meta);
+    const updater = vi.fn().mockResolvedValue(meta);
+    await service.updateChatMeta('c1', updater);
 
     expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
       lockKey: LOCK_METADATA,
     }));
+    expect(updater).toHaveBeenCalled();
     expect(mockProvider.saveChatMeta).toHaveBeenCalledWith(meta);
     expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'c1');
   });

@@ -12,7 +12,7 @@ vi.mock('../services/storage', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: (...args: any[]) => mockSaveChat(...args),
-    saveChatMeta: vi.fn().mockResolvedValue(undefined),
+    updateChatMeta: vi.fn(), loadChatMeta: vi.fn().mockResolvedValue(undefined),
     saveChatContent: vi.fn().mockResolvedValue(undefined),
     updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),

@@ -150,6 +150,23 @@ export class OPFSStorageProvider extends IStorageProvider {
     } catch { return null; }
   }
 
+  async loadChatMeta(id: string): Promise<ChatMeta | null> {
+    try {
+      const metaDir = await this.getDir('chat_metas');
+      const metaFile = await (await metaDir.getFileHandle(`${id}.json`)).getFile();
+      const meta = chatMetaToDomain(ChatMetaSchemaDto.parse(JSON.parse(await metaFile.text())));
+
+      // Resolve groupId from hierarchy
+      const hierarchy = await this.loadHierarchy();
+      if (hierarchy) {
+        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+        if (group) meta.groupId = group.id;
+      }
+
+      return meta;
+    } catch { return null; }
+  }
+
   async deleteChat(id: string): Promise<void> {
     try {
       const metaDir = await this.getDir('chat_metas');
