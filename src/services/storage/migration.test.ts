@@ -113,7 +113,7 @@ describe('Storage Migration (Round-Trip)', () => {
     await provider.init();
     await provider.clearAll();
     await provider.saveSettings(mockSettings);
-    await provider.saveChatGroup(mockChatGroup, 0);
+    await provider.saveChatGroup(mockChatGroup);
     // Link chat to chat group to test relationships? 
     // For simplicity, just saving them individually first.
     // Ideally we should test the relationship preservation but DTOs handle IDs.

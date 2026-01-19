@@ -12,6 +12,7 @@ import type {
   StorageTypeDto,
   AttachmentDto,
   HierarchyDto,
+  ChatContentDto,
 } from './dto';
 import type { 
   Role, 
@@ -313,7 +314,7 @@ export const buildSidebarItemsFromHierarchy = (
             id: `chat:${cid}`, 
             type: 'chat' as const, 
             chat: { ...chatMetaToSummary(m), groupId: group.id } 
-          };
+          } as SidebarItem;
         })
         .filter((i): i is SidebarItem => i !== null);
 

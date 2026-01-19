@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat, findRestorationIndex, type AddToastOptions } from './useChat';
 import { storageService } from '../services/storage';
 import { reactive, nextTick, triggerRef } from 'vue';
-import type { Chat, MessageNode, SidebarItem, ChatGroup, Attachment, Hierarchy, HierarchyNode, HierarchyChatGroupNode, ChatContent } from '../models/types';
+import type { Chat, MessageNode, SidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, ChatContent } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 
 // Mock storage service state
@@ -78,9 +78,9 @@ describe('useChat Composable Logic', () => {
     clearEvents();
     
     // Setup persistence mocks to actually update mockHierarchy
-    vi.mocked(storageService.saveChatMeta).mockResolvedValue(Promise.resolve());
-    vi.mocked(storageService.saveChatContent).mockResolvedValue(Promise.resolve());
-    vi.mocked(storageService.saveChatGroup).mockResolvedValue(Promise.resolve());
+    vi.mocked(storageService.saveChatMeta).mockResolvedValue(undefined);
+    vi.mocked(storageService.saveChatContent).mockResolvedValue(undefined);
+    vi.mocked(storageService.saveChatGroup).mockResolvedValue(undefined);
 
     vi.mocked(storageService.loadHierarchy).mockImplementation(() => Promise.resolve(mockHierarchy));
 

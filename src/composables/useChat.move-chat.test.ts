@@ -24,14 +24,14 @@ vi.mock('../services/storage', () => ({
       };
       const updated = await updater(currentH as any);
       // Map back to sidebar structure for the test to see the changes after loadChats()
-      const newSidebar = updated.items.map(node => {
+      const newSidebar = updated.items.map((node: any) => {
         if (node.type === 'chat') return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0 } };
         return { 
           id: `chat_group:${node.id}`, 
           type: 'chat_group', 
           chatGroup: { 
             id: node.id, name: 'Group', isCollapsed: false, updatedAt: 0,
-            items: node.chat_ids.map(cid => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0 } }))
+            items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0 } }))
           } 
         };
       });

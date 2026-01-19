@@ -57,7 +57,6 @@ describe('useChat Reactivity', () => {
       modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      order: 0,
       debugEnabled: false,
     });
   });

@@ -1,30 +1,27 @@
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, Hierarchy } from '../../models/types';
 import { 
-  SettingsSchemaDto, 
-  ChatMetaSchemaDto,
-  ChatContentSchemaDto,
-  ChatGroupSchemaDto,
-  HierarchySchemaDto,
-  type ChatGroupDto, 
   type ChatMetaDto,
-  type ChatContentDto,
+  type ChatGroupDto,
   type HierarchyDto,
   type MigrationChunkDto,
+  ChatMetaSchemaDto,
+  ChatGroupSchemaDto,
+  SettingsSchemaDto,
+  HierarchySchemaDto,
+  ChatContentSchemaDto,
 } from '../../models/dto';
 import { 
   chatToDomain,
   chatToDto,
+  chatGroupToDomain,
+  chatGroupToDto,
   settingsToDomain,
   settingsToDto,
-  chatGroupToDto,
-  chatGroupToDomain,
+  hierarchyToDomain,
   chatMetaToDto,
   chatContentToDto,
-  hierarchyToDto,
-  hierarchyToDomain,
   buildSidebarItemsFromHierarchy,
-} from '../../models/mappers';
-import { IStorageProvider } from './interface';
+} from '../../models/mappers';import { IStorageProvider } from './interface';
 
 import { STORAGE_KEY_PREFIX } from '../../models/constants';
 
@@ -266,15 +263,30 @@ export class LocalStorageProvider extends IStorageProvider {
   async restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void> {
     await this.clearAll();
     for await (const chunk of stream) {
-      if (chunk.type === 'settings') {
+      const type = chunk.type;
+      switch (type) {
+      case 'settings':
         await this.saveSettings(settingsToDomain(chunk.data));
-      } else if (chunk.type === 'hierarchy') {
+        break;
+      case 'hierarchy':
         await this.saveHierarchy(chunk.data);
-      } else if (chunk.type === 'chat_group') {
+        break;
+      case 'chat_group':
         await this.saveChatGroup(chatGroupToDomain(chunk.data));
-      } else if (chunk.type === 'chat') {
-        await this.saveChatContent(chunk.data.id, chunk.data as any);
-        await this.saveChatMeta(chunk.data as any);
+        break;
+      case 'chat': {
+        const domainChat = chatToDomain(chunk.data);
+        await this.saveChatContent(domainChat.id, domainChat);
+        await this.saveChatMeta(domainChat);
+        break;
+      }
+      case 'attachment':
+        // LocalStorage does not support binary attachments, skip
+        break;
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unknown chunk type: ${_ex}`);
+      }
       }
     }
   }

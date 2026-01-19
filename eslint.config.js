@@ -62,7 +62,7 @@ import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-in
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'public/**'],
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

@@ -27,13 +27,13 @@ vi.mock('../services/storage', () => ({
       // which calls getSidebarStructure(). 
       // So we just need to make getSidebarStructure return the updated structure.
       vi.mocked(storageService.getSidebarStructure).mockImplementation(async () => {
-        return updated.items.map(node => {
+        return updated.items.map((node: any) => {
           if (node.type === 'chat') {
             return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: node.id === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } };
           }
           return { 
             id: `chat_group:${node.id}`, type: 'chat_group', 
-            chatGroup: { id: node.id, name: 'G1', isCollapsed: false, updatedAt: 0, items: node.chat_ids.map(cid => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: cid === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } })) }
+            chatGroup: { id: node.id, name: 'G1', isCollapsed: false, updatedAt: 0, items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: cid === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } })) }
           };
         }) as any;
       });

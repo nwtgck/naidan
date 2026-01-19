@@ -4,7 +4,6 @@ import type { Chat } from '../../models/types';
 
 import { STORAGE_KEY_PREFIX } from '../../models/constants';
 
-const KEY_HIERARCHY = `${STORAGE_KEY_PREFIX}lsp:hierarchy`;
 const KEY_META_PREFIX = `${STORAGE_KEY_PREFIX}lsp:chat_meta:`;
 
 describe('LocalStorageProvider', () => {

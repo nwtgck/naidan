@@ -1,6 +1,5 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, MessageNode, ChatMeta, ChatContent, Hierarchy } from '../../models/types';
-import type { ChatMetaDto, ChatGroupDto, MigrationChunkDto, HierarchyDto } from '../../models/dto';
-import { buildSidebarItemsFromHierarchy } from '../../models/mappers';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent } from '../../models/types';
+import type { MigrationChunkDto, ChatMetaDto, ChatGroupDto, HierarchyDto } from '../../models/dto';
 
 export type { ChatSummary };
 

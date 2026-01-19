@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '../services/storage';
-import type { Chat, SidebarItem, ChatSummary, Hierarchy, HierarchyNode } from '../models/types';
+import type { Chat, SidebarItem, ChatSummary, Hierarchy } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
-import { reactive, nextTick } from 'vue';
+import { nextTick } from 'vue';
 
 // --- Mocks ---
 

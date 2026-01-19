@@ -20,11 +20,12 @@ import {
   type MigrationChunkDto,
   type SettingsDto,
   type ChatDto,
+  type ChatGroupDto,
   type MessageNodeDto,
   type AttachmentDto,
   type HierarchyDto
 } from '../../models/dto';
-import { settingsToDomain, hierarchyToDomain, hierarchyToDto } from '../../models/mappers';
+import { settingsToDomain } from '../../models/mappers';
 import { useGlobalEvents } from '../../composables/useGlobalEvents';
 import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode } from '../../models/types';
 
@@ -186,7 +187,8 @@ export class ImportExportService {
         if (result.success) {
           const dto = result.data;
           stats.chatGroupsCount++;
-          chatGroupsMap.set(dto.id, { id: dto.id, name: dto.name, updatedAt: dto.updatedAt, items: [], isCollapsed: dto.isCollapsed, _order: (json as any).order ?? 0 });
+          const json = JSON.parse(await zip.file(filename)!.async('string'));
+          chatGroupsMap.set(dto.id, { id: dto.id, name: dto.name, updatedAt: dto.updatedAt, items: [], isCollapsed: dto.isCollapsed, _order: (json as { order?: number }).order ?? 0 });
         }
       } catch (e) { /* Ignore */ }
     }
@@ -196,7 +198,7 @@ export class ImportExportService {
     if (metasFile) {
       try {
         const metasContent = await metasFile.async('string');
-        const metasJson = JSON.parse(metasContent);
+        const metasJson = JSON.parse(metasContent) as { entries: unknown[] };
         if (metasJson.entries && Array.isArray(metasJson.entries)) {
           for (const meta of metasJson.entries) {
             const result = ChatMetaSchemaDto.safeParse(meta);
@@ -207,7 +209,7 @@ export class ImportExportService {
               const contentFile = zip.file(`${rootPath}chat_contents/${dto.id}.json`);
               if (contentFile) {
                 try {
-                  const contentJson = JSON.parse(await contentFile.async('string'));
+                  const contentJson = JSON.parse(await contentFile.async('string')) as { root?: { items?: unknown[] } };
                   messageCount = contentJson.root?.items?.length ?? 0;
                 } catch (e) { /* Ignore */ }
               }
@@ -216,8 +218,8 @@ export class ImportExportService {
                 title: dto.title, 
                 updatedAt: dto.updatedAt, 
                 messageCount, 
-                _groupId: (meta as any).groupId ?? null, 
-                _order: (meta as any).order ?? 0 
+                _groupId: (meta as { groupId?: string | null }).groupId ?? null, 
+                _order: (meta as { order?: number }).order ?? 0 
               });
             }
           }
@@ -280,7 +282,7 @@ export class ImportExportService {
       group.items.sort((a, b) => (a._order ?? 0) - (b._order ?? 0));
       items.push({ type: 'chat_group', data: group });
     }
-    items.sort((a, b) => (a.data as any)._order - (b.data as any)._order);
+    items.sort((a, b) => ((a.data as { _order?: number })._order ?? 0) - ((b.data as { _order?: number })._order ?? 0));
   }
 
   /**

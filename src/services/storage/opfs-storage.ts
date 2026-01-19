@@ -1,32 +1,27 @@
 import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, Hierarchy } from '../../models/types';
 import { 
-  SettingsSchemaDto,
-  ChatMetaSchemaDto,
-  ChatContentSchemaDto,
-  ChatGroupSchemaDto,
-  HierarchySchemaDto,
-  type ChatGroupDto, 
-  type ChatDto, 
   type ChatMetaDto,
-  type ChatContentDto,
+  type ChatGroupDto,
   type HierarchyDto,
   type MigrationChunkDto,
-  type MessageNodeDto,
+  ChatMetaSchemaDto,
+  ChatGroupSchemaDto,
+  SettingsSchemaDto,
+  HierarchySchemaDto,
+  ChatContentSchemaDto,
 } from '../../models/dto';
 import { 
   chatToDomain,
   chatToDto,
+  chatGroupToDomain,
+  chatGroupToDto,
   settingsToDomain,
   settingsToDto,
-  chatGroupToDto,
-  chatGroupToDomain,
+  hierarchyToDomain,
   chatMetaToDto,
   chatContentToDto,
-  hierarchyToDto,
-  hierarchyToDomain,
   buildSidebarItemsFromHierarchy,
-} from '../../models/mappers';
-import { IStorageProvider } from './interface';
+} from '../../models/mappers';import { IStorageProvider } from './interface';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>;
@@ -308,15 +303,22 @@ export class OPFSStorageProvider extends IStorageProvider {
     await this.clearAll();
     await this.init();
     for await (const chunk of stream) {
-      switch (chunk.type) {
+      const type = chunk.type;
+      switch (type) {
       case 'settings': await this.saveSettings(settingsToDomain(chunk.data)); break;
       case 'hierarchy': await this.saveHierarchy(chunk.data); break;
       case 'chat_group': await this.saveChatGroup(chatGroupToDomain(chunk.data)); break;
-      case 'chat': 
-        await this.saveChatContent(chunk.data.id, chunk.data as any);
-        await this.saveChatMeta(chunk.data as any);
+      case 'chat': {
+        const domainChat = chatToDomain(chunk.data);
+        await this.saveChatContent(domainChat.id, domainChat);
+        await this.saveChatMeta(domainChat);
         break;
+      }
       case 'attachment': await this.saveFile(chunk.blob, chunk.attachmentId, chunk.originalName); break;
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unknown chunk type: ${_ex}`);
+      }
       }
     }
   }

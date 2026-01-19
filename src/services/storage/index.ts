@@ -267,66 +267,64 @@ export class StorageService {
           newProvider = new LocalStorageProvider();
         }
 
-        try {
-          await newProvider.init();
+        await newProvider.init();
           
-          const oldType = this.currentType;
-          this.provider = newProvider;
-          this.currentType = type;
+        const oldType = this.currentType;
+        this.provider = newProvider;
+        this.currentType = type;
 
-          // Define a wrapper generator to rescue memory blobs during migration
-          const migrationStream = async function* (this: StorageService): AsyncGenerator<MigrationChunkDto> {
-            for await (const chunk of oldProvider.dump()) {
-              if (chunk.type === 'chat' && newProvider.canPersistBinary) {
-                const chat = await oldProvider.loadChat(chunk.data.id);
-                if (!chat) { yield chunk; continue; }
+        // Define a wrapper generator to rescue memory blobs during migration
+        const migrationStream = async function* (this: StorageService): AsyncGenerator<MigrationChunkDto> {
+          for await (const chunk of oldProvider.dump()) {
+            if (chunk.type === 'chat' && newProvider.canPersistBinary) {
+              const chat = await oldProvider.loadChat(chunk.data.id);
+              if (!chat) { yield chunk; continue; }
 
-                const rescued: MigrationChunkDto[] = [];
-                const findAndRescue = (nodes: MessageNode[]) => {
-                  for (const node of nodes) {
-                    if (node.attachments) {
-                      for (let i = 0; i < node.attachments.length; i++) {
-                        const att = node.attachments[i]!;
-                        if (att.status === 'memory' && att.blob) {
-                          rescued.push({
-                            type: 'attachment',
-                            chatId: chat.id,
-                            attachmentId: att.id,
-                            originalName: att.originalName,
-                            mimeType: att.mimeType,
-                            size: att.size,
-                            uploadedAt: att.uploadedAt,
-                            blob: att.blob
-                          });
-                          // Update status to persisted for the new storage
-                          node.attachments[i] = { ...att, status: 'persisted' } as any;
-                        }
+              const rescued: MigrationChunkDto[] = [];
+              const findAndRescue = (nodes: MessageNode[]) => {
+                for (const node of nodes) {
+                  if (node.attachments) {
+                    for (let i = 0; i < node.attachments.length; i++) {
+                      const att = node.attachments[i]!;
+                      if (att.status === 'memory' && att.blob) {
+                        rescued.push({
+                          type: 'attachment',
+                          chatId: chat.id,
+                          attachmentId: att.id,
+                          originalName: att.originalName,
+                          mimeType: att.mimeType,
+                          size: att.size,
+                          uploadedAt: att.uploadedAt,
+                          blob: att.blob
+                        });
+                        // Update status to persisted for the new storage
+                        node.attachments[i] = { ...att, status: 'persisted' as const };
                       }
                     }
-                    if (node.replies?.items) findAndRescue(node.replies.items);
                   }
-                };
-                findAndRescue(chat.root.items);
-                for (const r of rescued) yield r;
-                yield { type: 'chat', data: chatToDto(chat) };
-              } else {
-                yield chunk;
-              }
+                  if (node.replies?.items) findAndRescue(node.replies.items);
+                }
+              };
+              findAndRescue(chat.root.items);
+              for (const r of rescued) yield r;
+              yield { type: 'chat', data: chatToDto(chat) };
+            } else {
+              yield chunk;
             }
-          };
+          }
+        };
 
-          try {
-            await newProvider.restore(migrationStream.call(this));
-          } catch (e) {
-            this.provider = oldProvider;
-            this.currentType = oldType;
-            throw e;
-          }
+        try {
+          await newProvider.restore(migrationStream.call(this));
+        } catch (e) {
+          this.provider = oldProvider;
+          this.currentType = oldType;
+          throw e;
+        }
           
-          if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
-          }
-        } catch (error) { throw error; }
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
+        }
       }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('switchProvider', { notifyLockWaitAfterMs: 5000 }) });
 
       this.synchronizer.notify('migration');

@@ -54,7 +54,6 @@ describe('ImportExportService', () => {
     title: 'Test Chat',
     updatedAt: 1000,
     createdAt: 1000,
-    order: 0,
     debugEnabled: false,
     ...overrides
   });
@@ -162,10 +161,10 @@ describe('ImportExportService', () => {
       const zip = new JSZip();
       zip.file('export_manifest.json', '{}');
       
-      const groupDto: ChatGroupDto = { id: UUID_G1, name: 'General', order: 0, updatedAt: 1000, isCollapsed: false };
+      const groupDto: ChatGroupDto = { id: UUID_G1, name: 'General', updatedAt: 1000, isCollapsed: false };
       zip.folder('chat_groups')!.file(`${UUID_G1}.json`, JSON.stringify(groupDto));
       
-      const chatMeta = createValidChatMetaDto({ id: UUID_C1, title: 'Old Title', groupId: UUID_G1 });
+      const chatMeta = createValidChatMetaDto({ id: UUID_C1, title: 'Old Title' });
       zip.file('chat_metas.json', JSON.stringify({ entries: [chatMeta] }));
       zip.folder('chat_contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
 
@@ -254,10 +253,10 @@ describe('ImportExportService', () => {
       const now = Date.now();
       zip.file('export_manifest.json', JSON.stringify({ app_version: '1.0' }));
       
-      zip.folder('chat_groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', order: 0, updatedAt: now, isCollapsed: false }));
+      zip.folder('chat_groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', updatedAt: now, isCollapsed: false }));
       zip.file('chat_metas.json', JSON.stringify({ entries: [
-        { id: UUID_C1, title: 'C1', groupId: UUID_G1, order: 0, updatedAt: now, createdAt: now },
-        { id: UUID_C2, title: 'C2', groupId: null, order: 1, updatedAt: now, createdAt: now },
+        { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: now, createdAt: now },
+        { id: UUID_C2, title: 'C2', groupId: null, updatedAt: now, createdAt: now },
         { id: 'invalid-uuid', title: 'Broken' }
       ] }));
       

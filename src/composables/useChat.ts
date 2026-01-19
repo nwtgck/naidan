@@ -1,6 +1,6 @@
 import { ref, computed, shallowRef, reactive, triggerRef } from 'vue';
 import { v7 as uuidv7 } from 'uuid';
-import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, Attachment, MultimodalContent, ChatMessage, Settings, EndpointType, Hierarchy, HierarchyNode } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, Attachment, MultimodalContent, ChatMessage, Settings, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
@@ -51,7 +51,7 @@ function syncLiveInstancesWithSidebar() {
   sync(rootItems.value, null);
 }
 
-let sidebarReloadTimeout: any = null;
+let sidebarReloadTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastSidebarReload = 0;
 const debouncedSidebarReload = () => {
   if (sidebarReloadTimeout) clearTimeout(sidebarReloadTimeout);
@@ -342,10 +342,6 @@ export function useChat() {
       await saveChatMeta(chatObj);
 
       await storageService.updateHierarchy((current) => {
-        const newItem: HierarchyNode = chatGroupId 
-          ? { type: 'chat_group', id: chatGroupId, chat_ids: [] } // Handled below
-          : { type: 'chat', id: chatId };
-
         if (chatGroupId) {
           const group = current.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
           if (group) group.chat_ids.unshift(chatId);
@@ -551,7 +547,9 @@ export function useChat() {
             const { useToast } = await import('./useToast');
             const { addToast } = useToast();
             addToast({ message: `Generation failed in "${chat.title || 'New Chat'}"`, actionLabel: 'View', onAction: () => openChat(chat.id), });
-          } catch (toastErr) {}
+          } catch (toastErr) {
+            // Ignore toast errors if component is being unmounted
+          }
         }
       }
     } finally {
@@ -844,7 +842,7 @@ export function useChat() {
 
   const moveChatToGroup = async (chatId: string, targetGroupId: string | null) => {
     await storageService.updateHierarchy((curr) => {
-      const node: HierarchyChatNode = { type: 'chat', id: chatId };
+      const node: HierarchyNode = { type: 'chat', id: chatId };
       curr.items = curr.items.filter(i => {
         if (i.type === 'chat' && i.id === chatId) return false;
         if (i.type === 'chat_group') i.chat_ids = i.chat_ids.filter(id => id !== chatId);

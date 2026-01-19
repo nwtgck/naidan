@@ -1,4 +1,4 @@
-import { SYNC_SIGNAL_KEY, SYNC_LOCK_KEY } from '../../models/constants';
+import { SYNC_SIGNAL_KEY } from '../../models/constants';
 
 type ChangeType = 
   | 'chat_meta_and_chat_group' 

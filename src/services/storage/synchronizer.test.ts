@@ -137,11 +137,11 @@ describe('StorageSynchronizer', () => {
   describe('Signaling', () => {
     it('should notify via localStorage', () => {
       const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
-      synchronizer.notify('chat', '123');
+      synchronizer.notify('chat_content', '123');
 
       expect(setItemSpy).toHaveBeenCalledWith(
         SYNC_SIGNAL_KEY,
-        expect.stringContaining('"type":"chat"')
+        expect.stringContaining('"type":"chat_content"')
       );
       expect(setItemSpy).toHaveBeenCalledWith(
         SYNC_SIGNAL_KEY,
@@ -153,7 +153,7 @@ describe('StorageSynchronizer', () => {
       const listener = vi.fn();
       synchronizer.subscribe(listener);
 
-      const eventData = { type: 'chat', id: '456', timestamp: Date.now() };
+      const eventData = { type: 'chat_content', id: '456', timestamp: Date.now() };
       
       // Simulate storage event from another window
       const storageEvent = new StorageEvent('storage', {
@@ -163,7 +163,7 @@ describe('StorageSynchronizer', () => {
       window.dispatchEvent(storageEvent);
 
       expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-        type: 'chat',
+        type: 'chat_content',
         id: '456'
       }));
     });
@@ -174,7 +174,7 @@ describe('StorageSynchronizer', () => {
       synchronizer.subscribe(l1);
       synchronizer.subscribe(l2);
 
-      const eventData = { type: 'chat', timestamp: Date.now() };
+      const eventData = { type: 'chat_content', timestamp: Date.now() };
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
         newValue: JSON.stringify(eventData)
@@ -222,7 +222,7 @@ describe('StorageSynchronizer', () => {
 
       const storageEvent = new StorageEvent('storage', {
         key: 'unrelated-key',
-        newValue: JSON.stringify({ type: 'chat' })
+        newValue: JSON.stringify({ type: 'chat_content' })
       });
       window.dispatchEvent(storageEvent);
 

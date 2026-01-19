@@ -83,12 +83,11 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
   });
 
   it('Stress: Tab A streaming chunks should not cause Tab B to reload Chat 100 times', async () => {
-    const chatStoreA = useChat();
     const chatStoreB = useChat();
 
     const chat1: Chat = { 
       id: 'c1', title: 'C1', 
-      root: { items: [{ id: 'm1', role: 'user', content: 'Hi', replies: { items: [{ id: 'a1', role: 'assistant', content: '', replies: { items: [] } }] }, timestamp: 0 }] },
+      root: { items: [{ id: 'm1', role: 'user', content: 'Hi', replies: { items: [{ id: 'a1', role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, timestamp: 0 }] },
       createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: 'a1'
     };
     mocks.mockChatStorage.set('c1', chat1);
@@ -136,8 +135,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
       activeSaves--;
     });
 
-    const chatStore = useChat();
-    const chat: Chat = { id: 'c1', title: 'T', root: { items: [{ id: 'a1', role: 'assistant', content: '', replies: { items: [] } }] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const chat: Chat = { id: 'c1', title: 'T', root: { items: [{ id: 'a1', role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
     
     vi.useRealTimers();
 
@@ -145,6 +143,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
       let lastSave = 0;
       let isSaving = false;
       const assistantNode = chat.root.items[0];
+      if (!assistantNode) throw new Error('Assistant node not found');
 
       for (let i = 0; i < 10; i++) {
         assistantNode.content += 'word ';
