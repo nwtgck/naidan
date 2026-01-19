@@ -34,10 +34,10 @@ vi.mock('../services/storage', () => ({
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
       return Promise.resolve();
     }),
-    saveChatContent: vi.fn().mockImplementation((id, content) => {
-      // PROVING THE BUG: A realistic storage provider just overwrites
-      // unless there is specialized merge logic (which we don't have yet).
-      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(content)));
+    updateChatContent: vi.fn().mockImplementation(async (id, updater) => {
+      const current = mocks.mockChatStorage.get(id) || null;
+      const updated = await updater(current);
+      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
       return Promise.resolve();
     }),
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(JSON.parse(JSON.stringify(mocks.mockHierarchy)))),
@@ -81,18 +81,21 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
    * BUG PROOF: This test demonstrates that two tabs editing the same chat 
    * will result in data loss because useChat uses a local Read-Modify-Write cycle.
    * 
-   * TODO: Fix this by implementing storageService.updateChatContent(id, (current) => ...)
+   * Fixed by implementing storageService.updateChatContent(id, (current) => ...)
    * and using it in regenerateMessage, editMessage, and sendMessage.
    */
-  it.skip('Scenario: Two tabs branching from the same message simultaneously (EXPECTED TO FAIL - BUG PROOF)', async () => {
+  it('Scenario: Two tabs branching from the same message simultaneously', async () => {
     const chatStoreA = useChat();
     const chatStoreB = useChat();
 
-    // Setup Chat 1 with one user message
+    // Setup Chat 1 with one user message and one assistant message
     const chat1: Chat = { 
       id: 'c1', title: 'C1', 
-      root: { items: [{ id: 'm1', role: 'user', content: 'Hi', replies: { items: [] }, timestamp: 0 }] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: 'm1'
+      root: { items: [{ 
+        id: 'm1', role: 'user', content: 'Hi', timestamp: 0,
+        replies: { items: [{ id: 'm2', role: 'assistant', content: 'Hello', replies: { items: [] }, timestamp: 0 }] } 
+      }] },
+      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: 'm2'
     };
     mocks.mockChatStorage.set('c1', chat1);
 
@@ -100,24 +103,20 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     await chatStoreA.openChat('c1');
     await chatStoreB.openChat('c1');
 
-    // 1. Tab A adds a branch (Branch A). It modifies its local currentChat and calls saveChatContent.
-    await chatStoreA.regenerateMessage('m1'); 
+    // 1. Tab A adds a branch (Branch A). It modifies its local currentChat and calls updateChatContent.
+    await chatStoreA.regenerateMessage('m2'); 
     const chatAfterA = mocks.mockChatStorage.get('c1');
-    expect(chatAfterA.root.items[0].replies.items).toHaveLength(1);
-    const branchAId = chatAfterA.root.items[0].replies.items[0].id;
+    expect(chatAfterA.root.items[0].replies.items).toHaveLength(2);
+    const branchAId = chatAfterA.root.items[0].replies.items[1].id;
 
     // 2. Tab B adds a branch (Branch B). 
-    // CRITICAL: Tab B still has the OLD local copy (where m1 has 0 replies).
-    // When it adds Branch B, its local tree becomes m1 -> [Branch B].
-    // When it saves, it OVERWRITES Tab A's save.
-    await chatStoreB.regenerateMessage('m1');
+    await chatStoreB.regenerateMessage('m2');
 
     // 3. Verification: Branch A is lost.
     const finalChat = mocks.mockChatStorage.get('c1');
     
-    // If the bug is present, this will be 1 (Tab B's branch only)
-    // If fixed, this should be 2.
-    expect(finalChat.root.items[0].replies.items).toHaveLength(2);
+    // If fixed, this should be 3 (original m2 + Tab A's branch + Tab B's branch).
+    expect(finalChat.root.items[0].replies.items).toHaveLength(3);
     expect(finalChat.root.items[0].replies.items.map((i: any) => i.id)).toContain(branchAId);
   });
 
@@ -138,9 +137,11 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     // 1. Tab B starts generating (Slow)
     let resolveGen: () => void;
     const genP = new Promise<void>(r => resolveGen = r);
-    vi.mocked(storageService.saveChatContent).mockImplementation(async (id, content) => {
+    vi.mocked(storageService.updateChatContent).mockImplementation(async (id, updater) => {
       await genP;
-      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(content)));
+      const current = mocks.mockChatStorage.get(id) || null;
+      const updated = await updater(current);
+      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
     });
 
     const sendP = chatStoreB.sendMessage('Reply to me');

@@ -139,14 +139,20 @@ export class StorageService {
     return this.getProvider().loadChatMeta(id);
   }
 
-  async saveChatContent(id: string, content: ChatContent): Promise<void> {
+  async loadChatContent(id: string): Promise<ChatContent | null> {
+    return this.getProvider().loadChatContent(id);
+  }
+
+  async updateChatContent(id: string, updater: (current: ChatContent | null) => ChatContent | Promise<ChatContent>): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        await this.getProvider().saveChatContent(id, content);
-      }, { lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${id}`, ...this.getLockOptions('saveChatContent') });
+        const current = await this.loadChatContent(id);
+        const updated = await updater(current);
+        await this.getProvider().saveChatContent(id, updated);
+      }, { lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${id}`, ...this.getLockOptions('updateChatContent') });
       this.synchronizer.notify('chat_content', id);
     } catch (e) {
-      this.handleStorageError(e, 'saveChatContent');
+      this.handleStorageError(e, 'updateChatContent');
       throw e;
     }
   }

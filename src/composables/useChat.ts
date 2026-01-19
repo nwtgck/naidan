@@ -1,6 +1,6 @@
 import { ref, computed, shallowRef, reactive, triggerRef } from 'vue';
 import { v7 as uuidv7 } from 'uuid';
-import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, Attachment, MultimodalContent, ChatMessage, Settings, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, Settings, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
@@ -326,7 +326,9 @@ export function useChat() {
     await storageService.updateChatMeta(id, updater);
   };
 
-  const saveChatContent = async (chat: Chat) => { await storageService.saveChatContent(chat.id, chat); };
+  const updateChatContent = async (id: string, updater: (current: ChatContent | null) => ChatContent | Promise<ChatContent>) => {
+    await storageService.updateChatContent(id, updater);
+  };
 
   const createNewChat = async (chatGroupId: string | null = null, modelId: string | null = null) => {
     if (creatingChat.value) return null;
@@ -341,7 +343,7 @@ export function useChat() {
       });
 
       registerLiveInstance(chatObj);
-      await saveChatContent(chatObj);
+      await updateChatContent(chatId, () => ({ root: chatObj.root, currentLeafId: chatObj.currentLeafId }));
       await updateChatMeta(chatId, () => chatObj);
 
       await storageService.updateHierarchy((current) => {
@@ -414,7 +416,7 @@ export function useChat() {
       actionLabel: 'Undo',
       onAction: async () => {
         const originalGroupId = chatData.groupId;
-        await saveChatContent(chatData);
+        await updateChatContent(chatData.id, () => ({ root: chatData.root, currentLeafId: chatData.currentLeafId }));
         await updateChatMeta(chatData.id, () => chatData);
         await storageService.updateHierarchy((curr) => {
           if (originalGroupId) {
@@ -528,7 +530,11 @@ export function useChat() {
         if (now - lastSave > 500 && !isSaving) {
           isSaving = true;
           try {
-            await saveChatContent(chat);
+            await updateChatContent(chat.id, (current) => ({
+              ...current,
+              root: chat.root,
+              currentLeafId: chat.currentLeafId
+            }));
             lastSave = Date.now();
           } finally {
             isSaving = false;
@@ -537,7 +543,11 @@ export function useChat() {
       }, resolved.lmParameters, headers, controller.signal);
 
       // Ensure the final state is saved after streaming completes
-      await saveChatContent(chat);
+      await updateChatContent(chat.id, (current) => ({
+        ...current,
+        root: chat.root,
+        currentLeafId: chat.currentLeafId
+      }));
 
       processThinking(assistantNode);
       chat.updatedAt = Date.now();
@@ -647,7 +657,11 @@ export function useChat() {
 
       chat.currentLeafId = assistantMsg.id;
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-      await saveChatContent(chat);
+      await updateChatContent(chat.id, (current) => ({
+        ...current,
+        root: chat.root,
+        currentLeafId: chat.currentLeafId
+      }));
       await updateChatMeta(chat.id, (curr) => {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
@@ -674,7 +688,11 @@ export function useChat() {
       parent.replies.items.push(newAssistantMsg);
       chat.currentLeafId = newAssistantMsg.id;
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-      await saveChatContent(chat);
+      await updateChatContent(chat.id, (current) => ({
+        ...current,
+        root: chat.root,
+        currentLeafId: chat.currentLeafId
+      }));
       await updateChatMeta(chat.id, (curr) => {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
@@ -746,7 +764,7 @@ export function useChat() {
         modelId: chat.modelId, // Explicitly carry over modelId
       });
       registerLiveInstance(newChatObj);
-      await saveChatContent(newChatObj);
+      await updateChatContent(newChatId, () => ({ root: newChatObj.root, currentLeafId: newChatObj.currentLeafId }));
       await updateChatMeta(newChatId, () => newChatObj);
       await storageService.updateHierarchy((curr) => {
         const node: HierarchyNode = { type: 'chat', id: newChatId };
@@ -780,7 +798,11 @@ export function useChat() {
       if (parent) parent.replies.items.push(correctedNode);
       else chat.root.items.push(correctedNode);
       chat.currentLeafId = correctedNode.id;
-      await saveChatContent(chat);
+      await updateChatContent(chat.id, (current) => ({
+        ...current,
+        root: chat.root,
+        currentLeafId: chat.currentLeafId
+      }));
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
     } else {
       const parent = findParentInBranch(chat.root.items, messageId);
@@ -794,7 +816,11 @@ export function useChat() {
     if (node) {
       chat.currentLeafId = findDeepestLeaf(node).id;
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-      await saveChatContent(chat);
+      await updateChatContent(chat.id, (current) => ({
+        ...current,
+        root: chat.root,
+        currentLeafId: chat.currentLeafId
+      }));
     }
   };
 
@@ -903,12 +929,16 @@ export function useChat() {
   };
 
   const saveChat = async (chat: Chat) => {
-    await saveChatContent(chat);
+    await updateChatContent(chat.id, (current) => ({
+      ...current,
+      root: chat.root,
+      currentLeafId: chat.currentLeafId
+    }));
     await updateChatMeta(chat.id, () => chat);
   };
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, activeGenerations, generatingTitle, availableModels, fetchingModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, persistSidebarStructure, updateChatGroup, abortChat, updateChatMeta, saveChatContent, moveChatToGroup, saveChat,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, persistSidebarStructure, updateChatGroup, abortChat, updateChatMeta, updateChatContent, moveChatToGroup, saveChat,
   };
 }

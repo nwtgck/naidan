@@ -36,6 +36,11 @@ vi.mock('../services/storage', () => ({
       if (!chat) return null;
       return JSON.parse(JSON.stringify(chat));
     }),
+    loadChatContent: vi.fn().mockImplementation(async (id) => {
+      const chat = mocks.mockChatStorage.get(id);
+      if (!chat) return null;
+      return JSON.parse(JSON.stringify({ root: chat.root, currentLeafId: chat.currentLeafId }));
+    }),
     updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
       const current = mocks.mockChatStorage.get(id) || null;
       const updated = await updater(current);
@@ -43,8 +48,14 @@ vi.mock('../services/storage', () => ({
       if (mocks.mockNotify) mocks.mockNotify({ type: 'chat_meta_and_chat_group', id });
       return Promise.resolve();
     }),
-    saveChatContent: vi.fn().mockImplementation((id, content) => {
-      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(content)));
+    updateChatContent: vi.fn().mockImplementation(async (id, updater) => {
+      const currentFull = mocks.mockChatStorage.get(id) || null;
+      const currentContent = currentFull ? { root: currentFull.root, currentLeafId: currentFull.currentLeafId } : null;
+      const updatedContent = await updater(currentContent);
+      
+      const updatedFull = currentFull ? { ...currentFull, ...updatedContent } : { id, ...updatedContent };
+      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updatedFull)));
+      
       if (mocks.mockNotify) mocks.mockNotify({ type: 'chat_content', id });
       return Promise.resolve();
     }),
@@ -105,7 +116,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
       const now = i * 100;
       vi.setSystemTime(now);
       if (i % 5 === 0 || i === 49) { 
-        await storageService.saveChatContent('c1', chat1);
+        await storageService.updateChatContent('c1', () => ({ root: chat1.root, currentLeafId: chat1.currentLeafId }));
       }
     }
 
@@ -129,11 +140,11 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
     expect(chatStoreB.currentChat.value?.id).toBe('c1');
   });
 
-  it('Stress: should not queue multiple overlapping saveChatContent calls during streaming', async () => {
+  it('Stress: should not queue multiple overlapping updateChatContent calls during streaming', async () => {
     // 1. Setup a slow save operation
     let activeSaves = 0;
     let maxConcurrentSaves = 0;
-    vi.mocked(storageService.saveChatContent).mockImplementation(async () => {
+    vi.mocked(storageService.updateChatContent).mockImplementation(async () => {
       activeSaves++;
       maxConcurrentSaves = Math.max(maxConcurrentSaves, activeSaves);
       // Simulate a real delay
@@ -158,7 +169,11 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
         if (now - lastSave > 10 && !isSaving) {
           isSaving = true;
           try {
-            await storageService.saveChatContent(chat.id, chat);
+            await storageService.updateChatContent(chat.id, (current) => ({
+              ...current,
+              root: chat.root,
+              currentLeafId: chat.currentLeafId
+            }));
             lastSave = Date.now();
           } finally {
             isSaving = false;

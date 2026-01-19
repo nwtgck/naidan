@@ -20,6 +20,7 @@ import {
   chatMetaToDto,
   chatMetaToDomain,
   chatContentToDto,
+  chatContentToDomain,
   buildSidebarItemsFromHierarchy,
 } from '../../models/mappers';import { IStorageProvider } from './interface';
 
@@ -167,6 +168,32 @@ export class LocalStorageProvider extends IStorageProvider {
         if (group) meta.groupId = group.id;
       }
       return meta;
+    } catch { return null; }
+  }
+
+  async loadChatContent(id: string): Promise<ChatContent | null> {
+    const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${id}`);
+    if (!rawContent) return null;
+    try {
+      const dto = ChatContentSchemaDto.parse(JSON.parse(rawContent));
+      const content = chatContentToDomain(dto);
+      
+      const restoreBlobs = (nodes: MessageNode[]) => {
+        for (const node of nodes) {
+          if (node.attachments) {
+            for (const att of node.attachments) {
+              if (att.status === 'memory') {
+                const cached = this.blobCache.get(att.id);
+                if (cached) (att as unknown as { blob: Blob }).blob = cached;
+              }
+            }
+          }
+          if (node.replies?.items) restoreBlobs(node.replies.items);
+        }
+      };
+      restoreBlobs(content.root.items);
+
+      return content;
     } catch { return null; }
   }
 

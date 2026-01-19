@@ -21,6 +21,7 @@ import {
   chatMetaToDto,
   chatMetaToDomain,
   chatContentToDto,
+  chatContentToDomain,
   buildSidebarItemsFromHierarchy,
 } from '../../models/mappers';import { IStorageProvider } from './interface';
 
@@ -164,6 +165,15 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
 
       return meta;
+    } catch { return null; }
+  }
+
+  async loadChatContent(id: string): Promise<ChatContent | null> {
+    try {
+      const contentDir = await this.getDir('chat_contents');
+      const contentFile = await (await contentDir.getFileHandle(`${id}.json`)).getFile();
+      const dto = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
+      return chatContentToDomain(dto);
     } catch { return null; }
   }
 

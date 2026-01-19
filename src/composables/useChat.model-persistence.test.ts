@@ -15,7 +15,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    saveChatContent: vi.fn(),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
+    loadChatContent: vi.fn().mockResolvedValue(null),
     updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     deleteChat: vi.fn(),
@@ -114,11 +115,13 @@ describe('useChat Model Persistence', () => {
     expect(activeMessages.value[3]?.content).toContain('Response from gpt-4');
 
     // 5. Verify storage was called with correct modelIds in the tree
-    expect(storageService.saveChatContent).toHaveBeenCalled();
-    const lastSavedChat = vi.mocked(storageService.saveChatContent).mock.calls[vi.mocked(storageService.saveChatContent).mock.calls.length - 1]![1] as Chat;
+    expect(storageService.updateChatContent).toHaveBeenCalled();
+    const lastCall = vi.mocked(storageService.updateChatContent).mock.calls[vi.mocked(storageService.updateChatContent).mock.calls.length - 1];
+    const updater = lastCall![1];
+    const lastSavedContent = await (updater as any)(null);
     
     // Path: root -> user1 -> assistant1 (gpt-3.5) -> user2 -> assistant2 (gpt-4)
-    const assistant1 = lastSavedChat.root.items[0]?.replies.items[0];
+    const assistant1 = lastSavedContent.root.items[0]?.replies.items[0];
     const assistant2 = assistant1?.replies.items[0]?.replies.items[0];
     
     expect(assistant1?.modelId).toBe('gpt-3.5-turbo');

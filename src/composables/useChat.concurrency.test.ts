@@ -36,13 +36,13 @@ vi.mock('../services/storage', () => ({
       const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
       return { ...chat, groupId: group?.id || null };
     }),
-    updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(async  (id, updater) => {
       const current = mockChatStorage.get(id) || null;
       const updated = await updater(current);
       mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
       return Promise.resolve();
     }),
-    saveChatContent: vi.fn().mockImplementation((id, content) => {
+    updateChatContent: vi.fn().mockImplementation( (_id, updater) => Promise.resolve(updater(null))).mockImplementation((id, content) => {
       const existing = mockChatStorage.get(id);
       if (existing) mockChatStorage.set(id, JSON.parse(JSON.stringify({ ...existing, ...content })));
       return Promise.resolve();

@@ -297,6 +297,11 @@ export const chatContentToDto = (domain: ChatContent): ChatContentDto => ({
   currentLeafId: domain.currentLeafId,
 });
 
+export const chatContentToDomain = (dto: ChatContentDto): ChatContent => ({
+  root: { items: dto.root.items.map(messageNodeToDomain) },
+  currentLeafId: dto.currentLeafId,
+});
+
 export const chatToDto = (domain: Chat): ChatDto => {
   const { 
     id, title, root, currentLeafId, createdAt, updatedAt, 

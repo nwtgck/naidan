@@ -83,6 +83,7 @@ export abstract class IStorageProvider {
 
   abstract loadChat(id: string): Promise<Chat | null>;
   abstract loadChatMeta(id: string): Promise<ChatMeta | null>;
+  abstract loadChatContent(id: string): Promise<ChatContent | null>;
   abstract deleteChat(id: string): Promise<void>;
   
   abstract saveChatGroup(chatGroup: ChatGroup): Promise<void>;

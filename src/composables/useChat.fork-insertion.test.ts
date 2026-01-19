@@ -12,7 +12,9 @@ vi.mock('../services/storage', () => ({
     getSidebarStructure: vi.fn(),
     saveChat: vi.fn().mockResolvedValue(undefined),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    saveChatContent: vi.fn(),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => {
+      return Promise.resolve(updater(null)) as any;
+    }),
     updateHierarchy: vi.fn().mockImplementation(async (updater) => {
       const chat = useChat();
       const currentH = {

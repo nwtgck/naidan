@@ -35,6 +35,7 @@ const mockProvider = {
   saveChatMeta: vi.fn().mockResolvedValue(undefined),
   loadChatMeta: vi.fn().mockResolvedValue(null),
   saveChatContent: vi.fn().mockResolvedValue(undefined),
+  loadChatContent: vi.fn().mockResolvedValue(null),
   deleteChat: vi.fn().mockResolvedValue(undefined),
   saveChatGroup: vi.fn().mockResolvedValue(undefined),
   loadChatGroup: vi.fn().mockResolvedValue(null),
@@ -79,6 +80,7 @@ describe('StorageService Synchronization Wrapper', () => {
     mockProvider.saveChatMeta.mockResolvedValue(undefined);
     mockProvider.loadChatMeta.mockResolvedValue(null);
     mockProvider.saveChatContent.mockResolvedValue(undefined);
+    mockProvider.loadChatContent.mockResolvedValue(null);
     mockProvider.deleteChat.mockResolvedValue(undefined);
     mockProvider.saveChatGroup.mockResolvedValue(undefined);
     mockProvider.loadChatGroup.mockResolvedValue(null);
@@ -238,13 +240,15 @@ describe('StorageService Synchronization Wrapper', () => {
     expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'c1');
   });
 
-  it('should wrap saveChatContent with specific chat lock and notify', async () => {
+  it('should wrap updateChatContent with specific chat lock and notify', async () => {
     const content = { root: { items: [] } } as any;
-    await service.saveChatContent('c1', content);
+    const updater = vi.fn().mockResolvedValue(content);
+    await service.updateChatContent('c1', updater);
 
     expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
       lockKey: `${LOCK_CHAT_CONTENT_PREFIX}c1`,
     }));
+    expect(updater).toHaveBeenCalled();
     expect(mockProvider.saveChatContent).toHaveBeenCalledWith('c1', content);
     expect(mockNotify).toHaveBeenCalledWith('chat_content', 'c1');
   });

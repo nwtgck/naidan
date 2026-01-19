@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat, findRestorationIndex, type AddToastOptions } from './useChat';
 import { storageService } from '../services/storage';
 import { reactive, nextTick, triggerRef } from 'vue';
-import type { Chat, MessageNode, SidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, ChatContent } from '../models/types';
+import type { Chat, MessageNode, SidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 
 // Mock storage service state
@@ -16,7 +16,7 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    saveChatContent: vi.fn(),
+    updateChatContent: vi.fn(),
     updateHierarchy: vi.fn(),
     loadHierarchy: vi.fn(),
     deleteChat: vi.fn(),
@@ -79,7 +79,9 @@ describe('useChat Composable Logic', () => {
     
     // Setup persistence mocks
     vi.mocked(storageService.updateChatMeta).mockResolvedValue(undefined);
-    vi.mocked(storageService.saveChatContent).mockResolvedValue(undefined);
+    vi.mocked(storageService.updateChatContent).mockImplementation((_id, updater) => {
+      return Promise.resolve(updater(null)) as any;
+    });
     vi.mocked(storageService.updateChatGroup).mockResolvedValue(undefined);
 
     vi.mocked(storageService.loadHierarchy).mockImplementation(() => Promise.resolve(mockHierarchy));
@@ -227,7 +229,9 @@ describe('useChat Composable Logic', () => {
     
     const newId = await forkChat(currentChat.value!, 'm1');
 
-    const savedContent = vi.mocked(storageService.saveChatContent).mock.calls[0]?.[1] as ChatContent;
+    const updaterCall = vi.mocked(storageService.updateChatContent).mock.calls.find(call => call[0] === newId);
+    const contentUpdater = updaterCall?.[1];
+    const savedContent = await (contentUpdater as any)(null);
     const clonedNode = savedContent?.root.items[0];
     expect(clonedNode?.attachments).toEqual([att]);
     
