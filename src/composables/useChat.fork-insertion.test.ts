@@ -11,6 +11,33 @@ vi.mock('../services/storage', () => ({
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     getSidebarStructure: vi.fn(),
     saveChat: vi.fn().mockResolvedValue(undefined),
+    saveChatMeta: vi.fn(),
+    saveChatContent: vi.fn(),
+    updateHierarchy: vi.fn().mockImplementation(async (updater) => {
+      const chat = useChat();
+      const currentH = {
+        items: chat.rootItems.value.map(item => {
+          if (item.type === 'chat') return { type: 'chat', id: item.chat.id };
+          return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
+        })
+      };
+      const updated = await updater(currentH as any);
+      
+      // We don't really need to map back to rootItems here because forkChat calls loadData()
+      // which calls getSidebarStructure(). 
+      // So we just need to make getSidebarStructure return the updated structure.
+      vi.mocked(storageService.getSidebarStructure).mockImplementation(async () => {
+        return updated.items.map(node => {
+          if (node.type === 'chat') {
+            return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: node.id === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } };
+          }
+          return { 
+            id: `chat_group:${node.id}`, type: 'chat_group', 
+            chatGroup: { id: node.id, name: 'G1', isCollapsed: false, updatedAt: 0, items: node.chat_ids.map(cid => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: cid === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } })) }
+          };
+        }) as any;
+      });
+    }),
     loadChat: vi.fn(),
     saveChatGroup: vi.fn().mockResolvedValue(undefined),
     listChats: vi.fn().mockResolvedValue([]),

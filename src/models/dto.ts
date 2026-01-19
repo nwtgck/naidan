@@ -43,9 +43,8 @@ export type SystemPromptDto = z.infer<typeof SystemPromptSchemaDto>;
 // --- Grouping ---
 
 export const ChatGroupSchemaDto = z.object({
-  id: z.uuid(),
+  id: z.string().uuid(),
   name: z.string(),
-  order: z.number(),
   updatedAt: z.number(),
   isCollapsed: z.boolean().default(false),
 
@@ -55,6 +54,28 @@ export const ChatGroupSchemaDto = z.object({
   lmParameters: LmParametersSchemaDto.optional(),
 });
 export type ChatGroupDto = z.infer<typeof ChatGroupSchemaDto>;
+
+// --- Hierarchy (Structural Source of Truth) ---
+
+export const HierarchyChatNodeSchemaDto = z.object({
+  type: z.literal('chat'),
+  id: z.string().uuid(),
+});
+
+export const HierarchyChatGroupNodeSchemaDto = z.object({
+  type: z.literal('chat_group'),
+  id: z.string().uuid(),
+  chat_ids: z.array(z.string().uuid()),
+});
+
+export const HierarchySchemaDto = z.object({
+  items: z.array(z.union([
+    HierarchyChatNodeSchemaDto,
+    HierarchyChatGroupNodeSchemaDto
+  ])),
+});
+
+export type HierarchyDto = z.infer<typeof HierarchySchemaDto>;
 
 // --- Tree-based Message Structure (Recursive) ---
 
@@ -71,7 +92,7 @@ export const AttachmentSchemaDto = z.object({
 export type AttachmentDto = z.infer<typeof AttachmentSchemaDto>;
 
 export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() => z.object({
-  id: z.uuid(),
+  id: z.string().uuid(),
   role: RoleSchemaDto,
   content: z.string(),
   attachments: z.array(AttachmentSchemaDto).optional(),
@@ -101,21 +122,18 @@ export type MessageNodeDto = {
 /**
  * Chat Metadata
  * Contains all attributes except the heavy message tree.
- * Stored in a bundled file for fast sidebar rendering.
  */
 export const ChatMetaSchemaDto = z.object({
-  id: z.uuid(),
+  id: z.string().uuid(),
   title: z.string().nullable(),
-  groupId: z.uuid().nullable().optional(),
-  order: z.number().default(0),
   updatedAt: z.number(),
   createdAt: z.number(),
   debugEnabled: z.boolean().optional().default(false),
   
   endpoint: EndpointSchemaDto.optional(),
   modelId: z.string().optional(),
-  originChatId: z.uuid().optional(),
-  originMessageId: z.uuid().optional(),
+  originChatId: z.string().uuid().optional(),
+  originMessageId: z.string().uuid().optional(),
 
   systemPrompt: SystemPromptSchemaDto.optional(),
   lmParameters: LmParametersSchemaDto.optional(),
@@ -124,9 +142,7 @@ export const ChatMetaSchemaDto = z.object({
 export type ChatMetaDto = z.infer<typeof ChatMetaSchemaDto>;
 
 /**
- * Chat Meta Index
- * The top-level object stored in chat_metas.json.
- * Uses an object wrapper for better extensibility.
+ * Chat Meta Index (Legacy/Bulk operations)
  */
 export const ChatMetaIndexSchemaDto = z.object({
   entries: z.array(ChatMetaSchemaDto),
@@ -141,7 +157,7 @@ export type ChatMetaIndexDto = z.infer<typeof ChatMetaIndexSchemaDto>;
  */
 export const ChatContentSchemaDto = z.object({
   root: MessageBranchSchemaDto,
-  currentLeafId: z.uuid().optional(),
+  currentLeafId: z.string().uuid().optional(),
 });
 
 export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
@@ -152,7 +168,7 @@ export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
  */
 export const ChatSchemaDto = ChatMetaSchemaDto.extend({
   root: MessageBranchSchemaDto.optional(),
-  currentLeafId: z.uuid().optional(),
+  currentLeafId: z.string().uuid().optional(),
   
   // Legacy support field
   messages: z.array(z.unknown()).optional(),
@@ -190,10 +206,10 @@ export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
  * Migration Data Chunk
  * 
  * Represents a single unit of data during storage migration.
- * Still uses ChatDto (Combined) for simplicity during export/import processes.
  */
 export type MigrationChunkDto = 
   | { type: 'settings'; data: SettingsDto }
+  | { type: 'hierarchy'; data: HierarchyDto }
   | { type: 'chat_group'; data: ChatGroupDto }
   | { type: 'chat'; data: ChatDto }
     | { 
@@ -206,4 +222,3 @@ export type MigrationChunkDto =
         uploadedAt: number;
         blob: Blob 
       };
-  

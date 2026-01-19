@@ -8,14 +8,19 @@ vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
-    saveChat: vi.fn().mockResolvedValue(undefined),
     loadChat: vi.fn(),
+    saveChat: vi.fn(),
+    saveChatMeta: vi.fn(),
+    saveChatContent: vi.fn(),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     saveSettings: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     listChatGroups: vi.fn().mockResolvedValue([]),
   },
 }));
+
 
 const mockOpenAIChat = vi.fn();
 const mockOllamaChat = vi.fn();

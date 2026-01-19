@@ -12,9 +12,17 @@ vi.mock('../services/storage', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: (...args: any[]) => mockSaveChat(...args),
+    saveChatMeta: vi.fn().mockResolvedValue(undefined),
+    saveChatContent: vi.fn().mockResolvedValue(undefined),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadChat: (...args: any[]) => mockLoadChat(...args),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     saveChatGroup: vi.fn(),
+    listChats: vi.fn().mockResolvedValue([]),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    deleteChat: vi.fn(),
+    deleteChatGroup: vi.fn(),
   },
 }));
 

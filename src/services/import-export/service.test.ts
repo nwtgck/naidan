@@ -36,6 +36,7 @@ describe('ImportExportService', () => {
       saveSettings: vi.fn(),
       listChats: vi.fn(),
       listChatGroups: vi.fn(),
+      loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     } as any;
     service = new ImportExportService(mockStorage);
   });

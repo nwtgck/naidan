@@ -12,6 +12,31 @@ vi.mock('../services/storage', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
+    saveChatMeta: vi.fn(),
+    saveChatContent: vi.fn(),
+    updateHierarchy: vi.fn().mockImplementation(async (updater) => {
+      const chat = useChat();
+      const currentH = {
+        items: chat.rootItems.value.map(item => {
+          if (item.type === 'chat') return { type: 'chat', id: item.chat.id };
+          return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
+        })
+      };
+      const updated = await updater(currentH as any);
+      // Map back to sidebar structure for the test to see the changes after loadChats()
+      const newSidebar = updated.items.map(node => {
+        if (node.type === 'chat') return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0 } };
+        return { 
+          id: `chat_group:${node.id}`, 
+          type: 'chat_group', 
+          chatGroup: { 
+            id: node.id, name: 'Group', isCollapsed: false, updatedAt: 0,
+            items: node.chat_ids.map(cid => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0 } }))
+          } 
+        };
+      });
+      mockGetSidebarStructure.mockResolvedValue(newSidebar);
+    }),
     deleteChat: vi.fn(),
     saveChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),

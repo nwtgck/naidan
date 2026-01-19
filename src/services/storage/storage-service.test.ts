@@ -9,6 +9,9 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
     loadChat: vi.fn().mockResolvedValue(null),
     listChats: vi.fn().mockResolvedValue([]),
     clearAll: vi.fn().mockResolvedValue(undefined),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    saveHierarchy: vi.fn().mockResolvedValue(undefined),
+    canPersistBinary: false,
   },
   mockOpfsProvider: {
     init: vi.fn().mockResolvedValue(undefined),
@@ -16,6 +19,9 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
     restore: vi.fn(),
     loadChat: vi.fn().mockResolvedValue(null),
     clearAll: vi.fn().mockResolvedValue(undefined),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    saveHierarchy: vi.fn().mockResolvedValue(undefined),
+    canPersistBinary: true,
   },
 }));
 
@@ -44,7 +50,7 @@ describe('StorageService Initialization Protection', () => {
 
   it('should throw error when a domain method is called before init', async () => {
     const freshService = new (storageService.constructor as any)();
-    await expect(freshService.listChats()).rejects.toThrow('StorageService not initialized');
+    await expect(freshService.loadHierarchy()).rejects.toThrow('StorageService not initialized');
   });
 });
 

@@ -1,6 +1,10 @@
 import { SYNC_SIGNAL_KEY, SYNC_LOCK_KEY } from '../../models/constants';
 
-type ChangeType = 'chat' | 'chat_group' | 'settings' | 'sidebar' | 'migration';
+type ChangeType = 
+  | 'chat_meta_and_chat_group' 
+  | 'chat_content' 
+  | 'settings' 
+  | 'migration';
 
 export interface StorageChangeEvent {
   type: ChangeType;
@@ -52,18 +56,20 @@ export class StorageSynchronizer {
   async withLock<T>(
     fn: () => Promise<T>, 
     { 
+      lockKey,
       notifyLockWaitAfterMs = 3000, 
       notifyTaskSlowAfterMs = 5000,
       onLockWait,
       onTaskSlow,
       onFinalize
     }: { 
+      lockKey: string;
       notifyLockWaitAfterMs?: number;
       notifyTaskSlowAfterMs?: number;
       onLockWait?: () => void;
       onTaskSlow?: () => void;
       onFinalize?: () => void;
-    } = {}
+    }
   ): Promise<T> {
     let wasSlow = false;
 
@@ -75,7 +81,7 @@ export class StorageSynchronizer {
       }, notifyLockWaitAfterMs);
 
       try {
-        return await navigator.locks.request(SYNC_LOCK_KEY, async () => {
+        return await navigator.locks.request(lockKey, async () => {
           clearTimeout(lockTimer);
 
           // 2. Monitor Task Execution

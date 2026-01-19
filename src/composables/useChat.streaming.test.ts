@@ -6,18 +6,19 @@ const mockRootItems: any[] = [];
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
-    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockResolvedValue([]),
-    loadChat: vi.fn().mockResolvedValue(null),
-    saveChat: vi.fn().mockResolvedValue(undefined),
-    deleteChat: vi.fn().mockResolvedValue(undefined),
+    loadChat: vi.fn(),
+    saveChat: vi.fn(),
+    saveChatMeta: vi.fn(),
+    saveChatContent: vi.fn(),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    deleteChat: vi.fn(),
     saveChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
     deleteChatGroup: vi.fn(),
-    canPersistBinary: true,
-    getFile: vi.fn(),
-    saveFile: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
   },
 }));
 

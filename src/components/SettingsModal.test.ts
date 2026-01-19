@@ -1,3 +1,8 @@
+// Mock the dynamic import for licenses
+vi.mock('../assets/licenses.json', () => ({
+  default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }]
+}));
+
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
@@ -83,12 +88,17 @@ vi.mock('../services/storage', () => ({
     getCurrentType: vi.fn(),
     switchProvider: vi.fn().mockResolvedValue(undefined),
     hasAttachments: vi.fn().mockResolvedValue(false),
+    saveChat: vi.fn(),
+    saveChatMeta: vi.fn(),
+    saveChatContent: vi.fn(),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    loadChat: vi.fn(),
+    listChats: vi.fn().mockResolvedValue([]),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    saveChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
   },
-}));
-
-// Mock the dynamic import for licenses
-vi.mock('../assets/licenses.json', () => ({
-  default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }]
 }));
 
 // --- Tests ---

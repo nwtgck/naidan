@@ -1,6 +1,6 @@
 import { ref, computed, shallowRef, reactive, triggerRef } from 'vue';
 import { v7 as uuidv7 } from 'uuid';
-import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, Attachment, MultimodalContent, ChatMessage, Settings, EndpointType } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, Attachment, MultimodalContent, ChatMessage, Settings, EndpointType, Hierarchy, HierarchyNode } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
@@ -11,8 +11,6 @@ const rootItems = ref<SidebarItem[]>([]);
 const currentChat = shallowRef<Chat | null>(null);
 const currentChatGroup = shallowRef<ChatGroup | null>(null);
 
-// Registry for chats with active background tasks (streaming, titling, etc.)
-// This ensures we keep the reactive instance alive and synchronized across the UI.
 const liveChatRegistry = reactive(new Map<string, Chat>());
 const activeGenerations = reactive(new Map<string, { controller: AbortController, chat: Chat }>());
 const activeTitleGenerations = reactive(new Set<string>());
@@ -30,7 +28,6 @@ const availableModels = ref<string[]>([]);
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
-    // Abort all active generations on page unload to prevent orphaned requests
     for (const item of activeGenerations.values()) {
       item.controller.abort();
     }
@@ -39,56 +36,103 @@ if (typeof window !== 'undefined') {
 
 // --- Synchronization ---
 
-storageService.subscribeToChanges(async (event) => {
-  if (event.type === 'chat' || event.type === 'chat_group' || event.type === 'sidebar') {
-    // 1. Always refresh the sidebar list to reflect new/renamed/deleted items
-    rootItems.value = await storageService.getSidebarStructure();
-
-    // 2. If the current open chat was modified by another tab, reload it
-    // We skip reload if WE are currently generating content for it (lock usually prevents this, but safety first)
-    if (event.type === 'chat' && event.id && currentChat.value?.id === event.id) {
-      if (!activeGenerations.has(event.id)) {
-        const fresh = await storageService.loadChat(event.id);
-        if (fresh) {
-          // Preserve transient UI state if needed, but for now just replace
-          currentChat.value = reactive(fresh);
-        } else {
-          // Chat was deleted
-          currentChat.value = null;
-        }
+function syncLiveInstancesWithSidebar() {
+  const sync = (items: SidebarItem[], parentGroupId: string | null) => {
+    for (const item of items) {
+      if (item.type === 'chat') {
+        const live = liveChatRegistry.get(item.chat.id);
+        if (live) live.groupId = parentGroupId;
+        if (currentChat.value?.id === item.chat.id) currentChat.value.groupId = parentGroupId;
+      } else if (item.type === 'chat_group') {
+        sync(item.chatGroup.items, item.chatGroup.id);
       }
+    }
+  };
+  sync(rootItems.value, null);
+}
+
+let sidebarReloadTimeout: any = null;
+let lastSidebarReload = 0;
+const debouncedSidebarReload = () => {
+  if (sidebarReloadTimeout) clearTimeout(sidebarReloadTimeout);
+  
+  const performReload = async () => {
+    rootItems.value = await storageService.getSidebarStructure();
+    syncLiveInstancesWithSidebar();
+    lastSidebarReload = Date.now();
+    sidebarReloadTimeout = null;
+  };
+
+  const now = Date.now();
+  // If we haven't reloaded in 2 seconds, do it now regardless of debouncing
+  if (now - lastSidebarReload > 2000) {
+    performReload();
+  } else {
+    sidebarReloadTimeout = setTimeout(performReload, 200);
+  }
+};
+
+storageService.subscribeToChanges(async (event) => {
+  if (event.type === 'chat_meta_and_chat_group') {
+    debouncedSidebarReload();
+
+    if (event.id && currentChat.value?.id === event.id) {
+      const fresh = await storageService.loadChat(event.id);
+      if (fresh) {
+        currentChat.value.title = fresh.title;
+        currentChat.value.updatedAt = fresh.updatedAt;
+        currentChat.value.modelId = fresh.modelId;
+        triggerRef(currentChat);
+      }
+    }
+
+    if (event.id && currentChatGroup.value?.id === event.id) {
+      const allGroups = await storageService.listChatGroups();
+      currentChatGroup.value = allGroups.find(g => g.id === event.id) || null;
     }
   } 
   
+  if (event.type === 'chat_content' && event.id && currentChat.value?.id === event.id) {
+    if (!activeGenerations.has(event.id)) {
+      const fresh = await storageService.loadChat(event.id);
+      if (fresh) {
+        currentChat.value.root = fresh.root;
+        currentChat.value.currentLeafId = fresh.currentLeafId;
+        triggerRef(currentChat);
+      }
+    }
+  }
+  
   if (event.type === 'migration') {
-    // Full reload
+    for (const item of activeGenerations.values()) item.controller.abort();
+    activeGenerations.clear();
+    activeTitleGenerations.clear();
+    activeModelFetches.clear();
+    liveChatRegistry.clear();
+
     rootItems.value = await storageService.getSidebarStructure();
     if (currentChat.value) {
       const fresh = await storageService.loadChat(currentChat.value.id);
       currentChat.value = fresh ? reactive(fresh) : null;
+    }
+    if (currentChatGroup.value) {
+      const allGroups = await storageService.listChatGroups();
+      currentChatGroup.value = allGroups.find(g => g.id === currentChatGroup.value?.id) || null;
     }
   }
 });
 
 // --- Registry Helpers ---
 
-function registerLiveInstance(chat: Chat) {
-  liveChatRegistry.set(chat.id, chat);
-}
+function registerLiveInstance(chat: Chat) { liveChatRegistry.set(chat.id, chat); }
 
 function unregisterLiveInstance(chatId: string) {
-  // Only remove if no tasks are pending for this chat
-  const hasGeneration = activeGenerations.has(chatId);
-  const hasTitleGen = activeTitleGenerations.has(chatId);
-  const hasModelFetch = activeModelFetches.has(chatId);
-  const hasProcessing = activeProcessing.has(chatId);
-  
-  if (!hasGeneration && !hasTitleGen && !hasModelFetch && !hasProcessing) {
+  if (!activeGenerations.has(chatId) && !activeTitleGenerations.has(chatId) && !activeModelFetches.has(chatId) && !activeProcessing.has(chatId)) {
     liveChatRegistry.delete(chatId);
   }
 }
 
-// --- Helpers ---
+// --- Internal Logic ---
 
 async function fileToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -143,53 +187,26 @@ function findDeepestLeaf(node: MessageNode): MessageNode {
 
 export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: Settings) {
   const group = chat.groupId ? groups.find(g => g.id === chat.groupId) : null;
-
   const endpointType = chat.endpointType || group?.endpoint?.type || globalSettings.endpointType;
   const endpointUrl = chat.endpointUrl || group?.endpoint?.url || globalSettings.endpointUrl || '';
   const endpointHttpHeaders = chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || globalSettings.endpointHttpHeaders;
   const modelId = chat.modelId || group?.modelId || globalSettings.defaultModelId || '';
 
-  // System Prompt Resolution
   let systemPrompts: string[] = [];
-  const globalPrompt = globalSettings.systemPrompt;
-  const groupPrompt = group?.systemPrompt;
-  const chatPrompt = chat.systemPrompt;
-
-  // Start with Global
-  if (globalPrompt) systemPrompts.push(globalPrompt);
-
-  // Apply Group
-  if (groupPrompt) {
-    if (groupPrompt.behavior === 'override') {
-      systemPrompts = groupPrompt.content ? [groupPrompt.content] : [];
-    } else if (groupPrompt.content) {
-      systemPrompts.push(groupPrompt.content);
-    }
+  if (globalSettings.systemPrompt) systemPrompts.push(globalSettings.systemPrompt);
+  if (group?.systemPrompt) {
+    if (group.systemPrompt.behavior === 'override') systemPrompts = group.systemPrompt.content ? [group.systemPrompt.content] : [];
+    else if (group.systemPrompt.content) systemPrompts.push(group.systemPrompt.content);
+  }
+  if (chat.systemPrompt) {
+    if (chat.systemPrompt.behavior === 'override') systemPrompts = chat.systemPrompt.content ? [chat.systemPrompt.content] : [];
+    else if (chat.systemPrompt.content) systemPrompts.push(chat.systemPrompt.content);
   }
 
-  // Apply Chat
-  if (chatPrompt) {
-    if (chatPrompt.behavior === 'override') {
-      systemPrompts = chatPrompt.content ? [chatPrompt.content] : [];
-    } else if (chatPrompt.content) {
-      systemPrompts.push(chatPrompt.content);
-    }
-  }
-
-  // LM Parameters Resolution (Deep Merge: Chat > Group > Global)
-  const lmParameters = {
-    ...(globalSettings.lmParameters || {}),
-    ...(group?.lmParameters || {}),
-    ...(chat.lmParameters || {}),
-  };
+  const lmParameters = { ...(globalSettings.lmParameters || {}), ...(group?.lmParameters || {}), ...(chat.lmParameters || {}), };
 
   return {
-    endpointType,
-    endpointUrl,
-    endpointHttpHeaders,
-    modelId,
-    systemPromptMessages: systemPrompts,
-    lmParameters,
+    endpointType, endpointUrl, endpointHttpHeaders, modelId, systemPromptMessages: systemPrompts, lmParameters,
     sources: {
       endpointType: chat.endpointType ? 'chat' : (group?.endpoint?.type ? 'chat_group' : 'global'),
       endpointUrl: chat.endpointUrl ? 'chat' : (group?.endpoint?.url ? 'chat_group' : 'global'),
@@ -201,7 +218,6 @@ export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSetti
 export function processThinking(node: MessageNode) {
   const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
   const matches = [...node.content.matchAll(thinkRegex)];
-  
   if (matches.length > 0) {
     const thoughts = matches.map(m => m[1]?.trim()).filter(Boolean).join('\n\n---\n\n');
     node.thinking = node.thinking ? `${node.thinking}\n\n---\n\n${thoughts}` : thoughts;
@@ -209,83 +225,21 @@ export function processThinking(node: MessageNode) {
   }
 }
 
-/**
- * Calculates the best restoration index for a deleted item based on its bidirectional context.
- */
-export function findRestorationIndex(
-  items: SidebarItem[],
-  prevId: string | null,
-  nextId: string | null,
-): number {
+export function findRestorationIndex(items: SidebarItem[], prevId: string | null, nextId: string | null): number {
   if (items.length === 0) return 0;
-
   const prevIdx = prevId ? items.findIndex(item => item.id === prevId) : -1;
-  if (prevIdx !== -1) {
-    // Priority 1: Right after the previous item
-    return prevIdx + 1;
-  }
-
+  if (prevIdx !== -1) return prevIdx + 1;
   const nextIdx = nextId ? items.findIndex(item => item.id === nextId) : -1;
-  if (nextIdx !== -1) {
-    // Priority 2: Right before the next item
-    return nextIdx;
-  }
-
-  // Priority 3: Default to top
+  if (nextIdx !== -1) return nextIdx;
   return 0;
 }
 
-export interface AddToastOptions {
-  message: string;
-  actionLabel?: string;
-  onAction?: () => void | Promise<void>;
-  duration?: number;
-}
+export interface AddToastOptions { message: string; actionLabel?: string; onAction?: () => void | Promise<void>; duration?: number; }
 
 export function useChat() {
   const { settings } = useSettings();
 
-  /**
-   * Helper to find the correct relative index for a chat within its hierarchy.
-   * This ensures we persist the order correctly relative to its siblings.
-   */
-  function findChatPosition(chatId: string): { index: number } {
-    // 1. Check root level
-    const rootIdx = rootItems.value.findIndex(item => item.type === 'chat' && item.chat.id === chatId);
-    if (rootIdx !== -1) return { index: rootIdx };
-
-    // 2. Check inside chat groups
-    for (const item of rootItems.value) {
-      if (item.type === 'chat_group') {
-        const nestedIdx = item.chatGroup.items.findIndex(n => n.type === 'chat' && n.chat.id === chatId);
-        if (nestedIdx !== -1) return { index: nestedIdx };
-      }
-    }
-    
-    return { index: 0 };
-  }
-
   const sidebarItems = computed(() => rootItems.value);
-
-  const insertSidebarItem = (rootItems: SidebarItem[], newItem: SidebarItem, chatGroupId: string | null) => {
-    if (chatGroupId) {
-      const findAndAdd = (items: SidebarItem[]) => {
-        for (const item of items) {
-          if (item.type === 'chat_group' && item.chatGroup.id === chatGroupId) {
-            item.chatGroup.items.unshift(newItem);
-            return true;
-          }
-          if (item.type === 'chat_group' && findAndAdd(item.chatGroup.items)) return true;
-        }
-        return false;
-      };
-      findAndAdd(rootItems);
-    } else {
-      const firstChatIdx = rootItems.findIndex(item => item.type === 'chat');
-      const insertIdx = firstChatIdx !== -1 ? firstChatIdx : rootItems.length;
-      rootItems.splice(insertIdx, 0, newItem);
-    }
-  };
 
   const chats = computed(() => {
     const all: ChatSummary[] = [];
@@ -301,9 +255,7 @@ export function useChat() {
 
   const chatGroups = computed(() => {
     const all: ChatGroup[] = [];
-    rootItems.value.forEach(item => {
-      if (item.type === 'chat_group') all.push(item.chatGroup);
-    });
+    rootItems.value.forEach(item => { if (item.type === 'chat_group') all.push(item.chatGroup); });
     return all;
   });
 
@@ -315,16 +267,7 @@ export function useChat() {
   const inheritedSettings = computed(() => {
     if (!currentChat.value) return null;
     const chat = currentChat.value;
-    // Create a virtual chat object without overrides to resolve inherited values
-    const virtualChat: Chat = {
-      ...chat,
-      modelId: undefined,
-      endpointType: undefined,
-      endpointUrl: undefined,
-      endpointHttpHeaders: undefined,
-      systemPrompt: undefined,
-      lmParameters: undefined,
-    };
+    const virtualChat: Chat = { ...chat, modelId: undefined, endpointType: undefined, endpointUrl: undefined, endpointHttpHeaders: undefined, systemPrompt: undefined, lmParameters: undefined, };
     return resolveChatSettings(virtualChat, chatGroups.value, settings.value);
   });
 
@@ -333,9 +276,7 @@ export function useChat() {
     return getChatBranch(currentChat.value);
   });
 
-  const loadData = async () => {
-    rootItems.value = await storageService.getSidebarStructure();
-  };
+  const loadData = async () => { rootItems.value = await storageService.getSidebarStructure(); };
 
   const fetchAvailableModels = async (chat?: Chat, customEndpoint?: { type: EndpointType, url: string, headers?: [string, string][] }) => {
     const taskId = chat?.id || 'custom-fetch';
@@ -347,9 +288,7 @@ export function useChat() {
     let headers: [string, string][] | undefined;
 
     if (customEndpoint) {
-      type = customEndpoint.type;
-      url = customEndpoint.url;
-      headers = customEndpoint.headers;
+      type = customEndpoint.type; url = customEndpoint.url; headers = customEndpoint.headers;
     } else if (chat) {
       const group = chat.groupId ? chatGroups.value.find(g => g.id === chat.groupId) : null;
       type = chat.endpointType || group?.endpoint?.type || settings.value.endpointType;
@@ -371,18 +310,11 @@ export function useChat() {
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
       const models = await provider.listModels(url, headers);
       const result = Array.isArray(models) ? models : [];
-      if (chat && chat.id === currentChat.value?.id) {
-        availableModels.value = result;
-      }
+      if (chat && chat.id === currentChat.value?.id) availableModels.value = result;
       return result;
     } catch (e) {
       const { addErrorEvent } = useGlobalEvents();
-      addErrorEvent({
-        source: 'useChat:fetchAvailableModels',
-        message: 'Failed to fetch models for resolution',
-        details: e instanceof Error ? e : String(e),
-      });
-      console.warn('Failed to fetch models for resolution:', e);
+      addErrorEvent({ source: 'useChat:fetchAvailableModels', message: 'Failed to fetch models for resolution', details: e instanceof Error ? e : String(e), });
       return [];
     } finally {
       activeModelFetches.delete(taskId);
@@ -390,11 +322,8 @@ export function useChat() {
     }
   };
 
-  const saveChat = async (chat: Chat) => {
-    // CRITICAL: Find the correct relative index to avoid "jumping"
-    const { index } = findChatPosition(chat.id);
-    await storageService.saveChat(chat, index);
-  };
+  const saveChatMeta = async (chat: Chat) => { await storageService.saveChatMeta(chat); };
+  const saveChatContent = async (chat: Chat) => { await storageService.saveChatContent(chat.id, chat); };
 
   const createNewChat = async (chatGroupId: string | null = null, modelId: string | null = null) => {
     if (creatingChat.value) return null;
@@ -403,27 +332,31 @@ export function useChat() {
     const chatId = uuidv7();
     try {
       const chatObj: Chat = reactive({
-        id: chatId,
-        title: null,
-        groupId: chatGroupId,
-        root: { items: [] },
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        debugEnabled: false,
+        id: chatId, title: null, groupId: chatGroupId, root: { items: [] },
+        createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
         modelId: modelId ?? undefined,
       });
 
-      // Register immediately so persistSidebarStructure can save its content
       registerLiveInstance(chatObj);
-      
-      const newSummary: ChatSummary = { id: chatObj.id, title: chatObj.title, updatedAt: chatObj.updatedAt, groupId: chatObj.groupId };
-      const newSidebarItem: SidebarItem = { id: `chat:${chatObj.id}`, type: 'chat', chat: newSummary };
+      await saveChatContent(chatObj);
+      await saveChatMeta(chatObj);
 
-      const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
-      insertSidebarItem(newRootItems, newSidebarItem, chatGroupId);
+      await storageService.updateHierarchy((current) => {
+        const newItem: HierarchyNode = chatGroupId 
+          ? { type: 'chat_group', id: chatGroupId, chat_ids: [] } // Handled below
+          : { type: 'chat', id: chatId };
 
-      // Order matters: persist structure first then the specific chat to ensure storage consistency
-      await persistSidebarStructure(newRootItems);
+        if (chatGroupId) {
+          const group = current.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
+          if (group) group.chat_ids.unshift(chatId);
+          else current.items.push({ type: 'chat', id: chatId });
+        } else {
+          const firstChatIdx = current.items.findIndex(i => i.type === 'chat');
+          const insertIdx = firstChatIdx !== -1 ? firstChatIdx : current.items.length;
+          current.items.splice(insertIdx, 0, { type: 'chat', id: chatId });
+        }
+        return current;
+      });
       
       currentChat.value = chatObj;
       await loadData();
@@ -435,62 +368,25 @@ export function useChat() {
   };
 
   const openChat = async (id: string) => {
-    // Clear group settings view when opening a chat
     currentChatGroup.value = null;
-
-    // If there is an active background task for this chat, use the live instance
-    if (liveChatRegistry.has(id)) {
-      currentChat.value = liveChatRegistry.get(id)!;
-      return;
-    }
-
+    if (liveChatRegistry.has(id)) { currentChat.value = liveChatRegistry.get(id)!; return; }
     const loaded = await storageService.loadChat(id);
-    if (loaded) {
-      currentChat.value = reactive(loaded);
-    } else {
-      currentChat.value = null;
-    }
+    if (loaded) currentChat.value = reactive(loaded);
+    else currentChat.value = null;
   };
 
   const openChatGroup = (id: string) => {
     const group = chatGroups.value.find(g => g.id === id);
-    if (group) {
-      currentChatGroup.value = group;
-    }
+    if (group) currentChatGroup.value = group;
   };
 
-  const deleteChat = async (
-    id: string, 
-    injectAddToast?: (toast: AddToastOptions) => string,
-  ) => {
+  const deleteChat = async (id: string, injectAddToast?: (toast: AddToastOptions) => string) => {
     const { useToast } = await import('./useToast');
     const { addToast: originalAddToast } = useToast();
     const addToast = injectAddToast || originalAddToast;
     const chatData = await storageService.loadChat(id);
     if (!chatData) return;
 
-    // Capture bidirectional context for robust restoration
-    let parentId: string | null = null;
-    let prevId: string | null = null;
-    let nextId: string | null = null;
-
-    // Search for current position in sidebarItems
-    const findContext = (items: SidebarItem[], pId: string | null): boolean => {
-      const idx = items.findIndex(item => item.type === 'chat' && item.chat.id === id);
-      if (idx !== -1) {
-        parentId = pId;
-        prevId = idx > 0 ? items[idx - 1]!.id : null;
-        nextId = idx < items.length - 1 ? items[idx + 1]!.id : null;
-        return true;
-      }
-      for (const item of items) {
-        if (item.type === 'chat_group' && findContext(item.chatGroup.items, item.chatGroup.id)) return true;
-      }
-      return false;
-    };
-    findContext(rootItems.value, null);
-
-    // Abort and clear from registry if any
     if (activeGenerations.has(id)) {
       activeGenerations.get(id)?.controller.abort();
       activeGenerations.delete(id);
@@ -500,6 +396,15 @@ export function useChat() {
     liveChatRegistry.delete(id);
 
     await storageService.deleteChat(id);
+    await storageService.updateHierarchy((curr) => {
+      curr.items = curr.items.filter(i => {
+        if (i.type === 'chat' && i.id === id) return false;
+        if (i.type === 'chat_group') i.chat_ids = i.chat_ids.filter(cid => cid !== id);
+        return true;
+      });
+      return curr;
+    });
+
     if (currentChat.value?.id === id) currentChat.value = null;
     await loadData();
 
@@ -507,25 +412,20 @@ export function useChat() {
       message: `Chat "${chatData.title || 'Untitled'}" deleted`,
       actionLabel: 'Undo',
       onAction: async () => {
-        let targetIndex = 0;
-        let targetList: SidebarItem[] | null = null;
-
-        if (parentId) {
-          // Robustly find the chat group in the latest rootItems
-          const groupItem = rootItems.value.find(item => item.type === 'chat_group' && item.chatGroup.id === parentId);
-          if (groupItem && groupItem.type === 'chat_group') {
-            targetList = groupItem.chatGroup.items;
+        const originalGroupId = chatData.groupId;
+        await saveChatContent(chatData);
+        await saveChatMeta(chatData);
+        await storageService.updateHierarchy((curr) => {
+          if (originalGroupId) {
+            const group = curr.items.find(i => i.type === 'chat_group' && i.id === originalGroupId) as HierarchyChatGroupNode;
+            if (group) {
+              group.chat_ids.push(chatData.id);
+              return curr;
+            }
           }
-        } else {
-          targetList = rootItems.value;
-        }
-
-        // If targetList is still null (e.g. parent chat group was also deleted), fallback to rootItems
-        const finalTargetList = targetList || rootItems.value;
-        targetIndex = findRestorationIndex(finalTargetList, prevId, nextId);
-
-        chatData.groupId = targetList ? parentId : null;
-        await storageService.saveChat(chatData, targetIndex);
+          curr.items.push({ type: 'chat', id: chatData.id });
+          return curr;
+        });
         await loadData();
         await openChat(chatData.id);
       },
@@ -533,10 +433,7 @@ export function useChat() {
   };
 
   const deleteAllChats = async () => {
-    // Clear registry and abort generations
-    for (const [, item] of activeGenerations.entries()) {
-      item.controller.abort();
-    }
+    for (const [, item] of activeGenerations.entries()) item.controller.abort();
     activeGenerations.clear();
     activeTitleGenerations.clear();
     activeModelFetches.clear();
@@ -546,30 +443,27 @@ export function useChat() {
     for (const c of all) await storageService.deleteChat(c.id);
     const allGroups = await storageService.listChatGroups();
     for (const g of allGroups) await storageService.deleteChatGroup(g.id);
+    
+    await storageService.updateHierarchy((curr) => { curr.items = []; return curr; });
     currentChat.value = null;
     await loadData();
   };
 
   const renameChat = async (id: string, newTitle: string) => {
-    // Update live instance if it exists in registry
     const liveChat = liveChatRegistry.get(id);
     if (liveChat) {
-      liveChat.title = newTitle;
-      liveChat.updatedAt = Date.now();
-      await saveChat(liveChat);
+      liveChat.title = newTitle; liveChat.updatedAt = Date.now();
+      await saveChatMeta(liveChat);
       if (currentChat.value?.id === id) triggerRef(currentChat);
       await loadData();
       return;
     }
-
     const chat = await storageService.loadChat(id);
     if (chat) {
-      chat.title = newTitle;
-      chat.updatedAt = Date.now();
-      await saveChat(chat);
+      chat.title = newTitle; chat.updatedAt = Date.now();
+      await saveChatMeta(chat);
       if (currentChat.value?.id === id) {
-        currentChat.value.title = newTitle;
-        currentChat.value.updatedAt = chat.updatedAt;
+        currentChat.value.title = newTitle; currentChat.value.updatedAt = chat.updatedAt;
         triggerRef(currentChat);
       }
       await loadData();
@@ -579,8 +473,6 @@ export function useChat() {
   const generateResponse = async (chat: Chat, assistantId: string) => {
     const assistantNode = findNodeInBranch(chat.root.items, assistantId);
     if (!assistantNode) throw new Error('Assistant node not found');
-
-    // Reset error
     assistantNode.error = undefined;
     if (currentChat.value?.id === chat.id) triggerRef(currentChat);
 
@@ -594,29 +486,19 @@ export function useChat() {
     const resolvedModel = assistantNode.modelId || resolved.modelId;
 
     try {
-
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-
       const headers = resolved.endpointHttpHeaders;
       const finalMessages: ChatMessage[] = [];
-      
-      resolved.systemPromptMessages.forEach(content => {
-        finalMessages.push({ role: 'system', content });
-      });
+      resolved.systemPromptMessages.forEach(content => finalMessages.push({ role: 'system', content }));
 
-      // Add conversation history
       const history = getChatBranch(chat).filter(m => m.id !== assistantId);
       for (const m of history) {
         if (m.attachments && m.attachments.length > 0) {
           const content: MultimodalContent[] = [{ type: 'text', text: m.content }];
           for (const att of m.attachments) {
             let blob: Blob | null = null;
-            if (att.status === 'memory') {
-              blob = att.blob;
-            } else if (att.status === 'persisted') {
-              blob = await storageService.getFile(att.id, att.originalName);
-            }
-
+            if (att.status === 'memory') blob = att.blob;
+            else if (att.status === 'persisted') blob = await storageService.getFile(att.id, att.originalName);
             if (blob && att.mimeType.startsWith('image/')) {
               const b64 = await fileToDataUrl(blob);
               content.push({ type: 'image_url', image_url: { url: b64 } });
@@ -628,22 +510,32 @@ export function useChat() {
         }
       }
 
-      // 2. Resolve LM Parameters (Deep Merge: Chat > Group > Global)
-      const resolvedParams = resolved.lmParameters;
-
-      await provider.chat(finalMessages, resolvedModel, url, (chunk) => {
-
-      
+      let lastSave = 0;
+      let isSaving = false;
+      await provider.chat(finalMessages, resolvedModel, url, async (chunk) => {
         assistantNode.content += chunk;
         if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-      }, resolvedParams, headers, controller.signal);
+        
+        const now = Date.now();
+        if (now - lastSave > 500 && !isSaving) {
+          isSaving = true;
+          try {
+            await saveChatContent(chat);
+            lastSave = Date.now();
+          } finally {
+            isSaving = false;
+          }
+        }
+      }, resolved.lmParameters, headers, controller.signal);
+
+      // Ensure the final state is saved after streaming completes
+      await saveChatContent(chat);
 
       processThinking(assistantNode);
       chat.updatedAt = Date.now();
       
-      // Guarded save: only save if chat wasn't deleted while generating
       if (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id) {
-        await saveChat(chat);
+        await saveChatMeta(chat);
         await loadData();
       }
 
@@ -651,32 +543,21 @@ export function useChat() {
         await generateChatTitle(chat, controller.signal);
       }
     } catch (e) {
-      if ((e as Error).name === 'AbortError') {
-        assistantNode.content += '\n\n[Generation Aborted]';
-      } else {
+      if ((e as Error).name === 'AbortError') assistantNode.content += '\n\n[Generation Aborted]';
+      else {
         assistantNode.error = (e as Error).message;
-        
-        // Notify user if they are currently viewing a different chat
         if (currentChat.value?.id !== chat.id) {
           try {
             const { useToast } = await import('./useToast');
             const { addToast } = useToast();
-            addToast({
-              message: `Generation failed in "${chat.title || 'New Chat'}"`,
-              actionLabel: 'View',
-              onAction: () => openChat(chat.id),
-            });
-          } catch (toastErr) {
-            console.error('Failed to show background error toast:', toastErr);
-          }
+            addToast({ message: `Generation failed in "${chat.title || 'New Chat'}"`, actionLabel: 'View', onAction: () => openChat(chat.id), });
+          } catch (toastErr) {}
         }
       }
-      console.error(e);
     } finally {
-      // Ensure we save the final state BEFORE removing from the registry.
       const isStillActive = activeGenerations.has(chat.id);
       if (isStillActive) {
-        await saveChat(chat);
+        await saveChatMeta(chat);
         activeGenerations.delete(chat.id);
         unregisterLiveInstance(chat.id);
       }
@@ -686,58 +567,40 @@ export function useChat() {
   const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = [], chatTarget?: Chat): Promise<boolean> => {
     const chat = chatTarget || currentChat.value;
     if (!chat || activeGenerations.has(chat.id) || activeProcessing.has(chat.id)) return false;
-
     activeProcessing.add(chat.id);
-    // Register immediately to ensure background tasks are tracked from the start
     registerLiveInstance(chat);
 
     try {
       const { isOnboardingDismissed, onboardingDraft, settings: globalSettings } = useSettings();
       const { showConfirm } = useConfirm();
-
-      // --- Model & Endpoint Resolution ---
       const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
       const type = resolved.endpointType;
       const url = resolved.endpointUrl;
-      
       let resolvedModel = chat.modelId || resolved.modelId;
 
       if (url) {
         const models = await fetchAvailableModels(chat);
         if (models.length > 0) {
           const preferredModel = chat.modelId || resolved.modelId;
-          if (preferredModel && models.includes(preferredModel)) {
-            resolvedModel = preferredModel;
-          } else if (preferredModel) {
-            // If a preferred model was set but is not available, fallback to first
-            resolvedModel = models[0] || '';
-          }
+          if (preferredModel && models.includes(preferredModel)) resolvedModel = preferredModel;
+          else if (preferredModel) resolvedModel = models[0] || '';
         }
       }
 
       if (!url || !resolvedModel) {
         const models = await fetchAvailableModels(chat);
-        onboardingDraft.value = { 
-          url, 
-          type, 
-          models, 
-          selectedModel: models[0] || '',
-        };
+        onboardingDraft.value = { url, type, models, selectedModel: models[0] || '', };
         isOnboardingDismissed.value = false;
         return false;
       }
 
-      // Process attachments for saving
       const processedAttachments: Attachment[] = [];
       const canPersist = storageService.canPersistBinary;
-      
-      // Check if we need to ask for permission for LocalStorage persistence
       if (attachments.length > 0 && !canPersist && globalSettings.value.heavyContentAlertDismissed === false) {
         const confirmed = await showConfirm({
           title: 'Attachments cannot be saved',
           message: 'You are using Local Storage, which has a 5MB limit. Attachments will be available during this session but will NOT be saved to your history. Switch to OPFS storage in Settings to enable permanent saving.',
-          confirmButtonText: 'Continue anyway',
-          cancelButtonText: 'Cancel',
+          confirmButtonText: 'Continue anyway', cancelButtonText: 'Cancel',
         });
         if (!confirmed) return false;
         globalSettings.value.heavyContentAlertDismissed = true;
@@ -748,48 +611,18 @@ export function useChat() {
           if (canPersist) {
             try {
               await storageService.saveFile(att.blob, att.id, att.originalName);
-              processedAttachments.push({
-                id: att.id,
-                originalName: att.originalName,
-                mimeType: att.mimeType,
-                size: att.size,
-                uploadedAt: att.uploadedAt,
-                status: 'persisted',
-              });
-            } catch (e) {
-              console.error('Failed to save file to OPFS:', e);
-              processedAttachments.push(att); // keep as memory
-            }
-          } else {
-            processedAttachments.push(att); // keep as memory (skipped from persistence by mapper)
-          }
-        } else {
-          processedAttachments.push(att);
-        }
+              processedAttachments.push({ id: att.id, originalName: att.originalName, mimeType: att.mimeType, size: att.size, uploadedAt: att.uploadedAt, status: 'persisted', });
+            } catch (e) { processedAttachments.push(att); }
+          } else processedAttachments.push(att);
+        } else processedAttachments.push(att);
       }
 
-      const userMsg: MessageNode = {
-        id: uuidv7(),
-        role: 'user',
-        content,
-        attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
-        timestamp: Date.now(),
-        replies: { items: [] },
-      };
-
-      const assistantMsg: MessageNode = {
-        id: uuidv7(),
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-        modelId: resolvedModel,
-        replies: { items: [] },
-      };
+      const userMsg: MessageNode = { id: uuidv7(), role: 'user', content, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
+      const assistantMsg: MessageNode = { id: uuidv7(), role: 'assistant', content: '', timestamp: Date.now(), modelId: resolvedModel, replies: { items: [] }, };
       userMsg.replies.items.push(assistantMsg);
 
-      if (parentId === null) {
-        chat.root.items.push(userMsg);
-      } else {
+      if (parentId === null) chat.root.items.push(userMsg);
+      else {
         const pId = parentId || chat.currentLeafId;
         const parentNode = pId ? findNodeInBranch(chat.root.items, pId) : null;
         if (parentNode) parentNode.replies.items.push(userMsg);
@@ -798,8 +631,8 @@ export function useChat() {
 
       chat.currentLeafId = assistantMsg.id;
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-      await saveChat(chat);
-
+      await saveChatContent(chat);
+      await saveChatMeta(chat);
       await generateResponse(chat, assistantMsg.id);
       return true;
     } finally {
@@ -811,42 +644,22 @@ export function useChat() {
   const regenerateMessage = async (failedMessageId: string) => {
     const chat = currentChat.value;
     if (!chat || activeGenerations.has(chat.id)) return; 
-    
     activeProcessing.add(chat.id);
     registerLiveInstance(chat);
-
     try {
-      // 1. Find the failed node
       const failedNode = findNodeInBranch(chat.root.items, failedMessageId);
       if (!failedNode || failedNode.role !== 'assistant') return;
-
-      // 2. Find its parent (the User message)
       const parent = findParentInBranch(chat.root.items, failedMessageId);
       if (!parent || parent.role !== 'user') return;
-
-      // 3. Create a NEW sibling assistant node
-      const newAssistantMsg: MessageNode = {
-        id: uuidv7(),
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-        modelId: failedNode.modelId, // Reuse the same model ID from the failed attempt
-        replies: { items: [] },
-      };
-
-      // 4. Add to parent
+      const newAssistantMsg: MessageNode = { id: uuidv7(), role: 'assistant', content: '', timestamp: Date.now(), modelId: failedNode.modelId, replies: { items: [] }, };
       parent.replies.items.push(newAssistantMsg);
-
-      // 5. Update state
       chat.currentLeafId = newAssistantMsg.id;
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-      await saveChat(chat);
-
-      // 6. Generate
+      await saveChatContent(chat);
+      await saveChatMeta(chat);
       await generateResponse(chat, newAssistantMsg.id);
     } finally {
-      activeProcessing.delete(chat.id);
-      unregisterLiveInstance(chat.id);
+      activeProcessing.delete(chat.id); unregisterLiveInstance(chat.id);
     }
   };
 
@@ -854,78 +667,29 @@ export function useChat() {
     const taskId = chat.id;
     activeTitleGenerations.add(taskId);
     registerLiveInstance(chat);
-
     const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
-    const type = resolved.endpointType;
-    const url = resolved.endpointUrl;
-    const headers = resolved.endpointHttpHeaders;
-
-    if (!url) {
-      activeTitleGenerations.delete(taskId);
-      unregisterLiveInstance(taskId);
-      return;
-    }
-
+    if (!resolved.endpointUrl) { activeTitleGenerations.delete(taskId); unregisterLiveInstance(taskId); return; }
     const history = getChatBranch(chat);
-    const content = history[0]?.content || ''; // Use the first user message for title generation
-    if (!content || typeof content !== 'string') {
-      activeTitleGenerations.delete(taskId);
-      unregisterLiveInstance(taskId);
-      return;
-    }
-
+    const content = history[0]?.content || '';
+    if (!content || typeof content !== 'string') { activeTitleGenerations.delete(taskId); unregisterLiveInstance(taskId); return; }
     const hadTitleAtStart = chat.title !== null;
-    const chatIdAtStart = chat.id;
     try {
       let generatedTitle = '';
-      const titleProvider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-      
-      // Determine model to use for title generation
-      let titleGenModel = settings.value.titleModelId;
-      if (!titleGenModel) {
-        // Fallback to current model of the last message or resolved default
-        const lastMsg = history[history.length - 1];
-        titleGenModel = lastMsg?.modelId || resolved.modelId;
-      }
-
+      const titleProvider = resolved.endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+      const titleGenModel = settings.value.titleModelId || history[history.length - 1]?.modelId || resolved.modelId;
       if (!titleGenModel) return;
-
-      const promptMsg: ChatMessage = {
-        role: 'user',
-        content: `Generate a concise title (a short phrase) for this conversation based on the following message. The title MUST be in the same language as the message. Respond ONLY with the title text, no quotes or prefix.
-
-Message: "${content}"`,
-      };
-      await titleProvider.chat([promptMsg], titleGenModel, url, (chunk) => { generatedTitle += chunk; }, {}, headers, signal);
+      const promptMsg: ChatMessage = { role: 'user', content: `Generate a concise title... Message: "${content}"`, };
+      await titleProvider.chat([promptMsg], titleGenModel, resolved.endpointUrl, (chunk) => { generatedTitle += chunk; }, {}, resolved.endpointHttpHeaders, signal);
       const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
-      
-      // Only apply if we got a title AND (it was a manual regeneration OR it's still null)
       if (finalTitle && (hadTitleAtStart || chat.title === null)) {
         chat.title = finalTitle;
-        // Only save and refresh if the chat still exists
         if (activeGenerations.has(chat.id) || currentChat.value?.id === chat.id || liveChatRegistry.has(chat.id)) {
-          await saveChat(chat);
+          await saveChatMeta(chat);
           await loadData();
-          if (currentChat.value?.id === chatIdAtStart) {
-            triggerRef(currentChat);
-          }
+          if (currentChat.value?.id === chat.id) triggerRef(currentChat);
         }
       }
-    } catch (e) {
-      const isAbort = e instanceof Error && e.name === 'AbortError';
-      if (!isAbort) {
-        const { addErrorEvent } = useGlobalEvents();
-        addErrorEvent({
-          source: 'useChat:generateChatTitle',
-          message: 'Failed to generate chat title',
-          details: e instanceof Error ? e : String(e),
-        });
-      }
-      console.warn('Failed to generate title:', e);
-    } finally {
-      activeTitleGenerations.delete(taskId);
-      unregisterLiveInstance(taskId);
-    }
+    } finally { activeTitleGenerations.delete(taskId); unregisterLiveInstance(taskId); }
   };
 
   const abortChat = () => {
@@ -940,77 +704,56 @@ Message: "${content}"`,
     const idx = path.findIndex(m => m.id === messageId);
     if (idx === -1) return null;
     const forkPath = path.slice(0, idx + 1);
-
-    const clonedNodes: MessageNode[] = forkPath.map(n => ({
-      id: n.id, 
-      role: n.role, 
-      content: n.content, 
-      attachments: n.attachments,
-      timestamp: n.timestamp, 
-      thinking: n.thinking,
-      error: n.error,
-      modelId: n.modelId,
-      replies: { items: [] },
-    }));
-
-    for (let i = 0; i < clonedNodes.length - 1; i++) {
-      clonedNodes[i]!.replies.items.push(clonedNodes[i+1]!);
-    }
-
+    const clonedNodes: MessageNode[] = forkPath.map(n => ({ id: n.id, role: n.role, content: n.content, attachments: n.attachments, timestamp: n.timestamp, thinking: n.thinking, error: n.error, modelId: n.modelId, replies: { items: [] }, }));
+    for (let i = 0; i < clonedNodes.length - 1; i++) clonedNodes[i]!.replies.items.push(clonedNodes[i+1]!);
     const newChatId = uuidv7();
     try {
-      const newChatObj: Chat = reactive({
-        ...chat,
-        id: newChatId,
-        title: `Fork of ${chat.title}`,
-        root: { items: [clonedNodes[0]!] },
-        currentLeafId: clonedNodes[clonedNodes.length - 1]?.id,
-        originChatId: chat.id,
-        originMessageId: messageId,
-        createdAt: Date.now(),
+      const newChatObj: Chat = reactive({ 
+        ...chat, 
+        id: newChatId, 
+        title: `Fork of ${chat.title}`, 
+        root: { items: [clonedNodes[0]!] }, 
+        currentLeafId: clonedNodes[clonedNodes.length - 1]?.id, 
+        originChatId: chat.id, 
+        originMessageId: messageId, 
+        createdAt: Date.now(), 
         updatedAt: Date.now(),
+        modelId: chat.modelId, // Explicitly carry over modelId
       });
-
-      // Register immediately so persistSidebarStructure can save its content
       registerLiveInstance(newChatObj);
+      await saveChatContent(newChatObj);
+      await saveChatMeta(newChatObj);
+      await storageService.updateHierarchy((curr) => {
+        const node: HierarchyNode = { type: 'chat', id: newChatId };
+        const chatGroupId = chat.groupId;
 
-      const newSummary: ChatSummary = { id: newChatObj.id, title: newChatObj.title, updatedAt: newChatObj.updatedAt, groupId: newChatObj.groupId };
-      const newSidebarItem: SidebarItem = { id: `chat:${newChatObj.id}`, type: 'chat', chat: newSummary };
-
-      const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
-      insertSidebarItem(newRootItems, newSidebarItem, chat.groupId ?? null);
-      
-      await persistSidebarStructure(newRootItems);
-      
+        if (chatGroupId) {
+          const group = curr.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
+          if (group) group.chat_ids.unshift(newChatId);
+          else curr.items.push(node);
+        } else {
+          const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
+          const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
+          curr.items.splice(insertIdx, 0, node);
+        }
+        return curr;
+      });
       await loadData();
       await openChat(newChatObj.id);
       return newChatObj.id;
-    } finally {
-      unregisterLiveInstance(newChatId);
-    }
+    } finally { unregisterLiveInstance(newChatId); }
   };
 
   const editMessage = async (messageId: string, newContent: string) => {
-    const chat = currentChat.value;
-    if (!chat) return;
-    const node = findNodeInBranch(chat.root.items, messageId);
-    if (!node) return;
-
+    const chat = currentChat.value; if (!chat) return;
+    const node = findNodeInBranch(chat.root.items, messageId); if (!node) return;
     if (node.role === 'assistant') {
-      const correctedNode: MessageNode = {
-        id: uuidv7(), 
-        role: 'assistant', 
-        content: newContent, 
-        attachments: node.attachments,
-        timestamp: Date.now(), 
-        modelId: node.modelId,
-        replies: { items: [] },
-      };
+      const correctedNode: MessageNode = { id: uuidv7(), role: 'assistant', content: newContent, attachments: node.attachments, timestamp: Date.now(), modelId: node.modelId, replies: { items: [] }, };
       const parent = findParentInBranch(chat.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);
       else chat.root.items.push(correctedNode);
       chat.currentLeafId = correctedNode.id;
-      await saveChat(chat);
+      await saveChatContent(chat);
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
     } else {
       const parent = findParentInBranch(chat.root.items, messageId);
@@ -1019,13 +762,12 @@ Message: "${content}"`,
   };
 
   const switchVersion = async (messageId: string) => {
-    const chat = currentChat.value;
-    if (!chat) return;
+    const chat = currentChat.value; if (!chat) return;
     const node = findNodeInBranch(chat.root.items, messageId);
     if (node) {
       chat.currentLeafId = findDeepestLeaf(node).id;
       if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-      await saveChat(chat);
+      await saveChatContent(chat);
     }
   };
 
@@ -1036,46 +778,35 @@ Message: "${content}"`,
   };
 
   const toggleDebug = async () => {
-    const chat = currentChat.value;
-    if (!chat) return;
+    const chat = currentChat.value; if (!chat) return;
     chat.debugEnabled = !chat.debugEnabled;
     if (currentChat.value?.id === chat.id) triggerRef(currentChat);
-    await saveChat(chat);
+    await saveChatMeta(chat);
   };
 
   const createChatGroup = async (name: string) => {
     const id = uuidv7();
-    const newGroup: ChatGroup = {
-      id, name, updatedAt: Date.now(), isCollapsed: false, items: [],
-    };
-    const newRootItems = [{ id: `chat_group:${newGroup.id}`, type: 'chat_group' as const, chatGroup: newGroup }, ...rootItems.value];
-    await persistSidebarStructure(newRootItems);
+    const newGroup: ChatGroup = { id, name, updatedAt: Date.now(), isCollapsed: false, items: [], };
+    await storageService.saveChatGroup(newGroup);
+    await storageService.updateHierarchy((curr) => {
+      curr.items.unshift({ type: 'chat_group', id, chat_ids: [] });
+      return curr;
+    });
     await loadData();
     return id;
   };
 
   const deleteChatGroup = async (id: string) => {
-    // 1. Find the group and its chats
     const group = chatGroups.value.find(g => g.id === id);
     if (!group) return;
-
-    // 2. Delete all chats within the group
-    // We clone the items array to avoid modification issues during iteration if that were to happen
     const items = [...group.items];
-    for (const item of items) {
-      if (item.type === 'chat') {
-        // Pass a dummy toast handler to suppress individual "Undo" toasts
-        await deleteChat(item.chat.id, () => ''); 
-      }
-    }
-
-    // 3. Handle active group selection
-    if (currentChatGroup.value?.id === id) {
-      currentChatGroup.value = null;
-    }
-
-    // 4. Delete the group itself
+    for (const item of items) if (item.type === 'chat') await deleteChat(item.chat.id, () => '');
+    if (currentChatGroup.value?.id === id) currentChatGroup.value = null;
     await storageService.deleteChatGroup(id);
+    await storageService.updateHierarchy((curr) => {
+      curr.items = curr.items.filter(i => i.type !== 'chat_group' || i.id !== id);
+      return curr;
+    });
     await loadData();
   };
 
@@ -1083,144 +814,64 @@ Message: "${content}"`,
     const chatGroup = chatGroups.value.find(g => g.id === groupId);
     if (chatGroup) {
       chatGroup.isCollapsed = !chatGroup.isCollapsed;
-      await persistSidebarStructure(rootItems.value);
+      await storageService.saveChatGroup(chatGroup);
     }
   };
 
   const renameChatGroup = async (groupId: string, newName: string) => {
     const chatGroup = chatGroups.value.find(g => g.id === groupId);
     if (chatGroup) {
-      chatGroup.name = newName;
-      chatGroup.updatedAt = Date.now();
-      await persistSidebarStructure(rootItems.value);
+      chatGroup.name = newName; chatGroup.updatedAt = Date.now();
+      await storageService.saveChatGroup(chatGroup);
       await loadData();
     }
   };
 
-  const saveChatGroup = async (group: ChatGroup) => {
-    // Find its index in rootItems
-    const index = rootItems.value.findIndex(item => item.type === 'chat_group' && item.chatGroup.id === group.id);
-    if (index !== -1) {
-      await storageService.saveChatGroup(group, index);
-    }
-  };
+  const saveChatGroup = async (group: ChatGroup) => { await storageService.saveChatGroup(group); };
 
   const persistSidebarStructure = async (topLevelItems: SidebarItem[]) => {
     rootItems.value = topLevelItems;
-    for (let i = 0; i < topLevelItems.length; i++) {
-      const item = topLevelItems[i]!;
-      if (item.type === 'chat_group') {
-        await storageService.saveChatGroup(item.chatGroup, i);
-        for (let j = 0; j < item.chatGroup.items.length; j++) {
-          const nested = item.chatGroup.items[j]!;
-          if (nested.type === 'chat') {
-            const chat = liveChatRegistry.get(nested.chat.id) || await storageService.loadChat(nested.chat.id);
-            if (chat) {
-              chat.groupId = item.chatGroup.id;
-              await storageService.saveChat(chat, j);
-            }
-          }
-        }
-      } else {
-        const chat = liveChatRegistry.get(item.chat.id) || await storageService.loadChat(item.chat.id);
-        if (chat) {
-          chat.groupId = null;
-          await storageService.saveChat(chat, i);
-        }
-      }
-    }
+    syncLiveInstancesWithSidebar();
+    
+    const newHierarchy: Hierarchy = {
+      items: topLevelItems.map(item => {
+        if (item.type === 'chat') return { type: 'chat', id: item.chat.id };
+        else return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
+      })
+    };
+    await storageService.updateHierarchy(() => newHierarchy);
   };
 
   const moveChatToGroup = async (chatId: string, targetGroupId: string | null) => {
-    const newRootItems = JSON.parse(JSON.stringify(rootItems.value)) as SidebarItem[];
-    let chatItem: SidebarItem | undefined;
-
-    const removeFromList = (items: SidebarItem[]): boolean => {
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (!item) continue;
-        if (item.type === 'chat' && item.chat.id === chatId) {
-          chatItem = items.splice(i, 1)[0];
-          return true;
-        }
-        if (item.type === 'chat_group' && removeFromList(item.chatGroup.items)) return true;
-      }
-      return false;
-    };
-    removeFromList(newRootItems);
-
-    if (chatItem && chatItem.type === 'chat') {
-      const chatToMove = chatItem;
-      chatToMove.chat.groupId = targetGroupId;
-
+    await storageService.updateHierarchy((curr) => {
+      const node: HierarchyChatNode = { type: 'chat', id: chatId };
+      curr.items = curr.items.filter(i => {
+        if (i.type === 'chat' && i.id === chatId) return false;
+        if (i.type === 'chat_group') i.chat_ids = i.chat_ids.filter(id => id !== chatId);
+        return true;
+      });
       if (targetGroupId) {
-        const groupItem = newRootItems.find(item => item.type === 'chat_group' && item.chatGroup.id === targetGroupId);
-        if (groupItem && groupItem.type === 'chat_group') {
-          groupItem.chatGroup.items.push(chatToMove);
-        } else {
-          newRootItems.unshift(chatToMove);
-        }
+        const g = curr.items.find(i => i.type === 'chat_group' && i.id === targetGroupId) as HierarchyChatGroupNode;
+        if (g) g.chat_ids.push(chatId);
+        else curr.items.push(node);
       } else {
-        const firstChatIdx = newRootItems.findIndex(item => item.type === 'chat');
-        if (firstChatIdx !== -1) newRootItems.splice(firstChatIdx, 0, chatToMove);
-        else newRootItems.push(chatToMove);
+        const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
+        if (firstChatIdx !== -1) curr.items.splice(firstChatIdx, 0, node);
+        else curr.items.push(node);
       }
-    }
+      return curr;
+    });
+    if (currentChat.value?.id === chatId) { currentChat.value.groupId = targetGroupId; triggerRef(currentChat); }
+    await loadData();
+  };
 
-    await persistSidebarStructure(newRootItems);
-    // CRITICAL: We need to ensure rootItems.value is updated. 
-    // persistSidebarStructure already does rootItems.value = topLevelItems;
-    // but in tests, module state might be tricky.
-    
-    // Update currentChat's groupId if it's the one being moved
-    if (currentChat.value?.id === chatId) {
-      currentChat.value.groupId = targetGroupId;
-      triggerRef(currentChat);
-    }
+  const saveChat = async (chat: Chat) => {
+    await saveChatContent(chat);
+    await saveChatMeta(chat);
   };
 
   return {
-    // --- State & Getters ---
-    rootItems,
-    chats,
-    chatGroups,
-    sidebarItems,
-    currentChat,
-    currentChatGroup,
-    resolvedSettings,
-    inheritedSettings,
-    activeMessages,
-    streaming,
-    activeGenerations,
-    generatingTitle,
-    availableModels,
-    fetchingModels,
-
-    // --- Actions ---
-    loadChats: loadData,
-    fetchAvailableModels,
-    createNewChat,
-    openChat,
-    openChatGroup,
-    deleteChat,
-    deleteAllChats,
-    renameChat,
-    generateChatTitle,
-    sendMessage,
-    regenerateMessage,
-    forkChat,
-    editMessage,
-    switchVersion,
-    getSiblings,
-    toggleDebug,
-    createChatGroup,
-    deleteChatGroup,
-    toggleChatGroupCollapse,
-    renameChatGroup,
-    persistSidebarStructure,
-    saveChatGroup,
-    abortChat,
-    saveChat,
-    moveChatToGroup,
+    rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, activeGenerations, generatingTitle, availableModels, fetchingModels,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, persistSidebarStructure, saveChatGroup, abortChat, saveChatMeta, saveChatContent, moveChatToGroup, saveChat,
   };
 }

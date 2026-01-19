@@ -52,6 +52,12 @@ class MockFileSystemDirectoryHandle {
       yield key;
     }
   }
+
+  async *values() {
+    for (const val of this.entries.values()) {
+      yield val;
+    }
+  }
 }
 
 const mockOpfsRoot = new MockFileSystemDirectoryHandle('opfs-root');
@@ -91,14 +97,15 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
 
     await provider.saveChat(mockChat, 0);
 
-    // 1. Verify Meta Index (Should NOT contain message content)
+    // 1. Verify Meta File (Should NOT contain message content)
     const storageDir = mockOpfsRoot.entries.get('naidan_storage') as MockFileSystemDirectoryHandle;
-    const metaFile = storageDir.entries.get('chat_metas.json') as MockFileSystemFileHandle;
+    const metaDir = storageDir.entries.get('chat_metas') as MockFileSystemDirectoryHandle;
+    const metaFile = metaDir.entries.get(`${chatId}.json`) as MockFileSystemFileHandle;
     const metaText = await (await metaFile.getFile()).text();
     const metaJson = JSON.parse(metaText);
     
-    expect(metaJson.entries[0].id).toBe(chatId);
-    expect(metaJson.entries[0].root).toBeUndefined(); // Important: Content should be stripped
+    expect(metaJson.id).toBe(chatId);
+    expect(metaJson.root).toBeUndefined(); // Important: Content should be stripped
 
     // 2. Verify Content File (Should contain message content)
     const contentsDir = storageDir.entries.get('chat_contents') as MockFileSystemDirectoryHandle;
@@ -143,17 +150,16 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     await provider.saveChat(mockChat, 0);
     
     const storageDir = mockOpfsRoot.entries.get('naidan_storage') as MockFileSystemDirectoryHandle;
+    const metaDir = storageDir.entries.get('chat_metas') as MockFileSystemDirectoryHandle;
     const contentsDir = storageDir.entries.get('chat_contents') as MockFileSystemDirectoryHandle;
     
+    expect(metaDir.entries.has(`${chatId}.json`)).toBe(true);
     expect(contentsDir.entries.has(`${chatId}.json`)).toBe(true);
 
     await provider.deleteChat(chatId);
 
-    // Verify metadata removed from index
-    const metaFile = storageDir.entries.get('chat_metas.json') as MockFileSystemFileHandle;
-    const metaText = await (await metaFile.getFile()).text();
-    const metaJson = JSON.parse(metaText);
-    expect(metaJson.entries.find((m: any) => m.id === chatId)).toBeUndefined();
+    // Verify metadata removed
+    expect(metaDir.entries.has(`${chatId}.json`)).toBe(false);
 
     // Verify content file removed
     expect(contentsDir.entries.has(`${chatId}.json`)).toBe(false);

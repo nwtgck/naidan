@@ -4,7 +4,8 @@ import type { Chat } from '../../models/types';
 
 import { STORAGE_KEY_PREFIX } from '../../models/constants';
 
-const KEY_INDEX = `${STORAGE_KEY_PREFIX}lsp:index`;
+const KEY_HIERARCHY = `${STORAGE_KEY_PREFIX}lsp:hierarchy`;
+const KEY_META_PREFIX = `${STORAGE_KEY_PREFIX}lsp:chat_meta:`;
 
 describe('LocalStorageProvider', () => {
   let provider: LocalStorageProvider;
@@ -14,7 +15,7 @@ describe('LocalStorageProvider', () => {
     provider = new LocalStorageProvider();
   });
 
-  it('should use object-based structure in localStorage internally', async () => {
+  it('should use individual keys in localStorage', async () => {
     const mockChat: Chat = {
       id: '123e4567-e89b-12d3-a456-426614174000',
       title: 'Test Chat',
@@ -27,19 +28,18 @@ describe('LocalStorageProvider', () => {
 
     await provider.saveChat(mockChat, 0);
     
-    // 1. Verify Index (Should NOT contain root/messages)
-    const rawIndex = localStorage.getItem(KEY_INDEX);
-    expect(rawIndex).not.toBeNull();
-    const indexJson = JSON.parse(rawIndex!);
-    expect(indexJson.entries[0].id).toBe(mockChat.id);
-    expect(indexJson.entries[0].root).toBeUndefined();
+    // 1. Verify Meta (Should exist at its own key)
+    const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${mockChat.id}`);
+    expect(rawMeta).not.toBeNull();
+    const metaJson = JSON.parse(rawMeta!);
+    expect(metaJson.id).toBe(mockChat.id);
+    expect(metaJson.root).toBeUndefined();
 
-    // 2. Verify Content (Should contain root/messages)
-    const rawContent = localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:chat:${mockChat.id}`);
+    // 2. Verify Content (Should exist at its own key)
+    const rawContent = localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:chat_content:${mockChat.id}`);
     expect(rawContent).not.toBeNull();
     const contentJson = JSON.parse(rawContent!);
     expect(contentJson.root).toBeDefined();
-    expect(contentJson.root.items).toBeDefined();
   });
 
   it('should save and load a chat', async () => {
@@ -92,12 +92,12 @@ describe('LocalStorageProvider', () => {
     expect(loaded).toBeNull();
   });
 
-  it('should validate chat DTO schema on save', async () => {
+  it('should validate chat DTO schema on saveMeta', async () => {
     const invalidChat = {
       id: 'invalid-uuid',
       title: 'Test Chat',
     };
 
-    await expect(provider.saveChat(invalidChat as unknown as Chat, 0)).rejects.toThrow();
+    await expect(provider.saveChatMeta(invalidChat as any)).rejects.toThrow();
   });
 });

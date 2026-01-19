@@ -14,17 +14,19 @@ import {
   ChatMetaSchemaDto,
   ChatContentSchemaDto,
   SettingsSchemaDto,
+  HierarchySchemaDto,
   type ChatMetaDto,
   type ChatContentDto,
   type MigrationChunkDto,
   type SettingsDto,
   type ChatDto,
   type MessageNodeDto,
-  type AttachmentDto
+  type AttachmentDto,
+  type HierarchyDto
 } from '../../models/dto';
-import { settingsToDomain } from '../../models/mappers';
+import { settingsToDomain, hierarchyToDomain, hierarchyToDto } from '../../models/mappers';
 import { useGlobalEvents } from '../../composables/useGlobalEvents';
-import type { ChatSummary, Settings, ChatGroup } from '../../models/types';
+import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode } from '../../models/types';
 
 // Helper to format date YYYY-MM-DD
 function formatDate(date: Date): string {
@@ -58,6 +60,7 @@ export interface IImportExportStorage {
   saveSettings(settings: Settings): Promise<void>;
   listChats(): Promise<ChatSummary[]>;
   listChatGroups(): Promise<ChatGroup[]>;
+  loadHierarchy(): Promise<Hierarchy>;
 }
 
 export class ImportExportService {
@@ -107,6 +110,9 @@ export class ImportExportService {
         case 'settings':
           root.file('settings.json', JSON.stringify(chunk.data, null, 2));
           break;
+        case 'hierarchy':
+          root.file('hierarchy.json', JSON.stringify(chunk.data, null, 2));
+          break;
         case 'chat_group':
           root.folder('chat_groups')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
           break;
@@ -151,7 +157,7 @@ export class ImportExportService {
     const stats = { chatsCount: 0, chatGroupsCount: 0, attachmentsCount: 0, hasSettings: false, providerProfilesCount: 0 };
     const items: ImportPreviewItem[] = [];
     const chatGroupsMap = new Map<string, PreviewChatGroup>();
-    const chatsMap = new Map<string, PreviewChat & { _groupId?: string | null }>();
+    const chatsMap = new Map<string, PreviewChat & { _groupId?: string | null, _order?: number }>();
 
     // 1. Settings
     let previewSettings;
@@ -180,7 +186,7 @@ export class ImportExportService {
         if (result.success) {
           const dto = result.data;
           stats.chatGroupsCount++;
-          chatGroupsMap.set(dto.id, { id: dto.id, name: dto.name, updatedAt: dto.updatedAt, items: [], isCollapsed: dto.isCollapsed, _order: dto.order });
+          chatGroupsMap.set(dto.id, { id: dto.id, name: dto.name, updatedAt: dto.updatedAt, items: [], isCollapsed: dto.isCollapsed, _order: (json as any).order ?? 0 });
         }
       } catch (e) { /* Ignore */ }
     }
@@ -205,24 +211,47 @@ export class ImportExportService {
                   messageCount = contentJson.root?.items?.length ?? 0;
                 } catch (e) { /* Ignore */ }
               }
-              chatsMap.set(dto.id, { id: dto.id, title: dto.title, updatedAt: dto.updatedAt, messageCount, _groupId: dto.groupId, _order: dto.order });
+              chatsMap.set(dto.id, { 
+                id: dto.id, 
+                title: dto.title, 
+                updatedAt: dto.updatedAt, 
+                messageCount, 
+                _groupId: (meta as any).groupId ?? null, 
+                _order: (meta as any).order ?? 0 
+              });
             }
           }
         }
       } catch (e) { /* Ignore */ }
     }
 
-    // 5. Build Hierarchy
-    for (const chat of chatsMap.values()) {
-      if (chat._groupId && chatGroupsMap.has(chat._groupId)) chatGroupsMap.get(chat._groupId)!.items.push(chat);
-      else items.push({ type: 'chat', data: chat });
+    // 5. Build Hierarchy (Prefer hierarchy.json if exists, fallback to legacy fields)
+    const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
+    if (hierarchyFile) {
+      try {
+        const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')));
+        for (const node of hDto.items) {
+          if (node.type === 'chat') {
+            const chat = chatsMap.get(node.id);
+            if (chat) items.push({ type: 'chat', data: chat });
+          } else {
+            const group = chatGroupsMap.get(node.id);
+            if (group) {
+              for (const cid of node.chat_ids) {
+                const chat = chatsMap.get(cid);
+                if (chat) group.items.push(chat);
+              }
+              items.push({ type: 'chat_group', data: group });
+            }
+          }
+        }
+      } catch (e) { 
+        // Fallback to legacy
+        this.assembleLegacyHierarchy(chatsMap, chatGroupsMap, items);
+      }
+    } else {
+      this.assembleLegacyHierarchy(chatsMap, chatGroupsMap, items);
     }
-    for (const group of chatGroupsMap.values()) {
-      group.items.sort((a, b) => a._order - b._order);
-      items.push({ type: 'chat_group', data: group });
-    }
-    
-    items.sort((a, b) => a.data._order - b.data._order);
 
     const manifestFile = zip.file(rootPath + 'export_manifest.json');
     let appVersion = 'Unknown';
@@ -236,6 +265,22 @@ export class ImportExportService {
     }
 
     return { appVersion, exportedAt, items, stats, previewSettings };
+  }
+
+  private assembleLegacyHierarchy(
+    chatsMap: Map<string, PreviewChat & { _groupId?: string | null, _order?: number }>,
+    chatGroupsMap: Map<string, PreviewChatGroup>,
+    items: ImportPreviewItem[]
+  ) {
+    for (const chat of chatsMap.values()) {
+      if (chat._groupId && chatGroupsMap.has(chat._groupId)) chatGroupsMap.get(chat._groupId)!.items.push(chat);
+      else items.push({ type: 'chat', data: chat });
+    }
+    for (const group of chatGroupsMap.values()) {
+      group.items.sort((a, b) => (a._order ?? 0) - (b._order ?? 0));
+      items.push({ type: 'chat_group', data: group });
+    }
+    items.sort((a, b) => (a.data as any)._order - (b.data as any)._order);
   }
 
   /**
@@ -356,6 +401,15 @@ export class ImportExportService {
 
   private async *createRestoreStream(zip: JSZip, rootPath: string): AsyncGenerator<MigrationChunkDto> {
     const attachmentMetadata = new Map<string, { originalName: string, mimeType: string, size: number, uploadedAt: number }>();
+    
+    const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
+    if (hierarchyFile) {
+      try {
+        const json = JSON.parse(await hierarchyFile.async('string'));
+        yield { type: 'hierarchy', data: json };
+      } catch (e) { /* Ignore */ }
+    }
+
     const metasFile = zip.file(rootPath + 'chat_metas.json');
     const metas: ChatMetaDto[] = [];
     if (metasFile) {
@@ -418,6 +472,8 @@ export class ImportExportService {
   private async *createAppendStream(zip: JSZip, rootPath: string, config: ImportConfig): AsyncGenerator<MigrationChunkDto> {
     const idMap = new Map<string, string>(); 
     const groupsPrefix = rootPath + 'chat_groups/';
+    const importedGroups: ChatGroupDto[] = [];
+
     for (const filename of Object.keys(zip.files)) {
       if (!filename.startsWith(groupsPrefix) || filename === groupsPrefix || filename.endsWith('/')) continue;
       try {
@@ -428,6 +484,7 @@ export class ImportExportService {
           idMap.set(dto.id, newId);
           dto.id = newId;
           if (config.data.chatGroupNamePrefix) dto.name = `${config.data.chatGroupNamePrefix}${dto.name}`;
+          importedGroups.push(dto);
           yield { type: 'chat_group', data: dto };
         }
       } catch (e) { /* Ignore */ }
@@ -436,6 +493,8 @@ export class ImportExportService {
     const attachmentMetadata = new Map<string, { originalName: string, mimeType: string, size: number, uploadedAt: number }>();
     const attachmentIdMap = new Map<string, string>();
     const metasFile = zip.file(rootPath + 'chat_metas.json');
+    const importedChatIds: string[] = [];
+
     if (metasFile) {
       try {
         const metasJson = JSON.parse(await metasFile.async('string'));
@@ -449,10 +508,9 @@ export class ImportExportService {
             const newId = uuidv7();
             idMap.set(dto.id, newId);
             dto.id = newId;
+            importedChatIds.push(newId);
             if (config.data.chatTitlePrefix && dto.title) dto.title = `${config.data.chatTitlePrefix}${dto.title}`;
-            if (dto.groupId && idMap.has(dto.groupId)) dto.groupId = idMap.get(dto.groupId)!;
-            else if (dto.groupId) dto.groupId = null;
-
+            
             const processAttachments = (attachments: AttachmentDto[]): AttachmentDto[] => {
               return attachments.map((att) => {
                 if (!attachmentIdMap.has(att.id)) {
@@ -474,6 +532,41 @@ export class ImportExportService {
         }
       } catch (e) { /* Ignore */ }
     }
+
+    // Reconstruction of Hierarchy for 'append' mode
+    const currentHierarchy = await this.storage.loadHierarchy();
+    const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
+    let importedHierarchyItems: HierarchyNode[] = [];
+
+    if (hierarchyFile) {
+      try {
+        const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')));
+        importedHierarchyItems = hDto.items.map(node => {
+          if (node.type === 'chat') {
+            return { type: 'chat', id: idMap.get(node.id) || node.id };
+          } else {
+            return { 
+              type: 'chat_group', 
+              id: idMap.get(node.id) || node.id, 
+              chat_ids: node.chat_ids.map(cid => idMap.get(cid) || cid) 
+            };
+          }
+        });
+      } catch (e) { /* fallback below */ }
+    }
+
+    if (importedHierarchyItems.length === 0) {
+      // Legacy or missing hierarchy fallback: append groups then chats
+      importedHierarchyItems = [
+        ...importedGroups.map(g => ({ type: 'chat_group' as const, id: g.id, chat_ids: [] })),
+        ...importedChatIds.map(id => ({ type: 'chat' as const, id }))
+      ];
+    }
+
+    const mergedHierarchy: HierarchyDto = {
+      items: [...currentHierarchy.items, ...importedHierarchyItems]
+    };
+    yield { type: 'hierarchy', data: mergedHierarchy };
 
     const attPrefix = rootPath + 'uploaded_files/';
     for (const filename of Object.keys(zip.files)) {

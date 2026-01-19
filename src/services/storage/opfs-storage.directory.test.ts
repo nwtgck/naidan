@@ -91,6 +91,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
       autoTitleEnabled: true,
       storageType: 'opfs',
       providerProfiles: [],
+      endpoint: { type: 'openai', url: 'http://localhost' }
     });
 
     expect(mockOpfsRoot.entries.has('settings.json')).toBe(false);
@@ -111,6 +112,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
       autoTitleEnabled: true,
       storageType: 'opfs',
       providerProfiles: [],
+      endpoint: { type: 'openai', url: 'http://localhost' }
     });
 
     expect(storageDir.entries.size).toBeGreaterThan(0);

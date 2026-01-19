@@ -1,6 +1,6 @@
-import type { Chat, Settings, ChatGroup, ChatSummary, SidebarItem } from '../../models/types';
-import type { ChatMetaDto, ChatGroupDto, MigrationChunkDto } from '../../models/dto';
-import { buildSidebarItemsFromDtos } from '../../models/mappers';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, MessageNode, ChatMeta, ChatContent, Hierarchy } from '../../models/types';
+import type { ChatMetaDto, ChatGroupDto, MigrationChunkDto, HierarchyDto } from '../../models/dto';
+import { buildSidebarItemsFromHierarchy } from '../../models/mappers';
 
 export type { ChatSummary };
 
@@ -18,9 +18,12 @@ export abstract class IStorageProvider {
   abstract readonly canPersistBinary: boolean;
 
   // --- Data Access Methods ---
-  // Subclasses implement these to fetch raw DTOs.
   protected abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;
   protected abstract listChatGroupsRaw(): Promise<ChatGroupDto[]>;
+
+  // --- Hierarchy Management ---
+  abstract loadHierarchy(): Promise<HierarchyDto | null>;
+  abstract saveHierarchy(hierarchy: HierarchyDto): Promise<void>;
 
   // --- Bulk Operations (Migration) ---
   abstract dump(): AsyncGenerator<MigrationChunkDto>;
@@ -60,21 +63,29 @@ export abstract class IStorageProvider {
   /**
    * Centralized method to get the full sorted hierarchy using mappers.
    */
-  public async getSidebarStructure(): Promise<SidebarItem[]> {
-    const [metas, chatGroups] = await Promise.all([
-      this.listChatMetasRaw(),
-      this.listChatGroupsRaw(),
-    ]);
-    return buildSidebarItemsFromDtos(chatGroups, metas);
-  }
+  public abstract getSidebarStructure(): Promise<SidebarItem[]>;
 
   // --- Persistence Methods ---
   
+  /**
+   * @deprecated Use saveChatMeta and saveChatContent for better performance.
+   */
   abstract saveChat(chat: Chat, index: number): Promise<void>;
+  
+  /**
+   * Saves only the chat metadata (title, model, etc.) to the central index.
+   */
+  abstract saveChatMeta(meta: ChatMeta): Promise<void>;
+
+  /**
+   * Saves only the chat content (message tree) to a dedicated file.
+   */
+  abstract saveChatContent(id: string, content: ChatContent): Promise<void>;
+
   abstract loadChat(id: string): Promise<Chat | null>;
   abstract deleteChat(id: string): Promise<void>;
   
-  abstract saveChatGroup(chatGroup: ChatGroup, index: number): Promise<void>;
+  abstract saveChatGroup(chatGroup: ChatGroup): Promise<void>;
   abstract loadChatGroup(id: string): Promise<ChatGroup | null>;
   abstract deleteChatGroup(id: string): Promise<void>;
   

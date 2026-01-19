@@ -39,6 +39,10 @@ vi.mock('../services/storage', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn(),
+    saveChatMeta: vi.fn().mockResolvedValue(undefined),
+    saveChatContent: vi.fn().mockResolvedValue(undefined),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadChat: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     listChatGroups: vi.fn().mockResolvedValue([]),
@@ -77,8 +81,8 @@ describe('ChatArea Streaming DOM Test', () => {
     await textarea.setValue('Hello');
     await textarea.trigger('keydown.enter', { ctrlKey: true });
     
-    await nextTick();
-    await nextTick();
+    // Wait for sendMessage to reach generateResponse where triggerChunk is assigned
+    await vi.waitUntil(() => triggerChunk !== undefined, { timeout: 2000, interval: 50 });
 
     if (!triggerChunk) {
       throw new Error('LLM chat was not triggered');

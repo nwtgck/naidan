@@ -14,6 +14,10 @@ vi.mock('../services/storage', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
+    saveChatMeta: vi.fn(),
+    saveChatContent: vi.fn(),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     deleteChat: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
     saveChatGroup: vi.fn(),
@@ -110,8 +114,8 @@ describe('useChat Model Persistence', () => {
     expect(activeMessages.value[3]?.content).toContain('Response from gpt-4');
 
     // 5. Verify storage was called with correct modelIds in the tree
-    expect(storageService.saveChat).toHaveBeenCalled();
-    const lastSavedChat = vi.mocked(storageService.saveChat).mock.calls[vi.mocked(storageService.saveChat).mock.calls.length - 1]![0];
+    expect(storageService.saveChatContent).toHaveBeenCalled();
+    const lastSavedChat = vi.mocked(storageService.saveChatContent).mock.calls[vi.mocked(storageService.saveChatContent).mock.calls.length - 1]![1] as Chat;
     
     // Path: root -> user1 -> assistant1 (gpt-3.5) -> user2 -> assistant2 (gpt-4)
     const assistant1 = lastSavedChat.root.items[0]?.replies.items[0];
