@@ -26,6 +26,7 @@ vi.mock('../services/storage', () => ({
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
     deleteChatGroup: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    notify: vi.fn(),
   },
 }));
 

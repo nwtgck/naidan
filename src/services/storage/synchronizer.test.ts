@@ -174,7 +174,8 @@ describe('StorageSynchronizer', () => {
       synchronizer.subscribe(l1);
       synchronizer.subscribe(l2);
 
-      const eventData = { type: 'chat_content', timestamp: Date.now() };
+      // Must provide id for chat_content type per schema
+      const eventData = { type: 'chat_content', id: 'any', timestamp: Date.now() };
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
         newValue: JSON.stringify(eventData)
@@ -193,7 +194,7 @@ describe('StorageSynchronizer', () => {
 
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
-        newValue: JSON.stringify({ type: 'settings' })
+        newValue: JSON.stringify({ type: 'settings', timestamp: Date.now() })
       });
       window.dispatchEvent(storageEvent);
 
@@ -222,7 +223,7 @@ describe('StorageSynchronizer', () => {
 
       const storageEvent = new StorageEvent('storage', {
         key: 'unrelated-key',
-        newValue: JSON.stringify({ type: 'chat_content' })
+        newValue: JSON.stringify({ type: 'chat_content', id: 'any', timestamp: Date.now() })
       });
       window.dispatchEvent(storageEvent);
 
@@ -238,7 +239,7 @@ describe('StorageSynchronizer', () => {
       let capturedHandler: any;
       
       // Mock class
-      global.BroadcastChannel = class {
+      (global as any).BroadcastChannel = class {
         postMessage = vi.fn();
         close = vi.fn();
         set onmessage(handler: any) {

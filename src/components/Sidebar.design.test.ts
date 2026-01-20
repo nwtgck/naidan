@@ -44,6 +44,9 @@ describe('Sidebar Design Specifications', () => {
       chats: ref([]),
       sidebarItems: ref([]),
       loadChats: vi.fn().mockResolvedValue(undefined),
+      isTaskRunning: vi.fn().mockReturnValue(false),
+      isProcessing: vi.fn().mockReturnValue(false),
+      abortChat: vi.fn(),
     });
     (useTheme as unknown as Mock).mockReturnValue({
       themeMode: ref('light'),
@@ -112,6 +115,9 @@ describe('Sidebar Design Specifications', () => {
       loadChats: vi.fn().mockResolvedValue(undefined),
       chatGroups: ref([]),
       chats: ref([]),
+      isTaskRunning: vi.fn().mockReturnValue(false),
+      isProcessing: vi.fn().mockReturnValue(false),
+      abortChat: vi.fn(),
     });
     
     const wrapper = mount(Sidebar, {

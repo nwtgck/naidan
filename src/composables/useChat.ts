@@ -15,9 +15,10 @@ const _currentChatGroup = ref<ChatGroup | null>(null);
 
 export const liveChatRegistry = reactive(new Map<string, Chat>());
 const activeGenerations = reactive(new Map<string, { controller: AbortController, chat: Chat }>)
+const externalGenerations = reactive(new Set<string>());
 const activeTaskCounts = reactive(new Map<string, number>());
 
-const streaming = computed(() => activeGenerations.size > 0);
+const streaming = computed(() => activeGenerations.size > 0 || externalGenerations.size > 0);
 const generatingTitle = computed(() => Array.from(activeTaskCounts.keys()).some(k => k.startsWith('title:')));
 const fetchingModels = computed(() => Array.from(activeTaskCounts.keys()).some(k => k.startsWith('fetch:')));
 
@@ -49,7 +50,7 @@ function decTask(chatId: string, type: 'title' | 'fetch' | 'process') {
 }
 
 function isTaskRunning(chatId: string) {
-  if (activeGenerations.has(chatId)) return true;
+  if (activeGenerations.has(chatId) || externalGenerations.has(chatId)) return true;
   for (const [key, count] of activeTaskCounts.entries()) {
     if (count > 0 && key.endsWith(':' + chatId)) return true;
   }
@@ -57,7 +58,7 @@ function isTaskRunning(chatId: string) {
 }
 
 function isProcessing(chatId: string) {
-  if (activeGenerations.has(chatId)) return true;
+  if (activeGenerations.has(chatId) || externalGenerations.has(chatId)) return true;
   return (activeTaskCounts.get('process:' + chatId) || 0) > 0;
 }
 
@@ -146,6 +147,21 @@ storageService.subscribeToChanges(async (event) => {
     }
   } 
   
+  if (event.type === 'chat_content_generation') {
+    if (event.status === 'started') {
+      if (!activeGenerations.has(event.id)) {
+        externalGenerations.add(event.id);
+      }
+    } else if (event.status === 'stopped') {
+      externalGenerations.delete(event.id);
+    } else if (event.status === 'abort_request') {
+      const local = activeGenerations.get(event.id);
+      if (local) {
+        local.controller.abort();
+      }
+    }
+  }
+
   if (event.type === 'chat_content' && event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
     if (!activeGenerations.has(event.id)) {
       const fresh = await storageService.loadChat(event.id);
@@ -513,6 +529,7 @@ export function useChat() {
 
     const controller = new AbortController();
     activeGenerations.set(mutableChat.id, { controller, chat: mutableChat });
+    storageService.notify({ type: 'chat_content_generation', id: mutableChat.id, status: 'started', timestamp: Date.now() });
     registerLiveInstance(mutableChat);
 
     const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
@@ -598,6 +615,7 @@ export function useChat() {
           return { ...curr, updatedAt: Date.now(), currentLeafId: mutableChat.currentLeafId };
         });
         activeGenerations.delete(mutableChat.id);
+        storageService.notify({ type: 'chat_content_generation', id: mutableChat.id, status: 'stopped', timestamp: Date.now() });
       }
     }
   };
@@ -754,10 +772,16 @@ export function useChat() {
     } finally { decTask(taskId, 'title'); }
   };
 
-  const abortChat = () => {
-    if (_currentChat.value) {
-      const id = toRaw(_currentChat.value).id;
-      if (activeGenerations.has(id)) { activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id); }
+  const abortChat = (chatId?: string) => {
+    const id = chatId || (_currentChat.value ? toRaw(_currentChat.value).id : null);
+    if (id) {
+      if (activeGenerations.has(id)) {
+        activeGenerations.get(id)?.controller.abort();
+        activeGenerations.delete(id);
+        storageService.notify({ type: 'chat_content_generation', id, status: 'stopped', timestamp: Date.now() });
+      } else if (externalGenerations.has(id)) {
+        storageService.notify({ type: 'chat_content_generation', id, status: 'abort_request', timestamp: Date.now() });
+      }
     }
   };
 
@@ -950,6 +974,6 @@ export function useChat() {
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, activeGenerations, generatingTitle, availableModels, fetchingModels,
     loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup, __testOnlySetCurrentChat, __testOnlySetCurrentChatGroup, clearLiveChatRegistry,
-    registerLiveInstance, unregisterLiveInstance, getLiveChat
+    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing
   };
 }

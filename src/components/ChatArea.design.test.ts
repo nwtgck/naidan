@@ -31,6 +31,9 @@ describe('ChatArea Design Specifications', () => {
         modelId: 'gemma3n:e2b', 
         sources: { modelId: 'chat' } 
       }),
+      isTaskRunning: vi.fn().mockReturnValue(false),
+      isProcessing: vi.fn().mockReturnValue(false),
+      abortChat: vi.fn(),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),

@@ -47,6 +47,8 @@ vi.mock('../composables/useChat', () => ({
     fetchingModels: ref(false),
     fetchAvailableModels: vi.fn(),
     forkChat: mockForkChat,
+    isTaskRunning: vi.fn().mockReturnValue(false),
+    isProcessing: vi.fn().mockReturnValue(false),
   }),
 }));
 

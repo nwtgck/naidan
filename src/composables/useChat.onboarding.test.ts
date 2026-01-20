@@ -17,6 +17,7 @@ vi.mock('../services/storage', () => ({
     listChatGroups: vi.fn().mockResolvedValue([]),
     deleteChatGroup: vi.fn(),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
+    notify: vi.fn(),
   },
 }));
 

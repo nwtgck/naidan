@@ -22,12 +22,12 @@ const chatStore = useChat();
 const {
   currentChat,
   streaming,
-  activeGenerations,
   generatingTitle,
   activeMessages,
   fetchingModels,
   resolvedSettings,
   inheritedSettings,
+  isTaskRunning,
 } = chatStore;
 useSettings();
 const router = useRouter();
@@ -50,7 +50,7 @@ function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 
 }
 
 const isCurrentChatStreaming = computed(() => {
-  return currentChat.value ? activeGenerations.has(currentChat.value.id) : false;
+  return currentChat.value ? isTaskRunning(currentChat.value.id) : false;
 });
 
 const container = ref<HTMLElement | null>(null);

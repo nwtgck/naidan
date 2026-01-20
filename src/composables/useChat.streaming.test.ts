@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 
 // --- Mocks ---
-const mockRootItems: any[] = [];
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
@@ -16,9 +15,9 @@ vi.mock('../services/storage', () => ({
     deleteChat: vi.fn(),
     updateChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
-    getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
-    deleteChatGroup: vi.fn(),
+    getSidebarStructure: vi.fn().mockResolvedValue([]),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    notify: vi.fn(),
   },
 }));
 

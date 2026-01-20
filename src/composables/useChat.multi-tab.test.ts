@@ -62,6 +62,7 @@ vi.mock('../services/storage', () => ({
     }),
     updateChatGroup: vi.fn().mockResolvedValue(undefined),
     getSidebarStructure: vi.fn().mockImplementation(async () => []),
+    notify: vi.fn(),
   },
 }));
 

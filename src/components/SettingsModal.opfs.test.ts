@@ -33,7 +33,9 @@ vi.mock('../services/storage', () => ({
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     clearAll: vi.fn(),
     getCurrentType: vi.fn().mockReturnValue('local'),
-    hasAttachments: vi.fn().mockResolvedValue(false),
+    hasAttachments: vi.fn(),
+    switchProvider: vi.fn(),
+    notify: vi.fn(),
   },
 }));
 

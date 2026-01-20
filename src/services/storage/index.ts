@@ -7,7 +7,7 @@ import { useGlobalEvents } from '../../composables/useGlobalEvents';
 import { STORAGE_BOOTSTRAP_KEY, SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '../../models/constants';
 import { chatToDto, hierarchyToDomain, hierarchyToDto } from '../../models/mappers';
 import type { MigrationChunkDto } from '../../models/dto';
-import { StorageSynchronizer, type ChangeListener } from './synchronizer';
+import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } from './synchronizer';
 
 /**
  * StorageService
@@ -78,6 +78,19 @@ export class StorageService {
 
   subscribeToChanges(listener: ChangeListener) {
     return this.synchronizer.subscribe(listener);
+  }
+
+  notify(event: StorageChangeEvent): void;
+  /**
+   * @deprecated Use notify(event: StorageChangeEvent) instead.
+   */
+  notify(type: string, id?: string): void;
+  notify(eventOrType: StorageChangeEvent | string, id?: string): void {
+    if (typeof eventOrType === 'string') {
+      this.synchronizer.notify(eventOrType, id);
+    } else {
+      this.synchronizer.notify(eventOrType);
+    }
   }
 
   // --- Hierarchy Management (Atomic) ---

@@ -65,6 +65,7 @@ vi.mock('../services/storage', () => ({
     canPersistBinary: true,
     getFile: vi.fn(),
     saveFile: vi.fn(),
+    notify: vi.fn(),
   },
 }));
 

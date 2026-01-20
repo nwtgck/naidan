@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   switchProvider: vi.fn(),
   getCurrentType: vi.fn().mockReturnValue('local'),
   subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+  notify: vi.fn(),
 }));
 
 vi.mock('../services/storage', () => ({

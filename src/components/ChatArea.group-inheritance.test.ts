@@ -29,6 +29,9 @@ vi.mock('../composables/useChat', () => ({
     toggleDebug: vi.fn(),
     getSiblings: vi.fn().mockReturnValue([]),
     moveChatToGroup: vi.fn(),
+    isTaskRunning: vi.fn().mockReturnValue(false),
+    isProcessing: vi.fn().mockReturnValue(false),
+    abortChat: vi.fn(),
   }),
 }));
 

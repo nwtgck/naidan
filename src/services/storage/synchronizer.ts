@@ -1,16 +1,35 @@
+import { z } from 'zod';
 import { SYNC_SIGNAL_KEY } from '../../models/constants';
 
-type ChangeType = 
-  | 'chat_meta_and_chat_group' 
-  | 'chat_content' 
-  | 'settings' 
-  | 'migration';
+export const StorageChangeEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('chat_meta_and_chat_group'),
+    id: z.string().optional(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal('chat_content'),
+    id: z.string(),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal('chat_content_generation'),
+    id: z.string(),
+    status: z.enum(['started', 'stopped', 'abort_request']),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal('settings'),
+    timestamp: z.number(),
+  }),
+  z.object({
+    type: z.literal('migration'),
+    timestamp: z.number(),
+  }),
+]);
 
-export interface StorageChangeEvent {
-  type: ChangeType;
-  id?: string;
-  timestamp: number;
-}
+export type StorageChangeEvent = z.infer<typeof StorageChangeEventSchema>;
+export type ChangeType = StorageChangeEvent['type'];
 
 export type ChangeListener = (event: StorageChangeEvent) => void;
 
@@ -24,8 +43,13 @@ export class StorageSynchronizer {
       window.addEventListener('storage', (e) => {
         if (e.key === SYNC_SIGNAL_KEY && e.newValue) {
           try {
-            const event = JSON.parse(e.newValue) as StorageChangeEvent;
-            this.emit(event);
+            const raw = JSON.parse(e.newValue);
+            const result = StorageChangeEventSchema.safeParse(raw);
+            if (result.success) {
+              this.emit(result.data);
+            } else {
+              console.warn('Failed to validate storage signal:', result.error);
+            }
           } catch (err) {
             console.error('Failed to parse storage signal:', err);
           }
@@ -37,7 +61,12 @@ export class StorageSynchronizer {
         try {
           this.broadcastChannel = new BroadcastChannel('naidan_storage_sync');
           this.broadcastChannel.onmessage = (ev) => {
-            this.emit(ev.data as StorageChangeEvent);
+            const result = StorageChangeEventSchema.safeParse(ev.data);
+            if (result.success) {
+              this.emit(result.data);
+            } else {
+              console.warn('Failed to validate broadcast message:', result.error);
+            }
           };
         } catch (e) {
           // Ignore errors in strict environments
@@ -111,12 +140,22 @@ export class StorageSynchronizer {
   /**
    * Notifies other tabs of a change.
    */
-  notify(type: ChangeType, id?: string) {
-    const event: StorageChangeEvent = {
-      type,
-      id,
-      timestamp: Date.now(),
-    };
+  notify(event: StorageChangeEvent): void;
+  /**
+   * @deprecated Use notify(event: StorageChangeEvent) instead.
+   */
+  notify(type: string, id?: string): void;
+  notify(eventOrType: StorageChangeEvent | string, id?: string): void {
+    let event: StorageChangeEvent;
+    if (typeof eventOrType === 'string') {
+      event = {
+        type: eventOrType,
+        id,
+        timestamp: Date.now(),
+      } as unknown as StorageChangeEvent;
+    } else {
+      event = eventOrType;
+    }
 
     // 1. LocalStorage Signal
     try {

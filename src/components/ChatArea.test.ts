@@ -78,6 +78,8 @@ vi.mock('../composables/useChat', () => ({
     forkChat: vi.fn().mockResolvedValue('new-id'),
     openChatGroup: mockOpenChatGroup,
     moveChatToGroup: mockMoveChatToGroup,
+    isTaskRunning: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
+    isProcessing: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
   }),
 }));
 

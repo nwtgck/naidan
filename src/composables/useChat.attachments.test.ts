@@ -70,6 +70,7 @@ vi.mock('../services/storage', () => ({
     saveFile: vi.fn().mockResolvedValue(undefined),
     getFile: vi.fn().mockResolvedValue(new Blob(['data'])),
     switchProvider: vi.fn().mockResolvedValue(undefined),
+    notify: vi.fn(),
     canPersistBinary: false, 
     getCurrentType: vi.fn().mockReturnValue('local'),
   }
