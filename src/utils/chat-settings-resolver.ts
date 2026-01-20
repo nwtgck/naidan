@@ -1,10 +1,28 @@
-import type { Chat, ChatGroup, Settings } from '../models/types';
+import type { Chat, ChatGroup, EndpointType, LmParameters } from '../models/types';
 
-export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: Settings) {
+export interface ResolvableLmParameters {
+  temperature?: number;
+  topP?: number;
+  maxCompletionTokens?: number;
+  presencePenalty?: number;
+  frequencyPenalty?: number;
+  stop?: readonly string[];
+}
+
+export interface ResolvableSettings {
+  endpointType: EndpointType;
+  endpointUrl?: string;
+  endpointHttpHeaders?: readonly (readonly [string, string])[];
+  defaultModelId?: string;
+  systemPrompt?: string;
+  lmParameters?: ResolvableLmParameters;
+}
+
+export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: ResolvableSettings) {
   const group = chat.groupId ? groups.find(g => g.id === chat.groupId) : null;
   const endpointType = chat.endpointType || group?.endpoint?.type || globalSettings.endpointType;
   const endpointUrl = chat.endpointUrl || group?.endpoint?.url || globalSettings.endpointUrl || '';
-  const endpointHttpHeaders = chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || globalSettings.endpointHttpHeaders;
+  const endpointHttpHeaders = (chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || globalSettings.endpointHttpHeaders) as [string, string][] | undefined;
   const modelId = chat.modelId || group?.modelId || globalSettings.defaultModelId || '';
 
   let systemPrompts: string[] = [];
@@ -18,7 +36,11 @@ export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSetti
     else if (chat.systemPrompt.content) systemPrompts.push(chat.systemPrompt.content);
   }
 
-  const lmParameters = { ...(globalSettings.lmParameters || {}), ...(group?.lmParameters || {}), ...(chat.lmParameters || {}), };
+  const lmParameters = { 
+    ...(globalSettings.lmParameters || {}), 
+    ...(group?.lmParameters || {}), 
+    ...(chat.lmParameters || {}), 
+  } as LmParameters;
 
   return {
     endpointType, endpointUrl, endpointHttpHeaders, modelId, systemPromptMessages: systemPrompts, lmParameters,

@@ -122,7 +122,6 @@ describe('SettingsModal OPFS and Error Handling', () => {
     vi.mocked(useSettings).mockReturnValue({
       settings: { value: { storageType: 'local', providerProfiles: [], endpointUrl: '' } } as any,
       save: mockSave,
-      loading: { value: false } as any,
       initialized: { value: true } as any,
       isOnboardingDismissed: { value: true } as any,
       onboardingDraft: { value: null } as any,
@@ -130,6 +129,15 @@ describe('SettingsModal OPFS and Error Handling', () => {
       isFetchingModels: { value: false } as any,
       init: vi.fn(),
       fetchModels: vi.fn(),
+      updateGlobalModel: vi.fn(),
+      updateGlobalEndpoint: vi.fn(),
+      updateSystemPrompt: vi.fn(),
+      updateStorageType: vi.fn(),
+      setIsOnboardingDismissed: vi.fn(),
+      setOnboardingDraft: vi.fn(),
+      setHeavyContentAlertDismissed: vi.fn(),
+      __testOnlyReset: vi.fn(),
+      __testOnlySetSettings: vi.fn(),
     });
 
     vi.mocked(useConfirm).mockReturnValue({

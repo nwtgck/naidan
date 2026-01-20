@@ -8,7 +8,7 @@ const props = defineProps<{
   placeholder?: string;
   loading?: boolean;
   allowClear?: boolean;
-  models?: string[];
+  models?: readonly string[];
   disabled?: boolean;
   clearLabel?: string;
 }>();

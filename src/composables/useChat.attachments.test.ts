@@ -120,7 +120,10 @@ describe('useChat - Attachment & Migration Logic', () => {
     (useSettings as any).mockReturnValue({ 
       settings,
       isOnboardingDismissed: ref(true),
-      onboardingDraft: ref({})
+      onboardingDraft: ref({}),
+      setHeavyContentAlertDismissed: (val: boolean) => { settings.value.heavyContentAlertDismissed = val; },
+      setOnboardingDraft: vi.fn(),
+      setIsOnboardingDismissed: vi.fn(),
     });
     (storageService as any).canPersistBinary = false;
   });

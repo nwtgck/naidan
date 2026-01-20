@@ -22,7 +22,7 @@ const {
   currentChat, chatGroups, chats, activeGenerations,
 } = chatStore;
 
-const { settings, isFetchingModels, save: saveSettings } = useSettings();
+const { settings, isFetchingModels, updateGlobalModel } = useSettings();
 const { isSidebarOpen, toggleSidebar } = useLayout();
 const { showConfirm } = useConfirm();
 
@@ -197,10 +197,7 @@ async function saveChatGroupRename() {
 
 async function handleGlobalModelChange(newModelId: string | undefined) {
   if (!newModelId) return;
-  await saveSettings({
-    ...settings.value,
-    defaultModelId: newModelId,
-  });
+  await updateGlobalModel(newModelId);
 }
 </script>
 

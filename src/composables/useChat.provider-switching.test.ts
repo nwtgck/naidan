@@ -15,10 +15,12 @@ vi.mock('../services/storage', () => ({
     updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadChat: vi.fn(),
+    loadSettings: vi.fn().mockResolvedValue({}),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     updateChatGroup: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     listChatGroups: vi.fn().mockResolvedValue([]),
+    getCurrentType: vi.fn().mockReturnValue('local'),
   },
 }));
 
@@ -45,7 +47,7 @@ vi.mock('../services/llm', () => {
 });
 
 describe('Provider and Model Compatibility (Comprehensive Test)', () => {
-  const { settings } = useSettings();
+  const { settings, __testOnlySetSettings } = useSettings();
   const chatStore = useChat();
   const { sendMessage, __testOnlySetCurrentChat, updateChatSettings, updateChatModel } = chatStore;
 
@@ -53,14 +55,14 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     vi.clearAllMocks();
     
     // Reset Settings
-    settings.value = {
+    __testOnlySetSettings({
       endpointType: 'openai',
       endpointUrl: 'http://localhost:1234/v1',
       defaultModelId: 'gpt-4',
       autoTitleEnabled: false,
       storageType: 'local',
       providerProfiles: [],
-    };
+    });
 
     mockOpenAIModels.mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']);
     mockOllamaModels.mockResolvedValue(['llama3', 'mistral']);
@@ -87,7 +89,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     expect(mockOpenAIChat.mock.calls[0]![1]).toBe('gpt-4');
 
     // 2. Ollama (gpt-4-showcase -> resolves to llama3)
-    settings.value.endpointType = 'ollama';
+    __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), endpointType: 'ollama' });
     await sendMessage('M2');
     expect(mockOllamaChat.mock.calls[0]![1]).toBe('llama3');
 
@@ -99,8 +101,11 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
   });
 
   it('should fallback to first available model if defaultModelId is also missing', async () => {
-    settings.value.endpointType = 'ollama';
-    settings.value.defaultModelId = 'missing-default';
+    __testOnlySetSettings({
+      ...JSON.parse(JSON.stringify(settings.value)),
+      endpointType: 'ollama',
+      defaultModelId: 'missing-default',
+    });
     mockOllamaModels.mockResolvedValue(['first-available', 'second']);
 
     __testOnlySetCurrentChat(reactive({

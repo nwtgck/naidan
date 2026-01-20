@@ -44,6 +44,8 @@ describe('OnboardingModal.vue', () => {
       availableModels: ref([]),
       isFetchingModels: ref(false),
       fetchModels: vi.fn(),
+      setIsOnboardingDismissed: (val: boolean) => { mockIsOnboardingDismissed.value = val; },
+      setOnboardingDraft: (val: any) => { mockOnboardingDraft.value = val; },
     });
 
     (useToast as unknown as Mock).mockReturnValue({

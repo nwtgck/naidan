@@ -239,14 +239,14 @@ export function useChat() {
 
   const loadData = async () => { rootItems.value = await storageService.getSidebarStructure(); };
 
-  const fetchAvailableModels = async (chatId?: string, customEndpoint?: { type: EndpointType, url: string, headers?: [string, string][] }) => {
+  const fetchAvailableModels = async (chatId?: string, customEndpoint?: { type: EndpointType, url: string, headers?: readonly (readonly [string, string])[] }) => {
     const mutableChat = chatId ? liveChatRegistry.get(chatId) : undefined;
     if (mutableChat) incTask(mutableChat.id, 'fetch');
     else if (!customEndpoint) activeTaskCounts.set('fetch:global', (activeTaskCounts.get('fetch:global') || 0) + 1);
     
     let type: EndpointType;
     let url: string;
-    let headers: [string, string][] | undefined;
+    let headers: readonly (readonly [string, string])[] | undefined;
 
     if (customEndpoint) {
       type = customEndpoint.type; url = customEndpoint.url; headers = customEndpoint.headers;
@@ -278,7 +278,8 @@ export function useChat() {
     
     try {
       const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-      const models = await provider.listModels(url, headers);
+      const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
+      const models = await provider.listModels(url, mutableHeaders);
       const result = Array.isArray(models) ? models : [];
       if ((mutableChat && _currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) || (!mutableChat && !chatId)) {
         availableModels.value = result;
@@ -612,7 +613,7 @@ export function useChat() {
     registerLiveInstance(chat);
 
     try {
-      const { isOnboardingDismissed, onboardingDraft, settings: globalSettings } = useSettings();
+      const { settings: globalSettings, setHeavyContentAlertDismissed, setOnboardingDraft, setIsOnboardingDismissed } = useSettings();
       const { showConfirm } = useConfirm();
       const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
       console.log('sendMessage: chat.id=', chat.id, 'chat.groupId=', chat.groupId, 'resolved.modelId=', resolved.modelId);
@@ -631,8 +632,8 @@ export function useChat() {
 
       if (!url || !resolvedModel) {
         const models = await fetchAvailableModels(chat.id);
-        onboardingDraft.value = { url, type, models, selectedModel: models[0] || '', };
-        isOnboardingDismissed.value = false;
+        setOnboardingDraft({ url, type, models, selectedModel: models[0] || '', });
+        setIsOnboardingDismissed(false);
         return false;
       }
 
@@ -645,7 +646,7 @@ export function useChat() {
           confirmButtonText: 'Continue anyway', cancelButtonText: 'Cancel',
         });
         if (!confirmed) return false;
-        globalSettings.value.heavyContentAlertDismissed = true;
+        setHeavyContentAlertDismissed(true);
       }
 
       for (const att of attachments) {

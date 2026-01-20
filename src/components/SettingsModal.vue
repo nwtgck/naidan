@@ -14,7 +14,7 @@ import { useToast } from '../composables/useToast';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { storageService } from '../services/storage';
 import { checkOPFSSupport } from '../services/storage/opfs-detection';
-import type { ProviderProfile } from '../models/types';
+import type { ProviderProfile, Settings } from '../models/types';
 import { computedAsync } from '@vueuse/core';
 import { 
   X, Loader2, FlaskConical, Trash2, Globe, 
@@ -52,7 +52,7 @@ const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 const appVersion = __APP_VERSION__;
 
-const form = ref({ ...settings.value });
+const form = ref<Settings>(JSON.parse(JSON.stringify(settings.value)));
 const initialFormState = ref('');
 const fetchingModels = computed(() => isFetchingModels.value);
 const connectionSuccess = ref(false);
@@ -170,7 +170,8 @@ async function fetchModels() {
       ? new OllamaProvider() 
       : new OpenAIProvider();
     
-    await provider.listModels(form.value.endpointUrl, form.value.endpointHttpHeaders);
+    const mutableHeaders = form.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(form.value.endpointHttpHeaders)) : undefined;
+    await provider.listModels(form.value.endpointUrl, mutableHeaders);
     error.value = null;
     connectionSuccess.value = true;
     setTimeout(() => {
@@ -294,7 +295,7 @@ function saveRename() {
 function handleQuickProviderProfileChange() {
   const providerProfile = form.value.providerProfiles.find(p => p.id === selectedProviderProfileId.value);
   if (providerProfile) {
-    handleApplyProviderProfile(providerProfile);
+    handleApplyProviderProfile(providerProfile as ProviderProfile);
   }
   // Reset select after apply to allow re-selection if needed
   selectedProviderProfileId.value = '';
@@ -314,7 +315,7 @@ function removeHeader(index: number) {
 // Watch for modal open to reset form
 watch(() => props.isOpen, (open) => {
   if (open) {
-    form.value = JSON.parse(JSON.stringify(settings.value));
+    form.value = JSON.parse(JSON.stringify(settings.value)) as Settings;
     initialFormState.value = JSON.stringify(form.value);
     fetchModels();
   }
