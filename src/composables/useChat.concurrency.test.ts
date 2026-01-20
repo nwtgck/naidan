@@ -131,7 +131,7 @@ vi.mock('../services/llm', () => {
 describe('useChat Concurrency & Stale State Protection', () => {
   const chatStore = useChat();
   const {
-    currentChat, rootItems, activeGenerations, setTestCurrentChat: setTestCurrentChat
+    currentChat, rootItems, activeGenerations, __testOnlySetCurrentChat: __testOnlySetCurrentChat
   } = chatStore;
 
   const { errorCount, clearEvents } = useGlobalEvents();
@@ -148,7 +148,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    setTestCurrentChat(null);
+    __testOnlySetCurrentChat(null);
     rootItems.value = [];
     activeGenerations.clear();
     mockRootItems.length = 0;

@@ -73,7 +73,7 @@ describe('useChat Registry Lifecycle', () => {
   });
 
   it('should keep chat in liveChatRegistry until ALL background tasks are finished', async () => {
-    const { createNewChat, sendMessage, fetchAvailableModels, currentChat, openChat, activeGenerations, setTestCurrentChat, unregisterLiveInstance } = useChat();
+    const { createNewChat, sendMessage, fetchAvailableModels, currentChat, openChat, activeGenerations, __testOnlySetCurrentChat, unregisterLiveInstance } = useChat();
     
     // Ensure we start clean
     activeGenerations.clear();
@@ -121,7 +121,7 @@ describe('useChat Registry Lifecycle', () => {
     await nextTick();
     
     // VERIFY: It should NOT be in registry anymore if tasks are done and it's not current
-    setTestCurrentChat(null);
+    __testOnlySetCurrentChat(null);
     unregisterLiveInstance(chatId!);
     expect(liveChatRegistry.has(chatId!)).toBe(false);
 
@@ -133,7 +133,7 @@ describe('useChat Registry Lifecycle', () => {
   });
 
   it('should not leak newly created chats in liveChatRegistry after creation is complete', async () => {
-    const { createNewChat, currentChat, openChat, setTestCurrentChat, unregisterLiveInstance } = useChat();
+    const { createNewChat, currentChat, openChat, __testOnlySetCurrentChat, unregisterLiveInstance } = useChat();
     liveChatRegistry.clear();
     
     const chatObj = await createNewChat();
@@ -142,7 +142,7 @@ describe('useChat Registry Lifecycle', () => {
     const chat = currentChat.value!;
     
     // Switch away to ensure it's not kept alive by currentChat
-    setTestCurrentChat(null);
+    __testOnlySetCurrentChat(null);
     unregisterLiveInstance(chatId!);
     
     // VERIFY: It should NOT be in registry anymore

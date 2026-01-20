@@ -62,7 +62,7 @@ vi.mock('../services/llm', () => {
 
 describe('useChat Model Persistence', () => {
   const chatStore = useChat();
-  const { sendMessage, currentChat, activeMessages, setTestCurrentChat: setTestCurrentChat, updateChatModel } = chatStore;
+  const { sendMessage, currentChat, activeMessages, __testOnlySetCurrentChat: __testOnlySetCurrentChat, updateChatModel } = chatStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -84,7 +84,7 @@ describe('useChat Model Persistence', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     }) as any;
-    setTestCurrentChat(chatObj);
+    __testOnlySetCurrentChat(chatObj);
 
     // 2. Send first message with default model
     await sendMessage('Hello with 3.5');

@@ -70,7 +70,7 @@ describe('ChatArea Streaming DOM Test', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     chats.clear();
-    chatStore.setTestCurrentChat(null);
+    chatStore.__testOnlySetCurrentChat(null);
   });
 
   it('should render assistant chunks in the DOM in real-time', async () => {

@@ -47,7 +47,7 @@ vi.mock('../services/llm', () => {
 describe('Provider and Model Compatibility (Comprehensive Test)', () => {
   const { settings } = useSettings();
   const chatStore = useChat();
-  const { sendMessage, setTestCurrentChat, updateChatSettings, updateChatModel } = chatStore;
+  const { sendMessage, __testOnlySetCurrentChat, updateChatSettings, updateChatModel } = chatStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -68,7 +68,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     mockOpenAIChat.mockImplementation(async (_msg, _model, _url, onChunk) => onChunk('OpenAI Response'));
     mockOllamaChat.mockImplementation(async (_msg, _model, _url, onChunk) => onChunk('Ollama Response'));
     
-    setTestCurrentChat(null);
+    __testOnlySetCurrentChat(null);
   });
 
   it('Scenario: Full lifecycle of a chat through multiple provider and model changes', async () => {
@@ -80,7 +80,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     }) as any;
-    setTestCurrentChat(chatObj);
+    __testOnlySetCurrentChat(chatObj);
 
     // 1. OpenAI (gpt-4-showcase -> resolves to gpt-4)
     await sendMessage('M1');
@@ -103,7 +103,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     settings.value.defaultModelId = 'missing-default';
     mockOllamaModels.mockResolvedValue(['first-available', 'second']);
 
-    setTestCurrentChat(reactive({
+    __testOnlySetCurrentChat(reactive({
       id: 'fallback-test',
       title: 'Fallback Test',
       root: { items: [] },

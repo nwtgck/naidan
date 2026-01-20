@@ -37,7 +37,7 @@ vi.mock('../composables/useChat', () => ({
     toggleChatGroupCollapse: mockToggleChatGroupCollapse,
     persistSidebarStructure: vi.fn(),
     deleteAllChats: vi.fn(),
-    setTestCurrentChatGroup: (val: any) => mockCurrentChatGroup.value = val,
+    __testOnlySetCurrentChatGroup: (val: any) => mockCurrentChatGroup.value = val,
   }),
 }));
 

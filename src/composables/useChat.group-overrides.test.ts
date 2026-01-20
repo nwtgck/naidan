@@ -195,13 +195,13 @@ describe('useChat Group Overrides Resolution', () => {
   });
 
   it('clears currentChatGroup when opening a chat or creating a new one', async () => {
-    chatStore.setTestCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
+    chatStore.__testOnlySetCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
     
     vi.mocked(storageService.loadChat).mockResolvedValue({ id: 'c1', title: 'C1' } as any);
     await chatStore.openChat('c1');
     expect(chatStore.currentChatGroup.value).toBeNull();
 
-    chatStore.setTestCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
+    chatStore.__testOnlySetCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
     await chatStore.createNewChat();
     expect(chatStore.currentChatGroup.value).toBeNull();
   });

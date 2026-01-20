@@ -939,16 +939,16 @@ export function useChat() {
     await loadData();
   };
 
-  const setTestCurrentChat = (chat: Chat | null) => { 
+  const __testOnlySetCurrentChat = (chat: Chat | null) => { 
     _currentChat.value = chat;
     if (chat) registerLiveInstance(chat);
   };
-  const setTestCurrentChatGroup = (group: ChatGroup | null) => { _currentChatGroup.value = group; };
+  const __testOnlySetCurrentChatGroup = (group: ChatGroup | null) => { _currentChatGroup.value = group; };
   const clearLiveChatRegistry = () => { liveChatRegistry.clear(); };
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, activeGenerations, generatingTitle, availableModels, fetchingModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup, setTestCurrentChat, setTestCurrentChatGroup, clearLiveChatRegistry,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup, __testOnlySetCurrentChat, __testOnlySetCurrentChatGroup, clearLiveChatRegistry,
     registerLiveInstance, unregisterLiveInstance, getLiveChat
   };
 }

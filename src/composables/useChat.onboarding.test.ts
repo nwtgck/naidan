@@ -56,7 +56,7 @@ vi.mock('../services/llm', () => {
 
 describe('useChat Onboarding Trigger', () => {
   const chatStore = useChat();
-  const { setTestCurrentChat, sendMessage, currentChat } = chatStore;
+  const { __testOnlySetCurrentChat, sendMessage, currentChat } = chatStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -68,7 +68,7 @@ describe('useChat Onboarding Trigger', () => {
   });
 
   it('should trigger onboarding if endpointUrl is missing when sending a message', async () => {
-    setTestCurrentChat(reactive({
+    __testOnlySetCurrentChat(reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any);
@@ -80,7 +80,7 @@ describe('useChat Onboarding Trigger', () => {
 
   it('should trigger onboarding and populate draft if modelId is missing when sending a message', async () => {
     mockSettings.value.endpointUrl = 'http://localhost:11434';
-    setTestCurrentChat(reactive({
+    __testOnlySetCurrentChat(reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any);
@@ -99,7 +99,7 @@ describe('useChat Onboarding Trigger', () => {
   it('should NOT use gpt-3.5-turbo as fallback model anymore', async () => {
     mockSettings.value.endpointUrl = 'http://localhost:11434';
     // No default model in settings and no model in chat
-    setTestCurrentChat(reactive({
+    __testOnlySetCurrentChat(reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any);
