@@ -61,6 +61,7 @@ vi.mock('./useSettings', () => ({
 
 describe('useChat moveChatToGroup', () => {
   const chatStore = useChat();
+  const { setTestCurrentChat } = chatStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -184,8 +185,8 @@ describe('useChat moveChatToGroup', () => {
   it('updates currentChat.groupId if the moved chat is the current one', async () => {
     const chat: Chat = reactive({
       id: 'c1', title: 'C1', groupId: null, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false
-    });
-    chatStore.currentChat.value = chat;
+    }) as any;
+    setTestCurrentChat(chat);
     
     mockGetSidebarStructure.mockResolvedValue([
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },

@@ -23,14 +23,18 @@ const mockSettings = {
   providerProfiles: [],
 };
 
-const mockUpdateChatGroup = vi.fn();
+const mockUpdateChatGroupMetadata = vi.fn().mockImplementation((id, updates) => {
+  if (mockGroup.id === id) {
+    Object.assign(mockGroup, updates);
+  }
+});
 const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-a', 'model-b']);
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChatGroup: ref(mockGroup),
     fetchingModels: ref(false),
-    updateChatGroup: mockUpdateChatGroup,
+    updateChatGroupMetadata: mockUpdateChatGroupMetadata,
     fetchAvailableModels: mockFetchAvailableModels,
   }),
 }));
@@ -75,8 +79,6 @@ describe('GroupSettingsPanel.vue', () => {
     
     await wrapper.find('[data-testid="refresh-btn"]').trigger('click');
     await nextTick();
-    // Use flushPromises if there are more async things, but for this simple error setting, nextTick might be enough if it's awaited.
-    // However, fetchModels is async, so we use a small delay or flushPromises.
     await new Promise(resolve => setTimeout(resolve, 0)); 
     
     expect(wrapper.text()).toContain(errorMessage);
@@ -89,11 +91,12 @@ describe('GroupSettingsPanel.vue', () => {
 
   it('shows the "Active Overrides" badge only when overrides are present', async () => {
     const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
-    expect(wrapper.find('.animate-pulse').exists()).toBe(false);
+    await nextTick();
+    expect(wrapper.text()).not.toContain('Active Overrides');
 
     mockGroup.modelId = 'some-model';
     await nextTick();
-    expect(wrapper.find('.animate-pulse').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Active Overrides');
   });
 
   it('toggles endpoint customization', async () => {
@@ -104,8 +107,10 @@ describe('GroupSettingsPanel.vue', () => {
     
     // Click customize
     await wrapper.find('button.text-blue-600').trigger('click');
-    expect(mockGroup.endpoint).toBeDefined();
-    expect(mockGroup.endpoint?.type).toBe('openai');
+    
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+      endpoint: expect.objectContaining({ type: 'openai' })
+    }));
     
     await nextTick();
     expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(true);
@@ -118,17 +123,22 @@ describe('GroupSettingsPanel.vue', () => {
     const appendBtn = wrapper.findAll('button').find(b => b.text() === 'Append');
     await appendBtn?.trigger('click');
     
-    expect(mockGroup.systemPrompt?.behavior).toBe('append');
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+      systemPrompt: expect.objectContaining({ behavior: 'append' })
+    }));
     
     // Click Override
     const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
     await overrideBtn?.trigger('click');
     
-    expect(mockGroup.systemPrompt?.behavior).toBe('override');
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+      systemPrompt: expect.objectContaining({ behavior: 'override' })
+    }));
   });
 
   it('displays correct resolution status for system prompt', async () => {
     const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
     const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
     
     expect(status.text()).toBe('Global Default');
@@ -142,13 +152,17 @@ describe('GroupSettingsPanel.vue', () => {
     expect(status.text()).toBe('Overriding');
   });
 
-  it('calls updateChatGroup when settings change', async () => {
-    mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+  it('calls updateChatGroupMetadata when settings change', async () => {
+    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
     
-    mockGroup.modelId = 'new-model';
-    await nextTick();
-    // Watcher is deep, so it triggers
-    expect(mockUpdateChatGroup).toHaveBeenCalled();
+    // Set system prompt via textarea
+    const textarea = wrapper.find('[data-testid="group-setting-system-prompt-textarea"]');
+    await textarea.setValue('Custom prompt');
+    await textarea.trigger('blur');
+    
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+      systemPrompt: expect.objectContaining({ content: 'Custom prompt' })
+    }));
   });
 
   it('restores defaults when the button is clicked', async () => {
@@ -158,7 +172,9 @@ describe('GroupSettingsPanel.vue', () => {
     const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
     await wrapper.find('[data-testid="group-setting-restore-defaults"]').trigger('click');
     
-    expect(mockGroup.modelId).toBeUndefined();
-    expect(mockGroup.systemPrompt).toBeUndefined();
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+      modelId: undefined,
+      systemPrompt: undefined
+    }));
   });
 });

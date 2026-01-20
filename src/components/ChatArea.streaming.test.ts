@@ -34,16 +34,30 @@ vi.mock('../services/llm', () => ({
   },
 }));
 
+const chats = new Map<string, any>();
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn().mockResolvedValue(undefined),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))).mockResolvedValue(undefined),
+    updateChatMeta: vi.fn().mockImplementation((id, updater) => {
+      const existing = chats.get(id) || { id, root: { items: [] } };
+      if (!chats.has(id)) chats.set(id, existing);
+      const updated = updater(existing);
+      Object.assign(existing, updated);
+      return Promise.resolve();
+    }), 
+    loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id))),
+    updateChatContent: vi.fn().mockImplementation((id, updater) => {
+      const existing = chats.get(id) || { id, root: { items: [] } };
+      if (!chats.has(id)) chats.set(id, existing);
+      const updated = updater(existing);
+      Object.assign(existing, updated);
+      return Promise.resolve();
+    }),
     updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
-    loadChat: vi.fn(),
+    loadChat: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id) || null)),
     listChats: vi.fn().mockResolvedValue([]),
     listChatGroups: vi.fn().mockResolvedValue([]),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
@@ -51,12 +65,12 @@ vi.mock('../services/storage', () => ({
 }));
 
 describe('ChatArea Streaming DOM Test', () => {
-  beforeEach(async () => {
+  const chatStore = useChat();
+
+  beforeEach(() => {
     vi.clearAllMocks();
-    document.body.innerHTML = '<div id="app"></div>';
-    
-    const { currentChat } = useChat();
-    currentChat.value = null;
+    chats.clear();
+    chatStore.setTestCurrentChat(null);
   });
 
   it('should render assistant chunks in the DOM in real-time', async () => {
@@ -64,7 +78,6 @@ describe('ChatArea Streaming DOM Test', () => {
     await createNewChat(); 
 
     const wrapper = mount(ChatArea, {
-      attachTo: document.getElementById('app')!,
       global: {
         plugins: [router],
       },

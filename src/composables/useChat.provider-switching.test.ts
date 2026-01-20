@@ -46,7 +46,8 @@ vi.mock('../services/llm', () => {
 
 describe('Provider and Model Compatibility (Comprehensive Test)', () => {
   const { settings } = useSettings();
-  const { sendMessage, currentChat } = useChat();
+  const chatStore = useChat();
+  const { sendMessage, setTestCurrentChat, updateChatSettings, updateChatModel } = chatStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,19 +68,19 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     mockOpenAIChat.mockImplementation(async (_msg, _model, _url, onChunk) => onChunk('OpenAI Response'));
     mockOllamaChat.mockImplementation(async (_msg, _model, _url, onChunk) => onChunk('Ollama Response'));
     
-    currentChat.value = null;
+    setTestCurrentChat(null);
   });
 
   it('Scenario: Full lifecycle of a chat through multiple provider and model changes', async () => {
-    const chatObj: Chat = {
+    const chatObj: Chat = reactive({
       id: 'integration-test',
       title: 'Mega Test',
       root: { items: [] },
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
-    };
-    currentChat.value = reactive(chatObj);
+    }) as any;
+    setTestCurrentChat(chatObj);
 
     // 1. OpenAI (gpt-4-showcase -> resolves to gpt-4)
     await sendMessage('M1');
@@ -91,8 +92,8 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     expect(mockOllamaChat.mock.calls[0]![1]).toBe('llama3');
 
     // 3. Custom Override (gpt-3.5-turbo)
-    currentChat.value.endpointType = 'openai';
-    currentChat.value.modelId = 'gpt-3.5-turbo';
+    await updateChatSettings(chatObj.id, { endpointType: 'openai' });
+    await updateChatModel(chatObj.id, 'gpt-3.5-turbo');
     await sendMessage('M3');
     expect(mockOpenAIChat.mock.calls[1]![1]).toBe('gpt-3.5-turbo');
   });
@@ -102,12 +103,12 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     settings.value.defaultModelId = 'missing-default';
     mockOllamaModels.mockResolvedValue(['first-available', 'second']);
 
-    currentChat.value = reactive({
+    setTestCurrentChat(reactive({
       id: 'fallback-test',
       title: 'Fallback Test',
       root: { items: [] },
       createdAt: 0, updatedAt: 0, debugEnabled: false,
-    });
+    }) as any);
 
     await sendMessage('Test');
     expect(mockOllamaChat.mock.calls[0]![1]).toBe('first-available');

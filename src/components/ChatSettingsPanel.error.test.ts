@@ -12,7 +12,7 @@ vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
     fetchingModels: ref(false),
-    saveChat: vi.fn(),
+    updateChatSettings: vi.fn(),
     fetchAvailableModels: mockFetchAvailableModels,
   }),
 }));
@@ -49,20 +49,18 @@ describe('ChatSettingsPanel Error Handling', () => {
       },
     });
 
-    // Trigger fetch to get error
-    // In ChatSettingsPanel.vue, fetchModels is called on mount if localhost, 
-    // or we can trigger it manually if we mock isLocalhost or just wait for the watch
+    // Act: Set URL to localhost via input to trigger auto-fetch
+    const input = wrapper.find('input[data-testid="chat-setting-url-input"]');
+    await input.setValue('http://localhost:11434');
     
-    // Let's manually trigger the watch by changing URL to something that looks like localhost
-    mockCurrentChat.value.endpointUrl = 'http://localhost:11434';
+    // Wait for debounce/watch/fetchModels
     await nextTick();
-    await nextTick(); // Wait for fetchModels promise
+    await new Promise(resolve => setTimeout(resolve, 0)); 
     
-    // Verify error is shown (it should be "No models found..." based on our mock)
+    // Verify error is shown
     expect(wrapper.text()).toContain('No models found');
 
     // Now change URL again
-    const input = wrapper.find('input[type="text"]');
     await input.setValue('http://new-url');
     
     // Error should be cleared immediately on @input or via watch

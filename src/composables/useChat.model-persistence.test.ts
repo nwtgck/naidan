@@ -62,29 +62,29 @@ vi.mock('../services/llm', () => {
 
 describe('useChat Model Persistence', () => {
   const chatStore = useChat();
-  const { sendMessage, currentChat, activeMessages } = chatStore;
+  const { sendMessage, currentChat, activeMessages, setTestCurrentChat: setTestCurrentChat, updateChatModel } = chatStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockRootItems.length = 0;
     
     vi.mocked(storageService.loadChat).mockImplementation((id) => {
-      if (currentChat.value?.id === id) return Promise.resolve(currentChat.value);
+      if (id === 'c1') return Promise.resolve({ id: 'c1', title: 'C1', modelId: 'm1', root: { items: [] } } as any);
       return Promise.resolve(null);
     });
   });
 
   it('should persist different modelIds for each assistant message when model is changed', async () => {
     // 1. Setup a chat with initial model
-    const chatObj: Chat = {
+    const chatObj: Chat = reactive({
       id: 'model-test-chat',
       title: 'Model Test',
       root: { items: [] },
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
-    };
-    currentChat.value = reactive(chatObj);
+    }) as any;
+    setTestCurrentChat(chatObj);
 
     // 2. Send first message with default model
     await sendMessage('Hello with 3.5');
@@ -96,7 +96,7 @@ describe('useChat Model Persistence', () => {
     expect(activeMessages.value[1]?.content).toContain('Response from gpt-3.5-turbo');
 
     // 3. Change the model for the chat
-    currentChat.value.modelId = 'gpt-4';
+    await updateChatModel(chatObj.id, 'gpt-4');
     
     // 4. Send second message with new model
     await sendMessage('Hello with 4');

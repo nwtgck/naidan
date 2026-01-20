@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
-import { reactive } from 'vue';
 
 // Mock storage
 vi.mock('../services/storage', () => ({
@@ -44,9 +43,9 @@ vi.mock('../services/llm', () => ({
 
 describe('useChat Advanced Settings Resolution', () => {
   const { settings } = useSettings();
-  const { sendMessage, currentChat } = useChat();
+  const { sendMessage, currentChat, createNewChat, openChat, updateChatSettings } = useChat();
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     
     // Default Global Settings
@@ -70,15 +69,8 @@ describe('useChat Advanced Settings Resolution', () => {
     mockOpenAIChat.mockImplementation(async (_msg, _model, _url, onChunk) => onChunk('OpenAI Resp'));
     mockOllamaChat.mockImplementation(async (_msg, _model, _url, onChunk) => onChunk('Ollama Resp'));
     
-    currentChat.value = reactive({
-      id: 'test-chat',
-      title: 'Test Chat',
-      root: { items: [] },
-      modelId: 'global-gpt',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      debugEnabled: false,
-    });
+    const chat = await createNewChat();
+    await openChat(chat!.id);
   });
 
   describe('System Prompt Resolution', () => {
@@ -104,7 +96,7 @@ describe('useChat Advanced Settings Resolution', () => {
     });
 
     it('overrides with Chat System Prompt when behavior is override', async () => {
-      currentChat.value!.systemPrompt = { content: 'Chat Custom Prompt', behavior: 'override' };
+      await updateChatSettings(currentChat.value!.id, { systemPrompt: { content: 'Chat Custom Prompt', behavior: 'override' } });
 
       await sendMessage('Hi');
       const messages = mockOpenAIChat.mock.calls[0]![0];
@@ -119,8 +111,8 @@ describe('useChat Advanced Settings Resolution', () => {
         endpointType: 'openai',
         endpointUrl: 'http://global-openai',
         systemPrompt: 'Profile Prompt',
-      }];
-      currentChat.value!.systemPrompt = { content: 'Chat Extra Prompt', behavior: 'append' };
+      } as any];
+      await updateChatSettings(currentChat.value!.id, { systemPrompt: { content: 'Chat Extra Prompt', behavior: 'append' } });
 
       await sendMessage('Hi');
       const messages = mockOpenAIChat.mock.calls[0]![0];
@@ -148,12 +140,14 @@ describe('useChat Advanced Settings Resolution', () => {
           temperature: 0.5,
           presencePenalty: 1.0,
         },
-      }];
+      } as any];
 
-      currentChat.value!.lmParameters = {
-        maxCompletionTokens: 500,
-        frequencyPenalty: 0.5,
-      };
+      await updateChatSettings(currentChat.value!.id, {
+        lmParameters: {
+          maxCompletionTokens: 500,
+          frequencyPenalty: 0.5,
+        }
+      });
 
       await sendMessage('Hi');
       const params = mockOpenAIChat.mock.calls[0]![4];
@@ -171,7 +165,7 @@ describe('useChat Advanced Settings Resolution', () => {
 
   describe('Stop Sequences Handling', () => {
     it('passes stop sequences as array', async () => {
-      currentChat.value!.lmParameters = { stop: ['\n', 'User:'] };
+      await updateChatSettings(currentChat.value!.id, { lmParameters: { stop: ['\n', 'User:'] } });
       await sendMessage('Hi');
       const params = mockOpenAIChat.mock.calls[0]![4];
       expect(params.stop).toEqual(['\n', 'User:']);

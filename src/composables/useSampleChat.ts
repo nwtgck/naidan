@@ -2,7 +2,8 @@ import { v7 as uuidv7 } from 'uuid';
 import type { Chat, MessageNode } from '../models/types';
 import { storageService } from '../services/storage';
 import sampleContent from '../assets/sample-showcase.md?raw';
-import { useChat, processThinking } from './useChat';
+import { useChat } from './useChat';
+import { processThinking } from '../utils/chat-tree';
 
 export function useSampleChat() {
   const { loadChats, openChat } = useChat();

@@ -8,7 +8,8 @@ import type { ChatGroup, ChatSummary, SidebarItem } from '../models/types';
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockCurrentChatGroup = ref<ChatGroup | null>(null);
-const mockOpenChatGroup = vi.fn((id: string) => {
+const mockOpenChatGroup = vi.fn((id: string | null) => {
+  if (id === null) { mockCurrentChatGroup.value = null; return; }
   const group = mockChatGroups.value.find(g => g.id === id);
   if (group) mockCurrentChatGroup.value = group;
 });
@@ -31,10 +32,12 @@ vi.mock('../composables/useChat', () => ({
     loadChats: vi.fn(),
     createChatGroup: vi.fn(),
     renameChatGroup: vi.fn(),
+    openChat: vi.fn(),
     openChatGroup: mockOpenChatGroup,
     toggleChatGroupCollapse: mockToggleChatGroupCollapse,
     persistSidebarStructure: vi.fn(),
     deleteAllChats: vi.fn(),
+    setTestCurrentChatGroup: (val: any) => mockCurrentChatGroup.value = val,
   }),
 }));
 
@@ -141,6 +144,7 @@ describe('Sidebar Group Overrides', () => {
     expect(chatItem.exists()).toBe(true);
     await chatItem.trigger('click');
 
+    expect(mockOpenChatGroup).toHaveBeenCalledWith(null);
     expect(mockCurrentChatGroup.value).toBeNull();
   });
 });

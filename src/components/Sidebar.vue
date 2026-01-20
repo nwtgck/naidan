@@ -155,9 +155,13 @@ async function handleNewChat(chatGroupId: string | null = null) {
   }
 }
 
-function handleOpenChat(id: string) {
-  if (editingId.value === id) return;
-  chatStore.currentChatGroup.value = null;
+function handleChatClick() {
+  chatStore.openChatGroup(null);
+}
+
+async function handleOpenChat(id: string) {
+  handleChatClick();
+  await chatStore.openChat(id);
   router.push(`/chat/${id}`);
 }
 

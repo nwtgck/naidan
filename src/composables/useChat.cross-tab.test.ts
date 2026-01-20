@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import type { Chat, SidebarItem, ChatSummary, Hierarchy } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
-import { nextTick } from 'vue';
+import { nextTick, reactive, toRaw } from 'vue';
 
 // --- Mocks ---
 
@@ -33,9 +33,12 @@ vi.mock('../services/storage', () => ({
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
       return Promise.resolve();
     }),
-    updateChatContent: vi.fn().mockImplementation( (_id, updater) => Promise.resolve(updater(null))).mockImplementation((id, content) => {
-      const existing = mocks.mockChatStorage.get(id) || {} as Chat;
-      mocks.mockChatStorage.set(id, { ...existing, ...content });
+    updateChatContent: vi.fn().mockImplementation(async (id, updater) => {
+      const existing = mocks.mockChatStorage.get(id) || null;
+      const updated = await updater(existing as any);
+      if (existing) {
+        mocks.mockChatStorage.set(id, { ...existing, ...updated });
+      }
       return Promise.resolve();
     }),
     updateHierarchy: vi.fn().mockImplementation(async (updater) => {
@@ -82,6 +85,7 @@ vi.mock('../services/llm', () => ({
 
 describe('useChat Cross-Tab Synchronization', () => {
   const { errorCount, clearEvents } = useGlobalEvents();
+  const chatStore = useChat();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -107,9 +111,9 @@ describe('useChat Cross-Tab Synchronization', () => {
   };
 
   it('should update current chat title when renamed in another tab', async () => {
-    const { createNewChat, currentChat } = useChat();
-    await createNewChat();
-    const chatId = currentChat.value!.id;
+    const { createNewChat, currentChat } = chatStore;
+    const chat = await createNewChat();
+    const chatId = chat!.id;
     const updatedChat = { ...currentChat.value!, title: 'New Title' };
     mocks.mockChatStorage.set(chatId, JSON.parse(JSON.stringify(updatedChat)));
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
@@ -120,30 +124,21 @@ describe('useChat Cross-Tab Synchronization', () => {
   });
 
   it('should close current chat when deleted in another tab', async () => {
-    const { createNewChat, currentChat } = useChat();
-    await createNewChat();
-    const chatId = currentChat.value!.id;
-    mocks.mockChatStorage.delete(chatId);
+    const { createNewChat, currentChat } = chatStore;
+    const chat = await createNewChat();
+    const chatId = chat!.id;
     
-    // Notification arrives. Debounced reload will check if it still exists.
+    mocks.mockChatStorage.delete(chatId);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
     
     vi.advanceTimersByTime(200);
     await nextTick();
     
-    // In current implementation, if loadChat(id) returns null AND we are not generating, 
-    // it stays. Wait, looking at useChat.ts:
-    // It doesn't set null anymore on meta update if loadChat returns null.
-    // It only sets null if Fresh is falsy in 'migration' event.
-    // Let's verify our logic in useChat.ts... 
-    // Actually, we want it to close if it's really gone.
-    // If it's a meta event for the current chat and it's gone, it SHOULD be null.
-    // My previous replacement REMOVED the 'else { currentChat.value = null }'.
-    // I should check if that was too aggressive.
+    expect(currentChat.value).toBeNull();
   });
 
   it('should reflect sidebar changes when reordered in another tab', async () => {
-    const { rootItems, loadChats } = useChat();
+    const { rootItems, loadChats } = chatStore;
     await loadChats();
     const newItem: SidebarItem = { id: 'chat:chat-1', type: 'chat', chat: { id: 'chat-1', title: 'C1', updatedAt: Date.now(), groupId: null } };
     mocks.mockRootItems.push(newItem);
@@ -155,13 +150,13 @@ describe('useChat Cross-Tab Synchronization', () => {
   });
 
   it('should reload chat content when updated in another tab (if not generating)', async () => {
-    const { createNewChat, currentChat } = useChat();
-    await createNewChat();
-    const chat = currentChat.value!;
+    const { createNewChat, currentChat } = chatStore;
+    const chat = await createNewChat();
+    const chatId = chat!.id;
     const updatedChat = JSON.parse(JSON.stringify(chat));
     updatedChat.root.items.push({ id: 'msg-ext', role: 'user', content: 'Ext', timestamp: Date.now(), replies: { items: [] } });
-    mocks.mockChatStorage.set(chat.id, updatedChat);
-    await simulateExternalEvent({ type: 'chat_content', id: chat.id });
+    mocks.mockChatStorage.set(chatId, updatedChat);
+    await simulateExternalEvent({ type: 'chat_content', id: chatId });
     
     vi.advanceTimersByTime(200);
     await nextTick();
@@ -169,40 +164,41 @@ describe('useChat Cross-Tab Synchronization', () => {
   });
 
   it('should NOT reload chat content if we are currently generating for it', async () => {
-    const { createNewChat, currentChat, activeGenerations } = useChat();
-    await createNewChat();
-    const chat = currentChat.value!;
-    activeGenerations.set(chat.id, { controller: new AbortController(), chat });
+    const { createNewChat, currentChat, activeGenerations } = chatStore;
+    const chat = await createNewChat();
+    const chatId = chat!.id;
+    activeGenerations.set(chatId, { controller: new AbortController(), chat: chat as any });
     const updatedChat = JSON.parse(JSON.stringify(chat));
     updatedChat.root.items.push({ id: 'msg-ext', role: 'user', content: 'Ext', timestamp: Date.now(), replies: { items: [] } });
-    mocks.mockChatStorage.set(chat.id, updatedChat);
-    await simulateExternalEvent({ type: 'chat_content', id: chat.id });
+    mocks.mockChatStorage.set(chatId, updatedChat);
+    await simulateExternalEvent({ type: 'chat_content', id: chatId });
     
     vi.advanceTimersByTime(200);
     await nextTick();
     expect(currentChat.value?.root.items.length).toBe(0);
-    activeGenerations.delete(chat.id);
+    activeGenerations.delete(chatId);
   });
 
   it('should update metadata but preserve local messages during background generation', async () => {
-    const { createNewChat, currentChat, activeGenerations } = useChat();
-    await createNewChat();
-    const chat = currentChat.value!;
-    activeGenerations.set(chat.id, { controller: new AbortController(), chat });
+    const { createNewChat, currentChat, activeGenerations } = chatStore;
+    const chat = await createNewChat();
+    const chatId = chat!.id;
+    activeGenerations.set(chatId, { controller: new AbortController(), chat: chat as any });
     const updatedChat = JSON.parse(JSON.stringify(chat));
     updatedChat.title = 'External Title';
-    mocks.mockChatStorage.set(chat.id, updatedChat);
-    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chat.id });
+    mocks.mockChatStorage.set(chatId, updatedChat);
+    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
     
     vi.advanceTimersByTime(200);
     await nextTick();
     expect(currentChat.value?.title).toBe('External Title');
-    expect(currentChat.value).toBe(chat);
-    activeGenerations.delete(chat.id);
+    // Use toRaw to compare underlying instances since currentChat is a readonly proxy
+    expect(toRaw(currentChat.value)).toBe(toRaw(chat));
+    activeGenerations.delete(chatId);
   });
 
   it('should handle full migration event by reloading everything', async () => {
-    const { createNewChat, currentChat, rootItems } = useChat();
+    const { createNewChat, currentChat, rootItems } = chatStore;
     await createNewChat();
     mocks.mockChatStorage.clear();
     mocks.mockRootItems.length = 0;
@@ -217,11 +213,10 @@ describe('useChat Cross-Tab Synchronization', () => {
   });
 
   it('should maintain the latest group ID if moved externally while generating', async () => {
-    const { createNewChat, currentChat, activeGenerations, updateChatMeta } = useChat();
-    await createNewChat();
-    const chat = currentChat.value!;
-    const chatId = chat.id;
-    activeGenerations.set(chatId, { controller: new AbortController(), chat });
+    const { createNewChat, activeGenerations, updateChatMeta } = chatStore;
+    const chat = await createNewChat();
+    const chatId = chat!.id;
+    activeGenerations.set(chatId, { controller: new AbortController(), chat: chat as any });
     
     // External tab moves chat to group-x
     mocks.mockRootItems.push({ 
@@ -237,17 +232,17 @@ describe('useChat Cross-Tab Synchronization', () => {
     vi.advanceTimersByTime(200);
     await nextTick();
     
-    expect(chat.groupId).toBe('group-x');
-    await updateChatMeta(chatId, () => chat);
+    expect(chat!.groupId).toBe('group-x');
+    await (updateChatMeta as any)(chatId, () => chat as any);
     expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('group-x');
     activeGenerations.delete(chatId);
   });
 
   it('should maintain group ID if hierarchy changed externally without specific chat ID', async () => {
-    const { createNewChat, currentChat, activeGenerations, updateChatMeta } = useChat();
-    await createNewChat();
-    const chatId = currentChat.value!.id;
-    activeGenerations.set(chatId, { controller: new AbortController(), chat: currentChat.value! });
+    const { createNewChat, activeGenerations, updateChatMeta } = chatStore;
+    const chat = await createNewChat();
+    const chatId = chat!.id;
+    activeGenerations.set(chatId, { controller: new AbortController(), chat: chatStore.currentChat.value! as any });
     mocks.mockRootItems.length = 0;
     mocks.mockRootItems.push({ id: 'chat_group:ge', type: 'chat_group', chatGroup: { id: 'ge', name: 'E', items: [{ id: `chat:${chatId}`, type: 'chat', chat: { id: chatId, title: 'C', updatedAt: 0, groupId: 'ge' } }], isCollapsed: false, updatedAt: 0 } });
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group' });
@@ -255,17 +250,17 @@ describe('useChat Cross-Tab Synchronization', () => {
     vi.advanceTimersByTime(200);
     await nextTick();
     
-    expect(currentChat.value?.groupId).toBe('ge');
-    await updateChatMeta(chatId, () => currentChat.value!);
+    expect(chatStore.currentChat.value?.groupId).toBe('ge');
+    await (updateChatMeta as any)(chatId, () => chatStore.currentChat.value! as any);
     expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('ge');
     activeGenerations.delete(chatId);
   });
 
   it('should update current group view when renamed in another tab', async () => {
-    const { createChatGroup, currentChatGroup } = useChat();
+    const { createChatGroup, currentChatGroup, setTestCurrentChatGroup } = chatStore;
     const groupId = await createChatGroup('Old');
     const group = Array.from(mocks.mockGroupStorage.values())[0];
-    currentChatGroup.value = group;
+    setTestCurrentChatGroup(reactive(group));
     const renamed = { ...group, name: 'New' };
     mocks.mockGroupStorage.set(groupId, renamed);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: groupId });
@@ -276,12 +271,12 @@ describe('useChat Cross-Tab Synchronization', () => {
   });
 
   it('should abort active generations when a migration occurs', async () => {
-    const { createNewChat, currentChat, activeGenerations } = useChat();
-    await createNewChat();
-    const chat = currentChat.value!;
+    const { createNewChat, activeGenerations } = chatStore;
+    const chat = await createNewChat();
+    const chatId = chat!.id;
     const controller = new AbortController();
     const abortSpy = vi.spyOn(controller, 'abort');
-    activeGenerations.set(chat.id, { controller, chat });
+    activeGenerations.set(chatId, { controller, chat: chat as any });
     await simulateExternalEvent({ type: 'migration' });
     
     vi.advanceTimersByTime(200);

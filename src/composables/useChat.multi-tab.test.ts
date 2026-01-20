@@ -30,14 +30,25 @@ vi.mock('../services/storage', () => ({
     loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
     updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
       const current = mocks.mockChatStorage.get(id) || null;
-      const updated = await updater(current);
-      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
+      const updatedMeta = await updater(current ? JSON.parse(JSON.stringify(current)) : null);
+      if (current) {
+        const full = { ...current, ...updatedMeta };
+        mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(full)));
+      } else {
+        mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updatedMeta)));
+      }
       return Promise.resolve();
     }),
     updateChatContent: vi.fn().mockImplementation(async (id, updater) => {
       const current = mocks.mockChatStorage.get(id) || null;
-      const updated = await updater(current);
-      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
+      const existingContent = current ? { root: current.root, currentLeafId: current.currentLeafId } : { root: { items: [] } };
+      const updatedContent = await updater(existingContent);
+      if (current) {
+        const full = { ...current, ...updatedContent };
+        mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(full)));
+      } else {
+        mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updatedContent)));
+      }
       return Promise.resolve();
     }),
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(JSON.parse(JSON.stringify(mocks.mockHierarchy)))),

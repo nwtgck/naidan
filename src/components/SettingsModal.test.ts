@@ -155,9 +155,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: { value: JSON.parse(JSON.stringify(mockSettings)) },
-      availableModels: { value: [] },
-      isFetchingModels: { value: false },
+      settings: ref(JSON.parse(JSON.stringify(mockSettings))),
+      availableModels: ref([]),
+      isFetchingModels: ref(false),
       save: mockSave.mockImplementation(async (newSettings) => {
         const currentType = storageService.getCurrentType();
         if (newSettings.storageType !== currentType) {
@@ -199,8 +199,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('maintains UI stability during model fetching', async () => {
       const isFetching = ref(false);
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: JSON.parse(JSON.stringify(mockSettings)) },
-        availableModels: { value: [] },
+        settings: ref(JSON.parse(JSON.stringify(mockSettings))),
+        availableModels: ref([]),
         isFetchingModels: isFetching,
         save: mockSave,
         fetchModels: vi.fn(),
@@ -404,7 +404,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
     await nextTick();
     // Wait a bit more if needed
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 100));
     await flushPromises();
 
     const text = wrapper.text();

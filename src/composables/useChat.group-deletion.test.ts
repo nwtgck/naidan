@@ -37,13 +37,13 @@ vi.mock('./useToast', () => ({
 
 describe('useChat Group Deletion Logic', () => {
   const chatStore = useChat();
-  const { deleteChatGroup, rootItems, currentChat } = chatStore;
+  const { deleteChatGroup, rootItems, currentChat, setTestCurrentChat } = chatStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockRootItems.length = 0;
     rootItems.value = [];
-    currentChat.value = null;
+    setTestCurrentChat(null);
   });
 
   it('should delete a chat group and all its contained chats', async () => {
@@ -116,7 +116,7 @@ describe('useChat Group Deletion Logic', () => {
     vi.mocked(storageService.loadChat).mockResolvedValue(chat1);
 
     await chatStore.loadChats();
-    currentChat.value = reactive(chat1);
+    setTestCurrentChat(reactive(chat1) as any);
 
     await deleteChatGroup('g1');
 
@@ -133,7 +133,7 @@ describe('useChat Group Deletion Logic', () => {
     vi.mocked(storageService.loadChat).mockResolvedValue(chatOut);
 
     await chatStore.loadChats();
-    currentChat.value = reactive(chatOut);
+    setTestCurrentChat(reactive(chatOut) as any);
 
     await deleteChatGroup('g1');
 
