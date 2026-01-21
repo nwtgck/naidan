@@ -16,7 +16,27 @@ export async function checkOPFSSupport(): Promise<boolean> {
 
   try {
     // Some environments (like Chrome on file://) have the function but it throws when called
-    await navigator.storage.getDirectory();
+    const root = await navigator.storage.getDirectory();
+
+    // Safari check: navigator.storage.getDirectory() exists but FileSystemFileHandle.createWritable might be missing.
+    // We attempt to create a temporary file to check for full OPFS support.
+    const testFileName = `naidan-feature-detection-check-${Math.random().toString(36).slice(2)}.txt`;
+    try {
+      const fileHandle = await root.getFileHandle(testFileName, { create: true });
+      const hasCreateWritable = typeof (fileHandle as any).createWritable === 'function';
+      
+      // Clean up the test file
+      await root.removeEntry(testFileName).catch(() => {});
+      
+      if (!hasCreateWritable) {
+        console.warn('OPFS detection: getDirectory() succeeded but createWritable is missing (likely Safari without full OPFS support).');
+        return false;
+      }
+    } catch (e) {
+      console.warn('OPFS detection: Failed to create test file in root directory.', e);
+      return false;
+    }
+
     return true;
   } catch (e) {
     // If it throws, OPFS is not actually available or accessible in this context

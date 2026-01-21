@@ -14,10 +14,19 @@ describe('checkOPFSSupport', () => {
     vi.unstubAllGlobals();
   });
 
-  it('should return true if getDirectory succeeds', async () => {
-    (navigator.storage.getDirectory as any).mockResolvedValue({});
+  it('should return true if getDirectory and createWritable are supported', async () => {
+    const mockFileHandle = {
+      createWritable: vi.fn()
+    };
+    const mockDirectoryHandle = {
+      getFileHandle: vi.fn().mockResolvedValue(mockFileHandle),
+      removeEntry: vi.fn().mockResolvedValue(undefined)
+    };
+    (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
+    
     const result = await checkOPFSSupport();
     expect(result).toBe(true);
+    expect(mockDirectoryHandle.getFileHandle).toHaveBeenCalled();
   });
 
   it('should return false if getDirectory is missing', async () => {
@@ -40,6 +49,29 @@ describe('checkOPFSSupport', () => {
     expect(result).toBe(false);
   });
 
+  it('should return false if getDirectory succeeds but createWritable is missing (Safari scenario)', async () => {
+    const mockFileHandle = {}; // Missing createWritable
+    const mockDirectoryHandle = {
+      getFileHandle: vi.fn().mockResolvedValue(mockFileHandle),
+      removeEntry: vi.fn().mockResolvedValue(undefined)
+    };
+    (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
+    
+    const result = await checkOPFSSupport();
+    expect(result).toBe(false);
+  });
+
+  it('should return false if getFileHandle fails', async () => {
+    const mockDirectoryHandle = {
+      getFileHandle: vi.fn().mockRejectedValue(new Error('Quota exceeded')),
+      removeEntry: vi.fn()
+    };
+    (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
+    
+    const result = await checkOPFSSupport();
+    expect(result).toBe(false);
+  });
+
   it('should return false if navigator is undefined (SSR)', async () => {
     vi.stubGlobal('navigator', undefined);
     const result = await checkOPFSSupport();
@@ -57,7 +89,14 @@ describe('checkOPFSSupport', () => {
       configurable: true
     });
 
-    (navigator.storage.getDirectory as any).mockResolvedValue({});
+    const mockFileHandle = {
+      createWritable: vi.fn()
+    };
+    const mockDirectoryHandle = {
+      getFileHandle: vi.fn().mockResolvedValue(mockFileHandle),
+      removeEntry: vi.fn().mockResolvedValue(undefined)
+    };
+    (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
     
     const result = await checkOPFSSupport();
     
