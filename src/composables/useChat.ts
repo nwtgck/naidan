@@ -13,7 +13,7 @@ const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
 const _currentChatGroup = ref<ChatGroup | null>(null);
 
-export const liveChatRegistry = reactive(new Map<string, Chat>());
+const liveChatRegistry = reactive(new Map<string, Chat>());
 const activeGenerations = reactive(new Map<string, { controller: AbortController, chat: Chat }>)
 const externalGenerations = reactive(new Set<string>());
 const activeTaskCounts = reactive(new Map<string, number>());
@@ -972,8 +972,15 @@ export function useChat() {
   const clearLiveChatRegistry = () => { liveChatRegistry.clear(); };
 
   return {
-    rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, activeGenerations, generatingTitle, availableModels, fetchingModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup, __testOnlySetCurrentChat, __testOnlySetCurrentChatGroup, clearLiveChatRegistry,
-    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing
+    rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
+    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
+    __testOnly: {
+      liveChatRegistry,
+      activeGenerations,
+      clearLiveChatRegistry,
+      __testOnlySetCurrentChat,
+      __testOnlySetCurrentChatGroup,
+    }
   };
 }

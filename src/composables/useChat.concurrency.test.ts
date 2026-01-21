@@ -132,8 +132,9 @@ vi.mock('../services/llm', () => {
 describe('useChat Concurrency & Stale State Protection', () => {
   const chatStore = useChat();
   const {
-    currentChat, rootItems, activeGenerations, __testOnlySetCurrentChat: __testOnlySetCurrentChat
+    currentChat, rootItems, __testOnly
   } = chatStore;
+  const { activeGenerations, __testOnlySetCurrentChat } = __testOnly;
 
   const { errorCount, clearEvents } = useGlobalEvents();
 
@@ -558,7 +559,9 @@ describe('useChat Concurrency & Stale State Protection', () => {
   });
 
   it('should allow creating and using a new chat while another is streaming', async () => {
-    const { createNewChat, sendMessage, activeGenerations } = useChat();
+    const chatStore = useChat();
+    const { createNewChat, sendMessage, __testOnly } = chatStore;
+    const { activeGenerations } = __testOnly;
     const flushPromises = () => new Promise(resolve => setTimeout(resolve, 0));
     mockListModels.mockResolvedValue(['gpt-4']); // Reset for this test
 

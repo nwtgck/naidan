@@ -35,9 +35,10 @@ vi.mock('./useToast', () => ({
   }),
 }));
 
-describe('useChat Group Deletion Logic', () => {
+describe('useChat Group Deletion', () => {
   const chatStore = useChat();
-  const { deleteChatGroup, rootItems, currentChat, __testOnlySetCurrentChat } = chatStore;
+  const { deleteChatGroup, rootItems, currentChat, __testOnly } = chatStore;
+  const { __testOnlySetCurrentChat } = __testOnly;
 
   beforeEach(() => {
     vi.clearAllMocks();

@@ -66,8 +66,9 @@ vi.mock('../services/llm', () => {
 describe('useChat Composable Logic', () => {
   const chatStore = useChat();
   const {
-    activeMessages, sendMessage, currentChat, rootItems, __testOnlySetCurrentChat: __testOnlySetCurrentChat
+    activeMessages, sendMessage, currentChat, rootItems, __testOnly
   } = chatStore;
+  const { __testOnlySetCurrentChat } = __testOnly;
 
   const { errorCount, clearEvents } = useGlobalEvents();
 

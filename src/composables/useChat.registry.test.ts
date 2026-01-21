@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useChat, liveChatRegistry } from './useChat';
+import { useChat } from './useChat';
 import { ref, nextTick, toRaw } from 'vue';
 
 // --- Mocks ---
@@ -64,8 +64,6 @@ vi.mock('../services/llm', () => ({
 }));
 
 describe('useChat Registry Lifecycle', () => {
-  const chatStore = useChat();
-
   beforeEach(() => {
     vi.clearAllMocks();
     chats.clear();
@@ -74,7 +72,9 @@ describe('useChat Registry Lifecycle', () => {
   });
 
   it('should keep chat in liveChatRegistry until ALL background tasks are finished', async () => {
-    const { createNewChat, sendMessage, fetchAvailableModels, currentChat, openChat, activeGenerations, __testOnlySetCurrentChat, unregisterLiveInstance } = useChat();
+    const chatStore = useChat();
+    const { createNewChat, sendMessage, fetchAvailableModels, currentChat, openChat, unregisterLiveInstance, __testOnly } = chatStore;
+    const { activeGenerations, liveChatRegistry, __testOnlySetCurrentChat } = __testOnly;
     
     // Ensure we start clean
     activeGenerations.clear();
@@ -134,7 +134,8 @@ describe('useChat Registry Lifecycle', () => {
   });
 
   it('should not leak newly created chats in liveChatRegistry after creation is complete', async () => {
-    const { createNewChat, currentChat, openChat, __testOnlySetCurrentChat, unregisterLiveInstance } = useChat();
+    const { createNewChat, currentChat, openChat, unregisterLiveInstance, __testOnly } = useChat();
+    const { liveChatRegistry, __testOnlySetCurrentChat } = __testOnly;
     liveChatRegistry.clear();
     
     const chatObj = await createNewChat();
