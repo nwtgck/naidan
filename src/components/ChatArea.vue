@@ -26,7 +26,7 @@ const {
   fetchingModels,
   resolvedSettings,
   inheritedSettings,
-  isTaskRunning,
+  isProcessing,
 } = chatStore;
 useSettings();
 const router = useRouter();
@@ -49,7 +49,7 @@ function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 
 }
 
 const isCurrentChatStreaming = computed(() => {
-  return currentChat.value ? isTaskRunning(currentChat.value.id) : false;
+  return currentChat.value ? isProcessing(currentChat.value.id) : false;
 });
 
 const container = ref<HTMLElement | null>(null);
