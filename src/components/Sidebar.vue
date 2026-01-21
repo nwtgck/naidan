@@ -324,6 +324,11 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
           :class="['space-y-1 min-h-[100px] transition-all duration-200', isDragging ? 'pb-32' : 'pb-4']"
           :swap-threshold="0.5"
           :invert-swap="true"
+          :scroll="true"
+          :scroll-sensitivity="100"
+          :scroll-speed="20"
+          :force-fallback="true"
+          fallback-class="opacity-0"
         >
           <template #item="{ element }">
             <div :class="{ 'is-group': element.type === 'chat_group' }">
@@ -387,6 +392,11 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                     :class="['nested-draggable space-y-0.5 transition-all', isDragging ? 'min-h-[40px] pb-4' : 'min-h-[20px]']"
                     :swap-threshold="0.5"
                     :invert-swap="true"
+                    :scroll="true"
+                    :scroll-sensitivity="100"
+                    :scroll-speed="20"
+                    :force-fallback="true"
+                    fallback-class="opacity-0"
                   >
                     <template #item="{ element: nestedItem }">
                       <div v-if="nestedItem.type === 'chat'">

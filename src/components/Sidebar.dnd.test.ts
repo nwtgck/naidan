@@ -20,7 +20,10 @@ vi.mock('vuedraggable', () => ({
         </div>
       </div>
     `,
-    props: ['modelValue', 'itemKey', 'ghostClass', 'swapThreshold', 'invertSwap'],
+    props: [
+      'modelValue', 'itemKey', 'ghostClass', 'swapThreshold', 'invertSwap',
+      'scroll', 'scrollSensitivity', 'scrollSpeed', 'forceFallback', 'fallbackClass'
+    ],
   }
 }));
 
@@ -65,6 +68,27 @@ describe('Sidebar DND Improvements', () => {
     const draggable = wrapper.findComponent({ name: 'draggable' });
     expect(draggable.props('swapThreshold')).toBe(0.5);
     expect(draggable.props('invertSwap')).toBe(true);
+  });
+
+  it('should have auto-scroll settings enabled on all draggables', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const draggables = wrapper.findAllComponents({ name: 'draggable' });
+    expect(draggables.length).toBeGreaterThan(0);
+    draggables.forEach(d => {
+      expect(d.props('scroll')).toBe(true);
+      expect(d.props('scrollSensitivity')).toBe(100);
+      expect(d.props('scrollSpeed')).toBe(20);
+    });
+  });
+
+  it('should use force-fallback for consistent drag appearance on all draggables', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const draggables = wrapper.findAllComponents({ name: 'draggable' });
+    draggables.forEach(d => {
+      expect(d.props('forceFallback')).toBe(true);
+    });
   });
 
   it('should increase bottom padding during drag for easier end-of-list drops', async () => {
