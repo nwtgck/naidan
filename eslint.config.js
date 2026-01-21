@@ -105,6 +105,10 @@ export default tseslint.config(
       'vue/no-undef-components': ['error', {
         'ignorePatterns': ['router-link', 'router-view'],
       }],
+      'vue/define-props-declaration': ['error', 'type-based'],
+      'vue/define-emits-declaration': ['error', 'type-based'],
+      'vue/component-api-style': ['error', ['script-setup']],
+      'vue/block-lang': ['error', { script: { lang: 'ts' } }],
     },
   },
   ensureFileProtocolInit,
