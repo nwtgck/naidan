@@ -38,6 +38,7 @@ describe('Sidebar Design Specifications', () => {
   beforeEach(() => {
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref(null),
+      currentChatGroup: ref(null),
       streaming: ref(false),
       activeGenerations: reactive(new Map()),
       chatGroups: ref([]),
@@ -110,6 +111,7 @@ describe('Sidebar Design Specifications', () => {
     
     (useChat as unknown as Mock).mockReturnValue({
       currentChat,
+      currentChatGroup: ref(null),
       sidebarItems,
       activeGenerations: reactive(new Map()),
       loadChats: vi.fn().mockResolvedValue(undefined),
