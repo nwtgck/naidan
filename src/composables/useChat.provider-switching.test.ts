@@ -48,7 +48,7 @@ vi.mock('../services/llm', () => {
 });
 
 describe('Provider and Model Compatibility (Comprehensive Test)', () => {
-  const { settings, __testOnlySetSettings } = useSettings();
+  const { settings, __testOnly: { __testOnlySetSettings } } = useSettings();
   const chatStore = useChat();
   const { sendMessage, __testOnly, updateChatSettings, updateChatModel } = chatStore;
   const { __testOnlySetCurrentChat } = __testOnly;

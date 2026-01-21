@@ -49,7 +49,7 @@ vi.mock('../services/llm', () => {
 });
 
 describe('useChat Settings Resolution Policy', () => {
-  const { settings, __testOnlySetSettings } = useSettings();
+  const { settings, __testOnly: { __testOnlySetSettings } } = useSettings();
   const chatStore = useChat();
   const { sendMessage, currentChat, createNewChat, openChat, updateChatModel, updateChatSettings } = chatStore;
 

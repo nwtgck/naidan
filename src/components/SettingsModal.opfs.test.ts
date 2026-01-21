@@ -138,8 +138,10 @@ describe('SettingsModal OPFS and Error Handling', () => {
       setIsOnboardingDismissed: vi.fn(),
       setOnboardingDraft: vi.fn(),
       setHeavyContentAlertDismissed: vi.fn(),
-      __testOnlyReset: vi.fn(),
-      __testOnlySetSettings: vi.fn(),
+      __testOnly: {
+        __testOnlyReset: vi.fn(),
+        __testOnlySetSettings: vi.fn(),
+      }
     });
 
     vi.mocked(useConfirm).mockReturnValue({

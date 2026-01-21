@@ -37,7 +37,7 @@ vi.mock('../services/storage/opfs-detection', () => ({
 }));
 
 describe('useSettings Initialization and Bootstrap', () => {
-  const { __testOnlyReset } = useSettings();
+  const { __testOnly: { __testOnlyReset } } = useSettings();
 
   beforeEach(() => {
     vi.clearAllMocks();

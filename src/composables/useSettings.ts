@@ -230,7 +230,9 @@ export function useSettings() {
     setIsOnboardingDismissed,
     setOnboardingDraft,
     setHeavyContentAlertDismissed,
-    __testOnlyReset,
-    __testOnlySetSettings
+    __testOnly: {
+      __testOnlyReset,
+      __testOnlySetSettings,
+    },
   };
 }

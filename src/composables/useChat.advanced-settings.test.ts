@@ -45,7 +45,7 @@ vi.mock('../services/llm', () => ({
 }));
 
 describe('useChat Advanced Settings Resolution', () => {
-  const { settings, __testOnlySetSettings } = useSettings();
+  const { settings, __testOnly: { __testOnlySetSettings } } = useSettings();
   const { sendMessage, currentChat, createNewChat, openChat, updateChatSettings } = useChat();
 
   beforeEach(async () => {
