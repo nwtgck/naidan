@@ -2,13 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode } from '../models/types';
-import { v7 as uuidv7 } from 'uuid';
 import { Check } from 'lucide-vue-next';
 import { nextTick } from 'vue';
 
 describe('MessageItem Rendering', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): MessageNode => ({
-    id: uuidv7(),
+    id: crypto.randomUUID(),
     role,
     content,
     timestamp: Date.now(),
@@ -341,7 +340,7 @@ describe('MessageItem Rendering', () => {
 
 describe('MessageItem Keyboard Shortcuts', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'user'): MessageNode => ({
-    id: uuidv7(),
+    id: crypto.randomUUID(),
     role,
     content,
     timestamp: Date.now(),
@@ -401,7 +400,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
 
 describe('MessageItem Attachment Rendering', () => {
   const createMessageWithAttachments = (attachments: any[]): MessageNode => ({
-    id: uuidv7(),
+    id: crypto.randomUUID(),
     role: 'user',
     content: 'Message with images',
     timestamp: Date.now(),
@@ -503,7 +502,7 @@ describe('MessageItem Attachment Rendering', () => {
 
 describe('MessageItem States', () => {
   const createAssistantMessage = (content: string, error?: string): MessageNode => ({
-    id: uuidv7(),
+    id: crypto.randomUUID(),
     role: 'assistant',
     content,
     error,
@@ -573,7 +572,7 @@ describe('MessageItem States', () => {
 
 describe('MessageItem Edit Labels', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
-    id: uuidv7(),
+    id: crypto.randomUUID(),
     role,
     content: 'Some content',
     timestamp: Date.now(),
@@ -639,7 +638,7 @@ describe('MessageItem Edit Labels', () => {
 
 describe('MessageItem Action Visibility', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
-    id: uuidv7(),
+    id: crypto.randomUUID(),
     role,
     content: 'Some content',
     timestamp: Date.now(),

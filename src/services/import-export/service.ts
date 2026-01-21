@@ -1,5 +1,4 @@
 import JSZip from 'jszip';
-import { v7 as uuidv7 } from 'uuid';
 import type { 
   ExportOptions, 
   ImportConfig, 
@@ -392,7 +391,7 @@ export class ImportExportService {
         finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
         break;
       case 'append': {
-        const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: uuidv7() }));
+        const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: crypto.randomUUID() }));
         finalSettings.providerProfiles = [...finalSettings.providerProfiles, ...appended];
         break;
       }
@@ -503,7 +502,7 @@ export class ImportExportService {
           const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
           if (result.success) {
             const dto = result.data;
-            const newId = uuidv7();
+            const newId = crypto.randomUUID();
             groupIdMap.set(dto.id, newId);
             dto.id = newId;
             if (config.data.chatGroupNamePrefix) dto.name = `${config.data.chatGroupNamePrefix}${dto.name}`;
@@ -524,7 +523,7 @@ export class ImportExportService {
           if (res.success) {
             const dto = res.data;
             const originalId = dto.id;
-            const newId = uuidv7();
+            const newId = crypto.randomUUID();
             chatIdMap.set(originalId, newId);
             dto.id = newId;
             if (config.data.chatTitlePrefix && dto.title) dto.title = `${config.data.chatTitlePrefix}${dto.title}`;
@@ -568,11 +567,11 @@ export class ImportExportService {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
             const dto: ChatDto = { ...meta, ...content };
             const process = (node: MessageNodeDto) => {
-              node.id = uuidv7();
+              node.id = crypto.randomUUID();
               if (node.attachments) {
                 node.attachments.forEach(a => {
                   if (!attachmentIdMap.has(a.id)) {
-                    const newAttId = uuidv7();
+                    const newAttId = crypto.randomUUID();
                     attachmentIdMap.set(a.id, newAttId);
                     attachmentMetadata.set(newAttId, a);
                   }

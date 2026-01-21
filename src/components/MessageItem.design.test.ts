@@ -2,13 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode } from '../models/types';
-import { v7 as uuidv7 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
 
 describe('MessageItem Design (Dynamic Thinking Border)', () => {
   const createMessage = (content: string): MessageNode => ({
-    id: uuidv7(),
+    id: crypto.randomUUID(),
     role: 'assistant',
     content,
     timestamp: Date.now(),

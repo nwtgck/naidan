@@ -14,7 +14,6 @@ import {
   ArrowUp, Settings2, Download, MoreVertical, Bug,
   Folder, FolderInput, ChevronRight,
 } from 'lucide-vue-next';
-import { v7 as uuidv7 } from 'uuid';
 import type { Attachment } from '../models/types';
 
 
@@ -105,7 +104,7 @@ async function processFiles(files: File[]) {
     if (!file.type.startsWith('image/')) continue;
     
     const attachment: Attachment = {
-      id: uuidv7(),
+      id: crypto.randomUUID(),
       originalName: file.name,
       mimeType: file.type,
       size: file.size,

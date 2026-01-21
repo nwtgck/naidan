@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { chatToDomain, buildSidebarItemsFromHierarchy } from './mappers';
-import { v7 as uuidv7 } from 'uuid';
 import type { ChatMeta, ChatGroup, Hierarchy } from './types';
 
 describe('Sidebar assembly', () => {
@@ -34,10 +33,10 @@ describe('Sidebar assembly', () => {
 
 describe('Legacy Migration (Flat to Tree)', () => {
   it('should migrate linear messages to a recursive tree structure', () => {
-    const legacyId1 = uuidv7();
-    const legacyId2 = uuidv7();
+    const legacyId1 = crypto.randomUUID();
+    const legacyId2 = crypto.randomUUID();
     const legacyChat: any = {
-      id: uuidv7(),
+      id: crypto.randomUUID(),
       title: 'Legacy',
       messages: [
         { id: legacyId1, role: 'user', content: 'Hi', timestamp: 1 },

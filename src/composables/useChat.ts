@@ -1,5 +1,4 @@
 import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } from 'vue';
-import { v7 as uuidv7 } from 'uuid';
 import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
@@ -345,7 +344,7 @@ export function useChat() {
     if (creatingChat.value) return null;
     _currentChatGroup.value = null;
     creatingChat.value = true;
-    const chatId = uuidv7();
+    const chatId = crypto.randomUUID();
     try {
       const chatObj: Chat = reactive({
         id: chatId, title: null, groupId: chatGroupId, root: { items: [] },
@@ -678,8 +677,8 @@ export function useChat() {
         } else processedAttachments.push(att);
       }
 
-      const userMsg: MessageNode = { id: uuidv7(), role: 'user', content, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
-      const assistantMsg: MessageNode = { id: uuidv7(), role: 'assistant', content: '', timestamp: Date.now(), modelId: resolvedModel, replies: { items: [] }, };
+      const userMsg: MessageNode = { id: crypto.randomUUID(), role: 'user', content, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
+      const assistantMsg: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: '', timestamp: Date.now(), modelId: resolvedModel, replies: { items: [] }, };
       userMsg.replies.items.push(assistantMsg);
 
       if (!chat.root) chat.root = { items: [] };
@@ -716,7 +715,7 @@ export function useChat() {
       if (!failedNode || failedNode.role !== 'assistant') return;
       const parent = findParentInBranch(chat.root.items, failedMessageId);
       if (!parent || parent.role !== 'user') return;
-      const newAssistantMsg: MessageNode = { id: uuidv7(), role: 'assistant', content: '', timestamp: Date.now(), modelId: failedNode.modelId, replies: { items: [] }, };
+      const newAssistantMsg: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: '', timestamp: Date.now(), modelId: failedNode.modelId, replies: { items: [] }, };
       parent.replies.items.push(newAssistantMsg);
       chat.currentLeafId = newAssistantMsg.id;
       if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
@@ -795,7 +794,7 @@ export function useChat() {
     const forkPath = path.slice(0, idx + 1);
     const clonedNodes: MessageNode[] = forkPath.map(n => ({ id: n.id, role: n.role, content: n.content, attachments: n.attachments, timestamp: n.timestamp, thinking: n.thinking, error: n.error, modelId: n.modelId, replies: { items: [] }, }));
     for (let i = 0; i < clonedNodes.length - 1; i++) clonedNodes[i]!.replies.items.push(clonedNodes[i+1]!);
-    const newChatId = uuidv7();
+    const newChatId = crypto.randomUUID();
     try {
       const newChatObj: Chat = reactive({
         ...toRaw(mutableChat), 
@@ -831,7 +830,7 @@ export function useChat() {
     const chat = getLiveChat(_currentChat.value);
     const node = findNodeInBranch(chat.root.items, messageId); if (!node) return;
     if (node.role === 'assistant') {
-      const correctedNode: MessageNode = { id: uuidv7(), role: 'assistant', content: newContent, attachments: node.attachments, timestamp: Date.now(), modelId: node.modelId, replies: { items: [] }, };
+      const correctedNode: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: newContent, attachments: node.attachments, timestamp: Date.now(), modelId: node.modelId, replies: { items: [] }, };
       const parent = findParentInBranch(chat.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);
       else chat.root.items.push(correctedNode);
@@ -876,7 +875,7 @@ export function useChat() {
   };
 
   const createChatGroup = async (name: string) => {
-    const id = uuidv7();
+    const id = crypto.randomUUID();
     const newGroup: ChatGroup = { id, name, updatedAt: Date.now(), isCollapsed: false, items: [], };
     await storageService.updateChatGroup(id, () => newGroup);
     await storageService.updateHierarchy((curr) => { curr.items.unshift({ type: 'chat_group', id, chat_ids: [] }); return curr; });
