@@ -302,9 +302,13 @@ const displayContent = computed(() => {
   let content = props.message.content;
   
   // Remove <think> blocks for display
-  content = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+  const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '');
   
-  return content;
+  // If we have any content after removing <think>, return it (even if just whitespace)
+  // to signal that we are no longer in "initial loading" state.
+  if (cleanContent.length > 0) return cleanContent;
+  
+  return '';
 });
 
 const parsedContent = computed(() => {

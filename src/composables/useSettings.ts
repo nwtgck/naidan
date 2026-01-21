@@ -1,5 +1,5 @@
-import { ref } from 'vue';
-import { type Settings, type EndpointType, DEFAULT_SETTINGS } from '../models/types';
+import { ref, readonly } from 'vue';
+import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType } from '../models/types';
 import { storageService } from '../services/storage';
 import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
@@ -7,14 +7,15 @@ import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { StorageTypeSchemaDto } from '../models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
 
-const settings = ref<Settings>({ 
+const _settings = ref<Settings>({ 
   ...DEFAULT_SETTINGS, 
   storageType: 'local',
   endpointType: 'openai'
 } as Settings);
-const initialized = ref(false);
-const isOnboardingDismissed = ref(false);
-const onboardingDraft = ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>(null);
+
+const _initialized = ref(false);
+const _isOnboardingDismissed = ref(false);
+const _onboardingDraft = ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>(null);
 const availableModels = ref<string[]>([]);
 const isFetchingModels = ref(false);
 
@@ -26,12 +27,7 @@ storageService.subscribeToChanges(async (event) => {
   if (event.type === 'settings' || event.type === 'migration') {
     const fresh = await storageService.loadSettings();
     if (fresh) {
-      // Preserve local-only state if necessary, but generally settings are global
-      // We might want to keep the 'storageType' in sync if migration happened
-      settings.value = fresh;
-      
-      // If endpoint changed remotely, we might want to refetch models, 
-      // but maybe lazily? For now let's just update the config.
+      _settings.value = fresh;
     }
   }
 });
@@ -40,7 +36,7 @@ export function useSettings() {
   const loading = ref(false);
 
   async function init() {
-    if (initialized.value) return;
+    if (_initialized.value) return;
     if (initPromise) return initPromise;
 
     initPromise = (async () => {
@@ -75,24 +71,24 @@ export function useSettings() {
         }
 
         // Sync local settings ref with determined storage type
-        settings.value.storageType = bootstrapType;
+        _settings.value.storageType = bootstrapType;
 
         await storageService.init(bootstrapType);
         const s = await storageService.loadSettings();
         if (s) {
-          settings.value = s;
+          _settings.value = s;
           if (s.endpointUrl) {
-            isOnboardingDismissed.value = true;
+            _isOnboardingDismissed.value = true;
             // Initial fetch of models if we have an endpoint
             fetchModels();
           }
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
-          settings.value.endpointType = 'openai';
+          _settings.value.endpointType = 'openai';
         }
       } finally {
         loading.value = false;
-        initialized.value = true;
+        _initialized.value = true;
         initPromise = null;
       }
     })();
@@ -101,17 +97,18 @@ export function useSettings() {
   }
 
   async function fetchModels() {
-    if (!settings.value.endpointUrl) {
+    if (!_settings.value.endpointUrl) {
       availableModels.value = [];
       return;
     }
     isFetchingModels.value = true;
     try {
-      const provider = settings.value.endpointType === 'ollama' 
+      const provider = _settings.value.endpointType === 'ollama' 
         ? new OllamaProvider() 
         : new OpenAIProvider();
       
-      const models = await provider.listModels(settings.value.endpointUrl, settings.value.endpointHttpHeaders);
+      const mutableHeaders = _settings.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(_settings.value.endpointHttpHeaders)) : undefined;
+      const models = await provider.listModels(_settings.value.endpointUrl, mutableHeaders);
       availableModels.value = models;
     } catch (err) {
       const { addErrorEvent } = useGlobalEvents();
@@ -121,45 +118,121 @@ export function useSettings() {
         details: err instanceof Error ? err : String(err),
       });
       console.error('Failed to fetch models:', err);
-      // We don't clear availableModels on error if we already have some, 
-      // but maybe we should if it's a connection error.
     } finally {
       isFetchingModels.value = false;
     }
   }
 
   async function save(newSettings: Settings) {
-    const oldUrl = settings.value.endpointUrl;
-    const oldType = settings.value.endpointType;
+    const oldUrl = _settings.value.endpointUrl;
+    const oldType = _settings.value.endpointType;
     
-    settings.value = { ...newSettings }; // Update state immediately
+    _settings.value = { ...newSettings };
     
-    // Check if storage type changed from what the service is currently using
     const currentProviderType = storageService.getCurrentType();
-    
     if (newSettings.storageType !== currentProviderType) {
       await storageService.switchProvider(newSettings.storageType);
     }
     
-    // Save to the (potentially new) provider
-    await storageService.saveSettings(settings.value);
+    await storageService.updateSettings(() => _settings.value);
 
-    // If endpoint changed, refetch models
     if (newSettings.endpointUrl !== oldUrl || newSettings.endpointType !== oldType) {
       await fetchModels();
     }
   }
 
+  // --- Explicit Actions ---
+
+  async function updateGlobalModel(modelId: string) {
+    _settings.value.defaultModelId = modelId;
+    await storageService.updateSettings((curr) => ({ ...curr, ..._settings.value, defaultModelId: modelId }));
+  }
+
+  async function updateGlobalEndpoint(options: { type: EndpointType, url: string, headers?: [string, string][] }) {
+    const oldUrl = _settings.value.endpointUrl;
+    const oldType = _settings.value.endpointType;
+
+    _settings.value.endpointType = options.type;
+    _settings.value.endpointUrl = options.url;
+    _settings.value.endpointHttpHeaders = options.headers;
+
+    await storageService.updateSettings((curr) => ({ 
+      ...curr, 
+      ..._settings.value,
+      endpointType: options.type,
+      endpointUrl: options.url,
+      endpointHttpHeaders: options.headers
+    }));
+
+    if (options.url !== oldUrl || options.type !== oldType) {
+      await fetchModels();
+    }
+  }
+
+  async function updateSystemPrompt(prompt: string) {
+    _settings.value.systemPrompt = prompt;
+    await storageService.updateSettings((curr) => ({ ...curr, ..._settings.value, systemPrompt: prompt }));
+  }
+
+  async function updateStorageType(type: StorageType) {
+    if (_settings.value.storageType === type) return;
+    
+    _settings.value.storageType = type;
+    await storageService.switchProvider(type);
+    await storageService.updateSettings((curr) => ({ ...curr, ..._settings.value, storageType: type }));
+  }
+
+  function setIsOnboardingDismissed(dismissed: boolean) {
+    _isOnboardingDismissed.value = dismissed;
+  }
+
+  function setOnboardingDraft(draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null) {
+    _onboardingDraft.value = draft;
+  }
+
+  function setHeavyContentAlertDismissed(dismissed: boolean) {
+    _settings.value.heavyContentAlertDismissed = dismissed;
+    storageService.updateSettings((curr) => ({ ...curr, ..._settings.value, heavyContentAlertDismissed: dismissed }));
+  }
+
+  function __testOnlySetSettings(newSettings: Settings) {
+    _settings.value = JSON.parse(JSON.stringify(newSettings));
+  }
+
+  function __testOnlyReset() {
+    _initialized.value = false;
+    _isOnboardingDismissed.value = false;
+    _onboardingDraft.value = null;
+    _settings.value = { 
+      ...DEFAULT_SETTINGS, 
+      storageType: 'local',
+      endpointType: 'openai'
+    } as Settings;
+    availableModels.value = [];
+    isFetchingModels.value = false;
+    initPromise = null;
+  }
+
   return {
-    settings,
-    loading,
-    initialized,
-    isOnboardingDismissed,
-    onboardingDraft,
-    availableModels,
-    isFetchingModels,
+    settings: readonly(_settings),
+    initialized: readonly(_initialized),
+    isOnboardingDismissed: readonly(_isOnboardingDismissed),
+    onboardingDraft: readonly(_onboardingDraft),
+    availableModels: readonly(availableModels),
+    isFetchingModels: readonly(isFetchingModels),
     init,
     save,
     fetchModels,
+    updateGlobalModel,
+    updateGlobalEndpoint,
+    updateSystemPrompt,
+    updateStorageType,
+    setIsOnboardingDismissed,
+    setOnboardingDraft,
+    setHeavyContentAlertDismissed,
+    __testOnly: {
+      __testOnlyReset,
+      __testOnlySetSettings,
+    },
   };
 }

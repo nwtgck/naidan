@@ -107,12 +107,81 @@ export interface Chat {
   lmParameters?: LmParameters;
 }
 
+/**
+ * Chat Metadata
+ * Represents the configuration and state of a chat, excluding its messages.
+ * Used for sidebar listing and lightweight synchronization.
+ */
+export interface ChatMeta {
+  id: string;
+  title: string | null;
+  groupId?: string | null;
+  currentLeafId?: string;
+  createdAt: number;
+  updatedAt: number;
+  debugEnabled: boolean;
+  endpoint?: Endpoint;
+  modelId?: string;
+  originChatId?: string;
+  originMessageId?: string;
+  systemPrompt?: SystemPrompt;
+  lmParameters?: LmParameters;
+}
+
+/**
+ * Chat Content
+ * Represents the actual conversation data (the message tree).
+ */
+export interface ChatContent {
+  root: MessageBranch;
+  currentLeafId?: string;
+}
+
 export type ChatSummary = Pick<Chat, 'id' | 'title' | 'updatedAt' | 'groupId'>;
 
 // Sidebar hierarchy - order is implicit by position in array
 export type SidebarItem = 
   | { id: string; type: 'chat'; chat: ChatSummary }
   | { id: string; type: 'chat_group'; chatGroup: ChatGroup };
+
+/**
+ * Hierarchy (Source of Truth for Structure)
+ * Used to persist the visual tree separate from data records.
+ */
+export interface HierarchyChatNode {
+  type: 'chat';
+  id: string;
+}
+
+export interface HierarchyChatGroupNode {
+  type: 'chat_group';
+  id: string;
+  chat_ids: string[];
+}
+
+export type HierarchyNode = HierarchyChatNode | HierarchyChatGroupNode;
+
+export interface Hierarchy {
+  items: HierarchyNode[];
+}
+
+/**
+ * Storage Snapshot
+ * Represents a complete snapshot of the storage for migration or backup.
+ */
+export interface StorageSnapshot {
+  structure: {
+    settings: Settings;
+    hierarchy: Hierarchy;
+    chatMetas: ChatMeta[];
+    chatGroups: ChatGroup[];
+  };
+  /**
+   * Stream of heavy content (full message trees and binary attachments).
+   * This is kept as a generator to manage memory efficiency.
+   */
+  contentStream: AsyncGenerator<import('./dto').MigrationChunkDto>;
+}
 
 /**
  * Provider Profile

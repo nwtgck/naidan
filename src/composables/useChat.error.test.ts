@@ -10,11 +10,18 @@ vi.mock('../services/storage', () => ({
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
+    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    loadSettings: vi.fn().mockResolvedValue({}),
     saveFile: vi.fn(),
     getFile: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     listChatGroups: vi.fn().mockResolvedValue([]),
+    notify: vi.fn(),
     canPersistBinary: true,
+    getCurrentType: vi.fn().mockReturnValue('local'),
   },
 }));
 
@@ -36,13 +43,14 @@ vi.mock('../services/llm', () => {
 });
 
 describe('useChat Error Handling', () => {
+  const { __testOnly: { __testOnlySetSettings } } = useSettings();
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockChat.mockReset();
     mockListModels.mockResolvedValue(['gpt-4']);
     
-    const { settings } = useSettings();
-    settings.value = {
+    __testOnlySetSettings({
       endpointType: 'openai',
       endpointUrl: 'https://api.openai.com',
       defaultModelId: 'gpt-4',
@@ -50,7 +58,7 @@ describe('useChat Error Handling', () => {
       storageType: 'local',
       providerProfiles: [],
       heavyContentAlertDismissed: true,
-    };
+    });
   });
 
   it('should set error state on assistant node when generation fails', async () => {

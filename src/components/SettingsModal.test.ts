@@ -1,3 +1,8 @@
+// Mock the dynamic import for licenses
+vi.mock('../assets/licenses.json', () => ({
+  default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }]
+}));
+
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
@@ -83,12 +88,18 @@ vi.mock('../services/storage', () => ({
     getCurrentType: vi.fn(),
     switchProvider: vi.fn().mockResolvedValue(undefined),
     hasAttachments: vi.fn().mockResolvedValue(false),
+    saveChat: vi.fn(),
+    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    loadChat: vi.fn(),
+    listChats: vi.fn().mockResolvedValue([]),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    updateChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    notify: vi.fn(),
   },
-}));
-
-// Mock the dynamic import for licenses
-vi.mock('../assets/licenses.json', () => ({
-  default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }]
 }));
 
 // --- Tests ---
@@ -145,9 +156,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: { value: JSON.parse(JSON.stringify(mockSettings)) },
-      availableModels: { value: [] },
-      isFetchingModels: { value: false },
+      settings: ref(JSON.parse(JSON.stringify(mockSettings))),
+      availableModels: ref([]),
+      isFetchingModels: ref(false),
       save: mockSave.mockImplementation(async (newSettings) => {
         const currentType = storageService.getCurrentType();
         if (newSettings.storageType !== currentType) {
@@ -189,8 +200,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('maintains UI stability during model fetching', async () => {
       const isFetching = ref(false);
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: JSON.parse(JSON.stringify(mockSettings)) },
-        availableModels: { value: [] },
+        settings: ref(JSON.parse(JSON.stringify(mockSettings))),
+        availableModels: ref([]),
         isFetchingModels: isFetching,
         save: mockSave,
         fetchModels: vi.fn(),
@@ -394,7 +405,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
     await nextTick();
     // Wait a bit more if needed
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 100));
     await flushPromises();
 
     const text = wrapper.text();

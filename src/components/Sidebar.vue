@@ -19,10 +19,10 @@ import { useConfirm } from '../composables/useConfirm';
 
 const chatStore = useChat();
 const { 
-  currentChat, chatGroups, chats, activeGenerations,
+  currentChat, chatGroups, chats, isTaskRunning,
 } = chatStore;
 
-const { settings, isFetchingModels, save: saveSettings } = useSettings();
+const { settings, isFetchingModels, updateGlobalModel } = useSettings();
 const { isSidebarOpen, toggleSidebar } = useLayout();
 const { showConfirm } = useConfirm();
 
@@ -155,9 +155,13 @@ async function handleNewChat(chatGroupId: string | null = null) {
   }
 }
 
-function handleOpenChat(id: string) {
-  if (editingId.value === id) return;
-  chatStore.currentChatGroup.value = null;
+function handleChatClick() {
+  chatStore.openChatGroup(null);
+}
+
+async function handleOpenChat(id: string) {
+  handleChatClick();
+  await chatStore.openChat(id);
   router.push(`/chat/${id}`);
 }
 
@@ -193,10 +197,7 @@ async function saveChatGroupRename() {
 
 async function handleGlobalModelChange(newModelId: string | undefined) {
   if (!newModelId) return;
-  await saveSettings({
-    ...settings.value,
-    defaultModelId: newModelId,
-  });
+  await updateGlobalModel(newModelId);
 }
 </script>
 
@@ -371,7 +372,7 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                             <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'New Chat' }}</span>
                           </div>
                           <div class="flex items-center gap-1">
-                            <Loader2 v-if="activeGenerations.has(nestedItem.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                            <Loader2 v-if="isTaskRunning(nestedItem.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                             <div v-if="editingId !== nestedItem.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
                               <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
                               <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
@@ -407,7 +408,7 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                   <span v-else class="truncate text-sm">{{ element.chat.title || 'New Chat' }}</span>
                 </div>
                 <div class="flex items-center gap-1">
-                  <Loader2 v-if="activeGenerations.has(element.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                  <Loader2 v-if="isTaskRunning(element.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                   <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
                     <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
                     <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>

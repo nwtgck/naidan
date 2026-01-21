@@ -4,22 +4,22 @@ import { useSettings } from '../composables/useSettings';
 import ThemeToggle from './ThemeToggle.vue';
 import { useToast } from '../composables/useToast';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
-import { type EndpointType } from '../models/types';
+import { type EndpointType, type Settings as SettingsType } from '../models/types';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import Logo from './Logo.vue';
 import ServerSetupGuide from './ServerSetupGuide.vue';
 import ModelSelector from './ModelSelector.vue';
 import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2 } from 'lucide-vue-next';
 
-const { settings, save, isOnboardingDismissed, onboardingDraft } = useSettings();
+const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft } = useSettings();
 const toast = useToast();
 
 const selectedType = ref<EndpointType>(onboardingDraft.value?.type || 'openai');
 const customUrl = ref(onboardingDraft.value?.url || '');
-const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers || []);
+const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers ? JSON.parse(JSON.stringify(onboardingDraft.value.headers)) : []);
 const isTesting = ref(false);
 const error = ref<string | null>(null);
-const availableModels = ref<string[]>(onboardingDraft.value?.models || []);
+const availableModels = ref<string[]>(onboardingDraft.value?.models ? JSON.parse(JSON.stringify(onboardingDraft.value.models)) : []);
 const selectedModel = ref(onboardingDraft.value?.selectedModel || '');
 let abortController: AbortController | null = null;
 
@@ -98,20 +98,20 @@ async function handleConnect() {
 }
 
 async function handleClose() {
-  onboardingDraft.value = { 
+  setOnboardingDraft({ 
     url: customUrl.value, 
     type: selectedType.value,
     headers: customHeaders.value,
     models: availableModels.value,
     selectedModel: selectedModel.value,
-  };
-  isOnboardingDismissed.value = true;
+  });
+  setIsOnboardingDismissed(true);
   
   toast.addToast({
     message: 'Setup skipped. You can always configure it later in settings.',
     actionLabel: 'Undo',
     onAction: () => {
-      isOnboardingDismissed.value = false;
+      setIsOnboardingDismissed(false);
     },
     duration: 5000,
   });
@@ -126,8 +126,9 @@ async function handleFinish() {
   }
 
   try {
+    const baseSettings = JSON.parse(JSON.stringify(settings.value)) as SettingsType;
     await save({
-      ...settings.value,
+      ...baseSettings,
       endpointType: selectedType.value,
       endpointUrl: url || undefined,
       endpointHttpHeaders: customHeaders.value.length > 0 ? customHeaders.value : undefined,
@@ -135,8 +136,8 @@ async function handleFinish() {
       titleModelId: selectedModel.value || undefined,
     });
 
-    onboardingDraft.value = null;
-    isOnboardingDismissed.value = true;
+    setOnboardingDraft(null);
+    setIsOnboardingDismissed(true);
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save settings.';
   }

@@ -27,6 +27,8 @@ const mockRenameChatGroup = vi.fn();
 const mockDeleteChatGroup = vi.fn();
 const mockSaveSettings = vi.fn();
 
+const mockUpdateGlobalModel = vi.fn();
+
 // --- Vitest Mocks ---
 
 vi.mock('../composables/useChat', () => ({
@@ -51,6 +53,9 @@ vi.mock('../composables/useChat', () => ({
     toggleChatGroupCollapse: vi.fn(),
     persistSidebarStructure: vi.fn(),
     deleteAllChats: mockDeleteAllChats,
+    isTaskRunning: vi.fn().mockReturnValue(false),
+    isProcessing: vi.fn().mockReturnValue(false),
+    abortChat: vi.fn(),
   }),
 }));
 
@@ -60,6 +65,7 @@ vi.mock('../composables/useSettings', () => ({
     availableModels: mockAvailableModels,
     isFetchingModels: mockIsFetchingModels,
     save: mockSaveSettings,
+    updateGlobalModel: mockUpdateGlobalModel,
   }),
 }));
 
@@ -182,7 +188,7 @@ describe('Sidebar Logic Stability', () => {
       expect(selector.props('allowClear')).toBe(false);
     });
 
-    it('calls saveSettings when ModelSelector emits update:modelValue', async () => {
+    it('calls save when ModelSelector emits update:modelValue', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
@@ -191,9 +197,7 @@ describe('Sidebar Logic Stability', () => {
       const selector = wrapper.getComponent({ name: 'ModelSelector' });
       await selector.vm.$emit('update:modelValue', 'mistral');
 
-      expect(mockSaveSettings).toHaveBeenCalledWith(expect.objectContaining({
-        defaultModelId: 'mistral',
-      }));
+      expect(mockUpdateGlobalModel).toHaveBeenCalledWith('mistral');
     });
 
     it('shows a loading spinner when models are being fetched', async () => {

@@ -1,36 +1,42 @@
-import type { Chat, Settings, ChatGroup, MessageNode } from '../../models/types';
+import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot } from '../../models/types';
 import { 
-  SettingsSchemaDto, 
-  ChatMetaIndexSchemaDto,
-  ChatMetaSchemaDto,
-  ChatContentSchemaDto,
-  type ChatGroupDto, 
   type ChatMetaDto,
-  type ChatContentDto,
-  type MigrationChunkDto,
+  type ChatGroupDto,
+  type HierarchyDto,
+  ChatMetaSchemaDto,
+  ChatGroupSchemaDto,
+  SettingsSchemaDto,
+  HierarchySchemaDto,
+  ChatContentSchemaDto,
 } from '../../models/dto';
 import { 
   chatToDomain,
   chatToDto,
+  chatGroupToDomain,
+  chatGroupToDto,
   settingsToDomain,
   settingsToDto,
-  chatGroupToDto,
-} from '../../models/mappers';
-import { IStorageProvider } from './interface';
+  hierarchyToDomain,
+  chatMetaToDto,
+  chatMetaToDomain,
+  chatContentToDto,
+  chatContentToDomain,
+  buildSidebarItemsFromHierarchy,
+} from '../../models/mappers';import { IStorageProvider } from './interface';
 
 import { STORAGE_KEY_PREFIX } from '../../models/constants';
 
 const LSP_STORAGE_PREFIX = `${STORAGE_KEY_PREFIX}lsp:`;
-const KEY_INDEX = `${LSP_STORAGE_PREFIX}index`;
-const KEY_CHAT_GROUPS = `${LSP_STORAGE_PREFIX}chat_groups`;
+const KEY_HIERARCHY = `${LSP_STORAGE_PREFIX}hierarchy`;
 const KEY_SETTINGS = `${LSP_STORAGE_PREFIX}settings`;
-const KEY_CHAT_PREFIX = `${LSP_STORAGE_PREFIX}chat:`;
+const KEY_META_PREFIX = `${LSP_STORAGE_PREFIX}chat_meta:`;
+const KEY_GROUP_PREFIX = `${LSP_STORAGE_PREFIX}chat_group:`;
+const KEY_CONTENT_PREFIX = `${LSP_STORAGE_PREFIX}chat_content:`;
 
 /**
  * LocalStorage Implementation
- * Optimized by splitting metadata and content.
- * Includes a session-level memory cache for Blobs to support "rescuing" them
- * during migration or provider switching.
+ * Optimized by splitting metadata and content into individual keys.
+ * Uses a centralized hierarchy record for ordering.
  */
 export class LocalStorageProvider extends IStorageProvider {
   readonly canPersistBinary = false;
@@ -43,27 +49,50 @@ export class LocalStorageProvider extends IStorageProvider {
   // --- Internal Data Access ---
 
   protected async listChatMetasRaw(): Promise<ChatMetaDto[]> {
-    const raw = localStorage.getItem(KEY_INDEX);
-    if (!raw) return [];
-    try {
-      const json = JSON.parse(raw);
-      const validated = ChatMetaIndexSchemaDto.parse(json);
-      return validated.entries;
-    } catch { return []; }
+    const metas: ChatMetaDto[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(KEY_META_PREFIX)) {
+        const raw = localStorage.getItem(key);
+        if (raw) metas.push(JSON.parse(raw));
+      }
+    }
+    return metas;
   }
 
   protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
-    const raw = localStorage.getItem(KEY_CHAT_GROUPS);
-    if (!raw) return [];
-    try {
-      return JSON.parse(raw);
-    } catch { return []; }
+    const groups: ChatGroupDto[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(KEY_GROUP_PREFIX)) {
+        const raw = localStorage.getItem(key);
+        if (raw) groups.push(JSON.parse(raw));
+      }
+    }
+    return groups;
+  }
+
+  // --- Hierarchy Management ---
+
+  async loadHierarchy(): Promise<HierarchyDto | null> {
+    const raw = localStorage.getItem(KEY_HIERARCHY);
+    if (!raw) return { items: [] };
+    return HierarchySchemaDto.parse(JSON.parse(raw));
+  }
+
+  async saveHierarchy(hierarchy: HierarchyDto): Promise<void> {
+    localStorage.setItem(KEY_HIERARCHY, JSON.stringify(hierarchy));
   }
 
   // --- Persistence Implementation ---
 
-  async saveChat(chat: Chat, index: number): Promise<void> {
-    // Collect memory blobs before stringifying
+  async saveChatMeta(meta: ChatMeta): Promise<void> {
+    const dto = chatMetaToDto(meta);
+    ChatMetaSchemaDto.parse(dto);
+    localStorage.setItem(`${KEY_META_PREFIX}${meta.id}`, JSON.stringify(dto));
+  }
+
+  async saveChatContent(id: string, content: ChatContent): Promise<void> {
     const findAndCacheBlobs = (nodes: MessageNode[]) => {
       for (const node of nodes) {
         if (node.attachments) {
@@ -78,60 +107,41 @@ export class LocalStorageProvider extends IStorageProvider {
         }
       }
     };
-    findAndCacheBlobs(chat.root.items);
+    findAndCacheBlobs(content.root.items);
 
-    const fullDto = chatToDto(chat, index);
-    
-    // 1. Save Content (Large)
-    const contentDto: ChatContentDto = {
-      root: fullDto.root || { items: [] },
-      currentLeafId: fullDto.currentLeafId,
-    };
-    ChatContentSchemaDto.parse(contentDto);
-    localStorage.setItem(`${KEY_CHAT_PREFIX}${chat.id}`, JSON.stringify(contentDto));
-
-    // 2. Update Meta Index (Small)
-    const { root: _r, currentLeafId: _c, ...metaDto } = fullDto;
-    ChatMetaSchemaDto.parse(metaDto);
-    
-    const entries = await this.listChatMetasRaw();
-    const existingIndex = entries.findIndex(m => m.id === chat.id);
-    if (existingIndex >= 0) entries[existingIndex] = metaDto as ChatMetaDto;
-    else entries.push(metaDto as ChatMetaDto);
-    
-    localStorage.setItem(KEY_INDEX, JSON.stringify({ entries }));
+    const dto = chatContentToDto(content);
+    ChatContentSchemaDto.parse(dto);
+    localStorage.setItem(`${KEY_CONTENT_PREFIX}${id}`, JSON.stringify(dto));
   }
 
   async loadChat(id: string): Promise<Chat | null> {
-    const metas = await this.listChatMetasRaw();
-    const meta = metas.find(m => m.id === id);
-    if (!meta) return null;
-
-    const rawContent = localStorage.getItem(`${KEY_CHAT_PREFIX}${id}`);
-    if (!rawContent) return null;
+    const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${id}`);
+    const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${id}`);
+    if (!rawMeta || !rawContent) return null;
 
     try {
+      const meta = ChatMetaSchemaDto.parse(JSON.parse(rawMeta));
       const content = ChatContentSchemaDto.parse(JSON.parse(rawContent));
       const chat = chatToDomain({ ...meta, ...content });
 
-      // Restore blobs from cache if available
+      // Resolve groupId from hierarchy
+      const hierarchy = await this.loadHierarchy();
+      if (hierarchy) {
+        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+        if (group) chat.groupId = group.id;
+      }
+
       const restoreBlobs = (nodes: MessageNode[]) => {
         for (const node of nodes) {
           if (node.attachments) {
             for (const att of node.attachments) {
               if (att.status === 'memory') {
                 const cached = this.blobCache.get(att.id);
-                if (cached) {
-                  // Re-assigning to avoid TS error on readonly/union types if necessary
-                  // but status is already checked, so blob should be available if we cast
-                  (att as unknown as { blob: Blob }).blob = cached;
-                }
+                if (cached) (att as unknown as { blob: Blob }).blob = cached;
               }
             }
           }
-          if (node.replies?.items) {
-            restoreBlobs(node.replies.items);
-          }
+          if (node.replies?.items) restoreBlobs(node.replies.items);
         }
       };
       restoreBlobs(chat.root.items);
@@ -140,43 +150,88 @@ export class LocalStorageProvider extends IStorageProvider {
     } catch { return null; }
   }
 
+  async loadChatMeta(id: string): Promise<ChatMeta | null> {
+    const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${id}`);
+    if (!rawMeta) return null;
+    try {
+      const meta = chatMetaToDomain(ChatMetaSchemaDto.parse(JSON.parse(rawMeta)));
+      // Resolve groupId from hierarchy
+      const hierarchy = await this.loadHierarchy();
+      if (hierarchy) {
+        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+        if (group) meta.groupId = group.id;
+      }
+      return meta;
+    } catch { return null; }
+  }
+
+  async loadChatContent(id: string): Promise<ChatContent | null> {
+    const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${id}`);
+    if (!rawContent) return null;
+    try {
+      const dto = ChatContentSchemaDto.parse(JSON.parse(rawContent));
+      const content = chatContentToDomain(dto);
+      
+      const restoreBlobs = (nodes: MessageNode[]) => {
+        for (const node of nodes) {
+          if (node.attachments) {
+            for (const att of node.attachments) {
+              if (att.status === 'memory') {
+                const cached = this.blobCache.get(att.id);
+                if (cached) (att as unknown as { blob: Blob }).blob = cached;
+              }
+            }
+          }
+          if (node.replies?.items) restoreBlobs(node.replies.items);
+        }
+      };
+      restoreBlobs(content.root.items);
+
+      return content;
+    } catch { return null; }
+  }
+
   async deleteChat(id: string): Promise<void> {
-    localStorage.removeItem(`${KEY_CHAT_PREFIX}${id}`);
-    const entries = (await this.listChatMetasRaw()).filter(m => m.id !== id);
-    localStorage.setItem(KEY_INDEX, JSON.stringify({ entries }));
-    // Note: We don't easily know which blobs belong to this chat here without loading it,
-    // but session-level cache is small enough that we can just let it be.
+    localStorage.removeItem(`${KEY_META_PREFIX}${id}`);
+    localStorage.removeItem(`${KEY_CONTENT_PREFIX}${id}`);
   }
 
-  async saveChatGroup(chatGroup: ChatGroup, index: number): Promise<void> {
-    const dto = chatGroupToDto(chatGroup, index);
-    const all = await this.listChatGroupsRaw();
-    const existingIndex = all.findIndex(g => g.id === chatGroup.id);
-    if (existingIndex >= 0) all[existingIndex] = dto;
-    else all.push(dto);
-    localStorage.setItem(KEY_CHAT_GROUPS, JSON.stringify(all));
+  async saveChatGroup(chatGroup: ChatGroup): Promise<void> {
+    const dto = chatGroupToDto(chatGroup);
+    ChatGroupSchemaDto.parse(dto);
+    localStorage.setItem(`${KEY_GROUP_PREFIX}${chatGroup.id}`, JSON.stringify(dto));
   }
 
-  async loadChatGroup(_id: string): Promise<ChatGroup | null> {
-    return null;
+  async loadChatGroup(id: string): Promise<ChatGroup | null> {
+    const raw = localStorage.getItem(`${KEY_GROUP_PREFIX}${id}`);
+    if (!raw) return null;
+    try {
+      const [hierarchy, allMetas] = await Promise.all([
+        this.loadHierarchy(),
+        this.listChatMetasRaw()
+      ]);
+      const chatMetas = allMetas.map(chatMetaToDomain);
+      const h = hierarchy || { items: [] };
+      return chatGroupToDomain(ChatGroupSchemaDto.parse(JSON.parse(raw)), h, chatMetas);
+    } catch { return null; }
   }
 
   async deleteChatGroup(id: string): Promise<void> {
-    const chatGroups = (await this.listChatGroupsRaw()).filter(g => g.id !== id);
-    localStorage.setItem(KEY_CHAT_GROUPS, JSON.stringify(chatGroups));
-    
-    // Detach chats
-    const entries = await this.listChatMetasRaw();
-    let changed = false;
-    entries.forEach(m => {
-      if (m.groupId === id) {
-        m.groupId = null;
-        changed = true;
-      }
-    });
-    if (changed) {
-      localStorage.setItem(KEY_INDEX, JSON.stringify({ entries }));
-    }
+    localStorage.removeItem(`${KEY_GROUP_PREFIX}${id}`);
+  }
+
+  public override async getSidebarStructure(): Promise<SidebarItem[]> {
+    const [rawHierarchy, rawMetas, rawGroups] = await Promise.all([
+      this.loadHierarchy(),
+      this.listChatMetasRaw(),
+      this.listChatGroupsRaw(),
+    ]);
+
+    const hierarchy = hierarchyToDomain(rawHierarchy || { items: [] });
+    const chatMetas = rawMetas.map(chatMetaToDomain);
+    const chatGroups = rawGroups.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
+
+    return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
   }
 
   async saveSettings(settings: Settings): Promise<void> {
@@ -195,8 +250,6 @@ export class LocalStorageProvider extends IStorageProvider {
   // --- File Storage ---
   
   async saveFile(_blob: Blob, _attachmentId: string, _originalName: string): Promise<void> {
-    // LocalStorage does not support heavy file persistence.
-    // The StorageService should delegate to OPFS or handle this restriction.
     throw new Error('File persistence is not supported in LocalStorage provider.');
   }
 
@@ -209,13 +262,10 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async clearAll(): Promise<void> {
-    // Prefix based cleanup to ensure everything under our namespace is gone
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key?.startsWith(LSP_STORAGE_PREFIX)) {
-        keysToRemove.push(key);
-      }
+      if (key?.startsWith(LSP_STORAGE_PREFIX)) keysToRemove.push(key);
     }
     keysToRemove.forEach(k => localStorage.removeItem(k));
     this.blobCache.clear();
@@ -223,46 +273,68 @@ export class LocalStorageProvider extends IStorageProvider {
 
   // --- Migration Implementation ---
 
-  async *dump(): AsyncGenerator<MigrationChunkDto> {
-    const settings = await this.loadSettings();
-    if (settings) yield { type: 'settings', data: settingsToDto(settings) };
+  async dump(): Promise<StorageSnapshot> {
+    const [settings, hierarchy, rawMetas, rawGroups] = await Promise.all([
+      this.loadSettings(),
+      this.loadHierarchy(),
+      this.listChatMetasRaw(),
+      this.listChatGroupsRaw(),
+    ]);
 
-    const chatGroups = await this.listChatGroupsRaw();
-    for (const g of chatGroups) yield { type: 'chat_group', data: g };
+    const chatMetas = rawMetas.map(chatMetaToDomain);
+    const h = hierarchy || { items: [] };
+    const chatGroups = rawGroups.map(g => chatGroupToDomain(g, h, chatMetas));
 
-    const metas = await this.listChatMetasRaw();
-    for (const m of metas) {
-      const chat = await this.loadChat(m.id);
-      if (chat) {
-        yield { type: 'chat', data: chatToDto(chat, m.order ?? 0) };
+    const contentStream = async function* (this: LocalStorageProvider) {
+      for (const m of rawMetas) {
+        const chat = await this.loadChat(m.id);
+        if (chat) yield { type: 'chat' as const, data: chatToDto(chat) };
       }
-    }
+    };
+
+    return {
+      structure: {
+        settings: settings || ({} as Settings),
+        hierarchy: h,
+        chatMetas,
+        chatGroups,
+      },
+      contentStream: contentStream.call(this),
+    };
   }
 
-  async restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void> {
-    await this.clearAll();
-    const chatGroups: ChatGroupDto[] = [];
-    const metas: ChatMetaDto[] = [];
+  async restore(snapshot: StorageSnapshot): Promise<void> {
+    const { structure, contentStream } = snapshot;
 
-    for await (const chunk of stream) {
-      if (chunk.type === 'settings') {
-        await this.saveSettings(settingsToDomain(chunk.data));
-      } else if (chunk.type === 'chat_group') {
-        chatGroups.push(chunk.data);
-      }
-      else if (chunk.type === 'chat') {
-        const fullDto = chunk.data;
-        // Save content
-        const { root, currentLeafId, ...meta } = fullDto;
-        localStorage.setItem(`${KEY_CHAT_PREFIX}${fullDto.id}`, JSON.stringify({ root, currentLeafId }));
-        metas.push(meta as ChatMetaDto);
-      } else if (chunk.type === 'attachment') {
-        // LocalStorage does not support binary files.
-        // We could theoretically store as base64 but we decided to keep it clean.
-      }
+    // 1. Restore Structural Metadata (skeleton)
+    if (structure.settings) await this.saveSettings(structure.settings);
+    if (structure.hierarchy) await this.saveHierarchy(structure.hierarchy);
+    if (structure.chatMetas) {
+      for (const meta of structure.chatMetas) await this.saveChatMeta(meta);
+    }
+    if (structure.chatGroups) {
+      for (const group of structure.chatGroups) await this.saveChatGroup(group);
     }
 
-    localStorage.setItem(KEY_CHAT_GROUPS, JSON.stringify(chatGroups));
-    localStorage.setItem(KEY_INDEX, JSON.stringify({ entries: metas }));
+    // 2. Restore Heavy Content (trees)
+    for await (const chunk of contentStream) {
+      const type = chunk.type;
+      switch (type) {
+      case 'chat': {
+        const domainChat = chatToDomain(chunk.data);
+        await this.saveChatContent(domainChat.id, domainChat);
+        // Ensure meta is consistent with content
+        await this.saveChatMeta(domainChat);
+        break;
+      }
+      case 'attachment':
+        // LocalStorage does not support binary attachments, skip
+        break;
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unknown chunk type: ${_ex}`);
+      }
+      }
+    }
   }
 }

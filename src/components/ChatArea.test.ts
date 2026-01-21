@@ -37,6 +37,11 @@ const mockActiveMessages = ref<MessageNode[]>([]);
 
 const mockOpenChatGroup = vi.fn();
 const mockMoveChatToGroup = vi.fn();
+const mockUpdateChatModel = vi.fn().mockImplementation((id, modelId) => {
+  if (mockCurrentChat.value && mockCurrentChat.value.id === id) {
+    mockCurrentChat.value.modelId = modelId;
+  }
+});
 const mockSaveChat = vi.fn();
 const mockCurrentChatGroup = ref<any>(null);
 const mockChatGroups = ref<any[]>([]);
@@ -51,6 +56,7 @@ vi.mock('../composables/useChat', () => ({
     resolvedSettings: mockResolvedSettings,
     inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
+    updateChatModel: mockUpdateChatModel,
     saveChat: mockSaveChat,
     streaming: mockStreaming,
     activeGenerations: mockActiveGenerations,
@@ -72,6 +78,8 @@ vi.mock('../composables/useChat', () => ({
     forkChat: vi.fn().mockResolvedValue('new-id'),
     openChatGroup: mockOpenChatGroup,
     moveChatToGroup: mockMoveChatToGroup,
+    isTaskRunning: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
+    isProcessing: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
   }),
 }));
 
@@ -1325,7 +1333,7 @@ describe('ChatArea Model Selection', () => {
     expect(trigger.text()).toBe('global-default-model (Global)');
   });
 
-  it('should trigger saveChat when a model is selected in ModelSelector', async () => {
+  it('should trigger updateChatModel when a model is selected in ModelSelector', async () => {
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
@@ -1338,8 +1346,8 @@ describe('ChatArea Model Selection', () => {
     const model2Btn = wrapper.findAll('button').find(b => b.text() === 'model-2');
     await model2Btn!.trigger('click');
     
+    expect(mockUpdateChatModel).toHaveBeenCalledWith('1', 'model-2');
     expect(mockCurrentChat.value!.modelId).toBe('model-2');
-    expect(mockSaveChat).toHaveBeenCalled();
   });
 
   it('should show loader when fetching models', async () => {

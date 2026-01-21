@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { SettingsDto, ChatMetaDto, ChatGroupDto } from '../../models/dto';
 import type { ImportConfig } from './types';
 import type { Mocked } from 'vitest';
+import type { StorageSnapshot } from '../../models/types';
 
 const UUID_G1 = '018d476a-7b3a-73fd-8000-000000000001';
 const UUID_C1 = '018d476a-7b3a-73fd-8000-000000000002';
@@ -33,9 +34,13 @@ describe('ImportExportService', () => {
       restore: vi.fn(),
       clearAll: vi.fn(),
       loadSettings: vi.fn(),
-      saveSettings: vi.fn(),
+      updateSettings: vi.fn().mockImplementation(async (updater) => {
+        const current = await mockStorage.loadSettings();
+        await updater(current);
+      }),
       listChats: vi.fn(),
       listChatGroups: vi.fn(),
+      loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     } as any;
     service = new ImportExportService(mockStorage);
   });
@@ -53,14 +58,16 @@ describe('ImportExportService', () => {
     title: 'Test Chat',
     updatedAt: 1000,
     createdAt: 1000,
-    order: 0,
     debugEnabled: false,
     ...overrides
   });
 
   describe('exportData', () => {
     it('handles empty storage gracefully and uses dumpWithoutLock', async () => {
-      mockStorage.dumpWithoutLock.mockImplementation(async function* () { /* yields nothing */ });
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: { settings: {} as any, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
+        contentStream: (async function* () {})()
+      });
       const { filename } = await service.exportData({});
       expect(filename).toMatch(/^naidan_data_\d{4}-\d{2}-\d{2}\.zip$/);
       expect(mockStorage.dumpWithoutLock).toHaveBeenCalled();
@@ -83,7 +90,7 @@ describe('ImportExportService', () => {
       await service.executeImport(zipBlob, config);
 
       expect(mockStorage.clearAll).toHaveBeenCalled();
-      expect(mockStorage.restore).toHaveBeenCalled();
+      expect(mockStorage.restore).toHaveBeenCalledWith(expect.anything());
     });
   });
 
@@ -101,9 +108,9 @@ describe('ImportExportService', () => {
       await service.executeImport(zipBlob, { data: { mode: 'append' }, settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' } });
 
       const calls = mockStorage.restore.mock.calls;
-      const generator = calls[0]![0];
+      const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
-      for await (const chunk of generator) { chunks.push(chunk); }
+      for await (const chunk of snapshot.contentStream) { chunks.push(chunk); }
 
       const chatChunk = chunks.find(c => c.type === 'chat');
       if (chatChunk?.type === 'chat') {
@@ -145,9 +152,10 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
       });
 
-      const generator = mockStorage.restore.mock.calls[0]![0];
+      const calls = mockStorage.restore.mock.calls;
+      const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
-      for await (const chunk of generator) { chunks.push(chunk); }
+      for await (const chunk of snapshot.contentStream) { chunks.push(chunk); }
 
       const chatChunk = chunks.find(c => c.type === 'chat');
       if (chatChunk?.type === 'chat' && chatChunk.data.root) {
@@ -161,10 +169,10 @@ describe('ImportExportService', () => {
       const zip = new JSZip();
       zip.file('export_manifest.json', '{}');
       
-      const groupDto: ChatGroupDto = { id: UUID_G1, name: 'General', order: 0, updatedAt: 1000, isCollapsed: false };
+      const groupDto: ChatGroupDto = { id: UUID_G1, name: 'General', updatedAt: 1000, isCollapsed: false };
       zip.folder('chat_groups')!.file(`${UUID_G1}.json`, JSON.stringify(groupDto));
       
-      const chatMeta = createValidChatMetaDto({ id: UUID_C1, title: 'Old Title', groupId: UUID_G1 });
+      const chatMeta = createValidChatMetaDto({ id: UUID_C1, title: 'Old Title' });
       zip.file('chat_metas.json', JSON.stringify({ entries: [chatMeta] }));
       zip.folder('chat_contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
 
@@ -173,12 +181,35 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
       });
 
-      const generator = mockStorage.restore.mock.calls[0]![0];
+      const calls = mockStorage.restore.mock.calls;
+      const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
-      for await (const chunk of generator) { chunks.push(chunk); }
+      for await (const chunk of snapshot.contentStream) { chunks.push(chunk); }
 
-      expect(chunks.find(c => c.type === 'chat_group')?.data.name).toBe('[Group] General');
+      expect(snapshot.structure.chatGroups.find(g => g.name === '[Group] General')).toBeDefined();
       expect(chunks.find(c => c.type === 'chat')?.data.title).toBe('[Chat] Old Title');
+    });
+
+    it('does NOT call clearAll and preserves existing hierarchy during append', async () => {
+      const zip = new JSZip();
+      zip.file('export_manifest.json', '{}');
+      zip.file('chat_metas.json', JSON.stringify({ entries: [] }));
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+      // Mock existing storage state
+      const existingHierarchy = { items: [{ type: 'chat', id: 'existing-chat' }] };
+      mockStorage.loadHierarchy.mockResolvedValue(existingHierarchy as any);
+
+      await service.executeImport(zipBlob, { 
+        data: { mode: 'append' }, 
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' } 
+      });
+
+      expect(mockStorage.clearAll).not.toHaveBeenCalled();
+      
+      // Verify that the hierarchy sent to restore contains the existing item
+      const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
+      expect(snapshot.structure.hierarchy.items).toContainEqual({ type: 'chat', id: 'existing-chat' });
     });
   });
 
@@ -203,7 +234,10 @@ describe('ImportExportService', () => {
 
       await service.executeImport(zipBlob, config);
 
-      expect(mockStorage.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mockStorage.updateSettings).toHaveBeenCalled();
+      const updater = mockStorage.updateSettings.mock.calls[0]![0];
+      const result = await updater(await mockStorage.loadSettings());
+      expect(result).toEqual(expect.objectContaining({
         lmParameters: {
           temperature: 0.1,
           stop: ['ZIP']
@@ -229,7 +263,10 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'append' }
       });
 
-      expect(mockStorage.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mockStorage.updateSettings).toHaveBeenCalled();
+      const updater = mockStorage.updateSettings.mock.calls[0]![0];
+      const result = await updater(await mockStorage.loadSettings());
+      expect(result).toEqual(expect.objectContaining({
         providerProfiles: [
           expect.objectContaining({ id: '018d476a-7b3a-73fd-8000-000000000009' }),
           expect.objectContaining({ id: NEW_UUID, name: 'Imported' })
@@ -253,10 +290,10 @@ describe('ImportExportService', () => {
       const now = Date.now();
       zip.file('export_manifest.json', JSON.stringify({ app_version: '1.0' }));
       
-      zip.folder('chat_groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', order: 0, updatedAt: now, isCollapsed: false }));
+      zip.folder('chat_groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', updatedAt: now, isCollapsed: false }));
       zip.file('chat_metas.json', JSON.stringify({ entries: [
-        { id: UUID_C1, title: 'C1', groupId: UUID_G1, order: 0, updatedAt: now, createdAt: now },
-        { id: UUID_C2, title: 'C2', groupId: null, order: 1, updatedAt: now, createdAt: now },
+        { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: now, createdAt: now },
+        { id: UUID_C2, title: 'C2', groupId: null, updatedAt: now, createdAt: now },
         { id: 'invalid-uuid', title: 'Broken' }
       ] }));
       

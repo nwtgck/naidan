@@ -47,6 +47,8 @@ vi.mock('../composables/useChat', () => ({
     fetchingModels: ref(false),
     fetchAvailableModels: vi.fn(),
     forkChat: mockForkChat,
+    isTaskRunning: vi.fn().mockReturnValue(false),
+    isProcessing: vi.fn().mockReturnValue(false),
   }),
 }));
 
@@ -94,7 +96,7 @@ describe('ChatArea Fork Functionality', () => {
     const forkBtn = wrapper.find('[data-testid="fork-chat-button"]');
     await forkBtn.trigger('click');
     
-    expect(mockForkChat).toHaveBeenCalledWith(mockCurrentChat.value, 'msg-2');
+    expect(mockForkChat).toHaveBeenCalledWith('msg-2');
   });
 
   it('should change jump-to-origin button icon to ArrowUp', async () => {

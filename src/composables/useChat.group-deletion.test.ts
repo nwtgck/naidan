@@ -15,8 +15,9 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     deleteChat: vi.fn(),
-    saveChatGroup: vi.fn(),
+    updateChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
     deleteChatGroup: vi.fn(),
   },
@@ -34,15 +35,16 @@ vi.mock('./useToast', () => ({
   }),
 }));
 
-describe('useChat Group Deletion Logic', () => {
+describe('useChat Group Deletion', () => {
   const chatStore = useChat();
-  const { deleteChatGroup, rootItems, currentChat } = chatStore;
+  const { deleteChatGroup, rootItems, currentChat, __testOnly } = chatStore;
+  const { __testOnlySetCurrentChat } = __testOnly;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockRootItems.length = 0;
     rootItems.value = [];
-    currentChat.value = null;
+    __testOnlySetCurrentChat(null);
   });
 
   it('should delete a chat group and all its contained chats', async () => {
@@ -115,7 +117,7 @@ describe('useChat Group Deletion Logic', () => {
     vi.mocked(storageService.loadChat).mockResolvedValue(chat1);
 
     await chatStore.loadChats();
-    currentChat.value = reactive(chat1);
+    __testOnlySetCurrentChat(reactive(chat1) as any);
 
     await deleteChatGroup('g1');
 
@@ -132,7 +134,7 @@ describe('useChat Group Deletion Logic', () => {
     vi.mocked(storageService.loadChat).mockResolvedValue(chatOut);
 
     await chatStore.loadChats();
-    currentChat.value = reactive(chatOut);
+    __testOnlySetCurrentChat(reactive(chatOut) as any);
 
     await deleteChatGroup('g1');
 

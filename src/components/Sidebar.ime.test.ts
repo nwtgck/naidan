@@ -36,6 +36,9 @@ vi.mock('../composables/useChat', () => ({
     openChatGroup: vi.fn(),
     toggleChatGroupCollapse: vi.fn(),
     persistSidebarStructure: vi.fn(),
+    isTaskRunning: vi.fn().mockReturnValue(false),
+    isProcessing: vi.fn().mockReturnValue(false),
+    abortChat: vi.fn(),
   }),
 }));
 

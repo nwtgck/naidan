@@ -9,6 +9,9 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
     loadChat: vi.fn().mockResolvedValue(null),
     listChats: vi.fn().mockResolvedValue([]),
     clearAll: vi.fn().mockResolvedValue(undefined),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    saveHierarchy: vi.fn().mockResolvedValue(undefined),
+    canPersistBinary: false,
   },
   mockOpfsProvider: {
     init: vi.fn().mockResolvedValue(undefined),
@@ -16,6 +19,9 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
     restore: vi.fn(),
     loadChat: vi.fn().mockResolvedValue(null),
     clearAll: vi.fn().mockResolvedValue(undefined),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    saveHierarchy: vi.fn().mockResolvedValue(undefined),
+    canPersistBinary: true,
   },
 }));
 
@@ -44,7 +50,7 @@ describe('StorageService Initialization Protection', () => {
 
   it('should throw error when a domain method is called before init', async () => {
     const freshService = new (storageService.constructor as any)();
-    await expect(freshService.listChats()).rejects.toThrow('StorageService not initialized');
+    await expect(freshService.loadHierarchy()).rejects.toThrow('StorageService not initialized');
   });
 });
 
@@ -92,11 +98,12 @@ describe('StorageService Migration', () => {
 
     mockLocalProvider.init.mockResolvedValue(undefined);
     mockOpfsProvider.init.mockResolvedValue(undefined);
-    mockLocalProvider.dump.mockImplementation(async function* () {
-      yield { type: 'settings', data: {} as any };
+    mockLocalProvider.dump.mockResolvedValue({
+      structure: { settings: {} as any, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
+      contentStream: (async function* () {})()
     });
-    mockOpfsProvider.restore.mockImplementation(async (stream) => {
-      for await (const _chunk of stream) {
+    mockOpfsProvider.restore.mockImplementation(async (snapshot, _options) => {
+      for await (const _chunk of snapshot.contentStream) {
         // consume stream
       }
     });
@@ -155,16 +162,19 @@ describe('StorageService Migration', () => {
       }
     };
 
-    mockLocalProvider.dump.mockImplementation(async function* () {
-      yield { type: 'chat', data: { id: 'chat-1' } as any };
+    mockLocalProvider.dump.mockResolvedValue({
+      structure: { settings: {} as any, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
+      contentStream: (async function* () {
+        yield { type: 'chat', data: { id: 'chat-1' } as any };
+      })()
     });
     mockLocalProvider.loadChat.mockResolvedValue(chat);
     // OPFS supports binary
     (mockOpfsProvider as any).canPersistBinary = true;
 
     const receivedChunks: any[] = [];
-    mockOpfsProvider.restore.mockImplementation(async (stream) => {
-      for await (const chunk of stream) {
+    mockOpfsProvider.restore.mockImplementation(async (snapshot, _options) => {
+      for await (const chunk of snapshot.contentStream) {
         receivedChunks.push(chunk);
       }
     });
@@ -208,15 +218,18 @@ describe('StorageService Migration', () => {
       }
     };
 
-    mockLocalProvider.dump.mockImplementation(async function* () {
-      yield { type: 'chat', data: { id: 'chat-recursive' } as any };
+    mockLocalProvider.dump.mockResolvedValue({
+      structure: { settings: {} as any, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
+      contentStream: (async function* () {
+        yield { type: 'chat', data: { id: 'chat-recursive' } as any };
+      })()
     });
     mockLocalProvider.loadChat.mockResolvedValue(chat);
     (mockOpfsProvider as any).canPersistBinary = true;
 
     const receivedChunks: any[] = [];
-    mockOpfsProvider.restore.mockImplementation(async (stream) => {
-      for await (const chunk of stream) {
+    mockOpfsProvider.restore.mockImplementation(async (snapshot, _options) => {
+      for await (const chunk of snapshot.contentStream) {
         receivedChunks.push(chunk);
       }
     });

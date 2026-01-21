@@ -52,6 +52,12 @@ class MockFileSystemDirectoryHandle {
       yield key;
     }
   }
+
+  async *values() {
+    for (const val of this.entries.values()) {
+      yield val;
+    }
+  }
 }
 
 const mockOpfsRoot = new MockFileSystemDirectoryHandle('opfs-root');
@@ -89,16 +95,18 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
 
-    // 1. Verify Meta Index (Should NOT contain message content)
+    // 1. Verify Meta File (Should NOT contain message content)
     const storageDir = mockOpfsRoot.entries.get('naidan_storage') as MockFileSystemDirectoryHandle;
-    const metaFile = storageDir.entries.get('chat_metas.json') as MockFileSystemFileHandle;
+    const metaDir = storageDir.entries.get('chat_metas') as MockFileSystemDirectoryHandle;
+    const metaFile = metaDir.entries.get(`${chatId}.json`) as MockFileSystemFileHandle;
     const metaText = await (await metaFile.getFile()).text();
     const metaJson = JSON.parse(metaText);
     
-    expect(metaJson.entries[0].id).toBe(chatId);
-    expect(metaJson.entries[0].root).toBeUndefined(); // Important: Content should be stripped
+    expect(metaJson.id).toBe(chatId);
+    expect(metaJson.root).toBeUndefined(); // Important: Content should be stripped
 
     // 2. Verify Content File (Should contain message content)
     const contentsDir = storageDir.entries.get('chat_contents') as MockFileSystemDirectoryHandle;
@@ -120,7 +128,8 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
       debugEnabled: true,
     };
 
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
     const loaded = await provider.loadChat(chatId);
 
     expect(loaded).not.toBeNull();
@@ -140,22 +149,45 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
     
     const storageDir = mockOpfsRoot.entries.get('naidan_storage') as MockFileSystemDirectoryHandle;
+    const metaDir = storageDir.entries.get('chat_metas') as MockFileSystemDirectoryHandle;
     const contentsDir = storageDir.entries.get('chat_contents') as MockFileSystemDirectoryHandle;
     
+    expect(metaDir.entries.has(`${chatId}.json`)).toBe(true);
     expect(contentsDir.entries.has(`${chatId}.json`)).toBe(true);
 
     await provider.deleteChat(chatId);
 
-    // Verify metadata removed from index
-    const metaFile = storageDir.entries.get('chat_metas.json') as MockFileSystemFileHandle;
-    const metaText = await (await metaFile.getFile()).text();
-    const metaJson = JSON.parse(metaText);
-    expect(metaJson.entries.find((m: any) => m.id === chatId)).toBeUndefined();
+    // Verify metadata removed
+    expect(metaDir.entries.has(`${chatId}.json`)).toBe(false);
 
     // Verify content file removed
     expect(contentsDir.entries.has(`${chatId}.json`)).toBe(false);
+  });
+
+  describe('Hierarchy Persistence', () => {
+    it('should save and load hierarchy from naidan_storage/hierarchy.json', async () => {
+      const mockHierarchy = {
+        items: [
+          { type: 'chat' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb1' },
+          { type: 'chat_group' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb2', chat_ids: ['019bd241-2d57-716b-a9fd-1efbba88cfb3'] }
+        ]
+      };
+
+      await provider.saveHierarchy(mockHierarchy);
+      const loaded = await provider.loadHierarchy();
+      expect(loaded).toEqual(mockHierarchy);
+
+      const storageDir = mockOpfsRoot.entries.get('naidan_storage') as MockFileSystemDirectoryHandle;
+      expect(storageDir.entries.has('hierarchy.json')).toBe(true);
+    });
+
+    it('should return empty items if hierarchy is missing', async () => {
+      const loaded = await provider.loadHierarchy();
+      expect(loaded).toEqual({ items: [] });
+    });
   });
 });

@@ -2,7 +2,8 @@ import { v7 as uuidv7 } from 'uuid';
 import type { Chat, MessageNode } from '../models/types';
 import { storageService } from '../services/storage';
 import sampleContent from '../assets/sample-showcase.md?raw';
-import { useChat, processThinking } from './useChat';
+import { useChat } from './useChat';
+import { processThinking } from '../utils/chat-tree';
 
 export function useSampleChat() {
   const { loadChats, openChat } = useChat();
@@ -44,7 +45,16 @@ export function useSampleChat() {
       debugEnabled: true,
     };
     
-    await storageService.saveChat(sampleChatObj, 0);
+    await storageService.updateChatContent(sampleChatObj.id, () => ({
+      root: sampleChatObj.root,
+      currentLeafId: sampleChatObj.currentLeafId
+    }));
+    await storageService.updateChatMeta(sampleChatObj.id, () => sampleChatObj);
+    await storageService.updateHierarchy((curr) => {
+      curr.items.push({ type: 'chat', id: sampleChatObj.id });
+      return curr;
+    });
+
     await loadChats();
     await openChat(sampleChatObj.id);
   };

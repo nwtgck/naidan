@@ -14,7 +14,7 @@ describe('StorageSynchronizer', () => {
   describe('withLock', () => {
     it('should execute the provided function and return its result', async () => {
       const task = async () => 'result';
-      const result = await synchronizer.withLock(task);
+      const result = await synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY });
       expect(result).toBe('result');
     });
 
@@ -22,7 +22,7 @@ describe('StorageSynchronizer', () => {
       const task = async () => {
         throw new Error('Task failed');
       };
-      await expect(synchronizer.withLock(task)).rejects.toThrow('Task failed');
+      await expect(synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY })).rejects.toThrow('Task failed');
     });
 
     it('should use navigator.locks if available', async () => {
@@ -39,7 +39,7 @@ describe('StorageSynchronizer', () => {
       });
 
       const task = async () => 'done';
-      await synchronizer.withLock(task);
+      await synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY });
 
       expect(mockRequest).toHaveBeenCalledWith(SYNC_LOCK_KEY, expect.any(Function));
 
@@ -60,7 +60,7 @@ describe('StorageSynchronizer', () => {
       });
 
       const task = async () => 'fallback';
-      const result = await synchronizer.withLock(task);
+      const result = await synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY });
       expect(result).toBe('fallback');
 
       // Restore
@@ -81,7 +81,7 @@ describe('StorageSynchronizer', () => {
       });
 
       const onLockWait = vi.fn();
-      synchronizer.withLock(async () => {}, { onLockWait, notifyLockWaitAfterMs: 100 });
+      synchronizer.withLock(async () => {}, { lockKey: SYNC_LOCK_KEY, onLockWait, notifyLockWaitAfterMs: 100 });
 
       await vi.advanceTimersByTimeAsync(150);
       expect(onLockWait).toHaveBeenCalled();
@@ -102,7 +102,7 @@ describe('StorageSynchronizer', () => {
       const onTaskSlow = vi.fn();
       const task = () => new Promise((resolve) => setTimeout(resolve, 1000));
       
-      synchronizer.withLock(task, { onTaskSlow, notifyTaskSlowAfterMs: 500 });
+      synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY, onTaskSlow, notifyTaskSlowAfterMs: 500 });
 
       await vi.advanceTimersByTimeAsync(600);
       expect(onTaskSlow).toHaveBeenCalled();
@@ -122,7 +122,7 @@ describe('StorageSynchronizer', () => {
       const onFinalize = vi.fn();
       const task = () => new Promise((resolve) => setTimeout(resolve, 1000));
       
-      const promise = synchronizer.withLock(task, { onFinalize, notifyTaskSlowAfterMs: 500 });
+      const promise = synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY, onFinalize, notifyTaskSlowAfterMs: 500 });
 
       await vi.advanceTimersByTimeAsync(600);
       await vi.advanceTimersByTimeAsync(500); // Complete task
@@ -137,11 +137,11 @@ describe('StorageSynchronizer', () => {
   describe('Signaling', () => {
     it('should notify via localStorage', () => {
       const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
-      synchronizer.notify('chat', '123');
+      synchronizer.notify('chat_content', '123');
 
       expect(setItemSpy).toHaveBeenCalledWith(
         SYNC_SIGNAL_KEY,
-        expect.stringContaining('"type":"chat"')
+        expect.stringContaining('"type":"chat_content"')
       );
       expect(setItemSpy).toHaveBeenCalledWith(
         SYNC_SIGNAL_KEY,
@@ -153,7 +153,7 @@ describe('StorageSynchronizer', () => {
       const listener = vi.fn();
       synchronizer.subscribe(listener);
 
-      const eventData = { type: 'chat', id: '456', timestamp: Date.now() };
+      const eventData = { type: 'chat_content', id: '456', timestamp: Date.now() };
       
       // Simulate storage event from another window
       const storageEvent = new StorageEvent('storage', {
@@ -163,7 +163,7 @@ describe('StorageSynchronizer', () => {
       window.dispatchEvent(storageEvent);
 
       expect(listener).toHaveBeenCalledWith(expect.objectContaining({
-        type: 'chat',
+        type: 'chat_content',
         id: '456'
       }));
     });
@@ -174,7 +174,8 @@ describe('StorageSynchronizer', () => {
       synchronizer.subscribe(l1);
       synchronizer.subscribe(l2);
 
-      const eventData = { type: 'chat', timestamp: Date.now() };
+      // Must provide id for chat_content type per schema
+      const eventData = { type: 'chat_content', id: 'any', timestamp: Date.now() };
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
         newValue: JSON.stringify(eventData)
@@ -193,7 +194,7 @@ describe('StorageSynchronizer', () => {
 
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
-        newValue: JSON.stringify({ type: 'settings' })
+        newValue: JSON.stringify({ type: 'settings', timestamp: Date.now() })
       });
       window.dispatchEvent(storageEvent);
 
@@ -222,7 +223,7 @@ describe('StorageSynchronizer', () => {
 
       const storageEvent = new StorageEvent('storage', {
         key: 'unrelated-key',
-        newValue: JSON.stringify({ type: 'chat' })
+        newValue: JSON.stringify({ type: 'chat_content', id: 'any', timestamp: Date.now() })
       });
       window.dispatchEvent(storageEvent);
 
@@ -238,7 +239,7 @@ describe('StorageSynchronizer', () => {
       let capturedHandler: any;
       
       // Mock class
-      global.BroadcastChannel = class {
+      (global as any).BroadcastChannel = class {
         postMessage = vi.fn();
         close = vi.fn();
         set onmessage(handler: any) {

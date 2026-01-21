@@ -2,22 +2,22 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 
 // --- Mocks ---
-const mockRootItems: any[] = [];
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
-    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockResolvedValue([]),
-    loadChat: vi.fn().mockResolvedValue(null),
-    saveChat: vi.fn().mockResolvedValue(undefined),
-    deleteChat: vi.fn().mockResolvedValue(undefined),
-    saveChatGroup: vi.fn(),
+    loadChat: vi.fn(),
+    saveChat: vi.fn(),
+    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    deleteChat: vi.fn(),
+    updateChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
-    getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
-    deleteChatGroup: vi.fn(),
-    canPersistBinary: true,
-    getFile: vi.fn(),
-    saveFile: vi.fn(),
+    getSidebarStructure: vi.fn().mockResolvedValue([]),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    notify: vi.fn(),
   },
 }));
 
@@ -61,7 +61,8 @@ vi.mock('../services/llm', () => {
 
 describe('useChat Streaming State Logic', () => {
   const chatStore = useChat();
-  const { currentChat, activeGenerations, streaming, sendMessage, createNewChat, abortChat } = chatStore;
+  const { currentChat, __testOnly, streaming, sendMessage, createNewChat, abortChat } = chatStore;
+  const { activeGenerations, __testOnlySetCurrentChat } = __testOnly;
 
   const waitForRegistry = async (id: string) => {
     await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000 });
@@ -69,8 +70,7 @@ describe('useChat Streaming State Logic', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    currentChat.value = null;
-    activeGenerations.clear();
+    __testOnlySetCurrentChat(null);
   });
 
   it('should correctly set streaming state when generation starts and ends', async () => {

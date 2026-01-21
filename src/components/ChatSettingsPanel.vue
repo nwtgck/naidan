@@ -9,6 +9,7 @@ import {
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
+import type { Chat } from '../models/types';
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -18,10 +19,44 @@ const chatStore = useChat();
 const {
   currentChat,
   fetchingModels,
-  saveChat,
   resolvedSettings,
 } = chatStore;
 const { settings } = useSettings();
+
+// Local state for editing
+const localSettings = ref<Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'systemPrompt' | 'lmParameters'>>>({});
+
+function syncLocalWithCurrent() {
+  if (currentChat.value) {
+    localSettings.value = {
+      endpointType: currentChat.value.endpointType,
+      endpointUrl: currentChat.value.endpointUrl,
+      endpointHttpHeaders: currentChat.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(currentChat.value.endpointHttpHeaders)) : undefined,
+      modelId: currentChat.value.modelId,
+      systemPrompt: currentChat.value.systemPrompt ? JSON.parse(JSON.stringify(currentChat.value.systemPrompt)) : undefined,
+      lmParameters: currentChat.value.lmParameters ? JSON.parse(JSON.stringify(currentChat.value.lmParameters)) : undefined,
+    };
+  }
+}
+
+onMounted(() => {
+  syncLocalWithCurrent();
+  if (currentChat.value) {
+    const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
+    if (isLocalhost(url)) {
+      fetchModels();
+    }
+  }
+});
+
+// Sync if currentChat changes while open (e.g. from another tab)
+watch(() => currentChat.value?.id, syncLocalWithCurrent);
+
+async function saveChanges() {
+  if (currentChat.value) {
+    await chatStore.updateChatSettings(currentChat.value.id, localSettings.value);
+  }
+}
 
 function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
   if (!value) return 'Default';
@@ -38,38 +73,37 @@ function isLocalhost(url: string | undefined) {
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
-function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
-  if (!currentChat.value) return;
-  currentChat.value.endpointType = preset.type;
-  currentChat.value.endpointUrl = preset.url;
+async function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
+  localSettings.value.endpointType = preset.type;
+  localSettings.value.endpointUrl = preset.url;
   error.value = null;
+  await saveChanges();
 }
 
-function handleQuickProviderProfileChange() {
-  if (!currentChat.value) return;
+async function handleQuickProviderProfileChange() {
   const providerProfile = settings.value.providerProfiles?.find(p => p.id === selectedProviderProfileId.value);
   if (providerProfile) {
-    currentChat.value.endpointType = providerProfile.endpointType;
-    currentChat.value.endpointUrl = providerProfile.endpointUrl;
-    currentChat.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders ? JSON.parse(JSON.stringify(providerProfile.endpointHttpHeaders)) : undefined;
-    currentChat.value.modelId = providerProfile.defaultModelId;
-    currentChat.value.systemPrompt = providerProfile.systemPrompt ? { content: providerProfile.systemPrompt, behavior: 'override' } : undefined;
-    currentChat.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;
+    localSettings.value.endpointType = providerProfile.endpointType;
+    localSettings.value.endpointUrl = providerProfile.endpointUrl;
+    localSettings.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders ? JSON.parse(JSON.stringify(providerProfile.endpointHttpHeaders)) : undefined;
+    localSettings.value.modelId = providerProfile.defaultModelId;
+    localSettings.value.systemPrompt = providerProfile.systemPrompt ? { content: providerProfile.systemPrompt, behavior: 'override' } : undefined;
+    localSettings.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;
+    await saveChanges();
   }
   error.value = null;
-  // Reset select after apply to allow re-selection if needed
   selectedProviderProfileId.value = '';
 }
 
-function addHeader() {
-  if (!currentChat.value) return;
-  if (!currentChat.value.endpointHttpHeaders) currentChat.value.endpointHttpHeaders = [];
-  currentChat.value.endpointHttpHeaders.push(['', '']);
+async function addHeader() {
+  if (!localSettings.value.endpointHttpHeaders) localSettings.value.endpointHttpHeaders = [];
+  localSettings.value.endpointHttpHeaders.push(['', '']);
 }
 
-function removeHeader(index: number) {
-  if (currentChat.value?.endpointHttpHeaders) {
-    currentChat.value.endpointHttpHeaders.splice(index, 1);
+async function removeHeader(index: number) {
+  if (localSettings.value.endpointHttpHeaders) {
+    localSettings.value.endpointHttpHeaders.splice(index, 1);
+    await saveChanges();
   }
 }
 
@@ -77,7 +111,7 @@ async function fetchModels() {
   if (currentChat.value) {
     error.value = null;
     try {
-      const models = await chatStore.fetchAvailableModels(currentChat.value);
+      const models = await chatStore.fetchAvailableModels(currentChat.value.id);
       if (models.length === 0) {
         error.value = 'No models found at this endpoint.';
       }
@@ -87,19 +121,10 @@ async function fetchModels() {
   }
 }
 
-onMounted(() => {
-  if (currentChat.value) {
-    const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
-    if (isLocalhost(url)) {
-      fetchModels();
-    }
-  }
-});
-
 // Auto-fetch only for localhost when URL changes
 watch([
-  () => currentChat.value?.endpointUrl, 
-  () => currentChat.value?.endpointType,
+  () => localSettings.value.endpointUrl, 
+  () => localSettings.value.endpointType,
 ], ([url]) => {
   error.value = null;
   if (url && isLocalhost(url as string)) {
@@ -107,40 +132,37 @@ watch([
   }
 });
 
-// Persist overrides on change
-watch([
-  () => currentChat.value?.endpointUrl,
-  () => currentChat.value?.endpointType,
-  () => currentChat.value?.endpointHttpHeaders,
-  () => currentChat.value?.modelId,
-  () => currentChat.value?.systemPrompt,
-  () => currentChat.value?.lmParameters,
-], () => {
-  if (currentChat.value) {
-    saveChat(currentChat.value);
-  }
-}, { deep: true });
-
-function updateSystemPromptContent(content: string) {
-  if (!currentChat.value) return;
-  if (!content && (!currentChat.value.systemPrompt || currentChat.value.systemPrompt.behavior === 'override')) {
-    currentChat.value.systemPrompt = undefined;
-    return;
-  }
-  if (!currentChat.value.systemPrompt) {
-    currentChat.value.systemPrompt = { content, behavior: 'override' };
+/*
+async function updateSystemPromptContent(content: string) {
+  if (!content && (!localSettings.value.systemPrompt || localSettings.value.systemPrompt.behavior === 'override')) {
+    localSettings.value.systemPrompt = undefined;
+  } else if (!localSettings.value.systemPrompt) {
+    localSettings.value.systemPrompt = { content, behavior: 'override' };
   } else {
-    currentChat.value.systemPrompt.content = content;
+    localSettings.value.systemPrompt = { ...localSettings.value.systemPrompt, content };
   }
 }
+*/
 
-function updateSystemPromptBehavior(behavior: 'override' | 'append') {
-  if (!currentChat.value) return;
-  if (!currentChat.value.systemPrompt) {
-    currentChat.value.systemPrompt = { content: '', behavior };
+async function updateSystemPromptBehavior(behavior: 'override' | 'append') {
+  if (!localSettings.value.systemPrompt) {
+    localSettings.value.systemPrompt = { content: '', behavior };
   } else {
-    currentChat.value.systemPrompt.behavior = behavior;
+    localSettings.value.systemPrompt.behavior = behavior;
   }
+  await saveChanges();
+}
+
+async function handleRestoreDefaults() {
+  localSettings.value = {
+    endpointType: undefined,
+    endpointUrl: undefined,
+    endpointHttpHeaders: undefined,
+    modelId: undefined,
+    systemPrompt: undefined,
+    lmParameters: undefined
+  };
+  await saveChanges();
 }
 </script>
 
@@ -192,7 +214,7 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
                   @click="applyPreset(preset)"
                   type="button"
                   class="px-4 py-2 text-[10px] font-bold rounded-xl border transition-all shadow-sm"
-                  :class="currentChat.endpointUrl === preset.url && currentChat.endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
+                  :class="localSettings.endpointUrl === preset.url && localSettings.endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
                 >
                   {{ preset.name }}
                 </button>
@@ -205,7 +227,8 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
           <div class="space-y-2">
             <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint Type</label>
             <select 
-              v-model="currentChat.endpointType"
+              v-model="localSettings.endpointType"
+              @change="saveChanges"
               class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
               style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
             >
@@ -218,7 +241,9 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
           <div class="space-y-2">
             <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
             <input 
-              v-model="currentChat.endpointUrl"
+              v-model="localSettings.endpointUrl"
+              @blur="saveChanges"
+              @keyup.enter="(e) => (e.target as HTMLInputElement).blur()"
               @input="error = null"
               type="text"
               class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
@@ -243,20 +268,22 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
               </button>
             </div>
 
-            <div v-if="currentChat.endpointHttpHeaders && currentChat.endpointHttpHeaders.length > 0" class="space-y-2">
+            <div v-if="localSettings.endpointHttpHeaders && localSettings.endpointHttpHeaders.length > 0" class="space-y-2">
               <div 
-                v-for="(header, index) in currentChat.endpointHttpHeaders" 
+                v-for="(header, index) in localSettings.endpointHttpHeaders" 
                 :key="index"
                 class="flex gap-2"
               >
                 <input 
                   v-model="header[0]"
+                  @blur="saveChanges"
                   type="text"
                   class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                   placeholder="Name"
                 />
                 <input 
                   v-model="header[1]"
+                  @blur="saveChanges"
                   type="text"
                   class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                   placeholder="Value"
@@ -275,7 +302,8 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
           <div class="space-y-2">
             <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
             <ModelSelector 
-              v-model="currentChat.modelId"
+              :model-value="localSettings.modelId"
+              @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
               :loading="fetchingModels"
               :placeholder="formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId)"
               :allow-clear="true"
@@ -306,7 +334,7 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
               <p class="text-[11px] text-gray-500/70 dark:text-gray-400/70 leading-relaxed font-medium">
                 These settings only apply to this chat. 
                 <button 
-                  @click="currentChat.endpointType = undefined; currentChat.endpointUrl = undefined; currentChat.modelId = undefined; currentChat.systemPrompt = undefined; currentChat.lmParameters = undefined"
+                  @click="handleRestoreDefaults"
                   class="font-bold underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                   data-testid="chat-setting-restore-defaults"
                 >
@@ -331,25 +359,26 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
                   <button 
                     @click="updateSystemPromptBehavior('override')"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
-                    :class="currentChat.systemPrompt?.behavior !== 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                    :class="localSettings.systemPrompt?.behavior !== 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Override
                   </button>
                   <button 
                     @click="updateSystemPromptBehavior('append')"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
-                    :class="currentChat.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                    :class="localSettings.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Append
                   </button>
                 </div>
               </div>
               <textarea 
-                :value="currentChat.systemPrompt?.content || ''"
-                @input="e => updateSystemPromptContent((e.target as HTMLTextAreaElement).value)"
+                :value="localSettings.systemPrompt?.content || ''"
+                @input="e => { if(localSettings.systemPrompt) localSettings.systemPrompt.content = (e.target as HTMLTextAreaElement).value; else localSettings.systemPrompt = { content: (e.target as HTMLTextAreaElement).value, behavior: 'override' }; }"
+                @blur="saveChanges"
                 rows="4"
                 class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
-                :placeholder="currentChat.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
+                :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
                 data-testid="chat-setting-system-prompt-textarea"
               ></textarea>
             </div>
@@ -362,12 +391,12 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
               <div class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3">
                 <div class="flex items-center justify-between text-[10px] font-bold">
                   <span class="text-gray-400">System Prompt</span>
-                  <span :class="currentChat.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">{{ currentChat.systemPrompt ? (currentChat.systemPrompt.behavior === 'append' ? 'Appending' : 'Overriding') : 'Group/Global Default' }}</span>
+                  <span :class="localSettings.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">{{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? 'Appending' : 'Overriding') : 'Group/Global Default' }}</span>
                 </div>
                 <div class="flex items-center justify-between text-[10px] font-bold">
                   <span class="text-gray-400">Parameters</span>
-                  <span :class="currentChat.lmParameters && Object.keys(currentChat.lmParameters).length > 0 ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-lm-parameters">
-                    {{ currentChat.lmParameters && Object.keys(currentChat.lmParameters).length > 0 ? 'Chat Overrides' : 'Inherited' }}
+                  <span :class="localSettings.lmParameters && Object.keys(localSettings.lmParameters).length > 0 ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-lm-parameters">
+                    {{ localSettings.lmParameters && Object.keys(localSettings.lmParameters).length > 0 ? 'Chat Overrides' : 'Inherited' }}
                   </span>
                 </div>
                 <div class="pt-2 border-t border-gray-50 dark:border-gray-800/50">
@@ -378,7 +407,10 @@ function updateSystemPromptBehavior(behavior: 'override' | 'append') {
           </div>
 
           <div class="p-6 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-3xl">
-            <LmParametersEditor v-model="currentChat.lmParameters" />
+            <LmParametersEditor 
+              :model-value="localSettings.lmParameters" 
+              @update:model-value="val => { localSettings.lmParameters = val; saveChanges(); }"
+            />
           </div>
         </div>
       </div>

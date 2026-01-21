@@ -12,5 +12,11 @@ export const STORAGE_KEY_PREFIX = 'naidan:';
 export const STORAGE_BOOTSTRAP_KEY = `${STORAGE_KEY_PREFIX}storage_type`;
 
 // Synchronization keys
+
 export const SYNC_SIGNAL_KEY = `${STORAGE_KEY_PREFIX}sync:signal`;
-export const SYNC_LOCK_KEY = `${STORAGE_KEY_PREFIX}sync:lock`;
+
+export const SYNC_LOCK_KEY = `${STORAGE_KEY_PREFIX}sync:lock`; // Legacy/Global lock
+
+export const LOCK_METADATA = `${STORAGE_KEY_PREFIX}sync:lock:metadata`;
+
+export const LOCK_CHAT_CONTENT_PREFIX = `${STORAGE_KEY_PREFIX}sync:lock:chat_content:`;

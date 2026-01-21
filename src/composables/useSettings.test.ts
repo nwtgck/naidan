@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useSettings } from './useSettings';
-import { DEFAULT_SETTINGS, type Settings } from '../models/types';
+import { DEFAULT_SETTINGS } from '../models/types';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
 import { flushPromises } from '@vue/test-utils';
 
@@ -18,10 +18,14 @@ vi.mock('./useGlobalEvents', () => ({
 const mocks = vi.hoisted(() => ({
   init: vi.fn(),
   loadSettings: vi.fn(),
-  saveSettings: vi.fn(),
+  updateSettings: vi.fn().mockImplementation(async (updater) => {
+    const current = await mocks.loadSettings();
+    return await updater(current);
+  }),
   switchProvider: vi.fn(),
   getCurrentType: vi.fn().mockReturnValue('local'),
   subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+  notify: vi.fn(),
 }));
 
 vi.mock('../services/storage', () => ({
@@ -33,16 +37,12 @@ vi.mock('../services/storage/opfs-detection', () => ({
 }));
 
 describe('useSettings Initialization and Bootstrap', () => {
-  // Access refs to reset them
-  const { initialized, isOnboardingDismissed, settings } = useSettings();
+  const { __testOnly: { __testOnlyReset } } = useSettings();
 
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
-    // Reset shared state
-    initialized.value = false;
-    isOnboardingDismissed.value = false;
-    settings.value = { ...DEFAULT_SETTINGS, storageType: 'local', endpointType: 'openai' } as Settings;
+    __testOnlyReset();
   });
 
   it('should initialize StorageService with correct type from bootstrap key', async () => {
@@ -66,10 +66,10 @@ describe('useSettings Initialization and Bootstrap', () => {
     localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
     localStorage.clear();
     
-    // Ensure initial state is different (though it defaults to local in the ref definition)
-    settings.value.storageType = 'local';
+    const { init, settings } = useSettings();
+    // Before init it is local
+    expect(settings.value.storageType).toBe('local');
     
-    const { init } = useSettings();
     await init();
     
     // After init, it should have been updated to 'opfs' (from detection)
@@ -80,19 +80,23 @@ describe('useSettings Initialization and Bootstrap', () => {
     localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
     localStorage.clear();
     
-    const { init, save } = useSettings();
+    const { init, save, settings } = useSettings();
     await init(); // This detects 'opfs' and sets settings.value.storageType = 'opfs'
     
     // Simulate finishing onboarding: save new URL/Type but don't explicitly mention storageType
     // (spread of settings.value should include the detected 'opfs')
     await save({
-      ...settings.value,
+      ...JSON.parse(JSON.stringify(settings.value)),
       endpointUrl: 'http://new-endpoint',
       endpointType: 'ollama'
     });
     
     expect(settings.value.storageType).toBe('opfs');
-    expect(mocks.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.updateSettings).toHaveBeenCalled();
+    // Verify the result of the updater (which we know in this test)
+    const updater = mocks.updateSettings.mock.calls[0]![0];
+    const updated = await updater();
+    expect(updated).toEqual(expect.objectContaining({
       storageType: 'opfs',
       endpointUrl: 'http://new-endpoint'
     }));
@@ -124,7 +128,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
 
     // Act
-    const { init } = useSettings();
+    const { init, isOnboardingDismissed, settings } = useSettings();
     await init();
 
     // Assert
@@ -140,7 +144,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
 
     // Act
-    const { init } = useSettings();
+    const { init, isOnboardingDismissed } = useSettings();
     await init();
 
     // Assert
@@ -152,7 +156,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     mocks.loadSettings.mockResolvedValue(null);
 
     // Act
-    const { init } = useSettings();
+    const { init, isOnboardingDismissed } = useSettings();
     await init();
 
     // Assert
@@ -168,7 +172,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     // Make storageService.init hang until we manually resolve it
     mocks.init.mockReturnValue(storageInitPromise);
     
-    const { init } = useSettings();
+    const { init, initialized } = useSettings();
         
     // Trigger multiple calls in parallel
     const p1 = init();

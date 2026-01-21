@@ -29,6 +29,9 @@ vi.mock('../composables/useChat', () => ({
     saveChat: vi.fn(),
     moveChatToGroup: vi.fn(),
     chatGroups: ref([]),
+    isTaskRunning: vi.fn().mockReturnValue(false),
+    isProcessing: vi.fn().mockReturnValue(false),
+    abortChat: vi.fn(),
   })
 }));
 
@@ -65,7 +68,8 @@ vi.mock('../services/storage', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     canPersistBinary: true,
-    saveFile: vi.fn().mockResolvedValue(undefined)
+    saveFile: vi.fn().mockResolvedValue(undefined),
+    notify: vi.fn(),
   }
 }));
 

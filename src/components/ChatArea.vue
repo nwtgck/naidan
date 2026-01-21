@@ -22,12 +22,12 @@ const chatStore = useChat();
 const {
   currentChat,
   streaming,
-  activeGenerations,
   generatingTitle,
   activeMessages,
   fetchingModels,
   resolvedSettings,
   inheritedSettings,
+  isTaskRunning,
 } = chatStore;
 useSettings();
 const router = useRouter();
@@ -50,7 +50,7 @@ function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 
 }
 
 const isCurrentChatStreaming = computed(() => {
-  return currentChat.value ? activeGenerations.has(currentChat.value.id) : false;
+  return currentChat.value ? isTaskRunning(currentChat.value.id) : false;
 });
 
 const container = ref<HTMLElement | null>(null);
@@ -278,7 +278,7 @@ defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextare
 
 async function fetchModels() {
   if (currentChat.value) {
-    await chatStore.fetchAvailableModels(currentChat.value);
+    await chatStore.fetchAvailableModels(currentChat.value.id);
   }
 }
 
@@ -316,8 +316,7 @@ function handleSwitchVersion(messageId: string) {
 }
 
 async function handleFork(messageId: string) {
-  if (!currentChat.value) return;
-  const newId = await chatStore.forkChat(currentChat.value, messageId);
+  const newId = await chatStore.forkChat(messageId);
   if (newId) {
     router.push(`/chat/${newId}`);
   }
@@ -380,17 +379,6 @@ watch(
     }
   },
 );
-
-// Persist overrides on change
-watch([
-  () => currentChat.value?.modelId,
-  () => currentChat.value?.groupId,
-  () => currentChat.value?.title,
-], () => {
-  if (currentChat.value) {
-    chatStore.saveChat(currentChat.value);
-  }
-}, { deep: true });
 
 onMounted(async () => {
   window.addEventListener('resize', adjustTextareaHeight);
@@ -472,7 +460,7 @@ onUnmounted(() => {
               <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button 
                 v-if="activeMessages.length > 0"
-                @click="currentChat && chatStore.generateChatTitle(currentChat)"
+                @click="currentChat && chatStore.generateChatTitle(currentChat.id)"
                 class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50"
                 :class="{ 'animate-spin': generatingTitle }"
                 :disabled="generatingTitle || isCurrentChatStreaming"
@@ -634,12 +622,11 @@ onUnmounted(() => {
               v-for="msg in activeMessages" 
               :key="msg.id" 
               :message="msg" 
-              :siblings="currentChat ? chatStore.getSiblings(currentChat, msg.id) : []"
+              :siblings="chatStore.getSiblings(msg.id)"
               @fork="handleFork"
               @edit="handleEdit"
               @switch-version="handleSwitchVersion"
               @regenerate="handleRegenerate"
-              class="animate-in fade-in duration-300"
             />
           </div>
           <WelcomeScreen 
@@ -747,7 +734,8 @@ onUnmounted(() => {
 
             <div class="w-[100px] sm:w-[180px]">
               <ModelSelector 
-                v-model="currentChat.modelId"
+                :model-value="currentChat.modelId"
+                @update:model-value="val => currentChat && chatStore.updateChatModel(currentChat.id, val!)"
                 :placeholder="formatLabel(inheritedSettings?.modelId, inheritedSettings?.sources.modelId)"
                 :loading="fetchingModels"
                 allow-clear

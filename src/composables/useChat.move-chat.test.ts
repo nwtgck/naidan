@@ -12,8 +12,33 @@ vi.mock('../services/storage', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
+    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
+    updateHierarchy: vi.fn().mockImplementation(async (updater) => {
+      const chat = useChat();
+      const currentH = {
+        items: chat.rootItems.value.map(item => {
+          if (item.type === 'chat') return { type: 'chat', id: item.chat.id };
+          return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
+        })
+      };
+      const updated = await updater(currentH as any);
+      // Map back to sidebar structure for the test to see the changes after loadChats()
+      const newSidebar = updated.items.map((node: any) => {
+        if (node.type === 'chat') return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0 } };
+        return { 
+          id: `chat_group:${node.id}`, 
+          type: 'chat_group', 
+          chatGroup: { 
+            id: node.id, name: 'Group', isCollapsed: false, updatedAt: 0,
+            items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0 } }))
+          } 
+        };
+      });
+      mockGetSidebarStructure.mockResolvedValue(newSidebar);
+    }),
     deleteChat: vi.fn(),
-    saveChatGroup: vi.fn(),
+    updateChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
     getSidebarStructure: () => mockGetSidebarStructure(),
     deleteChatGroup: vi.fn(),
@@ -36,12 +61,14 @@ vi.mock('./useSettings', () => ({
 
 describe('useChat moveChatToGroup', () => {
   const chatStore = useChat();
+  const { __testOnly } = chatStore;
+  const { __testOnlySetCurrentChat } = __testOnly;
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('moves a top-level chat to a group (appends to end)', async () => {
+  it('moves a top-level chat to a group (prepends to start)', async () => {
     const group: ChatGroup = {
       id: 'g1',
       name: 'Group 1',
@@ -69,12 +96,12 @@ describe('useChat moveChatToGroup', () => {
     const g1Items = (g1Item as any).chatGroup.items;
     
     expect(g1Items).toHaveLength(2);
-    expect(g1Items[1]?.chat.id).toBe('c1'); 
+    expect(g1Items[0]?.chat.id).toBe('c1'); 
     
     expect(rootItems.find(i => i.id === 'chat:c1')).toBeUndefined();
   });
 
-  it('moves a chat from one group to another (appends to end)', async () => {
+  it('moves a chat from one group to another (prepends to start)', async () => {
     const group1: ChatGroup = {
       id: 'g1',
       name: 'Group 1',
@@ -108,7 +135,7 @@ describe('useChat moveChatToGroup', () => {
     
     expect((g1Item as any).chatGroup.items).toHaveLength(0);
     expect((g2Item as any).chatGroup.items).toHaveLength(2);
-    expect((g2Item as any).chatGroup.items[1]?.chat.id).toBe('c1');
+    expect((g2Item as any).chatGroup.items[0]?.chat.id).toBe('c1');
   });
 
   it('moves a chat from a group to top level', async () => {
@@ -159,8 +186,8 @@ describe('useChat moveChatToGroup', () => {
   it('updates currentChat.groupId if the moved chat is the current one', async () => {
     const chat: Chat = reactive({
       id: 'c1', title: 'C1', groupId: null, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false
-    });
-    chatStore.currentChat.value = chat;
+    }) as any;
+    __testOnlySetCurrentChat(chat);
     
     mockGetSidebarStructure.mockResolvedValue([
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },

@@ -10,10 +10,14 @@ vi.mock('../services/storage', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
+    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
     deleteChat: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
     deleteChatGroup: vi.fn(),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
+    notify: vi.fn(),
   },
 }));
 
@@ -35,6 +39,8 @@ vi.mock('./useSettings', () => ({
     settings: mockSettings,
     isOnboardingDismissed: mockIsOnboardingDismissed,
     onboardingDraft: mockOnboardingDraft,
+    setOnboardingDraft: (val: any) => { mockOnboardingDraft.value = val; },
+    setIsOnboardingDismissed: (val: boolean) => { mockIsOnboardingDismissed.value = val; },
   }),
 }));
 
@@ -52,6 +58,10 @@ vi.mock('../services/llm', () => {
 });
 
 describe('useChat Onboarding Trigger', () => {
+  const chatStore = useChat();
+  const { __testOnly, sendMessage, currentChat } = chatStore;
+  const { __testOnlySetCurrentChat } = __testOnly;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockSettings.value.endpointUrl = '';
@@ -62,11 +72,10 @@ describe('useChat Onboarding Trigger', () => {
   });
 
   it('should trigger onboarding if endpointUrl is missing when sending a message', async () => {
-    const { sendMessage, currentChat } = useChat();
-    currentChat.value = reactive({
+    __testOnlySetCurrentChat(reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    });
+    }) as any);
 
     await sendMessage('Hello');
 
@@ -74,12 +83,11 @@ describe('useChat Onboarding Trigger', () => {
   });
 
   it('should trigger onboarding and populate draft if modelId is missing when sending a message', async () => {
-    const { sendMessage, currentChat } = useChat();
     mockSettings.value.endpointUrl = 'http://localhost:11434';
-    currentChat.value = reactive({
+    __testOnlySetCurrentChat(reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    });
+    }) as any);
 
     await sendMessage('Hello');
 
@@ -93,20 +101,19 @@ describe('useChat Onboarding Trigger', () => {
   });
 
   it('should NOT use gpt-3.5-turbo as fallback model anymore', async () => {
-    const { sendMessage, currentChat } = useChat();
     mockSettings.value.endpointUrl = 'http://localhost:11434';
     // No default model in settings and no model in chat
-    currentChat.value = reactive({
+    __testOnlySetCurrentChat(reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    });
+    }) as any);
 
     await sendMessage('Hello');
      
     // It should have stopped and triggered onboarding instead of sending
     expect(mockIsOnboardingDismissed.value).toBe(false);
     // If it had used gpt-3.5-turbo, currentChat.value.root.items would have 1 item
-    expect(currentChat.value.root.items).toHaveLength(0);
+    expect(currentChat.value!.root.items).toHaveLength(0);
   });
 
   it('should NOT reset isOnboardingDismissed when deleteAllChats is called', async () => {

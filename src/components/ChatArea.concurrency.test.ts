@@ -27,6 +27,9 @@ vi.mock('../composables/useChat', () => ({
     saveChat: vi.fn(),
     moveChatToGroup: vi.fn(),
     chatGroups: ref([]),
+    isTaskRunning: vi.fn((id: string) => mockActiveGenerations.has(id)),
+    isProcessing: vi.fn((id: string) => mockActiveGenerations.has(id)),
+    abortChat: vi.fn(),
   }),
 }));
 
@@ -107,6 +110,9 @@ describe('ChatArea Concurrency Button State', () => {
       saveChat: vi.fn(),
       moveChatToGroup: vi.fn(),
       chatGroups: ref([]),
+      isTaskRunning: vi.fn((id: string) => mockActiveGenerations.has(id)),
+      isProcessing: vi.fn((id: string) => mockActiveGenerations.has(id)),
+      abortChat: vi.fn(),
     } as any);
 
     const wrapper = mount(ChatArea, {

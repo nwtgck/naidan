@@ -26,6 +26,9 @@ vi.mock('../composables/useChat', () => ({
     chats: ref([{ id: '1', title: 'Test Chat' }]),
     sidebarItems: ref([{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Test Chat' } }]),
     loadChats: vi.fn(),
+    isTaskRunning: vi.fn().mockReturnValue(false),
+    isProcessing: vi.fn().mockReturnValue(false),
+    abortChat: vi.fn(),
   }),
 }));
 
