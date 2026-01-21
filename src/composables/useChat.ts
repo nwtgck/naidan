@@ -7,6 +7,7 @@ import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
 import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranch, processThinking } from '../utils/chat-tree';
 import { resolveChatSettings } from '../utils/chat-settings-resolver';
+import { detectLanguage, getTitleSystemPrompt, cleanGeneratedTitle } from '../utils/title-generator';
 
 const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
@@ -749,13 +750,22 @@ export function useChat() {
       const titleProvider = resolved.endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
       const titleGenModel = settings.value.titleModelId || history[history.length - 1]?.modelId || resolved.modelId;
       if (!titleGenModel) return;
-      const promptMsg: ChatMessage = { role: 'user', content: `Generate a concise title for this conversation. Respond ONLY with the title. Message: "${content}"`, };
 
-      await titleProvider.chat([promptMsg], titleGenModel, resolved.endpointUrl, (chunk) => {
+      const lang = detectLanguage({ 
+        content, 
+        fallbackLanguage: typeof navigator !== 'undefined' ? navigator.language : 'en' 
+      });
+      const systemPrompt = getTitleSystemPrompt(lang);
+      const promptMsgs: ChatMessage[] = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Message content to summarize: "${content.slice(0, 1000)}"` },
+      ];
+
+      await titleProvider.chat(promptMsgs, titleGenModel, resolved.endpointUrl, (chunk) => {
         generatedTitle += chunk;
       }, undefined, resolved.endpointHttpHeaders, signal);
 
-      const finalTitle = generatedTitle.trim().replace(/^["']|["']$/g, '');
+      const finalTitle = cleanGeneratedTitle(generatedTitle);
       if (finalTitle) {
         // If the user manually renamed it while we were generating, don't overwrite.
         // We only apply the title if it hasn't changed since we started.
