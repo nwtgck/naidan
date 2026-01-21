@@ -49,7 +49,7 @@ watch(
     () => chatStore.chats.value.length, 
     () => router.currentRoute.value?.path,
     () => router.currentRoute.value?.query?.q,
-    () => router.currentRoute.value?.query?.chat_group,
+    () => router.currentRoute.value?.query?.['chat-group'],
     () => router.currentRoute.value?.query?.model,
     () => settingsStore.initialized.value,
     () => settingsStore.isOnboardingDismissed.value

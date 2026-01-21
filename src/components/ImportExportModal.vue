@@ -44,8 +44,8 @@ const previewFilename = computed(() => {
   const dateStr = new Date().toISOString().split('T')[0];
   // eslint-disable-next-line no-control-regex
   const sanitized = exportName.value.replace(/[/?%*:|"<>\x00-\x1F]/g, '_').trim();
-  const midSegment = sanitized ? `_${sanitized}` : '';
-  return `naidan_data${midSegment}_${dateStr}.zip`;
+  const midSegment = sanitized ? `-${sanitized}` : '';
+  return `naidan-data${midSegment}-${dateStr}.zip`;
 });
 
 // Import State

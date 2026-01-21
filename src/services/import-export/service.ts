@@ -79,8 +79,8 @@ export class ImportExportService {
     const dateStr = formatDate(new Date());
     
     // Linux filename limit is 255 bytes. 
-    const SUFFIX = `_${dateStr}.zip`;
-    const PREFIX = 'naidan_data';
+    const SUFFIX = `-${dateStr}.zip`;
+    const PREFIX = 'naidan-data';
     const PREFIX_BYTES = PREFIX.length;
     const SUFFIX_BYTES = SUFFIX.length; 
     
@@ -92,17 +92,17 @@ export class ImportExportService {
       const sanitized = options.fileNameSegment.replace(/[/?%*:|"<>\x00-\x1F]/g, '_').trim();
       /* eslint-enable no-control-regex */
       if (sanitized) {
-        midSegment = `_${truncateByByteLength(sanitized, AVAILABLE_BYTES)}`;
+        midSegment = `-${truncateByByteLength(sanitized, AVAILABLE_BYTES)}`;
       }
     }
     
-    const finalBaseName = `${PREFIX}${midSegment}_${dateStr}`;
+    const finalBaseName = `${PREFIX}${midSegment}-${dateStr}`;
     const filename = `${finalBaseName}.zip`;
 
     const root = zip.folder(finalBaseName);
     if (!root) throw new Error('Failed to create root folder in ZIP');
 
-    root.file('export_manifest.json', JSON.stringify({ app_version: '0.1.0-dev', exportedAt: Date.now() }, null, 2));
+    root.file('export-manifest.json', JSON.stringify({ app_version: '0.1.0-dev', exportedAt: Date.now() }, null, 2));
 
     const snapshot = await this.storage.dumpWithoutLock();
     const { structure, contentStream } = snapshot;
@@ -112,23 +112,23 @@ export class ImportExportService {
     root.file('settings.json', JSON.stringify(settingsToDto(structure.settings), null, 2));
     root.file('hierarchy.json', JSON.stringify(hierarchyToDto(structure.hierarchy), null, 2));
 
-    const groupFolder = root.folder('chat_groups');
+    const groupFolder = root.folder('chat-groups');
     for (const group of structure.chatGroups) {
       groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto(group), null, 2));
     }
 
     const metasDto = structure.chatMetas.map(chatMetaToDto);
-    root.file('chat_metas.json', JSON.stringify({ entries: metasDto }, null, 2));
+    root.file('chat-metas.json', JSON.stringify({ entries: metasDto }, null, 2));
 
     try {
       for await (const chunk of contentStream) {
         const type = chunk.type;
         switch (type) {
         case 'chat':
-          root.folder('chat_contents')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
+          root.folder('chat-contents')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
           break;
         case 'attachment':
-          root.folder('uploaded_files')!.folder(chunk.attachmentId)!.file(chunk.originalName, chunk.blob);
+          root.folder('uploaded-files')!.folder(chunk.attachmentId)!.file(chunk.originalName, chunk.blob);
           break;
         default: {
           const _ex: never = type;
@@ -181,11 +181,11 @@ export class ImportExportService {
     }
 
     // 2. Attachments
-    const attPrefix = rootPath + 'uploaded_files/';
+    const attPrefix = rootPath + 'uploaded-files/';
     stats.attachmentsCount = Object.keys(zip.files).filter(f => f.startsWith(attPrefix) && f !== attPrefix && !f.endsWith('/')).length;
 
     // 3. Chat Groups
-    const groupsPrefix = rootPath + 'chat_groups/';
+    const groupsPrefix = rootPath + 'chat-groups/';
     for (const filename of Object.keys(zip.files)) {
       if (!filename.startsWith(groupsPrefix) || filename === groupsPrefix || filename.endsWith('/')) continue;
       try {
@@ -199,7 +199,7 @@ export class ImportExportService {
     }
 
     // 4. Chat Metas
-    const metasFile = zip.file(rootPath + 'chat_metas.json');
+    const metasFile = zip.file(rootPath + 'chat-metas.json');
     if (metasFile) {
       try {
         const metasContent = await metasFile.async('string');
@@ -211,7 +211,7 @@ export class ImportExportService {
               const dto = result.data;
               stats.chatsCount++;
               let messageCount = 0;
-              const contentFile = zip.file(`${rootPath}chat_contents/${dto.id}.json`);
+              const contentFile = zip.file(`${rootPath}chat-contents/${dto.id}.json`);
               if (contentFile) {
                 try {
                   const contentJson = JSON.parse(await contentFile.async('string')) as { root?: { items?: unknown[] } };
@@ -266,7 +266,7 @@ export class ImportExportService {
       this.assembleLegacyHierarchy(chatsMap, chatGroupsMap, items);
     }
 
-    const manifestFile = zip.file(rootPath + 'export_manifest.json');
+    const manifestFile = zip.file(rootPath + 'export-manifest.json');
     let appVersion = 'Unknown';
     let exportedAt = 0;
     if (manifestFile) {
@@ -360,8 +360,8 @@ export class ImportExportService {
   }
 
   private findRootPath(zip: JSZip): string {
-    const manifestPath = Object.keys(zip.files).find(path => path.endsWith('export_manifest.json'));
-    if (!manifestPath) throw new Error('Missing export_manifest.json');
+    const manifestPath = Object.keys(zip.files).find(path => path.endsWith('export-manifest.json'));
+    if (!manifestPath) throw new Error('Missing export-manifest.json');
     
     const lastSlash = manifestPath.lastIndexOf('/');
     return lastSlash !== -1 ? manifestPath.substring(0, lastSlash + 1) : '';
@@ -411,7 +411,7 @@ export class ImportExportService {
       ? HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')))
       : { items: [] };
 
-    const metasFile = zip.file(rootPath + 'chat_metas.json');
+    const metasFile = zip.file(rootPath + 'chat-metas.json');
     const metasDto: ChatMetaDto[] = [];
     if (metasFile) {
       try {
@@ -425,7 +425,7 @@ export class ImportExportService {
       } catch (e) { /* Ignore */ }
     }
 
-    const groupsPrefix = rootPath + 'chat_groups/';
+    const groupsPrefix = rootPath + 'chat-groups/';
     const groupsDto: ChatGroupDto[] = [];
     for (const filename of Object.keys(zip.files)) {
       if (filename.startsWith(groupsPrefix) && !filename.endsWith('/') && filename !== groupsPrefix) {
@@ -446,7 +446,7 @@ export class ImportExportService {
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
       const attachmentMetadata = new Map<string, { originalName: string, mimeType: string, size: number, uploadedAt: number }>();
       for (const meta of metasDto) {
-        const contentFile = zip.file(`${rootPath}chat_contents/${meta.id}.json`);
+        const contentFile = zip.file(`${rootPath}chat-contents/${meta.id}.json`);
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
@@ -461,7 +461,7 @@ export class ImportExportService {
         }
       }
 
-      const attPrefix = rootPath + 'uploaded_files/';
+      const attPrefix = rootPath + 'uploaded-files/';
       for (const filename of Object.keys(zip.files)) {
         if (filename.startsWith(attPrefix) && !filename.endsWith('/') && filename !== attPrefix) {
           const parts = filename.substring(attPrefix.length).split('/');
@@ -494,7 +494,7 @@ export class ImportExportService {
     const attachmentIdMap = new Map<string, string>();
     
     // 1. Groups
-    const groupsPrefix = rootPath + 'chat_groups/';
+    const groupsPrefix = rootPath + 'chat-groups/';
     const importedGroupsDto: ChatGroupDto[] = [];
     for (const filename of Object.keys(zip.files)) {
       if (filename.startsWith(groupsPrefix) && !filename.endsWith('/') && filename !== groupsPrefix) {
@@ -513,7 +513,7 @@ export class ImportExportService {
     }
 
     // 2. Metas
-    const metasFile = zip.file(rootPath + 'chat_metas.json');
+    const metasFile = zip.file(rootPath + 'chat-metas.json');
     const importedMetas: { dto: ChatMetaDto, originalId: string }[] = [];
     if (metasFile) {
       try {
@@ -561,7 +561,7 @@ export class ImportExportService {
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
       const attachmentMetadata = new Map<string, { originalName: string, mimeType: string, size: number, uploadedAt: number }>();
       for (const { dto: meta, originalId } of importedMetas) {
-        const contentFile = zip.file(`${rootPath}chat_contents/${originalId}.json`);
+        const contentFile = zip.file(`${rootPath}chat-contents/${originalId}.json`);
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
@@ -586,7 +586,7 @@ export class ImportExportService {
         }
       }
 
-      const attPrefix = rootPath + 'uploaded_files/';
+      const attPrefix = rootPath + 'uploaded-files/';
       for (const filename of Object.keys(zip.files)) {
         if (filename.startsWith(attPrefix) && !filename.endsWith('/') && filename !== attPrefix) {
           const parts = filename.substring(attPrefix.length).split('/');

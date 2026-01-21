@@ -226,10 +226,10 @@ describe('App', () => {
     });
   });
 
-  it('automatically creates a new chat in a group when both q and chat_group are present', async () => {
+  it('automatically creates a new chat in a group when both q and chat-group are present', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
     mockChatGroups.value = [{ id: 'group-123', name: 'Existing Group' }];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', chat_group: 'group-123' } });
+    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'group-123' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
       currentRoute,
@@ -251,10 +251,10 @@ describe('App', () => {
     });
   });
 
-  it('automatically creates a new chat in a group by name when chat_group matches a group name', async () => {
+  it('automatically creates a new chat in a group by name when chat-group matches a group name', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
     mockChatGroups.value = [{ id: 'group-uuid-123', name: 'Query Group' }];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', chat_group: 'Query Group' } });
+    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'Query Group' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
       currentRoute,
@@ -272,10 +272,10 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith('group-uuid-123', null);
   });
 
-  it('automatically creates a new group if chat_group name does not exist', async () => {
+  it('automatically creates a new group if chat-group name does not exist', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
     mockChatGroups.value = [];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', chat_group: 'New Group Name' } });
+    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'New Group Name' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
       currentRoute,

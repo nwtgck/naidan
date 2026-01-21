@@ -31,7 +31,7 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
 
 export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
-  private readonly STORAGE_DIR = 'naidan_storage';
+  private readonly STORAGE_DIR = 'naidan-storage';
   readonly canPersistBinary = true;
 
   async init(): Promise<void> {
@@ -50,7 +50,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   protected async listChatMetasRaw(): Promise<ChatMetaDto[]> {
     try {
-      const dir = await this.getDir('chat_metas');
+      const dir = await this.getDir('chat-metas');
       const dtos: ChatMetaDto[] = [];
       // @ts-expect-error: values() is missing in some types
       for await (const entry of dir.values()) {
@@ -65,7 +65,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
     try {
-      const dir = await this.getDir('chat_groups');
+      const dir = await this.getDir('chat-groups');
       const dtos: ChatGroupDto[] = [];
       // @ts-expect-error: values() is missing in some types
       for await (const entry of dir.values()) {
@@ -105,7 +105,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   async saveChatMeta(meta: ChatMeta): Promise<void> {
     const dto = chatMetaToDto(meta);
     ChatMetaSchemaDto.parse(dto);
-    const dir = await this.getDir('chat_metas');
+    const dir = await this.getDir('chat-metas');
     const fileHandle = await dir.getFileHandle(`${meta.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(dto));
@@ -115,7 +115,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   async saveChatContent(id: string, content: ChatContent): Promise<void> {
     const dto = chatContentToDto(content);
     ChatContentSchemaDto.parse(dto);
-    const dir = await this.getDir('chat_contents');
+    const dir = await this.getDir('chat-contents');
     const fileHandle = await dir.getFileHandle(`${id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(dto));
@@ -124,8 +124,8 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async loadChat(id: string): Promise<Chat | null> {
     try {
-      const metaDir = await this.getDir('chat_metas');
-      const contentDir = await this.getDir('chat_contents');
+      const metaDir = await this.getDir('chat-metas');
+      const contentDir = await this.getDir('chat-contents');
       
       const metaFile = await (await metaDir.getFileHandle(`${id}.json`)).getFile();
       const contentFile = await (await contentDir.getFileHandle(`${id}.json`)).getFile();
@@ -148,7 +148,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async loadChatMeta(id: string): Promise<ChatMeta | null> {
     try {
-      const metaDir = await this.getDir('chat_metas');
+      const metaDir = await this.getDir('chat-metas');
       const metaFile = await (await metaDir.getFileHandle(`${id}.json`)).getFile();
       const meta = chatMetaToDomain(ChatMetaSchemaDto.parse(JSON.parse(await metaFile.text())));
 
@@ -165,7 +165,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async loadChatContent(id: string): Promise<ChatContent | null> {
     try {
-      const contentDir = await this.getDir('chat_contents');
+      const contentDir = await this.getDir('chat-contents');
       const contentFile = await (await contentDir.getFileHandle(`${id}.json`)).getFile();
       const dto = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
       return chatContentToDomain(dto);
@@ -174,8 +174,8 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async deleteChat(id: string): Promise<void> {
     try {
-      const metaDir = await this.getDir('chat_metas');
-      const contentDir = await this.getDir('chat_contents');
+      const metaDir = await this.getDir('chat-metas');
+      const contentDir = await this.getDir('chat-contents');
       await metaDir.removeEntry(`${id}.json`);
       await contentDir.removeEntry(`${id}.json`);
     } catch { /* ignore */ }
@@ -184,7 +184,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   async saveChatGroup(chatGroup: ChatGroup): Promise<void> {
     const dto = chatGroupToDto(chatGroup);
     ChatGroupSchemaDto.parse(dto);
-    const dir = await this.getDir('chat_groups');
+    const dir = await this.getDir('chat-groups');
     const fileHandle = await dir.getFileHandle(`${chatGroup.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(dto));
@@ -193,7 +193,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async loadChatGroup(id: string): Promise<ChatGroup | null> {
     try {
-      const dir = await this.getDir('chat_groups');
+      const dir = await this.getDir('chat-groups');
       const file = await (await dir.getFileHandle(`${id}.json`)).getFile();
       const groupDto = ChatGroupSchemaDto.parse(JSON.parse(await file.text()));
       
@@ -210,7 +210,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async deleteChatGroup(id: string): Promise<void> {
     try {
-      const dir = await this.getDir('chat_groups');
+      const dir = await this.getDir('chat-groups');
       await dir.removeEntry(`${id}.json`);
     } catch { /* ignore */ }
   }
@@ -232,7 +232,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   // --- File Storage ---
 
   private async getUploadedFilesDir(): Promise<FileSystemDirectoryHandle> {
-    return await this.getDir('uploaded_files');
+    return await this.getDir('uploaded-files');
   }
 
   async saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void> {

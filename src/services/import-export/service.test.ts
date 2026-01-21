@@ -69,7 +69,7 @@ describe('ImportExportService', () => {
         contentStream: (async function* () {})()
       });
       const { filename } = await service.exportData({});
-      expect(filename).toMatch(/^naidan_data_\d{4}-\d{2}-\d{2}\.zip$/);
+      expect(filename).toMatch(/^naidan-data-\d{4}-\d{2}-\d{2}\.zip$/);
       expect(mockStorage.dumpWithoutLock).toHaveBeenCalled();
     });
   });
@@ -77,8 +77,8 @@ describe('ImportExportService', () => {
   describe('Import - Replace Mode', () => {
     it('wipes current data and calls restore() even with empty ZIP', async () => {
       const zip = new JSZip();
-      zip.file('export_manifest.json', '{}');
-      zip.file('chat_metas.json', JSON.stringify({ entries: [] }));
+      zip.file('export-manifest.json', '{}');
+      zip.file('chat-metas.json', JSON.stringify({ entries: [] }));
       
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const config: ImportConfig = {
@@ -97,12 +97,12 @@ describe('ImportExportService', () => {
   describe('Import - Append Mode (ID Remapping)', () => {
     it('preserves timestamps but remaps IDs', async () => {
       const zip = new JSZip();
-      zip.file('export_manifest.json', '{}');
+      zip.file('export-manifest.json', '{}');
       
       const ORIGINAL_TIME = 123456789;
       const chatMeta = createValidChatMetaDto({ id: UUID_C1, updatedAt: ORIGINAL_TIME, createdAt: ORIGINAL_TIME });
-      zip.file('chat_metas.json', JSON.stringify({ entries: [chatMeta] }));
-      zip.folder('chat_contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
+      zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
+      zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       await service.executeImport(zipBlob, { data: { mode: 'append' }, settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' } });
@@ -122,10 +122,10 @@ describe('ImportExportService', () => {
 
     it('should remap IDs in deep branches and preserve attachments association', async () => {
       const zip = new JSZip();
-      zip.file('export_manifest.json', '{}');
+      zip.file('export-manifest.json', '{}');
       const now = 1000;
       const chatMeta = createValidChatMetaDto({ id: UUID_C1 });
-      zip.file('chat_metas.json', JSON.stringify({ entries: [chatMeta] }));
+      zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
       
       const content = {
         root: {
@@ -144,8 +144,8 @@ describe('ImportExportService', () => {
           }]
         }
       };
-      zip.folder('chat_contents')!.file(`${UUID_C1}.json`, JSON.stringify(content));
-      zip.folder('uploaded_files')!.folder(UUID_A1)!.file('img.png', new Blob(['...']));
+      zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify(content));
+      zip.folder('uploaded-files')!.folder(UUID_A1)!.file('img.png', new Blob(['...']));
 
       await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
         data: { mode: 'append' },
@@ -167,14 +167,14 @@ describe('ImportExportService', () => {
 
     it('applies prefixes to both chat titles and group names', async () => {
       const zip = new JSZip();
-      zip.file('export_manifest.json', '{}');
+      zip.file('export-manifest.json', '{}');
       
       const groupDto: ChatGroupDto = { id: UUID_G1, name: 'General', updatedAt: 1000, isCollapsed: false };
-      zip.folder('chat_groups')!.file(`${UUID_G1}.json`, JSON.stringify(groupDto));
+      zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify(groupDto));
       
       const chatMeta = createValidChatMetaDto({ id: UUID_C1, title: 'Old Title' });
-      zip.file('chat_metas.json', JSON.stringify({ entries: [chatMeta] }));
-      zip.folder('chat_contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
+      zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
+      zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
 
       await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
         data: { mode: 'append', chatTitlePrefix: '[Chat] ', chatGroupNamePrefix: '[Group] ' },
@@ -192,8 +192,8 @@ describe('ImportExportService', () => {
 
     it('does NOT call clearAll and preserves existing hierarchy during append', async () => {
       const zip = new JSZip();
-      zip.file('export_manifest.json', '{}');
-      zip.file('chat_metas.json', JSON.stringify({ entries: [] }));
+      zip.file('export-manifest.json', '{}');
+      zip.file('chat-metas.json', JSON.stringify({ entries: [] }));
       const zipBlob = await zip.generateAsync({ type: 'blob' });
 
       // Mock existing storage state
@@ -216,7 +216,7 @@ describe('ImportExportService', () => {
   describe('Settings Merge - Edge Cases', () => {
     it('correctly merges complex lmParameters objects', async () => {
       const zip = new JSZip();
-      zip.file('export_manifest.json', '{}');
+      zip.file('export-manifest.json', '{}');
       zip.file('settings.json', JSON.stringify(createValidSettingsDto({
         lmParameters: { temperature: 0.1, stop: ['ZIP'] }
       })));
@@ -247,7 +247,7 @@ describe('ImportExportService', () => {
 
     it('regenerates IDs for provider profiles when using append strategy', async () => {
       const zip = new JSZip();
-      zip.file('export_manifest.json', '{}');
+      zip.file('export-manifest.json', '{}');
       zip.file('settings.json', JSON.stringify(createValidSettingsDto({
         providerProfiles: [{ id: UUID_G1, name: 'Imported', endpoint: { type: 'ollama' } } as any]
       })));
@@ -278,7 +278,7 @@ describe('ImportExportService', () => {
   describe('analyze() - Preview', () => {
     it('returns empty stats for empty ZIP', async () => {
       const zip = new JSZip();
-      zip.file('export_manifest.json', '{}');
+      zip.file('export-manifest.json', '{}');
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const preview = await service.analyze(zipBlob);
       expect(preview.stats.chatsCount).toBe(0);
@@ -288,10 +288,10 @@ describe('ImportExportService', () => {
     it('correctly builds complex hierarchy and counts while skipping malformed entries', async () => {
       const zip = new JSZip();
       const now = Date.now();
-      zip.file('export_manifest.json', JSON.stringify({ app_version: '1.0' }));
+      zip.file('export-manifest.json', JSON.stringify({ app_version: '1.0' }));
       
-      zip.folder('chat_groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', updatedAt: now, isCollapsed: false }));
-      zip.file('chat_metas.json', JSON.stringify({ entries: [
+      zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', updatedAt: now, isCollapsed: false }));
+      zip.file('chat-metas.json', JSON.stringify({ entries: [
         { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: now, createdAt: now },
         { id: UUID_C2, title: 'C2', groupId: null, updatedAt: now, createdAt: now },
         { id: 'invalid-uuid', title: 'Broken' }
