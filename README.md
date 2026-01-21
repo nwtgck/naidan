@@ -11,18 +11,54 @@ A privacy-focused LLM interface for local use, designed to run directly from a p
 
 Naidan is derived from the Japanese word for "private talk" or "confidential discussion."
 
-## Philosophy: Why `file:///`?
+## Philosophy: Why `file://`?
 
-The core mission of this project is **radical privacy through minimal trust**. 
+The core mission of this project is **radical privacy through minimal trust**.
 
-In security, the strongest defense is to minimize the number of entities you must rely on. While developers are comfortable with commands like `python -m http.server`, `npx serve`, or deploying Docker containers like Open WebUI, every background server process is an opaque layer. Without careful auditing, a server process could potentially communicate over the network unexpectedly. To us, **true serverless means no server process at all**—not in the cloud, and not even on your local machine.
+In security, the strongest defense is to minimize the number of entities you must rely on. However, most local AI tools run as desktop applications, CLIs, or background servers (like Python scripts or Docker containers). While convenient, these native processes operate with **broad system privileges** that are difficult for users to audit or control. Unlike a web app confined to a browser sandbox, a typical desktop app or CLI generally has access to:
 
-By supporting the `file:///` protocol, we achieve true accessibility and security:
+-   **Unrestricted File System:** Reading personal documents, SSH keys, and configuration files.
+-   **System Introspection:** Monitoring running processes, installed applications, and clipboard contents.
+-   **Low-Level Networking:** Establishing background connections or opening ports that evade standard browser security policies (CORS/CSP).
+
+To us, **true serverless means no native process at all**. By running entirely inside the browser via `file://`, Naidan voluntarily accepts the browser's strict security model. It cannot access your arbitrary files or "phone home" without your explicit action.
+
+By supporting the `file://` protocol, we achieve true accessibility and security:
 - **Minimal Trust Model**: Security is transparent. You only need to trust your browser and the code within the HTML file itself. There are no opaque background server processes to audit or manage.
 - **Zero Configuration**: No server setup, no command line, and no environment to manage. It is the ultimate portable application.
 - **Freedom from Port Friction**: Ports are arbitrary numbers, difficult to associate with specific apps, and prone to collisions. By bypassing the server layer, we eliminate port management and the frustration of "Address already in use" errors entirely.
 
 This commitment to removing unnecessary layers is the primary reason this tool was developed and remains its most important differentiator from other LLM interfaces.
+
+## Getting Started
+
+Naidan provides multiple ways to run the application, allowing you to choose the balance of convenience and control that fits your needs.
+
+### Option 1: Standalone
+Download the zip package containing the HTML file and assets, then open it directly in your browser as `file://`. No installation, no terminal, no background processes.
+
+- **Download:** [naidan-standalone.zip](https://naidan.pages.dev/naidan-standalone.zip)
+- **Mirrors:** [GitHub Releases](https://github.com/nwtgck/naidan/releases/download/v0.1.0/naidan-standalone-v0.1.0.zip) or GitHub Actions Artifacts.
+- **Usage:** Unzip and just double-click `index.html`.
+
+### Option 2: Self-Hosted Static Files
+**For those who require a standard HTTP Origin.**
+Using `file://` results in `Origin: null`, which some backend CORS policies may reject. Use this optimized static build if you need a valid Origin (e.g., `http://localhost:8080`) or simply prefer using your own tools like `python3 -m http.server`, `npx serve`, or Nginx.
+
+- **Download:** [naidan-hosted.zip](https://github.com/nwtgck/naidan/releases/download/v0.1.0/naidan-hosted-v0.1.0.zip)
+- **Usage:** Serve the extracted directory with your preferred HTTP server.
+
+### Option 3: Dedicated Server Binary
+A portable executable that serves the application locally without requiring Python, Node.js, or any other runtime.
+
+- **Download:** [naidan-server](https://github.com/nwtgck/naidan/releases)
+
+### Option 4: Online Version
+**Instant access with zero setup.**
+Run Naidan directly from the web. Your data remains local, stored in your browser.
+
+- https://naidan.pages.dev
+- https://naidan-only-local.pages.dev: A hardened version with a Content-Security-Policy (CSP) that *only* allows connections to localhost APIs.
 
 ## Key Features
 
