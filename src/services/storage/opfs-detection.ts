@@ -23,7 +23,7 @@ export async function checkOPFSSupport(): Promise<boolean> {
     const testFileName = `naidan-feature-detection-check-${Math.random().toString(36).slice(2)}.txt`;
     try {
       const fileHandle = await root.getFileHandle(testFileName, { create: true });
-      const hasCreateWritable = typeof (fileHandle as any).createWritable === 'function';
+      const hasCreateWritable = 'createWritable' in fileHandle && typeof (fileHandle as unknown as Record<string, unknown>).createWritable === 'function';
       
       // Clean up the test file
       await root.removeEntry(testFileName).catch(() => {});

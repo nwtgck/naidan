@@ -64,6 +64,47 @@ const isOPFSSupported = computedAsync(async () => {
 
 const showImportExportModal = ref(false);
 
+// Persistence State
+type PersistenceStatus = 'unknown' | 'persisted' | 'not-persisted';
+const storagePersistenceStatus = ref<PersistenceStatus>('unknown');
+
+async function checkPersistenceStatus() {
+  if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persisted) {
+    const isPersisted = await navigator.storage.persisted();
+    storagePersistenceStatus.value = isPersisted ? 'persisted' : 'not-persisted';
+  }
+}
+
+async function handleEnablePersistence() {
+  if (typeof navigator === 'undefined' || !navigator.storage || !navigator.storage.persist) {
+    await showConfirm({
+      title: 'Not Supported',
+      message: 'Persistent storage is not supported by your browser.',
+      confirmButtonText: 'Understand',
+    });
+    return;
+  }
+
+  try {
+    const persistent = await navigator.storage.persist();
+    storagePersistenceStatus.value = persistent ? 'persisted' : 'not-persisted';
+    if (!persistent) {
+      await showConfirm({
+        title: 'Persistence Denied',
+        message: 'The browser declined the request for persistent storage. This can happen if the site has not been used enough or if the browser settings prevent it.',
+        confirmButtonText: 'Understand',
+      });
+    }
+  } catch (err) {
+    console.error('Failed to enable persistence:', err);
+    await showConfirm({
+      title: 'Error',
+      message: `An error occurred while enabling persistent storage: ${err instanceof Error ? err.message : String(err)}`,
+      confirmButtonText: 'Understand',
+    });
+  }
+}
+
 // OSS Licenses State
 interface OssLicense {
   name: string;
@@ -101,10 +142,12 @@ const hasChanges = computed(() => {
   return JSON.stringify(form.value) !== initialFormState.value;
 });
 
-// Watch for tab change to load licenses
+// Watch for tab change to load licenses or check persistence
 watch(activeTab, (newTab) => {
   if (newTab === 'about') {
     loadLicenses();
+  } else if (newTab === 'storage') {
+    checkPersistenceStatus();
   }
 });
 
@@ -770,6 +813,40 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
 
             <!-- Storage Tab -->
             <div v-if="activeTab === 'storage'" data-testid="storage-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
+              <section class="space-y-6">
+                <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
+                  <ShieldCheck class="w-5 h-5 text-blue-500" />
+                  <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Durability</h2>
+                </div>
+                
+                <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
+                  <div class="space-y-1">
+                    <h4 class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
+                      Persistent Storage
+                      <span v-if="storagePersistenceStatus === 'persisted'" class="text-[9px] px-1.5 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-lg font-bold uppercase tracking-wider border border-green-100 dark:border-green-900/30">Active</span>
+                      <span v-else-if="storagePersistenceStatus === 'not-persisted'" class="text-[9px] px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg font-bold uppercase tracking-wider border border-amber-100 dark:border-amber-900/30">Best Effort</span>
+                      <span v-else class="text-[9px] px-1.5 py-0.5 bg-gray-50 dark:bg-gray-800 text-gray-400 rounded-lg font-bold uppercase tracking-wider border border-gray-100 dark:border-gray-700">Checking...</span>
+                    </h4>
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 leading-relaxed">
+                      Enable persistent storage to prevent the browser from automatically deleting your chat history and settings during storage pressure.
+                    </p>
+                  </div>
+                  <button 
+                    v-if="storagePersistenceStatus !== 'persisted'"
+                    @click="handleEnablePersistence"
+                    class="shrink-0 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+                    data-testid="setting-enable-persistence-button"
+                  >
+                    <ShieldCheck class="w-4 h-4" />
+                    Enable
+                  </button>
+                  <div v-else class="flex items-center gap-2 px-4 py-2 text-green-600 dark:text-green-400 text-xs font-bold">
+                    <CheckCircle2 class="w-4 h-4" />
+                    Protected
+                  </div>
+                </div>
+              </section>
+
               <section class="space-y-6">
                 <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
                   <FileArchive class="w-5 h-5 text-blue-500" />

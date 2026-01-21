@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { ref, shallowRef, type Component } from 'vue';
 
 interface ConfirmOptions {
   title?: string;
@@ -6,6 +6,7 @@ interface ConfirmOptions {
   confirmButtonText?: string;
   cancelButtonText?: string;
   confirmButtonVariant?: 'default' | 'danger'; // Add new variant
+  icon?: Component; // Change to Component
 }
 
 const isConfirmOpen = ref(false);
@@ -14,6 +15,7 @@ const confirmMessage = ref('');
 const confirmConfirmButtonText = ref('Confirm');
 const confirmCancelButtonText = ref('Cancel');
 const confirmButtonVariant = ref<'default' | 'danger'>('default'); // New ref for variant
+const confirmIcon = shallowRef<Component | undefined>(undefined); // Use shallowRef for components
 let resolvePromise: ((value: boolean) => void) | undefined;
 
 export function useConfirm() {
@@ -24,6 +26,7 @@ export function useConfirm() {
       confirmConfirmButtonText.value = options.confirmButtonText || 'Confirm';
       confirmCancelButtonText.value = options.cancelButtonText || 'Cancel';
       confirmButtonVariant.value = options.confirmButtonVariant || 'default'; // Set variant
+      confirmIcon.value = options.icon; // Set icon
       isConfirmOpen.value = true;
       resolvePromise = resolve;
     });
@@ -32,6 +35,7 @@ export function useConfirm() {
   const hideConfirm = () => {
     isConfirmOpen.value = false;
     confirmButtonVariant.value = 'default'; // Reset variant on close
+    confirmIcon.value = undefined; // Reset icon on close
     resolvePromise = undefined; // Clear the resolve function
   };
 
@@ -56,6 +60,7 @@ export function useConfirm() {
     confirmConfirmButtonText,
     confirmCancelButtonText,
     confirmButtonVariant, // Expose the variant
+    confirmIcon, // Expose the icon
     showConfirm,
     handleConfirm,
     handleCancel,

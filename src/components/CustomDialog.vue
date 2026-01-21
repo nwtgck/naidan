@@ -9,8 +9,11 @@
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in-95 duration-200">
       <!-- Header -->
       <div class="px-6 py-4 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
-        <h3 data-testid="dialog-title" class="text-base font-bold text-gray-800 dark:text-white tracking-tight">{{ _props.title }}</h3>
-        <button @click="cancel" data-testid="dialog-close-x" class="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 transition-colors">
+        <div class="flex items-center gap-2 overflow-hidden">
+          <component v-if="_props.icon" :is="_props.icon" class="w-4 h-4 text-blue-500 shrink-0" />
+          <h3 data-testid="dialog-title" class="text-base font-bold text-gray-800 dark:text-white tracking-tight truncate">{{ _props.title }}</h3>
+        </div>
+        <button @click="cancel" data-testid="dialog-close-x" class="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-700 transition-colors shrink-0">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path>
           </svg>
@@ -56,51 +59,38 @@
 </template>
 
 <script setup lang="ts">
+import type { Component } from 'vue';
 
-const _props = defineProps({
-  show: {
-    type: Boolean,
-    default: false,
-  },
-  title: {
-    type: String,
-    default: 'Dialog',
-  },
-  message: {
-    type: String,
-    default: '',
-  },
-  confirmButtonText: {
-    type: String,
-    default: 'Confirm',
-  },
-  cancelButtonText: {
-    type: String,
-    default: 'Cancel',
-  },
-  confirmButtonVariant: { // New prop for confirm button styling
-    type: String,
-    required: true, // Make it required
-  },
-  showInput: { // New prop for showing input
-    type: Boolean,
-    default: false,
-  },
-  inputValue: { // New prop for input value
-    type: String,
-    default: '',
-  },
-  inputType: { // New prop for input type
-    type: String,
-    default: 'text',
-  },
-  inputPlaceholder: { // New prop for input placeholder
-    type: String,
-    default: '',
-  },
+const _props = withDefaults(defineProps<{
+  show?: boolean;
+  title?: string;
+  icon?: Component | null;
+  message?: string;
+  confirmButtonText?: string;
+  cancelButtonText?: string;
+  confirmButtonVariant: 'default' | 'danger';
+  showInput?: boolean;
+  inputValue?: string;
+  inputType?: string;
+  inputPlaceholder?: string;
+}>(), {
+  show: false,
+  title: 'Dialog',
+  icon: null,
+  message: '',
+  confirmButtonText: 'Confirm',
+  cancelButtonText: 'Cancel',
+  showInput: false,
+  inputValue: '',
+  inputType: 'text',
+  inputPlaceholder: '',
 });
 
-const emit = defineEmits(['confirm', 'cancel', 'update:inputValue']);
+const emit = defineEmits<{
+  (e: 'confirm', value?: string): void;
+  (e: 'cancel'): void;
+  (e: 'update:inputValue', value: string): void;
+}>();
 
 const confirm = () => {
   if (_props.showInput) {

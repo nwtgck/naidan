@@ -96,7 +96,13 @@ describe('SettingsModal OPFS and Error Handling', () => {
   });
 
   it('should enable OPFS option if supported and secure', async () => {
-    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue({}) } });
+    const mockDirectoryHandle = {
+      getFileHandle: vi.fn().mockResolvedValue({
+        createWritable: vi.fn().mockResolvedValue({}),
+      }),
+      removeEntry: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) } });
     vi.stubGlobal('isSecureContext', true);
     
     const wrapper = mount(SettingsModal, {
@@ -116,7 +122,13 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
   it('should show error dialog if save/migration fails', async () => {
     vi.stubGlobal('isSecureContext', true);
-    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue({}) } });
+    const mockDirectoryHandle = {
+      getFileHandle: vi.fn().mockResolvedValue({
+        createWritable: vi.fn().mockResolvedValue({}),
+      }),
+      removeEntry: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) } });
     const error = new Error('Migration Security Error');
     const mockSave = vi.fn().mockRejectedValue(error);
     const mockShowConfirm = vi.fn().mockResolvedValue(true);
@@ -152,6 +164,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
       confirmConfirmButtonText: { value: '' } as any,
       confirmCancelButtonText: { value: '' } as any,
       confirmButtonVariant: { value: 'primary' } as any,
+      confirmIcon: { value: undefined } as any,
       handleConfirm: vi.fn(),
       handleCancel: vi.fn(),
     });

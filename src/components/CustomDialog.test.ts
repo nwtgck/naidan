@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { nextTick } from 'vue'; // Import nextTick from vue
+import { nextTick, markRaw } from 'vue'; // Import nextTick and markRaw from vue
 import { mount } from '@vue/test-utils';
 import CustomDialog from './CustomDialog.vue';
 
@@ -103,5 +103,11 @@ describe('CustomDialog.vue', () => {
   it('applies the weakened backdrop blur class', () => {
     const overlay = wrapper.find('[data-testid="custom-dialog-overlay"]');
     expect(overlay.classes()).toContain('backdrop-blur-[2px]');
+  });
+
+  it('renders icon when provided', async () => {
+    const TestIcon = markRaw({ template: '<svg data-testid="test-icon"></svg>' });
+    await wrapper.setProps({ icon: TestIcon });
+    expect(wrapper.find('[data-testid="test-icon"]').exists()).toBe(true);
   });
 });

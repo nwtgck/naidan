@@ -5,6 +5,7 @@ import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
+import { useStoragePersistence } from './useStoragePersistence';
 import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranch, processThinking } from '../utils/chat-tree';
 import { resolveChatSettings } from '../utils/chat-settings-resolver';
 import { detectLanguage, getTitleSystemPrompt, cleanGeneratedTitle } from '../utils/title-generator';
@@ -616,6 +617,14 @@ export function useChat() {
         });
         activeGenerations.delete(mutableChat.id);
         storageService.notify({ type: 'chat_content_generation', id: mutableChat.id, status: 'stopped', timestamp: Date.now() });
+
+        // Request storage persistence after the first assistant response
+        const history = getChatBranch(mutableChat);
+        const assistantMessages = history.filter(m => m.role === 'assistant');
+        if (assistantMessages.length === 1) {
+          const { requestPersistence } = useStoragePersistence();
+          requestPersistence();
+        }
       }
     }
   };

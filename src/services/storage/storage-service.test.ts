@@ -62,15 +62,22 @@ describe('StorageService Initialization Defaults', () => {
     });
   });
 
+  const mockDirectoryHandle = {
+    getFileHandle: vi.fn().mockResolvedValue({
+      createWritable: vi.fn().mockResolvedValue({}),
+    }),
+    removeEntry: vi.fn().mockResolvedValue(undefined),
+  };
+
   it('should use opfs when requested and supported', async () => {
-    (navigator.storage.getDirectory as any).mockResolvedValue({});
+    (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
     
     await storageService.init('opfs');
     expect(storageService.getCurrentType()).toBe('opfs');
   });
 
   it('should use local when requested even if opfs is supported', async () => {
-    (navigator.storage.getDirectory as any).mockResolvedValue({});
+    (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
     
     await storageService.init('local');
     expect(storageService.getCurrentType()).toBe('local');
@@ -85,10 +92,17 @@ describe('StorageService Initialization Defaults', () => {
 });
 
 describe('StorageService Migration', () => {
+  const mockDirectoryHandle = {
+    getFileHandle: vi.fn().mockResolvedValue({
+      createWritable: vi.fn().mockResolvedValue({}),
+    }),
+    removeEntry: vi.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.stubGlobal('navigator', {
-      storage: { getDirectory: vi.fn() },
+      storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) },
     });
     
     // Force reset the singleton state and inject our mock

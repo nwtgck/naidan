@@ -31,7 +31,7 @@ const { isOPFSOpen } = useOPFSExplorer();
 const { 
   isConfirmOpen, confirmTitle, confirmMessage, 
   confirmConfirmButtonText, confirmCancelButtonText, 
-  confirmButtonVariant, 
+  confirmButtonVariant, confirmIcon,
   handleConfirm, handleCancel,
 } = useConfirm();
 
@@ -135,6 +135,7 @@ onKeyStroke(['o', 'O'], async (e) => {
     <CustomDialog
       :show="isConfirmOpen"
       :title="confirmTitle"
+      :icon="confirmIcon"
       :message="confirmMessage"
       :confirmButtonText="confirmConfirmButtonText"
       :cancelButtonText="confirmCancelButtonText"

@@ -148,6 +148,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
+    const mockDirectoryHandle = {
+      getFileHandle: vi.fn().mockResolvedValue({
+        createWritable: vi.fn().mockResolvedValue({}),
+      }),
+      removeEntry: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.stubGlobal('navigator', {
+      storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) },
+    });
+    vi.stubGlobal('isSecureContext', true);
+
     vi.mocked(storageService.getCurrentType).mockReturnValue('local');
 
     (useRouter as Mock).mockReturnValue({
@@ -965,7 +976,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
   describe('Storage Management & OPFS', () => {
     it('successfully triggers migration when switching to OPFS', async () => {
-      vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn() } });
+      const mockDirectoryHandle = {
+        getFileHandle: vi.fn().mockResolvedValue({
+          createWritable: vi.fn().mockResolvedValue({}),
+        }),
+        removeEntry: vi.fn().mockResolvedValue(undefined),
+      };
+      vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) } });
       vi.stubGlobal('isSecureContext', true);
       vi.mocked(storageService.getCurrentType).mockReturnValue('local');
 
@@ -1065,6 +1082,52 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       
       const opfsBtn = wrapper.find('[data-testid="storage-opfs"]');
       expect(opfsBtn.attributes('disabled')).toBeDefined();
+    });
+
+    it('shows and handles Data Durability persistence request', async () => {
+      const persistMock = vi.fn().mockResolvedValue(true);
+      const persistedMock = vi.fn().mockResolvedValue(false);
+      vi.stubGlobal('navigator', {
+        storage: {
+          persist: persistMock,
+          persisted: persistedMock,
+          getDirectory: vi.fn(),
+        }
+      });
+
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true }, 
+        global: { 
+          stubs: globalStubs,
+          provide: {
+            'Symbol(router)': {
+              push: vi.fn(),
+              currentRoute: { value: { path: '/' } }
+            }
+          }
+        } 
+      });
+      await flushPromises();
+      
+      // Navigate to Storage tab
+      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
+      await flushPromises();
+      await nextTick();
+
+      // Should show "Best Effort" badge initially (after persisted check)
+      expect(wrapper.text()).toContain('Best Effort');
+      
+      const enableBtn = wrapper.find('[data-testid="setting-enable-persistence-button"]');
+      expect(enableBtn.exists()).toBe(true);
+      
+      await enableBtn.trigger('click');
+      await flushPromises();
+      
+      expect(persistMock).toHaveBeenCalled();
+      // After clicking enable and mock resolving to true, it should show "Active" and "Protected"
+      expect(wrapper.text()).toContain('Active');
+      expect(wrapper.text()).toContain('Protected');
+      expect(wrapper.find('[data-testid="setting-enable-persistence-button"]').exists()).toBe(false);
     });
   });
 });
