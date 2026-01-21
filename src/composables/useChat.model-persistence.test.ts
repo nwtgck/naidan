@@ -87,6 +87,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
 
     // 2. Send first message with default model
     await sendMessage('Hello with 3.5');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
     
     expect(activeMessages.value).toHaveLength(2);
@@ -99,6 +100,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
     
     // 4. Send second message with new model
     await sendMessage('Hello with 4');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
 
     expect(activeMessages.value).toHaveLength(4);

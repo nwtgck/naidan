@@ -88,17 +88,20 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
 
     // 1. OpenAI (gpt-4-showcase -> resolves to gpt-4)
     await sendMessage('M1');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat.mock.calls[0]![1]).toBe('gpt-4');
 
     // 2. Ollama (gpt-4-showcase -> resolves to llama3)
     __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), endpointType: 'ollama' });
     await sendMessage('M2');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOllamaChat.mock.calls[0]![1]).toBe('llama3');
 
     // 3. Custom Override (gpt-3.5-turbo)
     await updateChatSettings(chatObj.id, { endpointType: 'openai' });
     await updateChatModel(chatObj.id, 'gpt-3.5-turbo');
     await sendMessage('M3');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat.mock.calls[1]![1]).toBe('gpt-3.5-turbo');
   });
 

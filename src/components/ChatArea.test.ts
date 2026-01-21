@@ -1126,6 +1126,31 @@ describe('ChatArea Textarea Sizing', () => {
     expect(textarea.element.value).toBe('Keep this text');
   });
 
+  it('should clear input IMMEDIATELY after handleSend returns, even if streaming continues (Regression Test)', async () => {
+    // 1. Setup: mockSendMessage returns immediately while setting streaming to true
+    mockSendMessage.mockImplementationOnce(async () => {
+      // Simulate that generation starts in background
+      mockStreaming.value = true;
+      return true; //sendMessage returns success immediately after storage commit
+    });
+
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('This should be cleared');
+    
+    // 2. Act: Click send
+    const sendBtn = wrapper.find('[data-testid="send-button"]');
+    await sendBtn.trigger('click');
+
+    // 3. Assert: Input is cleared even if mockStreaming is still true
+    await flushPromises();
+    expect(textarea.element.value).toBe('');
+    expect(mockStreaming.value).toBe(true);
+  });
+
   it('should reset maximized state when switching to a different chat', async () => {
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },

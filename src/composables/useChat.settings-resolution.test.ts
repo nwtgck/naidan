@@ -90,6 +90,7 @@ describe('useChat Settings Resolution Policy', () => {
 
     // Send first message using Global A
     await sendMessage('Message 1');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'global-gpt', 'http://endpoint-a', expect.anything(), expect.anything(), undefined, expect.anything());
 
     // 2. Change to Setting B
@@ -101,6 +102,7 @@ describe('useChat Settings Resolution Policy', () => {
 
     // Send second message in SAME chat - should now use Global B
     await sendMessage('Message 2');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'model-b', 'http://endpoint-b', expect.anything(), expect.anything(), undefined, expect.anything());
     
     // 3. Verify that the chat object itself didn't "lock in" model-b
@@ -114,11 +116,13 @@ describe('useChat Settings Resolution Policy', () => {
     await updateChatModel(id, 'pinned-model');
 
     await sendMessage('M1');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'pinned-model', 'http://global-openai', expect.anything(), expect.anything(), undefined, expect.anything());
 
     // Change global model - should NOT affect pinned chat
     __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'new-global-gpt' });
     await sendMessage('M2');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), 'pinned-model', 'http://global-openai', expect.anything(), expect.anything(), undefined, expect.anything());
   });
 
@@ -133,11 +137,13 @@ describe('useChat Settings Resolution Policy', () => {
 
     // Global is OpenAI, but chat endpoint is Ollama. Model should be llama-global because Ollama list results in llama-global
     await sendMessage('M1');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.anything(), 'llama-global', 'http://pinned-ollama', expect.anything(), expect.anything(), undefined, expect.anything());
 
     // Change global model to something available in Ollama
     __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'llama-other' });
     await sendMessage('M2');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.anything(), 'llama-other', 'http://pinned-ollama', expect.anything(), expect.anything(), undefined, expect.anything());
   });
 
@@ -161,11 +167,13 @@ describe('useChat Settings Resolution Policy', () => {
     await openChat(id);
 
     await sendMessage('G');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), expect.any(String), expect.any(String), expect.anything(), expect.anything(), [['X-Global', '1']], expect.anything());
 
     // 2. Chat Override
     await updateChatSettings(id, { endpointHttpHeaders: [['X-Chat', '3']] });
     await sendMessage('C');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.anything(), expect.any(String), expect.any(String), expect.anything(), expect.anything(), [['X-Chat', '3']], expect.anything());
   });
 

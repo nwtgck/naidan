@@ -117,12 +117,14 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
 
     // 1. Tab A adds a branch (Branch A). It modifies its local currentChat and calls updateChatContent.
     await chatStoreA.regenerateMessage('m2'); 
+    await vi.waitUntil(() => !chatStoreA.streaming.value);
     const chatAfterA = mocks.mockChatStorage.get('c1');
     expect(chatAfterA.root.items[0].replies.items).toHaveLength(2);
     const branchAId = chatAfterA.root.items[0].replies.items[1].id;
 
     // 2. Tab B adds a branch (Branch B). 
     await chatStoreB.regenerateMessage('m2');
+    await vi.waitUntil(() => !chatStoreB.streaming.value);
 
     // 3. Verification: Branch A is lost.
     const finalChat = mocks.mockChatStorage.get('c1');

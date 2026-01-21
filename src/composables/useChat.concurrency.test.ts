@@ -196,6 +196,8 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatBId);
 
     await sendPromiseB;
+    // Wait for B to finish background generation
+    await vi.waitUntil(() => !activeGenerations.has(chatBId));
     const lastMsgB = chatB.root.items[0]?.replies.items[0];
     expect(lastMsgB?.content).toBe('B-Response');
 
@@ -203,6 +205,8 @@ describe('useChat Concurrency & Stale State Protection', () => {
     
     resolveChatA!();
     await sendPromiseA;
+    // Wait for A to finish background generation
+    await vi.waitUntil(() => !activeGenerations.has(chatAId));
     expect(chatA.root.items[0]?.replies.items[0]?.content).toBe('A-StartA-End');
   });
 
@@ -474,6 +478,8 @@ describe('useChat Concurrency & Stale State Protection', () => {
     
     // 4. Verification: Toast should be called (done via mock)
     await sendPromiseA;
+    // Wait for the background generation to fail and clear from registry
+    await vi.waitUntil(() => !activeGenerations.has(chatAId));
     
     expect(currentChat.value?.id).toBe(chatBId); // Still on Chat B
     const chatA_final = await storageService.loadChat(chatAId);
@@ -522,6 +528,8 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await new Promise(r => setTimeout(r, 50));
     abortChat();
     await sendB;
+    // Wait for B to be aborted and cleared
+    await vi.waitUntil(() => !activeGenerations.has(chatBId));
     
     const lastMsgB = chatB.root.items[0]?.replies.items[0];
     expect(lastMsgB?.content).toContain('[Generation Aborted]');
@@ -530,6 +538,8 @@ describe('useChat Concurrency & Stale State Protection', () => {
     expect(activeGenerations.has(chatAId)).toBe(true);
     resolveA!();
     await sendA;
+    // Wait for A to finish background generation
+    await vi.waitUntil(() => !activeGenerations.has(chatAId));
     expect(activeGenerations.has(chatAId)).toBe(false);
     expect(chatA.root.items[0]?.replies.items[0]?.error).toBeUndefined();
   });
@@ -605,6 +615,8 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     // 5. Let B finish
     await sendB;
+    // Wait for B to finish background generation
+    await vi.waitUntil(() => !activeGenerations.has(chatBId));
     await flushPromises();
     expect(activeGenerations.has(chatBId)).toBe(false);
     expect(activeGenerations.size).toBe(1);

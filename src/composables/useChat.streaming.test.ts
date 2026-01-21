@@ -86,7 +86,6 @@ describe('useChat Streaming State Logic', () => {
     });
 
     const sendPromise = sendMessage('Hello');
-    await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chat.id);
 
     expect(streaming.value).toBe(true);
@@ -94,6 +93,8 @@ describe('useChat Streaming State Logic', () => {
 
     resolveGen!();
     await sendPromise;
+    // Wait for the background generation task to complete and clear from activeGenerations
+    await vi.waitUntil(() => !streaming.value, { timeout: 5000 });
 
     expect(streaming.value).toBe(false);
     expect(activeGenerations.has(chat.id)).toBe(false);
@@ -111,7 +112,6 @@ describe('useChat Streaming State Logic', () => {
     });
 
     const sendPromise = sendMessage('Hello');
-    await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chat.id);
 
     expect(streaming.value).toBe(true);
@@ -119,12 +119,10 @@ describe('useChat Streaming State Logic', () => {
     abortChat();
     resolveGen!();
     
-    // activeGenerations should be cleared immediately or after promise rejection
-    try {
-      await sendPromise;
-    } catch {
-      // Expected error due to abortion
-    }
+    // sendMessage itself might not throw because it backgrounds generation, 
+    // but we wait for streaming to clear.
+    await sendPromise;
+    await vi.waitUntil(() => !streaming.value, { timeout: 5000 });
 
     expect(streaming.value).toBe(false);
     expect(activeGenerations.has(chat.id)).toBe(false);

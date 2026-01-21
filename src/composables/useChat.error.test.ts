@@ -62,13 +62,16 @@ describe('useChat Error Handling', () => {
   });
 
   it('should set error state on assistant node when generation fails', async () => {
-    const { createNewChat, sendMessage, activeMessages } = useChat();
+    const chatStore = useChat();
+    const { createNewChat, sendMessage, activeMessages } = chatStore;
     await createNewChat();
 
     // Setup failure
     mockChat.mockRejectedValue(new Error('API Error'));
 
     await sendMessage('Hello');
+    // Wait for the background generation task to fail
+    await vi.waitUntil(() => !chatStore.streaming.value);
 
     const assistantMsg = activeMessages.value.find(m => m.role === 'assistant');
     expect(assistantMsg).toBeDefined();
@@ -77,13 +80,15 @@ describe('useChat Error Handling', () => {
   });
 
   it('should retry message by creating a sibling node', async () => {
-    const { createNewChat, sendMessage, activeMessages, regenerateMessage, currentChat } = useChat();
+    const chatStore = useChat();
+    const { createNewChat, sendMessage, activeMessages, regenerateMessage, currentChat } = chatStore;
     await createNewChat();
 
     // 1. Fail first
     mockChat.mockRejectedValueOnce(new Error('First Fail'));
 
     await sendMessage('Hello');
+    await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first fail
     const failedMsg = activeMessages.value.find(m => m.role === 'assistant');
     expect(failedMsg?.error).toBe('First Fail');
 
@@ -94,6 +99,7 @@ describe('useChat Error Handling', () => {
     });
 
     await regenerateMessage(failedMsg!.id);
+    await vi.waitUntil(() => !chatStore.streaming.value); // Wait for success retry
 
     // Should have a NEW assistant message at the end
     const newMsg = activeMessages.value[activeMessages.value.length - 1];

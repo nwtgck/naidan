@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat, type AddToastOptions } from './useChat';
 import { storageService } from '../services/storage';
-import { reactive, nextTick, triggerRef } from 'vue';
+import { reactive, triggerRef } from 'vue';
 import type { Chat, MessageNode, SidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { findRestorationIndex } from '../utils/chat-tree';
@@ -123,8 +123,41 @@ describe('useChat Composable Logic', () => {
     triggerRef(currentChat);
     expect(['Hello', 'Hello World']).toContain(activeMessages.value[1]?.content);
     await sendPromise;
+    // Wait for streaming to finish since sendMessage is now fire-and-forget
+    await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
     expect(activeMessages.value[1]?.content).toBe('Hello World');
+  });
+
+  it('should return true from sendMessage immediately while generation continues in background (Regression Test)', async () => {
+    __testOnlySetCurrentChat(reactive({
+      id: 'bg-gen-test', title: 'BG Test', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any);
+
+    // Mock a slow LLM response
+    let resolveGen: () => void;
+    const genStarted = new Promise<void>(resolve => resolveGen = resolve);
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      onChunk('Started...');
+      resolveGen();
+      await new Promise(r => setTimeout(r, 100)); // Simulate slow generation
+      onChunk(' Finished');
+    });
+
+    const result = await sendMessage('Start background generation');
+    
+    // Result should be true immediately (after storage commit)
+    expect(result).toBe(true);
+    
+    // Generation should still be running
+    await genStarted;
+    expect(chatStore.streaming.value).toBe(true);
+    expect(activeMessages.value[1]?.content).toContain('Started...');
+
+    // Wait for it to finish to clean up
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    expect(activeMessages.value[1]?.content).toBe('Started... Finished');
   });
 
   it('should rename a chat and update storage', async () => {
@@ -293,12 +326,14 @@ describe('useChat Composable Logic', () => {
 
     // 1. Send first message
     await sendMessage('First version');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
     expect(currentChat.value?.root.items).toHaveLength(1);
     const firstId = currentChat.value?.root.items[0]?.id;
 
     // 2. Rewrite the first message
     await editMessage(firstId!, 'Second version');
+    await vi.waitUntil(() => (currentChat.value?.root.items.length ?? 0) >= 2);
     triggerRef(currentChat);
 
     // 3. Verify
@@ -325,6 +360,7 @@ describe('useChat Composable Logic', () => {
 
     // 1. Send first message pair
     await sendMessage('Hello');
+    await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
     const userMsg = currentChat.value?.root.items[0];
     const assistantMsg = userMsg?.replies.items[0];
@@ -332,7 +368,7 @@ describe('useChat Composable Logic', () => {
 
     // 2. Manually edit the assistant's message
     await editMessage(assistantMsg!.id, 'Manually corrected answer');
-    await nextTick();
+    await vi.waitUntil(() => (currentChat.value?.root.items[0]?.replies.items.length ?? 0) >= 2);
     triggerRef(currentChat);
 
     // 3. Verify
@@ -356,6 +392,7 @@ describe('useChat Composable Logic', () => {
       onChunk('First Response');
     });
     await sendMessage('Hello');
+    await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first generation to complete
     triggerRef(currentChat);
 
     const userMsg = currentChat.value?.root.items[0];
@@ -369,6 +406,8 @@ describe('useChat Composable Logic', () => {
       onChunk('Second Response');
     });
     await regenerateMessage(firstAssistantMsg!.id);
+    await vi.waitUntil(() => (userMsg?.replies.items.length ?? 0) >= 2); 
+    await vi.waitUntil(() => !chatStore.streaming.value); // Also wait for content to be fully there
     triggerRef(currentChat);
 
     // 3. Verify branching
@@ -704,6 +743,10 @@ describe('useChat Composable Logic', () => {
     ];
     __testOnlySetCurrentChat(reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any);
     await sendMessage('Hello');
+    // Note: Position is updated synchronously in sendMessage (create/update meta), 
+    // so we don't necessarily need to wait for streaming to verify position,
+    // but waiting ensures clean state.
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockHierarchy.items[2]?.id).toBe('c2');
   });
 

@@ -97,6 +97,7 @@ describe('useChat Group Overrides Resolution', () => {
 
     // Testing sendMessage resolution
     await chatStore.sendMessage('Hello', null, [], chat);
+    await vi.waitUntil(() => !chatStore.streaming.value);
 
     // Verify the LLM was called with resolved settings
     // Resolved System Prompt: ["Group Prompt", "Chat Prompt"]
@@ -140,6 +141,7 @@ describe('useChat Group Overrides Resolution', () => {
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage('Hello', null, [], chat);
+    await vi.waitUntil(() => !chatStore.streaming.value);
 
     // Global: "Global Prompt"
     // Group: Append "Group Instruction" -> ["Global Prompt", "Group Instruction"]
@@ -183,6 +185,7 @@ describe('useChat Group Overrides Resolution', () => {
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage('Hello', null, [], chat);
+    await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
       expect.any(Array),
@@ -236,6 +239,7 @@ describe('useChat Group Overrides Resolution', () => {
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage('Hello', null, [], chat);
+    await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
       expect.any(Array),
@@ -270,6 +274,7 @@ describe('useChat Group Overrides Resolution', () => {
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage('Hi', null, [], chat);
+    await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
       expect.any(Array),
@@ -306,6 +311,7 @@ describe('useChat Group Overrides Resolution', () => {
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage('Hi', null, [], chat);
+    await vi.waitUntil(() => !chatStore.streaming.value);
 
     const messages = mockLlmChat.mock.calls[0]![0];
     // Global "Global Prompt" should be gone. Only User message left.
@@ -333,6 +339,7 @@ describe('useChat Group Overrides Resolution', () => {
 
     // 1. Send message while Chat is NOT in group
     await chatStore.sendMessage('Hi', null, [], chat);
+    await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockLlmChat).toHaveBeenLastCalledWith(
       expect.any(Array),
       'global-model', // Uses global
@@ -344,6 +351,7 @@ describe('useChat Group Overrides Resolution', () => {
     await nextTick();
     
     await chatStore.sendMessage('Hi again', null, [], chat);
+    await vi.waitUntil(() => !chatStore.streaming.value);
     
     expect(mockLlmChat).toHaveBeenLastCalledWith(
       expect.any(Array),
@@ -381,6 +389,7 @@ describe('useChat Group Overrides Resolution', () => {
     mockRootItems.push(...chatStore.rootItems.value);
 
     await chatStore.sendMessage('Hello', null, [], chat);
+    await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
       expect.any(Array),

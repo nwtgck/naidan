@@ -585,14 +585,6 @@ export function useChat() {
       processThinking(assistantNode);
       mutableChat.updatedAt = Date.now();
       
-      if (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id)) {
-        await updateChatMeta(mutableChat.id, (curr) => {
-          if (!curr) return mutableChat;
-          return { ...curr, updatedAt: mutableChat.updatedAt, currentLeafId: mutableChat.currentLeafId };
-        });
-        await loadData();
-      }
-
       if (mutableChat.title === null && settings.value.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
         await generateChatTitle(mutableChat.id, controller.signal);
       }
@@ -611,12 +603,14 @@ export function useChat() {
       }
     } finally {
       if (activeGenerations.has(mutableChat.id)) {
-        await updateChatMeta(mutableChat.id, (curr) => {
-          if (!curr) return mutableChat;
-          return { ...curr, updatedAt: Date.now(), currentLeafId: mutableChat.currentLeafId };
-        });
         activeGenerations.delete(mutableChat.id);
         storageService.notify({ type: 'chat_content_generation', id: mutableChat.id, status: 'stopped', timestamp: Date.now() });
+
+        // Update meta one last time in the background
+        updateChatMeta(mutableChat.id, (curr) => {
+          if (!curr) return mutableChat;
+          return { ...curr, updatedAt: Date.now(), currentLeafId: mutableChat.currentLeafId };
+        }).then(() => loadData()).catch(() => {});
 
         // Request storage persistence after the first assistant response
         const history = getChatBranch(mutableChat);
@@ -643,7 +637,6 @@ export function useChat() {
       const { settings: globalSettings, setHeavyContentAlertDismissed, setOnboardingDraft, setIsOnboardingDismissed } = useSettings();
       const { showConfirm } = useConfirm();
       const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
-      console.log('sendMessage: chat.id=', chat.id, 'chat.groupId=', chat.groupId, 'resolved.modelId=', resolved.modelId);
       const type = resolved.endpointType;
       const url = resolved.endpointUrl;
       let resolvedModel = chat.modelId || resolved.modelId;
@@ -708,7 +701,7 @@ export function useChat() {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
       });
-      await generateResponse(chat, assistantMsg.id);
+      generateResponse(chat, assistantMsg.id).catch(e => console.error('Background generation failed:', e));
       return true;
     } finally {
       decTask(chat.id, 'process');
@@ -734,7 +727,7 @@ export function useChat() {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
       });
-      await generateResponse(chat, newAssistantMsg.id);
+      generateResponse(chat, newAssistantMsg.id).catch(e => console.error('Background generation failed:', e));
     } finally {
       decTask(chat.id, 'process');
     }
