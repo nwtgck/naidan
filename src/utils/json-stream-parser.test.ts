@@ -92,4 +92,23 @@ describe('parseConcatenatedJson', () => {
       expect(r1.error).toBe('Unclosed JSON object');
     }
   });
+
+  it('should handle complex nested objects and arrays', () => {
+    const input = '{"a": [1, 2, {"b": 3}]}{"c": {"d": [4]}}';
+    const results = parseConcatenatedJson(input);
+    expect(results).toHaveLength(2);
+    if (results[0]?.success) expect(results[0].data).toEqual({ a: [1, 2, { b: 3 }] });
+    if (results[1]?.success) expect(results[1].data).toEqual({ c: { d: [4] } });
+  });
+
+  it('should handle whitespace and random text between objects if they are not braces', () => {
+    // Note: The current parser is brace-depth based. 
+    // If there's text between objects that contains braces, it might fail.
+    // But basic whitespace should be fine.
+    const input = '  {"a": 1}  \n\n  {"b": 2}  ';
+    const results = parseConcatenatedJson(input);
+    expect(results).toHaveLength(2);
+    if (results[0]?.success) expect(results[0].data).toEqual({ a: 1 });
+    if (results[1]?.success) expect(results[1].data).toEqual({ b: 2 });
+  });
 });

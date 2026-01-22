@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { 
-  ChefHat, Save, CheckCircle2, Info, AlertTriangle
+  ChefHat, Save, AlertTriangle
 } from 'lucide-vue-next';
 import { parseConcatenatedJson } from '../utils/json-stream-parser';
 import { matchRecipeModels } from '../utils/recipe-matcher';
 import { ChatGroupRecipeSchema } from '../models/recipe';
 import type { ChatGroupRecipe } from '../models/recipe';
+import ModelSelector from './ModelSelector.vue';
 
 const props = defineProps<{
   availableModels: readonly string[];
@@ -28,6 +29,18 @@ interface AnalyzedRecipe {
 const recipeJsonInput = ref('');
 const analyzedRecipes = ref<AnalyzedRecipe[]>([]);
 const recipeAnalysisError = ref<string | null>(null);
+
+function getSortedModels(matchedModelId?: string) {
+  if (!matchedModelId) return props.availableModels;
+  
+  const models = [...props.availableModels];
+  const index = models.indexOf(matchedModelId);
+  if (index > -1) {
+    models.splice(index, 1);
+    models.unshift(matchedModelId);
+  }
+  return models;
+}
 
 function handleAnalyzeRecipes() {
   const trimmed = recipeJsonInput.value.trim();
@@ -54,7 +67,7 @@ function handleAnalyzeRecipes() {
     }
 
     const recipe = validation.data;
-    const match = matchRecipeModels(recipe.models, [...props.availableModels]);
+    const match = matchRecipeModels(recipe.models, props.availableModels);
 
     newAnalyzed.push({
       id: crypto.randomUUID(),
@@ -139,7 +152,7 @@ function handleImportRecipes() {
           <h3 class="text-sm font-bold text-gray-400 uppercase tracking-widest ml-1">Detected Recipes ({{ analyzedRecipes.length }})</h3>
           <button 
             @click="handleImportRecipes"
-            class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-green-500/20 transition-all active:scale-95 flex items-center gap-2"
+            class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-2xl shadow-lg shadow-green-500/30 transition-all active:scale-95 flex items-center gap-2"
             data-testid="recipe-import-button"
           >
             <Save class="w-4 h-4" />
@@ -169,18 +182,20 @@ function handleImportRecipes() {
                 <p v-if="item.recipe.description" class="text-xs text-gray-500 dark:text-gray-400 font-medium ml-0.5 mt-1">{{ item.recipe.description }}</p>
               </div>
 
-              <div class="flex flex-wrap gap-2 items-center">
-                <div 
-                  class="text-[10px] px-2 py-1 rounded-lg font-bold flex items-center gap-1.5"
-                  :class="item.matchedModelId ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800' : 'bg-gray-50 dark:bg-gray-800 text-gray-500 border border-gray-100 dark:border-gray-700'"
-                >
-                  <CheckCircle2 v-if="item.matchedModelId" class="w-3 h-3" />
-                  <Info v-else class="w-3 h-3" />
-                  {{ item.matchedModelId ? `Matches: ${item.matchedModelId}` : 'Uses Default Model' }}
-                </div>
-                <div v-if="item.matchError" class="text-[10px] px-2 py-1 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-800 rounded-lg font-bold flex items-center gap-1.5">
-                  <AlertTriangle class="w-3 h-3" />
-                  {{ item.matchError }}
+              <div class="space-y-2">
+                <label class="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">Model Selection</label>
+                <div class="flex flex-col gap-2">
+                  <ModelSelector 
+                    v-model="item.matchedModelId"
+                    :models="getSortedModels(item.matchedModelId)"
+                    placeholder="Use Default Model"
+                    allow-clear
+                    clear-label="Use Default Model"
+                  />
+                  <div v-if="item.matchError" class="text-[10px] px-2 py-1 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-800 rounded-lg font-bold flex items-center gap-1.5 w-fit">
+                    <AlertTriangle class="w-3 h-3" />
+                    {{ item.matchError }}
+                  </div>
                 </div>
               </div>
 

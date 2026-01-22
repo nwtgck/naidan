@@ -31,7 +31,7 @@ describe('RecipeImportTab.vue', () => {
 
     expect(wrapper.text()).toContain('Detected Recipes (1)');
     expect((wrapper.find('input[placeholder="Chat Group Name"]').element as HTMLInputElement).value).toBe('Test Recipe');
-    expect(wrapper.text()).toContain('Matches: llama3');
+    expect(wrapper.text()).toContain('llama3');
   });
 
   it('reports parse errors for invalid JSON', async () => {
@@ -97,5 +97,23 @@ describe('RecipeImportTab.vue', () => {
 
     const emitted = wrapper.emitted().import as any[][];
     expect(emitted[0]![0][0].newName).toBe('New Name');
+  });
+
+  it('sorts matched model to the top of the list', () => {
+    const wrapper = mount(RecipeImportTab, {
+      props: { availableModels: ['model-1', 'model-2', 'model-3'] },
+    });
+    const vm = wrapper.vm as any;
+    
+    // Test sorting with a matched model
+    const sorted = vm.getSortedModels('model-2');
+    expect(sorted[0]).toBe('model-2');
+    expect(sorted).toHaveLength(3);
+    expect(sorted).toContain('model-1');
+    expect(sorted).toContain('model-3');
+
+    // Test sorting with no match
+    const original = vm.getSortedModels(undefined);
+    expect(original).toEqual(['model-1', 'model-2', 'model-3']);
   });
 });
