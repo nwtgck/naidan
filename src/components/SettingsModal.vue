@@ -15,6 +15,10 @@ import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { storageService } from '../services/storage';
 import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import type { ProviderProfile, Settings } from '../models/types';
+import { ChatGroupRecipeSchema } from '../models/recipe';
+import type { ChatGroupRecipe } from '../models/recipe';
+import { parseConcatenatedJson } from '../utils/json-stream-parser';
+import { matchRecipeModels } from '../utils/recipe-matcher';
 import { computedAsync } from '@vueuse/core';
 import { 
   X, Loader2, FlaskConical, Trash2, Globe, 
@@ -22,12 +26,13 @@ import {
   CheckCircle2, AlertTriangle, Cpu, BookmarkPlus,
   Pencil, Trash, Check, Activity, Info, HardDrive,
   MessageSquareQuote, Download, Github, ExternalLink, Plus,
-  ShieldCheck, FileArchive
+  ShieldCheck, ChefHat, FileArchive
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
 import Logo from './Logo.vue';
 import ImportExportModal from './ImportExportModal.vue';
+import RecipeImportTab from './RecipeImportTab.vue';
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
 import { usePrompt } from '../composables/usePrompt';   // Import usePrompt
 import { ENDPOINT_PRESETS } from '../models/constants';
@@ -63,6 +68,29 @@ const isOPFSSupported = computedAsync(async () => {
 }, false);
 
 const showImportExportModal = ref(false);
+
+async function handleImportRecipes(recipes: { newName: string; matchedModelId?: string; recipe: ChatGroupRecipe }[]) {
+  try {
+    for (const item of recipes) {
+      await chatStore.createChatGroup(item.newName, {
+        modelId: item.matchedModelId,
+        systemPrompt: item.recipe.systemPrompt,
+        lmParameters: item.recipe.lmParameters,
+      });
+    }
+
+    addToast({
+      message: `Successfully imported ${recipes.length} recipes as chat groups`,
+      duration: 3000,
+    });
+  } catch (err) {
+    console.error('Failed to import recipes:', err);
+    addToast({
+      message: `Failed to import recipes: ${err instanceof Error ? err.message : String(err)}`,
+      duration: 5000,
+    });
+  }
+}
 
 // Persistence State
 type PersistenceStatus = 'unknown' | 'persisted' | 'not-persisted';
@@ -135,7 +163,7 @@ const editingProviderProfileId = ref<string | null>(null);
 const editingProviderProfileName = ref('');
 
 // Tab State
-type Tab = 'connection' | 'profiles' | 'storage' | 'developer' | 'about';
+type Tab = 'connection' | 'recipes' | 'profiles' | 'storage' | 'developer' | 'about';
 const activeTab = ref<Tab>('connection');
 
 const hasChanges = computed(() => {
@@ -264,6 +292,69 @@ async function handleSave() {
     });
   }
 }
+
+// Recipes State
+interface AnalyzedRecipe {
+  id: string;
+  recipe: ChatGroupRecipe;
+  selected: boolean;
+  matchedModelId?: string;
+  matchError?: string;
+  newName: string;
+}
+
+const recipeJsonInput = ref('');
+const analyzedRecipes = ref<AnalyzedRecipe[]>([]);
+const recipeAnalysisError = ref<string | null>(null);
+
+function handleAnalyzeRecipes() {
+  const trimmed = recipeJsonInput.value.trim();
+  if (!trimmed) {
+    analyzedRecipes.value = [];
+    recipeAnalysisError.value = null;
+    return;
+  }
+
+  recipeAnalysisError.value = null;
+  const parseResults = parseConcatenatedJson(trimmed);
+  const newAnalyzed: AnalyzedRecipe[] = [];
+
+  for (const result of parseResults) {
+    if (!result.success) {
+      recipeAnalysisError.value = `Parse error: ${result.error}`;
+      continue;
+    }
+
+    const validation = ChatGroupRecipeSchema.safeParse(result.data);
+    if (!validation.success) {
+      recipeAnalysisError.value = `Validation error: ${validation.error.message}`;
+      continue;
+    }
+
+    const recipe = validation.data;
+    const match = matchRecipeModels(recipe.models, availableModels.value);
+
+    newAnalyzed.push({
+      id: crypto.randomUUID(),
+      recipe,
+      selected: true,
+      matchedModelId: match.modelId,
+      matchError: match.error,
+      newName: recipe.name,
+    });
+  }
+
+  if (newAnalyzed.length === 0 && !recipeAnalysisError.value) {
+    recipeAnalysisError.value = 'No valid recipes found in input.';
+  }
+
+  analyzedRecipes.value = newAnalyzed;
+}
+
+// Automatically analyze on input change
+watch(recipeJsonInput, () => {
+  handleAnalyzeRecipes();
+});
 
 // Profile Handlers
 async function handleCreateProviderProfile() {
@@ -406,6 +497,15 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             >
               <Globe class="w-4 h-4" />
               Connection
+            </button>
+            <button 
+              @click="activeTab = 'recipes'"
+              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              :class="activeTab === 'recipes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              data-testid="tab-recipes"
+            >
+              <ChefHat class="w-4 h-4" />
+              Recipes
             </button>
             <button 
               @click="activeTab = 'profiles'"
@@ -735,6 +835,14 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                   </div>
                 </div>
               </div>
+
+              <!-- Recipes Tab -->
+              <RecipeImportTab 
+                v-if="activeTab === 'recipes'"
+                :available-models="availableModels"
+                @import="handleImportRecipes"
+                @toast="(msg: string, dur?: number) => addToast({ message: msg, duration: dur })"
+              />
 
               <!-- Provider Profiles Tab -->
               <div v-if="activeTab === 'profiles'" data-testid="profiles-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
