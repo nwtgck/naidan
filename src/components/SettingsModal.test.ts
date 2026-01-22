@@ -1,7 +1,5 @@
 // Mock the dynamic import for licenses
-vi.mock('../assets/licenses.json', () => ({
-  default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }]
-}));
+vi.mock('../assets/licenses.json', () => ({ default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }] }));
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -46,7 +44,11 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(),
+  useChat: vi.fn(() => ({
+    deleteAllChats: vi.fn(),
+    createChatGroup: vi.fn(),
+    resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+  })),
 }));
 
 vi.mock('vue-router', () => ({
@@ -163,7 +165,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     (useRouter as Mock).mockReturnValue({
       push: vi.fn(),
-      currentRoute: { value: { path: '/' } }
+      currentRoute: ref({ path: '/' })
     });
 
     (useSettings as unknown as Mock).mockReturnValue({
@@ -181,6 +183,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     (useChat as unknown as Mock).mockReturnValue({
       deleteAllChats: vi.fn(),
+      createChatGroup: vi.fn(),
       resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
     });
 
@@ -246,7 +249,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
       await flushPromises();
       
-      const overlay = wrapper.find('.backdrop-blur-\\[2px\\]');
+      const overlay = wrapper.find('[class*="backdrop-blur-[2px]"]');
       expect(overlay.exists()).toBe(true);
     });
 
@@ -310,13 +313,6 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const titleTrigger = titleSelect.find('[data-testid="model-selector-trigger"]');
       expect(titleTrigger.text()).toBe('Use Current Chat Model (Default)');
     });
-
-
-
-
-
-
-
 
 
 
@@ -627,7 +623,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
       (useRouter as Mock).mockReturnValue({
         push: mockPush,
-        currentRoute: { value: { path: '/' } }
+        currentRoute: ref({ path: '/' })
       });
 
       const wrapper = mount(SettingsModal, { 
@@ -671,7 +667,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
       (useRouter as Mock).mockReturnValue({
         push: vi.fn(),
-        currentRoute: { value: { path: '/' } }
+        currentRoute: ref({ path: '/' })
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -700,9 +696,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         autoTitleEnabled: true, 
       };
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: customSettings },
-        availableModels: { value: [] },
-        isFetchingModels: { value: false },
+        settings: ref(customSettings),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
         save: mockSave,
         fetchModels: vi.fn(),
       });
@@ -764,9 +760,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('supports renaming a profile in the UI', async () => {
       const mockProviderProfile = { id: 'p1', name: 'Original Name', endpointType: 'openai' as const };
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: { ...mockSettings, providerProfiles: [mockProviderProfile] } },
-        availableModels: { value: [] },
-        isFetchingModels: { value: false },
+        settings: ref({ ...mockSettings, providerProfiles: [mockProviderProfile] }),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
         save: mockSave,
         fetchModels: vi.fn(),
       });
@@ -800,9 +796,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       
       // We need useSettings to return the profile in the initial state so form.value has it
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: { ...mockSettings, providerProfiles: [mockProviderProfile] } },
-        availableModels: { value: [] },
-        isFetchingModels: { value: false },
+        settings: ref({ ...mockSettings, providerProfiles: [mockProviderProfile] }),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
         save: mockSave,
         fetchModels: vi.fn(),
       });
@@ -833,9 +829,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     it('shows empty state when no profiles exist', async () => {
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: { ...mockSettings, providerProfiles: [] } },
-        availableModels: { value: [] },
-        isFetchingModels: { value: false },
+        settings: ref({ ...mockSettings, providerProfiles: [] }),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
         save: mockSave,
         fetchModels: vi.fn(),
       });
@@ -952,9 +948,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       };
 
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: { ...mockSettings, providerProfiles: [mockProfile] } },
-        availableModels: { value: [] },
-        isFetchingModels: { value: false },
+        settings: ref({ ...mockSettings, providerProfiles: [mockProfile] }),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
         save: mockSave,
         fetchModels: vi.fn(),
       });
@@ -1005,10 +1001,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
           provide: {
             'Symbol(router)': {
               push: vi.fn(),
-              currentRoute: { value: { path: '/' } }
+              currentRoute: ref({ path: '/' })
             }
           }
-        } 
+        }
       });
       await wait();
 
@@ -1033,9 +1029,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       
       const settingsAsOpfs = { ...mockSettings, storageType: 'opfs' as const };
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: settingsAsOpfs },
-        availableModels: { value: [] },
-        isFetchingModels: { value: false },
+        settings: ref(settingsAsOpfs),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
         save: vi.fn(),
         fetchModels: vi.fn(),
       });
@@ -1047,10 +1043,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
           provide: {
             'Symbol(router)': {
               push: vi.fn(),
-              currentRoute: { value: { path: '/' } }
+              currentRoute: ref({ path: '/' })
             }
           }
-        } 
+        }
       });
       await wait();
 
@@ -1083,10 +1079,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
           provide: {
             'Symbol(router)': {
               push: vi.fn(),
-              currentRoute: { value: { path: '/' } }
+              currentRoute: ref({ path: '/' })
             }
           }
-        } 
+        }
       });
       await flushPromises();
       await wrapper.find('[data-testid="tab-storage"]').trigger('click');
@@ -1114,10 +1110,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
           provide: {
             'Symbol(router)': {
               push: vi.fn(),
-              currentRoute: { value: { path: '/' } }
+              currentRoute: ref({ path: '/' })
             }
           }
-        } 
+        }
       });
       await flushPromises();
       
@@ -1140,6 +1136,75 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(wrapper.text()).toContain('Active');
       expect(wrapper.text()).toContain('Protected');
       expect(wrapper.find('[data-testid="setting-enable-persistence-button"]').exists()).toBe(false);
+    });
+  });
+
+  describe('Recipe Integration', () => {
+    it('creates chat groups when handleImportRecipes is called', async () => {
+      const mockCreateChatGroup = vi.fn().mockResolvedValue('new-id');
+      (useChat as unknown as Mock).mockReturnValue({
+        createChatGroup: mockCreateChatGroup,
+        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+      });
+
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs }
+      });
+      await flushPromises();
+
+      const recipes = [
+        {
+          newName: 'Recipe 1', 
+          matchedModelId: 'm1', 
+          recipe: { systemPrompt: { content: 'p1', behavior: 'override' as const }, lmParameters: { temperature: 0.5 } } as any 
+        },
+        {
+          newName: 'Recipe 2', 
+          recipe: { systemPrompt: undefined, lmParameters: undefined } as any 
+        }
+      ];
+
+      // Access handleImportRecipes via vm
+      const vm = wrapper.vm as any;
+      await vm.handleImportRecipes(recipes);
+
+      expect(mockCreateChatGroup).toHaveBeenCalledTimes(2);
+      expect(mockCreateChatGroup).toHaveBeenCalledWith('Recipe 1', {
+        modelId: 'm1',
+        systemPrompt: { content: 'p1', behavior: 'override' },
+        lmParameters: { temperature: 0.5 }
+      });
+      expect(mockCreateChatGroup).toHaveBeenCalledWith('Recipe 2', {
+        modelId: undefined,
+        systemPrompt: undefined,
+        lmParameters: undefined
+      });
+
+      expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
+        message: 'Successfully imported 2 recipes as chat groups'
+      }));
+    });
+
+    it('shows error toast when recipe import fails', async () => {
+      const mockCreateChatGroup = vi.fn().mockRejectedValue(new Error('Import failed'));
+      (useChat as unknown as Mock).mockReturnValue({
+        createChatGroup: mockCreateChatGroup,
+        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+      });
+
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs }
+      });
+      await flushPromises();
+
+      const vm = wrapper.vm as any;
+      await vm.handleImportRecipes([{ newName: 'Fail', recipe: {} as any }]);
+
+      expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
+        message: expect.stringContaining('Failed to import recipes: Import failed')
+      }));
     });
   });
 });

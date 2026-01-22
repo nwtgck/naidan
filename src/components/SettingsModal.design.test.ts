@@ -81,8 +81,8 @@ describe('SettingsModal Design Specifications', () => {
     });
     
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });
-    // Switch to profiles tab (the second button)
-    const profilesTab = wrapper.findAll('nav button')[1];
+    // Switch to profiles tab
+    const profilesTab = wrapper.find('[data-testid="tab-profiles"]');
     await profilesTab?.trigger('click');
     
     // Check capitalization in badge

@@ -891,9 +891,16 @@ export function useChat() {
     });
   };
 
-  const createChatGroup = async (name: string) => {
+  const createChatGroup = async (name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
     const id = crypto.randomUUID();
-    const newGroup: ChatGroup = { id, name, updatedAt: Date.now(), isCollapsed: false, items: [], };
+    const newGroup: ChatGroup = { 
+      id, 
+      name, 
+      updatedAt: Date.now(), 
+      isCollapsed: false, 
+      items: [],
+      ...options
+    };
     await storageService.updateChatGroup(id, () => newGroup);
     await storageService.updateHierarchy((curr) => { curr.items.unshift({ type: 'chat_group', id, chat_ids: [] }); return curr; });
     await loadData();

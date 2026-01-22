@@ -4,10 +4,12 @@ import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import { 
   Settings2, 
-  MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus, X
+  MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus, X,
+  ChefHat
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
+import RecipeExportModal from './RecipeExportModal.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { ChatGroup } from '../models/types';
 
@@ -28,6 +30,13 @@ const groupModels = ref<string[]>([]);
 
 // Local state for editing
 const localSettings = ref<Partial<Pick<ChatGroup, 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>>({});
+
+// Recipe Export State
+const showExportModal = ref(false);
+
+function handleCreateRecipe() {
+  showExportModal.value = true;
+}
 
 function syncLocalWithCurrent() {
   if (currentChatGroup.value) {
@@ -203,9 +212,39 @@ async function restoreDefaults() {
       </div>
     </div>
 
+    <!-- Export Recipe Modal -->
+    <RecipeExportModal 
+      :is-open="showExportModal"
+      :group-name="currentChatGroup.name"
+      :system-prompt="localSettings.systemPrompt"
+      :lm-parameters="localSettings.lmParameters"
+      :initial-model-id="localSettings.modelId"
+      @close="showExportModal = false"
+    />
+
     <!-- Content -->
     <div class="flex-1 overflow-y-auto">
       <div class="max-w-4xl mx-auto p-6 sm:p-8 space-y-10">
+        <!-- Recipe Export Action -->
+        <div class="bg-blue-50/30 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-900/20 p-6 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm">
+          <div class="flex items-center gap-4">
+            <div class="p-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-blue-100 dark:border-blue-900/20">
+              <ChefHat class="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-blue-900 dark:text-blue-300">Share these settings</h3>
+              <p class="text-[11px] text-blue-600/70 dark:text-blue-400/70 font-medium">Export this group's configuration as a reusable Recipe.</p>
+            </div>
+          </div>
+          <button 
+            @click="handleCreateRecipe"
+            class="shrink-0 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+          >
+            <ChefHat class="w-4 h-4" />
+            Create Recipe
+          </button>
+        </div>
+
         <div class="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-200/50 dark:border-gray-800 pb-8 gap-6">
           <div class="flex flex-col md:flex-row gap-8 flex-1">
             <!-- Quick Switcher -->
