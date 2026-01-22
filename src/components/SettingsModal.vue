@@ -45,7 +45,7 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>();
 
-const { settings, save, availableModels, isFetchingModels, fetchModels: fetchModelsGlobal } = useSettings();
+const { settings, save, updateProviderProfiles, availableModels, isFetchingModels, fetchModels: fetchModelsGlobal } = useSettings();
 const chatStore = useChat();
 const { createSampleChat } = useSampleChat();
 const { addToast } = useToast();
@@ -166,8 +166,23 @@ const editingProviderProfileName = ref('');
 type Tab = 'connection' | 'recipes' | 'profiles' | 'storage' | 'developer' | 'about';
 const activeTab = ref<Tab>('connection');
 
-const hasChanges = computed(() => {
-  return JSON.stringify(form.value) !== initialFormState.value;
+function pickConnectionFields(s: Settings) {
+  return {
+    endpointType: s.endpointType,
+    endpointUrl: s.endpointUrl,
+    endpointHttpHeaders: JSON.stringify(s.endpointHttpHeaders),
+    defaultModelId: s.defaultModelId,
+    titleModelId: s.titleModelId,
+    autoTitleEnabled: s.autoTitleEnabled,
+    systemPrompt: s.systemPrompt,
+    lmParameters: JSON.stringify(s.lmParameters),
+  };
+}
+
+const hasUnsavedConnectionChanges = computed(() => {
+  const current = pickConnectionFields(form.value);
+  const initial = JSON.parse(initialFormState.value || '{}');
+  return JSON.stringify(current) !== JSON.stringify(initial);
 });
 
 // Watch for tab change to load licenses or check persistence
@@ -215,10 +230,10 @@ async function handleResetData() {
 }
 
 async function handleCancel() { // Make function async
-  if (hasChanges.value) {
+  if (hasUnsavedConnectionChanges.value) {
     const confirmed = await showConfirm({
       title: 'Discard Unsaved Changes?',
-      message: 'You have unsaved changes. Are you sure you want to discard them?',
+      message: 'You have unsaved changes in your connection settings. Are you sure you want to discard them?',
       confirmButtonText: 'Discard',
       cancelButtonText: 'Keep Editing',
     });
@@ -250,7 +265,7 @@ async function fetchModels() {
     }, 3000);
     
     // Also trigger global fetch if it's the current settings
-    if (!hasChanges.value) {
+    if (!hasUnsavedConnectionChanges.value) {
       await fetchModelsGlobal();
     }
   } catch (err) {
@@ -261,24 +276,19 @@ async function fetchModels() {
 
 async function handleSave() {
   try {
-    const currentProviderType = storageService.getCurrentType();
-    
-    // Check for potential data loss when switching FROM opfs TO local
-    if (currentProviderType === 'opfs' && form.value.storageType === 'local') {
-      const hasFiles = await storageService.hasAttachments();
-      if (hasFiles) {
-        const confirmed = await showConfirm({
-          title: 'Attachments will be inaccessible',
-          message: 'You have images or files saved in OPFS. Local Storage does not support permanent file storage, so these attachments will not be accessible after switching. Are you sure you want to continue?',
-          confirmButtonText: 'Switch and Lose Attachments',
-          confirmButtonVariant: 'danger',
-        });
-        if (!confirmed) return;
-      }
-    }
+    // Only pass connection-related fields to save as a patch
+    await save({
+      endpointType: form.value.endpointType,
+      endpointUrl: form.value.endpointUrl,
+      endpointHttpHeaders: form.value.endpointHttpHeaders,
+      defaultModelId: form.value.defaultModelId,
+      titleModelId: form.value.titleModelId,
+      autoTitleEnabled: form.value.autoTitleEnabled,
+      systemPrompt: form.value.systemPrompt,
+      lmParameters: form.value.lmParameters,
+    });
 
-    await save(form.value);
-    initialFormState.value = JSON.stringify(form.value);
+    initialFormState.value = JSON.stringify(pickConnectionFields(form.value));
     saveSuccess.value = true;
     setTimeout(() => {
       saveSuccess.value = false;
@@ -287,7 +297,59 @@ async function handleSave() {
     console.error('Failed to save settings:', err);
     await showConfirm({
       title: 'Save Failed',
-      message: `Failed to save settings or migrate data. ${err instanceof Error ? err.message : String(err)}`,
+      message: `Failed to save settings. ${err instanceof Error ? err.message : String(err)}`,
+      confirmButtonText: 'Understand',
+    });
+  }
+}
+
+async function persistProfiles() {
+  await updateProviderProfiles(JSON.parse(JSON.stringify(form.value.providerProfiles)));
+}
+
+async function handleStorageChange(targetType: 'local' | 'opfs') {
+  if (targetType === settings.value.storageType) return;
+
+  const currentProviderType = storageService.getCurrentType();
+  
+  // Check for potential data loss when switching FROM opfs TO local
+  if (currentProviderType === 'opfs' && targetType === 'local') {
+    const hasFiles = await storageService.hasAttachments();
+    if (hasFiles) {
+      const confirmed = await showConfirm({
+        title: 'Attachments will be inaccessible',
+        message: 'You have images or files saved in OPFS. Local Storage does not support permanent file storage, so these attachments will not be accessible after switching. Are you sure you want to continue?',
+        confirmButtonText: 'Switch and Lose Attachments',
+        confirmButtonVariant: 'danger',
+      });
+      if (!confirmed) {
+        form.value.storageType = currentProviderType;
+        return;
+      }
+    }
+  }
+
+  const confirmed = await showConfirm({
+    title: 'Confirm Storage Switch',
+    message: `Are you sure you want to switch to ${targetType === 'opfs' ? 'OPFS' : 'Local Storage'}? This will migrate all your data and the application will reload.`,
+    confirmButtonText: 'Switch and Migrate',
+  });
+
+  if (!confirmed) {
+    form.value.storageType = currentProviderType;
+    return;
+  }
+
+  try {
+    // Only pass storageType to save as a patch
+    await save({ storageType: targetType });
+    form.value.storageType = targetType;
+  } catch (err) {
+    console.error('Failed to migrate storage:', err);
+    form.value.storageType = currentProviderType;
+    await showConfirm({
+      title: 'Migration Failed',
+      message: `Failed to migrate data. ${err instanceof Error ? err.message : String(err)}`,
       confirmButtonText: 'Understand',
     });
   }
@@ -381,6 +443,7 @@ async function handleCreateProviderProfile() {
 
   if (!form.value.providerProfiles) form.value.providerProfiles = [];
   form.value.providerProfiles.push(newProviderProfile);
+  await persistProfiles();
 }
 
 function handleApplyProviderProfile(providerProfile: ProviderProfile) {
@@ -393,7 +456,7 @@ function handleApplyProviderProfile(providerProfile: ProviderProfile) {
   form.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;
 }
 
-function handleDeleteProviderProfile(id: string) {
+async function handleDeleteProviderProfile(id: string) {
   const index = form.value.providerProfiles.findIndex(p => p.id === id);
   if (index === -1) return;
   
@@ -401,12 +464,14 @@ function handleDeleteProviderProfile(id: string) {
   if (!deletedProfile) return;
 
   form.value.providerProfiles.splice(index, 1);
+  await persistProfiles();
   
   addToast({
     message: `Profile "${deletedProfile.name}" deleted`,
     actionLabel: 'Undo',
-    onAction: () => {
+    onAction: async () => {
       form.value.providerProfiles.splice(index, 0, deletedProfile);
+      await persistProfiles();
     },
     duration: 5000,
   });
@@ -417,11 +482,12 @@ function startRename(providerProfile: ProviderProfile) {
   editingProviderProfileName.value = providerProfile.name;
 }
 
-function saveRename() {
+async function saveRename() {
   if (!editingProviderProfileId.value) return;
   const providerProfile = form.value.providerProfiles.find(p => p.id === editingProviderProfileId.value);
   if (providerProfile && editingProviderProfileName.value.trim()) {
     providerProfile.name = editingProviderProfileName.value.trim();
+    await persistProfiles();
   }
   editingProviderProfileId.value = null;
 }
@@ -450,7 +516,7 @@ function removeHeader(index: number) {
 watch(() => props.isOpen, (open) => {
   if (open) {
     form.value = JSON.parse(JSON.stringify(settings.value)) as Settings;
-    initialFormState.value = JSON.stringify(form.value);
+    initialFormState.value = JSON.stringify(pickConnectionFields(form.value));
     fetchModels();
   }
 });
@@ -816,24 +882,6 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                     </div>
                   </div>
                 </section>
-
-                <!-- Save as Profile Section -->
-                <div class="pt-8 border-t border-gray-100 dark:border-gray-800">
-                  <div class="bg-blue-50/30 dark:bg-blue-900/5 border border-dashed border-blue-200/50 dark:border-blue-800/30 p-8 rounded-3xl flex flex-col md:flex-row items-center gap-8">
-                    <div class="flex-1 text-center md:text-left">
-                      <h3 class="text-base font-bold text-blue-900 dark:text-blue-300">Reusable Connection Profile</h3>
-                      <p class="text-xs text-blue-600/70 dark:text-blue-400/60 mt-1.5 font-medium leading-relaxed">Capture the current provider, URL, and model settings into a reusable profile for quick switching later.</p>
-                    </div>
-                    <button 
-                      @click="handleCreateProviderProfile"
-                      class="shrink-0 flex items-center gap-2 px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-2xl shadow-lg shadow-blue-500/20 transition-all active:scale-95"
-                      data-testid="setting-save-provider-profile-button"
-                    >
-                      <BookmarkPlus class="w-4 h-4" />
-                      Save as New Profile
-                    </button>
-                  </div>
-                </div>
               </div>
 
               <!-- Recipes Tab -->
@@ -992,7 +1040,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                     <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Active Storage Provider</label>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <button 
-                        @click="isOPFSSupported && (form.storageType = 'opfs')"
+                        @click="handleStorageChange('opfs')"
                         type="button"
                         :disabled="!isOPFSSupported"
                         class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
@@ -1015,7 +1063,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                         </div>
                       </button>
                       <button 
-                        @click="form.storageType = 'local'"
+                        @click="handleStorageChange('local')"
                         type="button"
                         class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
                         :class="form.storageType === 'local' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700'"
@@ -1035,7 +1083,7 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
                   
                     <div class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
                       <Info class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
-                      <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, chat groups, and settings to the new location. This process will start automatically after you click <strong>Save Changes</strong>.</p>
+                      <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, chat groups, and settings to the new location. This process will start automatically after you confirm the switch.</p>
                     </div>
                   </div>
                 </section>
@@ -1195,11 +1243,20 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
             </div>
           </div>
 
-          <!-- Footer Actions (Right-aligned) -->
-          <div class="p-8 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-4 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
+          <!-- Footer Actions (Right-aligned, only for Connection Tab) -->
+          <div v-if="activeTab === 'connection'" class="p-8 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-4 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
+            <button 
+              @click="handleCreateProviderProfile"
+              class="flex items-center justify-center gap-2 py-3 px-6 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-2xl text-sm font-bold transition-all shadow-sm active:scale-95"
+              data-testid="setting-save-provider-profile-button"
+            >
+              <BookmarkPlus class="w-4 h-4" />
+              <span>Save as New Profile</span>
+            </button>
+
             <button 
               @click="handleSave"
-              :disabled="!hasChanges"
+              :disabled="!hasUnsavedConnectionChanges"
               class="flex items-center justify-center gap-2 py-3 px-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-95"
               data-testid="setting-save-button"
             >

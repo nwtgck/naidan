@@ -33,12 +33,13 @@ vi.mock('../composables/useSettings', () => ({
     settings: ref({ storageType: 'local', providerProfiles: [] }),
     availableModels: ref(['model-a', 'model-b']),
     isFetchingModels: ref(false),
-    save: vi.fn().mockImplementation(async (newSettings) => {
+    save: vi.fn().mockImplementation(async (patch) => {
       const currentType = storageService.getCurrentType();
-      if (newSettings.storageType !== currentType) {
-        await storageService.switchProvider(newSettings.storageType);
+      if (patch.storageType && patch.storageType !== currentType) {
+        await storageService.switchProvider(patch.storageType);
       }
     }),
+    updateProviderProfiles: vi.fn(),
     fetchModels: vi.fn(),
   })),
 }));
@@ -172,12 +173,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       settings: ref(JSON.parse(JSON.stringify(mockSettings))),
       availableModels: ref([]),
       isFetchingModels: ref(false),
-      save: mockSave.mockImplementation(async (newSettings) => {
+      save: mockSave.mockImplementation(async (patch) => {
         const currentType = storageService.getCurrentType();
-        if (newSettings.storageType !== currentType) {
-          await storageService.switchProvider(newSettings.storageType);
+        if (patch.storageType && patch.storageType !== currentType) {
+          await storageService.switchProvider(patch.storageType);
         }
       }),
+      updateProviderProfiles: vi.fn(),
       fetchModels: vi.fn(),
     });
 
@@ -700,6 +702,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
+        updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(),
       });
 
@@ -764,6 +767,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
+        updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(),
       });
 
@@ -800,6 +804,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
+        updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(),
       });
 
@@ -814,7 +819,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const vm = wrapper.vm as unknown as { 
         form: { endpointUrl: string, defaultModelId: string, titleModelId: string },
         selectedProviderProfileId: string,
-        hasChanges: boolean
+        hasUnsavedConnectionChanges: boolean
       };
       expect(vm.form.endpointUrl).toBe('http://quick:11434');
       expect(vm.form.defaultModelId).toBe('model-a');
@@ -822,7 +827,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(vm.selectedProviderProfileId).toBe('');
       
       // Should enable the global save button
-      expect(vm.hasChanges).toBe(true);
+      expect(vm.hasUnsavedConnectionChanges).toBe(true);
       const saveBtn = wrapper.find('[data-testid="setting-save-button"]');
       expect(saveBtn.attributes('disabled')).toBeUndefined();
     });
@@ -833,6 +838,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
+        updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(),
       });
 
@@ -1014,10 +1020,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await nextTick();
 
+      mockShowConfirm.mockResolvedValueOnce(true); // Confirm migration
       await wrapper.find('[data-testid="storage-opfs"]').trigger('click');
-      await nextTick();
-
-      await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
+      await flushPromises();
       await wait();
 
       expect(storageService.switchProvider).toHaveBeenCalledWith('opfs');
@@ -1028,11 +1033,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       vi.mocked(storageService.hasAttachments).mockResolvedValue(true);
       
       const settingsAsOpfs = { ...mockSettings, storageType: 'opfs' as const };
+      const mockUpdateProviderProfiles = vi.fn();
       (useSettings as unknown as Mock).mockReturnValue({
         settings: ref(settingsAsOpfs),
         availableModels: ref([]),
         isFetchingModels: ref(false),
-        save: vi.fn(),
+        save: mockSave,
+        updateProviderProfiles: mockUpdateProviderProfiles,
         fetchModels: vi.fn(),
       });
 
@@ -1053,11 +1060,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await nextTick();
 
+      mockShowConfirm.mockResolvedValueOnce(false); // Cancel migration warning
       await wrapper.find('[data-testid="storage-local"]').trigger('click');
-      await nextTick();
-
-      mockShowConfirm.mockResolvedValueOnce(false); 
-      await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
+      await flushPromises();
       
       expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
         title: 'Attachments will be inaccessible'

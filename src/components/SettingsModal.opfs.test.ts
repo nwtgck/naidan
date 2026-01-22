@@ -10,6 +10,7 @@ vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
     settings: { value: { storageType: 'local', providerProfiles: [] } },
     save: vi.fn(),
+    updateProviderProfiles: vi.fn(),
     availableModels: { value: [] },
     isFetchingModels: { value: false },
     fetchModels: vi.fn(),
@@ -136,6 +137,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
     vi.mocked(useSettings).mockReturnValue({
       settings: { value: { storageType: 'local', providerProfiles: [], endpointUrl: '' } } as any,
       save: mockSave,
+      updateProviderProfiles: vi.fn(),
       initialized: { value: true } as any,
       isOnboardingDismissed: { value: true } as any,
       onboardingDraft: { value: null } as any,
