@@ -49,32 +49,33 @@ describe('useChat Group Collapse', () => {
     mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
 
     await chatStore.loadChats();
-    expect(rootItems.value[0].type).toBe('chat_group');
-    if (rootItems.value[0].type === 'chat_group') {
-      expect(rootItems.value[0].chatGroup.isCollapsed).toBe(false);
-    }
+    const item = rootItems.value[0] as Extract<SidebarItem, { type: 'chat_group' }>;
+    expect(item).toBeDefined();
+    expect(item.type).toBe('chat_group');
+    expect(item.chatGroup.isCollapsed).toBe(false);
 
     // Act: Collapse
     await setChatGroupCollapsed({ groupId: 'g1', isCollapsed: true });
 
     // Assert: Immediate update in rootItems
-    if (rootItems.value[0].type === 'chat_group') {
-      expect(rootItems.value[0].chatGroup.isCollapsed).toBe(true);
-    }
+    const itemAfterCollapse = rootItems.value[0] as Extract<SidebarItem, { type: 'chat_group' }>;
+    expect(itemAfterCollapse.type).toBe('chat_group');
+    expect(itemAfterCollapse.chatGroup.isCollapsed).toBe(true);
 
     // Assert: Persisted to storage
     expect(storageService.updateChatGroup).toHaveBeenCalledWith('g1', expect.any(Function));
     
     // Test the updater function passed to storageService
-    const updater = vi.mocked(storageService.updateChatGroup).mock.calls[0][1];
-    const updatedGroup = updater(group);
+    const calls = vi.mocked(storageService.updateChatGroup).mock.calls;
+    expect(calls[0]).toBeDefined();
+    const updater = calls[0]![1];
+    const updatedGroup = (updater as any)(group) as ChatGroup;
     expect(updatedGroup.isCollapsed).toBe(true);
 
     // Act: Expand
     await setChatGroupCollapsed({ groupId: 'g1', isCollapsed: false });
-    if (rootItems.value[0].type === 'chat_group') {
-      expect(rootItems.value[0].chatGroup.isCollapsed).toBe(false);
-    }
+    const itemAfterExpand = rootItems.value[0] as Extract<SidebarItem, { type: 'chat_group' }>;
+    expect(itemAfterExpand.chatGroup.isCollapsed).toBe(false);
   });
 
   it('should update currentChatGroup if it matches the group being toggled', async () => {
@@ -105,16 +106,15 @@ describe('useChat Group Collapse', () => {
     await setChatGroupCollapsed({ groupId: 'g2', isCollapsed: true });
 
     // Assert: Group 2 is collapsed
-    if (rootItems.value[1].type === 'chat_group') {
-      expect(rootItems.value[1].chatGroup.isCollapsed).toBe(true);
-    }
+    const item2 = rootItems.value[1] as Extract<SidebarItem, { type: 'chat_group' }>;
+    expect(item2.type).toBe('chat_group');
+    expect(item2.chatGroup.isCollapsed).toBe(true);
 
     // Assert: Group 1 (current) remains uncollapsed
     expect(currentChatGroup.value?.id).toBe('g1');
     expect(currentChatGroup.value?.isCollapsed).toBe(false);
-    if (rootItems.value[0].type === 'chat_group') {
-      expect(rootItems.value[0].chatGroup.isCollapsed).toBe(false);
-    }
+    const item1 = rootItems.value[0] as Extract<SidebarItem, { type: 'chat_group' }>;
+    expect(item1.chatGroup.isCollapsed).toBe(false);
   });
 
   it('should still update storage and currentChatGroup even if group is not in rootItems', async () => {

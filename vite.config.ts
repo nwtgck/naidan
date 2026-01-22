@@ -148,9 +148,14 @@ const zipPackagerPlugin = (outDir: string) => ({
     const folder = zip.folder('naidan-standalone')
     if (folder) {
       addDirectoryToZip(folder, distDir)
+      folder.file('VERSION.txt', pkg.version)
     }
 
-    const content = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+    const content = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 9 }
+    })
     
     // Ensure parent dir exists (it should, but just in case)
     const zipDir = path.dirname(zipPath)
