@@ -34,6 +34,8 @@ defineEmits<{
 
 const sidebarItemsLocal = ref<SidebarItem[]>([]);
 const isDragging = ref(false);
+const dragHoverGroup = ref<string | null>(null);
+let dragHoverTimeout: ReturnType<typeof setTimeout> | null = null;
 let isInternalUpdate = false;
 
 const editingId = ref<string | null>(null);
@@ -76,6 +78,11 @@ function onDragStart() {
 
 async function onDragEnd() {
   isInternalUpdate = true;
+  dragHoverGroup.value = null;
+  if (dragHoverTimeout) {
+    clearTimeout(dragHoverTimeout);
+    dragHoverTimeout = null;
+  }
   // Sync the UI structure to storage
   await chatStore.persistSidebarStructure(sidebarItemsLocal.value);
   
@@ -85,6 +92,29 @@ async function onDragEnd() {
   setTimeout(() => {
     isInternalUpdate = false;
   }, 100);
+}
+
+function onDragOverGroup(groupId: string) {
+  if (!isDragging.value) return;
+  if (dragHoverGroup.value === groupId) return;
+  
+  dragHoverGroup.value = groupId;
+  if (dragHoverTimeout) clearTimeout(dragHoverTimeout);
+  
+  dragHoverTimeout = setTimeout(() => {
+    const group = chatStore.chatGroups.value.find(g => g.id === groupId);
+    if (group && group.isCollapsed) {
+      chatStore.toggleChatGroupCollapse(groupId);
+    }
+  }, 600); // 600ms hover to expand
+}
+
+function onDragLeaveGroup() {
+  dragHoverGroup.value = null;
+  if (dragHoverTimeout) {
+    clearTimeout(dragHoverTimeout);
+    dragHoverTimeout = null;
+  }
 }
 
 /**
@@ -164,6 +194,19 @@ async function handleOpenChat(id: string) {
   await chatStore.openChat(id);
   router.push(`/chat/${id}`);
 }
+
+// Scroll active chat into view
+watch(() => currentChat.value?.id, async (id) => {
+  if (!id) return;
+  await nextTick();
+  // Wait a bit for potential transitions
+  setTimeout(() => {
+    const el = document.querySelector(`[data-testid="sidebar-chat-item-${id}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, 100);
+}, { immediate: true });
 
 async function handleDeleteChat(id: string) {
   const isCurrent = currentChat.value?.id === id;
@@ -290,8 +333,15 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
           :move="checkMove"
           @start="onDragStart"
           @end="onDragEnd"
-          ghost-class="opacity-50"
-          class="space-y-1 min-h-[100px]"
+          ghost-class="sortable-ghost"
+          :class="['space-y-1 min-h-[100px] transition-all duration-200', isDragging ? 'pb-32' : 'pb-4']"
+          :swap-threshold="0.5"
+          :invert-swap="true"
+          :scroll="true"
+          :scroll-sensitivity="100"
+          :scroll-speed="20"
+          :force-fallback="true"
+          fallback-class="opacity-0"
         >
           <template #item="{ element }">
             <div :class="{ 'is-group': element.type === 'chat_group' }">
@@ -299,8 +349,13 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
               <div v-if="element.type === 'chat_group'" class="space-y-1">
                 <div 
                   @click="chatStore.openChatGroup(element.chatGroup.id)"
+                  @dragover="onDragOverGroup(element.chatGroup.id)"
+                  @dragleave="onDragLeaveGroup"
                   class="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative transition-all handle"
-                  :class="{ 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm': chatStore.currentChatGroup.value?.id === element.chatGroup.id }"
+                  :class="{ 
+                    'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm': chatStore.currentChatGroup.value?.id === element.chatGroup.id,
+                    'ring-2 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-900/30': dragHoverGroup === element.chatGroup.id
+                  }"
                   data-testid="chat-group-item"
                 >
                   <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
@@ -346,8 +401,15 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                     item-key="id"
                     @start="onDragStart"
                     @end="onDragEnd"
-                    ghost-class="opacity-50"
-                    class="nested-draggable min-h-[20px] space-y-0.5"
+                    ghost-class="sortable-ghost"
+                    :class="['nested-draggable space-y-0.5 transition-all', isDragging ? 'min-h-[40px] pb-4' : 'min-h-[20px]']"
+                    :swap-threshold="0.5"
+                    :invert-swap="true"
+                    :scroll="true"
+                    :scroll-sensitivity="100"
+                    :scroll-speed="20"
+                    :force-fallback="true"
+                    fallback-class="opacity-0"
                   >
                     <template #item="{ element: nestedItem }">
                       <div v-if="nestedItem.type === 'chat'">
@@ -496,6 +558,27 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+.handle {
+  cursor: grab;
+}
+
+.handle:active {
+  cursor: grabbing;
+}
+
+.sidebar-chat-item, 
+.is-group > div:first-child {
+  scroll-margin-top: 48px;
+  scroll-margin-bottom: 48px;
+}
+
+.sortable-ghost {
+  opacity: 0.3;
+  background: rgb(59 130 246 / 0.1);
+  border: 2px dashed rgb(59 130 246 / 0.5);
+  border-radius: 0.75rem;
 }
 
 .animate-in {
