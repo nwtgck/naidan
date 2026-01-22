@@ -127,4 +127,40 @@ describe('Sidebar DND Improvements', () => {
     expect(mockChatStore.toggleChatGroupCollapse).toHaveBeenCalledWith('g1');
     vi.useRealTimers();
   });
+
+  it('should NOT auto-expand collapsed groups when a chat inside them is selected', async () => {
+    vi.useFakeTimers();
+    mount(Sidebar, { global: { plugins: [router] } });
+    const group = { id: 'g1', name: 'Group 1', items: [{ id: 'c1', type: 'chat', chat: { id: 'c1' } }], isCollapsed: true };
+    mockChatStore.chatGroups.value = [group];
+    mockChatStore.sidebarItems.value = [{ type: 'chat_group', id: 'g1', chatGroup: group }];
+    mockChatStore.currentChat.value = { id: 'c1' };
+    await nextTick();
+    vi.advanceTimersByTime(150);
+    expect(mockChatStore.toggleChatGroupCollapse).not.toHaveBeenCalled();
+    expect(mockChatStore.chatGroups.value[0].isCollapsed).toBe(true);
+    vi.useRealTimers();
+  });
+    
+  it('should scroll to active chat item when selected', async () => {
+    vi.useFakeTimers();
+    const scrollSpy = vi.fn();
+    const querySpy = vi.spyOn(document, 'querySelector').mockReturnValue({
+      scrollIntoView: scrollSpy
+    } as any);
+
+    mount(Sidebar, { global: { plugins: [router] } });
+    mockChatStore.currentChat.value = { id: 'chat-scroll-test' };
+    
+    await nextTick(); // watch triggered
+    await nextTick(); // await nextTick() inside watcher
+    vi.advanceTimersByTime(150); // setTimeout
+
+    expect(querySpy).toHaveBeenCalledWith('[data-testid="sidebar-chat-item-chat-scroll-test"]');
+    expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
+    
+    querySpy.mockRestore();
+    vi.useRealTimers();
+  });
 });
+    

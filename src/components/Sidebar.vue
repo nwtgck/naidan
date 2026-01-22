@@ -195,6 +195,19 @@ async function handleOpenChat(id: string) {
   router.push(`/chat/${id}`);
 }
 
+// Scroll active chat into view
+watch(() => currentChat.value?.id, async (id) => {
+  if (!id) return;
+  await nextTick();
+  // Wait a bit for potential transitions
+  setTimeout(() => {
+    const el = document.querySelector(`[data-testid="sidebar-chat-item-${id}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, 100);
+}, { immediate: true });
+
 async function handleDeleteChat(id: string) {
   const isCurrent = currentChat.value?.id === id;
   await chatStore.deleteChat(id);
@@ -553,6 +566,12 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
 
 .handle:active {
   cursor: grabbing;
+}
+
+.sidebar-chat-item, 
+.is-group > div:first-child {
+  scroll-margin-top: 48px;
+  scroll-margin-bottom: 48px;
 }
 
 .sortable-ghost {
