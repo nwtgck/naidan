@@ -110,21 +110,26 @@ function syncLiveInstancesWithSidebar() {
 
 let sidebarReloadTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastSidebarReload = 0;
+const THROTTLE_MS = 200;
+
 const debouncedSidebarReload = () => {
-  if (sidebarReloadTimeout) clearTimeout(sidebarReloadTimeout);
+  const now = Date.now();
   
   const performReload = async () => {
+    if (sidebarReloadTimeout) {
+      clearTimeout(sidebarReloadTimeout);
+      sidebarReloadTimeout = null;
+    }
     rootItems.value = await storageService.getSidebarStructure();
     syncLiveInstancesWithSidebar();
     lastSidebarReload = Date.now();
-    sidebarReloadTimeout = null;
   };
 
-  const now = Date.now();
-  if (now - lastSidebarReload > 2000) {
+  if (now - lastSidebarReload > THROTTLE_MS) {
     performReload();
-  } else {
-    sidebarReloadTimeout = setTimeout(performReload, 200);
+  } else if (!sidebarReloadTimeout) {
+    const delay = THROTTLE_MS - (now - lastSidebarReload);
+    sidebarReloadTimeout = setTimeout(performReload, delay);
   }
 };
 

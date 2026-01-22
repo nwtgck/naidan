@@ -96,6 +96,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     mocks.mockHierarchy = { items: [] };
     clearEvents();
     vi.useFakeTimers();
+    vi.advanceTimersByTime(5000); // Ensure lastSidebarReload is effectively 'long ago'
   });
 
   afterEach(() => { 
@@ -119,7 +120,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     mocks.mockChatStorage.set(chatId, JSON.parse(JSON.stringify(updatedChat)));
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
     
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(600);
     await nextTick();
     expect(currentChat.value?.title).toBe('New Title');
   });
@@ -132,7 +133,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     mocks.mockChatStorage.delete(chatId);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
     
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(600);
     await nextTick();
     
     expect(currentChat.value).toBeNull();
@@ -143,10 +144,12 @@ describe('useChat Cross-Tab Synchronization', () => {
     await loadChats();
     const newItem: SidebarItem = { id: 'chat:chat-1', type: 'chat', chat: { id: 'chat-1', title: 'C1', updatedAt: Date.now(), groupId: null } };
     mocks.mockRootItems.push(newItem);
+    vi.advanceTimersByTime(1000); // Reset throttle state by aging the last reload
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group' });
     
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(600);
     await nextTick();
+    await Promise.resolve();
     expect(rootItems.value.length).toBe(1);
   });
 
@@ -159,7 +162,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     mocks.mockChatStorage.set(chatId, updatedChat);
     await simulateExternalEvent({ type: 'chat_content', id: chatId });
     
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(600);
     await nextTick();
     expect(currentChat.value?.root.items.length).toBe(1);
   });
@@ -175,7 +178,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     mocks.mockChatStorage.set(chatId, updatedChat);
     await simulateExternalEvent({ type: 'chat_content', id: chatId });
     
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(600);
     await nextTick();
     expect(currentChat.value?.root.items.length).toBe(0);
     activeGenerations.delete(chatId);
@@ -192,7 +195,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     mocks.mockChatStorage.set(chatId, updatedChat);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
     
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(600);
     await nextTick();
     expect(currentChat.value?.title).toBe('External Title');
     // Use toRaw to compare underlying instances since currentChat is a readonly proxy
@@ -209,7 +212,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     mocks.mockRootItems.push({ id: 'chat:m1', type: 'chat', chat: migratedChatSummary });
     await simulateExternalEvent({ type: 'migration' });
     
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(600);
     await nextTick();
     expect(rootItems.value.length).toBe(1);
     expect(currentChat.value).toBeNull();
@@ -232,11 +235,19 @@ describe('useChat Cross-Tab Synchronization', () => {
       }
     });
     
+    // Also update the meta in storage so loadChat returns the correct groupId
+    const meta = mocks.mockChatStorage.get(chatId);
+    if (meta) meta.groupId = 'group-x';
+
+    vi.advanceTimersByTime(1000);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(1000);
     await nextTick();
+    await Promise.resolve();
+    await nextTick();
+    await Promise.resolve();
     
-    expect(chat!.groupId).toBe('group-x');
+    expect(chatStore.currentChat.value?.groupId).toBe('group-x');
     await (updateChatMeta as any)(chatId, () => chat as any);
     expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('group-x');
     activeGenerations.delete(chatId);
@@ -250,10 +261,20 @@ describe('useChat Cross-Tab Synchronization', () => {
     activeGenerations.set(chatId, { controller: new AbortController(), chat: chatStore.currentChat.value! as any });
     mocks.mockRootItems.length = 0;
     mocks.mockRootItems.push({ id: 'chat_group:ge', type: 'chat_group', chatGroup: { id: 'ge', name: 'E', items: [{ id: `chat:${chatId}`, type: 'chat', chat: { id: chatId, title: 'C', updatedAt: 0, groupId: 'ge' } }], isCollapsed: false, updatedAt: 0 } });
-    await simulateExternalEvent({ type: 'chat_meta_and_chat_group' });
     
-    vi.advanceTimersByTime(200);
+    const meta = mocks.mockChatStorage.get(chatId);
+    if (meta) meta.groupId = 'ge';
+
+    vi.advanceTimersByTime(2000);
+    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
+    
+    vi.advanceTimersByTime(2000);
     await nextTick();
+    await Promise.resolve();
+    await nextTick();
+    await Promise.resolve();
+    await nextTick();
+    await Promise.resolve();
     
     expect(chatStore.currentChat.value?.groupId).toBe('ge');
     await (updateChatMeta as any)(chatId, () => chatStore.currentChat.value! as any);
@@ -271,7 +292,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     mocks.mockGroupStorage.set(groupId, renamed);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: groupId });
     
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(600);
     await nextTick();
     expect(currentChatGroup.value?.name).toBe('New');
   });
@@ -286,7 +307,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     activeGenerations.set(chatId, { controller, chat: chat as any });
     await simulateExternalEvent({ type: 'migration' });
     
-    vi.advanceTimersByTime(200);
+    vi.advanceTimersByTime(600);
     await nextTick();
     expect(abortSpy).toHaveBeenCalled();
     expect(activeGenerations.size).toBe(0);

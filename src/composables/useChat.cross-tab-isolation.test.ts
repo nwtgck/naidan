@@ -201,10 +201,10 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabA = await createTab();
     const tabB = await createTab();
     const chat = await tabA.createNewChat(null, 'gpt-4');
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
     await tabB.openChat(chat!.id);
     await tabA.renameChat(chat!.id, 'New Title');
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
     await nextTick();
     expect(tabB.currentChat.value?.title).toBe('New Title');
   });
@@ -213,13 +213,13 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabA = await createTab();
     const tabB = await createTab();
     const chat = await tabA.createNewChat(null, 'gpt-4');
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
     await nextTick();
     expect(tabB.rootItems.value.length).toBe(1);
 
     const groupId = await tabA.createChatGroup('Group');
     await tabA.moveChatToGroup(chat!.id, groupId);
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
     await nextTick();
 
     const groupItem = tabB.rootItems.value[0];
@@ -234,14 +234,14 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabA = await createTab();
     const tabB = await createTab();
     const chat = await tabA.createNewChat(null, 'gpt-4');
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
     await tabB.openChat(chat!.id);
 
     const p = tabA.sendMessage('Hello');
     await vi.advanceTimersByTimeAsync(1000);
     await p;
     
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
     await nextTick();
 
     expect(tabB.activeMessages.value.length).toBe(2);
@@ -253,7 +253,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await createTab();
     const { storageService } = await import('../services/storage');
     await storageService.updateSettings((curr: any) => ({ ...curr, someNewSetting: true }));
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
     await nextTick();
     expect(vi.mocked(storageService.getSidebarStructure)).toHaveBeenCalled();
   });
@@ -262,13 +262,13 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabA = await createTab();
     const tabB = await createTab();
     const chat = await tabA.createNewChat(null, 'gpt-4');
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
     await tabB.openChat(chat!.id);
     expect(tabB.currentChat.value).not.toBeNull();
 
     const { storageService } = await import('../services/storage');
     await storageService.clearAll();
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
     await nextTick();
 
     expect(tabB.currentChat.value).toBeNull();
@@ -280,7 +280,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     
     const chat = await tabA.createNewChat(null, 'gpt-4');
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
     await tabB.openChat(chat!.id);
     
     // 1. Tab A starts sending a message
@@ -312,7 +312,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     // 1. Setup two chats
     const chat1 = await tab1.createNewChat(null, 'gpt-4');
     const chat2 = await tab2.createNewChat(null, 'gpt-4');
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(600);
 
     // 2. Both tabs open both chats (in reality they see them in sidebar)
     // We'll verify sidebar state via isTaskRunning
