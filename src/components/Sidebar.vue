@@ -104,7 +104,7 @@ function onDragOverGroup(groupId: string) {
   dragHoverTimeout = setTimeout(() => {
     const group = chatStore.chatGroups.value.find(g => g.id === groupId);
     if (group && group.isCollapsed) {
-      chatStore.toggleChatGroupCollapse(groupId);
+      chatStore.setChatGroupCollapsed({ groupId, isCollapsed: false });
     }
   }, 600); // 600ms hover to expand
 }
@@ -242,6 +242,16 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
   if (!newModelId) return;
   await updateGlobalModel(newModelId);
 }
+
+function handleToggleChatGroupCollapse(chatGroup: ChatGroup) {
+  // Toggle locally for instant, flicker-free feedback
+  chatGroup.isCollapsed = !chatGroup.isCollapsed;
+  // Persist to store
+  chatStore.setChatGroupCollapsed({ 
+    groupId: chatGroup.id, 
+    isCollapsed: chatGroup.isCollapsed 
+  });
+}
 </script>
 
 <template>
@@ -360,7 +370,7 @@ async function handleGlobalModelChange(newModelId: string | undefined) {
                 >
                   <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
                     <button 
-                      @click.stop="chatStore.toggleChatGroupCollapse(element.chatGroup.id)"
+                      @click.stop="handleToggleChatGroupCollapse(element.chatGroup)"
                       class="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
                     >
                       <component :is="element.chatGroup.isCollapsed ? ChevronRight : ChevronDown" class="w-3 h-3 flex-shrink-0" />

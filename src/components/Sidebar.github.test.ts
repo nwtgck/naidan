@@ -13,8 +13,8 @@ vi.mock('../composables/useChat', () => ({
     chats: ref([]),
     sidebarItems: ref([]),
     handleNewChat: vi.fn(),
-    loadChats: vi.fn(),
-    toggleChatGroupCollapse: vi.fn(),
+    openChatGroup: vi.fn(),
+    setChatGroupCollapsed: vi.fn(),
     persistSidebarStructure: vi.fn(),
   }),
 }));

@@ -47,21 +47,21 @@ describe('Sidebar DND Improvements', () => {
       chats: ref([]),
       isProcessing: vi.fn().mockReturnValue(false),
       openChatGroup: vi.fn(),
-      toggleChatGroupCollapse: vi.fn(),
+      setChatGroupCollapsed: vi.fn(),
       persistSidebarStructure: vi.fn(),
     };
     (useChat as any).mockReturnValue(mockChatStore);
     (useSettings as any).mockReturnValue({ settings: ref({}), isFetchingModels: ref(false) });
     (useLayout as any).mockReturnValue({ isSidebarOpen: ref(true), toggleSidebar: vi.fn() });
   });
-
+      
   it('should use sortable-ghost class for drag visualization', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
     const draggable = wrapper.findComponent({ name: 'draggable' });
     expect(draggable.props('ghostClass')).toBe('sortable-ghost');
   });
-
+      
   it('should have correct swap settings for intuitive nesting', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
@@ -69,7 +69,7 @@ describe('Sidebar DND Improvements', () => {
     expect(draggable.props('swapThreshold')).toBe(0.5);
     expect(draggable.props('invertSwap')).toBe(true);
   });
-
+      
   it('should have auto-scroll settings enabled on all draggables', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
@@ -81,7 +81,7 @@ describe('Sidebar DND Improvements', () => {
       expect(d.props('scrollSpeed')).toBe(20);
     });
   });
-
+      
   it('should use force-fallback for consistent drag appearance on all draggables', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
@@ -90,7 +90,7 @@ describe('Sidebar DND Improvements', () => {
       expect(d.props('forceFallback')).toBe(true);
     });
   });
-
+      
   it('should increase bottom padding during drag for easier end-of-list drops', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
@@ -100,7 +100,7 @@ describe('Sidebar DND Improvements', () => {
     await nextTick();
     expect(mainDraggable.attributes('class')).toContain('pb-32');
   });
-
+      
   it('should apply highlight class when dragging over a group', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
@@ -113,7 +113,7 @@ describe('Sidebar DND Improvements', () => {
     await groupItem.trigger('dragleave');
     expect(groupItem.attributes('class')).not.toContain('ring-2');
   });
-
+      
   it('should auto-expand collapsed group after hover delay', async () => {
     vi.useFakeTimers();
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
@@ -122,12 +122,12 @@ describe('Sidebar DND Improvements', () => {
     await nextTick();
     const groupItem = wrapper.find('[data-testid="chat-group-item"]');
     await groupItem.trigger('dragover');
-    expect(mockChatStore.toggleChatGroupCollapse).not.toHaveBeenCalled();
+    expect(mockChatStore.setChatGroupCollapsed).not.toHaveBeenCalled();
     vi.advanceTimersByTime(600);
-    expect(mockChatStore.toggleChatGroupCollapse).toHaveBeenCalledWith('g1');
+    expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
     vi.useRealTimers();
   });
-
+      
   it('should NOT auto-expand collapsed groups when a chat inside them is selected', async () => {
     vi.useFakeTimers();
     mount(Sidebar, { global: { plugins: [router] } });
@@ -137,12 +137,23 @@ describe('Sidebar DND Improvements', () => {
     mockChatStore.currentChat.value = { id: 'c1' };
     await nextTick();
     vi.advanceTimersByTime(150);
-    expect(mockChatStore.toggleChatGroupCollapse).not.toHaveBeenCalled();
+    expect(mockChatStore.setChatGroupCollapsed).not.toHaveBeenCalled();
     expect(mockChatStore.chatGroups.value[0].isCollapsed).toBe(true);
     vi.useRealTimers();
   });
-    
+      
+  it('should allow toggling any group regardless of selection', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+          
+    // Find the toggle button for the first group
+    const toggleButton = wrapper.find('[data-testid="chat-group-item"] button');
+    await toggleButton.trigger('click');
+          
+    expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
+  });
   it('should scroll to active chat item when selected', async () => {
+    
     vi.useFakeTimers();
     const scrollSpy = vi.fn();
     const querySpy = vi.spyOn(document, 'querySelector').mockReturnValue({

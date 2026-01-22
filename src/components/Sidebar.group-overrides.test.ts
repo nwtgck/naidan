@@ -13,7 +13,7 @@ const mockOpenChatGroup = vi.fn((id: string | null) => {
   const group = mockChatGroups.value.find(g => g.id === id);
   if (group) mockCurrentChatGroup.value = group;
 });
-const mockToggleChatGroupCollapse = vi.fn();
+const mockSetChatGroupCollapsed = vi.fn();
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -34,7 +34,7 @@ vi.mock('../composables/useChat', () => ({
     renameChatGroup: vi.fn(),
     openChat: vi.fn(),
     openChatGroup: mockOpenChatGroup,
-    toggleChatGroupCollapse: mockToggleChatGroupCollapse,
+    setChatGroupCollapsed: mockSetChatGroupCollapsed,
     persistSidebarStructure: vi.fn(),
     deleteAllChats: vi.fn(),
     isTaskRunning: vi.fn().mockReturnValue(false),
@@ -105,7 +105,7 @@ describe('Sidebar Group Overrides', () => {
     expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
   });
 
-  it('calls toggleChatGroupCollapse when clicking the expansion icon', async () => {
+  it('calls setChatGroupCollapsed when clicking the expansion icon', async () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
@@ -116,7 +116,7 @@ describe('Sidebar Group Overrides', () => {
     expect(collapseButton.exists()).toBe(true);
     await collapseButton.trigger('click');
 
-    expect(mockToggleChatGroupCollapse).toHaveBeenCalledWith('g1');
+    expect(mockSetChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: true });
     // Ensure the parent click handler was not triggered (using .stop)
     expect(mockOpenChatGroup).not.toHaveBeenCalled();
   });

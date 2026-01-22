@@ -906,11 +906,24 @@ export function useChat() {
     await loadData();
   };
 
-  const toggleChatGroupCollapse = async (groupId: string) => {
-    if (_currentChatGroup.value?.id === groupId) { _currentChatGroup.value.isCollapsed = !_currentChatGroup.value.isCollapsed; }
+  const setChatGroupCollapsed = async ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) => {
+    // 1. Update the item in the sidebar list immediately
+    const item = rootItems.value.find(i => i.type === 'chat_group' && i.chatGroup.id === groupId);
+    if (item && item.type === 'chat_group') {
+      item.chatGroup.isCollapsed = isCollapsed;
+      triggerRef(rootItems);
+    }
+
+    // 2. Update the dedicated "current group" ref
+    if (_currentChatGroup.value?.id === groupId) {
+      _currentChatGroup.value.isCollapsed = isCollapsed;
+    }
+
+    // 3. Persist to storage
     await storageService.updateChatGroup(groupId, (chatGroup) => {
       if (!chatGroup) throw new Error('Chat group not found');
-      chatGroup.isCollapsed = !chatGroup.isCollapsed; return chatGroup;
+      chatGroup.isCollapsed = isCollapsed;
+      return chatGroup;
     });
   };
 
@@ -984,7 +997,7 @@ export function useChat() {
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, toggleChatGroupCollapse, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
     __testOnly: {
       liveChatRegistry,

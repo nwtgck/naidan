@@ -27,9 +27,10 @@ vi.mock('../composables/useChat', () => ({
     }),
     loadChats: vi.fn(),
     createChatGroup: vi.fn(),
-    renameChatGroup: vi.fn(),
-    toggleChatGroupCollapse: vi.fn(),
+    openChatGroup: vi.fn(),
+    setChatGroupCollapsed: vi.fn(),
     persistSidebarStructure: vi.fn(),
+
     deleteAllChats: vi.fn(),
     isTaskRunning: (id: string) => mockActiveGenerations.has(id),
     isProcessing: (id: string) => mockActiveGenerations.has(id),
