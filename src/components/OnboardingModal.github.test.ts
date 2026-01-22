@@ -7,6 +7,7 @@ vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: { value: {} },
     save: vi.fn(),
+    initialized: { value: true },
     isOnboardingDismissed: { value: false },
     onboardingDraft: { value: null },
   }),

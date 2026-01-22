@@ -324,6 +324,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
 
 
+    it('applies animation classes for entrance effects', async () => {
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs },
+      });
+      await flushPromises();
+      
+      const modalContent = wrapper.find('.modal-content-zoom');
+      expect(modalContent.exists()).toBe(true);
+    });
+
     it('ensures SettingsModal has correct z-index when dialogs are triggered', async () => {
       // Mount SettingsModal
       const wrapper = mount(SettingsModal, { 

@@ -64,9 +64,15 @@ vi.mock('./components/Sidebar.vue', () => ({
 vi.mock('./components/OnboardingModal.vue', () => ({
   default: {
     name: 'OnboardingModal',
-    template: '<div data-testid="onboarding-modal"></div>',
+    setup() {
+      const { initialized, isOnboardingDismissed } = useSettings();
+      return { show: computed(() => initialized.value && !isOnboardingDismissed.value) };
+    },
+    template: '<div v-if="show" data-testid="onboarding-modal"></div>',
   },
 }));
+
+import { computed } from 'vue';
 
 vi.mock('./components/ToastContainer.vue', () => ({
   default: {

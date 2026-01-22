@@ -516,42 +516,44 @@ onUnmounted(() => {
               <FolderInput class="w-5 h-5" />
             </button>
 
-            <div 
-              v-if="showMoveMenu" 
-              class="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 animate-in fade-in zoom-in duration-200"
-              @mouseleave="showMoveMenu = false"
-            >
-              <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
-                Move to Group
-              </div>
-              <div class="max-h-64 overflow-y-auto">
-                <button 
-                  @click="handleMoveToGroup(null)"
-                  class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
-                  :class="!currentChat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
-                >
-                  <div class="flex items-center gap-2">
-                    <X class="w-4 h-4 opacity-50" />
-                    <span>Top Level</span>
-                  </div>
-                  <ChevronRight v-if="!currentChat.groupId" class="w-4 h-4" />
-                </button>
+            <Transition name="dropdown">
+              <div 
+                v-if="showMoveMenu" 
+                class="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden origin-top-right"
+                @mouseleave="showMoveMenu = false"
+              >
+                <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
+                  Move to Group
+                </div>
+                <div class="max-h-64 overflow-y-auto">
+                  <button 
+                    @click="handleMoveToGroup(null)"
+                    class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
+                    :class="!currentChat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                  >
+                    <div class="flex items-center gap-2">
+                      <X class="w-4 h-4 opacity-50" />
+                      <span>Top Level</span>
+                    </div>
+                    <ChevronRight v-if="!currentChat.groupId" class="w-4 h-4" />
+                  </button>
 
-                <button 
-                  v-for="group in chatStore.chatGroups.value" 
-                  :key="group.id"
-                  @click="handleMoveToGroup(group.id)"
-                  class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
-                  :class="currentChat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
-                >
-                  <div class="flex items-center gap-2 overflow-hidden">
-                    <Folder class="w-4 h-4 opacity-50 shrink-0" />
-                    <span class="truncate">{{ group.name }}</span>
-                  </div>
-                  <ChevronRight v-if="currentChat.groupId === group.id" class="w-4 h-4" />
-                </button>
+                  <button 
+                    v-for="group in chatStore.chatGroups.value" 
+                    :key="group.id"
+                    @click="handleMoveToGroup(group.id)"
+                    class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
+                    :class="currentChat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                  >
+                    <div class="flex items-center gap-2 overflow-hidden">
+                      <Folder class="w-4 h-4 opacity-50 shrink-0" />
+                      <span class="truncate">{{ group.name }}</span>
+                    </div>
+                    <ChevronRight v-if="currentChat.groupId === group.id" class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-            </div>
+            </Transition>
           </div>
 
           <button 
@@ -583,29 +585,31 @@ onUnmounted(() => {
         </div>
 
         <!-- Kebab Menu Dropdown -->
-        <div 
-          v-if="showMoreMenu" 
-          class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 animate-in fade-in zoom-in duration-200"
-          @mouseleave="showMoreMenu = false"
-        >
-          <button 
-            @click="chatStore.toggleDebug(); showMoreMenu = false"
-            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-            :class="currentChat?.debugEnabled 
-              ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
-              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
-            "
+        <Transition name="dropdown">
+          <div 
+            v-if="showMoreMenu" 
+            class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-top-right"
+            @mouseleave="showMoreMenu = false"
           >
-            <Bug class="w-4 h-4" />
-            <span>Debug Mode</span>
-          </button>
-        </div>
+            <button 
+              @click="chatStore.toggleDebug(); showMoreMenu = false"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
+              :class="currentChat?.debugEnabled 
+                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
+                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
+              "
+            >
+              <Bug class="w-4 h-4" />
+              <span>Debug Mode</span>
+            </button>
+          </div>
+        </Transition>
       </div>
     </div>
 
     <!-- Chat Settings Panel -->
     <ChatSettingsPanel 
-      v-if="showChatSettings" 
+      :show="showChatSettings" 
       @close="showChatSettings = false" 
     />
 
@@ -768,6 +772,18 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Dropdown Transition */
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: all 0.2s ease;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: scale(0.95) translateY(-10px);
+}
+
 /* Simplified animations */
 .animate-in {
   animation-fill-mode: forwards;

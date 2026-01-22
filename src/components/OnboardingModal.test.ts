@@ -312,6 +312,14 @@ describe('OnboardingModal.vue', () => {
     expect(wrapper.find('[data-testid="model-selector-trigger"]').text()).toBe('model-y');
   });
 
+  it('applies animation classes for entrance effects', () => {
+    const wrapper = mount(OnboardingModal);
+    
+    // Check modal content animation class
+    const modalContent = wrapper.find('.modal-content-zoom');
+    expect(modalContent.exists()).toBe(true);
+  });
+
   it('supports adding and removing custom HTTP headers in UI', async () => {
     // Prevent transition to Step 2
     listModelsMock.mockReturnValue(new Promise(() => {})); 

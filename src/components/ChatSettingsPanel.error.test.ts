@@ -41,6 +41,7 @@ describe('ChatSettingsPanel Error Handling', () => {
     mockFetchAvailableModels.mockResolvedValue([]); // No models found triggers error in component logic
     
     const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
       global: {
         stubs: {
           ModelSelector: true,

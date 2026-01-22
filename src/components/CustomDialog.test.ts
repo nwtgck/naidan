@@ -91,7 +91,8 @@ describe('CustomDialog.vue', () => {
   });
 
   it('emits cancel event when escape key is pressed', async () => {
-    await wrapper.trigger('keydown.esc');
+    const overlay = wrapper.find('[data-testid="custom-dialog-overlay"]');
+    await overlay.trigger('keydown.esc');
     expect(wrapper.emitted('cancel')).toBeTruthy();
   });
 
@@ -103,6 +104,11 @@ describe('CustomDialog.vue', () => {
   it('applies the weakened backdrop blur class', () => {
     const overlay = wrapper.find('[data-testid="custom-dialog-overlay"]');
     expect(overlay.classes()).toContain('backdrop-blur-[2px]');
+  });
+
+  it('applies animation classes for entrance effects', () => {
+    const dialogContent = wrapper.find('.modal-content-zoom');
+    expect(dialogContent.exists()).toBe(true);
   });
 
   it('renders icon when provided', async () => {

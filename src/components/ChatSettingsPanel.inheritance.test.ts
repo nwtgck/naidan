@@ -76,7 +76,10 @@ describe('ChatSettingsPanel Inheritance UI', () => {
 
   it('shows Global placeholders when not in a group', () => {
     mockCurrentChat.value.groupId = null;
-    const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatSettingsPanel, { 
+      props: { show: true },
+      global: { stubs: globalStubs } 
+    });
 
     const urlInput = wrapper.find('[data-testid="chat-setting-url-input"]');
     expect(urlInput.attributes('placeholder')).toBe('http://global-url (Global)');
@@ -90,7 +93,10 @@ describe('ChatSettingsPanel Inheritance UI', () => {
 
   it('shows Group placeholders when chat belongs to a group with overrides', () => {
     mockCurrentChat.value.groupId = 'group-1';
-    const wrapper = mount(ChatSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatSettingsPanel, { 
+      props: { show: true },
+      global: { stubs: globalStubs } 
+    });
 
     const urlInput = wrapper.find('[data-testid="chat-setting-url-input"]');
     expect(urlInput.attributes('placeholder')).toBe('http://group-url (Group)');
