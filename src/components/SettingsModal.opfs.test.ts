@@ -1,6 +1,6 @@
- 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { ref, nextTick } from 'vue';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '../composables/useSettings';
 import { useConfirm } from '../composables/useConfirm';
@@ -8,11 +8,11 @@ import { useConfirm } from '../composables/useConfirm';
 // Mock dependencies
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
-    settings: { value: { storageType: 'local', providerProfiles: [] } },
+    settings: ref({ storageType: 'local', providerProfiles: [] }),
     save: vi.fn(),
     updateProviderProfiles: vi.fn(),
-    availableModels: { value: [] },
-    isFetchingModels: { value: false },
+    availableModels: ref([]),
+    isFetchingModels: ref(false),
     fetchModels: vi.fn(),
   })),
 }));
@@ -42,10 +42,20 @@ vi.mock('../services/storage', () => ({
 
 describe('SettingsModal OPFS and Error Handling', () => {
   const globalMocks = {
+    stubs: {
+      Activity: true, RefreshCw: true, Loader2: true, Globe: true,
+      BookmarkPlus: true, Database: true, Cpu: true, Bot: true,
+      Check: true, Pencil: true, Target: true, Trash: true,
+      Trash2: true, X: true, CheckCircle2: true, Save: true,
+      Type: true, FlaskConical: true, AlertTriangle: true, ShieldCheck: true,
+      Logo: true, ImportExportModal: true, ChefHat: true, Download: true,
+      Github: true, ExternalLink: true, Plus: true, Info: true,
+      FileArchive: true, HardDrive: true, MessageSquareQuote: true,
+    },
     provide: {
       'Symbol(router)': {
         push: vi.fn(),
-        currentRoute: { value: { path: '/' } }
+        currentRoute: ref({ path: '/' })
       }
     }
   };
@@ -54,6 +64,11 @@ describe('SettingsModal OPFS and Error Handling', () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
+
+  async function wait() {
+    await new Promise(r => setTimeout(r, 100));
+    await nextTick();
+  }
 
   it('should disable OPFS option if navigator.storage is undefined', async () => {
     vi.stubGlobal('navigator', {}); 
@@ -66,8 +81,9 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await flushPromises();
     
     const tabs = wrapper.findAll('button');
-    const storageTab = tabs.find(b => b.text().includes('Storage'));
+    const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
     if (storageTab) await storageTab.trigger('click');
+    await wait();
     
     const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
@@ -88,8 +104,9 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await flushPromises();
     
     const tabs = wrapper.findAll('button');
-    const storageTab = tabs.find(b => b.text().includes('Storage'));
+    const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
     if (storageTab) await storageTab.trigger('click');
+    await wait();
     
     const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
@@ -97,10 +114,11 @@ describe('SettingsModal OPFS and Error Handling', () => {
   });
 
   it('should enable OPFS option if supported and secure', async () => {
+    const mockFileHandle = {
+      createWritable: vi.fn().mockResolvedValue({}),
+    };
     const mockDirectoryHandle = {
-      getFileHandle: vi.fn().mockResolvedValue({
-        createWritable: vi.fn().mockResolvedValue({}),
-      }),
+      getFileHandle: vi.fn().mockResolvedValue(mockFileHandle),
       removeEntry: vi.fn().mockResolvedValue(undefined),
     };
     vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) } });
@@ -113,8 +131,9 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await flushPromises();
     
     const tabs = wrapper.findAll('button');
-    const storageTab = tabs.find(b => b.text().includes('Storage'));
+    const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
     if (storageTab) await storageTab.trigger('click');
+    await wait();
     
     const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).not.toContain('cursor-not-allowed');
@@ -123,10 +142,11 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
   it('should show error dialog if save/migration fails', async () => {
     vi.stubGlobal('isSecureContext', true);
+    const mockFileHandle = {
+      createWritable: vi.fn().mockResolvedValue({}),
+    };
     const mockDirectoryHandle = {
-      getFileHandle: vi.fn().mockResolvedValue({
-        createWritable: vi.fn().mockResolvedValue({}),
-      }),
+      getFileHandle: vi.fn().mockResolvedValue(mockFileHandle),
       removeEntry: vi.fn().mockResolvedValue(undefined),
     };
     vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) } });
@@ -135,14 +155,14 @@ describe('SettingsModal OPFS and Error Handling', () => {
     const mockShowConfirm = vi.fn().mockResolvedValue(true);
 
     vi.mocked(useSettings).mockReturnValue({
-      settings: { value: { storageType: 'local', providerProfiles: [], endpointUrl: '' } } as any,
+      settings: ref({ storageType: 'local', providerProfiles: [], endpointUrl: '' }),
       save: mockSave,
       updateProviderProfiles: vi.fn(),
-      initialized: { value: true } as any,
-      isOnboardingDismissed: { value: true } as any,
-      onboardingDraft: { value: null } as any,
-      availableModels: { value: [] } as any,
-      isFetchingModels: { value: false } as any,
+      initialized: ref(true),
+      isOnboardingDismissed: ref(true),
+      onboardingDraft: ref(null),
+      availableModels: ref([]),
+      isFetchingModels: ref(false),
       init: vi.fn(),
       fetchModels: vi.fn(),
       updateGlobalModel: vi.fn(),
@@ -156,20 +176,20 @@ describe('SettingsModal OPFS and Error Handling', () => {
         __testOnlyReset: vi.fn(),
         __testOnlySetSettings: vi.fn(),
       }
-    });
+    } as any);
 
     vi.mocked(useConfirm).mockReturnValue({
       showConfirm: mockShowConfirm,
-      isConfirmOpen: { value: false } as any,
-      confirmTitle: { value: '' } as any,
-      confirmMessage: { value: '' } as any,
-      confirmConfirmButtonText: { value: '' } as any,
-      confirmCancelButtonText: { value: '' } as any,
-      confirmButtonVariant: { value: 'primary' } as any,
-      confirmIcon: { value: undefined } as any,
+      isConfirmOpen: ref(false),
+      confirmTitle: ref(''),
+      confirmMessage: ref(''),
+      confirmConfirmButtonText: ref(''),
+      confirmCancelButtonText: ref(''),
+      confirmButtonVariant: ref('primary'),
+      confirmIcon: ref(undefined),
       handleConfirm: vi.fn(),
       handleCancel: vi.fn(),
-    });
+    } as any);
 
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
