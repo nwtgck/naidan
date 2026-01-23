@@ -6,6 +6,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
+import AboutTab from './AboutTab.vue';
 import { Loader2 } from 'lucide-vue-next';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
@@ -420,9 +421,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     const navButtons = wrapper.findAll('nav button');
     await navButtons.find(b => b.text().includes('About'))?.trigger('click');
+    await flushPromises();
+
+    // Find the AboutTab component
+    const aboutTab = wrapper.findComponent(AboutTab);
+    expect(aboutTab.exists()).toBe(true);
     
     // Manually set the state to bypass unreliable dynamic import mock
-    const vm = wrapper.vm as any;
+    const vm = aboutTab.vm as any;
     vm.ossLicenses = [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }];
     vm.isLoadingLicenses = false;
     
