@@ -136,7 +136,7 @@ export const chatGroupToDto = (domain: ChatGroup): ChatGroupDto => ({
   name: domain.name,
   isCollapsed: domain.isCollapsed,
   updatedAt: domain.updatedAt,
-  endpoint: domain.endpoint ? {
+  endpoint: (domain.endpoint && domain.endpoint.type !== 'transformer_js') ? {
     type: domain.endpoint.type as EndpointTypeDto,
     url: domain.endpoint.url,
     httpHeaders: domain.endpoint.httpHeaders,
@@ -280,7 +280,7 @@ export const chatMetaToDto = (domain: ChatMeta): ChatMetaDto => ({
   createdAt: domain.createdAt,
   updatedAt: domain.updatedAt,
   debugEnabled: domain.debugEnabled,
-  endpoint: domain.endpoint ? {
+  endpoint: (domain.endpoint && domain.endpoint.type !== 'transformer_js') ? {
     type: domain.endpoint.type as EndpointTypeDto,
     url: domain.endpoint.url,
     httpHeaders: domain.endpoint.httpHeaders,
@@ -317,7 +317,7 @@ export const chatToDto = (domain: Chat): ChatDto => {
     createdAt,
     updatedAt,
     debugEnabled,
-    endpoint: endpointType ? {
+    endpoint: (endpointType && endpointType !== 'transformer_js') ? {
       type: endpointType as EndpointTypeDto,
       url: endpointUrl,
       httpHeaders: endpointHttpHeaders,

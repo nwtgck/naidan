@@ -4,6 +4,7 @@ import { storageService } from '../services/storage';
 import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
+import { TransformerJsProvider } from '../services/transformer-js-provider';
 import { StorageTypeSchemaDto } from '../models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
 
@@ -77,9 +78,9 @@ export function useSettings() {
         const s = await storageService.loadSettings();
         if (s) {
           _settings.value = s;
-          if (s.endpointUrl) {
+          if (s.endpointUrl || s.endpointType === 'transformer_js') {
             _isOnboardingDismissed.value = true;
-            // Initial fetch of models if we have an endpoint
+            // Initial fetch of models if we have an endpoint or using browser AI
             fetchModels();
           }
         } else {
@@ -97,18 +98,32 @@ export function useSettings() {
   }
 
   async function fetchModels() {
-    if (!_settings.value.endpointUrl) {
+    if (!_settings.value.endpointUrl && _settings.value.endpointType !== 'transformer_js') {
       availableModels.value = [];
       return;
     }
     isFetchingModels.value = true;
     try {
-      const provider = _settings.value.endpointType === 'ollama' 
-        ? new OllamaProvider() 
-        : new OpenAIProvider();
+      let provider: OpenAIProvider | OllamaProvider | TransformerJsProvider;
+      switch (_settings.value.endpointType) {
+      case 'ollama':
+        provider = new OllamaProvider();
+        break;
+      case 'transformer_js':
+        provider = new TransformerJsProvider();
+        break;
+      case 'openai':
+        provider = new OpenAIProvider();
+        break;
+      default: {
+        const _ex: never = _settings.value.endpointType;
+        void _ex;
+        provider = new OpenAIProvider();
+      }
+      }
       
       const mutableHeaders = _settings.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(_settings.value.endpointHttpHeaders)) : undefined;
-      const models = await provider.listModels(_settings.value.endpointUrl, mutableHeaders);
+      const models = await provider.listModels(_settings.value.endpointUrl || '', mutableHeaders);
       availableModels.value = models;
     } catch (err) {
       const { addErrorEvent } = useGlobalEvents();

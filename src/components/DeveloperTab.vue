@@ -3,6 +3,7 @@ import { useSampleChat } from '../composables/useSampleChat';
 import { useConfirm } from '../composables/useConfirm';
 import { storageService } from '../services/storage';
 import { Cpu, FlaskConical, AlertTriangle, Trash2 } from 'lucide-vue-next';
+import TransformerJsManager from './TransformerJsManager.vue';
 
 defineProps<{
   storageType: string;
@@ -47,6 +48,10 @@ async function handleResetData() {
             </button>
           </div>
           <p class="text-[11px] font-medium text-gray-400 ml-1">Adds a sample conversation with complex structures to verify rendering.</p>
+
+          <div class="pt-6 mt-2 border-t border-gray-100 dark:border-gray-800">
+            <TransformerJsManager />
+          </div>
         </div>
 
         <div class="pt-8 border-t border-gray-100 dark:border-gray-800 space-y-5">
