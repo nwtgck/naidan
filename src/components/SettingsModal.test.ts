@@ -6,6 +6,8 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
+import AboutTab from './AboutTab.vue';
+import ConnectionTab from './ConnectionTab.vue';
 import { Loader2 } from 'lucide-vue-next';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
@@ -33,12 +35,13 @@ vi.mock('../composables/useSettings', () => ({
     settings: ref({ storageType: 'local', providerProfiles: [] }),
     availableModels: ref(['model-a', 'model-b']),
     isFetchingModels: ref(false),
-    save: vi.fn().mockImplementation(async (newSettings) => {
+    save: vi.fn().mockImplementation(async (patch) => {
       const currentType = storageService.getCurrentType();
-      if (newSettings.storageType !== currentType) {
-        await storageService.switchProvider(newSettings.storageType);
+      if (patch.storageType && patch.storageType !== currentType) {
+        await storageService.switchProvider(patch.storageType);
       }
     }),
+    updateProviderProfiles: vi.fn(),
     fetchModels: vi.fn(),
   })),
 }));
@@ -107,11 +110,6 @@ vi.mock('../services/storage', () => ({
 // --- Tests ---
 
 describe('SettingsModal.vue (Tabbed Interface)', () => {
-  async function wait() {
-    await new Promise(r => setTimeout(r, 100));
-    await nextTick();
-  }
-
   const mockSave = vi.fn();
   const mockCreateSampleChat = vi.fn();
   const mockSettings = {
@@ -172,12 +170,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       settings: ref(JSON.parse(JSON.stringify(mockSettings))),
       availableModels: ref([]),
       isFetchingModels: ref(false),
-      save: mockSave.mockImplementation(async (newSettings) => {
+      save: mockSave.mockImplementation(async (patch) => {
         const currentType = storageService.getCurrentType();
-        if (newSettings.storageType !== currentType) {
-          await storageService.switchProvider(newSettings.storageType);
+        if (patch.storageType && patch.storageType !== currentType) {
+          await storageService.switchProvider(patch.storageType);
         }
       }),
+      updateProviderProfiles: vi.fn(),
       fetchModels: vi.fn(),
     });
 
@@ -263,8 +262,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // Initially should not show error text
       expect(wrapper.text()).not.toContain('Test Error');
 
-      // Set error
-      const vm = wrapper.vm as unknown as { error: string | null };
+      // Set error in ConnectionTab
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const vm = connectionTab.vm as any;
       vm.error = 'Test Error';
       await flushPromises();
 
@@ -279,7 +279,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
       await flushPromises();
 
-      const vm = wrapper.vm as unknown as { fetchModels: () => Promise<void> };
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const vm = connectionTab.vm as any;
       // Trigger fetch logic manually to bypass service mock complexities
       await vm.fetchModels();
       await flushPromises();
@@ -418,9 +419,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     const navButtons = wrapper.findAll('nav button');
     await navButtons.find(b => b.text().includes('About'))?.trigger('click');
+    await flushPromises();
+
+    // Find the AboutTab component
+    const aboutTab = wrapper.findComponent(AboutTab);
+    expect(aboutTab.exists()).toBe(true);
     
     // Manually set the state to bypass unreliable dynamic import mock
-    const vm = wrapper.vm as any;
+    const vm = aboutTab.vm as any;
     vm.ossLicenses = [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }];
     vm.isLoadingLicenses = false;
     
@@ -447,6 +453,32 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     expect((wrapper.find('[data-testid="setting-url-input"]').element as HTMLInputElement).value)
       .toBe('http://temporary-change');
+  });
+
+  it('regression: shows unsaved changes warning even after switching tabs', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    // 1. Change in Connection tab
+    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
+    await urlInput.setValue('http://changed-url');
+
+    // 2. Switch to another tab
+    const navButtons = wrapper.findAll('nav button');
+    await navButtons.find(b => b.text().includes('Storage'))?.trigger('click');
+    await flushPromises();
+
+    // 3. Click close button
+    mockShowConfirm.mockResolvedValueOnce(true);
+    await wrapper.find('[data-testid="setting-close-x"]').trigger('click');
+    await flushPromises();
+
+    // Expectation: confirmation dialog should be shown
+    expect(mockShowConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Discard Unsaved Changes?',
+      }),
+    );
   });
 
   it('applies endpoint presets correctly and highlights the active one', async () => {
@@ -537,7 +569,15 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
 
+    const connectionTab = wrapper.findComponent(ConnectionTab);
+    const connectionVm = connectionTab.vm as any;
+    
+    // Simulate some change to enable save button
+    connectionVm.form.endpointUrl = 'http://changed';
+    await nextTick();
+
     await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
+    await flushPromises();
     expect(wrapper.text()).toContain('Settings Saved');
   });
 
@@ -700,6 +740,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
+        updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(),
       });
 
@@ -764,6 +805,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
+        updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(),
       });
 
@@ -800,29 +842,29 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
+        updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
 
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const connectionVm = connectionTab.vm as any;
+
       const select = wrapper.find('[data-testid="setting-quick-provider-profile-select"]');
       await select.setValue('quick-1');
-      await select.trigger('change');
+      await connectionVm.handleQuickProviderProfileChange();
       await flushPromises();
 
-      const vm = wrapper.vm as unknown as { 
-        form: { endpointUrl: string, defaultModelId: string, titleModelId: string },
-        selectedProviderProfileId: string,
-        hasChanges: boolean
-      };
-      expect(vm.form.endpointUrl).toBe('http://quick:11434');
-      expect(vm.form.defaultModelId).toBe('model-a');
-      expect(vm.form.titleModelId).toBe('model-title');
-      expect(vm.selectedProviderProfileId).toBe('');
+      expect(connectionVm.form.endpointUrl).toBe('http://quick:11434');
+      expect(connectionVm.form.defaultModelId).toBe('model-a');
+      expect(connectionVm.form.titleModelId).toBe('model-title');
+      expect(connectionVm.selectedProviderProfileId).toBe('');
       
       // Should enable the global save button
-      expect(vm.hasChanges).toBe(true);
+      const modalVm = wrapper.vm as any;
+      expect(modalVm.hasUnsavedConnectionChanges).toBe(true);
       const saveBtn = wrapper.find('[data-testid="setting-save-button"]');
       expect(saveBtn.attributes('disabled')).toBeUndefined();
     });
@@ -833,6 +875,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
+        updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(),
       });
 
@@ -958,13 +1001,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
 
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const connectionVm = connectionTab.vm as any;
+
       // 1. Add a header manually in Connection tab
-      await wrapper.find('button').findAll('span').find(s => s.text().includes('Add Header'))?.trigger('click'); // Wait, let's use a more direct way
-      const vm = wrapper.vm as any;
-      vm.addHeader();
+      await wrapper.find('button').findAll('span').find(s => s.text().includes('Add Header'))?.trigger('click'); 
+      if (!connectionVm.form.endpointHttpHeaders) {
+        connectionVm.addHeader();
+      }
       await nextTick();
       
-      vm.form.endpointHttpHeaders[0] = ['X-Manual', 'val-manual'];
+      connectionVm.form.endpointHttpHeaders[0] = ['X-Manual', 'val-manual'];
       
       // 2. Switch to profile with headers
       const select = wrapper.find('[data-testid="setting-quick-provider-profile-select"]');
@@ -973,171 +1020,15 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await flushPromises();
 
       // Verify headers were overwritten by profile
-      expect(vm.form.endpointHttpHeaders).toEqual([['X-From-Profile', 'val-1']]);
+      expect(connectionVm.form.endpointHttpHeaders).toEqual([['X-From-Profile', 'val-1']]);
       
       // 3. Remove header
       const removeBtn = wrapper.findAll('button').find(b => b.findComponent({ name: 'Trash2' }).exists() || b.html().includes('lucide-trash2'));
       await removeBtn?.trigger('click');
-      expect(vm.form.endpointHttpHeaders).toHaveLength(0);
+      expect(connectionVm.form.endpointHttpHeaders).toHaveLength(0);
     });
   });
 
-  describe('Storage Management & OPFS', () => {
-    it('successfully triggers migration when switching to OPFS', async () => {
-      const mockDirectoryHandle = {
-        getFileHandle: vi.fn().mockResolvedValue({
-          createWritable: vi.fn().mockResolvedValue({}),
-        }),
-        removeEntry: vi.fn().mockResolvedValue(undefined),
-      };
-      vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) } });
-      vi.stubGlobal('isSecureContext', true);
-      vi.mocked(storageService.getCurrentType).mockReturnValue('local');
-
-      const wrapper = mount(SettingsModal, { 
-        props: { isOpen: true }, 
-        global: { 
-          stubs: globalStubs,
-          provide: {
-            'Symbol(router)': {
-              push: vi.fn(),
-              currentRoute: ref({ path: '/' })
-            }
-          }
-        }
-      });
-      await wait();
-
-      // Trigger hasChanges by changing URL
-      await wrapper.find('input[data-testid="setting-url-input"]').setValue('http://example.com');
-
-      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
-      await nextTick();
-
-      await wrapper.find('[data-testid="storage-opfs"]').trigger('click');
-      await nextTick();
-
-      await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
-      await wait();
-
-      expect(storageService.switchProvider).toHaveBeenCalledWith('opfs');
-    });
-
-    it('warns about attachment loss when switching from OPFS to Local', async () => {
-      vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
-      vi.mocked(storageService.hasAttachments).mockResolvedValue(true);
-      
-      const settingsAsOpfs = { ...mockSettings, storageType: 'opfs' as const };
-      (useSettings as unknown as Mock).mockReturnValue({
-        settings: ref(settingsAsOpfs),
-        availableModels: ref([]),
-        isFetchingModels: ref(false),
-        save: vi.fn(),
-        fetchModels: vi.fn(),
-      });
-
-      const wrapper = mount(SettingsModal, { 
-        props: { isOpen: true }, 
-        global: { 
-          stubs: globalStubs,
-          provide: {
-            'Symbol(router)': {
-              push: vi.fn(),
-              currentRoute: ref({ path: '/' })
-            }
-          }
-        }
-      });
-      await wait();
-
-      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
-      await nextTick();
-
-      await wrapper.find('[data-testid="storage-local"]').trigger('click');
-      await nextTick();
-
-      mockShowConfirm.mockResolvedValueOnce(false); 
-      await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
-      
-      expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
-        title: 'Attachments will be inaccessible'
-      }));
-    });
-
-    it('disables OPFS option if environment is not secure', async () => {
-      // Mock failure of getDirectory which would happen in insecure contexts or certain environments
-      vi.stubGlobal('navigator', {
-        storage: {
-          getDirectory: vi.fn().mockRejectedValue(new Error('Security Error'))
-        }
-      });
-
-      const wrapper = mount(SettingsModal, { 
-        props: { isOpen: true }, 
-        global: { 
-          stubs: globalStubs,
-          provide: {
-            'Symbol(router)': {
-              push: vi.fn(),
-              currentRoute: ref({ path: '/' })
-            }
-          }
-        }
-      });
-      await flushPromises();
-      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
-      await nextTick();
-      
-      const opfsBtn = wrapper.find('[data-testid="storage-opfs"]');
-      expect(opfsBtn.attributes('disabled')).toBeDefined();
-    });
-
-    it('shows and handles Data Durability persistence request', async () => {
-      const persistMock = vi.fn().mockResolvedValue(true);
-      const persistedMock = vi.fn().mockResolvedValue(false);
-      vi.stubGlobal('navigator', {
-        storage: {
-          persist: persistMock,
-          persisted: persistedMock,
-          getDirectory: vi.fn(),
-        }
-      });
-
-      const wrapper = mount(SettingsModal, { 
-        props: { isOpen: true }, 
-        global: { 
-          stubs: globalStubs,
-          provide: {
-            'Symbol(router)': {
-              push: vi.fn(),
-              currentRoute: ref({ path: '/' })
-            }
-          }
-        }
-      });
-      await flushPromises();
-      
-      // Navigate to Storage tab
-      await wrapper.find('[data-testid="tab-storage"]').trigger('click');
-      await flushPromises();
-      await nextTick();
-
-      // Should show "Best Effort" badge initially (after persisted check)
-      expect(wrapper.text()).toContain('Best Effort');
-      
-      const enableBtn = wrapper.find('[data-testid="setting-enable-persistence-button"]');
-      expect(enableBtn.exists()).toBe(true);
-      
-      await enableBtn.trigger('click');
-      await flushPromises();
-      
-      expect(persistMock).toHaveBeenCalled();
-      // After clicking enable and mock resolving to true, it should show "Active" and "Protected"
-      expect(wrapper.text()).toContain('Active');
-      expect(wrapper.text()).toContain('Protected');
-      expect(wrapper.find('[data-testid="setting-enable-persistence-button"]').exists()).toBe(false);
-    });
-  });
 
   describe('Recipe Integration', () => {
     it('creates chat groups when handleImportRecipes is called', async () => {

@@ -1,5 +1,5 @@
 import { ref, readonly } from 'vue';
-import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType } from '../models/types';
+import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, type ProviderProfile } from '../models/types';
 import { storageService } from '../services/storage';
 import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
@@ -123,25 +123,36 @@ export function useSettings() {
     }
   }
 
-  async function save(newSettings: Settings) {
+  async function save(patch: Partial<Settings>) {
     const oldUrl = _settings.value.endpointUrl;
     const oldType = _settings.value.endpointType;
     
-    _settings.value = { ...newSettings };
+    // Update local reactive state
+    _settings.value = { ..._settings.value, ...patch };
     
-    const currentProviderType = storageService.getCurrentType();
-    if (newSettings.storageType !== currentProviderType) {
-      await storageService.switchProvider(newSettings.storageType);
+    // If storage type is changed, handle provider switching/migration
+    if (patch.storageType && patch.storageType !== storageService.getCurrentType()) {
+      await storageService.switchProvider(patch.storageType);
     }
     
-    await storageService.updateSettings(() => _settings.value);
+    // Persist as a patch to ensure we don't overwrite concurrent changes to other fields
+    await storageService.updateSettings((curr) => ({ ...curr, ...patch } as Settings));
 
-    if (newSettings.endpointUrl !== oldUrl || newSettings.endpointType !== oldType) {
+    // Re-fetch models if connection changed
+    const urlChanged = patch.endpointUrl !== undefined && patch.endpointUrl !== oldUrl;
+    const typeChanged = patch.endpointType !== undefined && patch.endpointType !== oldType;
+    if (urlChanged || typeChanged) {
       await fetchModels();
     }
   }
 
   // --- Explicit Actions ---
+
+  async function updateProviderProfiles(profiles: ProviderProfile[]) {
+    const patch = { providerProfiles: [...profiles] };
+    _settings.value.providerProfiles = patch.providerProfiles;
+    await storageService.updateSettings((curr) => ({ ...curr, ...patch } as Settings));
+  }
 
   async function updateGlobalModel(modelId: string) {
     _settings.value.defaultModelId = modelId;
@@ -223,6 +234,7 @@ export function useSettings() {
     init,
     save,
     fetchModels,
+    updateProviderProfiles,
     updateGlobalModel,
     updateGlobalEndpoint,
     updateSystemPrompt,
