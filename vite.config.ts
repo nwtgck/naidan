@@ -9,6 +9,7 @@ import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
 import license from 'rollup-plugin-license'
+import { viteStaticCopy } from 'vite-plugin-static-copy'
 
 // Ensure src/assets/licenses.json exists even in a fresh clone (it's gitignored)
 // This prevents Vite from failing during import analysis in tests.
@@ -54,6 +55,14 @@ export default defineConfig(({ mode }) => {
       }),
       VueDevTools(),
       vue(),
+      !isStandalone && viteStaticCopy({
+        targets: [
+          {
+            src: 'node_modules/@huggingface/transformers/dist/ort-wasm-simd-threaded.jsep.*',
+            dest: 'transformers'
+          }
+        ]
+      }),
       license({
         thirdParty: {
           includePrivate: false,

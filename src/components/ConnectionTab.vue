@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
+import { TransformerJsProvider } from '../services/transformer-js-provider';
 import type { ProviderProfile, Settings } from '../models/types';
 import { capitalize } from '../utils/string';
 import { 
@@ -28,6 +29,7 @@ const emit = defineEmits<{
 }>();
 
 const { save, fetchModels: fetchModelsGlobal, updateProviderProfiles } = useSettings();
+const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 const { showConfirm } = useConfirm();
 const { showPrompt } = usePrompt();
 
@@ -54,18 +56,32 @@ function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
 }
 
 async function fetchModels() {
-  if (!form.value.endpointUrl) {
+  if (!form.value.endpointUrl && form.value.endpointType !== 'transformer_js') {
     return;
   }
   
   error.value = null;
   try {
-    const provider = form.value.endpointType === 'ollama' 
-      ? new OllamaProvider() 
-      : new OpenAIProvider();
+    let provider: OpenAIProvider | OllamaProvider | TransformerJsProvider;
+    switch (form.value.endpointType) {
+    case 'ollama':
+      provider = new OllamaProvider();
+      break;
+    case 'transformer_js':
+      provider = new TransformerJsProvider();
+      break;
+    case 'openai':
+      provider = new OpenAIProvider();
+      break;
+    default: {
+      const _ex: never = form.value.endpointType;
+      void _ex;
+      provider = new OpenAIProvider();
+    }
+    }
     
     const mutableHeaders = form.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(form.value.endpointHttpHeaders)) : undefined;
-    await provider.listModels(form.value.endpointUrl, mutableHeaders);
+    await provider.listModels(form.value.endpointUrl || '', mutableHeaders);
     error.value = null;
     connectionSuccess.value = true;
     setTimeout(() => {
@@ -161,8 +177,8 @@ function removeHeader(index: number) {
 }
 
 // Auto-fetch only for localhost
-watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => {
-  if (url && (url.includes('localhost') || url.includes('127.0.0.1'))) {
+watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url, type]) => {
+  if (type === 'transformer_js' || (url && (url.includes('localhost') || url.includes('127.0.0.1')))) {
     fetchModels();
   }
 });
@@ -212,8 +228,8 @@ defineExpose({
                 >
                   <option value="openai">OpenAI Compatible</option>
                   <option value="ollama">Ollama</option>
-                </select>
-              </div>
+                  <option value="transformer_js" :disabled="isStandalone">Browser AI (Experimental) {{ isStandalone ? '(Hosted only)' : '' }}</option>
+                </select>              </div>
 
               <!-- Endpoint URL -->
               <div class="space-y-4">

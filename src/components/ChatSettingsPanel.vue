@@ -20,10 +20,12 @@ const emit = defineEmits<{
 }>();
 
 const chatStore = useChat();
+const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 const {
   currentChat,
   fetchingModels,
   resolvedSettings,
+  availableModels,
 } = chatStore;
 const { settings } = useSettings();
 
@@ -115,7 +117,11 @@ async function fetchModels() {
   if (currentChat.value) {
     error.value = null;
     try {
-      const models = await chatStore.fetchAvailableModels(currentChat.value.id);
+      const models = await chatStore.fetchAvailableModels(currentChat.value.id, {
+        type: localSettings.value.endpointType || resolvedSettings.value?.endpointType || settings.value.endpointType,
+        url: localSettings.value.endpointUrl || resolvedSettings.value?.endpointUrl || settings.value.endpointUrl || '',
+        headers: localSettings.value.endpointHttpHeaders
+      });
       if (models.length === 0) {
         error.value = 'No models found at this endpoint.';
       }
@@ -129,9 +135,9 @@ async function fetchModels() {
 watch([
   () => localSettings.value.endpointUrl, 
   () => localSettings.value.endpointType,
-], ([url]) => {
+], ([url, type]) => {
   error.value = null;
-  if (url && isLocalhost(url as string)) {
+  if (type === 'transformer_js' || (url && isLocalhost(url as string))) {
     fetchModels();
   }
 });
@@ -240,6 +246,7 @@ async function handleRestoreDefaults() {
                 <option :value="undefined">{{ formatLabel(resolvedSettings?.endpointType, resolvedSettings?.sources.endpointType) }}</option>
                 <option value="openai">OpenAI Compatible</option>
                 <option value="ollama">Ollama</option>
+                <option value="transformer_js" :disabled="isStandalone">Browser AI (Experimental) {{ isStandalone ? '(Hosted only)' : '' }}</option>
               </select>
             </div>
 
@@ -309,6 +316,7 @@ async function handleRestoreDefaults() {
               <ModelSelector 
                 :model-value="localSettings.modelId"
                 @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
+                :models="availableModels"
                 :loading="fetchingModels"
                 :placeholder="formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId)"
                 :allow-clear="true"

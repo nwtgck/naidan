@@ -4,6 +4,7 @@ import { useSettings } from '../composables/useSettings';
 import ThemeToggle from './ThemeToggle.vue';
 import { useToast } from '../composables/useToast';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
+import { TransformerJsProvider } from '../services/transformer-js-provider';
 import { type EndpointType, type Settings as SettingsType } from '../models/types';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import Logo from './Logo.vue';
@@ -67,7 +68,7 @@ function handleCancelConnect() {
 }
 
 async function handleConnect() {
-  const url = getNormalizedUrl();
+  const url = selectedType.value === 'transformer_js' ? 'browser' : getNormalizedUrl();
   if (!url) {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
@@ -78,7 +79,24 @@ async function handleConnect() {
   abortController = new AbortController();
 
   try {
-    const provider = selectedType.value === 'openai' ? new OpenAIProvider() : new OllamaProvider();
+    let provider: OpenAIProvider | OllamaProvider | TransformerJsProvider;
+    switch (selectedType.value) {
+    case 'ollama':
+      provider = new OllamaProvider();
+      break;
+    case 'transformer_js':
+      provider = new TransformerJsProvider();
+      break;
+    case 'openai':
+      provider = new OpenAIProvider();
+      break;
+    default: {
+      const _ex: never = selectedType.value;
+      void _ex;
+      provider = new OpenAIProvider();
+    }
+    }
+
     const models = await provider.listModels(url, customHeaders.value, abortController.signal);
 
     if (models.length === 0) {
@@ -120,9 +138,9 @@ async function handleClose() {
 }
 
 async function handleFinish() {
-  const url = getNormalizedUrl();
+  const url = selectedType.value === 'transformer_js' ? '' : getNormalizedUrl();
   
-  if (!url) {
+  if (selectedType.value !== 'transformer_js' && !url) {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
   }
@@ -215,55 +233,78 @@ async function handleFinish() {
                         class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors"
                         :class="selectedType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                       >Ollama</button>
+
+                      <button 
+                        @click="selectedType = 'transformer_js'"
+                        class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors"
+                        :class="selectedType === 'transformer_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
+                      >Browser AI</button>
                     </div>
                   
                   </div>
-                  <input
-                    v-model="customUrl"
-                    type="text"
-                    placeholder="http://localhost:11434"
-                    class="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all dark:text-white"
-                    @keydown.enter="$event => !$event.isComposing && handleConnect()"
-                  />
 
-                  <!-- Custom HTTP Headers -->
-                  <div class="space-y-3">
-                    <div class="flex items-center justify-between ml-1">
-                      <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
-                      <button 
-                        @click="addHeader"
-                        type="button"
-                        class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
-                      >
-                        <Plus class="w-2.5 h-2.5" />
-                        Add Header
-                      </button>
-                    </div>
+                  <div v-if="selectedType !== 'transformer_js'" class="space-y-3 animate-in fade-in duration-300">
+                    <input
+                      v-model="customUrl"
+                      type="text"
+                      placeholder="http://localhost:11434"
+                      class="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all dark:text-white"
+                      @keydown.enter="$event => !$event.isComposing && handleConnect()"
+                    />
 
-                    <div v-if="customHeaders.length > 0" class="space-y-2 max-h-[120px] overflow-y-auto no-scrollbar">
-                      <div 
-                        v-for="(header, index) in customHeaders" 
-                        :key="index"
-                        class="flex gap-2 animate-in fade-in slide-in-from-left-1 duration-200"
-                      >
-                        <input 
-                          v-model="header[0]"
-                          type="text"
-                          class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
-                          placeholder="Name"
-                        />
-                        <input 
-                          v-model="header[1]"
-                          type="text"
-                          class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
-                          placeholder="Value"
-                        />
+                    <!-- Custom HTTP Headers -->
+                    <div class="space-y-3">
+                      <div class="flex items-center justify-between ml-1">
+                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
                         <button 
-                          @click="removeHeader(index)"
-                          class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                          @click="addHeader"
+                          type="button"
+                          class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
                         >
-                          <Trash2 class="w-3.5 h-3.5" />
+                          <Plus class="w-2.5 h-2.5" />
+                          Add Header
                         </button>
+                      </div>
+
+                      <div v-if="customHeaders.length > 0" class="space-y-2 max-h-[120px] overflow-y-auto no-scrollbar">
+                        <div 
+                          v-for="(header, index) in customHeaders" 
+                          :key="index"
+                          class="flex gap-2 animate-in fade-in slide-in-from-left-1 duration-200"
+                        >
+                          <input 
+                            v-model="header[0]"
+                            type="text"
+                            class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
+                            placeholder="Name"
+                          />
+                          <input 
+                            v-model="header[1]"
+                            type="text"
+                            class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
+                            placeholder="Value"
+                          />
+                          <button 
+                            @click="removeHeader(index)"
+                            class="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 class="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-else class="p-6 bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-2xl animate-in fade-in duration-500">
+                    <div class="flex items-start gap-3">
+                      <div class="p-2 bg-purple-100 dark:bg-purple-900/40 rounded-lg text-purple-600 dark:text-purple-400 shrink-0">
+                        <Activity class="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 class="text-sm font-bold text-purple-900 dark:text-purple-300">Run LLMs in your Browser</h4>
+                        <p class="text-xs text-purple-700 dark:text-purple-400 leading-relaxed mt-1">
+                          No external server or API key required. Models will be downloaded and executed directly on your device using WebAssembly and WebGPU (if available).
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -277,17 +318,17 @@ async function handleFinish() {
                   <div class="flex gap-2">
                     <button
                       @click="handleConnect"
-                      :disabled="!isValidUrl || isTesting"
+                      :disabled="(selectedType !== 'transformer_js' && !isValidUrl) || isTesting"
                       class="flex-1 py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2"
                       data-testid="onboarding-connect-button"
                     >
                       <template v-if="isTesting">
                         <span class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                        <span>Connecting...</span>
+                        <span>{{ selectedType === 'transformer_js' ? 'Initializing...' : 'Connecting...' }}</span>
                       </template>
                       <template v-else>
                         <Activity class="w-5 h-5" />
-                        <span>Check Connection</span>
+                        <span>{{ selectedType === 'transformer_js' ? 'Initialize Engine' : 'Check Connection' }}</span>
                       </template>
                     </button>
                     <button

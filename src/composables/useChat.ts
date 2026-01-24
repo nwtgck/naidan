@@ -2,6 +2,7 @@ import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } 
 import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
+import { TransformerJsProvider } from '../services/transformer-js-provider';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
@@ -289,7 +290,7 @@ export function useChat() {
       headers = settings.value.endpointHttpHeaders;
     }
 
-    if (!url) {
+    if (!url && type !== 'transformer_js') {
       if (mutableChat) { decTask(mutableChat.id, 'fetch'); }
       else if (!customEndpoint) {
         const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
@@ -299,7 +300,24 @@ export function useChat() {
     }
     
     try {
-      const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+      let provider: OpenAIProvider | OllamaProvider | TransformerJsProvider;
+      switch (type) {
+      case 'ollama':
+        provider = new OllamaProvider();
+        break;
+      case 'transformer_js':
+        provider = new TransformerJsProvider();
+        break;
+      case 'openai':
+        provider = new OpenAIProvider();
+        break;
+      default: {
+        const _ex: never = type;
+        void _ex;
+        provider = new OpenAIProvider();
+      }
+      }
+
       const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
       const models = await provider.listModels(url, mutableHeaders);
       const result = Array.isArray(models) ? models : [];
@@ -544,7 +562,24 @@ export function useChat() {
     const resolvedModel = assistantNode.modelId || resolved.modelId;
 
     try {
-      const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+      let provider: OpenAIProvider | OllamaProvider | TransformerJsProvider;
+      switch (type) {
+      case 'ollama':
+        provider = new OllamaProvider();
+        break;
+      case 'transformer_js':
+        provider = new TransformerJsProvider();
+        break;
+      case 'openai':
+        provider = new OpenAIProvider();
+        break;
+      default: {
+        const _ex: never = type;
+        void _ex;
+        provider = new OpenAIProvider();
+      }
+      }
+
       const headers = resolved.endpointHttpHeaders;
       const finalMessages: ChatMessage[] = [];
       resolved.systemPromptMessages.forEach(content => finalMessages.push({ role: 'system', content }));
@@ -591,7 +626,11 @@ export function useChat() {
       mutableChat.updatedAt = Date.now();
       
       if (mutableChat.title === null && settings.value.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
-        await generateChatTitle(mutableChat.id, controller.signal);
+        try {
+          await generateChatTitle(mutableChat.id, controller.signal);
+        } catch (titleErr) {
+          console.warn('Failed to generate chat title:', titleErr);
+        }
       }
     } catch (e) {
       if ((e as Error).name === 'AbortError') assistantNode.content += '\n\n[Generation Aborted]';
@@ -646,7 +685,7 @@ export function useChat() {
       const url = resolved.endpointUrl;
       let resolvedModel = chat.modelId || resolved.modelId;
 
-      if (url) {
+      if (url || type === 'transformer_js') {
         const models = await fetchAvailableModels(chat.id);
         if (models.length > 0) {
           const preferredModel = chat.modelId || resolved.modelId;
@@ -748,14 +787,39 @@ export function useChat() {
     registerLiveInstance(mutableChat);
     try {
       const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
-      if (!resolved.endpointUrl) { decTask(taskId, 'title'); return; }
+      if (!resolved.endpointUrl && resolved.endpointType !== 'transformer_js') { decTask(taskId, 'title'); return; }
       const history = getChatBranch(mutableChat);
       const content = history[0]?.content || '';
       if (!content || typeof content !== 'string') { decTask(taskId, 'title'); return; }
 
+      let titleProvider: OpenAIProvider | OllamaProvider | TransformerJsProvider;
+      switch (resolved.endpointType) {
+      case 'ollama':
+        titleProvider = new OllamaProvider();
+        break;
+      case 'transformer_js':
+        titleProvider = new TransformerJsProvider();
+        break;
+      case 'openai':
+        titleProvider = new OpenAIProvider();
+        break;
+      default: {
+        const _ex: never = resolved.endpointType;
+        void _ex;
+        titleProvider = new OpenAIProvider();
+      }
+      }
+
       let generatedTitle = '';
-      const titleProvider = resolved.endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-      const titleGenModel = settings.value.titleModelId || history[history.length - 1]?.modelId || resolved.modelId;
+      const isTransformer = resolved.endpointType === 'transformer_js';
+      let titleGenModel = settings.value.titleModelId || history[history.length - 1]?.modelId || resolved.modelId;
+      
+      // If using Browser AI, make sure the title model is also a HF ID. 
+      // If it looks like an Ollama model (no slash), fallback to the current model.
+      if (isTransformer && titleGenModel && !titleGenModel.includes('/')) {
+        titleGenModel = history[history.length - 1]?.modelId || resolved.modelId;
+      }
+
       if (!titleGenModel) return;
 
       const lang = detectLanguage({ 
@@ -768,7 +832,7 @@ export function useChat() {
         { role: 'user', content: `Message content to summarize: "${content.slice(0, 1000)}"` },
       ];
 
-      await titleProvider.chat(promptMsgs, titleGenModel, resolved.endpointUrl, (chunk) => {
+      await titleProvider.chat(promptMsgs, titleGenModel, resolved.endpointUrl || '', (chunk) => {
         generatedTitle += chunk;
       }, undefined, resolved.endpointHttpHeaders, signal);
 
