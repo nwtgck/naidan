@@ -7,6 +7,7 @@ import { ref, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import AboutTab from './AboutTab.vue';
+import ConnectionTab from './ConnectionTab.vue';
 import { Loader2 } from 'lucide-vue-next';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
@@ -261,8 +262,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // Initially should not show error text
       expect(wrapper.text()).not.toContain('Test Error');
 
-      // Set error
-      const vm = wrapper.vm as unknown as { error: string | null };
+      // Set error in ConnectionTab
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const vm = connectionTab.vm as any;
       vm.error = 'Test Error';
       await flushPromises();
 
@@ -277,7 +279,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
       await flushPromises();
 
-      const vm = wrapper.vm as unknown as { fetchModels: () => Promise<void> };
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const vm = connectionTab.vm as any;
       // Trigger fetch logic manually to bypass service mock complexities
       await vm.fetchModels();
       await flushPromises();
@@ -540,7 +543,15 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
 
+    const connectionTab = wrapper.findComponent(ConnectionTab);
+    const connectionVm = connectionTab.vm as any;
+    
+    // Simulate some change to enable save button
+    connectionVm.form.endpointUrl = 'http://changed';
+    await nextTick();
+
     await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
+    await flushPromises();
     expect(wrapper.text()).toContain('Settings Saved');
   });
 
@@ -812,23 +823,21 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
 
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const connectionVm = connectionTab.vm as any;
+
       const select = wrapper.find('[data-testid="setting-quick-provider-profile-select"]');
       await select.setValue('quick-1');
-      await select.trigger('change');
+      await connectionVm.handleQuickProviderProfileChange();
       await flushPromises();
 
-      const vm = wrapper.vm as unknown as { 
-        form: { endpointUrl: string, defaultModelId: string, titleModelId: string },
-        selectedProviderProfileId: string,
-        hasUnsavedConnectionChanges: boolean
-      };
-      expect(vm.form.endpointUrl).toBe('http://quick:11434');
-      expect(vm.form.defaultModelId).toBe('model-a');
-      expect(vm.form.titleModelId).toBe('model-title');
-      expect(vm.selectedProviderProfileId).toBe('');
+      expect(connectionVm.form.endpointUrl).toBe('http://quick:11434');
+      expect(connectionVm.form.defaultModelId).toBe('model-a');
+      expect(connectionVm.form.titleModelId).toBe('model-title');
+      expect(connectionVm.selectedProviderProfileId).toBe('');
       
       // Should enable the global save button
-      expect(vm.hasUnsavedConnectionChanges).toBe(true);
+      expect(connectionVm.hasUnsavedChanges()).toBe(true);
       const saveBtn = wrapper.find('[data-testid="setting-save-button"]');
       expect(saveBtn.attributes('disabled')).toBeUndefined();
     });
@@ -965,13 +974,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
 
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const connectionVm = connectionTab.vm as any;
+
       // 1. Add a header manually in Connection tab
-      await wrapper.find('button').findAll('span').find(s => s.text().includes('Add Header'))?.trigger('click'); // Wait, let's use a more direct way
-      const vm = wrapper.vm as any;
-      vm.addHeader();
+      await wrapper.find('button').findAll('span').find(s => s.text().includes('Add Header'))?.trigger('click'); 
+      if (!connectionVm.form.endpointHttpHeaders) {
+        connectionVm.addHeader();
+      }
       await nextTick();
       
-      vm.form.endpointHttpHeaders[0] = ['X-Manual', 'val-manual'];
+      connectionVm.form.endpointHttpHeaders[0] = ['X-Manual', 'val-manual'];
       
       // 2. Switch to profile with headers
       const select = wrapper.find('[data-testid="setting-quick-provider-profile-select"]');
@@ -980,12 +993,12 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await flushPromises();
 
       // Verify headers were overwritten by profile
-      expect(vm.form.endpointHttpHeaders).toEqual([['X-From-Profile', 'val-1']]);
+      expect(connectionVm.form.endpointHttpHeaders).toEqual([['X-From-Profile', 'val-1']]);
       
       // 3. Remove header
       const removeBtn = wrapper.findAll('button').find(b => b.findComponent({ name: 'Trash2' }).exists() || b.html().includes('lucide-trash2'));
       await removeBtn?.trigger('click');
-      expect(vm.form.endpointHttpHeaders).toHaveLength(0);
+      expect(connectionVm.form.endpointHttpHeaders).toHaveLength(0);
     });
   });
 
