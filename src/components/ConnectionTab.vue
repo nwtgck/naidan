@@ -19,10 +19,12 @@ const props = defineProps<{
   modelValue: Settings;
   availableModels: readonly string[];
   isFetchingModels: boolean;
+  hasUnsavedChanges: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: Settings): void;
+  (e: 'save'): void;
 }>();
 
 const { save, fetchModels: fetchModelsGlobal, updateProviderProfiles } = useSettings();
@@ -35,38 +37,18 @@ const form = computed({
 });
 
 const connectionSuccess = ref(false);
+
 const error = ref<string | null>(null);
+
 const saveSuccess = ref(false);
+
 const selectedProviderProfileId = ref('');
-const initialFormState = ref('');
 
-function pickConnectionFields(s: Settings) {
-  return {
-    endpointType: s.endpointType,
-    endpointUrl: s.endpointUrl,
-    endpointHttpHeaders: JSON.stringify(s.endpointHttpHeaders),
-    defaultModelId: s.defaultModelId,
-    titleModelId: s.titleModelId,
-    autoTitleEnabled: s.autoTitleEnabled,
-    systemPrompt: s.systemPrompt,
-    lmParameters: JSON.stringify(s.lmParameters),
-  };
-}
 
-const hasUnsavedChanges = computed(() => {
-  const current = pickConnectionFields(form.value);
-  const initial = JSON.parse(initialFormState.value || '{}');
-  return JSON.stringify(current) !== JSON.stringify(initial);
-});
-
-// Initialize initial state when the component is created or when form changes significantly (initial load)
-watch(() => props.modelValue, (newVal, oldVal) => {
-  if (!oldVal || initialFormState.value === '') {
-    initialFormState.value = JSON.stringify(pickConnectionFields(newVal));
-  }
-}, { immediate: true });
 
 function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
+
+
   form.value.endpointType = preset.type;
   form.value.endpointUrl = preset.url;
 }
@@ -91,9 +73,7 @@ async function fetchModels() {
     }, 3000);
     
     // Also trigger global fetch if it's the current settings
-    if (!hasUnsavedChanges.value) {
-      await fetchModelsGlobal();
-    }
+    await fetchModelsGlobal();
   } catch (err) {
     console.error(err);
     error.value = err instanceof Error ? err.message : 'Connection failed. Check URL or provider.';
@@ -113,7 +93,7 @@ async function handleSave() {
       lmParameters: form.value.lmParameters,
     });
 
-    initialFormState.value = JSON.stringify(pickConnectionFields(form.value));
+    emit('save');
     saveSuccess.value = true;
     setTimeout(() => {
       saveSuccess.value = false;
@@ -188,10 +168,6 @@ watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => 
 });
 
 defineExpose({
-  hasUnsavedChanges: () => hasUnsavedChanges.value,
-  resetInitialState: () => {
-    initialFormState.value = JSON.stringify(pickConnectionFields(form.value));
-  },
   fetchModels
 });
 </script>

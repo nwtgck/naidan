@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed, nextTick } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
 import { useToast } from '../composables/useToast';
@@ -39,7 +39,27 @@ const { showConfirm } = useConfirm(); // Initialize useConfirm
 const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 
 const form = ref<Settings>(JSON.parse(JSON.stringify(settings.value)));
+const initialFormState = ref('');
 const connectionTabRef = ref<InstanceType<typeof ConnectionTab> | null>(null);
+
+function pickConnectionFields(s: Settings) {
+  return {
+    endpointType: s.endpointType,
+    endpointUrl: s.endpointUrl,
+    endpointHttpHeaders: JSON.stringify(s.endpointHttpHeaders),
+    defaultModelId: s.defaultModelId,
+    titleModelId: s.titleModelId,
+    autoTitleEnabled: s.autoTitleEnabled,
+    systemPrompt: s.systemPrompt,
+    lmParameters: JSON.stringify(s.lmParameters),
+  };
+}
+
+const hasUnsavedConnectionChanges = computed(() => {
+  const current = pickConnectionFields(form.value);
+  const initial = JSON.parse(initialFormState.value || '{}');
+  return JSON.stringify(current) !== JSON.stringify(initial);
+});
 
 async function handleImportRecipes(recipes: { newName: string; matchedModelId?: string; recipe: ChatGroupRecipe }[]) {
   try {
@@ -68,12 +88,8 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
 type Tab = 'connection' | 'recipes' | 'profiles' | 'storage' | 'developer' | 'about';
 const activeTab = ref<Tab>('connection');
 
-async function handleCancel() { // Make function async
-  const hasUnsavedChanges = activeTab.value === 'connection' 
-    ? connectionTabRef.value?.hasUnsavedChanges() 
-    : false;
-
-  if (hasUnsavedChanges) {
+async function handleCancel() {
+  if (hasUnsavedConnectionChanges.value) {
     const confirmed = await showConfirm({
       title: 'Discard Unsaved Changes?',
       message: 'You have unsaved changes in your connection settings. Are you sure you want to discard them?',
@@ -152,11 +168,15 @@ watch(recipeJsonInput, () => {
 });
 
 // Watch for modal open to reset form
-watch(() => props.isOpen, (open) => {
+watch(() => props.isOpen, async (open) => {
   if (open) {
     form.value = JSON.parse(JSON.stringify(settings.value)) as Settings;
-    connectionTabRef.value?.resetInitialState();
-    connectionTabRef.value?.fetchModels();
+    initialFormState.value = JSON.stringify(pickConnectionFields(form.value));
+    
+    await nextTick();
+    if (connectionTabRef.value) {
+      connectionTabRef.value.fetchModels();
+    }
   }
 });
 
@@ -288,6 +308,8 @@ watch(() => props.isOpen, (open) => {
             v-model="form"
             :available-models="availableModels"
             :is-fetching-models="isFetchingModels"
+            :has-unsaved-changes="hasUnsavedConnectionChanges"
+            @save="initialFormState = JSON.stringify(pickConnectionFields(form))"
           />
           <div v-else class="flex-1 overflow-y-auto min-h-0">
             <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">

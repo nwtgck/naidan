@@ -455,6 +455,32 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       .toBe('http://temporary-change');
   });
 
+  it('regression: shows unsaved changes warning even after switching tabs', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    // 1. Change in Connection tab
+    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
+    await urlInput.setValue('http://changed-url');
+
+    // 2. Switch to another tab
+    const navButtons = wrapper.findAll('nav button');
+    await navButtons.find(b => b.text().includes('Storage'))?.trigger('click');
+    await flushPromises();
+
+    // 3. Click close button
+    mockShowConfirm.mockResolvedValueOnce(true);
+    await wrapper.find('[data-testid="setting-close-x"]').trigger('click');
+    await flushPromises();
+
+    // Expectation: confirmation dialog should be shown
+    expect(mockShowConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Discard Unsaved Changes?',
+      }),
+    );
+  });
+
   it('applies endpoint presets correctly and highlights the active one', async () => {
     const wrapper = mount(SettingsModal, { 
       props: { isOpen: true },
@@ -837,7 +863,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(connectionVm.selectedProviderProfileId).toBe('');
       
       // Should enable the global save button
-      expect(connectionVm.hasUnsavedChanges()).toBe(true);
+      const modalVm = wrapper.vm as any;
+      expect(modalVm.hasUnsavedConnectionChanges).toBe(true);
       const saveBtn = wrapper.find('[data-testid="setting-save-button"]');
       expect(saveBtn.attributes('disabled')).toBeUndefined();
     });
