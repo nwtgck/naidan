@@ -31,7 +31,7 @@ const RegexFlagSchema = z.enum(['i']);
  * Model matching criteria.
  */
 export const RecipeModelSchema = z.object({
-  kind: z.literal('regex'),
+  type: z.literal('regex'),
   pattern: z.string(),
   flags: z.array(RegexFlagSchema),
 });

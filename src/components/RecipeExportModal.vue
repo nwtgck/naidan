@@ -56,7 +56,7 @@ const exportedRecipeJson = computed(() => {
     systemPrompt: recipeForm.value.systemPrompt.content ? recipeForm.value.systemPrompt : undefined,
     lmParameters: props.lmParameters,
     models: recipeForm.value.models.map(m => ({
-      kind: 'regex',
+      type: 'regex',
       pattern: m.pattern,
       flags: m.caseSensitive ? [] : ['i'],
     })),

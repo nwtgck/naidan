@@ -23,7 +23,7 @@ describe('RecipeImportTab.vue', () => {
     const recipe = {
       type: 'chat_group_recipe',
       name: 'Test Recipe',
-      models: [{ kind: 'regex', pattern: 'llama3', flags: ['i'] }]
+      models: [{ type: 'regex', pattern: 'llama3', flags: ['i'] }]
     };
 
     await textarea.setValue(JSON.stringify(recipe));

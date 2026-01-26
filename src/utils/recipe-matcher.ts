@@ -14,7 +14,7 @@ export function matchRecipeModels(
   availableModelIds: readonly string[]
 ): MatchResult {
   for (const recipeModel of recipeModels) {
-    switch (recipeModel.kind) {
+    switch (recipeModel.type) {
     case 'regex':
       try {
         const regex = new RegExp(recipeModel.pattern, recipeModel.flags.join(''));
@@ -27,8 +27,8 @@ export function matchRecipeModels(
       }
       break;
     default: {
-      const _ex: never = recipeModel.kind;
-      return { error: `Unknown model kind: ${String(_ex)}` };
+      const _ex: never = recipeModel.type;
+      return { error: `Unknown model type: ${String(_ex)}` };
     }
     }
   }
@@ -51,7 +51,7 @@ export function getAllMatchingModels(
   const errors: string[] = [];
 
   for (const recipeModel of recipeModels) {
-    switch (recipeModel.kind) {
+    switch (recipeModel.type) {
     case 'regex':
       try {
         const regex = new RegExp(recipeModel.pattern, recipeModel.flags.join(''));
@@ -65,8 +65,8 @@ export function getAllMatchingModels(
       }
       break;
     default: {
-      const _ex: never = recipeModel.kind;
-      errors.push(`Unknown model kind: ${String(_ex)}`);
+      const _ex: never = recipeModel.type;
+      errors.push(`Unknown model type: ${String(_ex)}`);
     }
     }
   }

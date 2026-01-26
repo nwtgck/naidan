@@ -8,7 +8,7 @@ describe('recipe-matcher', () => {
   describe('matchRecipeModels', () => {
     it('should match a simple regex pattern', () => {
       const models: RecipeModel[] = [
-        { kind: 'regex', pattern: 'gpt-4', flags: ['i'] }
+        { type: 'regex', pattern: 'gpt-4', flags: ['i'] }
       ];
       const result = matchRecipeModels(models, availableModels);
       expect(result.modelId).toBe('gpt-4o');
@@ -16,8 +16,8 @@ describe('recipe-matcher', () => {
 
     it('should match the first matching pattern in order', () => {
       const models: RecipeModel[] = [
-        { kind: 'regex', pattern: 'llama3:70b', flags: ['i'] },
-        { kind: 'regex', pattern: 'llama3', flags: ['i'] }
+        { type: 'regex', pattern: 'llama3:70b', flags: ['i'] },
+        { type: 'regex', pattern: 'llama3', flags: ['i'] }
       ];
       const result = matchRecipeModels(models, availableModels);
       expect(result.modelId).toBe('llama3:70b');
@@ -25,7 +25,7 @@ describe('recipe-matcher', () => {
 
     it('should return undefined modelId if no match is found', () => {
       const models: RecipeModel[] = [
-        { kind: 'regex', pattern: 'claude', flags: ['i'] }
+        { type: 'regex', pattern: 'claude', flags: ['i'] }
       ];
       const result = matchRecipeModels(models, availableModels);
       expect(result.modelId).toBeUndefined();
@@ -33,7 +33,7 @@ describe('recipe-matcher', () => {
 
     it('should return an error for invalid regex', () => {
       const models: RecipeModel[] = [
-        { kind: 'regex', pattern: '[', flags: ['i'] }
+        { type: 'regex', pattern: '[', flags: ['i'] }
       ];
       const result = matchRecipeModels(models, availableModels);
       expect(result.error).toContain('Invalid regex');
@@ -43,8 +43,8 @@ describe('recipe-matcher', () => {
   describe('getAllMatchingModels', () => {
     it('should return all matching models for multiple patterns', () => {
       const models: RecipeModel[] = [
-        { kind: 'regex', pattern: 'llama3', flags: ['i'] },
-        { kind: 'regex', pattern: 'gpt', flags: ['i'] }
+        { type: 'regex', pattern: 'llama3', flags: ['i'] },
+        { type: 'regex', pattern: 'gpt', flags: ['i'] }
       ];
       const result = getAllMatchingModels(models, availableModels);
       expect(result.matches).toContain('llama3:8b');
@@ -56,8 +56,8 @@ describe('recipe-matcher', () => {
 
     it('should return unique matches even if patterns overlap', () => {
       const models: RecipeModel[] = [
-        { kind: 'regex', pattern: 'llama3', flags: ['i'] },
-        { kind: 'regex', pattern: 'llama3:8b', flags: ['i'] }
+        { type: 'regex', pattern: 'llama3', flags: ['i'] },
+        { type: 'regex', pattern: 'llama3:8b', flags: ['i'] }
       ];
       const result = getAllMatchingModels(models, availableModels);
       expect(result.matches).toContain('llama3:8b');
