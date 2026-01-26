@@ -190,4 +190,21 @@ describe('ModelSelector.vue', () => {
       expect(modelSpan.classes()).toContain('whitespace-normal');
     });
   });
+
+  it('preserves the order of models as provided in props', async () => {
+    const customModels = ['model-z', 'model-a', 'model-m'];
+    const wrapper = mount(ModelSelector, {
+      props: {
+        modelValue: undefined,
+        models: customModels,
+      },
+    });
+
+    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+
+    const listItems = wrapper.findAll('.custom-scrollbar button span.break-all');
+    const displayedOrder = listItems.map(span => span.text());
+
+    expect(displayedOrder).toEqual(customModels);
+  });
 });

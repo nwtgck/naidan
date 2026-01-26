@@ -52,7 +52,7 @@ describe('ChatSettingsPanel.vue', () => {
     ModelSelector: {
       name: 'ModelSelector',
       template: '<div data-testid="model-selector-mock" :model-value="modelValue">{{ modelValue }}<button v-if="!loading" data-testid="refresh-mock" @click="$emit(\'refresh\')">Refresh</button><span v-if="loading" class="loading-mock">Loading</span></div>',
-      props: ['modelValue', 'loading', 'placeholder'],
+      props: ['modelValue', 'loading', 'placeholder', 'models'],
     },
   };
 
@@ -608,6 +608,24 @@ describe('ChatSettingsPanel.vue', () => {
       await flushPromises();
 
       expect(wrapper.text()).toContain(errorMessage);
+    });
+
+    it('passes a naturally sorted list of models to ModelSelector', async () => {
+      (useChat as unknown as Mock).mockReturnValue({
+        currentChat: mockCurrentChat,
+        availableModels: ref(['model-10', 'model-2', 'model-1']),
+        fetchingModels: ref(false),
+        fetchAvailableModels: mockFetchAvailableModels,
+        updateChatSettings: mockUpdateChatSettings,
+        resolvedSettings: ref({ sources: {} }),
+      });
+
+      const wrapper = mount(ChatSettingsPanel, { 
+        props: { show: true },
+        global: { stubs: globalStubs } 
+      });
+      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
     });
   });
 });

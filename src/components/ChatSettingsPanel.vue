@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import { 
@@ -10,6 +10,7 @@ import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { Chat } from '../models/types';
+import { naturalSort } from '../utils/string';
 
 const props = defineProps<{
   show?: boolean;
@@ -23,8 +24,10 @@ const chatStore = useChat();
 const {
   currentChat,
   fetchingModels,
+  availableModels,
   resolvedSettings,
 } = chatStore;
+const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
 const { settings } = useSettings();
 
 // Local state for editing
@@ -309,6 +312,7 @@ async function handleRestoreDefaults() {
               <ModelSelector 
                 :model-value="localSettings.modelId"
                 @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
+                :models="sortedAvailableModels"
                 :loading="fetchingModels"
                 :placeholder="formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId)"
                 :allow-clear="true"

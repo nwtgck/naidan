@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import GroupSettingsPanel from './GroupSettingsPanel.vue';
 import { ref, nextTick, reactive } from 'vue';
 import type { ChatGroup } from '../models/types';
@@ -176,5 +176,23 @@ describe('GroupSettingsPanel.vue', () => {
       modelId: undefined,
       systemPrompt: undefined
     }));
+  });
+
+  it('passes a naturally sorted list of models to ModelSelector', async () => {
+    // We need to set groupModels in the component to trigger the computed property
+    // But groupModels is local state populated by fetchModels.
+    // Let's mock fetchAvailableModels to return unsorted models and trigger fetch.
+    mockFetchAvailableModels.mockResolvedValue(['model-10', 'model-2', 'model-1']);
+    mockGroup.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
+    
+    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    
+    // Trigger fetch via refresh button
+    await wrapper.find('[data-testid="refresh-btn"]').trigger('click');
+    await flushPromises();
+    await nextTick();
+
+    const selector = wrapper.getComponent({ name: 'ModelSelector' });
+    expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
   });
 });

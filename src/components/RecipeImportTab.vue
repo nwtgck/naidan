@@ -8,6 +8,7 @@ import { matchRecipeModels } from '../utils/recipe-matcher';
 import { ChatGroupRecipeSchema } from '../models/recipe';
 import type { ChatGroupRecipe } from '../models/recipe';
 import ModelSelector from './ModelSelector.vue';
+import { naturalSort } from '../utils/string';
 
 const props = defineProps<{
   availableModels: readonly string[];
@@ -31,9 +32,9 @@ const analyzedRecipes = ref<AnalyzedRecipe[]>([]);
 const recipeAnalysisError = ref<string | null>(null);
 
 function getSortedModels(matchedModelId?: string) {
-  if (!matchedModelId) return props.availableModels;
+  const models = naturalSort(props.availableModels || []);
+  if (!matchedModelId) return models;
   
-  const models = [...props.availableModels];
   const index = models.indexOf(matchedModelId);
   if (index > -1) {
     models.splice(index, 1);

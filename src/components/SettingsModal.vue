@@ -22,6 +22,7 @@ import DeveloperTab from './DeveloperTab.vue';
 import AboutTab from './AboutTab.vue';
 import ConnectionTab from './ConnectionTab.vue';
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
+import { naturalSort } from '../utils/string';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -31,7 +32,9 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>();
 
-const { settings, availableModels, isFetchingModels } = useSettings();
+const { settings, availableModels: rawAvailableModels, isFetchingModels } = useSettings();
+const availableModels = computed(() => naturalSort(Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : []));
+
 const chatStore = useChat();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm

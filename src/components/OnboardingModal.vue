@@ -10,6 +10,7 @@ import Logo from './Logo.vue';
 import ServerSetupGuide from './ServerSetupGuide.vue';
 import ModelSelector from './ModelSelector.vue';
 import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2 } from 'lucide-vue-next';
+import { naturalSort } from '../utils/string';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
 const toast = useToast();
@@ -22,6 +23,7 @@ const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers ? J
 const isTesting = ref(false);
 const error = ref<string | null>(null);
 const availableModels = ref<string[]>(onboardingDraft.value?.models ? JSON.parse(JSON.stringify(onboardingDraft.value.models)) : []);
+const sortedModels = computed(() => naturalSort(availableModels.value));
 const selectedModel = ref(onboardingDraft.value?.selectedModel || '');
 let abortController: AbortController | null = null;
 
@@ -325,7 +327,7 @@ async function handleFinish() {
                     </label>
                     <ModelSelector
                       v-model="selectedModel"
-                      :models="availableModels"
+                      :models="sortedModels"
                       placeholder="Select a model"
                     />
                   </div>

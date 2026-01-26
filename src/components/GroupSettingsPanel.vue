@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import { 
@@ -12,6 +12,7 @@ import ModelSelector from './ModelSelector.vue';
 import RecipeExportModal from './RecipeExportModal.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { ChatGroup } from '../models/types';
+import { naturalSort } from '../utils/string';
 
 const chatStore = useChat();
 const {
@@ -23,6 +24,7 @@ const { settings } = useSettings();
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
 const groupModels = ref<string[]>([]);
+const sortedGroupModels = computed(() => naturalSort(groupModels.value || []));
 
 // Local state for editing
 const localSettings = ref<Partial<Pick<ChatGroup, 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>>({});
@@ -356,7 +358,7 @@ async function restoreDefaults() {
               :model-value="localSettings.modelId"
               @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
               :loading="fetchingModels"
-              :models="groupModels"
+              :models="sortedGroupModels"
               :placeholder="'Global (' + (settings.defaultModelId || 'None') + ')'"
               :allow-clear="true"
               @refresh="fetchModels"

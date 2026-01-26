@@ -1349,6 +1349,16 @@ describe('ChatArea Model Selection', () => {
     expect(modelButtons[1]!.text()).toBe('model-2');
   });
 
+  it('should pass a naturally sorted list of models to ModelSelector', async () => {
+    mockAvailableModels.value = ['model-10', 'model-2', 'model-1'];
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const selector = wrapper.getComponent({ name: 'ModelSelector' });
+    expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
+  });
+
   it('should display the global default model name as placeholder', async () => {
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },

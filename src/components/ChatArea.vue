@@ -6,6 +6,7 @@ import { useSettings } from '../composables/useSettings';
 import MessageItem from './MessageItem.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ModelSelector from './ModelSelector.vue';
+import { naturalSort } from '../utils/string';
 
 const ChatSettingsPanel = defineAsyncComponent(() => import('./ChatSettingsPanel.vue'));
 import { 
@@ -24,10 +25,12 @@ const {
   generatingTitle,
   activeMessages,
   fetchingModels,
+  availableModels,
   resolvedSettings,
   inheritedSettings,
   isProcessing,
 } = chatStore;
+const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
 useSettings();
 const router = useRouter();
 
@@ -739,6 +742,7 @@ onUnmounted(() => {
               <ModelSelector 
                 :model-value="currentChat.modelId"
                 @update:model-value="val => currentChat && chatStore.updateChatModel(currentChat.id, val!)"
+                :models="sortedAvailableModels"
                 :placeholder="formatLabel(inheritedSettings?.modelId, inheritedSettings?.sources.modelId)"
                 :loading="fetchingModels"
                 allow-clear

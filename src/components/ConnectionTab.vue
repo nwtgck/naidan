@@ -3,7 +3,7 @@ import { ref, watch, computed } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import type { ProviderProfile, Settings } from '../models/types';
-import { capitalize } from '../utils/string';
+import { capitalize, naturalSort } from '../utils/string';
 import { 
   Loader2, Trash2, Globe, Bot, Type, Save,
   CheckCircle2, BookmarkPlus,
@@ -26,6 +26,8 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: Settings): void;
   (e: 'save'): void;
 }>();
+
+const sortedModels = computed(() => naturalSort(Array.isArray(props.availableModels) ? props.availableModels : []));
 
 const { save, fetchModels: fetchModelsGlobal, updateProviderProfiles } = useSettings();
 const { showConfirm } = useConfirm();
@@ -328,7 +330,7 @@ defineExpose({
                 <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Default Model</label>
                 <ModelSelector 
                   v-model="form.defaultModelId"
-                  :models="availableModels"
+                  :models="sortedModels"
                   :loading="isFetchingModels"
                   placeholder="None"
                   allow-clear
@@ -362,7 +364,7 @@ defineExpose({
                   <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Title Generation Model</label>
                   <ModelSelector 
                     v-model="form.titleModelId"
-                    :models="availableModels"
+                    :models="sortedModels"
                     :loading="isFetchingModels"
                     :disabled="!form.autoTitleEnabled"
                     placeholder="Use Current Chat Model (Default)"

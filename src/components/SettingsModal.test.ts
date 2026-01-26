@@ -583,7 +583,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
   it('handles model fetch errors gracefully', async () => {
     mockListModels.mockRejectedValueOnce(new Error('Fetch failed'));
-    
+      
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
 
@@ -592,6 +592,26 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain('Fetch failed');
+  });
+
+  it('passes a naturally sorted list of models to ConnectionTab', async () => {
+    (useSettings as unknown as Mock).mockReturnValue({
+      settings: ref(JSON.parse(JSON.stringify(mockSettings))),
+      availableModels: ref(['model-10', 'model-2', 'model-1']),
+      isFetchingModels: ref(false),
+      save: mockSave,
+      updateProviderProfiles: vi.fn(),
+      fetchModels: vi.fn(),
+    });
+
+    const wrapper = mount(SettingsModal, { 
+      props: { isOpen: true },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+
+    const connectionTab = wrapper.findComponent(ConnectionTab);
+    expect(connectionTab.props('availableModels')).toEqual(['model-1', 'model-2', 'model-10']);
   });
 
   it('triggers data reset after confirmation', async () => {

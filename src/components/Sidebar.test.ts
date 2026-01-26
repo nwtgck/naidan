@@ -124,6 +124,7 @@ describe('Sidebar Logic Stability', () => {
       template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear">{{ modelValue }}<div v-if="loading" class="animate-spin-mock"></div></div>',
       props: {
         modelValue: String,
+        models: Array,
         loading: {
           type: Boolean,
           default: false
@@ -208,6 +209,18 @@ describe('Sidebar Logic Stability', () => {
       await nextTick();
 
       expect(wrapper.find('.animate-spin-mock').exists()).toBe(true);
+    });
+
+    it('passes a naturally sorted list of models to ModelSelector', async () => {
+      mockAvailableModels.value = ['model-10', 'model-2', 'model-1'];
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      const selector = wrapper.getComponent({ name: 'ModelSelector' });
+      const passedModels = selector.props('models');
+      expect(passedModels).toEqual(['model-1', 'model-2', 'model-10']);
     });
   });
 

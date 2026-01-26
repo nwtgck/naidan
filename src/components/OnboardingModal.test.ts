@@ -352,4 +352,28 @@ describe('OnboardingModal.vue', () => {
     await removeBtn?.trigger('click');
     expect(wrapper.findAll('input').length).toBe(1); // Only URL input left
   });
+
+  it('passes a naturally sorted list of models to ModelSelector', async () => {
+    mockOnboardingDraft.value = { 
+      url: 'http://localhost:11434', 
+      type: 'ollama',
+      models: ['model-10', 'model-2', 'model-1'],
+      selectedModel: 'model-1',
+    };
+
+    const wrapper = mount(OnboardingModal, {
+      global: {
+        stubs: {
+          ModelSelector: {
+            name: 'ModelSelector',
+            template: '<div class="model-selector-stub" />',
+            props: ['models']
+          }
+        }
+      }
+    });
+    
+    const selector = wrapper.getComponent({ name: 'ModelSelector' });
+    expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
+  });
 });

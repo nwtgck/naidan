@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, nextTick } from 'vue';
+import { onMounted, ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
@@ -16,13 +16,15 @@ import {
 } from 'lucide-vue-next';
 import { useLayout } from '../composables/useLayout';
 import { useConfirm } from '../composables/useConfirm';
+import { naturalSort } from '../utils/string';
 
 const chatStore = useChat();
 const { 
   currentChat, currentChatGroup, chatGroups, chats, isProcessing,
 } = chatStore;
 
-const { settings, isFetchingModels, updateGlobalModel } = useSettings();
+const { settings, isFetchingModels, availableModels, updateGlobalModel } = useSettings();
+const sortedModels = computed(() => naturalSort(availableModels.value || []));
 const { isSidebarOpen, toggleSidebar } = useLayout();
 const { showConfirm } = useConfirm();
 
@@ -505,6 +507,7 @@ function handleToggleChatGroupCollapse(chatGroup: ChatGroup) {
         </div>
         <ModelSelector 
           :model-value="settings.defaultModelId || ''"
+          :models="sortedModels"
           :loading="isFetchingModels"
           @update:model-value="handleGlobalModelChange"
           placeholder="Select default model"
