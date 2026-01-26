@@ -111,7 +111,6 @@ onKeyStroke(['o', 'O'], async (e) => {
     <main class="flex-1 relative flex flex-col min-w-0 pb-10 bg-transparent">
       <GroupSettingsPanel 
         v-if="chatStore.currentChatGroup.value" 
-        @close="chatStore.openChatGroup(null)" 
       />
       <!-- Use a key based on route to help Vue identify when to remount or transition -->
       <router-view v-else v-slot="{ Component, route }">

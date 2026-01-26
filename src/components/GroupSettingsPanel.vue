@@ -4,7 +4,7 @@ import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import { 
   Settings2, 
-  MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus, X,
+  MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus,
   ChefHat
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
@@ -12,10 +12,6 @@ import ModelSelector from './ModelSelector.vue';
 import RecipeExportModal from './RecipeExportModal.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { ChatGroup } from '../models/types';
-
-const emit = defineEmits<{
-  (e: 'close'): void
-}>();
 
 const chatStore = useChat();
 const {
@@ -203,12 +199,6 @@ async function restoreDefaults() {
           <div class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
           <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Active Overrides</span>
         </div>
-        <button 
-          @click="emit('close')" 
-          class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
-        >
-          <X class="w-5 h-5" />
-        </button>
       </div>
     </div>
 
