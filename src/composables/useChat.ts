@@ -306,6 +306,16 @@ export function useChat() {
       if ((mutableChat && _currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) || (!mutableChat && !chatId)) {
         availableModels.value = result;
       }
+
+      // If we're fetching for a specific chat and it has a modelId override that's no longer available, clear it.
+      if (mutableChat && mutableChat.modelId && !result.includes(mutableChat.modelId)) {
+        mutableChat.modelId = '';
+        mutableChat.updatedAt = Date.now();
+        if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
+        // We don't call updateChatModel here to avoid "Chat not found" errors for unsaved chats.
+        // The components or next storage sync will handle persistence.
+      }
+
       return result;
     } catch (e) {
       const { addErrorEvent } = useGlobalEvents();

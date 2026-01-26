@@ -195,4 +195,24 @@ describe('GroupSettingsPanel.vue', () => {
     const selector = wrapper.getComponent({ name: 'ModelSelector' });
     expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
   });
+
+  it('clears modelId override if it is not available in newly fetched models', async () => {
+    mockGroup.modelId = 'old-model';
+    mockGroup.endpoint = { type: 'openai', url: 'http://localhost:1234' };
+    
+    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+
+    // Mock fetchAvailableModels to return models NOT including 'old-model'
+    mockFetchAvailableModels.mockResolvedValueOnce(['new-model-1', 'new-model-2']);
+
+    const urlInput = wrapper.find('input[data-testid="group-setting-url-input"]');
+    // Change URL slightly to trigger auto-fetch (if localhost)
+    await urlInput.setValue('http://localhost:11434');
+    await flushPromises();
+
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+      modelId: undefined
+    }));
+  });
 });

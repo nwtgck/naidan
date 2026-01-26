@@ -579,6 +579,47 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(mockListModels).not.toHaveBeenCalledWith('http://localhost:1234/v1', undefined);
   });
 
+  it('clears defaultModelId and titleModelId if they are not available in the newly fetched models', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    vm.form.defaultModelId = 'old-model';
+    vm.form.titleModelId = 'old-title-model';
+    await nextTick();
+
+    // Mock fetchModels to return a new list that doesn't include the old models
+    mockListModels.mockResolvedValue(['new-model']);
+
+    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
+    // Change to localhost to trigger auto-fetch
+    await urlInput.setValue('http://localhost:11434');
+    await flushPromises();
+
+    expect(vm.form.defaultModelId).toBe('');
+    expect(vm.form.titleModelId).toBe('');
+  });
+
+  it('preserves defaultModelId and titleModelId if they are still available in the newly fetched models', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    vm.form.defaultModelId = 'kept-model';
+    vm.form.titleModelId = 'kept-title-model';
+    await nextTick();
+
+    // Mock fetchModels to return a list that INCLUDES the kept models
+    mockListModels.mockResolvedValue(['kept-model', 'kept-title-model', 'other-model']);
+
+    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
+    await urlInput.setValue('http://localhost:11434');
+    await flushPromises();
+
+    expect(vm.form.defaultModelId).toBe('kept-model');
+    expect(vm.form.titleModelId).toBe('kept-title-model');
+  });
+
   it('shows confirmation behavior for "X" button', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();

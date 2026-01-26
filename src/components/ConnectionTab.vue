@@ -48,10 +48,11 @@ const selectedProviderProfileId = ref('');
 
 
 function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
-
-
-  form.value.endpointType = preset.type;
-  form.value.endpointUrl = preset.url;
+  form.value = {
+    ...form.value,
+    endpointType: preset.type,
+    endpointUrl: preset.url
+  };
 }
 
 async function fetchModels() {
@@ -70,6 +71,21 @@ async function fetchModels() {
 
     if (models.length === 0) {
       throw new Error('No models found at this endpoint.');
+    }
+
+    // Validate current selection against new models
+    const updatedForm = { ...form.value };
+    let changed = false;
+    if (updatedForm.defaultModelId && !models.includes(updatedForm.defaultModelId)) {
+      updatedForm.defaultModelId = '';
+      changed = true;
+    }
+    if (updatedForm.titleModelId && !models.includes(updatedForm.titleModelId)) {
+      updatedForm.titleModelId = '';
+      changed = true;
+    }
+    if (changed) {
+      form.value = updatedForm;
     }
 
     error.value = null;

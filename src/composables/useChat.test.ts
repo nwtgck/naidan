@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
 import { useChat, type AddToastOptions } from './useChat';
 import { storageService } from '../services/storage';
+import { OpenAIProvider } from '../services/llm';
 import { reactive, triggerRef } from 'vue';
 import type { Chat, MessageNode, SidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
@@ -815,6 +817,21 @@ describe('useChat Composable Logic', () => {
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(null);
     await openChat('missing');
     expect(currentChat.value).toBeNull();
+  });
+
+  it('should clear chat modelId if it is not in the newly fetched models in fetchAvailableModels', async () => {
+    const chat = reactive({ id: 'chat-1', modelId: 'old-model', root: { items: [] } }) as any;
+    const { registerLiveInstance, fetchAvailableModels } = useChat();
+    registerLiveInstance(chat);
+
+    // Mock provider to return a different model
+    const mockListModels = vi.fn().mockResolvedValue(['new-model']);
+    vi.mocked(OpenAIProvider as any).prototype.listModels = mockListModels;
+
+    await fetchAvailableModels('chat-1');
+    await flushPromises();
+
+    expect(chat.modelId).toBe('');
   });
 
   describe('findRestorationIndex Logic (Bidirectional Context)', () => {

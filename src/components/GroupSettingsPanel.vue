@@ -128,6 +128,12 @@ async function fetchModels() {
       if (models.length === 0) {
         error.value = 'No models found at this endpoint.';
       }
+
+      // Validate local modelId against new models
+      if (localSettings.value.modelId && !models.includes(localSettings.value.modelId)) {
+        localSettings.value.modelId = undefined;
+        await saveChanges();
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Connection failed. Check URL or provider.';
     }
