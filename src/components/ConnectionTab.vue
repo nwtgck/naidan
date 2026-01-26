@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '../composables/useSettings';
+import { useToast } from '../composables/useToast';
 import type { ProviderProfile, Settings } from '../models/types';
 import { capitalize, naturalSort } from '../utils/string';
 import { 
@@ -10,6 +11,7 @@ import {
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
+import ProviderProfilePreview from './ProviderProfilePreview.vue';
 import { useConfirm } from '../composables/useConfirm';
 import { usePrompt } from '../composables/usePrompt';
 import { ENDPOINT_PRESETS } from '../models/constants';
@@ -24,6 +26,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: Settings): void;
   (e: 'save'): void;
+  (e: 'goToProfiles'): void;
 }>();
 
 const sortedModels = computed(() => naturalSort(Array.isArray(props.availableModels) ? props.availableModels : []));
@@ -31,6 +34,7 @@ const sortedModels = computed(() => naturalSort(Array.isArray(props.availableMod
 const { save, fetchModels: fetchModelsGlobal, updateProviderProfiles } = useSettings();
 const { showConfirm } = useConfirm();
 const { showPrompt } = usePrompt();
+const { addToast } = useToast();
 
 const form = computed({
   get: () => props.modelValue,
@@ -131,9 +135,10 @@ async function handleSave() {
 async function handleCreateProviderProfile() {
   const name = await showPrompt({
     title: 'Create New Profile',
-    message: 'Enter a name for this profile:',
+    message: 'Give this configuration a name:',
     defaultValue: `${capitalize(form.value.endpointType)} - ${form.value.defaultModelId || 'Default'}`,
     confirmButtonText: 'Create',
+    bodyComponent: h(ProviderProfilePreview, { form: form.value })
   });
   
   if (!name) return;
@@ -153,6 +158,13 @@ async function handleCreateProviderProfile() {
   if (!form.value.providerProfiles) form.value.providerProfiles = [];
   form.value.providerProfiles.push(newProviderProfile);
   await updateProviderProfiles(JSON.parse(JSON.stringify(form.value.providerProfiles)));
+
+  addToast({
+    message: `Profile "${name}" created`,
+    actionLabel: 'View Profiles',
+    onAction: () => emit('goToProfiles'),
+    duration: 5000,
+  });
 }
 
 function handleQuickProviderProfileChange() {

@@ -313,6 +313,7 @@ watch(() => props.isOpen, async (open) => {
             :is-fetching-models="isFetchingModels"
             :has-unsaved-changes="hasUnsavedConnectionChanges"
             @save="initialFormState = JSON.stringify(pickConnectionFields(form))"
+            @go-to-profiles="activeTab = 'profiles'"
           />
           <div v-else class="flex-1 overflow-y-auto min-h-0">
             <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">

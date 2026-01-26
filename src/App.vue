@@ -39,6 +39,7 @@ const {
 const { 
   isPromptOpen, promptTitle, promptMessage, 
   promptConfirmButtonText, promptCancelButtonText, promptInputValue,
+  promptBodyComponent,
   handlePromptConfirm, handlePromptCancel,
 } = usePrompt();
 
@@ -153,6 +154,7 @@ onKeyStroke(['o', 'O'], async (e) => {
       :confirmButtonVariant="'default'"
       :showInput="true"
       :inputValue="promptInputValue"
+      :bodyComponent="promptBodyComponent"
       @update:inputValue="promptInputValue = $event"
       @confirm="handlePromptConfirm"
       @cancel="handlePromptCancel"

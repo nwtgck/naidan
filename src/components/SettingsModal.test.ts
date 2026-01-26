@@ -861,9 +861,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(mockShowPrompt).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Create New Profile',
-          message: expect.stringContaining('Enter a name for this profile:'),
+          message: 'Give this configuration a name:',
           defaultValue: 'Openai - gpt-4', // Based on mockSettings
           confirmButtonText: 'Create',
+          bodyComponent: expect.anything(),
         }),
       );
       

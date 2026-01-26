@@ -25,6 +25,7 @@
         <div class="p-6">
           <div data-testid="dialog-message" class="text-sm font-medium text-gray-600 dark:text-gray-400 leading-relaxed">
             <slot>{{ _props.message }}</slot>
+
             <input
               v-if="_props.showInput"
               data-testid="dialog-input"
@@ -35,6 +36,10 @@
               @keydown.enter="$event => !$event.isComposing && confirm()"
               class="w-full mt-4 px-4 py-3 border border-gray-100 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
             />
+
+            <div v-if="_props.bodyComponent" class="mt-4">
+              <component :is="_props.bodyComponent" />
+            </div>
           </div>
 
           <!-- Actions -->
@@ -75,6 +80,8 @@ const _props = withDefaults(defineProps<{
   inputValue?: string;
   inputType?: string;
   inputPlaceholder?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  bodyComponent?: Component | any | null;
 }>(), {
   show: false,
   title: 'Dialog',
@@ -86,6 +93,7 @@ const _props = withDefaults(defineProps<{
   inputValue: '',
   inputType: 'text',
   inputPlaceholder: '',
+  bodyComponent: null,
 });
 
 const emit = defineEmits<{
