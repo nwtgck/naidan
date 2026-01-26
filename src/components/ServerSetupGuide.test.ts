@@ -40,7 +40,7 @@ describe('ServerSetupGuide.vue', () => {
     // Mac file://
     const macBtn = wrapper.findAll('button').find(b => b.text().toLowerCase() === 'mac');
     await macBtn?.trigger('click');
-    expect(wrapper.text()).toContain('OLLAMA_ORIGINS="*" ollama serve');
+    expect(wrapper.text()).toContain('brew services stop ollama\nOLLAMA_ORIGINS="*" ollama serve');
   });
 
   it('switches to macOS and shows Homebrew command', async () => {
@@ -87,7 +87,7 @@ describe('ServerSetupGuide.vue', () => {
     const preTags = wrapper.findAll('pre');
     preTags.forEach(pre => {
       expect(pre.classes()).toContain('overflow-x-auto');
-      expect(pre.classes()).toContain('whitespace-nowrap');
+      expect(pre.classes()).toContain('whitespace-pre');
     });
   });
 
