@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { useSettings } from '../composables/useSettings';
-import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import type { ProviderProfile, Settings } from '../models/types';
 import { capitalize, naturalSort } from '../utils/string';
 import { 
@@ -62,20 +61,18 @@ async function fetchModels() {
   
   error.value = null;
   try {
-    const provider = form.value.endpointType === 'ollama' 
-      ? new OllamaProvider() 
-      : new OpenAIProvider();
-    
-    const mutableHeaders = form.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(form.value.endpointHttpHeaders)) : undefined;
-    await provider.listModels(form.value.endpointUrl, mutableHeaders);
+    // Trigger global fetch with current form values (may be unsaved)
+    await fetchModelsGlobal({
+      url: form.value.endpointUrl,
+      type: form.value.endpointType,
+      headers: form.value.endpointHttpHeaders
+    });
+
     error.value = null;
     connectionSuccess.value = true;
     setTimeout(() => {
       connectionSuccess.value = false;
     }, 3000);
-    
-    // Also trigger global fetch if it's the current settings
-    await fetchModelsGlobal();
   } catch (err) {
     console.error(err);
     error.value = err instanceof Error ? err.message : 'Connection failed. Check URL or provider.';

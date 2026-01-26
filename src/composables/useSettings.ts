@@ -96,19 +96,23 @@ export function useSettings() {
     return initPromise;
   }
 
-  async function fetchModels() {
-    if (!_settings.value.endpointUrl) {
+  async function fetchModels(overrides?: { url: string; type: EndpointType; headers?: [string, string][] }) {
+    const url = overrides?.url ?? _settings.value.endpointUrl;
+    const type = overrides?.type ?? _settings.value.endpointType;
+    const headers = overrides?.headers ?? _settings.value.endpointHttpHeaders;
+
+    if (!url) {
       availableModels.value = [];
       return;
     }
     isFetchingModels.value = true;
     try {
-      const provider = _settings.value.endpointType === 'ollama' 
+      const provider = type === 'ollama' 
         ? new OllamaProvider() 
         : new OpenAIProvider();
       
-      const mutableHeaders = _settings.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(_settings.value.endpointHttpHeaders)) : undefined;
-      const models = await provider.listModels(_settings.value.endpointUrl, mutableHeaders);
+      const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
+      const models = await provider.listModels(url, mutableHeaders);
       availableModels.value = models;
     } catch (err) {
       const { addErrorEvent } = useGlobalEvents();

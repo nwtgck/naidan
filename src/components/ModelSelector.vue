@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, useAttrs, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, useAttrs, nextTick, getCurrentInstance } from 'vue';
 import { Search, RefreshCw, Check, ChevronDown, Loader2, X } from 'lucide-vue-next';
 import { useSettings } from '../composables/useSettings';
 
@@ -19,6 +19,7 @@ const emit = defineEmits<{
 }>();
 
 const attrs = useAttrs();
+const instance = getCurrentInstance();
 const { availableModels: settingsModels, isFetchingModels: isInternalFetching, fetchModels: internalFetch } = useSettings();
 
 const availableModels = computed(() => props.models ?? settingsModels.value);
@@ -52,7 +53,9 @@ function selectModel(model: string | undefined) {
 
 async function handleRefresh(e: Event) {
   e.stopPropagation();
-  if (attrs.onRefresh) {
+  // Check if parent has a listener for 'refresh' (onRefresh)
+  const hasRefreshListener = !!(instance?.vnode.props?.onRefresh || attrs.onRefresh);
+  if (hasRefreshListener) {
     emit('refresh');
   } else {
     await internalFetch();

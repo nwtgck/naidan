@@ -42,7 +42,11 @@ vi.mock('../composables/useSettings', () => ({
       }
     }),
     updateProviderProfiles: vi.fn(),
-    fetchModels: vi.fn(),
+    fetchModels: vi.fn(async (overrides) => {
+      if (overrides) {
+        await mockListModels(overrides.url, overrides.headers);
+      }
+    }),
   })),
 }));
 
@@ -177,7 +181,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         }
       }),
       updateProviderProfiles: vi.fn(),
-      fetchModels: vi.fn(),
+      fetchModels: vi.fn(async (overrides) => {
+        if (overrides) {
+          await mockListModels(overrides.url, overrides.headers);
+        }
+      }),
     });
 
     (useChat as unknown as Mock).mockReturnValue({
@@ -217,7 +225,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: isFetching,
         save: mockSave,
-        fetchModels: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            await mockListModels(overrides.url, overrides.headers);
+          }
+        }),
       });
 
       const wrapper = mount(SettingsModal, { 
@@ -542,6 +554,28 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(mockListModels).toHaveBeenCalledWith('http://localhost:11434', undefined);
   });
 
+  it('regression: manually fetching models uses the current unsaved URL, not the saved one', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+    
+    // Initial saved URL is 'http://localhost:1234/v1' (from mockSettings)
+    mockListModels.mockClear();
+
+    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
+    const newUrl = 'http://new-temporary-url:5555/v1';
+    await urlInput.setValue(newUrl);
+    
+    // Trigger manual fetch
+    const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
+    await checkBtn.trigger('click');
+    await flushPromises();
+
+    // Verify it used the NEW URL
+    expect(mockListModels).toHaveBeenCalledWith(newUrl, undefined);
+    // Verify it DID NOT use the OLD URL
+    expect(mockListModels).not.toHaveBeenCalledWith('http://localhost:1234/v1', undefined);
+  });
+
   it('shows confirmation behavior for "X" button', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
@@ -601,7 +635,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       isFetchingModels: ref(false),
       save: mockSave,
       updateProviderProfiles: vi.fn(),
-      fetchModels: vi.fn(),
+      fetchModels: vi.fn(async (overrides) => {
+        if (overrides) {
+          await mockListModels(overrides.url, overrides.headers);
+        }
+      }),
     });
 
     const wrapper = mount(SettingsModal, { 
@@ -761,7 +799,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            await mockListModels(overrides.url, overrides.headers);
+          }
+        }),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -826,7 +868,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            await mockListModels(overrides.url, overrides.headers);
+          }
+        }),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -863,7 +909,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            await mockListModels(overrides.url, overrides.headers);
+          }
+        }),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -896,7 +946,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            await mockListModels(overrides.url, overrides.headers);
+          }
+        }),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -1015,7 +1069,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
-        fetchModels: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            await mockListModels(overrides.url, overrides.headers);
+          }
+        }),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });

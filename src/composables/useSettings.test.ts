@@ -4,8 +4,9 @@ import { DEFAULT_SETTINGS } from '../models/types';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
 import { flushPromises } from '@vue/test-utils';
 
-const { mockAddErrorEvent } = vi.hoisted(() => ({
+const { mockAddErrorEvent, mockListModels } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
+  mockListModels: vi.fn().mockResolvedValue(['model-1', 'model-2']),
 }));
 
 vi.mock('./useGlobalEvents', () => ({
@@ -36,6 +37,15 @@ vi.mock('../services/storage/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
 }));
 
+vi.mock('../services/llm', () => ({
+  OpenAIProvider: class {
+    listModels = mockListModels;
+  },
+  OllamaProvider: class {
+    listModels = mockListModels;
+  },
+}));
+
 describe('useSettings Initialization and Bootstrap', () => {
   const { __testOnly: { __testOnlyReset } } = useSettings();
 
@@ -43,6 +53,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     vi.clearAllMocks();
     localStorage.clear();
     __testOnlyReset();
+    mocks.loadSettings.mockResolvedValue(null);
   });
 
   it('should initialize StorageService with correct type from bootstrap key', async () => {
@@ -124,7 +135,9 @@ describe('useSettings Initialization and Bootstrap', () => {
     // Setup mock to return settings WITH endpointUrl
     mocks.loadSettings.mockResolvedValue({
       ...DEFAULT_SETTINGS,
+      storageType: 'local',
       endpointUrl: 'http://localhost:11434',
+      endpointType: 'openai',
     });
 
     // Act
@@ -191,5 +204,47 @@ describe('useSettings Initialization and Bootstrap', () => {
     await Promise.all([p1, p2, p3]);
         
     expect(initialized.value).toBe(true);
+  });
+
+  describe('fetchModels', () => {
+    it('should use saved settings when no overrides are provided', async () => {
+      mocks.loadSettings.mockResolvedValue({
+        ...DEFAULT_SETTINGS,
+        storageType: 'local',
+        endpointUrl: 'http://saved-url',
+        endpointType: 'openai',
+      });
+
+      const { init, fetchModels } = useSettings();
+      await init();
+      mockListModels.mockClear();
+
+      await fetchModels();
+
+      expect(mockListModels).toHaveBeenCalledWith('http://saved-url', undefined);
+    });
+
+    it('should use provided overrides instead of saved settings', async () => {
+      mocks.loadSettings.mockResolvedValue({
+        ...DEFAULT_SETTINGS,
+        storageType: 'local',
+        endpointUrl: 'http://saved-url',
+        endpointType: 'openai',
+      });
+
+      const { init, fetchModels } = useSettings();
+      await init();
+      mockListModels.mockClear();
+
+      await fetchModels({
+        url: 'http://override-url',
+        type: 'ollama',
+        headers: [['X-Test', 'true']],
+      });
+
+      expect(mockListModels).toHaveBeenCalledWith('http://override-url', [['X-Test', 'true']]);
+      // Should NOT have used the saved URL
+      expect(mockListModels).not.toHaveBeenCalledWith('http://saved-url', expect.anything());
+    });
   });
 });
