@@ -129,12 +129,12 @@ function handleImportRecipes() {
           placeholder='{
   "type": "chat_group_recipe",
   "name": "Creative Writing",
-  "models": [{"kind": "regex", "pattern": "gpt-4", "flags": ["i"]}]
+  "models": [{"type": "regex", "pattern": "gpt-4", "flags": ["i"]}]
 }
 {
   "type": "chat_group_recipe",
   "name": "Code Assistant",
-  "models": [{"kind": "regex", "pattern": "claude-3", "flags": ["i"]}]
+  "models": [{"type": "regex", "pattern": "claude-3", "flags": ["i"]}]
 }'
           data-testid="recipe-json-input"
         ></textarea>

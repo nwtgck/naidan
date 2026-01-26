@@ -24,7 +24,7 @@ vi.mock('../composables/useSettings', () => ({
     isFetchingModels: ref(false),
     save: mockSave,
     updateProviderProfiles: mockUpdateProviderProfiles,
-    fetchModels: vi.fn(),
+    fetchModels: vi.fn().mockResolvedValue([]),
   })),
 }));
 
@@ -150,7 +150,7 @@ describe('StorageTab.vue Tests', () => {
       isFetchingModels: ref(false),
       save: mockSave,
       updateProviderProfiles: vi.fn(),
-      fetchModels: vi.fn(),
+      fetchModels: vi.fn().mockResolvedValue([]),
     } as any);
   });
 
@@ -174,7 +174,7 @@ describe('StorageTab.vue Tests', () => {
         isFetchingModels: ref(false),
         save: mockSave, 
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(),
+        fetchModels: vi.fn().mockResolvedValue([]),
       } as any);
                 
       const wrapper = mount(SettingsModal, { 
@@ -210,7 +210,7 @@ describe('StorageTab.vue Tests', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(),
+        fetchModels: vi.fn().mockResolvedValue([]),
       } as any);
 
       const wrapper = mount(SettingsModal, { 
@@ -435,7 +435,7 @@ describe('StorageTab.vue Tests', () => {
         availableModels: { value: [] } as any,
         isFetchingModels: { value: false } as any,
         init: vi.fn(),
-        fetchModels: vi.fn(),
+        fetchModels: vi.fn().mockResolvedValue([]),
         updateGlobalModel: vi.fn(),
         updateGlobalEndpoint: vi.fn(),
         updateSystemPrompt: vi.fn(),

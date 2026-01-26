@@ -62,11 +62,15 @@ async function fetchModels() {
   error.value = null;
   try {
     // Trigger global fetch with current form values (may be unsaved)
-    await fetchModelsGlobal({
+    const models = await fetchModelsGlobal({
       url: form.value.endpointUrl,
       type: form.value.endpointType,
       headers: form.value.endpointHttpHeaders
     });
+
+    if (models.length === 0) {
+      throw new Error('No models found at this endpoint.');
+    }
 
     error.value = null;
     connectionSuccess.value = true;
@@ -76,6 +80,7 @@ async function fetchModels() {
   } catch (err) {
     console.error(err);
     error.value = err instanceof Error ? err.message : 'Connection failed. Check URL or provider.';
+    connectionSuccess.value = false;
   }
 }
 

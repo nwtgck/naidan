@@ -3,14 +3,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock LLM provider
 vi.mock('../services/llm', () => {
   return {
-    OpenAIProvider: vi.fn().mockImplementation(() => ({
-      chat: vi.fn().mockImplementation((_messages, _model, _url, onChunk) => {
+    OpenAIProvider: class {
+      chat = vi.fn().mockImplementation((_messages, _model, _url, onChunk) => {
         onChunk('Done');
         return Promise.resolve();
-      }),
-      listModels: vi.fn().mockResolvedValue(['gpt-4']),
-    })),
-    OllamaProvider: vi.fn(),
+      });
+      listModels = vi.fn().mockResolvedValue(['gpt-4']);
+    },
+    OllamaProvider: class {
+      chat = vi.fn();
+      listModels = vi.fn().mockResolvedValue(['gpt-4']);
+    },
   };
 });
 

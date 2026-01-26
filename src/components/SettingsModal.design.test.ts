@@ -35,7 +35,7 @@ describe('SettingsModal Design Specifications', () => {
       availableModels: ref([]),
       isFetchingModels: ref(false),
       save: vi.fn(),
-      fetchModels: vi.fn(),
+      fetchModels: vi.fn().mockResolvedValue([]),
     });
     (useChat as unknown as Mock).mockReturnValue({
       deleteAllChats: vi.fn(),
@@ -77,7 +77,7 @@ describe('SettingsModal Design Specifications', () => {
       availableModels: ref([]),
       isFetchingModels: ref(false),
       save: vi.fn(),
-      fetchModels: vi.fn(),
+      fetchModels: vi.fn().mockResolvedValue([]),
     });
     
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });

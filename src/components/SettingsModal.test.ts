@@ -44,8 +44,9 @@ vi.mock('../composables/useSettings', () => ({
     updateProviderProfiles: vi.fn(),
     fetchModels: vi.fn(async (overrides) => {
       if (overrides) {
-        await mockListModels(overrides.url, overrides.headers);
+        return await mockListModels(overrides.url, overrides.headers);
       }
+      return [];
     }),
   })),
 }));
@@ -183,8 +184,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       updateProviderProfiles: vi.fn(),
       fetchModels: vi.fn(async (overrides) => {
         if (overrides) {
-          await mockListModels(overrides.url, overrides.headers);
+          return await mockListModels(overrides.url, overrides.headers);
         }
+        return [];
       }),
     });
 
@@ -227,8 +229,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         save: mockSave,
         fetchModels: vi.fn(async (overrides) => {
           if (overrides) {
-            await mockListModels(overrides.url, overrides.headers);
+            return await mockListModels(overrides.url, overrides.headers);
           }
+          return [];
         }),
       });
 
@@ -637,8 +640,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       updateProviderProfiles: vi.fn(),
       fetchModels: vi.fn(async (overrides) => {
         if (overrides) {
-          await mockListModels(overrides.url, overrides.headers);
+          return await mockListModels(overrides.url, overrides.headers);
         }
+        return [];
       }),
     });
 
@@ -801,8 +805,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(async (overrides) => {
           if (overrides) {
-            await mockListModels(overrides.url, overrides.headers);
+            return await mockListModels(overrides.url, overrides.headers);
           }
+          return [];
         }),
       });
 
@@ -870,8 +875,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(async (overrides) => {
           if (overrides) {
-            await mockListModels(overrides.url, overrides.headers);
+            return await mockListModels(overrides.url, overrides.headers);
           }
+          return [];
         }),
       });
 
@@ -911,8 +917,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(async (overrides) => {
           if (overrides) {
-            await mockListModels(overrides.url, overrides.headers);
+            return await mockListModels(overrides.url, overrides.headers);
           }
+          return [];
         }),
       });
 
@@ -948,8 +955,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn(async (overrides) => {
           if (overrides) {
-            await mockListModels(overrides.url, overrides.headers);
+            return await mockListModels(overrides.url, overrides.headers);
           }
+          return [];
         }),
       });
 
@@ -1071,8 +1079,9 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         save: mockSave,
         fetchModels: vi.fn(async (overrides) => {
           if (overrides) {
-            await mockListModels(overrides.url, overrides.headers);
+            return await mockListModels(overrides.url, overrides.headers);
           }
+          return [];
         }),
       });
 

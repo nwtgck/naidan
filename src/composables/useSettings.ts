@@ -96,14 +96,14 @@ export function useSettings() {
     return initPromise;
   }
 
-  async function fetchModels(overrides?: { url: string; type: EndpointType; headers?: [string, string][] }) {
+  async function fetchModels(overrides?: { url: string; type: EndpointType; headers?: [string, string][] }): Promise<string[]> {
     const url = overrides?.url ?? _settings.value.endpointUrl;
     const type = overrides?.type ?? _settings.value.endpointType;
     const headers = overrides?.headers ?? _settings.value.endpointHttpHeaders;
 
     if (!url) {
       availableModels.value = [];
-      return;
+      return [];
     }
     isFetchingModels.value = true;
     try {
@@ -114,6 +114,7 @@ export function useSettings() {
       const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
       const models = await provider.listModels(url, mutableHeaders);
       availableModels.value = models;
+      return models;
     } catch (err) {
       const { addErrorEvent } = useGlobalEvents();
       addErrorEvent({
@@ -122,6 +123,7 @@ export function useSettings() {
         details: err instanceof Error ? err : String(err),
       });
       console.error('Failed to fetch models:', err);
+      throw err;
     } finally {
       isFetchingModels.value = false;
     }

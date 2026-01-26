@@ -13,7 +13,7 @@ vi.mock('../composables/useSettings', () => ({
     updateProviderProfiles: vi.fn(),
     availableModels: ref([]),
     isFetchingModels: ref(false),
-    fetchModels: vi.fn(),
+    fetchModels: vi.fn().mockResolvedValue([]),
   })),
 }));
 vi.mock('../composables/useSampleChat', () => ({
@@ -164,7 +164,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
       availableModels: ref([]),
       isFetchingModels: ref(false),
       init: vi.fn(),
-      fetchModels: vi.fn(),
+      fetchModels: vi.fn().mockResolvedValue([]),
       updateGlobalModel: vi.fn(),
       updateGlobalEndpoint: vi.fn(),
       updateSystemPrompt: vi.fn(),

@@ -9,7 +9,7 @@ vi.mock('../composables/useSettings', () => ({
     save: vi.fn(),
     availableModels: { value: [] },
     isFetchingModels: { value: false },
-    fetchModels: vi.fn(),
+    fetchModels: vi.fn().mockResolvedValue([]),
   }),
 }));
 
