@@ -220,15 +220,6 @@ watch(() => props.isOpen, async (open) => {
               Connection
             </button>
             <button 
-              @click="activeTab = 'recipes'"
-              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
-              :class="activeTab === 'recipes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
-              data-testid="tab-recipes"
-            >
-              <ChefHat class="w-4 h-4" />
-              Recipes
-            </button>
-            <button 
               @click="activeTab = 'profiles'"
               class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'profiles' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -236,6 +227,15 @@ watch(() => props.isOpen, async (open) => {
             >
               <BookmarkPlus class="w-4 h-4" />
               Provider Profiles
+            </button>
+            <button 
+              @click="activeTab = 'recipes'"
+              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              :class="activeTab === 'recipes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              data-testid="tab-recipes"
+            >
+              <ChefHat class="w-4 h-4" />
+              Recipes
             </button>
             <button 
               @click="activeTab = 'storage'"
@@ -316,20 +316,20 @@ watch(() => props.isOpen, async (open) => {
           />
           <div v-else class="flex-1 overflow-y-auto min-h-0">
             <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
-            
-              <!-- Recipes Tab -->
-              <RecipeImportTab 
-                v-if="activeTab === 'recipes'"
-                :available-models="availableModels"
-                @import="handleImportRecipes"
-                @toast="(msg: string, dur?: number) => addToast({ message: msg, duration: dur })"
-              />
 
               <!-- Provider Profiles Tab -->
               <ProviderProfilesTab 
                 v-if="activeTab === 'profiles'"
                 v-model:profiles="form.providerProfiles"
                 @go-to-connection="activeTab = 'connection'"
+              />
+
+              <!-- Recipes Tab -->
+              <RecipeImportTab 
+                v-if="activeTab === 'recipes'"
+                :available-models="availableModels"
+                @import="handleImportRecipes"
+                @toast="(msg: string, dur?: number) => addToast({ message: msg, duration: dur })"
               />
 
               <!-- Storage Tab -->
