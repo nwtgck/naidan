@@ -358,4 +358,101 @@ describe('ModelSelector.vue', () => {
       wrapper.unmount();
     });
   });
+
+  describe('Keyboard Navigation (New Specs)', () => {
+    it('opens the dropdown when ArrowDown is pressed on the trigger', async () => {
+      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
+      const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+      
+      await trigger.trigger('keydown', { key: 'ArrowDown' });
+      expect(document.body.querySelector('.animate-in')).toBeTruthy();
+      wrapper.unmount();
+    });
+
+    it('navigates through models with Arrow keys and wraps around', async () => {
+      const wrapper = mount(ModelSelector, { 
+        props: { 
+          modelValue: 'model-a',
+          allowClear: true // index 0: Inherit, index 1: model-a, index 2: model-b, index 3: model-c
+        } 
+      });
+      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      
+      const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+      
+      // Initial state: model-a is selected, so index 1 should be highlighted
+      const getHighlighted = () => {
+        const listButtons = Array.from(document.body.querySelectorAll('.custom-scrollbar button'));
+        return listButtons.findIndex(b => b.classList.contains('bg-gray-100'));
+      };
+
+      expect(getHighlighted()).toBe(1);
+
+      // Move down to model-b
+      await trigger.trigger('keydown', { key: 'ArrowDown' });
+      expect(getHighlighted()).toBe(2);
+
+      // Move down to model-c
+      await trigger.trigger('keydown', { key: 'ArrowDown' });
+      expect(getHighlighted()).toBe(3);
+
+      // Wrap around to Inherit (index 0)
+      await trigger.trigger('keydown', { key: 'ArrowDown' });
+      expect(getHighlighted()).toBe(0);
+
+      // Move up to model-c (index 3)
+      await trigger.trigger('keydown', { key: 'ArrowUp' });
+      expect(getHighlighted()).toBe(3);
+      
+      wrapper.unmount();
+    });
+
+    it('selects the highlighted model when Enter is pressed', async () => {
+      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
+      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+
+      // Move down to model-b (index 1 if allowClear is false)
+      await trigger.trigger('keydown', { key: 'ArrowDown' });
+      await trigger.trigger('keydown', { key: 'Enter' });
+
+      expect(wrapper.emitted('update:modelValue')![0]).toEqual(['model-b']);
+      expect(document.body.querySelector('.animate-in')).toBeFalsy();
+      wrapper.unmount();
+    });
+
+    it('closes the dropdown when Escape is pressed', async () => {
+      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
+      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+
+      expect(document.body.querySelector('.animate-in')).toBeTruthy();
+      await trigger.trigger('keydown', { key: 'Escape' });
+      expect(document.body.querySelector('.animate-in')).toBeFalsy();
+      wrapper.unmount();
+    });
+
+    it('resets highlighted index when search query changes', async () => {
+      const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
+      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      
+      const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
+      const input = document.body.querySelector('input') as HTMLInputElement;
+
+      // Move highlight to second item
+      await trigger.trigger('keydown', { key: 'ArrowDown' });
+      
+      // Update search
+      input.value = 'model';
+      input.dispatchEvent(new Event('input'));
+      await nextTick();
+
+      // Highlight should reset to 0
+      const highlighted = Array.from(document.body.querySelectorAll('.custom-scrollbar button'))
+        .findIndex(b => b.classList.contains('bg-gray-100'));
+      expect(highlighted).toBe(0);
+      
+      wrapper.unmount();
+    });
+  });
 });

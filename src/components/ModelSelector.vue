@@ -34,14 +34,25 @@ const filteredModels = computed(() => {
 
 const isOpen = ref(false);
 const searchQuery = ref('');
+const highlightedIndex = ref(-1);
 const containerRef = ref<HTMLElement | null>(null);
 const searchInputRef = ref<HTMLInputElement | null>(null);
 const dropdownRef = ref<HTMLElement | null>(null);
+const listContainerRef = ref<HTMLElement | null>(null);
 
 const { width: windowWidth, height: windowHeight } = useWindowSize();
 const triggerBounding = useElementBounding(containerRef);
 
 const dropdownPosition = ref<'top' | 'bottom'>('bottom');
+
+const combinedOptions = computed(() => {
+  const options: (string | undefined)[] = [];
+  if (props.allowClear) {
+    options.push(undefined);
+  }
+  options.push(...filteredModels.value);
+  return options;
+});
 
 const floatingStyle = computed((): CSSProperties => {
   if (!isOpen.value || !containerRef.value) return {};
@@ -80,11 +91,18 @@ const floatingStyle = computed((): CSSProperties => {
 });
 
 function toggleDropdown() {
-  isOpen.value = !isOpen.value;
   if (isOpen.value) {
+    isOpen.value = false;
+  } else {
+    isOpen.value = true;
     searchQuery.value = '';
+    // Set initial highlighted index to current model or first item
+    const currentIndex = combinedOptions.value.indexOf(props.modelValue);
+    highlightedIndex.value = currentIndex >= 0 ? currentIndex : 0;
+    
     nextTick(() => {
       searchInputRef.value?.focus();
+      scrollToHighlighted();
     });
   }
 }
@@ -92,6 +110,60 @@ function toggleDropdown() {
 function selectModel(model: string | undefined) {
   emit('update:modelValue', model);
   isOpen.value = false;
+}
+
+function scrollToHighlighted() {
+  nextTick(() => {
+    if (!listContainerRef.value) return;
+    const container = listContainerRef.value;
+    const highlightedEl = container.querySelector(`[data-index="${highlightedIndex.value}"]`) as HTMLElement;
+    if (highlightedEl) {
+      const containerRect = container.getBoundingClientRect();
+      const elRect = highlightedEl.getBoundingClientRect();
+
+      if (elRect.top < containerRect.top) {
+        container.scrollTop -= (containerRect.top - elRect.top);
+      } else if (elRect.bottom > containerRect.bottom) {
+        container.scrollTop += (elRect.bottom - containerRect.bottom);
+      }
+    }
+  });
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (!isOpen.value) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
+      e.preventDefault();
+      toggleDropdown();
+    }
+    return;
+  }
+
+  switch (e.key) {
+  case 'ArrowDown':
+    e.preventDefault();
+    highlightedIndex.value = (highlightedIndex.value + 1) % combinedOptions.value.length;
+    scrollToHighlighted();
+    break;
+  case 'ArrowUp':
+    e.preventDefault();
+    highlightedIndex.value = (highlightedIndex.value - 1 + combinedOptions.value.length) % combinedOptions.value.length;
+    scrollToHighlighted();
+    break;
+  case 'Enter':
+    e.preventDefault();
+    if (highlightedIndex.value >= 0 && highlightedIndex.value < combinedOptions.value.length) {
+      selectModel(combinedOptions.value[highlightedIndex.value]);
+    }
+    break;
+  case 'Escape':
+    e.preventDefault();
+    isOpen.value = false;
+    break;
+  case 'Tab':
+    isOpen.value = false;
+    break;
+  }
 }
 
 async function handleRefresh(e: Event) {
@@ -123,6 +195,13 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', handleClickOutside);
 });
 
+// Reset highlighted index when filtering
+watch(searchQuery, () => {
+  if (isOpen.value) {
+    highlightedIndex.value = combinedOptions.value.length > 0 ? 0 : -1;
+  }
+});
+
 // Close on scroll or resize to prevent floating detached dropdown
 watch([windowWidth, windowHeight], () => {
   if (isOpen.value) isOpen.value = false;
@@ -130,7 +209,7 @@ watch([windowWidth, windowHeight], () => {
 </script>
 
 <template>
-  <div class="relative w-full" ref="containerRef">
+  <div class="relative w-full" ref="containerRef" @keydown="handleKeydown">
     <!-- Trigger -->
     <button
       type="button"
@@ -160,6 +239,7 @@ watch([windowWidth, windowHeight], () => {
         :style="floatingStyle"
         class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-200"
         :class="dropdownPosition === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'"
+        @keydown="handleKeydown"
       >
         <!-- Search and Actions -->
         <div class="p-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 bg-gray-50/50 dark:bg-gray-900/50">
@@ -192,16 +272,23 @@ watch([windowWidth, windowHeight], () => {
         </div>
 
         <!-- List -->
-        <div class="max-h-60 overflow-y-auto py-1 custom-scrollbar">
+        <div ref="listContainerRef" class="max-h-60 overflow-y-auto py-1 custom-scrollbar">
           <!-- Inherited / Default option -->
           <button
             v-if="allowClear"
             @click="selectModel(undefined)"
             class="w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors border-b border-gray-50 dark:border-gray-700/50 mb-1"
-            :class="!modelValue 
-              ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' 
-              : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-gray-600'"
+            :class="[
+              !modelValue 
+                ? 'text-blue-600 dark:text-blue-400 font-bold' 
+                : 'text-gray-500 dark:text-gray-400',
+              highlightedIndex === 0 
+                ? 'bg-gray-100 dark:bg-gray-700/50' 
+                : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+            ]"
             data-testid="model-selector-clear"
+            data-index="0"
+            @mouseenter="highlightedIndex = 0"
           >
             <div class="flex items-center gap-2">
               <X v-if="modelValue" class="w-3.5 h-3.5" />
@@ -214,13 +301,20 @@ watch([windowWidth, windowHeight], () => {
             <p class="text-xs text-gray-500 dark:text-gray-400">No models found</p>
           </div>
           <button
-            v-for="model in filteredModels"
+            v-for="(model, index) in filteredModels"
             :key="model"
             @click="selectModel(model)"
             class="w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors"
-            :class="model === modelValue 
-              ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold' 
-              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'"
+            :class="[
+              model === modelValue 
+                ? 'text-blue-600 dark:text-blue-400 font-bold' 
+                : 'text-gray-700 dark:text-gray-300',
+              highlightedIndex === (allowClear ? index + 1 : index)
+                ? 'bg-gray-100 dark:bg-gray-700/50'
+                : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+            ]"
+            :data-index="allowClear ? index + 1 : index"
+            @mouseenter="highlightedIndex = allowClear ? index + 1 : index"
           >
             <span class="break-all whitespace-normal pr-2">{{ model }}</span>
             <Check v-if="model === modelValue" class="w-3.5 h-3.5 shrink-0" />
