@@ -1338,15 +1338,13 @@ describe('ChatArea Model Selection', () => {
     
     await trigger.trigger('click');
     
-    // The items are buttons in ModelSelector
-    const buttons = wrapper.findAll('button');
-    const modelButtons = buttons.filter(b => 
-      mockAvailableModels.value.includes(b.text())
-    );
+    // The items are buttons in ModelSelector, teleported to body
+    const modelButtons = Array.from(document.body.querySelectorAll('button'))
+      .filter(b => mockAvailableModels.value.includes(b.textContent || ''));
     
     expect(modelButtons.length).toBe(2);
-    expect(modelButtons[0]!.text()).toBe('model-1');
-    expect(modelButtons[1]!.text()).toBe('model-2');
+    expect(modelButtons[0]!.textContent).toBe('model-1');
+    expect(modelButtons[1]!.textContent).toBe('model-2');
   });
 
   it('should pass a naturally sorted list of models to ModelSelector', async () => {
@@ -1377,9 +1375,12 @@ describe('ChatArea Model Selection', () => {
     const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
     await trigger.trigger('click');
     
-    // Select 'model-2'
-    const model2Btn = wrapper.findAll('button').find(b => b.text() === 'model-2');
-    await model2Btn!.trigger('click');
+    // Select 'model-2' from document.body
+    const model2Btn = Array.from(document.body.querySelectorAll('button'))
+      .find(b => b.textContent === 'model-2');
+    
+    (model2Btn as HTMLElement).click();
+    await new Promise(resolve => setTimeout(resolve, 0));
     
     expect(mockUpdateChatModel).toHaveBeenCalledWith('1', 'model-2');
     expect(mockCurrentChat.value!.modelId).toBe('model-2');

@@ -219,10 +219,11 @@ describe('OnboardingModal.vue', () => {
     expect(trigger.text()).toBe('model-b');
     
     await trigger.trigger('click');
-    const modelButtons = wrapper.findAll('.custom-scrollbar button').filter(b => 
-      ['model-a', 'model-b'].includes(b.text())
-    );
+    const modelButtons = Array.from(document.body.querySelectorAll('.custom-scrollbar button'))
+      .filter(b => ['model-a', 'model-b'].includes(b.textContent || ''));
     expect(modelButtons.length).toBe(2);
+    
+    wrapper.unmount();
   });
 
   it('shows error message when saving settings fails', async () => {
@@ -293,8 +294,10 @@ describe('OnboardingModal.vue', () => {
     // 2. Select second model
     const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
     await trigger.trigger('click');
-    const modelYBtn = wrapper.findAll('button').find(b => b.text() === 'model-y');
-    await modelYBtn?.trigger('click');
+    const modelYBtn = Array.from(document.body.querySelectorAll('button'))
+      .find(b => b.textContent === 'model-y');
+    (modelYBtn as HTMLElement).click();
+    await new Promise(resolve => setTimeout(resolve, 0));
     
     // 3. Skip via X
     await wrapper.find('[data-testid="onboarding-close-x"]').trigger('click');

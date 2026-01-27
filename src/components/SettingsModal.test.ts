@@ -889,14 +889,15 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // Select "None" for Default Model
       const modelSelect = wrapper.find('[data-testid="setting-model-select"]');
       await modelSelect.find('[data-testid="model-selector-trigger"]').trigger('click');
-      const clearBtn = modelSelect.find('[data-testid="model-selector-clear"]');
-      if (clearBtn.exists()) await clearBtn.trigger('click');
+      const clearBtn = document.body.querySelector('[data-testid="model-selector-clear"]') as HTMLElement;
+      if (clearBtn) clearBtn.click();
+      await nextTick();
 
       // Select "Use Current Chat Model" for Title Model
       const titleSelect = wrapper.find('[data-testid="setting-title-model-select"]');
       await titleSelect.find('[data-testid="model-selector-trigger"]').trigger('click');
-      const titleClearBtn = titleSelect.find('[data-testid="model-selector-clear"]');
-      if (titleClearBtn.exists()) await titleClearBtn.trigger('click');
+      const titleClearBtn = document.body.querySelector('[data-testid="model-selector-clear"]') as HTMLElement;
+      if (titleClearBtn) titleClearBtn.click();
       
       await flushPromises();
 
@@ -906,6 +907,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const lastProfile = vm.form.providerProfiles[vm.form.providerProfiles.length - 1];
       expect(lastProfile?.defaultModelId).toBeUndefined();
       expect(lastProfile?.titleModelId).toBeUndefined();
+      
+      wrapper.unmount();
     });
     it('supports renaming a profile in the UI', async () => {
       const mockProviderProfile = { id: 'p1', name: 'Original Name', endpointType: 'openai' as const };
