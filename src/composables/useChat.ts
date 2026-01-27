@@ -724,7 +724,12 @@ export function useChat() {
   };
 
   const regenerateMessage = async (failedMessageId: string) => {
-    if (!_currentChat.value || isProcessing(toRaw(_currentChat.value).id)) return; 
+    if (!_currentChat.value) return; 
+    const chatId = toRaw(_currentChat.value).id;
+    if (isProcessing(chatId)) {
+      abortChat(chatId);
+    }
+
     const chat = getLiveChat(_currentChat.value);
     incTask(chat.id, 'process');
     registerLiveInstance(chat);
