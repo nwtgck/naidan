@@ -35,10 +35,11 @@ describe('SettingsModal Design Specifications', () => {
       availableModels: ref([]),
       isFetchingModels: ref(false),
       save: vi.fn(),
-      fetchModels: vi.fn(),
+      fetchModels: vi.fn().mockResolvedValue([]),
     });
     (useChat as unknown as Mock).mockReturnValue({
       deleteAllChats: vi.fn(),
+      resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
     });
     (useToast as unknown as Mock).mockReturnValue({
       addToast: vi.fn(),
@@ -76,12 +77,12 @@ describe('SettingsModal Design Specifications', () => {
       availableModels: ref([]),
       isFetchingModels: ref(false),
       save: vi.fn(),
-      fetchModels: vi.fn(),
+      fetchModels: vi.fn().mockResolvedValue([]),
     });
     
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });
-    // Switch to profiles tab (the second button)
-    const profilesTab = wrapper.findAll('nav button')[1];
+    // Switch to profiles tab
+    const profilesTab = wrapper.find('[data-testid="tab-profiles"]');
     await profilesTab?.trigger('click');
     
     // Check capitalization in badge
@@ -134,6 +135,34 @@ describe('SettingsModal Design Specifications', () => {
       await profilesTab?.trigger('click');
       expect(profilesTab?.classes()).toContain('border-gray-100');
       expect(profilesTab?.classes()).not.toContain('border-transparent');
+    });
+  });
+
+  describe('Responsive and Scrolling (Regression)', () => {
+    it('applies min-h-0 to flex children to ensure scrolling works on small screens', () => {
+      const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      
+      // Main content area
+      const main = wrapper.find('main');
+      expect(main.classes()).toContain('min-h-0');
+
+      // Scrollable inner div
+      const scrollArea = main.find('div.flex-1.overflow-y-auto');
+      expect(scrollArea.classes()).toContain('min-h-0');
+
+      // Sidebar container
+      const aside = wrapper.find('aside');
+      expect(aside.classes()).toContain('min-h-0');
+
+      // Sidebar navigation
+      const nav = aside.find('nav');
+      expect(nav.classes()).toContain('min-h-0');
+    });
+
+    it('uses shrink-0 for the settings header to prevent height collapse', () => {
+      const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      const header = wrapper.find('aside > div.p-6');
+      expect(header.classes()).toContain('shrink-0');
     });
   });
 });

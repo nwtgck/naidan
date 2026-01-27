@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '../composables/useGlobalEvents';
 import { useOPFSExplorer } from '../composables/useOPFSExplorer';
+import { useLayout } from '../composables/useLayout';
 import { 
   Terminal, ChevronUp, ChevronDown, Trash2, AlertCircle, X, Skull, 
   Info, AlertTriangle, Bug, MoreVertical, HardDrive,
@@ -9,6 +10,7 @@ import {
 
 const { events, eventCount, errorCount, clearEvents, addErrorEvent, addInfoEvent } = useGlobalEvents();
 const { openOPFS } = useOPFSExplorer();
+const { isSidebarOpen } = useLayout();
 const isOpen = ref(false);
 const isMenuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
@@ -101,8 +103,8 @@ onUnmounted(() => {
 
 <template>
   <div 
-    class="fixed bottom-0 right-0 left-64 z-50 border-t border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md transition-all duration-300 shadow-2xl"
-    :class="isOpen ? 'h-64' : 'h-10'"
+    class="fixed bottom-0 right-0 z-50 border-t border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md transition-all duration-300 shadow-2xl"
+    :class="[isOpen ? 'h-64' : 'h-10', isSidebarOpen ? 'left-64' : 'left-10']"
   >
     <!-- Toggle Bar -->
     <div 
@@ -124,14 +126,12 @@ onUnmounted(() => {
         </div>
 
         <!-- Total Badge (Only show when open) -->
-        <span 
-          v-if="isOpen"
+        <span
           class="text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-lg"
           data-testid="debug-total-badge"
         >
           Total: {{ eventCount }}
-        </span>
-      </div>
+        </span>      </div>
 
       <div class="flex items-center gap-2 relative" ref="menuRef">
         <template v-if="isOpen">
@@ -210,7 +210,7 @@ onUnmounted(() => {
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 mb-1">
             <component :is="getEventIcon(event.type)" class="w-3 h-3" />
-            <span class="text-[10px] font-bold bg-white/20 dark:bg-white/5 px-1.5 py-0.5 rounded-lg border border-white/20 uppercase tracking-tighter">{{ event.source }}</span>
+            <span class="text-[10px] font-bold bg-white/20 dark:bg-white/5 px-1.5 py-0.5 rounded-lg border border-white/20 tracking-tighter">{{ event.source }}</span>
             <span class="text-xs font-bold truncate opacity-90">{{ event.message }}</span>
           </div>
           <pre v-if="event.details" class="bg-black/5 dark:bg-black/50 p-3 rounded-xl text-[10px] text-gray-500 dark:text-gray-400 overflow-x-auto border border-gray-100/50 dark:border-gray-800">{{ stringifyDetails(event.details as any) }}</pre>

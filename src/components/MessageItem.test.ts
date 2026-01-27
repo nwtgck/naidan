@@ -1,14 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode } from '../models/types';
-import { v7 as uuidv7 } from 'uuid';
 import { Check } from 'lucide-vue-next';
 import { nextTick } from 'vue';
 
 describe('MessageItem Rendering', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): MessageNode => ({
-    id: uuidv7(),
+    id: crypto.randomUUID(),
     role,
     content,
     timestamp: Date.now(),
@@ -81,6 +80,45 @@ describe('MessageItem Rendering', () => {
     const contentArea = wrapper.find('[data-testid="message-content"]');
     expect(contentArea.text()).toBe('Actual response');
     expect(contentArea.text()).not.toContain('Internal thought');
+  });
+
+  it('detects active thinking state (isThinkingNow)', () => {
+    const message = createMessage('<think>Ongoing thought...');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Should show "Thinking..." instead of "Show Thought Process"
+    expect(wrapper.text()).toContain('Thinking...');
+    expect(wrapper.find('.thinking-border').exists()).toBe(true);
+  });
+
+  it('handles multiple thinking blocks and case-insensitivity', async () => {
+    const message = createMessage('<THINK>Thought 1</THINK>Response 1<think>Thought 2</think>Response 2');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // displayContent should be cleaned
+    const contentArea = wrapper.find('[data-testid="message-content"]');
+    expect(contentArea.text()).toContain('Response 1');
+    expect(contentArea.text()).toContain('Response 2');
+    expect(contentArea.text()).not.toContain('Thought 1');
+    expect(contentArea.text()).not.toContain('Thought 2');
+
+    // Toggle it to see the content
+    const toggle = wrapper.find('[data-testid="toggle-thinking"]');
+    await toggle.trigger('click');
+    
+    const thinkingArea = wrapper.find('[data-testid="thinking-content"]');
+    expect(thinkingArea.text()).toContain('Thought 1');
+    expect(thinkingArea.text()).toContain('Thought 2');
+    expect(thinkingArea.text()).toContain('---');
+  });
+
+  it('hides loading indicator when thinking is active', () => {
+    // Content is empty, but <think> is present
+    const message = createMessage('<think>Thinking only');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="thinking-block"]').exists()).toBe(true);
   });
 
   it('copies message content to clipboard', async () => {
@@ -302,7 +340,7 @@ describe('MessageItem Rendering', () => {
 
 describe('MessageItem Keyboard Shortcuts', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'user'): MessageNode => ({
-    id: uuidv7(),
+    id: crypto.randomUUID(),
     role,
     content,
     timestamp: Date.now(),
@@ -357,5 +395,267 @@ describe('MessageItem Keyboard Shortcuts', () => {
     
     expect(wrapper.emitted('edit')).toBeTruthy();
     expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Meta content']);
+  });
+});
+
+describe('MessageItem Attachment Rendering', () => {
+  const createMessageWithAttachments = (attachments: any[]): MessageNode => ({
+    id: crypto.randomUUID(),
+    role: 'user',
+    content: 'Message with images',
+    timestamp: Date.now(),
+    attachments,
+    replies: { items: [] },
+  });
+
+  beforeEach(() => {
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn().mockReturnValue('mock-url'),
+      revokeObjectURL: vi.fn(),
+    });
+  });
+
+  it('renders memory attachments using local blobs', async () => {
+    const message = createMessageWithAttachments([{
+      id: 'att-mem',
+      status: 'memory',
+      blob: new Blob([''], { type: 'image/png' }),
+      originalName: 'mem.png',
+      mimeType: 'image/png',
+      size: 10,
+      uploadedAt: Date.now()
+    }]);
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+    await nextTick();
+
+    const img = wrapper.find('img');
+    expect(img.exists()).toBe(true);
+    expect(img.attributes('src')).toBe('mock-url');
+  });
+
+  it('renders persisted attachments by fetching from storage', async () => {
+    // Mock storageService
+    const { storageService } = await import('../services/storage');
+    vi.spyOn(storageService, 'getFile').mockResolvedValue(new Blob([''], { type: 'image/png' }));
+
+    const message = createMessageWithAttachments([{
+      id: 'att-persisted',
+      status: 'persisted',
+      originalName: 'persisted.png',
+      mimeType: 'image/png',
+      size: 20,
+      uploadedAt: Date.now()
+    }]);
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+    await nextTick();
+    await nextTick(); // Wait for loadAttachments async
+
+    const img = wrapper.find('img');
+    expect(img.exists()).toBe(true);
+    expect(storageService.getFile).toHaveBeenCalledWith('att-persisted', 'persisted.png');
+  });
+
+  it('renders a fallback for missing attachments', async () => {
+    const message = createMessageWithAttachments([{
+      id: 'att-missing',
+      status: 'missing',
+      originalName: 'missing.png',
+      mimeType: 'image/png',
+      size: 30,
+      uploadedAt: Date.now()
+    }]);
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+
+    expect(wrapper.text()).toContain('Image missing');
+    expect(wrapper.text()).toContain('missing.png');
+    expect(wrapper.text()).toContain('30.0 B');
+    expect(wrapper.find('img').exists()).toBe(false);
+  });
+
+  it('renders a download button for valid attachments', async () => {
+    const message = createMessageWithAttachments([{
+      id: 'att-mem',
+      status: 'memory',
+      blob: new Blob([''], { type: 'image/png' }),
+      originalName: 'mem.png',
+      mimeType: 'image/png',
+      size: 10,
+      uploadedAt: Date.now()
+    }]);
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+    await nextTick();
+
+    const downloadBtn = wrapper.find('[data-testid="download-attachment"]');
+    expect(downloadBtn.exists()).toBe(true);
+    expect(downloadBtn.attributes('href')).toBe('mock-url');
+    expect(downloadBtn.attributes('download')).toBe('mem.png');
+  });
+});
+
+describe('MessageItem States', () => {
+  const createAssistantMessage = (content: string, error?: string): MessageNode => ({
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    content,
+    error,
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  it('displays loading indicator when waiting for response', () => {
+    const message = createAssistantMessage('');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Waiting for response...');
+    expect(wrapper.find('[data-testid="message-content"]').exists()).toBe(false);
+  });
+
+  it('does NOT display loading indicator when content exists', () => {
+    const message = createAssistantMessage('Hello');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="message-content"]').exists()).toBe(true);
+  });
+
+  it('displays error message when generation failed', () => {
+    const message = createAssistantMessage('', 'Network Error');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    const errorEl = wrapper.find('[data-testid="error-message"]');
+    expect(errorEl.exists()).toBe(true);
+    expect(errorEl.text()).toContain('Generation Failed');
+    expect(errorEl.text()).toContain('Network Error');
+    expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
+  });
+
+  it('displays partial content AND error message', () => {
+    const message = createAssistantMessage('Partial content', 'Stream Error');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.find('[data-testid="message-content"]').text()).toBe('Partial content');
+    
+    const errorEl = wrapper.find('[data-testid="error-message"]');
+    expect(errorEl.exists()).toBe(true);
+    expect(errorEl.text()).toContain('Stream Error');
+  });
+
+  it('emits regenerate event when button clicked', async () => {
+    const message = createAssistantMessage('', 'Error');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    await wrapper.find('[data-testid="retry-button"]').trigger('click');
+    
+    expect(wrapper.emitted('regenerate')).toBeTruthy();
+    expect(wrapper.emitted('regenerate')?.[0]).toEqual([message.id]);
+  });
+
+  it('emits regenerate event when action bar button clicked', async () => {
+    const message = createAssistantMessage('Existing content');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    await wrapper.find('[data-testid="regenerate-button"]').trigger('click');
+    
+    expect(wrapper.emitted('regenerate')).toBeTruthy();
+    expect(wrapper.emitted('regenerate')?.[0]).toEqual([message.id]);
+  });
+});
+
+describe('MessageItem Edit Labels', () => {
+  const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
+    id: crypto.randomUUID(),
+    role,
+    content: 'Some content',
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  it('shows "Send & Branch" when editing a user message', async () => {
+    const message = createMessage('user');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Enter edit mode
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    
+    const saveBtn = wrapper.find('[data-testid="save-edit"]');
+    expect(saveBtn.text()).toContain('Send & Branch');
+  });
+
+  it('shows "Update & Branch" when editing an assistant message', async () => {
+    const message = createMessage('assistant');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Enter edit mode
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    
+    const saveBtn = wrapper.find('[data-testid="save-edit"]');
+    expect(saveBtn.text()).toContain('Update & Branch');
+  });
+
+  it('allows "Send & Branch" even if content is NOT edited', async () => {
+    const message = createMessage('user');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    
+    // Trigger Save without changing setValue
+    await wrapper.find('[data-testid="save-edit"]').trigger('click');
+    
+    expect(wrapper.emitted('edit')).toBeTruthy();
+    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Some content']);
+  });
+
+  it('shows "Resend" button for user messages and emits edit event', async () => {
+    const message = createMessage('user');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    const resendBtn = wrapper.find('[data-testid="resend-button"]');
+    expect(resendBtn.exists()).toBe(true);
+    expect(resendBtn.attributes('title')).toBe('Resend message');
+    
+    await resendBtn.trigger('click');
+    
+    expect(wrapper.emitted('edit')).toBeTruthy();
+    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Some content']);
+  });
+
+  it('does NOT show "Resend" button for assistant messages', () => {
+    const message = createMessage('assistant');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    expect(wrapper.find('[data-testid="resend-button"]').exists()).toBe(false);
+  });
+});
+
+describe('MessageItem Action Visibility', () => {
+  const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
+    id: crypto.randomUUID(),
+    role,
+    content: 'Some content',
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  it('ensures message actions are always visible (no hover-only opacity classes)', () => {
+    const message = createMessage('assistant');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Find the container of message actions. It's the sibling of version paging or an empty div.
+    // In our template it's: <div class="flex items-center gap-1">
+    // We can find it by looking for one of the buttons inside it.
+    const copyButton = wrapper.find('[data-testid="copy-message-button"]');
+    const container = copyButton.element.parentElement;
+    
+    expect(container?.className).not.toContain('opacity-0');
+    expect(container?.className).not.toContain('group-hover:opacity-100');
   });
 });

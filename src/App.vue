@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, defineAsyncComponent } from 'vue';
 import { useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useChat } from './composables/useChat';
@@ -8,16 +8,21 @@ import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
 import { useOPFSExplorer } from './composables/useOPFSExplorer';
 import Sidebar from './components/Sidebar.vue';
-import SettingsModal from './components/SettingsModal.vue';
 import OnboardingModal from './components/OnboardingModal.vue';
-import DebugPanel from './components/DebugPanel.vue';
 import ToastContainer from './components/ToastContainer.vue';
-import CustomDialog from './components/CustomDialog.vue'; // Import CustomDialog
-import OPFSExplorer from './components/OPFSExplorer.vue';
+import { useLayout } from './composables/useLayout';
+
+// Lazily load components that are definitely not visible on initial mount
+const SettingsModal = defineAsyncComponent(() => import('./components/SettingsModal.vue'));
+const GroupSettingsPanel = defineAsyncComponent(() => import('./components/GroupSettingsPanel.vue'));
+const DebugPanel = defineAsyncComponent(() => import('./components/DebugPanel.vue'));
+const CustomDialog = defineAsyncComponent(() => import('./components/CustomDialog.vue'));
+const OPFSExplorer = defineAsyncComponent(() => import('./components/OPFSExplorer.vue'));
 
 const isSettingsOpen = ref(false);
 const chatStore = useChat();
 const settingsStore = useSettings();
+const { isSidebarOpen } = useLayout();
 const router = useRouter();
 
 const { isOPFSOpen } = useOPFSExplorer();
@@ -26,7 +31,7 @@ const { isOPFSOpen } = useOPFSExplorer();
 const { 
   isConfirmOpen, confirmTitle, confirmMessage, 
   confirmConfirmButtonText, confirmCancelButtonText, 
-  confirmButtonVariant, 
+  confirmButtonVariant, confirmIcon,
   handleConfirm, handleCancel,
 } = useConfirm();
 
@@ -34,20 +39,53 @@ const {
 const { 
   isPromptOpen, promptTitle, promptMessage, 
   promptConfirmButtonText, promptCancelButtonText, promptInputValue,
+  promptBodyComponent,
   handlePromptConfirm, handlePromptCancel,
 } = usePrompt();
 
 // Automatically create a new chat if the list becomes empty while on the landing page
+// OR if a query parameter 'q' is provided on the landing page
 watch(
-  [() => chatStore.chats.value.length, () => router.currentRoute.value.path, () => settingsStore.initialized.value],
-  async ([len, path, initialized]) => {
-    if (initialized && len === 0 && path === '/') {
-      await chatStore.createNewChat();
+  [
+    () => chatStore.chats.value.length, 
+    () => router.currentRoute.value?.path,
+    () => router.currentRoute.value?.query?.q,
+    () => router.currentRoute.value?.query?.['chat-group'],
+    () => router.currentRoute.value?.query?.model,
+    () => settingsStore.initialized.value,
+    () => settingsStore.isOnboardingDismissed.value
+  ],
+  async ([len, path, q, chatGroupId, modelId, initialized, dismissed]) => {
+    if (!initialized || !dismissed || path !== '/') return;
+
+    if (q || len === 0) {
+      let targetGroupId: string | null = null;
+      if (q && typeof chatGroupId === 'string') {
+        const group = chatStore.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
+        if (group) {
+          targetGroupId = group.id;
+        } else {
+          targetGroupId = await chatStore.createChatGroup(chatGroupId);
+        }
+      }
+
+      const targetModelId = (q && typeof modelId === 'string') ? modelId : null;
+      await chatStore.createNewChat(targetGroupId, targetModelId);
+      
       if (chatStore.currentChat.value) {
-        router.push(`/chat/${chatStore.currentChat.value.id}`);
+        const id = chatStore.currentChat.value.id;
+        if (q) {
+          router.push({
+            path: `/chat/${id}`,
+            query: { q: q.toString() }
+          });
+        } else {
+          router.push(`/chat/${id}`);
+        }
       }
     }
   },
+  { immediate: true }
 );
 
 // ChatGPT-style shortcut for New Chat: Ctrl+Shift+O (Cmd+Shift+O on Mac)
@@ -64,11 +102,19 @@ onKeyStroke(['o', 'O'], async (e) => {
 
 <template>
   <div class="flex h-screen bg-gray-50/50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-hidden transition-colors duration-300">
-    <Sidebar @open-settings="isSettingsOpen = true" />
+    <div 
+      class="border-r border-gray-100 dark:border-gray-800 shrink-0 h-full transition-all duration-300 ease-in-out relative z-30"
+      :class="isSidebarOpen ? 'w-64' : 'w-10'"
+    >
+      <Sidebar @open-settings="isSettingsOpen = true" />
+    </div>
     
     <main class="flex-1 relative flex flex-col min-w-0 pb-10 bg-transparent">
+      <GroupSettingsPanel 
+        v-if="chatStore.currentChatGroup.value" 
+      />
       <!-- Use a key based on route to help Vue identify when to remount or transition -->
-      <router-view v-slot="{ Component, route }">
+      <router-view v-else v-slot="{ Component, route }">
         <transition name="fade" mode="out-in">
           <component :is="Component" :key="route.path" />
         </transition>
@@ -81,7 +127,7 @@ onKeyStroke(['o', 'O'], async (e) => {
       @close="isSettingsOpen = false" 
     />
 
-    <OnboardingModal v-if="settingsStore.initialized && !settingsStore.isOnboardingDismissed.value" />
+    <OnboardingModal />
 
     <ToastContainer />
 
@@ -89,6 +135,7 @@ onKeyStroke(['o', 'O'], async (e) => {
     <CustomDialog
       :show="isConfirmOpen"
       :title="confirmTitle"
+      :icon="confirmIcon"
       :message="confirmMessage"
       :confirmButtonText="confirmConfirmButtonText"
       :cancelButtonText="confirmCancelButtonText"
@@ -107,6 +154,7 @@ onKeyStroke(['o', 'O'], async (e) => {
       :confirmButtonVariant="'default'"
       :showInput="true"
       :inputValue="promptInputValue"
+      :bodyComponent="promptBodyComponent"
       @update:inputValue="promptInputValue = $event"
       @confirm="handlePromptConfirm"
       @cancel="handlePromptCancel"
@@ -117,13 +165,9 @@ onKeyStroke(['o', 'O'], async (e) => {
 </template>
 
 <style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.1s ease;
-}
-
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
 }
 </style>
+

@@ -1,7 +1,8 @@
 import { ref } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
+import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 
@@ -18,13 +19,21 @@ vi.mock('vue-router', () => ({
 describe('ChatArea Design Specifications', () => {
   beforeEach(() => {
     (useChat as unknown as Mock).mockReturnValue({
-      currentChat: ref({ id: '1', title: 'Test Chat', overrideModelId: 'gemma3n:e2b' }),
+      currentChat: ref({ id: '1', title: 'Test Chat', modelId: 'gemma3n:e2b' }),
       streaming: ref(false),
+      activeGenerations: new Map(),
       activeMessages: ref([]),
       availableModels: ref([]),
       fetchingModels: ref(false),
       fetchAvailableModels: vi.fn(),
-      saveCurrentChat: vi.fn(),
+      saveChat: vi.fn(),
+      resolvedSettings: ref({ 
+        modelId: 'gemma3n:e2b', 
+        sources: { modelId: 'chat' } 
+      }),
+      isTaskRunning: vi.fn().mockReturnValue(false),
+      isProcessing: vi.fn().mockReturnValue(false),
+      abortChat: vi.fn(),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),
@@ -33,7 +42,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('uses backdrop-blur-md on the header for a glass effect', () => {
     const wrapper = mount(ChatArea, {
-      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const header = wrapper.find('.backdrop-blur-md');
     expect(header.exists()).toBe(true);
@@ -42,7 +51,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('preserves the case of the Model ID (no forced uppercase)', () => {
     const wrapper = mount(ChatArea, {
-      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const modelTrigger = wrapper.find('[data-testid="model-trigger"]');
     expect(modelTrigger.text()).toContain('gemma3n:e2b');
@@ -51,7 +60,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('preserves the case of the keyboard shortcut labels (e.g., Cmd + Enter)', () => {
     const wrapper = mount(ChatArea, {
-      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const sendBtn = wrapper.find('[data-testid="send-button"]');
     expect(sendBtn.exists()).toBe(true);
@@ -59,17 +68,59 @@ describe('ChatArea Design Specifications', () => {
     expect(sendBtn.text()).not.toContain('ENTER');
   });
 
-  it('uses rounded-2xl for the chat input to match the premium aesthetic', () => {
+  it('uses rounded-2xl for the chat input container to match the premium aesthetic', () => {
     const wrapper = mount(ChatArea, {
-      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
+    const container = wrapper.find('.max-w-4xl.mx-auto.relative.group.border');
+    expect(container.classes()).toContain('rounded-2xl');
+  });
+
+  it('ensures the input container stays within viewport when maximized', async () => {
+    // Mock window.innerHeight
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 1000 });
+    
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
+    });
+    
+    // Simulate maximization
+    (wrapper.vm as any).isMaximized = true;
+    await (wrapper.vm as any).adjustTextareaHeight();
+    
     const textarea = wrapper.find('[data-testid="chat-input"]');
-    expect(textarea.classes()).toContain('rounded-2xl');
+    const height = parseFloat((textarea.element as HTMLElement).style.height);
+    
+    // 70% of 1000 is 700. It should be around that and certainly less than 1000.
+    expect(height).toBeLessThan(1000 * 0.8); 
+    expect(height).toBeGreaterThan(100);
+
+    window.innerHeight = originalInnerHeight;
+  });
+
+  it('ensures the textarea and buttons are stacked vertically to avoid overlap', () => {
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
+    });
+    
+    const inputContainer = wrapper.find('.max-w-4xl.mx-auto.relative.group.border');
+    expect(inputContainer.classes()).toContain('flex-col');
+    
+    const textarea = inputContainer.find('[data-testid="chat-input"]');
+    const buttonRow = inputContainer.find('.flex.items-center.justify-between');
+    
+    expect(textarea.exists()).toBe(true);
+    expect(buttonRow.exists()).toBe(true);
+    
+    // Verify vertical order in DOM: textarea should come before buttonRow
+    const html = inputContainer.html();
+    expect(html.indexOf('data-testid="chat-input"')).toBeLessThan(html.indexOf('justify-between'));
   });
 
   it('uses gray-800 for chat content text to ensure eye comfort', () => {
     const wrapper = mount(ChatArea, {
-      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const title = wrapper.find('h2');
     expect(title.classes()).toContain('text-gray-800');
@@ -78,13 +129,19 @@ describe('ChatArea Design Specifications', () => {
   it('displays the critical "only for localhost" notice in ChatSettingsPanel', async () => {
     const wrapper = mount(ChatArea, {
       global: { 
-        stubs: { Logo: true, MessageItem: true, WelcomeScreen: true }, 
+        stubs: { 
+          Logo: true, 
+          MessageItem: true, 
+          WelcomeScreen: true,
+          ChatSettingsPanel
+        }, 
       },
     });
     
     // Toggle settings panel
     const settingsBtn = wrapper.find('[data-testid="model-trigger"]');
     await settingsBtn?.trigger('click');
+    await flushPromises();
     
     // Check if the panel text contains the important wording
     expect(wrapper.text()).toContain('only for localhost');

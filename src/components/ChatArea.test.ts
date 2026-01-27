@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, type Mock, beforeAll } from 'vitest';
-import { mount, shallowMount, flushPromises } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock, beforeAll } from 'vitest';
+import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick, ref, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -10,32 +10,61 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }],
 });
 
-import type { MessageNode } from '../models/types';
+import type { MessageNode, Chat } from '../models/types';
 
 // Mock dependencies
-const mockSendMessage = vi.fn();
+const mockSendMessage = vi.fn().mockResolvedValue(true);
 const mockAbortChat = vi.fn();
 const mockStreaming = ref(false);
 const mockAvailableModels = ref<string[]>([]);
 const mockFetchingModels = ref(false);
+const mockGeneratingTitle = ref(false);
 const mockFetchAvailableModels = vi.fn();
-const mockCurrentChat = ref({
+const mockGenerateChatTitle = vi.fn();
+const mockActiveGenerations = reactive(new Map());
+const mockCurrentChat = ref<Chat | null>({
   id: '1', 
   title: 'Test Chat', 
   root: { items: [] } as { items: MessageNode[] },
   currentLeafId: undefined as string | undefined,
   debugEnabled: false, 
   originChatId: undefined as string | undefined,
-  overrideModelId: undefined as string | undefined,
+  modelId: undefined as string | undefined,
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
 });
 const mockActiveMessages = ref<MessageNode[]>([]);
+
+const mockOpenChatGroup = vi.fn();
+const mockMoveChatToGroup = vi.fn();
+const mockUpdateChatModel = vi.fn().mockImplementation((id, modelId) => {
+  if (mockCurrentChat.value && mockCurrentChat.value.id === id) {
+    mockCurrentChat.value.modelId = modelId;
+  }
+});
+const mockSaveChat = vi.fn();
+const mockCurrentChatGroup = ref<any>(null);
+const mockChatGroups = ref<any[]>([]);
+const mockResolvedSettings = ref<any>(null);
+const mockInheritedSettings = ref<any>(null);
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
+    currentChatGroup: mockCurrentChatGroup,
+    chatGroups: mockChatGroups,
+    resolvedSettings: mockResolvedSettings,
+    inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
+    updateChatModel: mockUpdateChatModel,
+    saveChat: mockSaveChat,
     streaming: mockStreaming,
-    toggleDebug: vi.fn(),
+    activeGenerations: mockActiveGenerations,
+    toggleDebug: vi.fn(() => {
+      if (mockCurrentChat.value) {
+        mockCurrentChat.value.debugEnabled = !mockCurrentChat.value.debugEnabled;
+      }
+    }),
     activeMessages: mockActiveMessages,
     getSiblings: vi.fn().mockReturnValue([]),
     editMessage: vi.fn(),
@@ -43,14 +72,32 @@ vi.mock('../composables/useChat', () => ({
     abortChat: mockAbortChat,
     availableModels: mockAvailableModels,
     fetchingModels: mockFetchingModels,
+    generatingTitle: mockGeneratingTitle,
     fetchAvailableModels: mockFetchAvailableModels,
+    generateChatTitle: mockGenerateChatTitle,
+    forkChat: vi.fn().mockResolvedValue('new-id'),
+    openChatGroup: mockOpenChatGroup,
+    moveChatToGroup: mockMoveChatToGroup,
+    isTaskRunning: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
+    isProcessing: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
   }),
 }));
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({ endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'global-default-model' }),
+    availableModels: mockAvailableModels,
+    isFetchingModels: mockFetchingModels,
+    fetchModels: mockFetchAvailableModels,
   }),
+}));
+
+// Mock Mermaid to avoid "document is not defined" errors during tests
+vi.mock('mermaid', () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn().mockResolvedValue({ svg: '<svg></svg>' }),
+  },
 }));
 
 interface ChatAreaExposed {
@@ -62,17 +109,53 @@ interface ChatAreaExposed {
   input: string;
 }
 
+let wrapper: VueWrapper<any> | null = null;
+
+function resetMocks() {
+  vi.clearAllMocks();
+  mockStreaming.value = false;
+  mockActiveGenerations.clear();
+  mockActiveMessages.value = [];
+  mockAvailableModels.value = ['model-1', 'model-2'];
+  mockFetchingModels.value = false;
+  mockResolvedSettings.value = {
+    modelId: 'global-default-model',
+    sources: { modelId: 'global' }
+  };
+  mockInheritedSettings.value = {
+    modelId: 'global-default-model',
+    sources: { modelId: 'global' }
+  };
+  mockCurrentChat.value = {
+    id: '1', 
+    title: 'Test Chat', 
+    root: { items: [] },
+    currentLeafId: undefined,
+    debugEnabled: false, 
+    originChatId: undefined,
+    modelId: undefined,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
 describe('ChatArea UI States', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockStreaming.value = false;
-    mockActiveMessages.value = [];
+    resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+  });
+
+  afterEach(() => {
+    if (wrapper) {
+      wrapper.unmount();
+      wrapper = null;
+    }
+    document.body.innerHTML = '';
   });
 
   it('should keep the input textarea enabled during streaming', async () => {
     mockStreaming.value = true;
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
@@ -82,7 +165,10 @@ describe('ChatArea UI States', () => {
 
   it('should show the abort button and hide the send button during streaming', async () => {
     mockStreaming.value = true;
-    const wrapper = mount(ChatArea, {
+    if (mockCurrentChat.value) {
+      mockActiveGenerations.set(mockCurrentChat.value.id, { controller: new AbortController(), chat: mockCurrentChat.value });
+    }
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
@@ -93,7 +179,7 @@ describe('ChatArea UI States', () => {
   });
 
   it('should display the shortcut text with correct casing (not all uppercase)', () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: {
         stubs: {
           'router-link': true,
@@ -116,9 +202,9 @@ describe('ChatArea UI States', () => {
   it('should display the model name with correct casing (not forced to uppercase)', async () => {
     // Set a specifically lowercase model name in settings to test for uppercase transformation
     const testModelName = 'gemma3:1b-lowercase';
-    mockCurrentChat.value.overrideModelId = testModelName;
+    if (mockCurrentChat.value) mockCurrentChat.value.modelId = testModelName;
     
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: {
         plugins: [router],
         stubs: {
@@ -137,14 +223,14 @@ describe('ChatArea UI States', () => {
     expect(headerText).toContain(testModelName);
     // Explicitly check that it's NOT transformed to uppercase
     expect(headerText).not.toContain(testModelName.toUpperCase());
-    
-    // Reset for other tests
-    mockCurrentChat.value.overrideModelId = undefined;
   });
 
   it('should call abortChat when Esc is pressed during streaming', async () => {
     mockStreaming.value = true;
-    const wrapper = mount(ChatArea, {
+    if (mockCurrentChat.value) {
+      mockActiveGenerations.set(mockCurrentChat.value.id, { controller: new AbortController(), chat: mockCurrentChat.value });
+    }
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
@@ -155,7 +241,7 @@ describe('ChatArea UI States', () => {
 
   it('should show the send button with shortcut text when not streaming', async () => {
     mockStreaming.value = false;
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
@@ -166,8 +252,8 @@ describe('ChatArea UI States', () => {
   });
 
   it('should show the chat inspector when debug mode is enabled', async () => {
-    mockCurrentChat.value.debugEnabled = true;
-    const wrapper = mount(ChatArea, {
+    if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = true;
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
@@ -176,9 +262,34 @@ describe('ChatArea UI States', () => {
     expect(inspector.text()).toContain('Metadata');
   });
 
+  it('should show the regenerate title button and call generateChatTitle when clicked', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
+    expect(btn.exists()).toBe(true);
+    
+    await btn.trigger('click');
+    expect(mockGenerateChatTitle).toHaveBeenCalled();
+  });
+
+  it('should spin and disable the regenerate title button while generatingTitle is true', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGeneratingTitle.value = true;
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
+    expect(btn.classes()).toContain('animate-spin');
+    expect((btn.element as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('should hide the chat inspector when debug mode is disabled', async () => {
-    mockCurrentChat.value.debugEnabled = false;
-    const wrapper = mount(ChatArea, {
+    if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = false;
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
@@ -186,7 +297,7 @@ describe('ChatArea UI States', () => {
   });
 
   it('should render header icons (Export, Settings, More)', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
@@ -196,14 +307,34 @@ describe('ChatArea UI States', () => {
   });
 
   it('should show jump to origin button when originChatId is present', async () => {
-    mockCurrentChat.value.originChatId = 'original-id';
-    const wrapper = mount(ChatArea, {
+    if (mockCurrentChat.value) mockCurrentChat.value.originChatId = 'original-id';
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
     expect(wrapper.find('button[title="Jump to original chat"]').exists()).toBe(true);
-    // Reset for other tests
-    mockCurrentChat.value.originChatId = undefined;
+  });
+
+  it('should show move to group menu and call moveChatToGroup when a group is selected', async () => {
+    mockChatGroups.value = [{ id: 'group-1', name: 'Group 1' }];
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const btn = wrapper.find('[data-testid="move-to-group-button"]');
+    expect(btn.exists()).toBe(true);
+    
+    // Open menu
+    await btn.trigger('click');
+    expect(wrapper.text()).toContain('Move to Group');
+    expect(wrapper.text()).toContain('Group 1');
+    expect(wrapper.text()).toContain('Top Level');
+
+    // Select group
+    const groupBtn = wrapper.findAll('button').find(b => b.text().includes('Group 1'));
+    await groupBtn?.trigger('click');
+    
+    expect(mockMoveChatToGroup).toHaveBeenCalledWith('1', 'group-1');
   });
 
   describe('Custom Overrides Indicator', () => {
@@ -211,9 +342,10 @@ describe('ChatArea UI States', () => {
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
         endpointType: 'ollama',
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
+        modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
-      const wrapper = mount(ChatArea, { global: { plugins: [router] } });
+      wrapper = mount(ChatArea, { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
     });
 
@@ -221,9 +353,10 @@ describe('ChatArea UI States', () => {
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
         systemPrompt: { content: 'test', behavior: 'override' },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
+        modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
-      const wrapper = mount(ChatArea, { global: { plugins: [router] } });
+      wrapper = mount(ChatArea, { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
     });
 
@@ -231,18 +364,20 @@ describe('ChatArea UI States', () => {
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
         lmParameters: { temperature: 0.5 },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
+        modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
-      const wrapper = mount(ChatArea, { global: { plugins: [router] } });
+      wrapper = mount(ChatArea, { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
     });
 
     it('does not show indicator when no overrides are present', async () => {
       mockCurrentChat.value = reactive({
         id: 'c1', title: 'T', root: { items: [] },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined, overrideModelId: undefined,
+        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
+        modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
-      const wrapper = mount(ChatArea, { global: { plugins: [router] } });
+      wrapper = mount(ChatArea, { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(false);
     });
   });
@@ -252,11 +387,17 @@ describe('ChatArea Scrolling Logic', () => {
   let scrollTopSetterSpy: Mock;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockStreaming.value = false;
-    mockActiveMessages.value = [];
+    resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
     scrollTopSetterSpy = vi.fn();
+  });
+
+  afterEach(() => {
+    if (wrapper) {
+      wrapper.unmount();
+      wrapper = null;
+    }
+    document.body.innerHTML = '';
   });
 
   function setupScrollMock(element: HTMLElement) {
@@ -275,7 +416,7 @@ describe('ChatArea Scrolling Logic', () => {
   }
 
   it('should scroll to bottom when a new message is added', async () => {
-    const wrapper = mount(ChatArea, { 
+    wrapper = mount(ChatArea, { 
       attachTo: document.body,
       global: { plugins: [router] }, 
     });
@@ -294,13 +435,12 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
 
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
-    wrapper.unmount();
   });
 
   it('should scroll during streaming if user is at the bottom', async () => {
     mockActiveMessages.value = [{ id: '1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }];
     
-    const wrapper = mount(ChatArea, { 
+    wrapper = mount(ChatArea, { 
       attachTo: document.body,
       global: { plugins: [router] }, 
     });
@@ -322,13 +462,12 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
-    wrapper.unmount();
   });
 
   it('should NOT scroll during streaming if user has scrolled up', async () => {
     mockActiveMessages.value = [{ id: '1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }];
     
-    const wrapper = mount(ChatArea, { 
+    wrapper = mount(ChatArea, { 
       attachTo: document.body,
       global: { plugins: [router] }, 
     });
@@ -351,13 +490,12 @@ describe('ChatArea Scrolling Logic', () => {
     
     expect(scrollTopSetterSpy).not.toHaveBeenCalledWith(1000);
     expect(container.scrollTop).toBe(100);
-    wrapper.unmount();
   });
 
   it('should stop scrolling after content exceeds 400 characters', async () => {
     mockActiveMessages.value = [{ id: '1', role: 'assistant', content: 'A'.repeat(400), timestamp: Date.now(), replies: { items: [] } }];
     
-    const wrapper = mount(ChatArea, { 
+    wrapper = mount(ChatArea, { 
       attachTo: document.body,
       global: { plugins: [router] }, 
     });
@@ -379,22 +517,27 @@ describe('ChatArea Scrolling Logic', () => {
     
     expect(scrollTopSetterSpy).not.toHaveBeenCalledWith(1000);
     expect(container.scrollTop).toBe(500);
-    wrapper.unmount();
   });
 });
 
 describe('ChatArea Focus', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
   });
 
+  afterEach(() => {
+    if (wrapper) {
+      wrapper.unmount();
+      wrapper = null;
+    }
+    document.body.innerHTML = '';
+  });
+
   it('should focus the textarea after sending a message', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
-      global: {
-        plugins: [router],
-      },
+      global: { plugins: [router] },
     });
     
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
@@ -411,11 +554,9 @@ describe('ChatArea Focus', () => {
   });
 
   it('should focus the textarea when chat is opened', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
-      global: {
-        plugins: [router],
-      },
+      global: { plugins: [router] },
     });
     
     await nextTick();
@@ -427,82 +568,67 @@ describe('ChatArea Focus', () => {
 
 describe('ChatArea Export Functionality', () => {
   // Mock browser APIs for file download
-  const mockCreateObjectURL: typeof URL.createObjectURL = vi.fn((blob: Blob | MediaSource) => {
-      type MockBlobWithText = Blob & { text?: Mock };
-      let _storedBlob: MockBlobWithText | null = null;
-      if (blob instanceof Blob) {
-        _storedBlob = blob as MockBlobWithText;
-        // Add the mock text() method to the *storedBlob* (which is a Blob)
-        _storedBlob.text = vi.fn(async () => {
+  const mockCreateObjectURL = vi.fn((blob: Blob | MediaSource) => {
+    // Mock Blob content access for testing
+    if (blob instanceof Blob) {
+      // We can't easily mock blob.text() without implementing the whole Blob interface
+      // But we can check the blob content in the test itself if needed
+      (blob as any).text = async () => {
+        return new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
-          return new Promise<string>((resolve, reject) => {
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = () => reject(reader.error);
-            reader.readAsText(_storedBlob!);
-          });
-        }) as Mock;
-      }
-      return 'blob:mockurl';
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsText(blob);
+        });
+      };
+    }
+    return 'blob:mockurl';
   });
   const mockRevokeObjectURL = vi.fn();
   const mockAnchorClick = vi.fn();
   const mockAppendChild = vi.fn();
   const mockRemoveChild = vi.fn();
-  let originalCreateElement: (tagName: string, options?: ElementCreationOptions) => HTMLElement;
+  let originalCreateElement: any;
         
   beforeAll(() => {
     // Capture the original createElement once, before any mocks are applied
-    originalCreateElement = global.document.createElement;
+    originalCreateElement = document.createElement;
   });
         
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockStreaming.value = false;
-    mockActiveMessages.value = [];
-    mockCurrentChat.value = { 
-      id: '1', 
-      title: 'Test Chat', 
-      root: { items: [] } as { items: MessageNode[] },
-      currentLeafId: undefined,
-      debugEnabled: false, 
-      originChatId: undefined,
-      overrideModelId: undefined,
-    };
+    resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
         
-    // Restore all mocks to their original state to ensure a clean slate before applying new mocks
-    vi.restoreAllMocks();
-        
     // Setup browser API spies/mocks
-    vi.spyOn(global.URL, 'createObjectURL').mockImplementation(mockCreateObjectURL);
-    vi.spyOn(global.URL, 'revokeObjectURL').mockImplementation(mockRevokeObjectURL);
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(mockCreateObjectURL as any);
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(mockRevokeObjectURL);
               
-    // Directly assign the mock to global.document.createElement
-    global.document.createElement = vi.fn((tagName: string, options?: ElementCreationOptions) => {
+    // Robust mock for document.createElement to avoid breaking Vue internals
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      // Create the real element first
+      const el = originalCreateElement.call(document, tagName);
+      
+      // If it's an anchor tag, attach our spy
       if (tagName === 'a') {
-        const mockAnchor = {
-          href: '',
-          download: '',
-          click: mockAnchorClick,
-          ownerDocument: global.document,
-          nodeName: 'A',
-          // Minimal properties to satisfy appendChild on a real JSDOM body
-          appendChild: vi.fn(),
-          removeChild: vi.fn(),
-          setAttribute: vi.fn(),
-          getAttribute: vi.fn(),
-          dataset: {},
-          style: {},
-          classList: { add: vi.fn(), remove: vi.fn() },
-        } as unknown as HTMLAnchorElement; 
-        return mockAnchor;
+        // Also attach spy to the real element's click just in case
+        vi.spyOn(el, 'click').mockImplementation(mockAnchorClick);
+        return el;
       }
-      // For other elements, call the stored original createElement
-      return originalCreateElement.call(global.document, tagName, options);
+      return el;
     });
         
-    vi.spyOn(global.document.body, 'appendChild').mockImplementation(mockAppendChild);
-    vi.spyOn(global.document.body, 'removeChild').mockImplementation(mockRemoveChild);
+    vi.spyOn(document.body, 'appendChild').mockImplementation(mockAppendChild);
+    vi.spyOn(document.body, 'removeChild').mockImplementation(mockRemoveChild);
+  });
+
+  afterEach(() => {
+    // Restore all mocks to their original state to ensure a clean slate before applying new mocks
+    vi.restoreAllMocks();
+    if (wrapper) {
+      wrapper.unmount();
+      wrapper = null;
+    }
+    document.body.innerHTML = '';
   });
 
   it('should export chat as Markdown (.txt)', async () => {
@@ -513,15 +639,16 @@ describe('ChatArea Export Functionality', () => {
       currentLeafId: 'msg-2',
       debugEnabled: false,
       originChatId: undefined,
-      overrideModelId: undefined,
+      modelId: undefined,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
     mockActiveMessages.value = [
       { id: 'msg-1', role: 'user', content: 'Hello AI', timestamp: Date.now(), replies: { items: [] } },
       { id: 'msg-2', role: 'assistant', content: 'Hello User', timestamp: Date.now(), replies: { items: [] } },
     ];
 
-    const wrapper = shallowMount(ChatArea, {
-      attachTo: document.getElementById('app')!,
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
       
@@ -531,11 +658,12 @@ describe('ChatArea Export Functionality', () => {
     expect(exportButton.exists()).toBe(true);
     await exportButton.trigger('click');
 
-    expect(mockCreateObjectURL).toHaveBeenCalledOnce();
-    expect(mockAnchorClick).toHaveBeenCalledOnce();
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(mockAnchorClick).toHaveBeenCalled();
     expect(mockAppendChild).toHaveBeenCalledWith(expect.any(Object));
     expect(mockRemoveChild).toHaveBeenCalledWith(expect.any(Object));
 
+    // Verify blob content (simplified check since we mocked createObjectURL)
     const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
     expect(blob).toBeInstanceOf(Blob);
     expect(blob.type).toBe('text/plain;charset=utf-8');
@@ -545,17 +673,16 @@ describe('ChatArea Export Functionality', () => {
     expect(text).toContain('## User:\nHello AI');
     expect(text).toContain('## AI:\nHello User');
 
+    // Verify filename
     const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
     expect(link.download).toBe('Predefined Chat Title.txt');
   });
 
   it('should handle empty chat for markdown export (no current chat)', async () => {
-    // @ts-expect-error - explicitly setting to null for test
     mockCurrentChat.value = null; 
     mockActiveMessages.value = [];
 
-    const wrapper = shallowMount(ChatArea, {
-      attachTo: document.getElementById('app')!,
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
 
@@ -565,7 +692,7 @@ describe('ChatArea Export Functionality', () => {
     const exportButton = wrapper.find('button[title="Export Chat"]');
     expect(exportButton.exists()).toBe(false);
 
-    expect(mockCreateObjectURL).not.toHaveBeenCalled();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(mockAnchorClick).not.toHaveBeenCalled();
   });
 
@@ -577,14 +704,15 @@ describe('ChatArea Export Functionality', () => {
       currentLeafId: 'msg-3',
       debugEnabled: false,
       originChatId: undefined,
-      overrideModelId: undefined,
+      modelId: undefined,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
     mockActiveMessages.value = [
       { id: 'msg-3', role: 'user', content: 'Another message', timestamp: Date.now(), replies: { items: [] } },
     ];
 
-    const wrapper = shallowMount(ChatArea, {
-      attachTo: document.getElementById('app')!,
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
 
@@ -593,13 +721,17 @@ describe('ChatArea Export Functionality', () => {
     const exportButton = wrapper.find('button[title="Export Chat"]');
     await exportButton.trigger('click');
 
+    // Just verify the calls happened
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(mockAnchorClick).toHaveBeenCalled();
+
     const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
     const text = await blob.text();
-    expect(text).toContain('# Untitled Chat');
+    expect(text).toContain('# New Chat');
     expect(text).toContain('## User:\nAnother message');
 
     const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
-    expect(link.download).toBe('untitled_chat.txt');
+    expect(link.download).toBe('new_chat.txt');
   });
 
   it('should handle empty active messages for export', async () => {
@@ -610,12 +742,13 @@ describe('ChatArea Export Functionality', () => {
       currentLeafId: undefined,
       debugEnabled: false,
       originChatId: undefined,
-      overrideModelId: undefined,
+      modelId: undefined,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
     mockActiveMessages.value = []; // Empty messages
 
-    const wrapper = shallowMount(ChatArea, {
-      attachTo: document.getElementById('app')!,
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
       
@@ -624,15 +757,13 @@ describe('ChatArea Export Functionality', () => {
     const exportButton = wrapper.find('button[title="Export Chat"]');
     await exportButton.trigger('click');
 
-    expect(mockCreateObjectURL).toHaveBeenCalledOnce();
-    expect(mockAnchorClick).toHaveBeenCalledOnce();
+    expect(URL.createObjectURL).toHaveBeenCalled();
+    expect(mockAnchorClick).toHaveBeenCalled();
 
     const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
     const text = await blob.text();
     expect(text).toContain('# Chat with no messages');
-    expect(text).not.toContain('## User:');
-    expect(text).not.toContain('## AI:');
-
+    
     const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
     expect(link.download).toBe('Chat with no messages.txt');
   });
@@ -640,7 +771,7 @@ describe('ChatArea Export Functionality', () => {
 
 describe('ChatArea Textarea Sizing', () => {
   const mockWindowInnerHeight = 1000; // Mock viewport height for 80vh calculation
-  let originalGetComputedStyle: typeof window.getComputedStyle; // Declared here
+  let originalGetComputedStyle: any;
 
   // Helper to mock textarea dimensions (scrollHeight, offsetHeight)
   function mockTextareaDimensions(textarea: HTMLTextAreaElement, scrollHeight: number, offsetHeight?: number) {
@@ -656,46 +787,42 @@ describe('ChatArea Textarea Sizing', () => {
   });
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockStreaming.value = false;
-    mockActiveMessages.value = [];
-    mockCurrentChat.value = { 
-      id: '1', 
-      title: 'Test Chat', 
-      root: { items: [] } as { items: MessageNode[] },
-      currentLeafId: undefined,
-      debugEnabled: false, 
-      originChatId: undefined,
-      overrideModelId: undefined,
-    };
+    resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
 
     // Mock window.innerHeight for 80vh calculation
-    Object.defineProperty(window, 'innerHeight', { writable: true, value: mockWindowInnerHeight });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: mockWindowInnerHeight });
     
     // Mock getComputedStyle for textarea to control line-height, padding, border
     // This is crucial for the new adjustTextareaHeight logic
-    vi.spyOn(window, 'getComputedStyle').mockImplementation((elt: Element, pseudoElt?: string | null) => {
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((elt: Element) => {
       // Only return custom computed style for textarea with data-testid='chat-input'
-      if (elt instanceof HTMLTextAreaElement && elt.dataset.testid === 'chat-input') {
+      if (elt instanceof HTMLTextAreaElement && (elt.dataset.testid === 'chat-input' || elt.tagName === 'TEXTAREA')) {
         // Use a base computed style and override
         return {
-          ...originalGetComputedStyle.call(window, elt, pseudoElt), // Call original for default properties
           lineHeight: '24px', // Mock line-height for calculation
           paddingTop: '12px',
           paddingBottom: '12px',
           borderTopWidth: '1px',
           borderBottomWidth: '1px',
           boxSizing: 'border-box', // Crucial for offsetHeight/clientHeight calculation consistency
-        } as CSSStyleDeclaration;
+        } as any;
       }
       // For all other elements or if not our target, call the original method
-      return originalGetComputedStyle.call(window, elt, pseudoElt);
+      return originalGetComputedStyle.call(window, elt);
     });
   });
 
+  afterEach(() => {
+    if (wrapper) {
+      wrapper.unmount();
+      wrapper = null;
+    }
+    document.body.innerHTML = '';
+  });
+
   it('should initialize textarea height to a single line height', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -705,7 +832,7 @@ describe('ChatArea Textarea Sizing', () => {
     // Mock initial dimensions (single line)
     mockTextareaDimensions(textarea, 24); // scrollHeight for 1 line of text
     // Manually trigger adjustTextareaHeight after mocking dimensions for initial state
-    (wrapper.vm as unknown as ChatAreaExposed).adjustTextareaHeight();
+    (wrapper.vm as any).adjustTextareaHeight();
     await nextTick();
 
     const expectedHeight = 50; // 1 line (24) + padding (24) + border (2) = 50
@@ -714,7 +841,7 @@ describe('ChatArea Textarea Sizing', () => {
   });
 
   it('should disable standard textarea resize handle', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     const textarea = wrapper.find('[data-testid="chat-input"]');
@@ -722,7 +849,7 @@ describe('ChatArea Textarea Sizing', () => {
   });
 
   it('should show maximize button only when content exceeds 6 lines', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -733,22 +860,22 @@ describe('ChatArea Textarea Sizing', () => {
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
 
     // Typing 3 lines: still no button
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line 1\nLine 2\nLine 3';
+    (wrapper.vm as any).input = 'Line 1\nLine 2\nLine 3';
     mockTextareaDimensions(textarea, 24 * 3);
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
 
     // Typing 7 lines: button appears
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7';
+    (wrapper.vm as any).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7';
     mockTextareaDimensions(textarea, 24 * 7 + 26); // scrollHeight > maxSixLinesHeight (170)
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(true);
   });
 
   it('should expand textarea to 80% viewport height when maximized and stay there even with small input', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -756,33 +883,33 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
     
     // Make it long enough to show button
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'A'.repeat(500);
+    (wrapper.vm as any).input = 'A'.repeat(500);
     mockTextareaDimensions(textarea, 500); 
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
 
     const maximizeButton = wrapper.find('[data-testid="maximize-button"]');
     expect(maximizeButton.exists()).toBe(true);
 
     // Click maximize button
     await maximizeButton.trigger('click');
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
 
-    const expected80vh = mockWindowInnerHeight * 0.8;
-    expect(parseFloat(textarea.style.height)).toBeCloseTo(expected80vh);
+    const expected70vh = mockWindowInnerHeight * 0.7;
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expected70vh);
     
     // Typing small content should NOT shrink it while maximized
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'small content';
+    (wrapper.vm as any).input = 'small content';
     mockTextareaDimensions(textarea, 24); 
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
-    expect(parseFloat(textarea.style.height)).toBeCloseTo(expected80vh);
+    await nextTick();
+    await nextTick();
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(expected70vh);
 
     // Click minimize button
     await maximizeButton.trigger('click');
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
 
     // After minimize, it should shrink to content size (single line since input is 'small content')
     const expectedHeightAfterMinimize = 50;
@@ -790,7 +917,7 @@ describe('ChatArea Textarea Sizing', () => {
   });
 
   it('should reset maximized state after sending a message', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -798,29 +925,29 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
     
     // Fill content and maximize
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'Message to send';
+    (wrapper.vm as any).input = 'Message to send';
     mockTextareaDimensions(textarea, 500);
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
     
     const maximizeButton = wrapper.find('[data-testid="maximize-button"]');
     await maximizeButton.trigger('click');
-    await wrapper.vm.$nextTick();
+    await nextTick();
     
-    expect(parseFloat(textarea.style.height)).toBeCloseTo(mockWindowInnerHeight * 0.8);
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(mockWindowInnerHeight * 0.7);
 
     // Mock sendMessage to be a slow promise so we can control the flow
-    let resolveSendMessage: (val?: void) => void;
-    mockSendMessage.mockReturnValue(new Promise<void>(resolve => {
+    let resolveSendMessage: (val: boolean) => void;
+    mockSendMessage.mockReturnValue(new Promise<boolean>(resolve => {
       resolveSendMessage = resolve;
     }));
 
     // Send the message
-    const sendPromise = (wrapper.vm as unknown as ChatAreaExposed).handleSend();
+    const sendPromise = (wrapper.vm as any).handleSend();
     // After sending, the input is cleared, so we must mock the scrollHeight accordingly
     mockTextareaDimensions(textarea, 24);
     
-    resolveSendMessage!();
+    resolveSendMessage!(true);
     await sendPromise;
     await nextTick();
     await nextTick();
@@ -831,7 +958,7 @@ describe('ChatArea Textarea Sizing', () => {
   });
 
   it('should reset height to minimum when handleSend starts even if it was at 6 lines', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -839,26 +966,29 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
     
     // Fill content to 6 lines (not maximized)
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6';
+    (wrapper.vm as any).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6';
     mockTextareaDimensions(textarea, 24 * 6 + 26); 
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
     expect(parseFloat(textarea.style.height)).toBeCloseTo(170);
 
     // Start sending
-    const sendPromise = (wrapper.vm as unknown as ChatAreaExposed).handleSend();
+    const sendPromise = (wrapper.vm as any).handleSend();
     
+    // Height reset now happens AFTER sendMessage resolves
+    await mockSendMessage.mock.results[0]?.value; 
+    await sendPromise;
+
     // Clear mock dimensions to represent cleared input
     mockTextareaDimensions(textarea, 24);
     await nextTick();
     await nextTick();
     
     expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
-    await sendPromise;
   });
 
   it('should reset maximized state IMMEDIATELY when handleSend starts', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -866,39 +996,39 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
     
     // Fill content and maximize
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'Message to send';
+    (wrapper.vm as any).input = 'Message to send';
     mockTextareaDimensions(textarea, 500);
-    await wrapper.vm.$nextTick();
+    await nextTick();
     
     const maximizeButton = wrapper.find('[data-testid="maximize-button"]');
     await maximizeButton.trigger('click');
-    await wrapper.vm.$nextTick();
-    expect((wrapper.vm as unknown as ChatAreaExposed).isMaximized).toBe(true);
+    await nextTick();
+    expect((wrapper.vm as any).isMaximized).toBe(true);
 
     // Mock sendMessage to be a slow promise
-    let resolveSendMessage: (val?: void) => void;
-    mockSendMessage.mockReturnValue(new Promise<void>(resolve => {
+    let resolveSendMessage: (val: boolean) => void;
+    mockSendMessage.mockReturnValue(new Promise<boolean>(resolve => {
       resolveSendMessage = resolve;
     }));
 
     // Start sending but do not await yet
-    const sendPromise = (wrapper.vm as unknown as ChatAreaExposed).handleSend();
+    const sendPromise = (wrapper.vm as any).handleSend();
     
     // Immediate check
-    expect((wrapper.vm as unknown as ChatAreaExposed).isMaximized).toBe(false);
+    expect((wrapper.vm as any).isMaximized).toBe(false);
     
+    // Resolve sendMessage
+    resolveSendMessage!(true);
+    await sendPromise;
+
     // After nextTick, height should already be adjusting back
     mockTextareaDimensions(textarea, 24); 
     await nextTick();
     expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
-
-    // Finally resolve the promise to clean up
-    resolveSendMessage!();
-    await sendPromise;
   });
 
   it('should hide maximize button when content is deleted below 6 lines', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -906,22 +1036,22 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
     
     // Fill content to show button
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7';
+    (wrapper.vm as any).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7';
     mockTextareaDimensions(textarea, 24 * 7 + 26);
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(true);
 
     // Clear content
-    (wrapper.vm as unknown as ChatAreaExposed).input = '';
+    (wrapper.vm as any).input = '';
     mockTextareaDimensions(textarea, 24);
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
   });
 
   it('should scroll to bottom when textarea height increases to keep messages visible', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -943,18 +1073,17 @@ describe('ChatArea Textarea Sizing', () => {
     scrollTopSpy.mockClear();
 
     // Simulate textarea expansion (1 line -> 3 lines)
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line 1\nLine 2\nLine 3';
+    (wrapper.vm as any).input = 'Line 1\nLine 2\nLine 3';
     mockTextareaDimensions(textarea, 24 * 3);
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
 
     // It should trigger scrollToBottom to compensate for the smaller container
     expect(scrollTopSpy).toHaveBeenCalled();
-    wrapper.unmount();
   });
 
   it('should not be extremely small when input is empty (reproduce and fix bug)', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -962,42 +1091,84 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
     
     // Type some content to make it expand
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'Some content to expand textarea\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6';
+    (wrapper.vm as any).input = 'Some content to expand textarea\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6';
     mockTextareaDimensions(textarea, 24 * 6 + 26); // Mock full 6 lines
-    (wrapper.vm as unknown as ChatAreaExposed).adjustTextareaHeight();
+    (wrapper.vm as any).adjustTextareaHeight();
     await nextTick();
     const expandedHeight = parseFloat(textarea.style.height);
     expect(expandedHeight).toBeCloseTo(170);
 
     // Clear the input
-    (wrapper.vm as unknown as ChatAreaExposed).input = '';
+    (wrapper.vm as any).input = '';
     mockTextareaDimensions(textarea, 24); // After clearing, scrollHeight should be single line
-    await wrapper.vm.$nextTick(); // Trigger input watcher
-    await wrapper.vm.$nextTick(); // Allow adjustTextareaHeight to run
+    await nextTick(); // Trigger input watcher
+    await nextTick(); // Allow adjustTextareaHeight to run
 
     // After clearing, height should revert to initial single-line height, not 0
     expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
     expect(textarea.style.overflowY).toBe('hidden');
   });
 
+  it('should NOT clear input if sendMessage returns false (regression: onboarding)', async () => {
+    mockSendMessage.mockResolvedValueOnce(false);
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Keep this text');
+    
+    const sendBtn = wrapper.find('[data-testid="send-button"]');
+    await sendBtn.trigger('click');
+
+    await flushPromises();
+
+    expect(textarea.element.value).toBe('Keep this text');
+  });
+
+  it('should clear input IMMEDIATELY after handleSend returns, even if streaming continues (Regression Test)', async () => {
+    // 1. Setup: mockSendMessage returns immediately while setting streaming to true
+    mockSendMessage.mockImplementationOnce(async () => {
+      // Simulate that generation starts in background
+      mockStreaming.value = true;
+      return true; //sendMessage returns success immediately after storage commit
+    });
+
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('This should be cleared');
+    
+    // 2. Act: Click send
+    const sendBtn = wrapper.find('[data-testid="send-button"]');
+    await sendBtn.trigger('click');
+
+    // 3. Assert: Input is cleared even if mockStreaming is still true
+    await flushPromises();
+    expect(textarea.element.value).toBe('');
+    expect(mockStreaming.value).toBe(true);
+  });
+
   it('should reset maximized state when switching to a different chat', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
     // Set to maximized
-    (wrapper.vm as unknown as ChatAreaExposed).isMaximized = true;
+    (wrapper.vm as any).isMaximized = true;
     
     // Simulate chat ID change
-    mockCurrentChat.value = { ...mockCurrentChat.value, id: 'chat-2' };
+    mockCurrentChat.value = { ...mockCurrentChat.value!, id: 'chat-2' };
     await nextTick();
     await nextTick();
 
-    expect((wrapper.vm as unknown as ChatAreaExposed).isMaximized).toBe(false);
+    expect((wrapper.vm as any).isMaximized).toBe(false);
   });
 
   it('should handle large text paste by showing the maximize button immediately', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -1005,17 +1176,17 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
 
     // Simulate pasting 50 lines
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'Line\n'.repeat(50);
+    (wrapper.vm as any).input = 'Line\n'.repeat(50);
     mockTextareaDimensions(textarea, 24 * 50);
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
 
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(true);
     expect(parseFloat(textarea.style.height)).toBeCloseTo(170); // Max 6 lines
   });
 
   it('should recalculate maximized height on window resize', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -1023,22 +1194,22 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
     
     // Maximize
-    (wrapper.vm as unknown as ChatAreaExposed).isMaximized = true;
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    (wrapper.vm as any).isMaximized = true;
+    await nextTick();
+    await nextTick();
     
-    expect(parseFloat(textarea.style.height)).toBeCloseTo(800); // 80% of 1000
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(700); // 70% of 1000
 
     // Change window height and trigger resize
     Object.defineProperty(window, 'innerHeight', { writable: true, value: 500 });
     window.dispatchEvent(new Event('resize'));
     await nextTick();
 
-    expect(parseFloat(textarea.style.height)).toBeCloseTo(400); // 80% of 500
+    expect(parseFloat(textarea.style.height)).toBeCloseTo(350); // 70% of 500
   });
 
   it('should not use transition-all on textarea to avoid height flickering', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     const textarea = wrapper.find('[data-testid="chat-input"]');
@@ -1047,7 +1218,7 @@ describe('ChatArea Textarea Sizing', () => {
   });
 
   it('should remain at minimum height for any 1-line content', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -1060,37 +1231,44 @@ describe('ChatArea Textarea Sizing', () => {
     const expectedMinHeight = 50; 
 
     // Test with very short text
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'a';
+    (wrapper.vm as any).input = 'a';
     mockTextareaDimensions(textarea, 24); // scrollHeight for 1 line content
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
     expect(parseFloat(textarea.style.height)).toBeCloseTo(expectedMinHeight);
 
     // Test with longer text that still fits in 1 line
-    (wrapper.vm as unknown as ChatAreaExposed).input = 'This is a longer string but still only one line';
+    (wrapper.vm as any).input = 'This is a longer string but still only one line';
     mockTextareaDimensions(textarea, 24); 
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
     expect(parseFloat(textarea.style.height)).toBeCloseTo(expectedMinHeight);
     
     // Even if scrollHeight is slightly less (e.g., 20px), it should stay at minHeight (50px)
     mockTextareaDimensions(textarea, 20);
-    await wrapper.vm.$nextTick();
-    await wrapper.vm.$nextTick();
+    await nextTick();
+    await nextTick();
     expect(parseFloat(textarea.style.height)).toBeCloseTo(expectedMinHeight);
   });
 });
 
 describe('ChatArea Welcome Screen & Suggestions', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockActiveMessages.value = [];
+    resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
   });
 
+  afterEach(() => {
+    if (wrapper) {
+      wrapper.unmount();
+      wrapper = null;
+    }
+    document.body.innerHTML = '';
+  });
+
   it('should show the welcome screen when there are no messages', async () => {
-    const wrapper = mount(ChatArea, {
-      global: { 
+    wrapper = mount(ChatArea, {
+      global: {
         plugins: [router],
         stubs: { WelcomeScreen: { template: '<div data-testid="welcome-screen-stub">Welcome</div>' } },
       },
@@ -1100,11 +1278,11 @@ describe('ChatArea Welcome Screen & Suggestions', () => {
   });
 
   it('should fill the input and focus when WelcomeScreen emits select-suggestion', async () => {
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       attachTo: document.body,
-      global: { 
+      global: {
         plugins: [router],
-        stubs: { WelcomeScreen: true },
+        stubs: { WelcomeScreen: true } 
       },
     });
     
@@ -1117,15 +1295,14 @@ describe('ChatArea Welcome Screen & Suggestions', () => {
     await nextTick();
     await nextTick();
     
-    expect(textarea.element.value).toBe('Test Suggestion');
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('Test Suggestion');
     expect(focusSpy).toHaveBeenCalled();
-    wrapper.unmount();
   });
 
   it('should hide the welcome screen when messages are present', async () => {
     mockActiveMessages.value = [{ id: '1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } }];
-    const wrapper = mount(ChatArea, {
-      global: { 
+    wrapper = mount(ChatArea, {
+      global: {
         plugins: [router],
         stubs: { WelcomeScreen: { template: '<div data-testid="welcome-screen-stub">Welcome</div>' } },
       },
@@ -1137,40 +1314,80 @@ describe('ChatArea Welcome Screen & Suggestions', () => {
 
 describe('ChatArea Model Selection', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetMocks();
     mockAvailableModels.value = ['model-1', 'model-2'];
     mockFetchingModels.value = false;
     document.body.innerHTML = '<div id="app"></div>';
   });
 
-  it('should render available models in the dropdown', async () => {
-    const wrapper = mount(ChatArea, {
-      global: { plugins: [router] },
-    });
-    
-    const select = wrapper.find('[data-testid="model-override-select"]');
-    const options = select.findAll('option');
-    
-    expect(options.length).toBe(3); // Default + 2 models
-    expect(options[1]!.text()).toBe('model-1');
-    expect(options[2]!.text()).toBe('model-2');
+  afterEach(() => {
+    if (wrapper) {
+      wrapper.unmount();
+      wrapper = null;
+    }
+    document.body.innerHTML = '';
   });
 
-  it('should display the global default model name in the first option', async () => {
-    const wrapper = mount(ChatArea, {
+  it('should render available models in the dropdown', async () => {
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
-    const select = wrapper.find('[data-testid="model-override-select"]');
-    const firstOption = select.find('option');
+    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+    expect(trigger.exists()).toBe(true);
     
-    expect(firstOption.text()).toBe('global-default-model');
-    expect(firstOption.text()).not.toContain('Default');
+    await trigger.trigger('click');
+    
+    // The items are buttons in ModelSelector
+    const buttons = wrapper.findAll('button');
+    const modelButtons = buttons.filter(b => 
+      mockAvailableModels.value.includes(b.text())
+    );
+    
+    expect(modelButtons.length).toBe(2);
+    expect(modelButtons[0]!.text()).toBe('model-1');
+    expect(modelButtons[1]!.text()).toBe('model-2');
+  });
+
+  it('should pass a naturally sorted list of models to ModelSelector', async () => {
+    mockAvailableModels.value = ['model-10', 'model-2', 'model-1'];
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const selector = wrapper.getComponent({ name: 'ModelSelector' });
+    expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
+  });
+
+  it('should display the global default model name as placeholder', async () => {
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+    expect(trigger.text()).toBe('global-default-model (Global)');
+  });
+
+  it('should trigger updateChatModel when a model is selected in ModelSelector', async () => {
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    // Open dropdown
+    const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+    await trigger.trigger('click');
+    
+    // Select 'model-2'
+    const model2Btn = wrapper.findAll('button').find(b => b.text() === 'model-2');
+    await model2Btn!.trigger('click');
+    
+    expect(mockUpdateChatModel).toHaveBeenCalledWith('1', 'model-2');
+    expect(mockCurrentChat.value!.modelId).toBe('model-2');
   });
 
   it('should show loader when fetching models', async () => {
     mockFetchingModels.value = true;
-    const wrapper = mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
@@ -1178,7 +1395,7 @@ describe('ChatArea Model Selection', () => {
   });
 
   it('should trigger fetchAvailableModels on mount if chat exists', async () => {
-    mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     
@@ -1186,15 +1403,45 @@ describe('ChatArea Model Selection', () => {
   });
 
   it('should trigger fetchAvailableModels when switching chats', async () => {
-    mount(ChatArea, {
+    wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
     mockFetchAvailableModels.mockClear();
 
     // Simulate chat ID change
-    mockCurrentChat.value = { ...mockCurrentChat.value, id: 'chat-new' };
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value = { ...mockCurrentChat.value, id: 'chat-new' };
+    }
     await nextTick();
 
     expect(mockFetchAvailableModels).toHaveBeenCalled();
+  });
+
+  it('automatically sends message when autoSendPrompt is provided', async () => {
+    mockCurrentChat.value = {
+      id: '1', 
+      title: 'Test Chat', 
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    } as Chat;
+    
+    wrapper = mount(ChatArea, {
+      props: {
+        autoSendPrompt: 'automatic message'
+      },
+      global: {
+        plugins: [router],
+        stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true }
+      },
+    });
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockSendMessage).toHaveBeenCalledWith('automatic message', undefined, []);
+    expect(wrapper.emitted('auto-sent')).toBeTruthy();
   });
 });

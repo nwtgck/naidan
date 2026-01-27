@@ -104,4 +104,11 @@ describe('useConfirm', () => {
     expect(confirmHook.confirmCancelButtonText.value).toBe(options.cancelButtonText);
     expect(confirmHook.confirmButtonVariant.value).toBe(options.confirmButtonVariant);
   });
+
+  it('passes icon correctly', async () => {
+    const MockIcon = { template: '<div>Icon</div>' };
+    confirmHook.showConfirm({ icon: MockIcon });
+    await nextTick();
+    expect(confirmHook.confirmIcon.value).toStrictEqual(MockIcon);
+  });
 });

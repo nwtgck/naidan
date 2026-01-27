@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
 import App from './App.vue';
 import type { Chat } from './models/types';
@@ -8,19 +8,23 @@ import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm';
 import { useRouter } from 'vue-router';
 
-
 // Define mock refs in module scope so they can be shared
 const mockCreateNewChat = vi.fn();
+const mockCreateChatGroup = vi.fn();
 const mockLoadChats = vi.fn();
 const mockCurrentChat = ref<Chat | null>(null);
 const mockChats = ref<Chat[]>([]);
+const mockChatGroups = ref<any[]>([]);
 
 vi.mock('./composables/useChat', () => ({
   useChat: () => ({
     createNewChat: mockCreateNewChat,
+    createChatGroup: mockCreateChatGroup,
     loadChats: mockLoadChats,
     currentChat: mockCurrentChat,
+    currentChatGroup: ref(null),
     chats: mockChats,
+    chatGroups: mockChatGroups,
   }),
 }));
 
@@ -48,24 +52,7 @@ vi.mock('vue-router', () => ({
   },
 }));
 
-vi.mock('./components/CustomDialog.vue', () => ({
-  default: {
-    name: 'CustomDialog',
-    props: ['show', 'title', 'message', 'confirmButtonText', 'cancelButtonText', 'confirmButtonVariant', 'showInput', 'inputValue'],
-    emits: ['confirm', 'cancel', 'update:inputValue'],
-    template: `
-      <div v-if="show" data-testid="custom-dialog" :data-confirm-variant="confirmButtonVariant">
-        <h3 data-testid="dialog-title">{{ title }}</h3>
-        <p data-testid="dialog-message">{{ message }}</p>
-        <input v-if="showInput" :value="inputValue" @input="$emit('update:inputValue', $event.target.value)" data-testid="dialog-input" />
-        <button @click="$emit('cancel')" data-testid="dialog-cancel-button">{{ cancelButtonText }}</button>
-        <button @click="$emit('confirm')" :class="confirmButtonVariant === 'danger' ? 'bg-red-600' : ''" data-testid="dialog-confirm-button">{{ confirmButtonText }}</button>
-      </div>
-    `,
-  },
-}));
-
-// Mock sub-components
+// Core components are kept synchronous and mocked simply
 vi.mock('./components/Sidebar.vue', () => ({
   default: {
     name: 'Sidebar',
@@ -73,31 +60,29 @@ vi.mock('./components/Sidebar.vue', () => ({
     emits: ['open-settings'],
   },
 }));
-vi.mock('./components/SettingsModal.vue', () => ({
-  default: {
-    name: 'SettingsModal',
-    template: '<div v-if="isOpen" data-testid="settings-modal"></div>',
-    props: ['isOpen'],
-  },
-}));
+
 vi.mock('./components/OnboardingModal.vue', () => ({
   default: {
     name: 'OnboardingModal',
-    template: '<div data-testid="onboarding-modal"></div>',
+    setup() {
+      const { initialized, isOnboardingDismissed } = useSettings();
+      return { show: computed(() => initialized.value && !isOnboardingDismissed.value) };
+    },
+    template: '<div v-if="show" data-testid="onboarding-modal"></div>',
   },
 }));
-vi.mock('./components/DebugPanel.vue', () => ({
-  default: {
-    name: 'DebugPanel',
-    template: '<div data-testid="debug-panel"></div>',
-  },
-}));
+
+import { computed } from 'vue';
+
 vi.mock('./components/ToastContainer.vue', () => ({
   default: {
     name: 'ToastContainer',
     template: '<div data-testid="toast-container"></div>',
   },
 }));
+
+// We DON'T vi.mock the components that are defineAsyncComponent in App.vue
+// Instead we stub them in the mount options.
 
 describe('App', () => {
   const mockInit = vi.fn();
@@ -111,7 +96,8 @@ describe('App', () => {
     (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
       initialized: ref(true),
-      isOnboardingDismissed: ref(false),
+      isOnboardingDismissed: ref(true),
+      isFetchingModels: ref(false),
       settings: ref({ endpointUrl: 'http://localhost:11434' }),
     });
     (useRouter as unknown as Mock).mockReturnValue({
@@ -120,16 +106,41 @@ describe('App', () => {
     });
   });
 
-  it('renders core components', async () => {
-    const wrapper = mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
+  const mountApp = () => mount(App, {
+    global: {
+      stubs: {
+        'router-view': true,
+        'transition': true,
+        // Stub the async components
+        'SettingsModal': {
+          template: '<div v-if="isOpen" data-testid="settings-modal"></div>',
+          props: ['isOpen']
         },
+        'DebugPanel': {
+          template: '<div data-testid="debug-panel"></div>'
+        },
+        CustomDialog: {
+          props: ['show', 'title', 'message', 'confirmButtonText', 'cancelButtonText', 'confirmButtonVariant', 'showInput', 'inputValue'],
+          emits: ['confirm', 'cancel', 'update:inputValue'],
+          template: `
+            <div v-if="show" data-testid="custom-dialog" :data-confirm-variant="confirmButtonVariant">
+              <h3 data-testid="dialog-title">{{ title }}</h3>
+              <p data-testid="dialog-message">{{ message }}</p>
+              <input v-if="showInput" :value="inputValue" @input="$emit('update:inputValue', $event.target.value)" data-testid="dialog-input" />
+              <button @click="$emit('cancel')" data-testid="dialog-cancel-button">{{ cancelButtonText }}</button>
+              <button @click="$emit('confirm')" :class="confirmButtonVariant === 'danger' ? 'bg-red-600' : ''" data-testid="dialog-confirm-button">{{ confirmButtonText }}</button>
+            </div>
+          `
+        },
+        OPFSExplorer: true,
+        GroupSettingsPanel: true
       },
-    });
-    await nextTick();
+    },
+  });
+
+  it('renders core components', async () => {
+    const wrapper = mountApp();
+    await flushPromises();
     expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="debug-panel"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="toast-container"]').exists()).toBe(true);
@@ -141,16 +152,9 @@ describe('App', () => {
       mockCurrentChat.value = { id: 'auto-chat-id' } as unknown as Chat;
     });
 
-    mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
+    mountApp();
 
-    await nextTick();
+    await flushPromises();
     await nextTick();
     await nextTick();
 
@@ -164,16 +168,9 @@ describe('App', () => {
       mockCurrentChat.value = { id: 'post-clear-chat-id' } as unknown as Chat;
     });
 
-    mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
+    mountApp();
 
-    await nextTick();
+    await flushPromises();
     expect(mockCreateNewChat).not.toHaveBeenCalled();
 
     // Simulate clearing history
@@ -195,13 +192,9 @@ describe('App', () => {
       currentRoute,
     });
 
-    mount(App, {
-      global: {
-        stubs: { 'router-view': true, 'transition': true },
-      },
-    });
+    mountApp();
 
-    await nextTick();
+    await flushPromises();
     // Clear calls from immediate watch execution on mount
     mockCreateNewChat.mockClear();
 
@@ -215,16 +208,126 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalled();
   });
 
-  it('opens SettingsModal when Sidebar emits open-settings', async () => {
-    const wrapper = mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
+  it('automatically creates a new chat and preserves query param when q is present on root path', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    const currentRoute = ref({ path: '/', query: { q: 'hello' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
     });
+    mockCreateNewChat.mockImplementation(async () => {
+      mockCurrentChat.value = { id: 'q-chat-id' } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
     await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalled();
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      path: '/chat/q-chat-id',
+      query: { q: 'hello' }
+    });
+  });
+
+  it('automatically creates a new chat in a group when both q and chat-group are present', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    mockChatGroups.value = [{ id: 'group-123', name: 'Existing Group' }];
+    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'group-123' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
+    });
+    mockCreateNewChat.mockImplementation(async (groupId) => {
+      mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalledWith('group-123', null);
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      path: '/chat/grouped-chat-id',
+      query: { q: 'hello' }
+    });
+  });
+
+  it('automatically creates a new chat in a group by name when chat-group matches a group name', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    mockChatGroups.value = [{ id: 'group-uuid-123', name: 'Query Group' }];
+    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'Query Group' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
+    });
+    mockCreateNewChat.mockImplementation(async (groupId) => {
+      mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalledWith('group-uuid-123', null);
+  });
+
+  it('automatically creates a new group if chat-group name does not exist', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    mockChatGroups.value = [];
+    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'New Group Name' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
+    });
+    mockCreateChatGroup.mockResolvedValue('new-group-uuid');
+    mockCreateNewChat.mockImplementation(async (groupId) => {
+      mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateChatGroup).toHaveBeenCalledWith('New Group Name');
+    expect(mockCreateNewChat).toHaveBeenCalledWith('new-group-uuid', null);
+  });
+
+  it('automatically creates a new chat with model override when q and model are present', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    const currentRoute = ref({ path: '/', query: { q: 'hello', model: 'special-model' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute,
+    });
+    mockCreateNewChat.mockImplementation(async (groupId, modelId) => {
+      mockCurrentChat.value = { id: 'model-chat-id', groupId, modelId } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalledWith(null, 'special-model');
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      path: '/chat/model-chat-id',
+      query: { q: 'hello' }
+    });
+  });
+
+  it('opens SettingsModal when Sidebar emits open-settings', async () => {
+    const wrapper = mountApp();
+    await flushPromises();
     
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
     
@@ -241,15 +344,8 @@ describe('App', () => {
       settings: ref({ endpointUrl: '' }),
     });
 
-    const wrapper = mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
-    await nextTick();
+    const wrapper = mountApp();
+    await flushPromises();
     
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
   });
@@ -263,12 +359,8 @@ describe('App', () => {
       settings: ref({ endpointUrl: '' }),
     });
 
-    const wrapper = mount(App, {
-      global: {
-        stubs: { 'router-view': true, 'transition': true },
-      },
-    });
-    await nextTick();
+    const wrapper = mountApp();
+    await flushPromises();
     
     // Initially shown
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
@@ -289,15 +381,8 @@ describe('App', () => {
       mockCurrentChat.value = { id: 'new-chat-id' } as unknown as Chat;
     });
     
-    mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
-    await nextTick();
+    mountApp();
+    await flushPromises();
 
     // Simulate Ctrl+Shift+O
     const event = new KeyboardEvent('keydown', {
@@ -320,15 +405,8 @@ describe('App', () => {
       mockCurrentChat.value = { id: 'mac-chat-id' } as unknown as Chat;
     });
     
-    mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
-    await nextTick();
+    mountApp();
+    await flushPromises();
 
     // Simulate Meta+Shift+O (Cmd on Mac)
     const event = new KeyboardEvent('keydown', {
@@ -367,14 +445,8 @@ describe('App', () => {
       handleCancel: mockHandleCancel,
     });
 
-    const wrapper = mount(App, {
-      global: {
-        stubs: {
-          'router-view': true,
-          'transition': true,
-        },
-      },
-    });
+    const wrapper = mountApp();
+    await flushPromises();
 
     // Simulate opening the dialog with danger variant
     mockIsConfirmOpen.value = true;

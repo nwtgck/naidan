@@ -1,20 +1,28 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
-import { reactive } from 'vue';
 
 // Mock storage
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
-    saveChat: vi.fn().mockResolvedValue(undefined),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     loadChat: vi.fn(),
+    saveChat: vi.fn(),
+    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    loadSettings: vi.fn().mockResolvedValue({}),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
-    saveSettings: vi.fn(),
+    updateSettings: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
-    listGroups: vi.fn().mockResolvedValue([]),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    getCurrentType: vi.fn().mockReturnValue('local'),
+    notify: vi.fn(),
   },
 }));
+
 
 const mockOpenAIChat = vi.fn();
 const mockOllamaChat = vi.fn();
@@ -37,14 +45,14 @@ vi.mock('../services/llm', () => ({
 }));
 
 describe('useChat Advanced Settings Resolution', () => {
-  const { settings } = useSettings();
-  const { sendMessage, currentChat } = useChat();
+  const { settings, __testOnly: { __testOnlySetSettings } } = useSettings();
+  const { sendMessage, currentChat, createNewChat, openChat, updateChatSettings } = useChat();
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     
     // Default Global Settings
-    settings.value = {
+    __testOnlySetSettings({
       endpointType: 'openai',
       endpointUrl: 'http://global-openai',
       defaultModelId: 'global-gpt',
@@ -56,7 +64,7 @@ describe('useChat Advanced Settings Resolution', () => {
         temperature: 0.7,
         maxCompletionTokens: 1000,
       },
-    };
+    });
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'profile-gpt', 'chat-gpt']);
     mockOllamaModels.mockResolvedValue(['llama3']);
@@ -64,15 +72,8 @@ describe('useChat Advanced Settings Resolution', () => {
     mockOpenAIChat.mockImplementation(async (_msg, _model, _url, onChunk) => onChunk('OpenAI Resp'));
     mockOllamaChat.mockImplementation(async (_msg, _model, _url, onChunk) => onChunk('Ollama Resp'));
     
-    currentChat.value = reactive({
-      id: 'test-chat',
-      title: 'Test Chat',
-      root: { items: [] },
-      modelId: 'global-gpt',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      debugEnabled: false,
-    });
+    const chat = await createNewChat();
+    await openChat(chat!.id);
   });
 
   describe('System Prompt Resolution', () => {
@@ -82,22 +83,26 @@ describe('useChat Advanced Settings Resolution', () => {
       expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
     });
 
-    it('uses Profile System Prompt if available and matches endpoint', async () => {
-      settings.value.providerProfiles = [{
-        id: 'p1',
-        name: 'Profile 1',
-        endpointType: 'openai',
-        endpointUrl: 'http://global-openai',
-        systemPrompt: 'Profile Prompt',
-      }];
+    it('ignores Profile System Prompt at runtime (Resolution is Chat > Global)', async () => {
+      __testOnlySetSettings({
+        ...JSON.parse(JSON.stringify(settings.value)),
+        providerProfiles: [{
+          id: 'p1',
+          name: 'Profile 1',
+          endpointType: 'openai',
+          endpointUrl: 'http://global-openai',
+          systemPrompt: 'Profile Prompt',
+        }],
+      });
 
       await sendMessage('Hi');
       const messages = mockOpenAIChat.mock.calls[0]![0];
-      expect(messages[0]).toEqual({ role: 'system', content: 'Profile Prompt' });
+      // Should find Global Default Prompt, NOT Profile Prompt
+      expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
     });
 
     it('overrides with Chat System Prompt when behavior is override', async () => {
-      currentChat.value!.systemPrompt = { content: 'Chat Custom Prompt', behavior: 'override' };
+      await updateChatSettings(currentChat.value!.id, { systemPrompt: { content: 'Chat Custom Prompt', behavior: 'override' } });
 
       await sendMessage('Hi');
       const messages = mockOpenAIChat.mock.calls[0]![0];
@@ -105,73 +110,73 @@ describe('useChat Advanced Settings Resolution', () => {
       expect(messages[0]).toEqual({ role: 'system', content: 'Chat Custom Prompt' });
     });
 
-    it('appends Chat System Prompt when behavior is append', async () => {
-      currentChat.value!.systemPrompt = { content: 'Chat Extra Prompt', behavior: 'append' };
+    it('appends Chat System Prompt to Global Prompt, ignoring Profile at runtime', async () => {
+      __testOnlySetSettings({
+        ...JSON.parse(JSON.stringify(settings.value)),
+        providerProfiles: [{
+          id: 'p1',
+          name: 'Profile 1',
+          endpointType: 'openai',
+          endpointUrl: 'http://global-openai',
+          systemPrompt: 'Profile Prompt',
+        } as any],
+      });
+      await updateChatSettings(currentChat.value!.id, { systemPrompt: { content: 'Chat Extra Prompt', behavior: 'append' } });
 
       await sendMessage('Hi');
       const messages = mockOpenAIChat.mock.calls[0]![0];
-      expect(messages).toHaveLength(3); // Global System + Chat System + User
+      // Should find Global Default Prompt + Chat Extra Prompt as separate messages
       expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
-      expect(messages[1]).toEqual({ role: 'system', content: 'Chat Extra Prompt' });
-    });
-
-    it('appends Chat System Prompt to Profile Prompt when behavior is append', async () => {
-      settings.value.providerProfiles = [{
-        id: 'p1',
-        name: 'Profile 1',
-        endpointType: 'openai',
-        endpointUrl: 'http://global-openai',
-        systemPrompt: 'Profile Prompt',
-      }];
-      currentChat.value!.systemPrompt = { content: 'Chat Extra Prompt', behavior: 'append' };
-
-      await sendMessage('Hi');
-      const messages = mockOpenAIChat.mock.calls[0]![0];
-      expect(messages[0]).toEqual({ role: 'system', content: 'Profile Prompt' });
       expect(messages[1]).toEqual({ role: 'system', content: 'Chat Extra Prompt' });
     });
   });
 
   describe('LM Parameters Resolution (Deep Merge)', () => {
-    it('merges Chat > Profile > Global parameters correctly', async () => {
-      settings.value.lmParameters = {
-        temperature: 0.1, // Will be overridden by profile
-        topP: 0.9,        // Will be preserved
-        maxCompletionTokens: 100, // Will be overridden by chat
-      };
-
-      settings.value.providerProfiles = [{
-        id: 'p1',
-        name: 'P1',
-        endpointType: 'openai',
-        endpointUrl: 'http://global-openai',
+    it('merges Chat > Global parameters correctly, ignoring Profile at runtime', async () => {
+      __testOnlySetSettings({
+        ...JSON.parse(JSON.stringify(settings.value)),
         lmParameters: {
-          temperature: 0.5,
-          presencePenalty: 1.0,
+          temperature: 0.1, 
+          topP: 0.9,        
+          maxCompletionTokens: 100, // Will be overridden by chat
         },
-      }];
+        // Profile should be ignored at runtime
+        providerProfiles: [{
+          id: 'p1',
+          name: 'P1',
+          endpointType: 'openai',
+          endpointUrl: 'http://global-openai',
+          lmParameters: {
+            temperature: 0.5,
+            presencePenalty: 1.0,
+          },
+        } as any],
+      });
 
-      currentChat.value!.lmParameters = {
-        maxCompletionTokens: 500,
-        frequencyPenalty: 0.5,
-      };
+      await updateChatSettings(currentChat.value!.id, {
+        lmParameters: {
+          maxCompletionTokens: 500,
+          frequencyPenalty: 0.5,
+        }
+      });
 
       await sendMessage('Hi');
       const params = mockOpenAIChat.mock.calls[0]![4];
       
       expect(params).toEqual({
-        temperature: 0.5,         // From Profile
+        temperature: 0.1,         // From Global (Profile 0.5 ignored)
         topP: 0.9,                // From Global
         maxCompletionTokens: 500, // From Chat
-        presencePenalty: 1.0,     // From Profile
         frequencyPenalty: 0.5,    // From Chat
+        // presencePenalty: 1.0 from Profile should be missing
       });
+      expect(params.presencePenalty).toBeUndefined();
     });
   });
 
   describe('Stop Sequences Handling', () => {
     it('passes stop sequences as array', async () => {
-      currentChat.value!.lmParameters = { stop: ['\n', 'User:'] };
+      await updateChatSettings(currentChat.value!.id, { lmParameters: { stop: ['\n', 'User:'] } });
       await sendMessage('Hi');
       const params = mockOpenAIChat.mock.calls[0]![4];
       expect(params.stop).toEqual(['\n', 'User:']);

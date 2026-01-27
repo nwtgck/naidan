@@ -1,8 +1,8 @@
-import { v7 as uuidv7 } from 'uuid';
 import type { Chat, MessageNode } from '../models/types';
 import { storageService } from '../services/storage';
 import sampleContent from '../assets/sample-showcase.md?raw';
-import { useChat, processThinking } from './useChat';
+import { useChat } from './useChat';
+import { processThinking } from '../utils/chat-tree';
 
 export function useSampleChat() {
   const { loadChats, openChat } = useChat();
@@ -10,7 +10,7 @@ export function useSampleChat() {
   const createSampleChat = async () => {
     const now = Date.now();
     const m2: MessageNode = {
-      id: uuidv7(),
+      id: crypto.randomUUID(),
       role: 'assistant',
       content: sampleContent,
       timestamp: now,
@@ -19,7 +19,7 @@ export function useSampleChat() {
     processThinking(m2);
 
     const m3: MessageNode = {
-      id: uuidv7(),
+      id: crypto.randomUUID(),
       role: 'assistant',
       content: 'This is an alternative response. You can switch between different versions of assistant replies using the arrows!',
       timestamp: now + 1000,
@@ -27,7 +27,7 @@ export function useSampleChat() {
     };
 
     const m1: MessageNode = {
-      id: uuidv7(),
+      id: crypto.randomUUID(),
       role: 'user',
       content: 'Show me your tree-based branching and rendering capabilities!',
       timestamp: now - 5000,
@@ -35,17 +35,25 @@ export function useSampleChat() {
     };
 
     const sampleChatObj: Chat = {
-      id: uuidv7(),
+      id: crypto.randomUUID(),
       title: '🚀 Sample: Tree Showcase',
       root: { items: [m1] },
       currentLeafId: m2.id,
-      modelId: 'gpt-4-showcase',
       createdAt: now,
       updatedAt: now,
       debugEnabled: true,
     };
     
-    await storageService.saveChat(sampleChatObj, 0);
+    await storageService.updateChatContent(sampleChatObj.id, () => ({
+      root: sampleChatObj.root,
+      currentLeafId: sampleChatObj.currentLeafId
+    }));
+    await storageService.updateChatMeta(sampleChatObj.id, () => sampleChatObj);
+    await storageService.updateHierarchy((curr) => {
+      curr.items.push({ type: 'chat', id: sampleChatObj.id });
+      return curr;
+    });
+
     await loadChats();
     await openChat(sampleChatObj.id);
   };

@@ -10,6 +10,9 @@ import type {
   SettingsDto,
   EndpointTypeDto,
   StorageTypeDto,
+  AttachmentDto,
+  HierarchyDto,
+  ChatContentDto,
 } from './dto';
 import type { 
   Role, 
@@ -23,6 +26,12 @@ import type {
   EndpointType,
   StorageType,
   SystemPrompt,
+  Attachment,
+  ChatMeta,
+  ChatContent,
+  Hierarchy,
+  HierarchyNode,
+  HierarchyChatGroupNode,
 } from './types';
 
 export const roleToDomain = (dto: RoleDto): Role => {
@@ -35,38 +44,140 @@ export const roleToDomain = (dto: RoleDto): Role => {
 };
 
 /**
- * Converts a Group DTO and associated Chat Meta DTOs into a Domain ChatGroup.
+ * Hierarchy Mappers
  */
-export const chatGroupToDomain = (dto: ChatGroupDto, chatMetaDtos: ChatMetaDto[] = []): ChatGroup => {
-  const nestedItems: SidebarItem[] = chatMetaDtos
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map(c => ({
-      id: `chat:${c.id}`,
+export const hierarchyToDomain = (dto: HierarchyDto): Hierarchy => ({
+  items: dto.items.map(item => {
+    if (item.type === 'chat') {
+      return { type: 'chat', id: item.id };
+    } else {
+      return { type: 'chat_group', id: item.id, chat_ids: item.chat_ids };
+    }
+  }),
+});
+
+export const hierarchyToDto = (domain: Hierarchy): HierarchyDto => ({
+  items: domain.items.map(item => {
+    if (item.type === 'chat') {
+      return { type: 'chat', id: item.id };
+    } else {
+      return { type: 'chat_group', id: item.id, chat_ids: item.chat_ids };
+    }
+  }),
+});
+
+export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
+  id: dto.id,
+  title: dto.title,
+  createdAt: dto.createdAt,
+  updatedAt: dto.updatedAt,
+  debugEnabled: dto.debugEnabled,
+  modelId: dto.modelId,
+  endpoint: dto.endpoint ? {
+    type: dto.endpoint.type as EndpointType,
+    url: dto.endpoint.url,
+    httpHeaders: dto.endpoint.httpHeaders,
+  } : undefined,
+  systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
+  lmParameters: dto.lmParameters,
+  currentLeafId: dto.currentLeafId,
+  originChatId: dto.originChatId,
+  originMessageId: dto.originMessageId,
+});
+
+/**
+ * Converts a Chat Group DTO into a Domain ChatGroup.
+ * Resolves nested items using the hierarchy and provided chat metadata.
+ */
+export const chatGroupToDomain = (
+  dto: ChatGroupDto, 
+  hierarchy: Hierarchy, 
+  chatMetas: ChatMeta[]
+): ChatGroup => {
+  const node = hierarchy.items.find(
+    i => i.type === 'chat_group' && i.id === dto.id
+  ) as HierarchyChatGroupNode | undefined;
+  
+  const chatIds = node?.chat_ids || [];
+  
+  const items: SidebarItem[] = chatIds.map(cid => {
+    const meta = chatMetas.find(m => m.id === cid);
+    return {
+      id: `chat:${cid}`,
       type: 'chat',
-      chat: chatMetaToSummary(c),
-    }));
+      chat: { 
+        id: cid, 
+        title: meta?.title || null, 
+        updatedAt: meta?.updatedAt || 0,
+        groupId: dto.id
+      }
+    };
+  });
 
   return {
     id: dto.id,
     name: dto.name,
     isCollapsed: dto.isCollapsed,
     updatedAt: dto.updatedAt,
-    items: nestedItems,
+    items,
+    endpoint: dto.endpoint ? {
+      type: dto.endpoint.type as EndpointType,
+      url: dto.endpoint.url,
+      httpHeaders: dto.endpoint.httpHeaders,
+    } : undefined,
+    modelId: dto.modelId,
+    systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
+    lmParameters: dto.lmParameters,
   };
 };
 
-export const chatGroupToDto = (domain: ChatGroup, index: number): ChatGroupDto => ({
+export const chatGroupToDto = (domain: ChatGroup): ChatGroupDto => ({
   id: domain.id,
   name: domain.name,
   isCollapsed: domain.isCollapsed,
   updatedAt: domain.updatedAt,
-  order: index,
+  endpoint: domain.endpoint ? {
+    type: domain.endpoint.type as EndpointTypeDto,
+    url: domain.endpoint.url,
+    httpHeaders: domain.endpoint.httpHeaders,
+  } : undefined,
+  modelId: domain.modelId,
+  systemPrompt: domain.systemPrompt,
+  lmParameters: domain.lmParameters,
 });
+
+const attachmentToDomain = (dto: AttachmentDto): Attachment => {
+  const base = {
+    id: dto.id,
+    originalName: dto.originalName,
+    mimeType: dto.mimeType,
+    size: dto.size,
+    uploadedAt: dto.uploadedAt,
+  };
+
+  if (dto.status === 'persisted') return { ...base, status: 'persisted' };
+  if (dto.status === 'missing') return { ...base, status: 'missing' };
+  
+  // For 'memory' status from DTO, we might not have the blob yet.
+  return { ...base, status: 'memory' } as unknown as Attachment;
+};
+
+const attachmentToDto = (domain: Attachment): AttachmentDto => {
+  return {
+    id: domain.id,
+    originalName: domain.originalName,
+    mimeType: domain.mimeType,
+    size: domain.size,
+    uploadedAt: domain.uploadedAt,
+    status: domain.status,
+  };
+};
 
 export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => ({
   id: dto.id,
   role: roleToDomain(dto.role),
   content: dto.content,
+  attachments: dto.attachments?.map(attachmentToDomain),
   timestamp: dto.timestamp,
   thinking: dto.thinking,
   modelId: dto.modelId,
@@ -79,6 +190,7 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => ({
   id: domain.id,
   role: domain.role as RoleDto,
   content: domain.content,
+  attachments: domain.attachments?.map(attachmentToDto),
   timestamp: domain.timestamp,
   thinking: domain.thinking,
   modelId: domain.modelId,
@@ -127,102 +239,193 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     // Priority to legacy flat messages if tree is empty
     root = migrateFlatMessagesToTree(dto.messages);
   } else if (dto.root && !('items' in dto.root)) {
-    // Handle edge case where root might be a single node (unlikely with current Zod but safe)
+    // Handle edge case where root might be a single node
     root = { items: [messageNodeToDomain(dto.root as MessageNodeDto)] };
   }
 
+  const { 
+    id, title, currentLeafId, createdAt, updatedAt, 
+    debugEnabled, endpoint, modelId, originChatId, originMessageId, 
+    systemPrompt, lmParameters 
+  } = dto;
+
   return {
-    id: dto.id,
-    title: dto.title,
-    groupId: dto.groupId,
+    id,
+    title,
     root,
-    currentLeafId: dto.currentLeafId,
-    modelId: dto.modelId,
-    createdAt: dto.createdAt,
-    updatedAt: dto.updatedAt,
-    debugEnabled: dto.debugEnabled ?? false,
-    endpointType: dto.endpointType as EndpointType | undefined,
-    endpointUrl: dto.endpointUrl,
-    overrideModelId: dto.overrideModelId,
-    originChatId: dto.originChatId,
-    originMessageId: dto.originMessageId,
-    systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
-    lmParameters: dto.lmParameters,
+    currentLeafId,
+    createdAt,
+    updatedAt,
+    debugEnabled: debugEnabled ?? false,
+    endpointType: endpoint?.type as EndpointType | undefined,
+    endpointUrl: endpoint?.url,
+    endpointHttpHeaders: endpoint?.httpHeaders,
+    modelId,
+    originChatId,
+    originMessageId,
+    systemPrompt: systemPrompt as SystemPrompt | undefined,
+    lmParameters,
   };
 };
 
-export const chatMetaToSummary = (dto: ChatMetaDto): ChatSummary => ({
-  id: dto.id,
-  title: dto.title,
-  updatedAt: dto.updatedAt,
-  groupId: dto.groupId,
-});
-
-export const chatToDto = (domain: Chat, index: number): ChatDto => ({
+export const chatMetaToSummary = (domain: ChatMeta): ChatSummary => ({
   id: domain.id,
   title: domain.title,
-  groupId: domain.groupId,
-  order: index,
-  root: { items: domain.root.items.map(messageNodeToDto) },
-  currentLeafId: domain.currentLeafId,
-  modelId: domain.modelId,
+  updatedAt: domain.updatedAt,
+});
+
+export const chatMetaToDto = (domain: ChatMeta): ChatMetaDto => ({
+  id: domain.id,
+  title: domain.title,
   createdAt: domain.createdAt,
   updatedAt: domain.updatedAt,
   debugEnabled: domain.debugEnabled,
-  endpointType: domain.endpointType as EndpointTypeDto | undefined,
-  endpointUrl: domain.endpointUrl,
-  overrideModelId: domain.overrideModelId,
+  endpoint: domain.endpoint ? {
+    type: domain.endpoint.type as EndpointTypeDto,
+    url: domain.endpoint.url,
+    httpHeaders: domain.endpoint.httpHeaders,
+  } : undefined,
+  modelId: domain.modelId,
   originChatId: domain.originChatId,
   originMessageId: domain.originMessageId,
   systemPrompt: domain.systemPrompt,
   lmParameters: domain.lmParameters,
 });
 
-/**
- * Builds the hierarchical Sidebar structure from raw DTOs.
- * Uses ChatMetaDto for performance.
- */
-export const buildSidebarItemsFromDtos = (groupDtos: ChatGroupDto[], allChatMetaDtos: ChatMetaDto[]): SidebarItem[] => {
-  type SortableSidebarItem = SidebarItem & { _order: number };
-  const items: SortableSidebarItem[] = [];
-  
-  groupDtos.forEach(gDto => {
-    const groupChats = allChatMetaDtos.filter(c => c.groupId === gDto.id);
-    items.push({ 
-      id: `group:${gDto.id}`, 
-      type: 'group', 
-      group: chatGroupToDomain(gDto, groupChats),
-      _order: gDto.order ?? 0,
-    });
-  });
-  
-  allChatMetaDtos
-    .filter(c => !c.groupId)
-    .forEach(cDto => {
-      items.push({ 
-        id: `chat:${cDto.id}`, 
-        type: 'chat', 
-        chat: chatMetaToSummary(cDto),
-        _order: cDto.order ?? 0,
-      });
-    });
-    
-  return items
-    .sort((a, b) => a._order - b._order)
-    .map((item) => {
-      const { _order: _o, ...rest } = item;
-      return rest as SidebarItem;
-    });
+export const chatContentToDto = (domain: ChatContent): ChatContentDto => ({
+  root: { items: domain.root.items.map(messageNodeToDto) },
+  currentLeafId: domain.currentLeafId,
+});
+
+export const chatContentToDomain = (dto: ChatContentDto): ChatContent => ({
+  root: { items: dto.root.items.map(messageNodeToDomain) },
+  currentLeafId: dto.currentLeafId,
+});
+
+export const chatToDto = (domain: Chat): ChatDto => {
+  const { 
+    id, title, root, currentLeafId, createdAt, updatedAt, 
+    debugEnabled, endpointType, endpointUrl, endpointHttpHeaders, 
+    modelId, originChatId, originMessageId, systemPrompt, lmParameters 
+  } = domain;
+
+  return {
+    id,
+    title,
+    root: { items: root.items.map(messageNodeToDto) },
+    currentLeafId,
+    createdAt,
+    updatedAt,
+    debugEnabled,
+    endpoint: endpointType ? {
+      type: endpointType as EndpointTypeDto,
+      url: endpointUrl,
+      httpHeaders: endpointHttpHeaders,
+    } : undefined,
+    modelId,
+    originChatId,
+    originMessageId,
+    systemPrompt,
+    lmParameters,
+  };
 };
 
-export const settingsToDomain = (dto: SettingsDto): Settings => ({
-  ...dto,
-  endpointType: dto.endpointType as EndpointType,
-  storageType: dto.storageType as StorageType,
-});
+/**
+ * High-level Sidebar assembly mapper.
+ * Uses Hierarchy as the structural template.
+ */
+export const buildSidebarItemsFromHierarchy = (
+  hierarchy: Hierarchy,
+  chatMetas: ChatMeta[],
+  chatGroups: Omit<ChatGroup, 'items'>[]
+): SidebarItem[] => {
+  const metaMap = new Map(chatMetas.map(m => [m.id, m]));
+  const groupMap = new Map(chatGroups.map(g => [g.id, g]));
 
-export const settingsToDto = (domain: Settings): SettingsDto => ({
-  ...domain,
-  endpointType: domain.endpointType as EndpointTypeDto,
-  storageType: domain.storageType as StorageTypeDto,
-});
+  const assembleNode = (node: HierarchyNode): SidebarItem | null => {
+    if (node.type === 'chat') {
+      const meta = metaMap.get(node.id);
+      if (!meta) return null;
+      return { 
+        id: `chat:${node.id}`, 
+        type: 'chat', 
+        chat: { ...chatMetaToSummary(meta), groupId: null } 
+      };
+    } else {
+      const groupMeta = groupMap.get(node.id);
+      if (!groupMeta) return null;
+      
+      const nestedItems: SidebarItem[] = node.chat_ids
+        .map(cid => {
+          const m = metaMap.get(cid);
+          if (!m) return null;
+          return { 
+            id: `chat:${cid}`, 
+            type: 'chat' as const, 
+            chat: { ...chatMetaToSummary(m), groupId: groupMeta.id } 
+          } as SidebarItem;
+        })
+        .filter((i): i is SidebarItem => i !== null);
+
+      return {
+        id: `chat_group:${node.id}`,
+        type: 'chat_group',
+        chatGroup: { ...groupMeta, items: nestedItems }
+      };
+    }
+  };
+
+  return hierarchy.items
+    .map(assembleNode)
+    .filter((i): i is SidebarItem => i !== null);
+};
+
+export const settingsToDomain = (dto: SettingsDto): Settings => {
+  const { endpoint, providerProfiles, storageType, ...rest } = dto;
+  return {
+    ...rest,
+    endpointType: endpoint.type as EndpointType,
+    endpointUrl: endpoint.url,
+    endpointHttpHeaders: endpoint.httpHeaders,
+    storageType: storageType as StorageType,
+    providerProfiles: providerProfiles?.map(p => {
+      const { endpoint: pEndpoint, ...pRest } = p;
+      return {
+        ...pRest,
+        endpointType: pEndpoint.type as EndpointType,
+        endpointUrl: pEndpoint.url,
+        endpointHttpHeaders: pEndpoint.httpHeaders,
+      };
+    }) ?? [],
+  };
+};
+
+export const settingsToDto = (domain: Settings): SettingsDto => {
+  const { 
+    endpointType, endpointUrl, endpointHttpHeaders, 
+    storageType, providerProfiles, ...rest 
+  } = domain;
+  return {
+    ...rest,
+    endpoint: {
+      type: endpointType as EndpointTypeDto,
+      url: endpointUrl,
+      httpHeaders: endpointHttpHeaders,
+    },
+    storageType: storageType as StorageTypeDto,
+    providerProfiles: (providerProfiles || []).map(p => {
+      const { 
+        endpointType: pType, endpointUrl: pUrl, endpointHttpHeaders: pHeaders, 
+        ...pRest 
+      } = p;
+      return {
+        ...pRest,
+        endpoint: {
+          type: pType as EndpointTypeDto,
+          url: pUrl,
+          httpHeaders: pHeaders,
+        },
+      };
+    }),
+  };
+};

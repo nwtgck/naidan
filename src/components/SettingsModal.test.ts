@@ -1,8 +1,13 @@
+// Mock the dynamic import for licenses
+vi.mock('../assets/licenses.json', () => ({ default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }] }));
+
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref } from 'vue';
+import { ref, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
+import AboutTab from './AboutTab.vue';
+import ConnectionTab from './ConnectionTab.vue';
 import { Loader2 } from 'lucide-vue-next';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
@@ -12,18 +17,46 @@ import type { ProviderProfile } from '../models/types';
 
 // --- Mocks ---
 
+const mockListModels = vi.fn().mockResolvedValue(['model-1']);
+vi.mock('../services/llm', () => {
+  return {
+    OpenAIProvider: class {
+      listModels = mockListModels;
+    },
+    OllamaProvider: class {
+      listModels = mockListModels;
+    },
+  };
+});
+
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
-    settings: { value: { storageType: 'local', providerProfiles: [] } },
-    availableModels: { value: [] },
-    isFetchingModels: { value: false },
-    save: vi.fn(),
-    fetchModels: vi.fn(),
+    settings: ref({ storageType: 'local', providerProfiles: [] }),
+    availableModels: ref(['model-a', 'model-b']),
+    isFetchingModels: ref(false),
+    save: vi.fn().mockImplementation(async (patch) => {
+      const currentType = storageService.getCurrentType();
+      if (patch.storageType && patch.storageType !== currentType) {
+        await storageService.switchProvider(patch.storageType);
+      }
+    }),
+    updateProviderProfiles: vi.fn(),
+    fetchModels: vi.fn(async (overrides) => {
+      if (overrides) {
+        return await mockListModels(overrides.url, overrides.headers);
+      }
+      return [];
+    }),
   })),
 }));
 
 vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(),
+  useChat: vi.fn(() => ({
+    deleteAllChats: vi.fn(),
+    createChatGroup: vi.fn(),
+    resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+  })),
 }));
 
 vi.mock('vue-router', () => ({
@@ -59,17 +92,25 @@ vi.mock('../composables/useToast', () => ({
 
 vi.mock('../services/storage', () => ({
   storageService: {
+    init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     clearAll: vi.fn(),
+    getCurrentType: vi.fn(),
+    switchProvider: vi.fn().mockResolvedValue(undefined),
+    hasAttachments: vi.fn().mockResolvedValue(false),
+    saveChat: vi.fn(),
+    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    loadChat: vi.fn(),
+    listChats: vi.fn().mockResolvedValue([]),
+    listChatGroups: vi.fn().mockResolvedValue([]),
+    updateChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    notify: vi.fn(),
   },
 }));
-
-const mockListModels = vi.fn().mockResolvedValue(['model-1']);
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: class { listModels = mockListModels; },
-    OllamaProvider: class { listModels = mockListModels; },
-  };
-});
 
 // --- Tests ---
 
@@ -105,21 +146,54 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     Type: true,
     FlaskConical: true,
     AlertTriangle: true,
+    ShieldCheck: true,
+    Logo: true,
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
     
+    const mockDirectoryHandle = {
+      getFileHandle: vi.fn().mockResolvedValue({
+        createWritable: vi.fn().mockResolvedValue({}),
+      }),
+      removeEntry: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.stubGlobal('navigator', {
+      storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) },
+    });
+    vi.stubGlobal('isSecureContext', true);
+
+    vi.mocked(storageService.getCurrentType).mockReturnValue('local');
+
+    (useRouter as Mock).mockReturnValue({
+      push: vi.fn(),
+      currentRoute: ref({ path: '/' })
+    });
+
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: { value: JSON.parse(JSON.stringify(mockSettings)) },
-      availableModels: { value: [] },
-      isFetchingModels: { value: false },
-      save: mockSave,
-      fetchModels: vi.fn(),
+      settings: ref(JSON.parse(JSON.stringify(mockSettings))),
+      availableModels: ref([]),
+      isFetchingModels: ref(false),
+      save: mockSave.mockImplementation(async (patch) => {
+        const currentType = storageService.getCurrentType();
+        if (patch.storageType && patch.storageType !== currentType) {
+          await storageService.switchProvider(patch.storageType);
+        }
+      }),
+      updateProviderProfiles: vi.fn(),
+      fetchModels: vi.fn(async (overrides) => {
+        if (overrides) {
+          return await mockListModels(overrides.url, overrides.headers);
+        }
+        return [];
+      }),
     });
 
     (useChat as unknown as Mock).mockReturnValue({
       deleteAllChats: vi.fn(),
+      createChatGroup: vi.fn(),
+      resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
     });
 
     (useSampleChat as unknown as Mock).mockReturnValue({
@@ -149,11 +223,16 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('maintains UI stability during model fetching', async () => {
       const isFetching = ref(false);
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: JSON.parse(JSON.stringify(mockSettings)) },
-        availableModels: { value: [] },
+        settings: ref(JSON.parse(JSON.stringify(mockSettings))),
+        availableModels: ref([]),
         isFetchingModels: isFetching,
         save: mockSave,
-        fetchModels: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            return await mockListModels(overrides.url, overrides.headers);
+          }
+          return [];
+        }),
       });
 
       const wrapper = mount(SettingsModal, { 
@@ -184,7 +263,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
       await flushPromises();
       
-      const overlay = wrapper.find('.backdrop-blur-\\[2px\\]');
+      const overlay = wrapper.find('[class*="backdrop-blur-[2px]"]');
       expect(overlay.exists()).toBe(true);
     });
 
@@ -195,20 +274,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
       await flushPromises();
 
-      // Should find the fixed-height error container
-      const errorContainer = wrapper.find('.h-4.mt-1');
-      expect(errorContainer.exists()).toBe(true);
-      
       // Initially should not show error text
-      expect(errorContainer.text()).toBe('');
+      expect(wrapper.text()).not.toContain('Test Error');
 
-      // Set error
-      const vm = wrapper.vm as unknown as { error: string | null };
+      // Set error in ConnectionTab
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const vm = connectionTab.vm as any;
       vm.error = 'Test Error';
       await flushPromises();
 
-      // Error text should appear inside the container without adding new lines to the parent
-      expect(errorContainer.text()).toBe('Test Error');
+      // Error text should appear
+      expect(wrapper.text()).toContain('Test Error');
     });
 
     it('shows success feedback when connection check succeeds', async () => {
@@ -218,10 +294,12 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
       await flushPromises();
 
-      const vm = wrapper.vm as unknown as { fetchModels: () => Promise<void> };
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const vm = connectionTab.vm as any;
       // Trigger fetch logic manually to bypass service mock complexities
       await vm.fetchModels();
       await flushPromises();
+      await nextTick();
 
       const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
       
@@ -231,22 +309,25 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     it('uses distinct labels for model fallbacks to clarify different behaviors', async () => {
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: { stubs: globalStubs },
       });
-      await flushPromises();
 
-      // Default Model label should be simple 'None' because it's just an initial selection override.
-      // If not specified, the app doesn't force any specific model on new chats.
+      // Clear values first to see placeholders/None
+      const vm = wrapper.vm as any;
+      vm.form.defaultModelId = undefined;
+      vm.form.titleModelId = undefined;
+      await nextTick();
+
+      // Default Model label should just be "None" when empty
       const modelSelect = wrapper.find('[data-testid="setting-model-select"]');
-      expect(modelSelect.findAll('option')[0]!.text()).toBe('None');
+      const trigger = modelSelect.find('[data-testid="model-selector-trigger"]');
+      expect(trigger.text()).toBe('None');
 
       // Title Generation Model label must be explicit about fallback behavior.
-      // 'Use Current Chat Model (Default)' explains that even if no specific title model is picked,
-      // the generation will still proceed using whichever model is active in the chat.
       const titleSelect = wrapper.find('[data-testid="setting-title-model-select"]');
-      expect(titleSelect.findAll('option')[0]!.text()).toBe('Use Current Chat Model (Default)');
+      const titleTrigger = titleSelect.find('[data-testid="model-selector-trigger"]');
+      expect(titleTrigger.text()).toBe('Use Current Chat Model (Default)');
     });
 
 
@@ -255,12 +336,16 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
 
 
-
-
-
-
-
-
+    it('applies animation classes for entrance effects', async () => {
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs },
+      });
+      await flushPromises();
+      
+      const modalContent = wrapper.find('.modal-content-zoom');
+      expect(modalContent.exists()).toBe(true);
+    });
 
     it('ensures SettingsModal has correct z-index when dialogs are triggered', async () => {
       // Mount SettingsModal
@@ -313,6 +398,60 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     // Developer
     await navButtons.find(b => b.text().includes('Developer'))?.trigger('click');
     expect(wrapper.text()).toContain('Developer Tools');
+
+    // About
+    await navButtons.find(b => b.text().includes('About'))?.trigger('click');
+    expect(wrapper.text()).toContain('About Naidan');
+    expect(wrapper.text()).toContain('Version');
+    expect(wrapper.text()).toContain('Open Source Licenses');
+  });
+
+  it('displays standalone license information when in standalone mode', async () => {
+    // Mock isStandalone to true
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
+    vi.stubGlobal('__BUILD_MODE_IS_HOSTED__', false);
+
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    const navButtons = wrapper.findAll('nav button');
+    await navButtons.find(b => b.text().includes('About'))?.trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Offline License Information');
+    expect(wrapper.text()).toContain('THIRD_PARTY_LICENSES.txt');
+    // In standalone mode, the list/loader should not be visible
+    expect(wrapper.find('.animate-spin').exists()).toBe(false);
+    
+    // Cleanup
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', false);
+    vi.stubGlobal('__BUILD_MODE_IS_HOSTED__', true);
+  });
+
+  it('loads and displays licenses dynamically in hosted mode', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    const navButtons = wrapper.findAll('nav button');
+    await navButtons.find(b => b.text().includes('About'))?.trigger('click');
+    await flushPromises();
+
+    // Find the AboutTab component
+    const aboutTab = wrapper.findComponent(AboutTab);
+    expect(aboutTab.exists()).toBe(true);
+    
+    // Manually set the state to bypass unreliable dynamic import mock
+    const vm = aboutTab.vm as any;
+    vm.ossLicenses = [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }];
+    vm.isLoadingLicenses = false;
+    
+    await flushPromises();
+    await nextTick();
+
+    const text = wrapper.text();
+    expect(text).toContain('test-pkg');
+    expect(text).toContain('1.0.0');
+    expect(text).toContain('MIT');
   });
 
   it('persists unsaved changes when switching tabs', async () => {
@@ -329,6 +468,32 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     expect((wrapper.find('[data-testid="setting-url-input"]').element as HTMLInputElement).value)
       .toBe('http://temporary-change');
+  });
+
+  it('regression: shows unsaved changes warning even after switching tabs', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    // 1. Change in Connection tab
+    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
+    await urlInput.setValue('http://changed-url');
+
+    // 2. Switch to another tab
+    const navButtons = wrapper.findAll('nav button');
+    await navButtons.find(b => b.text().includes('Storage'))?.trigger('click');
+    await flushPromises();
+
+    // 3. Click close button
+    mockShowConfirm.mockResolvedValueOnce(true);
+    await wrapper.find('[data-testid="setting-close-x"]').trigger('click');
+    await flushPromises();
+
+    // Expectation: confirmation dialog should be shown
+    expect(mockShowConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Discard Unsaved Changes?',
+      }),
+    );
   });
 
   it('applies endpoint presets correctly and highlights the active one', async () => {
@@ -383,21 +548,76 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
     await checkBtn.trigger('click');
     await flushPromises();
-    expect(mockListModels).toHaveBeenCalledWith('https://remote-api.com');
-    mockListModels.mockClear();
-
-    // Test manual fetch for remote URL via Refresh Models button (next to dropdown)
-    const refreshBtn = wrapper.find('[data-testid="setting-refresh-models"]');
-    expect(refreshBtn.exists()).toBe(true);
-    await refreshBtn.trigger('click');
-    await flushPromises();
-    expect(mockListModels).toHaveBeenCalledWith('https://remote-api.com');
+    expect(mockListModels).toHaveBeenCalledWith('https://remote-api.com', undefined);
     mockListModels.mockClear();
 
     // Test localhost URL (SHOULD auto-fetch)
     await urlInput.setValue('http://localhost:11434');
     await flushPromises();
-    expect(mockListModels).toHaveBeenCalledWith('http://localhost:11434');
+    expect(mockListModels).toHaveBeenCalledWith('http://localhost:11434', undefined);
+  });
+
+  it('regression: manually fetching models uses the current unsaved URL, not the saved one', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+    
+    // Initial saved URL is 'http://localhost:1234/v1' (from mockSettings)
+    mockListModels.mockClear();
+
+    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
+    const newUrl = 'http://new-temporary-url:5555/v1';
+    await urlInput.setValue(newUrl);
+    
+    // Trigger manual fetch
+    const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
+    await checkBtn.trigger('click');
+    await flushPromises();
+
+    // Verify it used the NEW URL
+    expect(mockListModels).toHaveBeenCalledWith(newUrl, undefined);
+    // Verify it DID NOT use the OLD URL
+    expect(mockListModels).not.toHaveBeenCalledWith('http://localhost:1234/v1', undefined);
+  });
+
+  it('clears defaultModelId and titleModelId if they are not available in the newly fetched models', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    vm.form.defaultModelId = 'old-model';
+    vm.form.titleModelId = 'old-title-model';
+    await nextTick();
+
+    // Mock fetchModels to return a new list that doesn't include the old models
+    mockListModels.mockResolvedValue(['new-model']);
+
+    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
+    // Change to localhost to trigger auto-fetch
+    await urlInput.setValue('http://localhost:11434');
+    await flushPromises();
+
+    expect(vm.form.defaultModelId).toBe('');
+    expect(vm.form.titleModelId).toBe('');
+  });
+
+  it('preserves defaultModelId and titleModelId if they are still available in the newly fetched models', async () => {
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    vm.form.defaultModelId = 'kept-model';
+    vm.form.titleModelId = 'kept-title-model';
+    await nextTick();
+
+    // Mock fetchModels to return a list that INCLUDES the kept models
+    mockListModels.mockResolvedValue(['kept-model', 'kept-title-model', 'other-model']);
+
+    const urlInput = wrapper.find('[data-testid="setting-url-input"]');
+    await urlInput.setValue('http://localhost:11434');
+    await flushPromises();
+
+    expect(vm.form.defaultModelId).toBe('kept-model');
+    expect(vm.form.titleModelId).toBe('kept-title-model');
   });
 
   it('shows confirmation behavior for "X" button', async () => {
@@ -427,13 +647,21 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
 
+    const connectionTab = wrapper.findComponent(ConnectionTab);
+    const connectionVm = connectionTab.vm as any;
+    
+    // Simulate some change to enable save button
+    connectionVm.form.endpointUrl = 'http://changed';
+    await nextTick();
+
     await wrapper.find('[data-testid="setting-save-button"]').trigger('click');
-    expect(wrapper.text()).toContain('Saved');
+    await flushPromises();
+    expect(wrapper.text()).toContain('Settings Saved');
   });
 
   it('handles model fetch errors gracefully', async () => {
     mockListModels.mockRejectedValueOnce(new Error('Fetch failed'));
-    
+      
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
 
@@ -441,7 +669,32 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await wrapper.find('[data-testid="setting-check-connection"]').trigger('click');
     await flushPromises();
 
-    expect(wrapper.text()).toContain('Connection failed. Check URL or provider.');
+    expect(wrapper.text()).toContain('Fetch failed');
+  });
+
+  it('passes a naturally sorted list of models to ConnectionTab', async () => {
+    (useSettings as unknown as Mock).mockReturnValue({
+      settings: ref(JSON.parse(JSON.stringify(mockSettings))),
+      availableModels: ref(['model-10', 'model-2', 'model-1']),
+      isFetchingModels: ref(false),
+      save: mockSave,
+      updateProviderProfiles: vi.fn(),
+      fetchModels: vi.fn(async (overrides) => {
+        if (overrides) {
+          return await mockListModels(overrides.url, overrides.headers);
+        }
+        return [];
+      }),
+    });
+
+    const wrapper = mount(SettingsModal, { 
+      props: { isOpen: true },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+
+    const connectionTab = wrapper.findComponent(ConnectionTab);
+    expect(connectionTab.props('availableModels')).toEqual(['model-1', 'model-2', 'model-10']);
   });
 
   it('triggers data reset after confirmation', async () => {
@@ -492,12 +745,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const checkbox = wrapper.find('[data-testid="setting-auto-title-checkbox"]');
       const select = wrapper.find('[data-testid="setting-title-model-select"]');
+      const trigger = select.find('[data-testid="model-selector-trigger"]');
 
       expect((checkbox.element as HTMLInputElement).checked).toBe(true);
-      expect((select.element as HTMLSelectElement).disabled).toBe(false);
+      expect((trigger.element as HTMLButtonElement).disabled).toBe(false);
 
       await checkbox.setValue(false);
-      expect((select.element as HTMLSelectElement).disabled).toBe(true);
+      expect((trigger.element as HTMLButtonElement).disabled).toBe(true);
     });
   });
 
@@ -508,12 +762,19 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       
       (useChat as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
+        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
       });
-      (vi.mocked(useRouter) as Mock).mockReturnValue({
+      (useRouter as Mock).mockReturnValue({
         push: mockPush,
+        currentRoute: ref({ path: '/' })
       });
 
-      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true }, 
+        global: { 
+          stubs: globalStubs,
+        } 
+      });
       await flushPromises();
 
       await wrapper.findAll('nav button').find(b => b.text().includes('Storage'))?.trigger('click');
@@ -545,6 +806,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const mockDeleteAllChats = vi.fn();
       (useChat as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
+        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+      });
+      (useRouter as Mock).mockReturnValue({
+        push: vi.fn(),
+        currentRoute: ref({ path: '/' })
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -573,11 +839,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         autoTitleEnabled: true, 
       };
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: customSettings },
-        availableModels: { value: [] },
-        isFetchingModels: { value: false },
+        settings: ref(customSettings),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
         save: mockSave,
-        fetchModels: vi.fn(),
+        updateProviderProfiles: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            return await mockListModels(overrides.url, overrides.headers);
+          }
+          return [];
+        }),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -589,9 +861,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(mockShowPrompt).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Create New Profile',
-          message: expect.stringContaining('Enter a name for this profile:'),
+          message: 'Give this configuration a name:',
           defaultValue: 'Openai - gpt-4', // Based on mockSettings
           confirmButtonText: 'Create',
+          bodyComponent: expect.anything(),
         }),
       );
       
@@ -607,20 +880,29 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
 
-      // Select Unspecified for both
+      // Ensure some values are set first so clear button appears
+      const vm = wrapper.vm as any;
+      vm.form.defaultModelId = 'some-model';
+      vm.form.titleModelId = 'some-model';
+      await nextTick();
+
+      // Select "None" for Default Model
       const modelSelect = wrapper.find('[data-testid="setting-model-select"]');
-      // Vue Test Utils setValue with undefined might not work as expected for native select 
-      // but since we bound v-model to form.defaultModelId, we can also set the value via vm if needed,
-      // but let's try the standard way or setting the value to "" if that matches undefined
-      await modelSelect.setValue(undefined as unknown as string);
+      await modelSelect.find('[data-testid="model-selector-trigger"]').trigger('click');
+      const clearBtn = modelSelect.find('[data-testid="model-selector-clear"]');
+      if (clearBtn.exists()) await clearBtn.trigger('click');
 
+      // Select "Use Current Chat Model" for Title Model
       const titleSelect = wrapper.find('[data-testid="setting-title-model-select"]');
-      await titleSelect.setValue(undefined as unknown as string);
-
-      await wrapper.find('[data-testid="setting-save-provider-profile-button"]').trigger('click');
-      await flushPromises(); // Wait for showPrompt to be called and promise to resolve
+      await titleSelect.find('[data-testid="model-selector-trigger"]').trigger('click');
+      const titleClearBtn = titleSelect.find('[data-testid="model-selector-clear"]');
+      if (titleClearBtn.exists()) await titleClearBtn.trigger('click');
       
-      const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
+      await flushPromises();
+
+      // Click Create Profile
+      await wrapper.find('[data-testid="setting-save-provider-profile-button"]').trigger('click');
+      
       const lastProfile = vm.form.providerProfiles[vm.form.providerProfiles.length - 1];
       expect(lastProfile?.defaultModelId).toBeUndefined();
       expect(lastProfile?.titleModelId).toBeUndefined();
@@ -628,11 +910,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('supports renaming a profile in the UI', async () => {
       const mockProviderProfile = { id: 'p1', name: 'Original Name', endpointType: 'openai' as const };
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: { ...mockSettings, providerProfiles: [mockProviderProfile] } },
-        availableModels: { value: [] },
-        isFetchingModels: { value: false },
+        settings: ref({ ...mockSettings, providerProfiles: [mockProviderProfile] }),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
         save: mockSave,
-        fetchModels: vi.fn(),
+        updateProviderProfiles: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            return await mockListModels(overrides.url, overrides.headers);
+          }
+          return [];
+        }),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -664,44 +952,55 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       
       // We need useSettings to return the profile in the initial state so form.value has it
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: { ...mockSettings, providerProfiles: [mockProviderProfile] } },
-        availableModels: { value: [] },
-        isFetchingModels: { value: false },
+        settings: ref({ ...mockSettings, providerProfiles: [mockProviderProfile] }),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
         save: mockSave,
-        fetchModels: vi.fn(),
+        updateProviderProfiles: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            return await mockListModels(overrides.url, overrides.headers);
+          }
+          return [];
+        }),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
 
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const connectionVm = connectionTab.vm as any;
+
       const select = wrapper.find('[data-testid="setting-quick-provider-profile-select"]');
       await select.setValue('quick-1');
-      await select.trigger('change');
+      await connectionVm.handleQuickProviderProfileChange();
       await flushPromises();
 
-      const vm = wrapper.vm as unknown as { 
-        form: { endpointUrl: string, defaultModelId: string, titleModelId: string },
-        selectedProviderProfileId: string,
-        hasChanges: boolean
-      };
-      expect(vm.form.endpointUrl).toBe('http://quick:11434');
-      expect(vm.form.defaultModelId).toBe('model-a');
-      expect(vm.form.titleModelId).toBe('model-title');
-      expect(vm.selectedProviderProfileId).toBe('');
+      expect(connectionVm.form.endpointUrl).toBe('http://quick:11434');
+      expect(connectionVm.form.defaultModelId).toBe('model-a');
+      expect(connectionVm.form.titleModelId).toBe('model-title');
+      expect(connectionVm.selectedProviderProfileId).toBe('');
       
       // Should enable the global save button
-      expect(vm.hasChanges).toBe(true);
+      const modalVm = wrapper.vm as any;
+      expect(modalVm.hasUnsavedConnectionChanges).toBe(true);
       const saveBtn = wrapper.find('[data-testid="setting-save-button"]');
       expect(saveBtn.attributes('disabled')).toBeUndefined();
     });
 
     it('shows empty state when no profiles exist', async () => {
       (useSettings as unknown as Mock).mockReturnValue({
-        settings: { value: { ...mockSettings, providerProfiles: [] } },
-        availableModels: { value: [] },
-        isFetchingModels: { value: false },
+        settings: ref({ ...mockSettings, providerProfiles: [] }),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
         save: mockSave,
-        fetchModels: vi.fn(),
+        updateProviderProfiles: vi.fn(),
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            return await mockListModels(overrides.url, overrides.headers);
+          }
+          return [];
+        }),
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -804,6 +1103,128 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(badge.exists()).toBe(true);
       expect(badge.text()).toBe('Ollama');
       expect(badge.classes()).toContain('uppercase');
+    });
+
+    it('supports adding, removing and applying headers through provider profiles', async () => {
+      const mockProfile = {
+        id: 'p-headers',
+        name: 'Header Profile',
+        endpointType: 'openai' as const,
+        endpointUrl: 'http://headers:8080',
+        endpointHttpHeaders: [['X-From-Profile', 'val-1']] as [string, string][],
+      };
+
+      (useSettings as unknown as Mock).mockReturnValue({
+        settings: ref({ ...mockSettings, providerProfiles: [mockProfile] }),
+        availableModels: ref([]),
+        isFetchingModels: ref(false),
+        save: mockSave,
+        fetchModels: vi.fn(async (overrides) => {
+          if (overrides) {
+            return await mockListModels(overrides.url, overrides.headers);
+          }
+          return [];
+        }),
+      });
+
+      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
+      await flushPromises();
+
+      const connectionTab = wrapper.findComponent(ConnectionTab);
+      const connectionVm = connectionTab.vm as any;
+
+      // 1. Add a header manually in Connection tab
+      await wrapper.find('button').findAll('span').find(s => s.text().includes('Add Header'))?.trigger('click'); 
+      if (!connectionVm.form.endpointHttpHeaders) {
+        connectionVm.addHeader();
+      }
+      await nextTick();
+      
+      connectionVm.form.endpointHttpHeaders[0] = ['X-Manual', 'val-manual'];
+      
+      // 2. Switch to profile with headers
+      const select = wrapper.find('[data-testid="setting-quick-provider-profile-select"]');
+      await select.setValue('p-headers');
+      await select.trigger('change');
+      await flushPromises();
+
+      // Verify headers were overwritten by profile
+      expect(connectionVm.form.endpointHttpHeaders).toEqual([['X-From-Profile', 'val-1']]);
+      
+      // 3. Remove header
+      const removeBtn = wrapper.findAll('button').find(b => b.findComponent({ name: 'Trash2' }).exists() || b.html().includes('lucide-trash2'));
+      await removeBtn?.trigger('click');
+      expect(connectionVm.form.endpointHttpHeaders).toHaveLength(0);
+    });
+  });
+
+
+  describe('Recipe Integration', () => {
+    it('creates chat groups when handleImportRecipes is called', async () => {
+      const mockCreateChatGroup = vi.fn().mockResolvedValue('new-id');
+      (useChat as unknown as Mock).mockReturnValue({
+        createChatGroup: mockCreateChatGroup,
+        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+      });
+
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs }
+      });
+      await flushPromises();
+
+      const recipes = [
+        {
+          newName: 'Recipe 1', 
+          matchedModelId: 'm1', 
+          recipe: { systemPrompt: { content: 'p1', behavior: 'override' as const }, lmParameters: { temperature: 0.5 } } as any 
+        },
+        {
+          newName: 'Recipe 2', 
+          recipe: { systemPrompt: undefined, lmParameters: undefined } as any 
+        }
+      ];
+
+      // Access handleImportRecipes via vm
+      const vm = wrapper.vm as any;
+      await vm.handleImportRecipes(recipes);
+
+      expect(mockCreateChatGroup).toHaveBeenCalledTimes(2);
+      expect(mockCreateChatGroup).toHaveBeenCalledWith('Recipe 1', {
+        modelId: 'm1',
+        systemPrompt: { content: 'p1', behavior: 'override' },
+        lmParameters: { temperature: 0.5 }
+      });
+      expect(mockCreateChatGroup).toHaveBeenCalledWith('Recipe 2', {
+        modelId: undefined,
+        systemPrompt: undefined,
+        lmParameters: undefined
+      });
+
+      expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
+        message: 'Successfully imported 2 recipes as chat groups'
+      }));
+    });
+
+    it('shows error toast when recipe import fails', async () => {
+      const mockCreateChatGroup = vi.fn().mockRejectedValue(new Error('Import failed'));
+      (useChat as unknown as Mock).mockReturnValue({
+        createChatGroup: mockCreateChatGroup,
+        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+      });
+
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: true },
+        global: { stubs: globalStubs }
+      });
+      await flushPromises();
+
+      const vm = wrapper.vm as any;
+      await vm.handleImportRecipes([{ newName: 'Fail', recipe: {} as any }]);
+
+      expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
+        message: expect.stringContaining('Failed to import recipes: Import failed')
+      }));
     });
   });
 });

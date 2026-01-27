@@ -1,6 +1,5 @@
-import type { Chat, Settings, ChatGroup, ChatSummary, SidebarItem } from '../../models/types';
-import type { ChatMetaDto, ChatGroupDto, MigrationChunkDto } from '../../models/dto';
-import { buildSidebarItemsFromDtos } from '../../models/mappers';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot } from '../../models/types';
+import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '../../models/dto';
 
 export type { ChatSummary };
 
@@ -11,25 +10,34 @@ export type { ChatSummary };
 export abstract class IStorageProvider {
   abstract init(): Promise<void>;
   
+  /**
+   * Whether this provider supports efficient binary persistence (e.g. OPFS).
+   * LocalStorage returns false to indicate potential capacity issues.
+   */
+  abstract readonly canPersistBinary: boolean;
+
   // --- Data Access Methods ---
-  // Subclasses implement these to fetch raw DTOs.
   protected abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;
-  protected abstract listGroupsRaw(): Promise<ChatGroupDto[]>;
+  protected abstract listChatGroupsRaw(): Promise<ChatGroupDto[]>;
+
+  // --- Hierarchy Management ---
+  abstract loadHierarchy(): Promise<HierarchyDto | null>;
+  abstract saveHierarchy(hierarchy: HierarchyDto): Promise<void>;
 
   // --- Bulk Operations (Migration) ---
-  abstract dump(): AsyncGenerator<MigrationChunkDto>;
-  abstract restore(stream: AsyncGenerator<MigrationChunkDto>): Promise<void>;
+  abstract dump(): Promise<StorageSnapshot>;
+  abstract restore(snapshot: StorageSnapshot): Promise<void>;
 
   // --- Public Domain API (Default Implementations) ---
 
   /**
    * Returns sorted ChatGroups with their nested items.
    */
-  public async listGroups(): Promise<ChatGroup[]> {
+  public async listChatGroups(): Promise<ChatGroup[]> {
     const sidebar = await this.getSidebarStructure();
     return sidebar
-      .filter((item): item is Extract<SidebarItem, { type: 'group' }> => item.type === 'group')
-      .map(item => item.group);
+      .filter((item): item is Extract<SidebarItem, { type: 'chat_group' }> => item.type === 'chat_group')
+      .map(item => item.chatGroup);
   }
 
   /**
@@ -40,8 +48,8 @@ export abstract class IStorageProvider {
     const allSummaries: ChatSummary[] = [];
     
     sidebar.forEach(item => {
-      if (item.type === 'group') {
-        item.group.items.forEach(nested => {
+      if (item.type === 'chat_group') {
+        item.chatGroup.items.forEach(nested => {
           if (nested.type === 'chat') allSummaries.push(nested.chat);
         });
       } else {
@@ -54,25 +62,35 @@ export abstract class IStorageProvider {
   /**
    * Centralized method to get the full sorted hierarchy using mappers.
    */
-  public async getSidebarStructure(): Promise<SidebarItem[]> {
-    const [metas, groups] = await Promise.all([
-      this.listChatMetasRaw(),
-      this.listGroupsRaw(),
-    ]);
-    return buildSidebarItemsFromDtos(groups, metas);
-  }
+  public abstract getSidebarStructure(): Promise<SidebarItem[]>;
 
   // --- Persistence Methods ---
   
-  abstract saveChat(chat: Chat, index: number): Promise<void>;
+  /**
+   * Persists chat metadata (title, updated date, etc).
+   */
+  abstract saveChatMeta(meta: ChatMeta): Promise<void>;
+
+  /**
+   * Saves only the chat content (message tree) to a dedicated file.
+   */
+  abstract saveChatContent(id: string, content: ChatContent): Promise<void>;
+
   abstract loadChat(id: string): Promise<Chat | null>;
+  abstract loadChatMeta(id: string): Promise<ChatMeta | null>;
+  abstract loadChatContent(id: string): Promise<ChatContent | null>;
   abstract deleteChat(id: string): Promise<void>;
   
-  abstract saveGroup(group: ChatGroup, index: number): Promise<void>;
-  abstract loadGroup(id: string): Promise<ChatGroup | null>;
-  abstract deleteGroup(id: string): Promise<void>;
+  abstract saveChatGroup(chatGroup: ChatGroup): Promise<void>;
+  abstract loadChatGroup(id: string): Promise<ChatGroup | null>;
+  abstract deleteChatGroup(id: string): Promise<void>;
   
   abstract saveSettings(settings: Settings): Promise<void>;
   abstract loadSettings(): Promise<Settings | null>;
   abstract clearAll(): Promise<void>;
+
+  // --- File Storage ---
+  abstract saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void>;
+  abstract getFile(attachmentId: string, originalName: string): Promise<Blob | null>;
+  abstract hasAttachments(): Promise<boolean>;
 }

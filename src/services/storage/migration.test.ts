@@ -43,7 +43,7 @@ class MockFileSystemDirectoryHandle {
       if (options?.create) {
         this.entries.set(name, new MockFileSystemFileHandle(name));
       } else {
-        throw new Error('File not found');
+        return undefined; // Real API behavior
       }
     }
     return this.entries.get(name);
@@ -80,15 +80,23 @@ vi.stubGlobal('navigator', { storage: mockNavigatorStorage });
 const mockChat: Chat = {
   id: '123e4567-e89b-12d3-a456-426614174000',
   title: 'Test Chat',
+  groupId: '987fcdeb-51a2-43d1-9456-426614174000',
   root: { items: [] },
-  modelId: 'gpt-3.5-turbo',
   createdAt: Date.now(),
   updatedAt: Date.now(),
   systemPrompt: undefined,
   debugEnabled: false,
+  currentLeafId: undefined,
+  endpointType: undefined,
+  endpointUrl: undefined,
+  endpointHttpHeaders: undefined,
+  lmParameters: undefined,
+  modelId: undefined,
+  originChatId: undefined,
+  originMessageId: undefined,
 };
 
-const mockGroup: ChatGroup = {
+const mockChatGroup: ChatGroup = {
   id: '987fcdeb-51a2-43d1-9456-426614174000',
   name: 'Test Group',
   updatedAt: Date.now(),
@@ -98,6 +106,8 @@ const mockGroup: ChatGroup = {
 
 const mockSettings: Settings = {
   endpointType: 'openai',
+  endpointUrl: undefined,
+  endpointHttpHeaders: undefined,
   autoTitleEnabled: true,
   storageType: 'local',
   providerProfiles: [],
@@ -112,23 +122,27 @@ describe('Storage Migration (Round-Trip)', () => {
     await provider.init();
     await provider.clearAll();
     await provider.saveSettings(mockSettings);
-    await provider.saveGroup(mockGroup, 0);
-    // Link chat to group to test relationships? 
-    // For simplicity, just saving them individually first.
-    // Ideally we should test the relationship preservation but DTOs handle IDs.
-    await provider.saveChat(mockChat, 0);
+    await provider.saveChatGroup(mockChatGroup);
+    await provider.saveChatContent(mockChat.id, mockChat);
+    await provider.saveChatMeta(mockChat);
+    await provider.saveHierarchy({
+      items: [
+        { type: 'chat_group', id: mockChatGroup.id, chat_ids: [mockChat.id] }
+      ]
+    });
 
     // 2. Dump
-    const dumpStream = provider.dump();
+    const snapshot = await provider.dump();
     const chunks: MigrationChunkDto[] = [];
-    for await (const chunk of dumpStream) {
+    for await (const chunk of snapshot.contentStream) {
       chunks.push(chunk);
     }
 
-    // Verify dump content minimally
-    expect(chunks.find(c => c.type === 'settings')).toBeDefined();
-    expect(chunks.find(c => c.type === 'group')).toBeDefined();
-    expect(chunks.find(c => c.type === 'chat')).toBeDefined();
+    // Verify snapshot structure
+    expect(snapshot.structure.settings).toEqual(mockSettings);
+    expect(snapshot.structure.chatGroups).toHaveLength(1);
+    expect(snapshot.structure.chatMetas).toHaveLength(1);
+    expect(snapshot.structure.hierarchy.items).toHaveLength(1);
 
     // 3. Clear (Simulate fresh install)
     await provider.clearAll();
@@ -139,20 +153,28 @@ describe('Storage Migration (Round-Trip)', () => {
     async function* arrayToGenerator(array: MigrationChunkDto[]) {
       for (const item of array) yield item;
     }
-    await provider.restore(arrayToGenerator(chunks));
+    await provider.restore({
+      structure: snapshot.structure,
+      contentStream: arrayToGenerator(chunks)
+    });
 
     // 5. Verify Data Integrity
     const loadedSettings = await provider.loadSettings();
     expect(loadedSettings).toEqual(mockSettings);
 
-    const groups = await provider.listGroups();
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.id).toBe(mockGroup.id);
-    expect(groups[0]?.name).toBe(mockGroup.name);
+    const chatGroups = await provider.listChatGroups();
+    expect(chatGroups).toHaveLength(1);
+    expect(chatGroups[0]?.id).toBe(mockChatGroup.id);
+    expect(chatGroups[0]?.name).toBe(mockChatGroup.name);
     
     // Check Chat
     const loadedChat = await provider.loadChat(mockChat.id);
     expect(loadedChat).toEqual(mockChat);
+
+    // Check Hierarchy
+    const loadedHierarchy = await provider.loadHierarchy();
+    expect(loadedHierarchy?.items).toBeDefined();
+    expect(loadedHierarchy?.items.length).toBeGreaterThan(0);
   };
 
   describe('LocalStorageProvider', () => {

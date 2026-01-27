@@ -5,9 +5,15 @@ import ServerSetupGuide from './ServerSetupGuide.vue';
 describe('ServerSetupGuide.vue', () => {
   beforeEach(() => {
     vi.stubGlobal('navigator', {
+      platform: 'Win32',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
       clipboard: {
         writeText: vi.fn().mockResolvedValue(undefined),
       },
+    });
+    // Default to http protocol for standard tests
+    vi.stubGlobal('location', {
+      protocol: 'http:',
     });
   });
 
@@ -22,6 +28,19 @@ describe('ServerSetupGuide.vue', () => {
     expect(wrapper.text()).toContain('ollama serve');
     expect(wrapper.text()).toContain('ollama run gemma3n:e2b');
     expect(wrapper.text()).toContain('Run Gemma 3n');
+  });
+
+  it('shows CORS-friendly command when running on file:// protocol', async () => {
+    vi.stubGlobal('location', { protocol: 'file:' });
+    const wrapper = mount(ServerSetupGuide);
+    
+    // Windows file://
+    expect(wrapper.text()).toContain('$env:OLLAMA_ORIGINS="*"; ollama serve');
+    
+    // Mac file://
+    const macBtn = wrapper.findAll('button').find(b => b.text().toLowerCase() === 'mac');
+    await macBtn?.trigger('click');
+    expect(wrapper.text()).toContain('brew services stop ollama\nOLLAMA_ORIGINS="*" ollama serve');
   });
 
   it('switches to macOS and shows Homebrew command', async () => {
@@ -68,7 +87,7 @@ describe('ServerSetupGuide.vue', () => {
     const preTags = wrapper.findAll('pre');
     preTags.forEach(pre => {
       expect(pre.classes()).toContain('overflow-x-auto');
-      expect(pre.classes()).toContain('whitespace-nowrap');
+      expect(pre.classes()).toContain('whitespace-pre');
     });
   });
 

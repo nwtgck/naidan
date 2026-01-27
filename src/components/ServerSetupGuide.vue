@@ -1,10 +1,36 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Copy, Check, Download, ExternalLink } from 'lucide-vue-next';
 
-const activeOs = ref<'windows' | 'mac' | 'linux'>('windows');
+const detectOS = () => {
+  if (typeof window === 'undefined' || !window.navigator) return 'windows';
+  const platform = (window.navigator.platform || '').toLowerCase();
+  const ua = (window.navigator.userAgent || '').toLowerCase();
+  if (platform.includes('mac') || ua.includes('mac')) return 'mac';
+  if (platform.includes('linux') || ua.includes('linux')) return 'linux';
+  return 'windows';
+};
+
+const activeOs = ref<'windows' | 'mac' | 'linux'>(detectOS());
 const activeServer = ref<'ollama' | 'llama-server'>('ollama');
 const copiedCommand = ref<string | null>(null);
+
+const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+
+const ollamaServeCommand = computed(() => {
+  const base = 'ollama serve';
+  if (isFileProtocol) {
+    // Show the environment variable for CORS when on file://
+    if (activeOs.value === 'windows') {
+      return '$env:OLLAMA_ORIGINS="*"; ollama serve';
+    }
+    if (activeOs.value === 'mac') {
+      return 'brew services stop ollama\nOLLAMA_ORIGINS="*" ollama serve';
+    }
+    return 'OLLAMA_ORIGINS="*" ollama serve';
+  }
+  return base;
+});
 
 const copyToClipboard = async (text: string, id: string) => {
   await navigator.clipboard.writeText(text);
@@ -111,7 +137,7 @@ const guides: {
                   <ExternalLink class="w-3 h-3 opacity-50 shrink-0" />
                 </a>
                 <div v-else-if="guides.ollama[activeOs].installCommand" class="relative group">
-                  <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-nowrap border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].installCommand }}</code></pre>
+                  <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].installCommand }}</code></pre>
                   <button
                     @click="copyToClipboard(guides.ollama[activeOs].installCommand!, 'ollama-install')"
                     class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
@@ -133,9 +159,9 @@ const guides: {
                     Start Server:
                   </p>
                   <div class="relative group">
-                    <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-nowrap border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].serveCommand }}</code></pre>
+                    <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ ollamaServeCommand }}</code></pre>
                     <button
-                      @click="copyToClipboard(guides.ollama[activeOs].serveCommand!, 'ollama-serve')"
+                      @click="copyToClipboard(ollamaServeCommand, 'ollama-serve')"
                       class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                     >
                       <Check v-if="copiedCommand === 'ollama-serve'" class="w-3 h-3 text-white" />
@@ -148,7 +174,7 @@ const guides: {
                     Run Gemma 3n:
                   </p>
                   <div class="relative group">
-                    <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-nowrap border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].runCommand }}</code></pre>
+                    <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].runCommand }}</code></pre>
                     <button
                       @click="copyToClipboard(guides.ollama[activeOs].runCommand, 'ollama-run')"
                       class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
@@ -194,7 +220,7 @@ const guides: {
                 Run Gemma 3n:
               </p>
               <div class="relative group">
-                <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-nowrap border border-gray-800 scrollbar-none"><code>{{ guides['llama-server'].all.runCommand }}</code></pre>
+                <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides['llama-server'].all.runCommand }}</code></pre>
                 <button
                   @click="copyToClipboard(guides['llama-server'].all.runCommand, 'llama-run')"
                   class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"

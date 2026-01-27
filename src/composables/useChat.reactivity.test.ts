@@ -1,22 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
-import { nextTick, reactive } from 'vue';
+import { nextTick } from 'vue';
 
 // Mock storage
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
+    loadChatMeta: vi.fn(),
+    loadChatContent: vi.fn().mockResolvedValue(null),
+    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     deleteChat: vi.fn(),
+    getSidebarStructure: vi.fn().mockResolvedValue([]),
+    updateChatMeta: vi.fn().mockResolvedValue(undefined),
+    updateChatContent: vi.fn().mockResolvedValue(undefined),
+    notify: vi.fn(),
   },
 }));
 
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost' } },
+    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', defaultModelId: 'gpt-4' } },
+    isOnboardingDismissed: { value: true },
+    onboardingDraft: { value: null },
   }),
 }));
 
@@ -43,36 +54,21 @@ describe('useChat Reactivity', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.currentChat.value = reactive({
-      id: '1',
-      title: 'Test',
-      root: { items: [] },
-      modelId: 'gpt-4',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      order: 0,
-      debugEnabled: false,
-    });
+    chatStore.__testOnly.clearLiveChatRegistry();
   });
 
   it('should reflect streamed chunks in activeMessages immediately', async () => {
+    await chatStore.createNewChat();
+    const chat = chatStore.currentChat.value!;
+
     // Start sending
-    chatStore.sendMessage('Hello');
+    void chatStore.sendMessage('Hello');
     
-    // Initial async setup - need enough ticks to pass through fetchAvailableModels
-    await nextTick();
-    await nextTick();
-    await nextTick();
-    await nextTick();
+    // Wait for activeGenerations to have the chat (signals generation started)
+    await vi.waitUntil(() => chatStore.__testOnly.activeGenerations.has(chat.id), { timeout: 2000 });
 
     expect(chatStore.activeMessages.value).toHaveLength(2);
     expect(chatStore.activeMessages.value[1]?.content).toBe('');
-
-    // Ensure onChunkCallback is defined before calling it
-    if (typeof onChunkCallback !== 'function') {
-      // Wait a bit more if needed
-      await new Promise(r => setTimeout(r, 10));
-    }
 
     // Simulate chunk
     onChunkCallback('A');

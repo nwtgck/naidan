@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { reactive, nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 import ChatPage from './[id].vue';
 import { useChat } from '../../composables/useChat';
-import { useRoute } from 'vue-router';
+import { useRouter } from 'vue-router';
 
 vi.mock('../../composables/useChat', () => ({
   useChat: vi.fn(),
 }));
 
 vi.mock('vue-router', () => ({
-  useRoute: vi.fn(),
+  useRouter: vi.fn(),
 }));
 
 vi.mock('../../components/ChatArea.vue', () => ({
@@ -22,31 +22,45 @@ vi.mock('../../components/ChatArea.vue', () => ({
 
 describe('ChatPage', () => {
   const mockOpenChat = vi.fn();
+  const mockRouter = {
+    currentRoute: ref({
+      params: { id: 'chat-123' },
+      query: {},
+    }),
+    replace: vi.fn(),
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     (useChat as unknown as Mock).mockReturnValue({
       openChat: mockOpenChat,
     });
+    (useRouter as unknown as Mock).mockReturnValue(mockRouter);
   });
 
   it('calls openChat on mount with id from route', () => {
-    (useRoute as unknown as Mock).mockReturnValue({
-      params: reactive({ id: 'chat-123' }),
-    });
+    mockRouter.currentRoute.value = {
+      params: { id: 'chat-123' },
+      query: {},
+    };
     
     mount(ChatPage);
     expect(mockOpenChat).toHaveBeenCalledWith('chat-123');
   });
 
   it('watches route.params.id and calls openChat', async () => {
-    const params = reactive({ id: 'chat-123' });
-    (useRoute as unknown as Mock).mockReturnValue({ params });
+    mockRouter.currentRoute.value = {
+      params: { id: 'chat-123' },
+      query: {},
+    };
     
     mount(ChatPage);
     expect(mockOpenChat).toHaveBeenCalledWith('chat-123');
     
-    params.id = 'chat-456';
+    mockRouter.currentRoute.value = {
+      params: { id: 'chat-456' },
+      query: {},
+    };
     await nextTick();
     expect(mockOpenChat).toHaveBeenCalledWith('chat-456');
   });

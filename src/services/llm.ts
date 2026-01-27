@@ -9,7 +9,7 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
-import type { LmParameters } from '../models/types';
+import type { LmParameters, ChatMessage } from '../models/types';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 
 const { addErrorEvent } = useGlobalEvents();
@@ -35,6 +35,7 @@ const OpenAIModelsSchema = z.object({
 const OllamaChatChunkSchema = z.object({
   message: z.object({
     content: z.string().nullable().optional(),
+    thinking: z.string().nullable().optional(),
   }).optional(),
   done: z.boolean().optional(),
 });
@@ -47,20 +48,21 @@ const OllamaTagsSchema = z.object({
 
 export interface LLMProvider {
   chat(
-    messages: { role: string; content: string }[],
+    messages: ChatMessage[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
     parameters?: LmParameters,
-    signal?: AbortSignal
+    headers?: [string, string][],
+    signal?: AbortSignal,
   ): Promise<void>;
   
-  listModels(endpoint: string, signal?: AbortSignal): Promise<string[]>;
+  listModels(endpoint: string, headers?: [string, string][], signal?: AbortSignal): Promise<string[]>;
 }
 
 interface OpenAICompletionRequest {
   model: string;
-  messages: { role: string; content: string }[];
+  messages: ChatMessage[];
   stream: boolean;
   temperature?: number;
   top_p?: number;
@@ -72,11 +74,12 @@ interface OpenAICompletionRequest {
 
 export class OpenAIProvider implements LLMProvider {
   async chat(
-    messages: { role: string; content: string }[],
+    messages: ChatMessage[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
     parameters?: LmParameters,
+    headers?: [string, string][],
     signal?: AbortSignal,
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
@@ -95,14 +98,47 @@ export class OpenAIProvider implements LLMProvider {
       if (parameters.stop !== undefined) body.stop = parameters.stop;
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: [
+          ['Content-Type', 'application/json'],
+          ...(headers || []),
+        ],
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch (e) {
+      const isAbort = e instanceof Error && e.name === 'AbortError';
+      if (!isAbort) {
+        const message = `Network error or CORS issue: ${e instanceof Error ? e.message : String(e)}. Please check if the server is running and your endpoint URL is correct.`;
+        addErrorEvent({
+          source: 'OpenAIProvider',
+          message,
+          details: { error: e, url, method: 'POST' },
+        });
+        throw new Error(message);
+      }
+      throw e;
+    }
 
-    if (!response.ok) throw new Error(`OpenAI API Error: ${response.statusText}`);
+    if (!response.ok) {
+      let details = response.statusText;
+      try {
+        const errorJson = await response.json();
+        details = errorJson.error?.message || errorJson.error || JSON.stringify(errorJson);
+      } catch (e) {
+        // Fallback to status text
+      }
+      const errorMsg = `OpenAI API Error (${response.status}): ${details}`;
+      addErrorEvent({
+        source: 'OpenAIProvider',
+        message: errorMsg,
+        details: { status: response.status, statusText: response.statusText, url }
+      });
+      throw new Error(errorMsg);
+    }
     if (!response.body) throw new Error('No response body');
 
     const reader = response.body.getReader();
@@ -140,10 +176,39 @@ export class OpenAIProvider implements LLMProvider {
     }
   }
 
-  async listModels(endpoint: string, signal?: AbortSignal): Promise<string[]> {
+  async listModels(endpoint: string, headers?: [string, string][], signal?: AbortSignal): Promise<string[]> {
     const url = `${endpoint.replace(/\/$/, '')}/models`;
-    const response = await fetch(url, { signal });
-    if (!response.ok) throw new Error(`Failed to fetch models: ${response.statusText}`);
+    let response: Response;
+    try {
+      response = await fetch(url, { signal, headers });
+    } catch (e) {
+      const isAbort = e instanceof Error && e.name === 'AbortError';
+      if (!isAbort) {
+        const message = `Network error or CORS issue: ${e instanceof Error ? e.message : String(e)}. Please check if the server is running and your endpoint URL is correct.`;
+        addErrorEvent({
+          source: 'OpenAIProvider:listModels',
+          message,
+          details: { error: e, url }
+        });
+        throw new Error(message);
+      }
+      throw e;
+    }
+
+    if (!response.ok) {
+      let details = response.statusText;
+      try {
+        const errorJson = await response.json();
+        details = errorJson.error?.message || errorJson.error || JSON.stringify(errorJson);
+      } catch (e) { /* ignore */ }
+      const errorMsg = `Failed to fetch models (${response.status}): ${details}`;
+      addErrorEvent({
+        source: 'OpenAIProvider:listModels',
+        message: errorMsg,
+        details: { status: response.status, statusText: response.statusText, url }
+      });
+      throw new Error(errorMsg);
+    }
     const rawJson = await response.json();
     // Validate with Zod
     const validated = OpenAIModelsSchema.parse(rawJson);
@@ -151,26 +216,55 @@ export class OpenAIProvider implements LLMProvider {
   }
 }
 
+interface OllamaMessage {
+  role: string;
+  content: string;
+  images?: string[];
+}
+
 interface OllamaChatRequest {
   model: string;
-  messages: { role: string; content: string }[];
+  messages: OllamaMessage[];
   stream: boolean;
   options?: Record<string, unknown>;
 }
 
 export class OllamaProvider implements LLMProvider {
   async chat(
-    messages: { role: string; content: string }[],
+    messages: ChatMessage[],
     model: string,
     endpoint: string,
     onChunk: (chunk: string) => void,
     parameters?: LmParameters,
+    headers?: [string, string][],
     signal?: AbortSignal,
   ): Promise<void> {
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
+
+    // Transform messages to Ollama format
+    const ollamaMessages: OllamaMessage[] = messages.map(m => {
+      if (typeof m.content === 'string') {
+        return { role: m.role, content: m.content };
+      } else {
+        // Multimodal
+        let content = '';
+        const images: string[] = [];
+        for (const part of m.content) {
+          if (part.type === 'text') {
+            content += part.text;
+          } else if (part.type === 'image_url') {
+            // Strip data URL prefix if present: data:image/png;base64,xxxx
+            const b64 = part.image_url.url.split(',')[1] || part.image_url.url;
+            images.push(b64);
+          }
+        }
+        return { role: m.role, content, images };
+      }
+    });
+    
     const body: OllamaChatRequest = {
       model,
-      messages,
+      messages: ollamaMessages,
       stream: true,
     };
 
@@ -188,19 +282,55 @@ export class OllamaProvider implements LLMProvider {
       }
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: [
+          ['Content-Type', 'application/json'],
+          ...(headers || []),
+        ],
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch (e) {
+      const isAbort = e instanceof Error && e.name === 'AbortError';
+      if (!isAbort) {
+        let message = `Network error or CORS issue: ${e instanceof Error ? e.message : String(e)}`;
+        if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
+          message += ". Since you are running from a file URL, ensure Ollama is started with OLLAMA_ORIGINS='*' (e.g., OLLAMA_ORIGINS='*' ollama serve).";
+        }
+        addErrorEvent({
+          source: 'OllamaProvider',
+          message,
+          details: { error: e, url, method: 'POST' },
+        });
+        throw new Error(message);
+      }
+      throw e;
+    }
 
-    if (!response.ok) throw new Error(`Ollama API Error: ${response.statusText}`);
+    if (!response.ok) {
+      let details = response.statusText;
+      try {
+        const errorJson = await response.json();
+        details = errorJson.error || JSON.stringify(errorJson);
+      } catch (e) { /* ignore */ }
+      const errorMsg = `Ollama API Error (${response.status}): ${details}`;
+      addErrorEvent({
+        source: 'OllamaProvider',
+        message: errorMsg,
+        details: { status: response.status, statusText: response.statusText, url }
+      });
+      throw new Error(errorMsg);
+    }
     if (!response.body) throw new Error('No response body');
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+
+    let isThinking = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -216,9 +346,32 @@ export class OllamaProvider implements LLMProvider {
           const rawJson = JSON.parse(line);
           // Validate with Zod
           const validated = OllamaChatChunkSchema.parse(rawJson);
+          
+          const thinking = validated.message?.thinking || '';
+          if (thinking) {
+            if (!isThinking) {
+              onChunk('<think>');
+              isThinking = true;
+            }
+            onChunk(thinking);
+          }
+
           const content = validated.message?.content || '';
-          if (content) onChunk(content);
-          if (validated.done) return;
+          if (content) {
+            if (isThinking) {
+              onChunk('</think>');
+              isThinking = false;
+            }
+            onChunk(content);
+          }
+          
+          if (validated.done) {
+            if (isThinking) {
+              onChunk('</think>');
+              isThinking = false;
+            }
+            return;
+          }
         } catch (e) {
           addErrorEvent({
             source: 'OllamaProvider',
@@ -231,10 +384,42 @@ export class OllamaProvider implements LLMProvider {
     }
   }
 
-  async listModels(endpoint: string, signal?: AbortSignal): Promise<string[]> {
+  async listModels(endpoint: string, headers?: [string, string][], signal?: AbortSignal): Promise<string[]> {
     const url = `${endpoint.replace(/\/$/, '')}/api/tags`;
-    const response = await fetch(url, { signal });
-    if (!response.ok) throw new Error(`Failed to fetch models: ${response.statusText}`);
+    let response: Response;
+    try {
+      response = await fetch(url, { signal, headers });
+    } catch (e) {
+      const isAbort = e instanceof Error && e.name === 'AbortError';
+      if (!isAbort) {
+        let message = `Network error or CORS issue: ${e instanceof Error ? e.message : String(e)}`;
+        if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
+          message += ". Since you are running from a file URL, ensure Ollama is started with OLLAMA_ORIGINS='*' (e.g., OLLAMA_ORIGINS='*' ollama serve).";
+        }
+        addErrorEvent({
+          source: 'OllamaProvider:listModels',
+          message,
+          details: { error: e, url }
+        });
+        throw new Error(message);
+      }
+      throw e;
+    }
+
+    if (!response.ok) {
+      let details = response.statusText;
+      try {
+        const errorJson = await response.json();
+        details = errorJson.error || JSON.stringify(errorJson);
+      } catch (e) { /* ignore */ }
+      const errorMsg = `Failed to fetch models (${response.status}): ${details}`;
+      addErrorEvent({
+        source: 'OllamaProvider:listModels',
+        message: errorMsg,
+        details: { status: response.status, statusText: response.statusText, url }
+      });
+      throw new Error(errorMsg);
+    }
     const rawJson = await response.json();
     // Validate with Zod
     const validated = OllamaTagsSchema.parse(rawJson);

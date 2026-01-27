@@ -62,7 +62,7 @@ import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-in
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'public/**'],
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -80,6 +80,7 @@ export default tseslint.config(
         ...globals.node,
         __BUILD_MODE_IS_STANDALONE__: 'readonly',
         __BUILD_MODE_IS_HOSTED__: 'readonly',
+        __APP_VERSION__: 'readonly',
       },
     },
     rules: {
@@ -104,6 +105,10 @@ export default tseslint.config(
       'vue/no-undef-components': ['error', {
         'ignorePatterns': ['router-link', 'router-view'],
       }],
+      'vue/define-props-declaration': ['error', 'type-based'],
+      'vue/define-emits-declaration': ['error', 'type-based'],
+      'vue/component-api-style': ['error', ['script-setup']],
+      'vue/block-lang': ['error', { script: { lang: 'ts' } }],
     },
   },
   ensureFileProtocolInit,

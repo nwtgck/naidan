@@ -7,6 +7,32 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
+import pkg from './package.json'
+import license from 'rollup-plugin-license'
+
+// Ensure src/assets/licenses.json exists even in a fresh clone (it's gitignored)
+// This prevents Vite from failing during import analysis in tests.
+const licensesPath = path.resolve(__dirname, 'src/assets/licenses.json')
+if (!fs.existsSync(licensesPath)) {
+  const assetsDir = path.dirname(licensesPath)
+  if (!fs.existsSync(assetsDir)) {
+    fs.mkdirSync(assetsDir, { recursive: true })
+  }
+  // Create a dummy file because it's gitignored but needed for Vite import analysis in tests
+  fs.writeFileSync(licensesPath, JSON.stringify([{ 
+    name: "dummy-package-for-tests", 
+    version: "0.0.0", 
+    license: "DUMMY-LICENSE", 
+    licenseText: "This is a placeholder for CI tests." 
+  }]))
+}
+
+interface LicenseDependency {
+  name: string
+  version: string
+  license: string
+  licenseText: string
+}
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -20,6 +46,7 @@ export default defineConfig(({ mode }) => {
     define: {
       __BUILD_MODE_IS_STANDALONE__: JSON.stringify(isStandalone),
       __BUILD_MODE_IS_HOSTED__: JSON.stringify(!isStandalone),
+      __APP_VERSION__: JSON.stringify(pkg.version),
     },
     plugins: [
       VueRouter({
@@ -27,6 +54,37 @@ export default defineConfig(({ mode }) => {
       }),
       VueDevTools(),
       vue(),
+      license({
+        thirdParty: {
+          includePrivate: false,
+          output: [
+            {
+              file: licensesPath,
+              template(dependencies: LicenseDependency[]) {
+                return JSON.stringify(dependencies.map((dep: LicenseDependency) => ({
+                  name: dep.name,
+                  version: dep.version,
+                  license: dep.license,
+                  licenseText: dep.licenseText,
+                })));
+              },
+            },
+            isStandalone && {
+              file: path.resolve(__dirname, outDir, 'THIRD_PARTY_LICENSES.txt'),
+              template(dependencies: LicenseDependency[]) {
+                return dependencies.map((dep: LicenseDependency) => (
+                  `Name: ${dep.name}\n` +
+                  `Version: ${dep.version}\n` +
+                  `License: ${dep.license}\n` +
+                  `--------------------------------------------------------------------------------\n` +
+                  `${dep.licenseText}\n` +
+                  `================================================================================\n`
+                )).join('\n');
+              },
+            }
+          ].filter((x): x is Exclude<typeof x, false | null | undefined> => !!x) as unknown as never,
+        },
+      }),
       // Standalone: Inline scripts for file:// support, then Zip the result
       isStandalone && iifeInlinePlugin(outDir),
       isStandalone && zipPackagerPlugin(outDir),
@@ -82,17 +140,22 @@ const zipPackagerPlugin = (outDir: string) => ({
   async closeBundle() {
     console.log('  \u231B Creating standalone zip package...')
     const distDir = path.resolve(__dirname, outDir)
-    const zipPath = path.resolve(__dirname, 'dist/lm-web-ui-standalone.zip')
+    const zipPath = path.resolve(__dirname, 'dist/naidan-standalone.zip')
     
     if (!fs.existsSync(distDir)) return
 
     const zip = new JSZip()
-    const folder = zip.folder('lm-web-ui-standalone')
+    const folder = zip.folder('naidan-standalone')
     if (folder) {
       addDirectoryToZip(folder, distDir)
+      folder.file('VERSION.txt', pkg.version)
     }
 
-    const content = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+    const content = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 9 }
+    })
     
     // Ensure parent dir exists (it should, but just in case)
     const zipDir = path.dirname(zipPath)
@@ -109,9 +172,9 @@ const zipPackagerPlugin = (outDir: string) => ({
 const copyZipPlugin = () => ({
   name: 'copy-zip-plugin',
   async closeBundle() {
-    const zipSourcePath = path.resolve(__dirname, 'dist/lm-web-ui-standalone.zip')
+    const zipSourcePath = path.resolve(__dirname, 'dist/naidan-standalone.zip')
     const hostedDistDir = path.resolve(__dirname, 'dist/hosted')
-    const zipDestPath = path.join(hostedDistDir, 'lm-web-ui-standalone.zip')
+    const zipDestPath = path.join(hostedDistDir, 'naidan-standalone.zip')
 
     if (fs.existsSync(zipSourcePath)) {
       if (!fs.existsSync(hostedDistDir)) fs.mkdirSync(hostedDistDir, { recursive: true })
@@ -155,6 +218,7 @@ const iifeInlinePlugin = (outDir: string) => ({
           // Escape </script> to prevent early script termination
           newScript.textContent = scriptContent.replace(/<\/script>/g, '<\\/script>')
           script.parentNode?.replaceChild(newScript, script)
+          fs.unlinkSync(scriptPath) // Delete the original script file
         }
       }
     }

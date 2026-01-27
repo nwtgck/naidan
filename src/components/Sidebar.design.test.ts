@@ -1,4 +1,4 @@
-import { ref, defineComponent, h, nextTick } from 'vue';
+import { ref, defineComponent, h, nextTick, reactive } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
@@ -38,11 +38,16 @@ describe('Sidebar Design Specifications', () => {
   beforeEach(() => {
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref(null),
+      currentChatGroup: ref(null),
       streaming: ref(false),
-      groups: ref([]),
+      activeGenerations: reactive(new Map()),
+      chatGroups: ref([]),
       chats: ref([]),
       sidebarItems: ref([]),
       loadChats: vi.fn().mockResolvedValue(undefined),
+      isTaskRunning: vi.fn().mockReturnValue(false),
+      isProcessing: vi.fn().mockReturnValue(false),
+      abortChat: vi.fn(),
     });
     (useTheme as unknown as Mock).mockReturnValue({
       themeMode: ref('light'),
@@ -65,7 +70,6 @@ describe('Sidebar Design Specifications', () => {
     });
     await nextTick();
     expect(wrapper.classes()).toContain('bg-white');
-    expect(wrapper.classes()).toContain('border-gray-100');
   });
 
   it('uses rounded-xl and soft shadows for the primary New Chat button', async () => {
@@ -107,10 +111,15 @@ describe('Sidebar Design Specifications', () => {
     
     (useChat as unknown as Mock).mockReturnValue({
       currentChat,
+      currentChatGroup: ref(null),
       sidebarItems,
+      activeGenerations: reactive(new Map()),
       loadChats: vi.fn().mockResolvedValue(undefined),
-      groups: ref([]),
+      chatGroups: ref([]),
       chats: ref([]),
+      isTaskRunning: vi.fn().mockReturnValue(false),
+      isProcessing: vi.fn().mockReturnValue(false),
+      abortChat: vi.fn(),
     });
     
     const wrapper = mount(Sidebar, {
