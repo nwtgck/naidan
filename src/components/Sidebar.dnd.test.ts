@@ -29,7 +29,7 @@ vi.mock('vuedraggable', () => ({
 
 const router = createRouter({
   history: createWebHistory(),
-  routes: [{ path: '/', component: { template: '<div></div>' } }],
+  routes: [{ path: '/', component: { template: '<div></div>' } }, { path: '/chat/:id', component: { template: '<div></div>' } }, { path: '/chat-group/:id', component: { template: '<div></div>' } }],
 });
 
 describe('Sidebar DND Improvements', () => {
@@ -46,13 +46,19 @@ describe('Sidebar DND Improvements', () => {
       chatGroups: ref([{ id: 'g1', name: 'Group 1', items: [], isCollapsed: true }]),
       chats: ref([]),
       isProcessing: vi.fn().mockReturnValue(false),
+      openChat: vi.fn(),
       openChatGroup: vi.fn(),
       setChatGroupCollapsed: vi.fn(),
       persistSidebarStructure: vi.fn(),
     };
     (useChat as any).mockReturnValue(mockChatStore);
     (useSettings as any).mockReturnValue({ settings: ref({}), isFetchingModels: ref(false) });
-    (useLayout as any).mockReturnValue({ isSidebarOpen: ref(true), toggleSidebar: vi.fn() });
+    (useLayout as any).mockReturnValue({ 
+      isSidebarOpen: ref(true), 
+      activeFocusArea: ref('chat'),
+      setActiveFocusArea: vi.fn(),
+      toggleSidebar: vi.fn() 
+    });
   });
       
   it('should use sortable-ghost class for drag visualization', async () => {
@@ -106,7 +112,7 @@ describe('Sidebar DND Improvements', () => {
     await nextTick();
     (wrapper.vm as any).isDragging = true;
     await nextTick();
-    const groupItem = wrapper.find('[data-testid="chat-group-item"]');
+    const groupItem = wrapper.find('[data-sidebar-group-id="g1"]');
     await groupItem.trigger('dragover');
     expect(groupItem.attributes('class')).toContain('ring-2');
     expect(groupItem.attributes('class')).toContain('ring-blue-500/50');
@@ -120,7 +126,7 @@ describe('Sidebar DND Improvements', () => {
     await nextTick();
     (wrapper.vm as any).isDragging = true;
     await nextTick();
-    const groupItem = wrapper.find('[data-testid="chat-group-item"]');
+    const groupItem = wrapper.find('[data-sidebar-group-id="g1"]');
     await groupItem.trigger('dragover');
     expect(mockChatStore.setChatGroupCollapsed).not.toHaveBeenCalled();
     vi.advanceTimersByTime(600);
@@ -147,7 +153,7 @@ describe('Sidebar DND Improvements', () => {
     await nextTick();
           
     // Find the toggle button for the first group
-    const toggleButton = wrapper.find('[data-testid="chat-group-item"] button');
+    const toggleButton = wrapper.find('[data-sidebar-group-id="g1"] button');
     await toggleButton.trigger('click');
           
     expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
@@ -174,4 +180,3 @@ describe('Sidebar DND Improvements', () => {
     vi.useRealTimers();
   });
 });
-    

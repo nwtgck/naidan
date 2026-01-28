@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -32,7 +32,9 @@ vi.mock('../composables/useChat', () => ({
     loadChats: vi.fn(),
     createChatGroup: vi.fn(),
     renameChatGroup: vi.fn(),
-    openChat: vi.fn(),
+    openChat: vi.fn((_id) => {
+      mockCurrentChatGroup.value = null;
+    }),
     openChatGroup: mockOpenChatGroup,
     setChatGroupCollapsed: mockSetChatGroupCollapsed,
     persistSidebarStructure: vi.fn(),
@@ -56,6 +58,8 @@ vi.mock('../composables/useSettings', () => ({
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),
+    activeFocusArea: ref('chat'),
+    setActiveFocusArea: vi.fn(),
     toggleSidebar: vi.fn(),
   }),
 }));
@@ -72,7 +76,7 @@ vi.mock('vuedraggable', () => ({
 describe('Sidebar Group Overrides', () => {
   const router = createRouter({
     history: createWebHistory(),
-    routes: [{ path: '/', component: { template: 'div' } }],
+    routes: [{ path: '/', component: { template: 'div' } }, { path: '/chat-group/:id', component: { template: 'div' } }, { path: '/chat/:id', component: { template: 'div' } }],
   });
 
   const globalStubs = {
@@ -83,6 +87,7 @@ describe('Sidebar Group Overrides', () => {
   };
 
   beforeEach(() => {
+    vi.useFakeTimers();
     mockChatGroups.value = [
       { id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
     ];
@@ -91,14 +96,18 @@ describe('Sidebar Group Overrides', () => {
     vi.clearAllMocks();
   });
 
-  it('calls openChatGroup when clicking the group title', async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('calls handleOpenChatGroup when clicking the group title', async () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
     await nextTick();
     
     // Find the group item container
-    const groupItem = wrapper.find('[data-testid="chat-group-item"]');
+    const groupItem = wrapper.find('[data-sidebar-group-id="g1"]');
     expect(groupItem.exists()).toBe(true);
     await groupItem.trigger('click');
 
@@ -129,7 +138,7 @@ describe('Sidebar Group Overrides', () => {
     mockCurrentChatGroup.value = mockChatGroups.value[0]!;
     await nextTick();
 
-    const groupItem = wrapper.find('[data-testid="chat-group-item"]');
+    const groupItem = wrapper.find('[data-sidebar-group-id="g1"]');
     expect(groupItem.classes()).toContain('bg-blue-50');
     expect(groupItem.classes()).toContain('text-blue-600');
   });
@@ -147,7 +156,6 @@ describe('Sidebar Group Overrides', () => {
     expect(chatItem.exists()).toBe(true);
     await chatItem.trigger('click');
 
-    expect(mockOpenChatGroup).toHaveBeenCalledWith(null);
     expect(mockCurrentChatGroup.value).toBeNull();
   });
 });

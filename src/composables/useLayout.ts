@@ -1,6 +1,9 @@
 import { ref } from 'vue';
 
+export type FocusArea = 'sidebar' | 'chat' | 'settings' | 'none';
+
 const isSidebarOpen = ref(true);
+const activeFocusArea = ref<FocusArea>('chat');
 
 export function useLayout() {
   const toggleSidebar = () => {
@@ -11,9 +14,15 @@ export function useLayout() {
     isSidebarOpen.value = open;
   };
 
+  const setActiveFocusArea = (area: FocusArea) => {
+    activeFocusArea.value = area;
+  };
+
   return {
     isSidebarOpen,
+    activeFocusArea,
     toggleSidebar,
     setSidebarOpen,
+    setActiveFocusArea,
   };
 }

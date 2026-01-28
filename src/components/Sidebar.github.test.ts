@@ -8,14 +8,32 @@ import { ref } from 'vue';
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: ref(null),
+    currentChatGroup: ref(null),
     streaming: ref(false),
     chatGroups: ref([]),
     chats: ref([]),
     sidebarItems: ref([]),
     handleNewChat: vi.fn(),
+    openChat: vi.fn(),
     openChatGroup: vi.fn(),
     setChatGroupCollapsed: vi.fn(),
     persistSidebarStructure: vi.fn(),
+    isProcessing: vi.fn().mockReturnValue(false),
+  }),
+}));
+
+vi.mock('../composables/useLayout', () => ({
+  useLayout: () => ({
+    isSidebarOpen: ref(true),
+    activeFocusArea: ref('chat'),
+    setActiveFocusArea: vi.fn(),
+    toggleSidebar: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/useConfirm', () => ({
+  useConfirm: () => ({
+    showConfirm: vi.fn(),
   }),
 }));
 

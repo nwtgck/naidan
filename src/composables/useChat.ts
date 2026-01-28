@@ -94,23 +94,30 @@ watch(_currentChat, (newChat, oldChat) => {
 function syncLiveInstancesWithSidebar() {
   const sync = (items: SidebarItem[], parentGroupId: string | null) => {
     for (const item of items) {
-      if (item.type === 'chat') {
+      switch (item.type) {
+      case 'chat': {
         const live = liveChatRegistry.get(item.chat.id);
         if (live) live.groupId = parentGroupId;
         if (_currentChat.value && toRaw(_currentChat.value).id === item.chat.id) {
           _currentChat.value.groupId = parentGroupId;
         }
-      } else if (item.type === 'chat_group') {
-        sync(item.chatGroup.items, item.chatGroup.id);
+        break;
       }
+      case 'chat_group':
+        sync(item.chatGroup.items, item.chatGroup.id);
+        break;
+      default: {
+        const _ex: never = item;
+        return _ex;
+      }      }
     }
   };
   sync(rootItems.value, null);
 }
 
 let sidebarReloadTimeout: ReturnType<typeof setTimeout> | null = null;
-let lastSidebarReload = 0;
 const THROTTLE_MS = 200;
+let lastSidebarReload = 0;
 
 const debouncedSidebarReload = () => {
   const now = Date.now();
@@ -210,8 +217,18 @@ export function useChat() {
     const all: ChatSummary[] = [];
     const collect = (items: SidebarItem[]) => {
       items.forEach(item => {
-        if (item.type === 'chat') all.push(item.chat);
-        else collect(item.chatGroup.items);
+        switch (item.type) {
+        case 'chat':
+          all.push(item.chat);
+          break;
+        case 'chat_group':
+          collect(item.chatGroup.items);
+          break;
+        default: {
+          const _ex: never = item;
+          return _ex;
+        }
+        }
       });
     };
     collect(rootItems.value);
@@ -220,7 +237,18 @@ export function useChat() {
 
   const chatGroups = computed(() => {
     const all: ChatGroup[] = [];
-    rootItems.value.forEach(item => { if (item.type === 'chat_group') all.push(item.chatGroup); });
+    rootItems.value.forEach(item => {
+      switch (item.type) {
+      case 'chat_group':
+        all.push(item.chatGroup);
+        break;
+      case 'chat':
+        break;
+      default: {
+        const _ex: never = item;
+        return _ex;
+      }      }
+    });
     return all;
   });
 
@@ -393,9 +421,9 @@ export function useChat() {
   };
 
   const openChat = async (id: string): Promise<Chat | null> => {
-    _currentChatGroup.value = null;
     if (liveChatRegistry.has(id)) { 
       const chat = liveChatRegistry.get(id)!;
+      _currentChatGroup.value = null;
       _currentChat.value = chat;
       return chat;
     }
@@ -403,10 +431,12 @@ export function useChat() {
     if (loaded) {
       const reactiveChat = reactive(loaded);
       registerLiveInstance(reactiveChat);
+      _currentChatGroup.value = null;
       _currentChat.value = reactiveChat;
       return reactiveChat;
     }
     else {
+      _currentChatGroup.value = null;
       _currentChat.value = null;
       return null;
     }
@@ -415,7 +445,10 @@ export function useChat() {
   const openChatGroup = (id: string | null) => {
     if (id === null) { _currentChatGroup.value = null; return; }
     const group = chatGroups.value.find(g => g.id === id);
-    if (group) _currentChatGroup.value = group;
+    if (group) {
+      _currentChat.value = null; // Clear chat when opening a group
+      _currentChatGroup.value = group;
+    }
   };
 
   const deleteChat = async (id: string, injectAddToast?: (toast: AddToastOptions) => string) => {
@@ -1001,8 +1034,16 @@ export function useChat() {
     syncLiveInstancesWithSidebar();
     const newHierarchy: Hierarchy = {
       items: topLevelItems.map(item => {
-        if (item.type === 'chat') return { type: 'chat', id: item.chat.id };
-        else return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
+        switch (item.type) {
+        case 'chat':
+          return { type: 'chat', id: item.chat.id };
+        case 'chat_group':
+          return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
+        default: {
+          const _ex: never = item;
+          return _ex;
+        }
+        }
       })
     };
     await storageService.updateHierarchy(() => newHierarchy);
@@ -1012,9 +1053,17 @@ export function useChat() {
     await storageService.updateHierarchy((curr) => {
       const node: HierarchyNode = { type: 'chat', id: chatId };
       curr.items = curr.items.filter(i => {
-        if (i.type === 'chat' && i.id === chatId) return false;
-        if (i.type === 'chat_group') i.chat_ids = i.chat_ids.filter(id => id !== chatId);
-        return true;
+        switch (i.type) {
+        case 'chat':
+          return i.id !== chatId;
+        case 'chat_group':
+          i.chat_ids = i.chat_ids.filter(id => id !== chatId);
+          return true;
+        default: {
+          const _ex: never = i;
+          return _ex || true;
+        }
+        }
       });
       if (targetGroupId) {
         const g = curr.items.find(i => i.type === 'chat_group' && i.id === targetGroupId) as HierarchyChatGroupNode;

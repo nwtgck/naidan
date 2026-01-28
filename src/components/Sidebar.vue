@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, nextTick, computed } from 'vue';
+import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
 import { useRouter } from 'vue-router';
+import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
@@ -25,7 +26,7 @@ const {
 
 const { settings, isFetchingModels, availableModels, updateGlobalModel } = useSettings();
 const sortedModels = computed(() => naturalSort(availableModels.value || []));
-const { isSidebarOpen, toggleSidebar } = useLayout();
+const { isSidebarOpen, activeFocusArea, setActiveFocusArea, toggleSidebar } = useLayout();
 const { showConfirm } = useConfirm();
 
 const router = useRouter();
@@ -47,6 +48,7 @@ const newChatGroupName = ref('');
 const editingChatGroupId = ref<string | null>(null);
 const editingChatGroupName = ref('');
 const skipLeaveAnimation = ref(false);
+const lastNavigatedId = ref<string | null>(null);
 
 // Custom directive for auto-focusing elements
 const vFocus = {
@@ -128,7 +130,16 @@ function checkMove(evt: { draggedContext: { element: SidebarItem }; to: HTMLElem
   // If dragging into a nested list (a chat group's items)
   if (evt.to.classList.contains('nested-draggable')) {
     // Only allow chats
-    return draggedItem.type === 'chat';
+    switch (draggedItem.type) {
+    case 'chat':
+      return true;
+    case 'chat_group':
+      return false;
+    default: {
+      const _ex: never = draggedItem;
+      return _ex;
+    }
+    }
   }
   return true;
 }
@@ -181,34 +192,29 @@ async function handleDeleteChatGroup(group: ChatGroup) {
 }
 
 async function handleNewChat(chatGroupId: string | null = null) {
+  setActiveFocusArea('chat');
   await chatStore.createNewChat(chatGroupId);
   if (currentChat.value) {
     router.push(`/chat/${currentChat.value.id}`);
   }
 }
 
-function handleChatClick() {
-  chatStore.openChatGroup(null);
-}
-
 async function handleOpenChat(id: string) {
-  handleChatClick();
   await chatStore.openChat(id);
   router.push(`/chat/${id}`);
 }
 
-// Scroll active chat into view
-watch(() => currentChat.value?.id, async (id) => {
-  if (!id) return;
-  await nextTick();
-  // Wait a bit for potential transitions
-  setTimeout(() => {
-    const el = document.querySelector(`[data-testid="sidebar-chat-item-${id}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, 100);
-}, { immediate: true });
+async function handleOpenChatGroup(id: string) {
+  chatStore.openChatGroup(id);
+  router.push(`/chat-group/${id}`);
+}
+
+// Clear lastNavigatedId when store catches up to prevent stale index calculations
+watch([() => currentChat.value?.id, () => currentChatGroup.value?.id], ([chatId, groupId]) => {
+  if (chatId === lastNavigatedId.value || groupId === lastNavigatedId.value) {
+    lastNavigatedId.value = null;
+  }
+});
 
 async function handleDeleteChat(id: string) {
   const isCurrent = currentChat.value?.id === id;
@@ -254,7 +260,131 @@ function handleToggleChatGroupCollapse(chatGroup: ChatGroup) {
     isCollapsed: chatGroup.isCollapsed 
   });
 }
-</script>
+
+// Scroll active chat into view
+watch(() => currentChat.value?.id, async (id) => {
+  if (!id) return;
+  await nextTick();
+  // Wait a bit for potential transitions
+  setTimeout(() => {
+    const el = document.querySelector(`[data-testid="sidebar-chat-item-${id}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, 100);
+}, { immediate: true });
+
+// Scroll active group into view
+watch(() => currentChatGroup.value?.id, async (id) => {
+  if (!id) return;
+  await nextTick();
+  setTimeout(() => {
+    const el = document.querySelector(`[data-sidebar-group-id="${id}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, 100);
+}, { immediate: true });
+
+function getFlatVisibleItems(items: SidebarItem[]): { type: 'chat' | 'chat_group'; id: string }[] {
+  const result: { type: 'chat' | 'chat_group'; id: string }[] = [];
+  function collect(list: SidebarItem[]) {
+    for (const item of list) {
+      switch (item.type) {
+      case 'chat':
+        result.push({ type: 'chat', id: item.chat.id });
+        break;
+      case 'chat_group':
+        result.push({ type: 'chat_group', id: item.chatGroup.id });
+        if (!item.chatGroup.isCollapsed) {
+          collect(item.chatGroup.items);
+        }
+        break;
+      default: {
+        const _ex: never = item;
+        return _ex;
+      }
+      }
+    }
+  }
+  collect(items);
+  return result;
+}
+
+onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
+  if (activeFocusArea.value !== 'sidebar') return;
+
+  if (
+    editingId.value || 
+    editingChatGroupId.value || 
+    isCreatingChatGroup.value
+  ) {
+    return;
+  }
+
+  const visibleItems = getFlatVisibleItems(sidebarItemsLocal.value);
+  if (visibleItems.length === 0) return;
+
+  // Prioritize the ID we just navigated to, then group, then chat.
+  // This prevents jumping back if the store hasn't updated currentChat yet.
+  const currentId = (lastNavigatedId.value && visibleItems.some(i => i.id === lastNavigatedId.value))
+    ? lastNavigatedId.value
+    : (currentChatGroup.value?.id || currentChat.value?.id);
+    
+  let currentIndex = currentId ? visibleItems.findIndex(i => i.id === currentId) : -1;
+
+  // Fallback: If current item is hidden (e.g. inside collapsed group), 
+  // try using its parent group's index as starting point.
+  if (currentIndex === -1 && currentChat.value?.groupId) {
+    currentIndex = visibleItems.findIndex(i => i.id === currentChat.value?.groupId);
+  }
+
+  if (e.key === 'ArrowDown') {
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < visibleItems.length) {
+      e.preventDefault();
+      const item = visibleItems[nextIndex];
+      if (item) {
+        lastNavigatedId.value = item.id;
+        if (item.type === 'chat') handleOpenChat(item.id);
+        else handleOpenChatGroup(item.id);
+      }
+    }
+  } else if (e.key === 'ArrowUp') {
+    const nextIndex = currentIndex - 1;
+    if (nextIndex >= 0) {
+      e.preventDefault();
+      const item = visibleItems[nextIndex];
+      if (item) {
+        lastNavigatedId.value = item.id;
+        if (item.type === 'chat') handleOpenChat(item.id);
+        else handleOpenChatGroup(item.id);
+      }
+    }
+  } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    const groupId = currentChatGroup.value?.id;
+    if (groupId) {
+      const group = chatStore.chatGroups.value.find(g => g.id === groupId);
+      if (group) {
+        if (e.key === 'ArrowRight' && group.isCollapsed) {
+          e.preventDefault();
+          handleToggleChatGroupCollapse(group);
+        } else if (e.key === 'ArrowLeft' && !group.isCollapsed) {
+          e.preventDefault();
+          handleToggleChatGroupCollapse(group);
+        }
+      }
+    } else if (e.key === 'ArrowLeft') {
+      // Use toRaw to ensure we access the underlying data properties reliably
+      const rawChat = toRaw(currentChat.value);
+      if (rawChat?.groupId) {
+        e.preventDefault();
+        lastNavigatedId.value = rawChat.groupId;
+        handleOpenChatGroup(rawChat.groupId);
+      }
+    }
+  }
+});</script>
 
 <template>
   <div class="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 select-none transition-colors">
@@ -309,7 +439,13 @@ function handleToggleChatGroupCollapse(chatGroup: ChatGroup) {
       </div>
     </div>
     <!-- Navigation List -->
-    <div class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide" data-testid="sidebar-nav">
+    <div 
+      class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide focus:outline-none" 
+      data-testid="sidebar-nav"
+      tabindex="0"
+      @focus="setActiveFocusArea('sidebar')"
+      @click="setActiveFocusArea('sidebar')"
+    >
       <template v-if="isSidebarOpen">
         <Transition name="chat-group-new">
           <div v-if="isCreatingChatGroup" :class="{ 'skip-leave': skipLeaveAnimation }" class="flex items-center justify-between p-2 rounded-xl bg-blue-50/30 dark:bg-blue-900/10 border border-blue-200/50 dark:border-blue-500/20 mb-1" data-testid="chat-group-creation-container">
@@ -360,7 +496,7 @@ function handleToggleChatGroupCollapse(chatGroup: ChatGroup) {
               <!-- Chat Group Item -->
               <div v-if="element.type === 'chat_group'" class="space-y-1">
                 <div 
-                  @click="chatStore.openChatGroup(element.chatGroup.id)"
+                  @click="handleOpenChatGroup(element.chatGroup.id)"
                   @dragover="onDragOverGroup(element.chatGroup.id)"
                   @dragleave="onDragLeaveGroup"
                   class="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative transition-all handle"
@@ -369,6 +505,7 @@ function handleToggleChatGroupCollapse(chatGroup: ChatGroup) {
                     'ring-2 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-900/30': dragHoverGroup === element.chatGroup.id
                   }"
                   data-testid="chat-group-item"
+                  :data-sidebar-group-id="element.chatGroup.id"
                 >
                   <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
                     <button 
@@ -402,7 +539,7 @@ function handleToggleChatGroupCollapse(chatGroup: ChatGroup) {
                 <!-- Nested Items in Chat Group -->
                 <div v-if="!element.chatGroup.isCollapsed" class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5">
                   <button 
-                    @click="handleNewChat(element.chatGroup.id)"
+                    @click.stop="handleNewChat(element.chatGroup.id)"
                     class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
                   >
                     <SquarePen class="w-3 h-3" /> Add Chat

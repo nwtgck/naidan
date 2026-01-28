@@ -3,6 +3,7 @@ import { ref, watch, nextTick, onMounted, computed, defineAsyncComponent } from 
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
+import { useLayout } from '../composables/useLayout';
 import MessageItem from './MessageItem.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ModelSelector from './ModelSelector.vue';
@@ -31,6 +32,7 @@ const {
   isProcessing,
 } = chatStore;
 const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
+const { activeFocusArea, setActiveFocusArea } = useLayout();
 useSettings();
 const router = useRouter();
 
@@ -264,6 +266,7 @@ function exportChat() {
 }
 
 function focusInput() {
+  if (activeFocusArea.value === 'sidebar') return;
   nextTick(() => {
     textareaRef.value?.focus();
   });
@@ -431,6 +434,7 @@ onUnmounted(() => {
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
     @drop="handleDrop"
+    @click="setActiveFocusArea('chat')"
   >
     <!-- Drag Overlay -->
     <div 
@@ -700,6 +704,8 @@ onUnmounted(() => {
           v-model="input"
           @input="adjustTextareaHeight"
           @paste="handlePaste"
+          @focus="setActiveFocusArea('chat')"
+          @click="setActiveFocusArea('chat')"
           @keydown.enter.ctrl.prevent="handleSend"
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
