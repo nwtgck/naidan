@@ -389,18 +389,44 @@ function formatSize(bytes?: number): string {
       <!-- Thinking Block -->
       <div v-if="hasThinking" class="mb-3" data-testid="thinking-block">
         <div 
-          class="transition-all duration-300 ease-in-out relative overflow-hidden border shadow-sm group/thinking"
+          class="transition-all duration-300 ease-in-out relative group/thinking"
           :class="[
-            showThinking 
-              ? 'w-full p-5 rounded-2xl bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner' 
-              : 'inline-flex items-center w-auto px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800/50 border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800 cursor-pointer',
-            isThinkingNow ? 'thinking-border' : ''
+            /* Shape & Size */
+            showThinking ? 'w-full p-5 rounded-2xl' : 'inline-flex items-center w-auto px-3 py-1.5 rounded-xl cursor-pointer',
+            
+            /* State: Active Thinking */
+            /* We remove 'border' and 'shadow' from parent when thinking to avoid artifacts. 
+               The child div handles the border/glow. */
+            isThinkingNow 
+              ? 'overflow-visible' 
+              : 'border shadow-sm overflow-hidden',
+
+            /* Background & Colors (Normal State) */
+            !isThinkingNow && showThinking 
+              ? 'bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner' 
+              : '',
+            !isThinkingNow && !showThinking 
+              ? 'bg-white dark:bg-gray-800/50 border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800' 
+              : '',
+
+            /* Background (Thinking State) - No borders here, handled by CSS */
+            isThinkingNow && showThinking 
+              ? 'bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 shadow-inner' 
+              : '',
+            isThinkingNow && !showThinking 
+              ? 'bg-white dark:bg-gray-800/50' 
+              : ''
           ]"
           @click="showThinking = !showThinking"
           data-testid="toggle-thinking"
         >
-          <!-- Border Radius fix for thinking animation (sync with classes above) -->
-          <div v-if="isThinkingNow" class="absolute inset-0 pointer-events-none rounded-[inherit]"></div>
+          <!-- Dedicated Thinking Border Element -->
+          <!-- Using style="border-radius: inherit" ensures we perfectly match the parent's rounded-xl/2xl state -->
+          <div 
+            v-if="isThinkingNow" 
+            class="absolute inset-0 pointer-events-none thinking-gradient-border"
+            style="border-radius: inherit;"
+          ></div>
 
           <!-- Header / Button Content -->
           <div 
@@ -577,17 +603,14 @@ function formatSize(bytes?: number): string {
   }
 }
 
-.thinking-border {
-  border-color: transparent !important;
+.thinking-gradient-border {
+  /* Line thickness defined by padding */
+  padding: 1.2px;
+  
+  /* Glow effect applied to this element (which matches the parent's shape via border-radius: inherit) */
   box-shadow: 0 0 20px -5px rgba(59, 130, 246, 0.4);
-}
 
-.thinking-border::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit; /* Dynamically match rounded-xl or rounded-2xl */
-  padding: 1.2px; /* Maintain thin line from fantasticB */
+  /* Rotating gradient background */
   background: conic-gradient(
     from var(--thinking-angle),
     #3b82f6 0%,
@@ -596,13 +619,22 @@ function formatSize(bytes?: number): string {
     transparent 40%,
     transparent 100%
   );
+
+  /* MASKING: Cut out the content box, leaving only the padding area (border) */
   -webkit-mask: 
     linear-gradient(#fff 0 0) content-box, 
     linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
+  
+  mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
   mask-composite: exclude;
-  /* Maintain 0.9s cycle, but now ~60% of it is invisible */
+
+  /* Animation */
   animation: thinking-sweep 0.9s linear infinite;
-  z-index: 0;
+  
+  /* Sit behind content (z-10/20) but above parent background if transparent */
+  z-index: 10;
 }
 </style>
