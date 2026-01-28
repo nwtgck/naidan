@@ -880,7 +880,7 @@ export function useChat() {
     try {
       const newChatObj: Chat = reactive({
         ...toRaw(mutableChat), 
-        id: newChatId, title: `Fork of ${mutableChat.title}`,
+        id: newChatId, title: `Fork of ${mutableChat.title || 'New Chat'}`,
         root: { items: [clonedNodes[0]!] }, currentLeafId: clonedNodes[clonedNodes.length - 1]?.id, 
         originChatId: mutableChat.id, originMessageId: messageId, 
         createdAt: Date.now(), updatedAt: Date.now(),
