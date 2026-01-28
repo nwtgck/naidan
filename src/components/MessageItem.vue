@@ -343,6 +343,11 @@ function formatSize(bytes?: number): string {
   }
   return `${size.toFixed(1)} ${units[unitIndex]}`;
 }
+
+function handleToggleThinking() {
+  if (typeof window !== 'undefined' && window.getSelection()?.toString()) return;
+  showThinking.value = !showThinking.value;
+}
 </script>
 
 <template>
@@ -417,7 +422,7 @@ function formatSize(bytes?: number): string {
               ? 'bg-white dark:bg-gray-800/50' 
               : ''
           ]"
-          @click="showThinking = !showThinking"
+          @click="handleToggleThinking"
           data-testid="toggle-thinking"
         >
           <!-- Dedicated Thinking Border Element -->
