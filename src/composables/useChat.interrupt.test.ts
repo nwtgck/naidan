@@ -46,7 +46,7 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-describe('useChat - regenerate interrupt', () => {
+describe('useChat Interruption', () => {
   const chatStore = useChat();
   const { __testOnly: { __testOnlySetCurrentChat } } = chatStore;
 
@@ -78,7 +78,6 @@ describe('useChat - regenerate interrupt', () => {
         firstGenAborted = true;
         return;
       }
-      // Simulate slow generation
       onChunk('First chunk');
       await new Promise(resolve => setTimeout(resolve, 100));
       if (signal.aborted) {
@@ -116,5 +115,55 @@ describe('useChat - regenerate interrupt', () => {
     const secondAssistantMsg = userMsg.replies.items[1];
     expect(secondAssistantMsg.content).toBe('Second Response');
     expect(chat.currentLeafId).toBe(secondAssistantMsg.id);
+  });
+
+  it('should interrupt current generation and start new one when editMessage (resend) is called', async () => {
+    const { sendMessage, editMessage, streaming } = chatStore;
+
+    const chat = reactive({
+      id: 'edit-interrupt-test',
+      title: 'Edit Interrupt',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any;
+    __testOnlySetCurrentChat(chat);
+
+    // 1. Start a slow generation
+    let firstGenAborted = false;
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk, _params, _headers, signal) => {
+      signal.addEventListener('abort', () => {
+        firstGenAborted = true;
+      });
+      onChunk('First chunk');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (signal.aborted) return;
+      onChunk('Second chunk');
+    });
+
+    await sendMessage('Hello');
+    await vi.waitUntil(() => streaming.value);
+    
+    const userMsg = chat.root.items[0];
+
+    // 2. Call editMessage (resend) while first one is still running
+    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      onChunk('Edited Response');
+    });
+
+    await editMessage(userMsg.id, 'Hello Again');
+
+    // Expect first generation to be aborted
+    expect(firstGenAborted).toBe(true);
+
+    // Wait for second generation to finish
+    await vi.waitUntil(() => !streaming.value);
+
+    // Initial 'Hello' and new 'Hello Again'
+    expect(chat.root.items).toHaveLength(2);
+    
+    const secondAssistantMsg = chat.root.items[1].replies.items[0];
+    expect(secondAssistantMsg.content).toBe('Edited Response');
   });
 });

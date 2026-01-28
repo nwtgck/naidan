@@ -859,6 +859,11 @@ export function useChat() {
 
   const editMessage = async (messageId: string, newContent: string) => {
     if (!_currentChat.value) return;
+    const chatId = toRaw(_currentChat.value).id;
+    if (isProcessing(chatId)) {
+      abortChat(chatId);
+    }
+
     const chat = getLiveChat(_currentChat.value);
     const node = findNodeInBranch(chat.root.items, messageId); if (!node) return;
     if (node.role === 'assistant') {
