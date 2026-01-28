@@ -612,8 +612,17 @@ export function useChat() {
         await generateChatTitle(mutableChat.id, controller.signal);
       }
     } catch (e) {
-      if ((e as Error).name === 'AbortError') assistantNode.content += '\n\n[Generation Aborted]';
-      else {
+      // Close thinking tag if open
+      const lastOpen = assistantNode.content.lastIndexOf('<think>');
+      const lastClose = assistantNode.content.lastIndexOf('</think>');
+      if (lastOpen > -1 && lastClose < lastOpen) {
+        assistantNode.content += '</think>';
+      }
+      processThinking(assistantNode);
+
+      if ((e as Error).name === 'AbortError') {
+        assistantNode.content += '\n\n[Generation Aborted]';
+      } else {
         assistantNode.error = (e as Error).message;
         await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
         if (_currentChat.value && toRaw(_currentChat.value).id !== mutableChat.id) {
