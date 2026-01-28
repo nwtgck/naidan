@@ -5,6 +5,7 @@ export interface Toast {
   message: string;
   actionLabel?: string;
   onAction?: () => void | Promise<void>;
+  onClose?: (reason: 'timeout' | 'dismiss' | 'action') => void | Promise<void>;
   duration?: number;
 }
 
@@ -18,14 +19,18 @@ const addToast = (toast: Omit<Toast, 'id'>) => {
 
   if (toast.duration !== 0) {
     setTimeout(() => {
-      removeToast(id);
+      removeToast(id, 'timeout');
     }, toast.duration || 20000);
   }
   
   return id;
 };
 
-const removeToast = (id: string) => {
+const removeToast = (id: string, reason: 'timeout' | 'dismiss' | 'action' = 'dismiss') => {
+  const toast = toasts.value.find(t => t.id === id);
+  if (toast?.onClose) {
+    toast.onClose(reason);
+  }
   toasts.value = toasts.value.filter(t => t.id !== id);
 };
 

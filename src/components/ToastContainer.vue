@@ -8,7 +8,7 @@ async function handleAction(id: string, onAction?: () => void | Promise<void>) {
   if (onAction) {
     await onAction();
   }
-  removeToast(id);
+  removeToast(id, 'action');
 }
 </script>
 
@@ -31,7 +31,7 @@ async function handleAction(id: string, onAction?: () => void | Promise<void>) {
         </button>
 
         <button 
-          @click="removeToast(toast.id)"
+          @click="removeToast(toast.id, 'dismiss')"
           class="text-gray-500 hover:text-gray-300 transition-colors"
         >
           <X class="w-4 h-4" />

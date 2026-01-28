@@ -425,13 +425,6 @@ export function useChat() {
     const chatData = await storageService.loadChat(id);
     if (!chatData) return;
 
-    if (activeGenerations.has(id)) { activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id); }
-    activeTaskCounts.delete('title:' + id);
-    activeTaskCounts.delete('fetch:' + id);
-    activeTaskCounts.delete('process:' + id);
-    liveChatRegistry.delete(id);
-
-    await storageService.deleteChat(id);
     await storageService.updateHierarchy((curr) => {
       curr.items = curr.items.filter(i => {
         if (i.type === 'chat' && i.id === id) return false;
@@ -444,13 +437,20 @@ export function useChat() {
     if (_currentChat.value && toRaw(_currentChat.value).id === id) _currentChat.value = null;
     await loadData();
 
-    addToast({
+    const cleanup = async () => {
+      if (activeGenerations.has(id)) { activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id); }
+      activeTaskCounts.delete('title:' + id);
+      activeTaskCounts.delete('fetch:' + id);
+      activeTaskCounts.delete('process:' + id);
+      liveChatRegistry.delete(id);
+      await storageService.deleteChat(id);
+    };
+
+    const toastId = addToast({
       message: `Chat "${chatData.title || 'Untitled'}" deleted`,
       actionLabel: 'Undo',
       onAction: async () => {
         const originalGroupId = chatData.groupId;
-        await updateChatContent(chatData.id, () => ({ root: chatData.root, currentLeafId: chatData.currentLeafId }));
-        await updateChatMeta(chatData.id, () => chatData);
         await storageService.updateHierarchy((curr) => {
           if (originalGroupId) {
             const group = curr.items.find(i => i.type === 'chat_group' && i.id === originalGroupId) as HierarchyChatGroupNode;
@@ -462,7 +462,15 @@ export function useChat() {
         await loadData();
         await openChat(chatData.id);
       },
+      onClose: async (reason) => {
+        if (reason === 'action') return;
+        await cleanup();
+      }
     });
+
+    if (!toastId) {
+      await cleanup();
+    }
   };
 
   const deleteAllChats = async () => {
