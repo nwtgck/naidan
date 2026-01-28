@@ -328,6 +328,8 @@ async function handleFinish() {
                     <ModelSelector
                       v-model="selectedModel"
                       :models="sortedModels"
+                      :loading="isTesting"
+                      @refresh="handleConnect"
                       placeholder="Select a model"
                     />
                   </div>

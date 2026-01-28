@@ -81,7 +81,7 @@ describe('useChat Thinking Abort', () => {
       });
     });
 
-    const sendPromise = sendMessage('Hello');
+    await sendMessage('Hello');
     
     // Wait for it to start streaming
     await vi.waitUntil(() => streaming.value);

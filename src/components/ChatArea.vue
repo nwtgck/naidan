@@ -746,6 +746,7 @@ onUnmounted(() => {
                 :placeholder="formatLabel(inheritedSettings?.modelId, inheritedSettings?.sources.modelId)"
                 :loading="fetchingModels"
                 allow-clear
+                @refresh="fetchModels"
                 data-testid="model-override-select"
               />
             </div>
