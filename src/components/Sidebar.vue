@@ -286,7 +286,7 @@ watch(() => currentChatGroup.value?.id, async (id) => {
   }, 100);
 }, { immediate: true });
 
-function getFlatVisibleItems(items: SidebarItem[]): { type: 'chat' | 'chat_group'; id: string }[] {
+const visibleItems = computed(() => {
   const result: { type: 'chat' | 'chat_group'; id: string }[] = [];
   function collect(list: SidebarItem[]) {
     for (const item of list) {
@@ -307,9 +307,9 @@ function getFlatVisibleItems(items: SidebarItem[]): { type: 'chat' | 'chat_group
       }
     }
   }
-  collect(items);
+  collect(sidebarItemsLocal.value);
   return result;
-}
+});
 
 onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
   if (activeFocusArea.value !== 'sidebar') return;
@@ -322,28 +322,27 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     return;
   }
 
-  const visibleItems = getFlatVisibleItems(sidebarItemsLocal.value);
-  if (visibleItems.length === 0) return;
+  if (visibleItems.value.length === 0) return;
 
   // Prioritize the ID we just navigated to, then group, then chat.
   // This prevents jumping back if the store hasn't updated currentChat yet.
-  const currentId = (lastNavigatedId.value && visibleItems.some(i => i.id === lastNavigatedId.value))
+  const currentId = (lastNavigatedId.value && visibleItems.value.some(i => i.id === lastNavigatedId.value))
     ? lastNavigatedId.value
     : (currentChatGroup.value?.id || currentChat.value?.id);
     
-  let currentIndex = currentId ? visibleItems.findIndex(i => i.id === currentId) : -1;
+  let currentIndex = currentId ? visibleItems.value.findIndex(i => i.id === currentId) : -1;
 
   // Fallback: If current item is hidden (e.g. inside collapsed group), 
   // try using its parent group's index as starting point.
   if (currentIndex === -1 && currentChat.value?.groupId) {
-    currentIndex = visibleItems.findIndex(i => i.id === currentChat.value?.groupId);
+    currentIndex = visibleItems.value.findIndex(i => i.id === currentChat.value?.groupId);
   }
 
   if (e.key === 'ArrowDown') {
     const nextIndex = currentIndex + 1;
-    if (nextIndex < visibleItems.length) {
+    if (nextIndex < visibleItems.value.length) {
       e.preventDefault();
-      const item = visibleItems[nextIndex];
+      const item = visibleItems.value[nextIndex];
       if (item) {
         lastNavigatedId.value = item.id;
         if (item.type === 'chat') handleOpenChat(item.id);
@@ -354,15 +353,14 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     const nextIndex = currentIndex - 1;
     if (nextIndex >= 0) {
       e.preventDefault();
-      const item = visibleItems[nextIndex];
+      const item = visibleItems.value[nextIndex];
       if (item) {
         lastNavigatedId.value = item.id;
         if (item.type === 'chat') handleOpenChat(item.id);
         else handleOpenChatGroup(item.id);
       }
     }
-  } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-    const groupId = currentChatGroup.value?.id;
+  } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {    const groupId = currentChatGroup.value?.id;
     if (groupId) {
       const group = chatStore.chatGroups.value.find(g => g.id === groupId);
       if (group) {
