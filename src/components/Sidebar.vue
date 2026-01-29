@@ -13,7 +13,7 @@ import {
   Trash2, Settings as SettingsIcon, 
   Pencil, Folder, FolderPlus, 
   ChevronDown, ChevronUp, ChevronRight, Check, X,
-  Bot, PanelLeft, SquarePen, Loader2,
+  Bot, PanelLeft, SquarePen, Loader2, MoreHorizontal,
 } from 'lucide-vue-next';
 import { useLayout } from '../composables/useLayout';
 import { useConfirm } from '../composables/useConfirm';
@@ -708,15 +708,19 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                     <button 
                       v-if="element.chatGroup.items.length > COMPACT_THRESHOLD"
                       @click.stop="toggleGroupCompactExpansion(element.chatGroup.id)"
-                      class="w-full flex items-center justify-between p-2 rounded-xl text-[10px] font-bold focus:outline-none"
+                      class="w-full flex items-center justify-between p-2 rounded-xl text-[10px] font-bold focus:outline-none transition-all"
                       :class="[
                         lastNavigatedId === `expand-${element.chatGroup.id}`
                           ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm'
-                          : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                          : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50',
+                        !isGroupCompactExpanded(element.chatGroup.id) ? 'bg-gradient-to-b from-transparent to-gray-50/30 dark:to-gray-800/20' : ''
                       ]"
                       data-testid="show-more-button"
                     >
-                      <span class="ml-1">{{ isGroupCompactExpanded(element.chatGroup.id) ? 'Show less' : `Show ${element.chatGroup.items.length - COMPACT_THRESHOLD} more` }}</span>
+                      <span class="ml-1 flex items-center gap-1.5">
+                        <MoreHorizontal v-if="!isGroupCompactExpanded(element.chatGroup.id)" class="w-3 h-3 opacity-60" />
+                        {{ isGroupCompactExpanded(element.chatGroup.id) ? 'Show less' : `Show ${element.chatGroup.items.length - COMPACT_THRESHOLD} more` }}
+                      </span>
                       <component :is="isGroupCompactExpanded(element.chatGroup.id) ? ChevronUp : ChevronDown" class="w-3 h-3" />
                     </button>
                   </div>
