@@ -8,6 +8,7 @@ vi.mock('lucide-vue-next', () => {
   return {
     __esModule: true,
     ChevronDown: mockIcon,
+    ChevronUp: mockIcon,
     ChevronRight: mockIcon,
     Folder: mockIcon,
     Pencil: mockIcon,

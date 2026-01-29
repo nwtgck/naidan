@@ -12,7 +12,7 @@ import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
   Trash2, Settings as SettingsIcon, 
   Pencil, Folder, FolderPlus, 
-  ChevronDown, ChevronRight, Check, X,
+  ChevronDown, ChevronUp, ChevronRight, Check, X,
   Bot, PanelLeft, SquarePen, Loader2,
 } from 'lucide-vue-next';
 import { useLayout } from '../composables/useLayout';
@@ -711,13 +711,13 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                       class="w-full flex items-center justify-between p-2 rounded-xl text-[10px] font-bold focus:outline-none"
                       :class="[
                         lastNavigatedId === `expand-${element.chatGroup.id}`
-                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/30'
+                          ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm'
                           : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
                       ]"
                       data-testid="show-more-button"
                     >
                       <span class="ml-1">{{ isGroupCompactExpanded(element.chatGroup.id) ? 'Show less' : `Show ${element.chatGroup.items.length - COMPACT_THRESHOLD} more` }}</span>
-                      <component :is="isGroupCompactExpanded(element.chatGroup.id) ? ChevronDown : ChevronRight" class="w-3 h-3" />
+                      <component :is="isGroupCompactExpanded(element.chatGroup.id) ? ChevronUp : ChevronDown" class="w-3 h-3" />
                     </button>
                   </div>
                 </div>
