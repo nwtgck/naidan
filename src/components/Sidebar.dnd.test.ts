@@ -14,7 +14,7 @@ vi.mock('vuedraggable', () => ({
   default: {
     name: 'draggable',
     template: `
-      <div class="draggable-stub">
+      <div class="draggable-stub" :data-tag="tag" :data-animation="animation">
         <div v-for="item in modelValue" :key="item.id || item.type">
           <slot name="item" :element="item"></slot>
         </div>
@@ -22,7 +22,8 @@ vi.mock('vuedraggable', () => ({
     `,
     props: [
       'modelValue', 'itemKey', 'ghostClass', 'swapThreshold', 'invertSwap',
-      'scroll', 'scrollSensitivity', 'scrollSpeed', 'forceFallback', 'fallbackClass'
+      'scroll', 'scrollSensitivity', 'scrollSpeed', 'forceFallback', 'fallbackClass',
+      'tag', 'animation'
     ],
   }
 }));
@@ -59,6 +60,61 @@ describe('Sidebar DND Improvements', () => {
       setActiveFocusArea: vi.fn(),
       toggleSidebar: vi.fn() 
     });
+  });
+
+  it('ensures reordering is instant by setting animation to 0', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const draggables = wrapper.findAllComponents({ name: 'draggable' });
+    draggables.forEach(d => {
+      expect(d.props('animation')).toBe(0);
+    });
+  });
+
+  it('uses stable div tag for draggables to prevent TransitionGroup crashes', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const draggables = wrapper.findAllComponents({ name: 'draggable' });
+    draggables.forEach(d => {
+      // Regression check: should NOT be TransitionGroup
+      expect(d.props('tag')).toBe('div');
+    });
+  });
+
+  it('implements group expansion using CSS Grid for stability', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    
+    // Find the expansion wrapper
+    const expansionWrapper = wrapper.find('.grid.transition-all');
+    expect(expansionWrapper.exists()).toBe(true);
+    
+    // Should have gridTemplateRows: 0fr when collapsed
+    expect(expansionWrapper.attributes('style')).toContain('grid-template-rows: 0fr');
+    
+    // Expand group
+    mockChatStore.chatGroups.value[0].isCollapsed = false;
+    mockChatStore.sidebarItems.value[0].chatGroup.isCollapsed = false;
+    await nextTick();
+    expect(expansionWrapper.attributes('style')).toContain('grid-template-rows: 1fr');
+  });
+
+  it('implements Show more/less animation using max-height transition', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    
+    const showMoreWrapper = wrapper.find('.transition-\\[max-height\\]');
+    expect(showMoreWrapper.exists()).toBe(true);
+    
+    // Should have a default max-height when not expanded
+    expect(showMoreWrapper.attributes('style')).toContain('max-height: 250px');
+    
+    // Simulate "Show more" expansion (internal state expandedGroupIds)
+    // We can't easily trigger the function from outside without export or component access, 
+    // but we can verify the binding.
+    (wrapper.vm as any).toggleGroupCompactExpansion('g1');
+    await nextTick();
+    expect(showMoreWrapper.attributes('style')).toContain('max-height: 2000px');
   });
       
   it('should use sortable-ghost class for drag visualization', async () => {

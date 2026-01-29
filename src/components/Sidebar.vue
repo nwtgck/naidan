@@ -532,6 +532,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     <!-- Navigation List -->
     <div 
       class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide focus:outline-none" 
+      :class="{ 'is-dragging': isDragging }"
       data-testid="sidebar-nav"
       tabindex="0"
       @focus="setActiveFocusArea('sidebar')"
@@ -586,80 +587,85 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
         >
           <template #item="{ element }">
             <div :class="{ 'is-group': element.type === 'chat_group' }">
-              <div :key="element.id">
-                <!-- Chat Group Item -->
-                <div v-if="element.type === 'chat_group'" class="space-y-1">
-                  <div 
-                    @click="handleOpenChatGroup(element.chatGroup.id)"
-                    @dragover="onDragOverGroup(element.chatGroup.id)"
-                    @dragleave="onDragLeaveGroup"
-                    class="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative handle"
-                    :class="{ 
-                      'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm': chatStore.currentChatGroup.value?.id === element.chatGroup.id,
-                      'ring-2 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-900/30': dragHoverGroup === element.chatGroup.id
-                    }"
-                    data-testid="chat-group-item"
-                    :data-sidebar-group-id="element.chatGroup.id"
-                  >
-                    <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
-                      <button 
-                        @click.stop="handleToggleChatGroupCollapse(element.chatGroup)"
-                        class="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
-                      >
-                        <component :is="element.chatGroup.isCollapsed ? ChevronRight : ChevronDown" class="w-3 h-3 flex-shrink-0" />
-                      </button>
-                      <Folder class="w-4 h-4 text-blue-500/60" />
+              <!-- Chat Group Item -->
+              <div v-if="element.type === 'chat_group'" class="space-y-1">
+                <div 
+                  @click="handleOpenChatGroup(element.chatGroup.id)"
+                  @dragover="onDragOverGroup(element.chatGroup.id)"
+                  @dragleave="onDragLeaveGroup"
+                  class="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative handle"
+                  :class="{ 
+                    'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm': chatStore.currentChatGroup.value?.id === element.chatGroup.id,
+                    'ring-2 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-900/30': dragHoverGroup === element.chatGroup.id
+                  }"
+                  data-testid="chat-group-item"
+                  :data-sidebar-group-id="element.chatGroup.id"
+                >
+                  <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
+                    <button 
+                      @click.stop="handleToggleChatGroupCollapse(element.chatGroup)"
+                      class="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
+                    >
+                      <component :is="element.chatGroup.isCollapsed ? ChevronRight : ChevronDown" class="w-3 h-3 flex-shrink-0" />
+                    </button>
+                    <Folder class="w-4 h-4 text-blue-500/60" />
                         
-                      <input 
-                        v-if="editingChatGroupId === element.chatGroup.id"
-                        v-focus
-                        v-model="editingChatGroupName"
-                        @keydown.enter="$event => !$event.isComposing && saveChatGroupRename()"
-                        @keyup.esc="editingChatGroupId = null"
-                        @blur="saveChatGroupRename"
-                        @click.stop
-                        class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto font-medium shadow-sm"
-                        data-testid="chat-group-rename-input"
-                      />
-                      <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
-                    </div>
-                      
-                    <div class="flex items-center opacity-0 group-hover/folder:opacity-100 transition-opacity">
-                      <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup(element.chatGroup)" class="p-1 hover:text-blue-600 dark:hover:text-white"><Pencil class="w-3 h-3" /></button>
-                      <button @click.stop="handleDeleteChatGroup(element.chatGroup)" class="p-1 hover:text-red-500" data-testid="delete-group-button"><Trash2 class="w-3 h-3" /></button>
-                    </div>
+                    <input 
+                      v-if="editingChatGroupId === element.chatGroup.id"
+                      v-focus
+                      v-model="editingChatGroupName"
+                      @keydown.enter="$event => !$event.isComposing && saveChatGroupRename()"
+                      @keyup.esc="editingChatGroupId = null"
+                      @blur="saveChatGroupRename"
+                      @click.stop
+                      class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto font-medium shadow-sm"
+                      data-testid="chat-group-rename-input"
+                    />
+                    <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
                   </div>
+                      
+                  <div class="flex items-center opacity-0 group-hover/folder:opacity-100 transition-opacity">
+                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup(element.chatGroup)" class="p-1 hover:text-blue-600 dark:hover:text-white"><Pencil class="w-3 h-3" /></button>
+                    <button @click.stop="handleDeleteChatGroup(element.chatGroup)" class="p-1 hover:text-red-500" data-testid="delete-group-button"><Trash2 class="w-3 h-3" /></button>
+                  </div>
+                </div>
 
-                  <!-- Nested Items in Chat Group -->
-                  <div v-if="!element.chatGroup.isCollapsed" class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5">
+                <!-- Nested Items in Chat Group -->
+                <div class="grid transition-all duration-500 ease-in-out" :style="{ gridTemplateRows: element.chatGroup.isCollapsed ? '0fr' : '1fr' }">
+                  <div class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5 overflow-hidden min-h-0">
                     <button 
                       @click.stop="handleNewChat(element.chatGroup.id)"
                       class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
                     >
                       <SquarePen class="w-3 h-3" /> Add Chat
                     </button>
-                    <draggable
-                      v-model="useGroupItemsModel(element.chatGroup.id).value"
-                      :group="{ name: 'sidebar' }"
-                      item-key="id"
-                      handle=".handle"
-                      :animation="0"
-                      tag="div"
-                      data-testid="nested-draggable"
-                      @start="onDragStart"
-                      @end="onDragEnd"
-                      ghost-class="sortable-ghost"
-                      :class="['nested-draggable space-y-0.5', isDragging ? 'min-h-[40px] pb-4' : 'min-h-[20px]']"
-                      :swap-threshold="0.5"
-                      :invert-swap="true"
-                      :scroll="true"
-                      :scroll-sensitivity="100"
-                      :scroll-speed="20"
-                      :force-fallback="true"
-                      fallback-class="opacity-0"
+                      
+                    <!-- Smooth height for Show more/less -->
+                    <div 
+                      class="transition-[max-height] duration-500 ease-in-out overflow-hidden"
+                      :style="{ maxHeight: isGroupCompactExpanded(element.chatGroup.id) ? '2000px' : '250px' }"
                     >
-                      <template #item="{ element: nestedItem }">
-                        <div :key="nestedItem.id" v-if="nestedItem.type === 'chat'">
+                      <draggable
+                        v-model="useGroupItemsModel(element.chatGroup.id).value"
+                        :group="{ name: 'sidebar' }"
+                        item-key="id"
+                        handle=".handle"
+                        :animation="0"
+                        tag="div"
+                        data-testid="nested-draggable"
+                        @start="onDragStart"
+                        @end="onDragEnd"
+                        ghost-class="sortable-ghost"
+                        :class="['nested-draggable space-y-0.5', isDragging ? 'min-h-[40px] pb-4' : 'min-h-[20px]']"
+                        :swap-threshold="0.5"
+                        :invert-swap="true"
+                        :scroll="true"
+                        :scroll-sensitivity="100"
+                        :scroll-speed="20"
+                        :force-fallback="true"
+                        fallback-class="opacity-0"
+                      >
+                        <template #item="{ element: nestedItem }">
                           <div 
                             @click="handleOpenChat(nestedItem.chat.id)"
                             class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
@@ -688,9 +694,9 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                               </div>
                             </div>
                           </div>
-                        </div>
-                      </template>
-                    </draggable>
+                        </template>
+                      </draggable>
+                    </div>
 
                     <!-- Compact View: Show More/Less Button -->
                     <button 
@@ -709,35 +715,35 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                     </button>
                   </div>
                 </div>
+              </div>
 
-                <!-- Top-level Individual Chat -->
-                <div 
-                  v-else
-                  @click="handleOpenChat(element.chat.id)"
-                  class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
-                  :class="currentChat?.id === element.chat.id && !currentChatGroup ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
-                  :data-testid="'sidebar-chat-item-' + element.chat.id"
-                >
-                  <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
-                    <input 
-                      v-if="editingId === element.chat.id"
-                      v-focus
-                      v-model="editingTitle"
-                      @keydown.enter="$event => !$event.isComposing && saveRename()"
-                      @keyup.esc="editingId = null"
-                      @blur="saveRename"
-                      @click.stop
-                      class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
-                      data-testid="chat-rename-input"
-                    />
-                    <span v-else class="truncate text-sm">{{ element.chat.title || 'New Chat' }}</span>
-                  </div>
-                  <div class="flex items-center gap-1">
-                    <Loader2 v-if="isProcessing(element.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
-                    <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                      <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
-                      <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
-                    </div>
+              <!-- Top-level Individual Chat -->
+              <div 
+                v-else
+                @click="handleOpenChat(element.chat.id)"
+                class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
+                :class="currentChat?.id === element.chat.id && !currentChatGroup ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
+                :data-testid="'sidebar-chat-item-' + element.chat.id"
+              >
+                <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
+                  <input 
+                    v-if="editingId === element.chat.id"
+                    v-focus
+                    v-model="editingTitle"
+                    @keydown.enter="$event => !$event.isComposing && saveRename()"
+                    @keyup.esc="editingId = null"
+                    @blur="saveRename"
+                    @click.stop
+                    class="bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-sm px-2 py-0.5 rounded-lg w-full outline-none ring-2 ring-blue-500/50 pointer-events-auto shadow-sm"
+                    data-testid="chat-rename-input"
+                  />
+                  <span v-else class="truncate text-sm">{{ element.chat.title || 'New Chat' }}</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <Loader2 v-if="isProcessing(element.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                  <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                    <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
+                    <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
                   </div>
                 </div>
               </div>
@@ -843,6 +849,16 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
   background: rgb(59 130 246 / 0.1);
   border: 2px dashed rgb(59 130 246 / 0.5);
   border-radius: 0.75rem;
+}
+
+/* Reordering is always instant */
+.list-move {
+  transition: none !important;
+}
+
+/* Ensure the dragged element itself doesn't have transitions */
+.sortable-drag {
+  transition: none !important;
 }
 
 .animate-in {
