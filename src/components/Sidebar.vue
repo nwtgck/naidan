@@ -52,6 +52,7 @@ const lastNavigatedId = ref<string | null>(null);
 
 const COMPACT_THRESHOLD = 5;
 const expandedGroupIds = ref<Set<string>>(new Set());
+const collapsingGroupIds = ref<Set<string>>(new Set());
 
 function isGroupCompactExpanded(groupId: string) {
   return expandedGroupIds.value.has(groupId);
@@ -59,7 +60,12 @@ function isGroupCompactExpanded(groupId: string) {
 
 function toggleGroupCompactExpansion(groupId: string) {
   if (expandedGroupIds.value.has(groupId)) {
+    collapsingGroupIds.value.add(groupId);
     expandedGroupIds.value.delete(groupId);
+    // Wait for the transition to finish (400ms) before removing items from DOM
+    setTimeout(() => {
+      collapsingGroupIds.value.delete(groupId);
+    }, 400);
   } else {
     expandedGroupIds.value.add(groupId);
   }
@@ -271,7 +277,7 @@ function getGroupItems(groupId: string) {
   if (!group || group.type !== 'chat_group') return [];
   
   const items = group.chatGroup.items;
-  if (isGroupCompactExpanded(groupId) || items.length <= COMPACT_THRESHOLD) {
+  if (isGroupCompactExpanded(groupId) || collapsingGroupIds.value.has(groupId) || items.length <= COMPACT_THRESHOLD) {
     return items;
   }
   return items.slice(0, COMPACT_THRESHOLD);
@@ -285,7 +291,7 @@ function updateGroupItems(groupId: string, newItems: SidebarItem[]) {
   if (!group || group.type !== 'chat_group') return;
 
   const fullList = group.chatGroup.items;
-  if (isGroupCompactExpanded(groupId) || fullList.length <= COMPACT_THRESHOLD) {
+  if (isGroupCompactExpanded(groupId) || collapsingGroupIds.value.has(groupId) || fullList.length <= COMPACT_THRESHOLD) {
     group.chatGroup.items = newItems;
   } else {
     const hiddenItems = fullList.slice(COMPACT_THRESHOLD);
@@ -631,7 +637,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                 </div>
 
                 <!-- Nested Items in Chat Group -->
-                <div class="grid transition-all duration-500 ease-in-out" :style="{ gridTemplateRows: element.chatGroup.isCollapsed ? '0fr' : '1fr' }">
+                <div class="grid transition-all duration-200 ease-in-out" :style="{ gridTemplateRows: element.chatGroup.isCollapsed ? '0fr' : '1fr' }">
                   <div class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5 overflow-hidden min-h-0">
                     <button 
                       @click.stop="handleNewChat(element.chatGroup.id)"
@@ -642,7 +648,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                       
                     <!-- Smooth height for Show more/less -->
                     <div 
-                      class="transition-[max-height] duration-500 ease-in-out overflow-hidden"
+                      class="transition-[max-height] duration-400 ease-in-out overflow-hidden"
                       :style="{ maxHeight: isGroupCompactExpanded(element.chatGroup.id) ? '2000px' : '250px' }"
                     >
                       <draggable
