@@ -386,6 +386,13 @@ const visibleItems = computed(() => {
   return result;
 });
 
+const focusedId = computed(() => {
+  if (lastNavigatedId.value && visibleItems.value.some(i => i.id === lastNavigatedId.value)) {
+    return lastNavigatedId.value;
+  }
+  return currentChatGroup.value?.id || currentChat.value?.id || null;
+});
+
 onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
   if (activeFocusArea.value !== 'sidebar') return;
 
@@ -401,9 +408,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
 
   // Prioritize the ID we just navigated to, then group, then chat.
   // This prevents jumping back if the store hasn't updated currentChat yet.
-  const currentId = (lastNavigatedId.value && visibleItems.value.some(i => i.id === lastNavigatedId.value))
-    ? lastNavigatedId.value
-    : (currentChatGroup.value?.id || currentChat.value?.id);
+  const currentId = focusedId.value;
     
   let currentIndex = currentId ? visibleItems.value.findIndex(i => i.id === currentId) : -1;
 
@@ -601,7 +606,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                   @dragleave="onDragLeaveGroup"
                   class="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative handle"
                   :class="{ 
-                    'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm': chatStore.currentChatGroup.value?.id === element.chatGroup.id,
+                    'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm': focusedId === element.chatGroup.id,
                     'ring-2 ring-blue-500/50 bg-blue-50/50 dark:bg-blue-900/30': dragHoverGroup === element.chatGroup.id
                   }"
                   data-testid="chat-group-item"
@@ -675,7 +680,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                           <div 
                             @click="handleOpenChat(nestedItem.chat.id)"
                             class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
-                            :class="currentChat?.id === nestedItem.chat.id && !currentChatGroup ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
+                            :class="focusedId === nestedItem.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
                             :data-testid="'sidebar-chat-item-' + nestedItem.chat.id"
                           >
                             <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
@@ -710,7 +715,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                       @click.stop="toggleGroupCompactExpansion(element.chatGroup.id)"
                       class="w-full flex items-center justify-between p-2 rounded-xl text-[10px] font-bold focus:outline-none transition-all"
                       :class="[
-                        lastNavigatedId === `expand-${element.chatGroup.id}`
+                        focusedId === `expand-${element.chatGroup.id}`
                           ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm'
                           : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50',
                         !isGroupCompactExpanded(element.chatGroup.id) ? 'bg-gradient-to-b from-transparent to-gray-50/30 dark:to-gray-800/20' : ''
@@ -732,7 +737,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                 v-else
                 @click="handleOpenChat(element.chat.id)"
                 class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
-                :class="currentChat?.id === element.chat.id && !currentChatGroup ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
+                :class="focusedId === element.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
                 :data-testid="'sidebar-chat-item-' + element.chat.id"
               >
                 <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
