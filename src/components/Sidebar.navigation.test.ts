@@ -301,13 +301,16 @@ describe('Sidebar Keyboard Navigation', () => {
     vi.restoreAllMocks();
   });
 
-  it('ignores arrow keys when focus area is chat', async () => {
+  it('ignores arrow keys when focus area is NOT sidebar', async () => {
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
     
-    mockActiveFocusArea.value = 'chat';
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    
-    expect(mockOpenChat).not.toHaveBeenCalled();
+    const nonSidebarAreas = ['chat', 'chat-group-settings', 'chat-settings', 'settings', 'onboarding', 'dialog', 'none'] as const;
+
+    for (const area of nonSidebarAreas) {
+      mockActiveFocusArea.value = area;
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      expect(mockOpenChat, `Should ignore ArrowDown when area is ${area}`).not.toHaveBeenCalled();
+    }
   });
 });

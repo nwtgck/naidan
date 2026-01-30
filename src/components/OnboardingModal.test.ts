@@ -23,11 +23,19 @@ vi.mock('../composables/useSettings', () => ({ useSettings: vi.fn() }));
 vi.mock('../composables/useToast', () => ({ useToast: vi.fn() }));
 vi.mock('../composables/useTheme', () => ({ useTheme: vi.fn() }));
 
+const mockSetActiveFocusArea = vi.fn();
+
+vi.mock('../composables/useLayout', () => ({
+  useLayout: () => ({
+    setActiveFocusArea: mockSetActiveFocusArea,
+  }),
+}));
+
 describe('OnboardingModal.vue', () => {
   const mockSave = vi.fn();
   const mockSettings = { value: { endpointType: 'openai', autoTitleEnabled: true } };
-  const mockIsOnboardingDismissed = { value: false };
-  const mockOnboardingDraft = { value: null as { url: string, type: EndpointType, models: string[], selectedModel: string } | null };
+  const mockIsOnboardingDismissed = ref(false);
+  const mockOnboardingDraft = ref<{ url: string, type: EndpointType, headers: [string, string][], models: string[], selectedModel: string } | null>(null);
   const mockAddToast = vi.fn();
   const listModelsMock = vi.fn();
 
@@ -205,6 +213,7 @@ describe('OnboardingModal.vue', () => {
     mockOnboardingDraft.value = { 
       url: 'http://restored-url:11434', 
       type: 'ollama',
+      headers: [],
       models: ['model-a', 'model-b'],
       selectedModel: 'model-b',
     };
@@ -250,6 +259,7 @@ describe('OnboardingModal.vue', () => {
     mockOnboardingDraft.value = { 
       url: 'http://localhost:11434', 
       type: 'ollama',
+      headers: [],
       models: ['model-1'],
       selectedModel: 'model-1',
     };
@@ -360,6 +370,7 @@ describe('OnboardingModal.vue', () => {
     mockOnboardingDraft.value = { 
       url: 'http://localhost:11434', 
       type: 'ollama',
+      headers: [],
       models: ['model-10', 'model-2', 'model-1'],
       selectedModel: 'model-1',
     };
@@ -378,5 +389,24 @@ describe('OnboardingModal.vue', () => {
     
     const selector = wrapper.getComponent({ name: 'ModelSelector' });
     expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
+  });
+
+  describe('Focus Management', () => {
+    it('sets focus area to onboarding when shown, and restores to chat when hidden', async () => {
+      mockIsOnboardingDismissed.value = true;
+      mount(OnboardingModal);
+      await flushPromises();
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+      
+      mockSetActiveFocusArea.mockClear();
+      mockIsOnboardingDismissed.value = false;
+      await flushPromises();
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('onboarding');
+      
+      mockSetActiveFocusArea.mockClear();
+      mockIsOnboardingDismissed.value = true;
+      await flushPromises();
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+    });
   });
 });

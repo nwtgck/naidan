@@ -55,6 +55,14 @@ const globalStubs = {
   },
 };
 
+const mockSetActiveFocusArea = vi.fn();
+
+vi.mock('../composables/useLayout', () => ({
+  useLayout: () => ({
+    setActiveFocusArea: mockSetActiveFocusArea,
+  }),
+}));
+
 describe('GroupSettingsPanel.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -214,5 +222,16 @@ describe('GroupSettingsPanel.vue', () => {
     expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
       modelId: undefined
     }));
+  });
+
+  it('sets active focus area to chat-group-settings on click or focus', async () => {
+    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    
+    await wrapper.trigger('click');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-group-settings');
+    
+    mockSetActiveFocusArea.mockClear();
+    await wrapper.trigger('focusin');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-group-settings');
   });
 });

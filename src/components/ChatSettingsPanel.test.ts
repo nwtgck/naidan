@@ -15,6 +15,14 @@ vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
 
+const mockSetActiveFocusArea = vi.fn();
+
+vi.mock('../composables/useLayout', () => ({
+  useLayout: () => ({
+    setActiveFocusArea: mockSetActiveFocusArea,
+  }),
+}));
+
 describe('ChatSettingsPanel.vue', () => {
   const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-1', 'model-2']);
   const mockUpdateChatSettings = vi.fn().mockImplementation((id, updates) => {
@@ -646,6 +654,21 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
         modelId: undefined
       }));
+    });
+  });
+
+  describe('Focus Management', () => {
+    it('sets focus area to chat-settings when show is true, and restores to chat when false', async () => {
+      const wrapper = mount(ChatSettingsPanel, { 
+        props: { show: false },
+        global: { stubs: globalStubs } 
+      });
+      
+      await wrapper.setProps({ show: true });
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-settings');
+      
+      await wrapper.setProps({ show: false });
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
     });
   });
 });

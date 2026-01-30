@@ -75,6 +75,14 @@ vi.mock('../composables/useConfirm', () => ({
   })),
 }));
 
+// Mock useLayout
+const mockSetActiveFocusArea = vi.fn();
+vi.mock('../composables/useLayout', () => ({
+  useLayout: () => ({
+    setActiveFocusArea: mockSetActiveFocusArea,
+  }),
+}));
+
 // Mock usePrompt
 const mockShowPrompt = vi.fn();
 vi.mock('../composables/usePrompt', () => ({
@@ -1228,6 +1236,21 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
         message: expect.stringContaining('Failed to import recipes: Import failed')
       }));
+    });
+  });
+
+  describe('Focus Management', () => {
+    it('sets focus area to settings when opened, and restores to chat when closed', async () => {
+      const wrapper = mount(SettingsModal, { 
+        props: { isOpen: false },
+        global: { stubs: globalStubs } 
+      });
+      
+      await wrapper.setProps({ isOpen: true });
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('settings');
+      
+      await wrapper.setProps({ isOpen: false });
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
     });
   });
 });

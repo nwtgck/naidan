@@ -2,6 +2,7 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
+import { useLayout } from '../composables/useLayout';
 import { 
   Settings2, 
   MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus,
@@ -20,6 +21,7 @@ const {
   fetchingModels,
 } = chatStore;
 const { settings } = useSettings();
+const { setActiveFocusArea } = useLayout();
 
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
@@ -184,7 +186,13 @@ async function restoreDefaults() {
 </script>
 
 <template>
-  <div v-if="currentChatGroup" class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative overflow-hidden">
+  <div 
+    v-if="currentChatGroup" 
+    class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative overflow-hidden focus:outline-none"
+    tabindex="-1"
+    @click="setActiveFocusArea('chat-group-settings')"
+    @focusin="setActiveFocusArea('chat-group-settings')"
+  >
     <!-- Header -->
     <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-3 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
       <div class="flex items-center gap-3 overflow-hidden min-h-[44px]">
