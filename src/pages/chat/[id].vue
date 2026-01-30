@@ -35,17 +35,11 @@ watch(chatId, syncChat);
 </script>
 
 <template>
-  <transition
-    name="fade"
-    appear
-  >
-    <ChatArea 
-      v-if="chatId"
-      :key="chatId" 
-      :auto-send-prompt="currentRoute?.query?.q?.toString()"
-      @auto-sent="handleAutoSent"
-    />
-  </transition>
+  <ChatArea 
+    v-if="chatId"
+    :auto-send-prompt="currentRoute?.query?.q?.toString()"
+    @auto-sent="handleAutoSent"
+  />
 </template>
 
 <style scoped>

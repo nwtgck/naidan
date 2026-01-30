@@ -2,6 +2,7 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
+import { useLayout } from '../composables/useLayout';
 import { 
   X, Settings2, 
   MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus
@@ -29,6 +30,7 @@ const {
 } = chatStore;
 const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
 const { settings } = useSettings();
+const { setActiveFocusArea } = useLayout();
 
 // Local state for editing
 const localSettings = ref<Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'systemPrompt' | 'lmParameters'>>>({});
@@ -58,6 +60,14 @@ onMounted(() => {
 
 // Sync if currentChat changes while open (e.g. from another tab)
 watch(() => currentChat.value?.id, syncLocalWithCurrent);
+
+watch(() => props.show, (show) => {
+  if (show) {
+    setActiveFocusArea('chat-settings');
+  } else {
+    setActiveFocusArea('chat');
+  }
+});
 
 async function saveChanges() {
   if (currentChat.value) {

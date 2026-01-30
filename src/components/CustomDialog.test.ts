@@ -1,7 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { nextTick, markRaw } from 'vue'; // Import nextTick and markRaw from vue
 import { mount } from '@vue/test-utils';
 import CustomDialog from './CustomDialog.vue';
+
+const mockSetActiveFocusArea = vi.fn();
+
+vi.mock('../composables/useLayout', () => ({
+  useLayout: () => ({
+    setActiveFocusArea: mockSetActiveFocusArea,
+  }),
+}));
 
 describe('CustomDialog.vue', () => {
   let wrapper: ReturnType<typeof mount>;
@@ -115,5 +123,16 @@ describe('CustomDialog.vue', () => {
     const TestIcon = markRaw({ template: '<svg data-testid="test-icon"></svg>' });
     await wrapper.setProps({ icon: TestIcon });
     expect(wrapper.find('[data-testid="test-icon"]').exists()).toBe(true);
+  });
+
+  it('sets active focus area to dialog on click or focusin', async () => {
+    const overlay = wrapper.find('[data-testid="custom-dialog-overlay"]');
+    
+    await overlay.trigger('click');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('dialog');
+    
+    mockSetActiveFocusArea.mockClear();
+    await overlay.trigger('focusin');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('dialog');
   });
 });

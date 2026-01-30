@@ -11,6 +11,8 @@ const mockActiveGenerations = reactive(new Map());
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),
+    activeFocusArea: ref('chat'),
+    setActiveFocusArea: vi.fn(),
     toggleSidebar: vi.fn(),
   }),
 }));
@@ -18,6 +20,7 @@ vi.mock('../composables/useLayout', () => ({
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: ref(null),
+    currentChatGroup: ref(null),
     streaming: computed(() => mockActiveGenerations.size > 0),
     activeGenerations: mockActiveGenerations,
     chatGroups: ref([]),
@@ -27,6 +30,7 @@ vi.mock('../composables/useChat', () => ({
     }),
     loadChats: vi.fn(),
     createChatGroup: vi.fn(),
+    openChat: vi.fn(),
     openChatGroup: vi.fn(),
     setChatGroupCollapsed: vi.fn(),
     persistSidebarStructure: vi.fn(),

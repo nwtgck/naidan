@@ -94,23 +94,30 @@ watch(_currentChat, (newChat, oldChat) => {
 function syncLiveInstancesWithSidebar() {
   const sync = (items: SidebarItem[], parentGroupId: string | null) => {
     for (const item of items) {
-      if (item.type === 'chat') {
+      switch (item.type) {
+      case 'chat': {
         const live = liveChatRegistry.get(item.chat.id);
         if (live) live.groupId = parentGroupId;
         if (_currentChat.value && toRaw(_currentChat.value).id === item.chat.id) {
           _currentChat.value.groupId = parentGroupId;
         }
-      } else if (item.type === 'chat_group') {
-        sync(item.chatGroup.items, item.chatGroup.id);
+        break;
       }
+      case 'chat_group':
+        sync(item.chatGroup.items, item.chatGroup.id);
+        break;
+      default: {
+        const _ex: never = item;
+        return _ex;
+      }      }
     }
   };
   sync(rootItems.value, null);
 }
 
 let sidebarReloadTimeout: ReturnType<typeof setTimeout> | null = null;
-let lastSidebarReload = 0;
 const THROTTLE_MS = 200;
+let lastSidebarReload = 0;
 
 const debouncedSidebarReload = () => {
   const now = Date.now();
@@ -210,8 +217,18 @@ export function useChat() {
     const all: ChatSummary[] = [];
     const collect = (items: SidebarItem[]) => {
       items.forEach(item => {
-        if (item.type === 'chat') all.push(item.chat);
-        else collect(item.chatGroup.items);
+        switch (item.type) {
+        case 'chat':
+          all.push(item.chat);
+          break;
+        case 'chat_group':
+          collect(item.chatGroup.items);
+          break;
+        default: {
+          const _ex: never = item;
+          return _ex;
+        }
+        }
       });
     };
     collect(rootItems.value);
@@ -220,7 +237,18 @@ export function useChat() {
 
   const chatGroups = computed(() => {
     const all: ChatGroup[] = [];
-    rootItems.value.forEach(item => { if (item.type === 'chat_group') all.push(item.chatGroup); });
+    rootItems.value.forEach(item => {
+      switch (item.type) {
+      case 'chat_group':
+        all.push(item.chatGroup);
+        break;
+      case 'chat':
+        break;
+      default: {
+        const _ex: never = item;
+        return _ex;
+      }      }
+    });
     return all;
   });
 
@@ -393,9 +421,9 @@ export function useChat() {
   };
 
   const openChat = async (id: string): Promise<Chat | null> => {
-    _currentChatGroup.value = null;
     if (liveChatRegistry.has(id)) { 
       const chat = liveChatRegistry.get(id)!;
+      _currentChatGroup.value = null;
       _currentChat.value = chat;
       return chat;
     }
@@ -403,10 +431,12 @@ export function useChat() {
     if (loaded) {
       const reactiveChat = reactive(loaded);
       registerLiveInstance(reactiveChat);
+      _currentChatGroup.value = null;
       _currentChat.value = reactiveChat;
       return reactiveChat;
     }
     else {
+      _currentChatGroup.value = null;
       _currentChat.value = null;
       return null;
     }
@@ -415,7 +445,10 @@ export function useChat() {
   const openChatGroup = (id: string | null) => {
     if (id === null) { _currentChatGroup.value = null; return; }
     const group = chatGroups.value.find(g => g.id === id);
-    if (group) _currentChatGroup.value = group;
+    if (group) {
+      _currentChat.value = null; // Clear chat when opening a group
+      _currentChatGroup.value = group;
+    }
   };
 
   const deleteChat = async (id: string, injectAddToast?: (toast: AddToastOptions) => string) => {
@@ -425,13 +458,6 @@ export function useChat() {
     const chatData = await storageService.loadChat(id);
     if (!chatData) return;
 
-    if (activeGenerations.has(id)) { activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id); }
-    activeTaskCounts.delete('title:' + id);
-    activeTaskCounts.delete('fetch:' + id);
-    activeTaskCounts.delete('process:' + id);
-    liveChatRegistry.delete(id);
-
-    await storageService.deleteChat(id);
     await storageService.updateHierarchy((curr) => {
       curr.items = curr.items.filter(i => {
         if (i.type === 'chat' && i.id === id) return false;
@@ -444,13 +470,20 @@ export function useChat() {
     if (_currentChat.value && toRaw(_currentChat.value).id === id) _currentChat.value = null;
     await loadData();
 
-    addToast({
+    const cleanup = async () => {
+      if (activeGenerations.has(id)) { activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id); }
+      activeTaskCounts.delete('title:' + id);
+      activeTaskCounts.delete('fetch:' + id);
+      activeTaskCounts.delete('process:' + id);
+      liveChatRegistry.delete(id);
+      await storageService.deleteChat(id);
+    };
+
+    const toastId = addToast({
       message: `Chat "${chatData.title || 'Untitled'}" deleted`,
       actionLabel: 'Undo',
       onAction: async () => {
         const originalGroupId = chatData.groupId;
-        await updateChatContent(chatData.id, () => ({ root: chatData.root, currentLeafId: chatData.currentLeafId }));
-        await updateChatMeta(chatData.id, () => chatData);
         await storageService.updateHierarchy((curr) => {
           if (originalGroupId) {
             const group = curr.items.find(i => i.type === 'chat_group' && i.id === originalGroupId) as HierarchyChatGroupNode;
@@ -462,7 +495,15 @@ export function useChat() {
         await loadData();
         await openChat(chatData.id);
       },
+      onClose: async (reason) => {
+        if (reason === 'action') return;
+        await cleanup();
+      }
     });
+
+    if (!toastId) {
+      await cleanup();
+    }
   };
 
   const deleteAllChats = async () => {
@@ -604,8 +645,17 @@ export function useChat() {
         await generateChatTitle(mutableChat.id, controller.signal);
       }
     } catch (e) {
-      if ((e as Error).name === 'AbortError') assistantNode.content += '\n\n[Generation Aborted]';
-      else {
+      // Close thinking tag if open
+      const lastOpen = assistantNode.content.lastIndexOf('<think>');
+      const lastClose = assistantNode.content.lastIndexOf('</think>');
+      if (lastOpen > -1 && lastClose < lastOpen) {
+        assistantNode.content += '</think>';
+      }
+      processThinking(assistantNode);
+
+      if ((e as Error).name === 'AbortError') {
+        assistantNode.content += '\n\n[Generation Aborted]';
+      } else {
         assistantNode.error = (e as Error).message;
         await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
         if (_currentChat.value && toRaw(_currentChat.value).id !== mutableChat.id) {
@@ -724,7 +774,12 @@ export function useChat() {
   };
 
   const regenerateMessage = async (failedMessageId: string) => {
-    if (!_currentChat.value || isProcessing(toRaw(_currentChat.value).id)) return; 
+    if (!_currentChat.value) return; 
+    const chatId = toRaw(_currentChat.value).id;
+    if (isProcessing(chatId)) {
+      abortChat(chatId);
+    }
+
     const chat = getLiveChat(_currentChat.value);
     incTask(chat.id, 'process');
     registerLiveInstance(chat);
@@ -825,7 +880,7 @@ export function useChat() {
     try {
       const newChatObj: Chat = reactive({
         ...toRaw(mutableChat), 
-        id: newChatId, title: `Fork of ${mutableChat.title}`,
+        id: newChatId, title: `Fork of ${mutableChat.title || 'New Chat'}`,
         root: { items: [clonedNodes[0]!] }, currentLeafId: clonedNodes[clonedNodes.length - 1]?.id, 
         originChatId: mutableChat.id, originMessageId: messageId, 
         createdAt: Date.now(), updatedAt: Date.now(),
@@ -854,6 +909,11 @@ export function useChat() {
 
   const editMessage = async (messageId: string, newContent: string) => {
     if (!_currentChat.value) return;
+    const chatId = toRaw(_currentChat.value).id;
+    if (isProcessing(chatId)) {
+      abortChat(chatId);
+    }
+
     const chat = getLiveChat(_currentChat.value);
     const node = findNodeInBranch(chat.root.items, messageId); if (!node) return;
     if (node.role === 'assistant') {
@@ -974,8 +1034,16 @@ export function useChat() {
     syncLiveInstancesWithSidebar();
     const newHierarchy: Hierarchy = {
       items: topLevelItems.map(item => {
-        if (item.type === 'chat') return { type: 'chat', id: item.chat.id };
-        else return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
+        switch (item.type) {
+        case 'chat':
+          return { type: 'chat', id: item.chat.id };
+        case 'chat_group':
+          return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
+        default: {
+          const _ex: never = item;
+          return _ex;
+        }
+        }
       })
     };
     await storageService.updateHierarchy(() => newHierarchy);
@@ -985,9 +1053,17 @@ export function useChat() {
     await storageService.updateHierarchy((curr) => {
       const node: HierarchyNode = { type: 'chat', id: chatId };
       curr.items = curr.items.filter(i => {
-        if (i.type === 'chat' && i.id === chatId) return false;
-        if (i.type === 'chat_group') i.chat_ids = i.chat_ids.filter(id => id !== chatId);
-        return true;
+        switch (i.type) {
+        case 'chat':
+          return i.id !== chatId;
+        case 'chat_group':
+          i.chat_ids = i.chat_ids.filter(id => id !== chatId);
+          return true;
+        default: {
+          const _ex: never = i;
+          return _ex || true;
+        }
+        }
       });
       if (targetGroupId) {
         const g = curr.items.find(i => i.type === 'chat_group' && i.id === targetGroupId) as HierarchyChatGroupNode;

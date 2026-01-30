@@ -14,18 +14,26 @@ vi.mock('vuedraggable', () => ({
 }));
 
 vi.mock('../composables/useLayout', () => ({
-  useLayout: vi.fn(),
+  useLayout: vi.fn(() => ({
+    isSidebarOpen: ref(true),
+    activeFocusArea: ref('chat'),
+    setActiveFocusArea: vi.fn(),
+    toggleSidebar: vi.fn(),
+  })),
 }));
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: ref(null),
+    currentChatGroup: ref(null),
     streaming: ref(false),
     activeGenerations: reactive(new Map()),
     chatGroups: ref([]),
     chats: ref([{ id: '1', title: 'Test Chat' }]),
     sidebarItems: ref([{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Test Chat' } }]),
     loadChats: vi.fn(),
+    openChat: vi.fn(),
+    openChatGroup: vi.fn(),
     isTaskRunning: vi.fn().mockReturnValue(false),
     isProcessing: vi.fn().mockReturnValue(false),
     abortChat: vi.fn(),
@@ -60,6 +68,9 @@ describe('Sidebar Collapse Functionality', () => {
     isSidebarOpen.value = true;
     (useLayout as any).mockReturnValue({
       isSidebarOpen,
+      activeFocusArea: ref('chat'),
+      setActiveFocusArea: vi.fn(),
+      toggleSidebar: vi.fn(),
     });
   });
 
@@ -69,6 +80,8 @@ describe('Sidebar Collapse Functionality', () => {
     });
     (useLayout as any).mockReturnValue({
       isSidebarOpen,
+      activeFocusArea: ref('chat'),
+      setActiveFocusArea: vi.fn(),
       toggleSidebar,
     });
 

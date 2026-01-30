@@ -11,6 +11,8 @@ const mockActiveTasks = reactive(new Set<string>());
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),
+    activeFocusArea: ref('chat'),
+    setActiveFocusArea: vi.fn(),
     toggleSidebar: vi.fn(),
   }),
 }));
@@ -18,6 +20,7 @@ vi.mock('../composables/useLayout', () => ({
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: ref(null),
+    currentChatGroup: ref(null),
     chatGroups: ref([]),
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
@@ -25,6 +28,7 @@ vi.mock('../composables/useChat', () => ({
     }),
     isTaskRunning: (id: string) => Array.from(mockActiveTasks).some(t => t.endsWith(':' + id)),
     isProcessing: (id: string) => Array.from(mockActiveTasks).some(t => t.startsWith('process:') && t.endsWith(':' + id)),
+    openChat: vi.fn(),
     openChatGroup: vi.fn(),
   }),
 }));

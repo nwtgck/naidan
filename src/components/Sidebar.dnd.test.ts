@@ -14,7 +14,7 @@ vi.mock('vuedraggable', () => ({
   default: {
     name: 'draggable',
     template: `
-      <div class="draggable-stub">
+      <div class="draggable-stub" :data-tag="tag" :data-animation="animation">
         <div v-for="item in modelValue" :key="item.id || item.type">
           <slot name="item" :element="item"></slot>
         </div>
@@ -22,14 +22,15 @@ vi.mock('vuedraggable', () => ({
     `,
     props: [
       'modelValue', 'itemKey', 'ghostClass', 'swapThreshold', 'invertSwap',
-      'scroll', 'scrollSensitivity', 'scrollSpeed', 'forceFallback', 'fallbackClass'
+      'scroll', 'scrollSensitivity', 'scrollSpeed', 'forceFallback', 'fallbackClass',
+      'tag', 'animation'
     ],
   }
 }));
 
 const router = createRouter({
   history: createWebHistory(),
-  routes: [{ path: '/', component: { template: '<div></div>' } }],
+  routes: [{ path: '/', component: { template: '<div></div>' } }, { path: '/chat/:id', component: { template: '<div></div>' } }, { path: '/chat-group/:id', component: { template: '<div></div>' } }],
 });
 
 describe('Sidebar DND Improvements', () => {
@@ -46,13 +47,74 @@ describe('Sidebar DND Improvements', () => {
       chatGroups: ref([{ id: 'g1', name: 'Group 1', items: [], isCollapsed: true }]),
       chats: ref([]),
       isProcessing: vi.fn().mockReturnValue(false),
+      openChat: vi.fn(),
       openChatGroup: vi.fn(),
       setChatGroupCollapsed: vi.fn(),
       persistSidebarStructure: vi.fn(),
     };
     (useChat as any).mockReturnValue(mockChatStore);
     (useSettings as any).mockReturnValue({ settings: ref({}), isFetchingModels: ref(false) });
-    (useLayout as any).mockReturnValue({ isSidebarOpen: ref(true), toggleSidebar: vi.fn() });
+    (useLayout as any).mockReturnValue({ 
+      isSidebarOpen: ref(true), 
+      activeFocusArea: ref('chat'),
+      setActiveFocusArea: vi.fn(),
+      toggleSidebar: vi.fn() 
+    });
+  });
+
+  it('ensures reordering is instant by setting animation to 0', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const draggables = wrapper.findAllComponents({ name: 'draggable' });
+    draggables.forEach(d => {
+      expect(d.props('animation')).toBe(0);
+    });
+  });
+
+  it('uses stable div tag for draggables to prevent TransitionGroup crashes', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const draggables = wrapper.findAllComponents({ name: 'draggable' });
+    draggables.forEach(d => {
+      // Regression check: should NOT be TransitionGroup
+      expect(d.props('tag')).toBe('div');
+    });
+  });
+
+  it('implements group expansion using CSS Grid for stability', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    
+    // Find the expansion wrapper
+    const expansionWrapper = wrapper.find('.grid.transition-all');
+    expect(expansionWrapper.exists()).toBe(true);
+    
+    // Should have gridTemplateRows: 0fr when collapsed
+    expect(expansionWrapper.attributes('style')).toContain('grid-template-rows: 0fr');
+    
+    // Expand group
+    mockChatStore.chatGroups.value[0].isCollapsed = false;
+    mockChatStore.sidebarItems.value[0].chatGroup.isCollapsed = false;
+    await nextTick();
+    expect(expansionWrapper.attributes('style')).toContain('grid-template-rows: 1fr');
+  });
+
+  it('implements Show more/less animation using max-height transition', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    
+    const showMoreWrapper = wrapper.find('.transition-\\[max-height\\]');
+    expect(showMoreWrapper.exists()).toBe(true);
+    
+    // Should have a default max-height when not expanded
+    expect(showMoreWrapper.attributes('style')).toContain('max-height: 250px');
+    
+    // Simulate "Show more" expansion (internal state expandedGroupIds)
+    // We can't easily trigger the function from outside without export or component access, 
+    // but we can verify the binding.
+    (wrapper.vm as any).toggleGroupCompactExpansion('g1');
+    await nextTick();
+    expect(showMoreWrapper.attributes('style')).toContain('max-height: 2000px');
   });
       
   it('should use sortable-ghost class for drag visualization', async () => {
@@ -106,7 +168,7 @@ describe('Sidebar DND Improvements', () => {
     await nextTick();
     (wrapper.vm as any).isDragging = true;
     await nextTick();
-    const groupItem = wrapper.find('[data-testid="chat-group-item"]');
+    const groupItem = wrapper.find('[data-sidebar-group-id="g1"]');
     await groupItem.trigger('dragover');
     expect(groupItem.attributes('class')).toContain('ring-2');
     expect(groupItem.attributes('class')).toContain('ring-blue-500/50');
@@ -120,7 +182,7 @@ describe('Sidebar DND Improvements', () => {
     await nextTick();
     (wrapper.vm as any).isDragging = true;
     await nextTick();
-    const groupItem = wrapper.find('[data-testid="chat-group-item"]');
+    const groupItem = wrapper.find('[data-sidebar-group-id="g1"]');
     await groupItem.trigger('dragover');
     expect(mockChatStore.setChatGroupCollapsed).not.toHaveBeenCalled();
     vi.advanceTimersByTime(600);
@@ -147,7 +209,7 @@ describe('Sidebar DND Improvements', () => {
     await nextTick();
           
     // Find the toggle button for the first group
-    const toggleButton = wrapper.find('[data-testid="chat-group-item"] button');
+    const toggleButton = wrapper.find('[data-sidebar-group-id="g1"] button');
     await toggleButton.trigger('click');
           
     expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
@@ -174,4 +236,3 @@ describe('Sidebar DND Improvements', () => {
     vi.useRealTimers();
   });
 });
-    

@@ -38,6 +38,15 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+vi.mock('../composables/useLayout', () => ({
+  useLayout: () => ({
+    isSidebarOpen: ref(true),
+    activeFocusArea: ref('chat'),
+    setActiveFocusArea: vi.fn(),
+    toggleSidebar: vi.fn(),
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({ endpointUrl: 'http://localhost' }),

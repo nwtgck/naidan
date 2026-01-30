@@ -88,7 +88,7 @@ describe('MessageItem Rendering', () => {
     
     // Should show "Thinking..." instead of "Show Thought Process"
     expect(wrapper.text()).toContain('Thinking...');
-    expect(wrapper.find('.thinking-border').exists()).toBe(true);
+    expect(wrapper.find('.thinking-gradient-border').exists()).toBe(true);
   });
 
   it('handles multiple thinking blocks and case-insensitivity', async () => {

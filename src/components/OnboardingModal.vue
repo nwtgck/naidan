@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import ThemeToggle from './ThemeToggle.vue';
 import { useToast } from '../composables/useToast';
+import { useLayout } from '../composables/useLayout';
 import { OpenAIProvider, OllamaProvider } from '../services/llm';
 import { type EndpointType, type Settings as SettingsType } from '../models/types';
 import { ENDPOINT_PRESETS } from '../models/constants';
@@ -14,8 +15,17 @@ import { naturalSort } from '../utils/string';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
 const toast = useToast();
+const { setActiveFocusArea } = useLayout();
 
 const show = computed(() => initialized.value && !isOnboardingDismissed.value);
+
+watch(show, (val) => {
+  if (val) {
+    setActiveFocusArea('onboarding');
+  } else {
+    setActiveFocusArea('chat');
+  }
+}, { immediate: true });
 
 const selectedType = ref<EndpointType>(onboardingDraft.value?.type || 'openai');
 const customUrl = ref(onboardingDraft.value?.url || '');
@@ -328,6 +338,8 @@ async function handleFinish() {
                     <ModelSelector
                       v-model="selectedModel"
                       :models="sortedModels"
+                      :loading="isTesting"
+                      @refresh="handleConnect"
                       placeholder="Select a model"
                     />
                   </div>

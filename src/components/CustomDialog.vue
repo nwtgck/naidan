@@ -3,9 +3,11 @@
     <div
       v-if="_props.show"
       data-testid="custom-dialog-overlay"
-      class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]"
+      class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px] focus:outline-none"
       @keydown.esc="cancel"
-      tabindex="0"
+      @click="setActiveFocusArea('dialog')"
+      @focusin="setActiveFocusArea('dialog')"
+      tabindex="-1"
     >
       <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-gray-100 dark:border-gray-800 modal-content-zoom">
         <!-- Header -->
@@ -67,6 +69,9 @@
 
 <script setup lang="ts">
 import type { Component } from 'vue';
+import { useLayout } from '../composables/useLayout';
+
+const { setActiveFocusArea } = useLayout();
 
 const _props = withDefaults(defineProps<{
   show?: boolean;

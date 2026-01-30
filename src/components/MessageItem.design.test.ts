@@ -14,12 +14,12 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
     replies: { items: [] },
   });
 
-  it('applies thinking-border class when thinking is active', () => {
+  it('applies thinking-gradient-border element when thinking is active', () => {
     const message = createMessage('<think>Deep thought...');
     const wrapper = mount(MessageItem, { props: { message } });
     
-    const button = wrapper.find('[data-testid="toggle-thinking"]');
-    expect(button.classes()).toContain('thinking-border');
+    const border = wrapper.find('.thinking-gradient-border');
+    expect(border.exists()).toBe(true);
   });
 
   it('contains the dynamic thinking border CSS requirements in the style block', () => {
@@ -35,11 +35,13 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
     expect(content).toContain('opacity: 0;');
     expect(content).toContain('100% {');
 
-    // 2. Thinner border (1.2px)
+    // 2. Thinner border (1.2px) in the new class
+    expect(content).toContain('.thinking-gradient-border {');
     expect(content).toContain('padding: 1.2px;');
 
-    // 3. Transparent border on the button itself to avoid square ghosting
-    expect(content).toContain('border-color: transparent !important;');
+    // 3. Masking logic ( XOR / Exclude )
+    expect(content).toContain('-webkit-mask-composite: xor;');
+    expect(content).toContain('mask-composite: exclude;');
 
     // 4. Energetic animation duration
     expect(content).toContain('animation: thinking-sweep 0.9s linear infinite;');
@@ -77,11 +79,11 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
     const wrapper = mount(MessageItem, { props: { message } });
     
     const container = wrapper.find('[data-testid="toggle-thinking"]');
-    expect(container.classes()).toContain('thinking-border');
+    expect(wrapper.find('.thinking-gradient-border').exists()).toBe(true);
 
     // Expand while thinking
     await container.trigger('click');
-    expect(container.classes()).toContain('thinking-border');
+    expect(wrapper.find('.thinking-gradient-border').exists()).toBe(true);
     expect(container.classes()).toContain('w-full');
   });
 });

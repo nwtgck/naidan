@@ -22,6 +22,7 @@ import DeveloperTab from './DeveloperTab.vue';
 import AboutTab from './AboutTab.vue';
 import ConnectionTab from './ConnectionTab.vue';
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
+import { useLayout } from '../composables/useLayout';
 import { naturalSort } from '../utils/string';
 
 const props = defineProps<{
@@ -38,6 +39,7 @@ const availableModels = computed(() => naturalSort(Array.isArray(rawAvailableMod
 const chatStore = useChat();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
+const { setActiveFocusArea } = useLayout();
 
 const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 
@@ -173,6 +175,7 @@ watch(recipeJsonInput, () => {
 // Watch for modal open to reset form
 watch(() => props.isOpen, async (open) => {
   if (open) {
+    setActiveFocusArea('settings');
     form.value = JSON.parse(JSON.stringify(settings.value)) as Settings;
     initialFormState.value = JSON.stringify(pickConnectionFields(form.value));
     
@@ -180,6 +183,8 @@ watch(() => props.isOpen, async (open) => {
     if (connectionTabRef.value) {
       connectionTabRef.value.fetchModels();
     }
+  } else {
+    setActiveFocusArea('chat');
   }
 });
 

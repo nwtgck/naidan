@@ -14,7 +14,6 @@ import { useLayout } from './composables/useLayout';
 
 // Lazily load components that are definitely not visible on initial mount
 const SettingsModal = defineAsyncComponent(() => import('./components/SettingsModal.vue'));
-const GroupSettingsPanel = defineAsyncComponent(() => import('./components/GroupSettingsPanel.vue'));
 const DebugPanel = defineAsyncComponent(() => import('./components/DebugPanel.vue'));
 const CustomDialog = defineAsyncComponent(() => import('./components/CustomDialog.vue'));
 const OPFSExplorer = defineAsyncComponent(() => import('./components/OPFSExplorer.vue'));
@@ -70,6 +69,8 @@ watch(
       }
 
       const targetModelId = (q && typeof modelId === 'string') ? modelId : null;
+      const { setActiveFocusArea } = useLayout();
+      setActiveFocusArea('chat');
       await chatStore.createNewChat(targetGroupId, targetModelId);
       
       if (chatStore.currentChat.value) {
@@ -92,6 +93,8 @@ watch(
 onKeyStroke(['o', 'O'], async (e) => {
   if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
     e.preventDefault();
+    const { setActiveFocusArea } = useLayout();
+    setActiveFocusArea('chat');
     await chatStore.createNewChat();
     if (chatStore.currentChat.value) {
       router.push(`/chat/${chatStore.currentChat.value.id}`);
@@ -110,14 +113,9 @@ onKeyStroke(['o', 'O'], async (e) => {
     </div>
     
     <main class="flex-1 relative flex flex-col min-w-0 pb-10 bg-transparent">
-      <GroupSettingsPanel 
-        v-if="chatStore.currentChatGroup.value" 
-      />
       <!-- Use a key based on route to help Vue identify when to remount or transition -->
-      <router-view v-else v-slot="{ Component, route }">
-        <transition name="fade" mode="out-in">
-          <component :is="Component" :key="route.path" />
-        </transition>
+      <router-view v-slot="{ Component }">
+        <component :is="Component" />
       </router-view>
       <DebugPanel />
     </main>
