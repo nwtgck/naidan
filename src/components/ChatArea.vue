@@ -62,6 +62,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isMaximized = ref(false); // New state for maximize button
 const isOverLimit = ref(false); // New state to show maximize button only when content is long
+const isAnimatingHeight = ref(false);
 
 const attachments = ref<Attachment[]>([]);
 const attachmentUrls = ref<Record<string, string>>({});
@@ -194,20 +195,12 @@ function adjustTextareaHeight() {
   if (textareaRef.value) {
     const target = textareaRef.value;
     
-    if (isMaximized.value) {
-      // Set a fixed max height on the parent container instead of just the textarea
-      // The parent already has flex-col, so textarea will take available space
-      target.style.height = 'auto'; // Reset for measurement
-      const maxHeightVh = window.innerHeight * 0.7;
-      target.style.height = maxHeightVh + 'px';
-      target.style.overflowY = target.scrollHeight > maxHeightVh ? 'auto' : 'hidden';
-      return;
-    }
-
     // Temporarily reset height to auto to measure content height
-    target.style.height = 'auto';
-    const currentScrollHeight = target.scrollHeight;
+    if (!isAnimatingHeight.value) {
+      target.style.height = 'auto';
+    }
     
+    const currentScrollHeight = target.scrollHeight;
     const computedStyle = getComputedStyle(target);
     const lineHeight = parseFloat(computedStyle.lineHeight);
     const paddingTop = parseFloat(computedStyle.paddingTop);
@@ -216,19 +209,25 @@ function adjustTextareaHeight() {
     const borderBottom = parseFloat(computedStyle.borderBottomWidth);
     const verticalPadding = paddingTop + paddingBottom + borderTop + borderBottom;
     
-    // Minimum 1 line, Maximum 6 lines
     const minHeight = lineHeight + verticalPadding;
     const maxSixLinesHeight = (lineHeight * 6) + verticalPadding;
 
     isOverLimit.value = currentScrollHeight > maxSixLinesHeight;
 
-    const finalHeight = Math.max(minHeight, Math.min(currentScrollHeight, maxSixLinesHeight));
-    target.style.height = finalHeight + 'px';
-    target.style.overflowY = currentScrollHeight > maxSixLinesHeight ? 'auto' : 'hidden';
+    let finalHeight: number;
+    if (isMaximized.value) {
+      finalHeight = window.innerHeight * 0.7;
+    } else {
+      finalHeight = Math.max(minHeight, Math.min(currentScrollHeight, maxSixLinesHeight));
+    }
 
-    if (container.value) {
+    target.style.height = finalHeight + 'px';
+    target.style.overflowY = (isMaximized.value ? currentScrollHeight > finalHeight : currentScrollHeight > maxSixLinesHeight) ? 'auto' : 'hidden';
+
+    // Only auto-scroll if we are near the bottom AND not animating maximization
+    if (container.value && !isAnimatingHeight.value) {
       const { scrollTop, scrollHeight, clientHeight } = container.value;
-      if (scrollHeight - scrollTop - clientHeight < 50) {
+      if (scrollHeight - scrollTop - clientHeight < 150) {
         nextTick(scrollToBottom);
       }
     }
@@ -236,11 +235,26 @@ function adjustTextareaHeight() {
 }
 
 function toggleMaximized() {
-  isMaximized.value = !isMaximized.value;
-  nextTick(() => {
-    adjustTextareaHeight();
-    scrollToBottom(); // Re-scroll to bottom after resizing
-  });
+  if (textareaRef.value) {
+    // 1. Capture current height and set it explicitly to ensure transition works
+    const startHeight = textareaRef.value.getBoundingClientRect().height;
+    textareaRef.value.style.height = startHeight + 'px';
+    
+    // 2. Enable animation state
+    isAnimatingHeight.value = true;
+    
+    // 3. Trigger state change in next frames to allow CSS transition to catch the change
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        isMaximized.value = !isMaximized.value;
+      });
+    });
+    
+    // 4. Cleanup after animation
+    setTimeout(() => {
+      isAnimatingHeight.value = false;
+    }, 400); // Slightly longer than 300ms transition
+  }
 }
 
 function exportChat() {
@@ -292,7 +306,21 @@ async function handleSend() {
   const text = input.value;
   const currentAttachments = [...attachments.value];
   
-  isMaximized.value = false; // Reset maximized state immediately
+  if (isMaximized.value && textareaRef.value) {
+    const startHeight = textareaRef.value.getBoundingClientRect().height;
+    textareaRef.value.style.height = startHeight + 'px';
+    isAnimatingHeight.value = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        isMaximized.value = false;
+      });
+    });
+    setTimeout(() => {
+      isAnimatingHeight.value = false;
+    }, 400);
+  } else {
+    isMaximized.value = false; // Reset maximized state immediately
+  }
   
   const success = await chatStore.sendMessage(text, undefined, currentAttachments);
   
@@ -302,6 +330,7 @@ async function handleSend() {
     
     nextTick(() => { // Ensure textarea is cleared before adjusting height
       adjustTextareaHeight();
+      scrollToBottom();
     });
   }
 
@@ -366,7 +395,6 @@ watch(input, () => {
 watch(isMaximized, () => {
   nextTick(() => {
     adjustTextareaHeight();
-    scrollToBottom();
   });
 });
 
@@ -620,9 +648,14 @@ onUnmounted(() => {
       @close="showChatSettings = false" 
     />
 
-    <!-- Messages -->
-    <div class="flex-1 flex overflow-hidden">
-      <div ref="container" data-testid="scroll-container" class="flex-1 overflow-y-auto relative">
+    <!-- Messages Layer -->
+    <div class="flex-1 relative overflow-hidden">
+      <div 
+        ref="container" 
+        data-testid="scroll-container" 
+        class="absolute inset-0 overflow-y-auto"
+        style="overflow-anchor: none; padding-bottom: 300px;"
+      >
         <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
           Select or create a chat to start
         </div>
@@ -645,12 +678,19 @@ onUnmounted(() => {
             @select-suggestion="applySuggestion" 
           />
         </template>
+        
+        <!-- Conditional spacer: only large when maximized or animating to allow scrolling hidden content -->
+        <div 
+          v-if="isMaximized || isAnimatingHeight"
+          class="h-[75vh] shrink-0 pointer-events-none"
+          data-testid="maximized-spacer"
+        ></div>
       </div>
 
       <!-- Chat State Inspector (Debug Mode) -->
       <div 
         v-if="currentChat?.debugEnabled" 
-        class="w-96 border-l dark:border-gray-800 bg-gray-50 dark:bg-gray-900 overflow-y-auto p-4 font-mono text-[10px] animate-in slide-in-from-right duration-300 shadow-xl z-20"
+        class="absolute right-0 top-0 bottom-0 w-96 border-l dark:border-gray-800 bg-gray-50 dark:bg-gray-900 overflow-y-auto p-4 font-mono text-[10px] animate-in slide-in-from-right duration-300 shadow-xl z-20"
         data-testid="chat-inspector"
       >
         <div class="flex items-center justify-between mb-4 pb-2 border-b dark:border-gray-800">
@@ -679,9 +719,18 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Input -->
-    <div class="border-t border-gray-100 dark:border-gray-800 p-6 bg-white dark:bg-gray-900" v-if="currentChat">
-      <div class="max-w-4xl mx-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-colors duration-200 shadow-sm group-hover:shadow-md flex flex-col">
+    <!-- Input Layer (Overlay) -->
+    <div 
+      v-if="currentChat"
+      class="absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-transparent pointer-events-none z-30"
+    >
+      <!-- Glass Zone behind the input card (Full width blur) -->
+      <div class="absolute inset-0 -z-10 glass-zone-mask"></div>
+
+      <div 
+        class="max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all duration-300 flex flex-col"
+        :class="isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl'"
+      >
         
         <!-- Attachment Previews -->
         <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
@@ -711,6 +760,7 @@ onUnmounted(() => {
           @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
           class="w-full text-base pl-5 pr-12 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[60px] transition-colors"
+          :class="{ 'animate-height': isAnimatingHeight }"
           data-testid="chat-input"
         ></textarea>
 
@@ -775,8 +825,6 @@ onUnmounted(() => {
             </template>
           </button>
         </div>
-
-        
       </div>
     </div>
   </div>
@@ -799,6 +847,35 @@ onUnmounted(() => {
 .animate-in {
   animation-fill-mode: forwards;
 }
+
+.animate-height {
+  transition: height 0.3s ease-in-out !important;
+}
+
+.glass-zone-mask {
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  /* Keep top 35% clear for a tighter focus around the actual input card */
+  mask-image: linear-gradient(to bottom, transparent, black 35%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 35%);
+  /* Start background fade later to match */
+  background: linear-gradient(
+    to bottom, 
+    transparent 25%, 
+    rgba(255, 255, 255, 0.5) 60%, 
+    rgba(255, 255, 255, 1) 95%
+  );
+}
+
+.dark .glass-zone-mask {
+  background: linear-gradient(
+    to bottom, 
+    transparent 25%, 
+    rgba(17, 24, 39, 0.5) 60%, 
+    rgba(17, 24, 39, 1) 95%
+  );
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }

@@ -894,6 +894,7 @@ describe('ChatArea Textarea Sizing', () => {
     // Click maximize button
     await maximizeButton.trigger('click');
     await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 50)); 
     await nextTick();
 
     const expected70vh = mockWindowInnerHeight * 0.7;
@@ -909,6 +910,7 @@ describe('ChatArea Textarea Sizing', () => {
     // Click minimize button
     await maximizeButton.trigger('click');
     await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 50));
     await nextTick();
 
     // After minimize, it should shrink to content size (single line since input is 'small content')
@@ -933,6 +935,8 @@ describe('ChatArea Textarea Sizing', () => {
     const maximizeButton = wrapper.find('[data-testid="maximize-button"]');
     await maximizeButton.trigger('click');
     await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    await nextTick();
     
     expect(parseFloat(textarea.style.height)).toBeCloseTo(mockWindowInnerHeight * 0.7);
 
@@ -944,6 +948,9 @@ describe('ChatArea Textarea Sizing', () => {
 
     // Send the message
     const sendPromise = (wrapper.vm as any).handleSend();
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 50)); // Wait for handleSend async part
+    
     // After sending, the input is cleared, so we must mock the scrollHeight accordingly
     mockTextareaDimensions(textarea, 24);
     
@@ -953,6 +960,7 @@ describe('ChatArea Textarea Sizing', () => {
     await nextTick();
 
     // After send, maximized should be false and height should be reset to single line
+    expect((wrapper.vm as any).isMaximized).toBe(false);
     expect(parseFloat(textarea.style.height)).toBeCloseTo(50);
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
   });
@@ -1003,6 +1011,8 @@ describe('ChatArea Textarea Sizing', () => {
     const maximizeButton = wrapper.find('[data-testid="maximize-button"]');
     await maximizeButton.trigger('click');
     await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    await nextTick();
     expect((wrapper.vm as any).isMaximized).toBe(true);
 
     // Mock sendMessage to be a slow promise
@@ -1013,6 +1023,8 @@ describe('ChatArea Textarea Sizing', () => {
 
     // Start sending but do not await yet
     const sendPromise = (wrapper.vm as any).handleSend();
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 50));
     
     // Immediate check
     expect((wrapper.vm as any).isMaximized).toBe(false);
@@ -1439,6 +1451,7 @@ describe('ChatArea Model Selection', () => {
     });
 
     await flushPromises();
+    await nextTick();
     await nextTick();
     await nextTick();
 

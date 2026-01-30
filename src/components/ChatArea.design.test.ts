@@ -49,6 +49,30 @@ describe('ChatArea Design Specifications', () => {
     expect(header.classes()).toContain('bg-white/80');
   });
 
+  it('provides enough bottom padding to account for the floating input', () => {
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
+    });
+    const scrollContainer = wrapper.find('[data-testid="scroll-container"]');
+    const paddingBottom = (scrollContainer.element as HTMLElement).style.paddingBottom;
+    expect(parseInt(paddingBottom)).toBeGreaterThanOrEqual(300);
+  });
+
+  it('uses a large conditional spacer for the maximized state', async () => {
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
+    });
+    
+    // Initially spacer should not exist
+    expect(wrapper.find('[data-testid="maximized-spacer"]').exists()).toBe(false);
+
+    // Toggle maximized
+    (wrapper.vm as any).isMaximized = true;
+    await flushPromises();
+    
+    expect(wrapper.find('[data-testid="maximized-spacer"]').exists()).toBe(true);
+  });
+
   it('preserves the case of the Model ID (no forced uppercase)', () => {
     const wrapper = mount(ChatArea, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
@@ -72,7 +96,7 @@ describe('ChatArea Design Specifications', () => {
     const wrapper = mount(ChatArea, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
-    const container = wrapper.find('.max-w-4xl.mx-auto.relative.group.border');
+    const container = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
     expect(container.classes()).toContain('rounded-2xl');
   });
 
@@ -92,19 +116,19 @@ describe('ChatArea Design Specifications', () => {
     const textarea = wrapper.find('[data-testid="chat-input"]');
     const height = parseFloat((textarea.element as HTMLElement).style.height);
     
-    // 70% of 1000 is 700. It should be around that and certainly less than 1000.
+    // 70% of 1000 is 700.
     expect(height).toBeLessThan(1000 * 0.8); 
     expect(height).toBeGreaterThan(100);
 
     window.innerHeight = originalInnerHeight;
   });
 
-  it('ensures the textarea and buttons are stacked vertically to avoid overlap', () => {
+  it('ensures the textarea and buttons are stacked vertically inside the floating container', () => {
     const wrapper = mount(ChatArea, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     
-    const inputContainer = wrapper.find('.max-w-4xl.mx-auto.relative.group.border');
+    const inputContainer = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
     expect(inputContainer.classes()).toContain('flex-col');
     
     const textarea = inputContainer.find('[data-testid="chat-input"]');
@@ -116,6 +140,31 @@ describe('ChatArea Design Specifications', () => {
     // Verify vertical order in DOM: textarea should come before buttonRow
     const html = inputContainer.html();
     expect(html.indexOf('data-testid="chat-input"')).toBeLessThan(html.indexOf('justify-between'));
+  });
+
+  it('applies animation classes when toggling maximized state', async () => {
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
+    });
+    
+    const textarea = wrapper.find('[data-testid="chat-input"]');
+    
+    // Initially should not have animation class
+    expect(textarea.classes()).not.toContain('animate-height');
+
+    // Toggle maximized
+    await (wrapper.vm as any).toggleMaximized();
+    await flushPromises();
+    
+    // Should have animation class
+    expect(textarea.classes()).toContain('animate-height');
+
+    // Wait for animation duration (350ms + some buffer)
+    await new Promise(resolve => setTimeout(resolve, 450));
+    await flushPromises();
+
+    // Should no longer have animation class after timeout
+    expect(textarea.classes()).not.toContain('animate-height');
   });
 
   it('uses gray-800 for chat content text to ensure eye comfort', () => {
@@ -145,5 +194,44 @@ describe('ChatArea Design Specifications', () => {
     
     // Check if the panel text contains the important wording
     expect(wrapper.text()).toContain('only for localhost');
+  });
+
+  it('implements overflow-anchor: none to prevent message jumping during layout changes', () => {
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
+    });
+    const scrollContainer = wrapper.find('[data-testid="scroll-container"]');
+    expect((scrollContainer.element as HTMLElement).style.overflowAnchor).toBe('none');
+  });
+
+  it('uses an opaque background for the input card to ensure readability', () => {
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
+    });
+    const inputCard = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
+    expect(inputCard.classes()).toContain('bg-white');
+    // It should not have backdrop-blur on the card itself anymore
+    expect(inputCard.classes()).not.toContain('backdrop-blur-md');
+  });
+
+  it('contains a glass-zone-mask for the background blur effect', () => {
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
+    });
+    const glassZone = wrapper.find('.glass-zone-mask');
+    expect(glassZone.exists()).toBe(true);
+    expect(glassZone.classes()).toContain('absolute');
+    expect(glassZone.classes()).toContain('inset-0');
+  });
+
+  it('positions the input area as absolute at the bottom to overlap messages', () => {
+    const wrapper = mount(ChatArea, {
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
+    });
+    // The Input Layer (Overlay)
+    const inputLayer = wrapper.find('.absolute.bottom-0.left-0.right-0.p-4');
+    expect(inputLayer.exists()).toBe(true);
+    expect(inputLayer.classes()).toContain('z-30');
+    expect(inputLayer.classes()).toContain('bg-transparent');
   });
 });
