@@ -394,7 +394,23 @@ const focusedId = computed(() => {
 });
 
 onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
-  if (activeFocusArea.value !== 'sidebar') return;
+  const area = activeFocusArea.value;
+  switch (area) {
+  case 'sidebar':
+    break;
+  case 'chat':
+  case 'chat-group-settings':
+  case 'chat-settings':
+  case 'settings':
+  case 'onboarding':
+  case 'dialog':
+  case 'none':
+    return;
+  default: {
+    const _ex: never = area;
+    throw new Error(`Unhandled focus area: ${_ex}`);
+  }
+  }
 
   if (
     editingId.value || 
@@ -425,9 +441,21 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
       const item = visibleItems.value[nextIndex];
       if (item) {
         lastNavigatedId.value = item.id;
-        if (item.type === 'chat') handleOpenChat(item.id);
-        else if (item.type === 'chat_group') handleOpenChatGroup(item.id);
-        // for expand_button, we just update lastNavigatedId
+        const type = item.type;
+        switch (type) {
+        case 'chat':
+          handleOpenChat(item.id);
+          break;
+        case 'chat_group':
+          handleOpenChatGroup(item.id);
+          break;
+        case 'expand_button':
+          break;
+        default: {
+          const _ex: never = type;
+          throw new Error(`Unhandled item type: ${_ex}`);
+        }
+        }
       }
     }
   } else if (e.key === 'ArrowUp') {
@@ -437,8 +465,21 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
       const item = visibleItems.value[nextIndex];
       if (item) {
         lastNavigatedId.value = item.id;
-        if (item.type === 'chat') handleOpenChat(item.id);
-        else if (item.type === 'chat_group') handleOpenChatGroup(item.id);
+        const type = item.type;
+        switch (type) {
+        case 'chat':
+          handleOpenChat(item.id);
+          break;
+        case 'chat_group':
+          handleOpenChatGroup(item.id);
+          break;
+        case 'expand_button':
+          break;
+        default: {
+          const _ex: never = type;
+          throw new Error(`Unhandled item type: ${_ex}`);
+        }
+        }
       }
     }
   } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
@@ -476,6 +517,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
           handleToggleChatGroupCollapse(group);
         }
       }
+    // eslint-disable-next-line local-rules-switch/force-switch-for-union
     } else if (e.key === 'ArrowLeft') {
       // Use toRaw to ensure we access the underlying data properties reliably
       const rawChat = toRaw(currentChat.value);

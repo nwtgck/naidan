@@ -7,7 +7,24 @@ import createDOMPurify from 'dompurify';
 import hljs from 'highlight.js';
 import mermaid from 'mermaid';
 
-const DOMPurify = typeof window !== 'undefined' ? createDOMPurify(window) : createDOMPurify();
+const DOMPurify = (() => {
+  const t = typeof window;
+  switch (t) {
+  case 'undefined': return createDOMPurify();
+  case 'object':
+  case 'boolean':
+  case 'string':
+  case 'number':
+  case 'function':
+  case 'symbol':
+  case 'bigint':
+    return createDOMPurify(window);
+  default: {
+    const _ex: never = t;
+    return _ex;
+  }
+  }
+})();
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { MessageNode } from '../models/types';
@@ -37,9 +54,11 @@ async function loadAttachments() {
   if (!props.message.attachments) return;
 
   for (const att of props.message.attachments) {
-    if (att.status === 'memory') {
+    switch (att.status) {
+    case 'memory':
       attachmentUrls.value[att.id] = URL.createObjectURL(att.blob);
-    } else if (att.status === 'persisted') {
+      break;
+    case 'persisted':
       try {
         const blob = await storageService.getFile(att.id, att.originalName);
         if (blob) {
@@ -48,6 +67,13 @@ async function loadAttachments() {
       } catch (e) {
         console.error('Failed to load persisted attachment:', e);
       }
+      break;
+    case 'missing':
+      break;
+    default: {
+      const _ex: never = att;
+      throw new Error(`Unhandled attachment status: ${_ex}`);
+    }
     }
   }
 }
@@ -55,7 +81,24 @@ async function loadAttachments() {
 type MermaidMode = 'preview' | 'code' | 'both';
 const mermaidMode = ref<MermaidMode>('preview');
 
-const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+const isMac = (() => {
+  const t = typeof window;
+  switch (t) {
+  case 'undefined': return false;
+  case 'object':
+  case 'boolean':
+  case 'string':
+  case 'number':
+  case 'function':
+  case 'symbol':
+  case 'bigint':
+    return /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+  default: {
+    const _ex: never = t;
+    return _ex;
+  }
+  }
+})();
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 // Focus and move cursor to end when editing starts
@@ -120,8 +163,17 @@ const actionIcons = {
 
 function setMermaidMode(mode: MermaidMode) {
   mermaidMode.value = mode;
-  if (mode !== 'code') {
+  switch (mode) {
+  case 'preview':
+  case 'both':
     renderMermaid();
+    break;
+  case 'code':
+    break;
+  default: {
+    const _ex: never = mode;
+    throw new Error(`Unhandled mermaid mode: ${_ex}`);
+  }
   }
 }
 
@@ -142,15 +194,36 @@ const marked = new Marked(
         return `<div class="mermaid-block relative group/mermaid" data-mermaid-mode="${mode}" data-raw="${encodedCode}">
                   <div class="mermaid-ui-overlay flex items-center gap-2">
                     <div class="mermaid-tabs">
-                      <button class="mermaid-tab ${mode === 'preview' ? 'active' : ''}" data-mode="preview" title="Preview Only">
+                      <button class="mermaid-tab ${(() => {
+    switch (mode) {
+    case 'preview': return 'active';
+    case 'code':
+    case 'both': return '';
+    default: { const _ex: never = mode; return _ex; }
+    }
+  })()}" data-mode="preview" title="Preview Only">
                         ${actionIcons.preview}
                         <span>Preview</span>
                       </button>
-                      <button class="mermaid-tab ${mode === 'code' ? 'active' : ''}" data-mode="code" title="Code Only">
+                      <button class="mermaid-tab ${(() => {
+    switch (mode) {
+    case 'code': return 'active';
+    case 'preview':
+    case 'both': return '';
+    default: { const _ex: never = mode; return _ex; }
+    }
+  })()}" data-mode="code" title="Code Only">
                         ${actionIcons.code}
                         <span>Code</span>
                       </button>
-                      <button class="mermaid-tab ${mode === 'both' ? 'active' : ''}" data-mode="both" title="Show Both">
+                      <button class="mermaid-tab ${(() => {
+    switch (mode) {
+    case 'both': return 'active';
+    case 'preview':
+    case 'code': return '';
+    default: { const _ex: never = mode; return _ex; }
+    }
+  })()}" data-mode="both" title="Show Both">
                         ${actionIcons.both}
                         <span>Both</span>
                       </button>
@@ -160,8 +233,22 @@ const marked = new Marked(
                       <span>Copy</span>
                     </button>
                   </div>
-                  <pre class="mermaid" style="display: ${mode === 'code' ? 'none' : 'block'}">${code}</pre>
-                  <pre class="mermaid-raw hljs language-mermaid" style="display: ${mode === 'preview' ? 'none' : 'block'}"><code>${hljs.highlight(code, { language: 'plaintext' }).value}</code></pre>
+                  <pre class="mermaid" style="display: ${(() => {
+    switch (mode) {
+    case 'code': return 'none';
+    case 'preview':
+    case 'both': return 'block';
+    default: { const _ex: never = mode; return _ex; }
+    }
+  })()}">${code}</pre>
+                  <pre class="mermaid-raw hljs language-mermaid" style="display: ${(() => {
+    switch (mode) {
+    case 'preview': return 'none';
+    case 'code':
+    case 'both': return 'block';
+    default: { const _ex: never = mode; return _ex; }
+    }
+  })()}"><code>${hljs.highlight(code, { language: 'plaintext' }).value}</code></pre>
                 </div>`;
       }
       const language = hljs.getLanguage(lang) ? lang : 'plaintext';
@@ -280,9 +367,18 @@ watch(() => props.message.content, renderMermaid);
 const messageRef = ref<HTMLElement | null>(null);
 
 watch(mermaidMode, async () => {
-  if (mermaidMode.value !== 'code') {
+  switch (mermaidMode.value) {
+  case 'preview':
+  case 'both':
     await nextTick(); // Wait for parsedContent to update DOM
     renderMermaid();
+    break;
+  case 'code':
+    break;
+  default: {
+    const _ex: never = mermaidMode.value;
+    throw new Error(`Unhandled mermaid mode: ${_ex}`);
+  }
   }
 });
 
@@ -322,7 +418,18 @@ const parsedContent = computed(() => {
   });
 });
 
-const isUser = computed(() => props.message.role === 'user');
+const isUser = computed(() => {
+  switch (props.message.role) {
+  case 'user': return true;
+  case 'assistant':
+  case 'system':
+    return false;
+  default: {
+    const _ex: never = props.message.role;
+    return _ex;
+  }
+  }
+});
 const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content));
 const isThinkingNow = computed(() => {
   if (props.message.thinking) return false; // Already processed

@@ -48,20 +48,30 @@ export const roleToDomain = (dto: RoleDto): Role => {
  */
 export const hierarchyToDomain = (dto: HierarchyDto): Hierarchy => ({
   items: dto.items.map(item => {
-    if (item.type === 'chat') {
+    switch (item.type) {
+    case 'chat':
       return { type: 'chat', id: item.id };
-    } else {
+    case 'chat_group':
       return { type: 'chat_group', id: item.id, chat_ids: item.chat_ids };
+    default: {
+      const _ex: never = item;
+      throw new Error(`Unhandled hierarchy item type: ${_ex}`);
+    }
     }
   }),
 });
 
 export const hierarchyToDto = (domain: Hierarchy): HierarchyDto => ({
   items: domain.items.map(item => {
-    if (item.type === 'chat') {
+    switch (item.type) {
+    case 'chat':
       return { type: 'chat', id: item.id };
-    } else {
+    case 'chat_group':
       return { type: 'chat_group', id: item.id, chat_ids: item.chat_ids };
+    default: {
+      const _ex: never = item;
+      throw new Error(`Unhandled hierarchy item type: ${_ex}`);
+    }
     }
   }),
 });
@@ -155,11 +165,17 @@ const attachmentToDomain = (dto: AttachmentDto): Attachment => {
     uploadedAt: dto.uploadedAt,
   };
 
-  if (dto.status === 'persisted') return { ...base, status: 'persisted' };
-  if (dto.status === 'missing') return { ...base, status: 'missing' };
-  
-  // For 'memory' status from DTO, we might not have the blob yet.
-  return { ...base, status: 'memory' } as unknown as Attachment;
+  switch (dto.status) {
+  case 'persisted': return { ...base, status: 'persisted' };
+  case 'missing': return { ...base, status: 'missing' };
+  case 'memory':
+    // For 'memory' status from DTO, we might not have the blob yet.
+    return { ...base, status: 'memory' } as unknown as Attachment;
+  default: {
+    const _ex: never = dto.status;
+    throw new Error(`Unhandled attachment status: ${_ex}`);
+  }
+  }
 };
 
 const attachmentToDto = (domain: Attachment): AttachmentDto => {
@@ -343,7 +359,8 @@ export const buildSidebarItemsFromHierarchy = (
   const groupMap = new Map(chatGroups.map(g => [g.id, g]));
 
   const assembleNode = (node: HierarchyNode): SidebarItem | null => {
-    if (node.type === 'chat') {
+    switch (node.type) {
+    case 'chat': {
       const meta = metaMap.get(node.id);
       if (!meta) return null;
       return { 
@@ -351,10 +368,11 @@ export const buildSidebarItemsFromHierarchy = (
         type: 'chat', 
         chat: { ...chatMetaToSummary(meta), groupId: null } 
       };
-    } else {
+    }
+    case 'chat_group': {
       const groupMeta = groupMap.get(node.id);
       if (!groupMeta) return null;
-      
+        
       const nestedItems: SidebarItem[] = node.chat_ids
         .map(cid => {
           const m = metaMap.get(cid);
@@ -372,6 +390,11 @@ export const buildSidebarItemsFromHierarchy = (
         type: 'chat_group',
         chatGroup: { ...groupMeta, items: nestedItems }
       };
+    }
+    default: {
+      const _ex: never = node;
+      throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+    }
     }
   };
 

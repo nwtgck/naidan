@@ -113,10 +113,17 @@ const activePreset = computed(() => {
 });
 
 function applyPreset(preset: 'append' | 'replace') {
-  if (preset === 'append') {
+  switch (preset) {
+  case 'append':
     importConfig.value = JSON.parse(JSON.stringify(APPEND_DEFAULT_CONFIG));
-  } else {
+    break;
+  case 'replace':
     importConfig.value = JSON.parse(JSON.stringify(REPLACE_DEFAULT_CONFIG));
+    break;
+  default: {
+    const _ex: never = preset;
+    throw new Error(`Unhandled preset: ${_ex}`);
+  }
   }
 }
 

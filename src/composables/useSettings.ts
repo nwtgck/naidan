@@ -43,9 +43,24 @@ export function useSettings() {
       loading.value = true;
       try {
         // Determine storage type from persisted flag
-        const rawSavedType = typeof localStorage !== 'undefined' 
-          ? localStorage.getItem(STORAGE_BOOTSTRAP_KEY)
-          : null;
+        const rawSavedType = (() => {
+          const t = typeof localStorage;
+          switch (t) {
+          case 'undefined': return null;
+          case 'object':
+          case 'boolean':
+          case 'string':
+          case 'number':
+          case 'function':
+          case 'symbol':
+          case 'bigint':
+            return localStorage.getItem(STORAGE_BOOTSTRAP_KEY);
+          default: {
+            const _ex: never = t;
+            return _ex;
+          }
+          }
+        })();
         
         const validatedType = StorageTypeSchemaDto.safeParse(rawSavedType);
         let bootstrapType: 'local' | 'opfs' | null = validatedType.success ? validatedType.data : null;
@@ -65,7 +80,24 @@ export function useSettings() {
           const isSupported = await checkOPFSSupport();
           bootstrapType = isSupported ? 'opfs' : 'local';
           
-          if (typeof localStorage !== 'undefined') {
+          if ((() => {
+            const t = typeof localStorage;
+            switch (t) {
+            case 'undefined': return false;
+            case 'object':
+            case 'boolean':
+            case 'string':
+            case 'number':
+            case 'function':
+            case 'symbol':
+            case 'bigint':
+              return true;
+            default: {
+              const _ex: never = t;
+              return _ex;
+            }
+            }
+          })()) {
             localStorage.setItem(STORAGE_BOOTSTRAP_KEY, bootstrapType);
           }
         }

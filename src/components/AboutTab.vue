@@ -7,7 +7,7 @@ interface OssLicense {
   name: string;
   version: string;
   license: string | null;
-  licenseText: string;
+  licenseText: string | null;
 }
 
 const isStandalone = __BUILD_MODE_IS_STANDALONE__;

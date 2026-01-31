@@ -76,7 +76,16 @@ async function loadDirectory(handle: FileSystemDirectoryHandle) {
     // Sort: directories first, then files
     entries.value = newEntries.sort((a, b) => {
       if (a.kind === b.kind) return a.name.localeCompare(b.name);
-      return a.kind === 'directory' ? -1 : 1;
+      return (() => {
+        switch (a.kind) {
+        case 'directory': return -1;
+        case 'file': return 1;
+        default: {
+          const _ex: never = a.kind;
+          return _ex;
+        }
+        }
+      })();
     });
     currentHandle.value = handle;
     selectedFile.value = null;
@@ -89,11 +98,18 @@ async function loadDirectory(handle: FileSystemDirectoryHandle) {
 }
 
 async function navigateTo(entry: OPFSEntry) {
-  if (entry.kind === 'directory') {
+  switch (entry.kind) {
+  case 'directory':
     pathStack.value.push(currentHandle.value!);
     await loadDirectory(entry.handle as FileSystemDirectoryHandle);
-  } else {
+    break;
+  case 'file':
     await viewFile(entry);
+    break;
+  default: {
+    const _ex: never = entry.kind;
+    throw new Error(`Unhandled entry kind: ${_ex}`);
+  }
   }
 }
 

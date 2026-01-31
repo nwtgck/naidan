@@ -79,10 +79,28 @@ const floatingStyle = computed((): CSSProperties => {
   }
   if (left < 16) left = 16;
 
+  const verticalStyle = (() => {
+    switch (preferredPosition) {
+    case 'bottom':
+      return {
+        top: `${rect.bottom.value + margin}px`,
+        bottom: 'auto',
+      };
+    case 'top':
+      return {
+        top: 'auto',
+        bottom: `${windowHeight.value - rect.top.value + margin}px`,
+      };
+    default: {
+      const _ex: never = preferredPosition;
+      throw new Error(`Unhandled position: ${_ex}`);
+    }
+    }
+  })();
+
   return {
     position: 'fixed',
-    top: preferredPosition === 'bottom' ? `${rect.bottom.value + margin}px` : 'auto',
-    bottom: preferredPosition === 'top' ? `${windowHeight.value - rect.top.value + margin}px` : 'auto',
+    ...verticalStyle,
     left: `${left}px`,
     width: `${width}px`,
     maxWidth: `${maxWidth}px`,

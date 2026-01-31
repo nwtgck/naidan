@@ -28,7 +28,24 @@ const availableModels = ref<string[]>([]);
 
 // --- Lifecycle & Cleanup ---
 
-if (typeof window !== 'undefined') {
+if ((() => {
+  const t = typeof window;
+  switch (t) {
+  case 'undefined': return false;
+  case 'object':
+  case 'boolean':
+  case 'string':
+  case 'number':
+  case 'function':
+  case 'symbol':
+  case 'bigint':
+    return true;
+  default: {
+    const _ex: never = t;
+    return _ex;
+  }
+  }
+})()) {
   window.addEventListener('beforeunload', () => {
     for (const item of activeGenerations.values()) {
       item.controller.abort();
@@ -141,7 +158,8 @@ const debouncedSidebarReload = () => {
 };
 
 storageService.subscribeToChanges(async (event) => {
-  if (event.type === 'chat_meta_and_chat_group') {
+  switch (event.type) {
+  case 'chat_meta_and_chat_group': {
     debouncedSidebarReload();
 
     if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
@@ -158,35 +176,46 @@ storageService.subscribeToChanges(async (event) => {
       const allGroups = await storageService.listChatGroups();
       _currentChatGroup.value = allGroups.find(g => g.id === event.id) || null;
     }
-  } 
-  
-  if (event.type === 'chat_content_generation') {
-    if (event.status === 'started') {
+    break;
+  }
+  case 'chat_content_generation': {
+    switch (event.status) {
+    case 'started':
       if (!activeGenerations.has(event.id)) {
         externalGenerations.add(event.id);
       }
-    } else if (event.status === 'stopped') {
+      break;
+    case 'stopped':
       externalGenerations.delete(event.id);
-    } else if (event.status === 'abort_request') {
+      break;
+    case 'abort_request': {
       const local = activeGenerations.get(event.id);
       if (local) {
         local.controller.abort();
       }
+      break;
     }
+    default: {
+      const _ex: never = event.status;
+      throw new Error(`Unhandled status: ${_ex}`);
+    }
+    }
+    break;
   }
-
-  if (event.type === 'chat_content' && event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
-    if (!activeGenerations.has(event.id)) {
-      const fresh = await storageService.loadChat(event.id);
-      if (fresh && _currentChat.value) {
-        _currentChat.value.root = fresh.root;
-        _currentChat.value.currentLeafId = fresh.currentLeafId;
-        triggerRef(_currentChat);
+  case 'chat_content': {
+    if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
+      if (!activeGenerations.has(event.id)) {
+        const fresh = await storageService.loadChat(event.id);
+        if (fresh && _currentChat.value) {
+          _currentChat.value.root = fresh.root;
+          _currentChat.value.currentLeafId = fresh.currentLeafId;
+          triggerRef(_currentChat);
+        }
       }
     }
+    break;
   }
-  
-  if (event.type === 'migration') {
+  case 'migration': {
     for (const item of activeGenerations.values()) item.controller.abort();
     activeGenerations.clear();
     activeTaskCounts.clear();
@@ -201,6 +230,15 @@ storageService.subscribeToChanges(async (event) => {
       const allGroups = await storageService.listChatGroups();
       _currentChatGroup.value = allGroups.find(g => g.id === _currentChatGroup.value?.id) || null;
     }
+    break;
+  }
+  case 'settings':
+    // Handled by components via useSettings
+    break;
+  default: {
+    const _ex: never = event;
+    throw new Error(`Unhandled event: ${_ex}`);
+  }
   }
 });
 
@@ -328,9 +366,18 @@ export function useChat() {
     
     try {
       const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      const provider = type === 'ollama' 
-        ? new OllamaProvider({ endpoint: url, headers: mutableHeaders }) 
-        : new OpenAIProvider({ endpoint: url, headers: mutableHeaders });
+      const provider = (() => {
+        switch (type) {
+        case 'ollama':
+          return new OllamaProvider({ endpoint: url, headers: mutableHeaders });
+        case 'openai':
+          return new OpenAIProvider({ endpoint: url, headers: mutableHeaders });
+        default: {
+          const _ex: never = type;
+          throw new Error(`Unhandled endpoint type: ${_ex}`);
+        }
+        }
+      })();
       
       const models = await provider.listModels({});
       const result = Array.isArray(models) ? models : [];
@@ -463,8 +510,18 @@ export function useChat() {
 
     await storageService.updateHierarchy((curr) => {
       curr.items = curr.items.filter(i => {
-        if (i.type === 'chat' && i.id === id) return false;
-        if (i.type === 'chat_group') i.chat_ids = i.chat_ids.filter(cid => cid !== id);
+        switch (i.type) {
+        case 'chat':
+          if (i.id === id) return false;
+          break;
+        case 'chat_group':
+          i.chat_ids = i.chat_ids.filter(cid => cid !== id);
+          break;
+        default: {
+          const _ex: never = i;
+          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+        }
+        }
         return true;
       });
       return curr;
@@ -489,7 +546,16 @@ export function useChat() {
         const originalGroupId = chatData.groupId;
         await storageService.updateHierarchy((curr) => {
           if (originalGroupId) {
-            const group = curr.items.find(i => i.type === 'chat_group' && i.id === originalGroupId) as HierarchyChatGroupNode;
+            const group = curr.items.find(i => {
+              switch (i.type) {
+              case 'chat_group': return i.id === originalGroupId;
+              case 'chat': return false;
+              default: {
+                const _ex: never = i;
+                throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+              }
+              }
+            }) as HierarchyChatGroupNode;
             if (group) { group.chat_ids.push(chatData.id); return curr; }
           }
           curr.items.push({ type: 'chat', id: chatData.id });
@@ -499,10 +565,19 @@ export function useChat() {
         await openChat(chatData.id);
       },
       onClose: async (reason) => {
-        if (reason === 'action') return;
-        await cleanup();
-      }
-    });
+        switch (reason) {
+        case 'action':
+          return;
+        case 'timeout':
+        case 'dismiss':
+          await cleanup();
+          break;
+        default: {
+          const _ex: never = reason;
+          throw new Error(`Unhandled close reason: ${_ex}`);
+        }
+        }
+      }    });
 
     if (!toastId) {
       await cleanup();
@@ -620,8 +695,21 @@ export function useChat() {
           const content: MultimodalContent[] = [{ type: 'text', text: m.content }];
           for (const att of m.attachments) {
             let blob: Blob | null = null;
-            if (att.status === 'memory') blob = att.blob;
-            else if (att.status === 'persisted') blob = await storageService.getFile(att.id, att.originalName);
+            switch (att.status) {
+            case 'memory':
+              blob = att.blob;
+              break;
+            case 'persisted':
+              blob = await storageService.getFile(att.id, att.originalName);
+              break;
+            case 'missing':
+              blob = null;
+              break;
+            default: {
+              const _ex: never = att;
+              throw new Error(`Unhandled attachment status: ${_ex}`);
+            }
+            }
             if (blob && att.mimeType.startsWith('image/')) {
               const b64 = await fileToDataUrl(blob);
               content.push({ type: 'image_url', image_url: { url: b64 } });
@@ -755,14 +843,24 @@ export function useChat() {
       }
 
       for (const att of attachments) {
-        if (att.status === 'memory') {
+        switch (att.status) {
+        case 'memory':
           if (canPersist) {
             try {
               await storageService.saveFile(att.blob, att.id, att.originalName);
               processedAttachments.push({ id: att.id, originalName: att.originalName, mimeType: att.mimeType, size: att.size, uploadedAt: att.uploadedAt, status: 'persisted', });
             } catch (e) { processedAttachments.push(att); }
           } else processedAttachments.push(att);
-        } else processedAttachments.push(att);
+          break;
+        case 'persisted':
+        case 'missing':
+          processedAttachments.push(att);
+          break;
+        default: {
+          const _ex: never = att;
+          throw new Error(`Unhandled attachment status: ${_ex}`);
+        }
+        }
       }
 
       const userMsg: MessageNode = { id: crypto.randomUUID(), role: 'user', content, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
@@ -858,7 +956,24 @@ export function useChat() {
 
       const lang = detectLanguage({ 
         content, 
-        fallbackLanguage: typeof navigator !== 'undefined' ? navigator.language : 'en' 
+        fallbackLanguage: (() => {
+          const t = typeof navigator;
+          switch (t) {
+          case 'undefined': return 'en';
+          case 'object':
+          case 'boolean':
+          case 'string':
+          case 'number':
+          case 'function':
+          case 'symbol':
+          case 'bigint':
+            return navigator.language;
+          default: {
+            const _ex: never = t;
+            return _ex;
+          }
+          }
+        })()
       });
       const systemPrompt = getTitleSystemPrompt(lang);
       const promptMsgs: ChatMessage[] = [
@@ -954,7 +1069,8 @@ export function useChat() {
 
     const chat = getLiveChat(_currentChat.value);
     const node = findNodeInBranch(chat.root.items, messageId); if (!node) return;
-    if (node.role === 'assistant') {
+    switch (node.role) {
+    case 'assistant': {
       const correctedNode: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: newContent, attachments: node.attachments, timestamp: Date.now(), modelId: node.modelId, replies: { items: [] }, };
       const parent = findParentInBranch(chat.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);
@@ -962,9 +1078,18 @@ export function useChat() {
       chat.currentLeafId = correctedNode.id;
       await updateChatContent(chat.id, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
       if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-    } else {
+      break;
+    }
+    case 'user':
+    case 'system': {
       const parent = findParentInBranch(chat.root.items, messageId);
       await sendMessage(newContent, parent ? parent.id : null, node.attachments, chat);
+      break;
+    }
+    default: {
+      const _ex: never = node.role;
+      throw new Error(`Unhandled role: ${_ex}`);
+    }
     }
   };
 
@@ -1019,10 +1144,37 @@ export function useChat() {
     const group = chatGroups.value.find(g => g.id === id);
     if (!group) return;
     const items = [...group.items];
-    for (const item of items) if (item.type === 'chat') await deleteChat(item.chat.id, () => '');
+    for (const item of items) {
+      switch (item.type) {
+      case 'chat':
+        await deleteChat(item.chat.id, () => '');
+        break;
+      case 'chat_group':
+        // Nested groups not supported in UI but handled for exhaustiveness
+        break;
+      default: {
+        const _ex: never = item;
+        throw new Error(`Unhandled sidebar item type: ${_ex}`);
+      }
+      }
+    }
     if (_currentChatGroup.value?.id === id) _currentChatGroup.value = null;
     await storageService.deleteChatGroup(id);
-    await storageService.updateHierarchy((curr) => { curr.items = curr.items.filter(i => i.type !== 'chat_group' || i.id !== id); return curr; });
+    await storageService.updateHierarchy((curr) => {
+      curr.items = curr.items.filter(i => {
+        switch (i.type) {
+        case 'chat_group':
+          return i.id !== id;
+        case 'chat':
+          return true;
+        default: {
+          const _ex: never = i;
+          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+        }
+        }
+      });
+      return curr;
+    });
     await loadData();
   };
 

@@ -135,9 +135,19 @@ export class LocalStorageProvider extends IStorageProvider {
         for (const node of nodes) {
           if (node.attachments) {
             for (const att of node.attachments) {
-              if (att.status === 'memory') {
+              switch (att.status) {
+              case 'memory': {
                 const cached = this.blobCache.get(att.id);
                 if (cached) (att as unknown as { blob: Blob }).blob = cached;
+                break;
+              }
+              case 'persisted':
+              case 'missing':
+                break;
+              default: {
+                const _ex: never = att;
+                throw new Error(`Unhandled attachment status: ${_ex}`);
+              }
               }
             }
           }
@@ -176,9 +186,19 @@ export class LocalStorageProvider extends IStorageProvider {
         for (const node of nodes) {
           if (node.attachments) {
             for (const att of node.attachments) {
-              if (att.status === 'memory') {
+              switch (att.status) {
+              case 'memory': {
                 const cached = this.blobCache.get(att.id);
                 if (cached) (att as unknown as { blob: Blob }).blob = cached;
+                break;
+              }
+              case 'persisted':
+              case 'missing':
+                break;
+              default: {
+                const _ex: never = att;
+                throw new Error(`Unhandled attachment status: ${_ex}`);
+              }
               }
             }
           }

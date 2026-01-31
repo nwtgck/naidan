@@ -312,9 +312,19 @@ export class OPFSStorageProvider extends IStorageProvider {
             for (const node of nodes) {
               if (node.attachments) {
                 for (const att of node.attachments) {
-                  if (att.status === 'persisted') {
+                  switch (att.status) {
+                  case 'persisted': {
                     const blob = await this.getFile(att.id, att.originalName);
                     if (blob) yield { type: 'attachment' as const, chatId: chat.id, attachmentId: att.id, originalName: att.originalName, mimeType: att.mimeType, size: att.size, uploadedAt: att.uploadedAt, blob };
+                    break;
+                  }
+                  case 'memory':
+                  case 'missing':
+                    break;
+                  default: {
+                    const _ex: never = att;
+                    throw new Error(`Unhandled attachment status: ${_ex}`);
+                  }
                   }
                 }
               }

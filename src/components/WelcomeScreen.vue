@@ -10,7 +10,25 @@ defineEmits<{
 }>();
 
 // Access the build mode global defined in vite.config.ts
-const isHosted = typeof __BUILD_MODE_IS_HOSTED__ !== 'undefined' ? __BUILD_MODE_IS_HOSTED__ : true;
+const isHosted = (() => {
+  const t = typeof __BUILD_MODE_IS_HOSTED__;
+  switch (t) {
+  case 'undefined':
+    return true;
+  case 'boolean':
+  case 'string':
+  case 'number':
+  case 'object':
+  case 'function':
+  case 'symbol':
+  case 'bigint':
+    return __BUILD_MODE_IS_HOSTED__;
+  default: {
+    const _ex: never = t;
+    return _ex;
+  }
+  }
+})();
 
 const suggestions = [
   { label: 'Write a story', text: 'Write a short story about a time-traveling detective in a cyberpunk city.' },

@@ -86,10 +86,25 @@ export class StorageService {
    */
   notify(type: string, id?: string): void;
   notify(eventOrType: StorageChangeEvent | string, id?: string): void {
-    if (typeof eventOrType === 'string') {
-      this.synchronizer.notify(eventOrType, id);
-    } else {
-      this.synchronizer.notify(eventOrType);
+    const t = typeof eventOrType;
+    switch (t) {
+    case 'string':
+      this.synchronizer.notify(eventOrType as string, id);
+      break;
+    case 'object':
+      this.synchronizer.notify(eventOrType as StorageChangeEvent);
+      break;
+    case 'undefined':
+    case 'boolean':
+    case 'number':
+    case 'function':
+    case 'symbol':
+    case 'bigint':
+      throw new Error(`Unexpected event type: ${t}`);
+    default: {
+      const _ex: never = t;
+      throw new Error(`Unhandled event type: ${_ex}`);
+    }
     }
   }
 
@@ -295,39 +310,61 @@ export class StorageService {
         // Wrap content stream to rescue memory blobs
         const migrationStream = async function* (): AsyncGenerator<MigrationChunkDto> {
           for await (const chunk of snapshot.contentStream) {
-            if (chunk.type === 'chat' && newProvider.canPersistBinary) {
-              const chat = await oldProvider.loadChat(chunk.data.id);
-              if (!chat) { yield chunk; continue; }
+            switch (chunk.type) {
+            case 'chat':
+              if (newProvider.canPersistBinary) {
+                const chat = await oldProvider.loadChat(chunk.data.id);
+                if (!chat) { yield chunk; continue; }
 
-              const rescued: MigrationChunkDto[] = [];
-              const findAndRescue = (nodes: MessageNode[]) => {
-                for (const node of nodes) {
-                  if (node.attachments) {
-                    for (let i = 0; i < node.attachments.length; i++) {
-                      const att = node.attachments[i]!;
-                      if (att.status === 'memory' && att.blob) {
-                        rescued.push({
-                          type: 'attachment',
-                          chatId: chat.id,
-                          attachmentId: att.id,
-                          originalName: att.originalName,
-                          mimeType: att.mimeType,
-                          size: att.size,
-                          uploadedAt: att.uploadedAt,
-                          blob: att.blob
-                        });
-                        node.attachments[i] = { ...att, status: 'persisted' as const };
+                const rescued: MigrationChunkDto[] = [];
+                const findAndRescue = (nodes: MessageNode[]) => {
+                  for (const node of nodes) {
+                    if (node.attachments) {
+                      for (let i = 0; i < node.attachments.length; i++) {
+                        const att = node.attachments[i]!;
+                        switch (att.status) {
+                        case 'memory':
+                          if (att.blob) {
+                            rescued.push({
+                              type: 'attachment',
+                              chatId: chat.id,
+                              attachmentId: att.id,
+                              originalName: att.originalName,
+                              mimeType: att.mimeType,
+                              size: att.size,
+                              uploadedAt: att.uploadedAt,
+                              blob: att.blob
+                            });
+                            node.attachments[i] = { ...att, status: 'persisted' as const };
+                          }
+                          break;
+                        case 'persisted':
+                        case 'missing':
+                          break;
+                        default: {
+                          const _ex: never = att;
+                          throw new Error(`Unhandled attachment status: ${_ex}`);
+                        }
+                        }
                       }
                     }
+                    if (node.replies?.items) findAndRescue(node.replies.items);
                   }
-                  if (node.replies?.items) findAndRescue(node.replies.items);
-                }
-              };
-              findAndRescue(chat.root.items);
-              for (const r of rescued) yield r;
-              yield { type: 'chat', data: chatToDto(chat) };
-            } else {
+                };
+                findAndRescue(chat.root.items);
+                for (const r of rescued) yield r;
+                yield { type: 'chat', data: chatToDto(chat) };
+              } else {
+                yield chunk;
+              }
+              break;
+            case 'attachment':
               yield chunk;
+              break;
+            default: {
+              const _ex: never = chunk;
+              throw new Error(`Unhandled migration chunk type: ${_ex}`);
+            }
             }
           }
         };
@@ -343,7 +380,24 @@ export class StorageService {
           throw e;
         }
           
-        if (typeof localStorage !== 'undefined') {
+        if ((() => {
+          const t = typeof localStorage;
+          switch (t) {
+          case 'undefined': return false;
+          case 'object':
+          case 'boolean':
+          case 'string':
+          case 'number':
+          case 'function':
+          case 'symbol':
+          case 'bigint':
+            return true;
+          default: {
+            const _ex: never = t;
+            return _ex;
+          }
+          }
+        })()) {
           localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
         }
       }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('switchProvider', { notifyLockWaitAfterMs: 5000 }) });

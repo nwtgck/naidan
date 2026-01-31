@@ -238,13 +238,16 @@ export class ImportExportService {
       try {
         const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')));
         hDto.items.forEach((node, nodeIdx) => {
-          if (node.type === 'chat') {
+          switch (node.type) {
+          case 'chat': {
             const chat = chatsMap.get(node.id);
             if (chat) {
               chat._order = nodeIdx;
               items.push({ type: 'chat', data: chat });
             }
-          } else {
+            break;
+          }
+          case 'chat_group': {
             const group = chatGroupsMap.get(node.id);
             if (group) {
               group._order = nodeIdx;
@@ -257,6 +260,12 @@ export class ImportExportService {
               });
               items.push({ type: 'chat_group', data: group });
             }
+            break;
+          }
+          default: {
+            const _ex: never = node;
+            throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+          }
           }
         });
       } catch (e) { 
@@ -310,10 +319,17 @@ export class ImportExportService {
     
     let snapshot: StorageSnapshot;
     const mode = config.data.mode;
-    if (mode === 'replace') {
+    switch (mode) {
+    case 'replace':
       snapshot = await this.createRestoreSnapshot(zip, rootPath);
-    } else {
+      break;
+    case 'append':
       snapshot = await this.createAppendSnapshot(zip, rootPath, config);
+      break;
+    default: {
+      const _ex: never = mode;
+      throw new Error(`Unhandled import mode: ${_ex}`);
+    }
     }
 
     for await (const _ of snapshot.contentStream) { /* dry run */ }
@@ -328,7 +344,8 @@ export class ImportExportService {
     const settingsFile = zip.file(rootPath + 'settings.json');
 
     const mode = config.data.mode;
-    if (mode === 'replace') {
+    switch (mode) {
+    case 'replace': {
       await this.storage.clearAll();
       if (settingsFile) {
         try {
@@ -336,17 +353,25 @@ export class ImportExportService {
           if (result.success) await this.applySettingsImport(result.data, config.settings);
         } catch (e) { /* Ignore */ }
       }
-      const snapshot = await this.createRestoreSnapshot(zip, rootPath);
-      await this.storage.restore(snapshot);
-    } else {
+      const replaceSnapshot = await this.createRestoreSnapshot(zip, rootPath);
+      await this.storage.restore(replaceSnapshot);
+      break;
+    }
+    case 'append': {
       if (settingsFile) {
         try {
           const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
           if (result.success) await this.applySettingsImport(result.data, config.settings);
         } catch (e) { /* Ignore */ }
       }
-      const snapshot = await this.createAppendSnapshot(zip, rootPath, config);
-      await this.storage.restore(snapshot);
+      const appendSnapshot = await this.createAppendSnapshot(zip, rootPath, config);
+      await this.storage.restore(appendSnapshot);
+      break;
+    }
+    default: {
+      const _ex: never = mode;
+      throw new Error(`Unhandled import mode: ${_ex}`);
+    }
     }
   }
 
@@ -541,8 +566,16 @@ export class ImportExportService {
       try {
         const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')));
         importedHierarchyItems = hDto.items.map(node => {
-          if (node.type === 'chat') return { type: 'chat', id: chatIdMap.get(node.id) || node.id };
-          return { type: 'chat_group', id: groupIdMap.get(node.id) || node.id, chat_ids: node.chat_ids.map(cid => chatIdMap.get(cid) || cid) };
+          switch (node.type) {
+          case 'chat':
+            return { type: 'chat', id: chatIdMap.get(node.id) || node.id };
+          case 'chat_group':
+            return { type: 'chat_group', id: groupIdMap.get(node.id) || node.id, chat_ids: node.chat_ids.map(cid => chatIdMap.get(cid) || cid) };
+          default: {
+            const _ex: never = node;
+            throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+          }
+          }
         });
       } catch (e) { /* fallback below */ }
     }

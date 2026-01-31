@@ -9,7 +9,7 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
-import type { LmParameters, ChatMessage } from '../models/types';
+import type { LmParameters, ChatMessage, MultimodalContent } from '../models/types';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 
 const { addErrorEvent } = useGlobalEvents();
@@ -261,22 +261,44 @@ export class OllamaProvider implements LLMProvider {
 
     // Transform messages to Ollama format
     const ollamaMessages: OllamaMessage[] = messages.map(m => {
-      if (typeof m.content === 'string') {
-        return { role: m.role, content: m.content };
-      } else {
+      const contentType = typeof m.content;
+      switch (contentType) {
+      case 'string':
+        return { role: m.role, content: m.content as string };
+      case 'object': {
         // Multimodal
         let content = '';
         const images: string[] = [];
-        for (const part of m.content) {
-          if (part.type === 'text') {
+        for (const part of (m.content as MultimodalContent[])) {
+          switch (part.type) {
+          case 'text':
             content += part.text;
-          } else if (part.type === 'image_url') {
+            break;
+          case 'image_url': {
             // Strip data URL prefix if present: data:image/png;base64,xxxx
             const b64 = part.image_url.url.split(',')[1] || part.image_url.url;
             images.push(b64);
+            break;
+          }
+          default: {
+            const _ex: never = part;
+            throw new Error(`Unhandled multimodal content type: ${_ex}`);
+          }
           }
         }
         return { role: m.role, content, images };
+      }
+      case 'undefined':
+      case 'boolean':
+      case 'number':
+      case 'function':
+      case 'symbol':
+      case 'bigint':
+        throw new Error(`Unexpected content type: ${contentType}`);
+      default: {
+        const _ex: never = contentType;
+        throw new Error(`Unhandled content type: ${_ex}`);
+      }
       }
     });
     

@@ -11,7 +11,20 @@ export function useTheme() {
   const preferredDark = usePreferredDark();
 
   function applyTheme(mode: ThemeMode) {
-    const isDark = mode === 'system' ? preferredDark.value : (mode === 'dark');
+    const isDark = (() => {
+      switch (mode) {
+      case 'system':
+        return preferredDark.value;
+      case 'dark':
+        return true;
+      case 'light':
+        return false;
+      default: {
+        const _ex: never = mode;
+        return _ex;
+      }
+      }
+    })();
     
     if (isDark) {
       document.documentElement.classList.add('dark');

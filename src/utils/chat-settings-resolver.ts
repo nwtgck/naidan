@@ -28,12 +28,32 @@ export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSetti
   let systemPrompts: string[] = [];
   if (globalSettings.systemPrompt) systemPrompts.push(globalSettings.systemPrompt);
   if (group?.systemPrompt) {
-    if (group.systemPrompt.behavior === 'override') systemPrompts = group.systemPrompt.content ? [group.systemPrompt.content] : [];
-    else if (group.systemPrompt.content) systemPrompts.push(group.systemPrompt.content);
+    switch (group.systemPrompt.behavior) {
+    case 'override':
+      systemPrompts = group.systemPrompt.content ? [group.systemPrompt.content] : [];
+      break;
+    case 'append':
+      if (group.systemPrompt.content) systemPrompts.push(group.systemPrompt.content);
+      break;
+    default: {
+      const _ex: never = group.systemPrompt.behavior;
+      throw new Error(`Unhandled system prompt behavior: ${_ex}`);
+    }
+    }
   }
   if (chat.systemPrompt) {
-    if (chat.systemPrompt.behavior === 'override') systemPrompts = chat.systemPrompt.content ? [chat.systemPrompt.content] : [];
-    else if (chat.systemPrompt.content) systemPrompts.push(chat.systemPrompt.content);
+    switch (chat.systemPrompt.behavior) {
+    case 'override':
+      systemPrompts = chat.systemPrompt.content ? [chat.systemPrompt.content] : [];
+      break;
+    case 'append':
+      if (chat.systemPrompt.content) systemPrompts.push(chat.systemPrompt.content);
+      break;
+    default: {
+      const _ex: never = chat.systemPrompt.behavior;
+      throw new Error(`Unhandled system prompt behavior: ${_ex}`);
+    }
+    }
   }
 
   const lmParameters = { 

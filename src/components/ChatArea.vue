@@ -263,7 +263,17 @@ function exportChat() {
   let markdownContent = `# ${currentChat.value.title || 'New Chat'}\n\n`;
 
   activeMessages.value.forEach(msg => {
-    const role = msg.role === 'user' ? 'User' : 'AI';
+    const role = (() => {
+      switch (msg.role) {
+      case 'user': return 'User';
+      case 'assistant': return 'AI';
+      case 'system': return 'System';
+      default: {
+        const _ex: never = msg.role;
+        return _ex;
+      }
+      }
+    })();
     markdownContent += `## ${role}:\n${msg.content}\n\n`;
   });
 
@@ -280,7 +290,22 @@ function exportChat() {
 }
 
 function focusInput() {
-  if (activeFocusArea.value === 'sidebar') return;
+  switch (activeFocusArea.value) {
+  case 'sidebar':
+    return;
+  case 'chat':
+  case 'chat-group-settings':
+  case 'chat-settings':
+  case 'settings':
+  case 'onboarding':
+  case 'dialog':
+  case 'none':
+    break;
+  default: {
+    const _ex: never = activeFocusArea.value;
+    throw new Error(`Unhandled focus area: ${_ex}`);
+  }
+  }
   nextTick(() => {
     textareaRef.value?.focus();
   });
