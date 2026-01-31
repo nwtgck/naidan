@@ -21,31 +21,37 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
+        id: npm_install
         run: npm ci
 
       - name: Run tests
         run: npm run test
 
       - name: Run build
+        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         run: npm run build
 
       - name: Set up Go
+        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         uses: actions/setup-go@v5
         with:
           go-version-file: naidan-server/go.mod
 
       - name: Verify naidan-server build
+        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         run: |
           cd naidan-server
           go run build.go
 
       - name: Upload full dist build artifact
+        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: full-dist-build
           path: dist/
 
       - name: Upload naidan-server binary artifact
+        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: naidan-server-binary
@@ -53,6 +59,7 @@ jobs:
 
   publish_to_cloudflare:
     needs: build_and_test
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -101,6 +108,7 @@ jobs:
 
   publish_to_cloudflare_local_only:
     needs: build_and_test
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
