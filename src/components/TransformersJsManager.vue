@@ -22,13 +22,12 @@ const isFileUrl = typeof window !== 'undefined' && window.location.protocol === 
 const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 
 const defaultModels = [
+  'HuggingFaceTB/SmolLM2-135M-Instruct',
+  'HuggingFaceTB/SmolLM2-360M-Instruct',
+  'HuggingFaceTB/SmolLM2-1.7B-Instruct',
+  'HuggingFaceTB/SmolLM3-3B-ONNX',
   'onnx-community/Qwen2.5-0.5B-Instruct',
-  'onnx-community/SmolLM2-135M-Instruct',
-  'onnx-community/SmolLM2-360M-Instruct',
-  'onnx-community/TinyLlama-1.1B-Chat-v1.0',
   'onnx-community/Llama-3.2-1B-Instruct',
-  'onnx-community/phi-4',
-  'Xenova/Qwen1.5-0.5B-Chat',
 ];
 
 const cachedModels = ref<Array<{ id: string; isLocal: boolean }>>([]);

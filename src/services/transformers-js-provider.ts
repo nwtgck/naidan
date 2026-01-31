@@ -34,11 +34,7 @@ export class TransformersJsProvider implements LLMProvider {
       return models.map(m => m.id);
     } catch (err) {
       console.warn('Failed to list local models for provider:', err);
-      // Fallback
-      return [
-        'onnx-community/Qwen2.5-0.5B-Instruct',
-        'onnx-community/SmolLM2-135M-Instruct',
-      ];
+      return [];
     }
   }
 }
