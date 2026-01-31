@@ -7,7 +7,7 @@ import { capitalize, naturalSort } from '../utils/string';
 import { 
   Loader2, Trash2, Globe, Bot, Type, Save,
   CheckCircle2, BookmarkPlus,
-  Check, Activity, MessageSquareQuote, Plus
+  Check, Activity, MessageSquareQuote, Plus, BrainCircuit
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
@@ -27,6 +27,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: Settings): void;
   (e: 'save'): void;
   (e: 'goToProfiles'): void;
+  (e: 'goToTransformersJs'): void;
 }>();
 
 const sortedModels = computed(() => naturalSort(Array.isArray(props.availableModels) ? props.availableModels : []));
@@ -60,15 +61,16 @@ function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
 }
 
 async function fetchModels() {
-  if (!form.value.endpointUrl) {
+  if (!form.value.endpointUrl && form.value.endpointType !== 'transformers_js') {
     return;
   }
   
   error.value = null;
   try {
+    const url = form.value.endpointUrl || '';
     // Trigger global fetch with current form values (may be unsaved)
     const models = await fetchModelsGlobal({
-      url: form.value.endpointUrl,
+      url,
       type: form.value.endpointType,
       headers: form.value.endpointHttpHeaders
     });
@@ -192,9 +194,9 @@ function removeHeader(index: number) {
   }
 }
 
-// Auto-fetch only for localhost
-watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => {
-  if (url && (url.includes('localhost') || url.includes('127.0.0.1'))) {
+// Auto-fetch for localhost or transformers_js
+watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url, type]) => {
+  if (type === 'transformers_js' || (url && (url.includes('localhost') || url.includes('127.0.0.1')))) {
     fetchModels();
   }
 });
@@ -244,11 +246,38 @@ defineExpose({
                 >
                   <option value="openai">OpenAI Compatible</option>
                   <option value="ollama">Ollama</option>
+                  <option value="transformers_js">Transformers.js (Experimental)</option>
                 </select>
               </div>
 
+              <!-- Transformers.js Info Banner -->
+              <div v-if="form.endpointType === 'transformers_js'" class="animate-in fade-in slide-in-from-top-2 duration-300">
+                <div class="p-6 bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-3xl space-y-4 shadow-sm">
+                  <div class="flex items-start gap-4">
+                    <div class="p-2.5 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-purple-100 dark:border-purple-900/20">
+                      <BrainCircuit class="w-6 h-6 text-purple-600" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <h3 class="text-sm font-bold text-purple-900 dark:text-purple-300">Local Browser AI Enabled</h3>
+                      <p class="text-xs text-purple-600/80 dark:text-purple-400/80 leading-relaxed mt-1 font-medium">
+                        Models will run directly in your browser using WebGPU. No external API or server is required.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="flex justify-end pt-2 border-t border-purple-100/50 dark:border-purple-900/20">
+                    <button 
+                      @click="emit('goToTransformersJs')"
+                      class="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold rounded-xl shadow-lg shadow-purple-500/20 transition-all active:scale-95"
+                    >
+                      <BrainCircuit class="w-3.5 h-3.5" />
+                      Manage Local Models
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <!-- Endpoint URL -->
-              <div class="space-y-4">
+              <div class="space-y-4" v-if="form.endpointType !== 'transformers_js'">
                 <div class="flex items-center justify-between ml-1">
                   <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Endpoint URL</label>
                   <div class="flex flex-wrap gap-1.5">

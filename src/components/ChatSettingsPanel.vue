@@ -153,13 +153,13 @@ async function fetchModels() {
   }
 }
 
-// Auto-fetch only for localhost when URL changes
+// Auto-fetch for localhost or transformers_js when URL/Type changes
 watch([
   () => localSettings.value.endpointUrl, 
   () => localSettings.value.endpointType,
-], ([url]) => {
+], ([url, type]) => {
   error.value = null;
-  if (url && isLocalhost(url as string)) {
+  if (type === 'transformers_js' || (url && isLocalhost(url as string))) {
     fetchModels();
   }
 });
@@ -265,13 +265,14 @@ async function handleRestoreDefaults() {
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
               >
-                <option :value="undefined">{{ formatLabel(resolvedSettings?.endpointType, resolvedSettings?.sources.endpointType) }}</option>
+                <option :value="undefined">{{ formatLabel(resolvedSettings?.endpointType === 'transformers_js' ? 'Transformers.js' : resolvedSettings?.endpointType, resolvedSettings?.sources.endpointType) }}</option>
                 <option value="openai">OpenAI Compatible</option>
                 <option value="ollama">Ollama</option>
+                <option value="transformers_js">Transformers.js (Experimental)</option>
               </select>
             </div>
 
-            <div class="space-y-2">
+            <div class="space-y-2" v-if="localSettings.endpointType !== 'transformers_js' && (localSettings.endpointType !== undefined || resolvedSettings?.endpointType !== 'transformers_js')">
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
               <input 
                 v-model="localSettings.endpointUrl"
@@ -288,7 +289,7 @@ async function handleRestoreDefaults() {
               </div>
             </div>
 
-            <div class="space-y-2">
+            <div class="space-y-2" v-if="localSettings.endpointType !== 'transformers_js' && (localSettings.endpointType !== undefined || resolvedSettings?.endpointType !== 'transformers_js')">
               <div class="flex items-center justify-between ml-1">
                 <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
                 <button 

@@ -10,7 +10,7 @@
 
 export type Role = 'user' | 'assistant' | 'system';
 export type StorageType = 'local' | 'opfs';
-export type EndpointType = 'openai' | 'ollama';
+export type EndpointType = 'openai' | 'ollama' | 'transformers_js';
 
 export interface LmParameters {
   temperature?: number;

@@ -2,6 +2,7 @@ import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } 
 import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
+import { TransformersJsProvider } from '../services/transformers-js-provider';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
@@ -355,7 +356,7 @@ export function useChat() {
       headers = settings.value.endpointHttpHeaders;
     }
 
-    if (!url) {
+    if (!url && type !== 'transformers_js') {
       if (mutableChat) { decTask(mutableChat.id, 'fetch'); }
       else if (!customEndpoint) {
         const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
@@ -372,6 +373,8 @@ export function useChat() {
           return new OllamaProvider({ endpoint: url, headers: mutableHeaders });
         case 'openai':
           return new OpenAIProvider({ endpoint: url, headers: mutableHeaders });
+        case 'transformers_js':
+          return new TransformersJsProvider();
         default: {
           const _ex: never = type;
           throw new Error(`Unhandled endpoint type: ${_ex}`);
@@ -681,6 +684,9 @@ export function useChat() {
       case 'ollama':
         provider = new OllamaProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
         break;
+      case 'transformers_js':
+        provider = new TransformersJsProvider();
+        break;
       default: {
         const _ex: never = type;
         throw new Error(`Unsupported endpoint type: ${_ex}`);
@@ -814,7 +820,7 @@ export function useChat() {
       const url = resolved.endpointUrl;
       let resolvedModel = chat.modelId || resolved.modelId;
 
-      if (url) {
+      if (url || type === 'transformers_js') {
         const models = await fetchAvailableModels(chat.id);
         if (models.length > 0) {
           const preferredModel = chat.modelId || resolved.modelId;
@@ -823,7 +829,7 @@ export function useChat() {
         }
       }
 
-      if (!url || !resolvedModel) {
+      if ((!url && type !== 'transformers_js') || !resolvedModel) {
         const models = await fetchAvailableModels(chat.id);
         setOnboardingDraft({ url, type, models, selectedModel: models[0] || '', });
         setIsOnboardingDismissed(false);
@@ -931,7 +937,7 @@ export function useChat() {
     registerLiveInstance(mutableChat);
     try {
       const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
-      if (!resolved.endpointUrl) { decTask(taskId, 'title'); return; }
+      if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') { decTask(taskId, 'title'); return; }
       const history = getChatBranch(mutableChat);
       const content = history[0]?.content || '';
       if (!content || typeof content !== 'string') { decTask(taskId, 'title'); return; }
@@ -945,6 +951,9 @@ export function useChat() {
         break;
       case 'ollama':
         titleProvider = new OllamaProvider({ endpoint: resolved.endpointUrl, headers: resolved.endpointHttpHeaders });
+        break;
+      case 'transformers_js':
+        titleProvider = new TransformersJsProvider();
         break;
       default: {
         const _ex: never = endpointType;

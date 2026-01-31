@@ -9,6 +9,7 @@ import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
 import license from 'rollup-plugin-license'
+import { viteStaticCopy } from 'vite-plugin-static-copy'
 
 // Ensure src/assets/licenses.json exists even in a fresh clone (it's gitignored)
 // This prevents Vite from failing during import analysis in tests.
@@ -42,6 +43,20 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: './',
+    server: {
+      headers: {
+        // Required for SharedArrayBuffer and multi-threaded WebAssembly (Transformers.js)
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      },
+    },
+    preview: {
+      headers: {
+        // Required for SharedArrayBuffer and multi-threaded WebAssembly (Transformers.js)
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      },
+    },
     // Inject global constants for compile-time conditional logic (tree-shaking)
     define: {
       __BUILD_MODE_IS_STANDALONE__: JSON.stringify(isStandalone),
@@ -54,6 +69,14 @@ export default defineConfig(({ mode }) => {
       }),
       VueDevTools(),
       vue(),
+      !isStandalone && viteStaticCopy({
+        targets: [
+          {
+            src: 'node_modules/@huggingface/transformers/dist/ort-wasm*',
+            dest: 'transformers'
+          }
+        ]
+      }),
       license({
         thirdParty: {
           includePrivate: false,

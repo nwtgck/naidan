@@ -13,10 +13,11 @@ import {
   Database, Settings2, BookmarkPlus,
   Cpu, Info,
   ChefHat,
-  Github, ExternalLink, Download
+  Github, ExternalLink, Download, BrainCircuit
 } from 'lucide-vue-next';
 import RecipeImportTab from './RecipeImportTab.vue';
 import ProviderProfilesTab from './ProviderProfilesTab.vue';
+import TransformersJsManager from './TransformersJsManager.vue';
 import StorageTab from './StorageTab.vue';
 import DeveloperTab from './DeveloperTab.vue';
 import AboutTab from './AboutTab.vue';
@@ -90,7 +91,7 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
 }
 
 // Tab State
-type Tab = 'connection' | 'recipes' | 'profiles' | 'storage' | 'developer' | 'about';
+type Tab = 'connection' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'developer' | 'about';
 const activeTab = ref<Tab>('connection');
 
 async function handleCancel() {
@@ -234,6 +235,15 @@ watch(() => props.isOpen, async (open) => {
               Provider Profiles
             </button>
             <button 
+              @click="activeTab = 'transformers_js'"
+              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              :class="activeTab === 'transformers_js' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              data-testid="tab-transformers-js"
+            >
+              <BrainCircuit class="w-4 h-4" />
+              Transformers.js
+            </button>
+            <button 
               @click="activeTab = 'recipes'"
               class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'recipes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -319,6 +329,7 @@ watch(() => props.isOpen, async (open) => {
             :has-unsaved-changes="hasUnsavedConnectionChanges"
             @save="initialFormState = JSON.stringify(pickConnectionFields(form))"
             @go-to-profiles="activeTab = 'profiles'"
+            @go-to-transformers-js="activeTab = 'transformers_js'"
           />
           <div v-else class="flex-1 overflow-y-auto min-h-0">
             <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
@@ -328,6 +339,11 @@ watch(() => props.isOpen, async (open) => {
                 v-if="activeTab === 'profiles'"
                 v-model:profiles="form.providerProfiles"
                 @go-to-connection="activeTab = 'connection'"
+              />
+
+              <!-- Transformers.js Tab -->
+              <TransformersJsManager 
+                v-if="activeTab === 'transformers_js'"
               />
 
               <!-- Recipes Tab -->
