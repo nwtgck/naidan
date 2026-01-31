@@ -48,9 +48,18 @@ const input = ref('');
 
 function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
   if (!value) return 'Default';
-  if (source === 'chat_group') return `${value} (Group)`;
-  if (source === 'global') return `${value} (Global)`;
-  return value;
+  switch (source) {
+  case 'chat_group':
+    return `${value} (Group)`;
+  case 'global':
+    return `${value} (Global)`;
+  case 'chat':
+  case undefined:
+    return value;
+  default: {
+    const _ex: never = source;
+    throw new Error(`Unhandled source: ${_ex}`);
+  }  }
 }
 
 const isCurrentChatStreaming = computed(() => {

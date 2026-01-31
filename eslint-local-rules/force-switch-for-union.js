@@ -52,17 +52,30 @@ const result = (() => {
       if (isLeftStringLiteral === isRightStringLiteral) return;
 
       const targetNode = isLeftStringLiteral ? right : left;
+
+      // Skip typeof checks (e.g., typeof x === 'string')
+      if (targetNode.type === 'UnaryExpression' && targetNode.operator === 'typeof') {
+        return;
+      }
+
       const originalNode = parserServices.esTreeNodeToTSNodeMap.get(targetNode);
       const type = checker.getTypeAtLocation(originalNode);
 
       // Check if it's a union type
       if (type.isUnion()) {
-        // Ensure all members of the union are string literals
-        const isStringLiteralUnion = type.types.every((t) => {
-          return t.isStringLiteral() || (t.getFlags() & ts.TypeFlags.StringLiteral);
+        // Ensure all members of the union are string literals, null, or undefined
+        const hasStringLiteral = type.types.some(t => t.isStringLiteral() || (t.getFlags() & ts.TypeFlags.StringLiteral));
+        const allAreCompatible = type.types.every((t) => {
+          const flags = t.getFlags();
+          return t.isStringLiteral() || 
+                 (flags & ts.TypeFlags.StringLiteral) ||
+                 (flags & ts.TypeFlags.UniqueESSymbol) ||
+                 (flags & ts.TypeFlags.ESSymbol) ||
+                 (flags & ts.TypeFlags.Null) ||
+                 (flags & ts.TypeFlags.Undefined);
         });
 
-        if (isStringLiteralUnion) {
+        if (hasStringLiteral && allAreCompatible) {
           context.report({
             node: test,
             messageId: 'preferSwitch',
