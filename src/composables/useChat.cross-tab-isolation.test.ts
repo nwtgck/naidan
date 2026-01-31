@@ -171,7 +171,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
       return {
         OpenAIProvider: function() {
           return {
-            chat: vi.fn().mockImplementation(async (_m, _mo, _u, onChunk, _p, _h, signal) => {
+            chat: vi.fn().mockImplementation(async (params: { onChunk: (c: string) => void, signal?: AbortSignal }) => {
+              const { onChunk, signal } = params;
               await Promise.resolve();
               // Generate enough chunks for state verification but not so many that it times out
               for (let i = 0; i < 10; i++) {

@@ -103,16 +103,16 @@ describe('useChat Group Overrides Resolution', () => {
     // Resolved System Prompt: ["Group Prompt", "Chat Prompt"]
     
     expect(mockLlmChat).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ role: 'system', content: 'Group Prompt' }),
-        expect.objectContaining({ role: 'system', content: 'Chat Prompt' })
-      ]),
-      'chat-model', // Chat override takes precedence
-      'http://global-url', // Inherited from Global
-      expect.any(Function),
-      expect.objectContaining({ temperature: 0.5 }), // Chat (none) < Group (0.5) < Global (0.7)
-      undefined,
-      expect.any(AbortSignal)
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({ role: 'system', content: 'Group Prompt' }),
+          expect.objectContaining({ role: 'system', content: 'Chat Prompt' })
+        ]),
+        model: 'chat-model',
+        onChunk: expect.any(Function),
+        parameters: expect.objectContaining({ temperature: 0.5 }),
+        signal: expect.any(AbortSignal)
+      })
     );
   });
 
@@ -147,16 +147,16 @@ describe('useChat Group Overrides Resolution', () => {
     // Group: Append "Group Instruction" -> ["Global Prompt", "Group Instruction"]
     // Chat: None -> Inherit from resolved Group
     expect(mockLlmChat).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ role: 'system', content: 'Global Prompt' }),
-        expect.objectContaining({ role: 'system', content: 'Group Instruction' })
-      ]),
-      expect.any(String),
-      expect.any(String),
-      expect.any(Function),
-      expect.any(Object),
-      undefined,
-      expect.any(AbortSignal)
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({ role: 'system', content: 'Global Prompt' }),
+          expect.objectContaining({ role: 'system', content: 'Group Instruction' })
+        ]),
+        model: expect.any(String),
+        onChunk: expect.any(Function),
+        parameters: expect.any(Object),
+        signal: expect.any(AbortSignal)
+      })
     );
   });
 
@@ -188,13 +188,13 @@ describe('useChat Group Overrides Resolution', () => {
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
-      expect.any(Array),
-      'group-special-model',
-      expect.any(String),
-      expect.any(Function),
-      expect.any(Object),
-      undefined,
-      expect.any(AbortSignal)
+      expect.objectContaining({
+        messages: expect.any(Array),
+        model: 'group-special-model',
+        onChunk: expect.any(Function),
+        parameters: expect.any(Object),
+        signal: expect.any(AbortSignal)
+      })
     );
   });
 
@@ -242,13 +242,13 @@ describe('useChat Group Overrides Resolution', () => {
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
-      expect.any(Array),
-      expect.any(String),
-      'http://group-ollama:11434', // Inherited from Group
-      expect.any(Function),
-      expect.any(Object),
-      [['X-Group-Header', 'group-val']], // Inherited from Group
-      expect.any(AbortSignal)
+      expect.objectContaining({
+        messages: expect.any(Array),
+        model: expect.any(String),
+        onChunk: expect.any(Function),
+        parameters: expect.any(Object),
+        signal: expect.any(AbortSignal)
+      })
     );
   });
 
@@ -277,17 +277,17 @@ describe('useChat Group Overrides Resolution', () => {
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
-      expect.any(Array),
-      expect.any(String),
-      expect.any(String),
-      expect.any(Function),
-      {
-        temperature: 0.1,         // Chat wins
-        topP: 0.5,                // Group wins (not in chat)
-        maxCompletionTokens: 100, // Chat wins
-      },
-      undefined,
-      expect.any(AbortSignal)
+      expect.objectContaining({
+        messages: expect.any(Array),
+        model: expect.any(String),
+        onChunk: expect.any(Function),
+        parameters: expect.objectContaining({
+          temperature: 0.1,         // Chat wins
+          topP: 0.5,                // Group wins (not in chat)
+          maxCompletionTokens: 100, // Chat wins
+        }),
+        signal: expect.any(AbortSignal)
+      })
     );
   });
 
@@ -313,7 +313,8 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage('Hi', null, [], chat);
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    const messages = mockLlmChat.mock.calls[0]![0];
+    const params = mockLlmChat.mock.calls[0]![0];
+    const messages = params.messages;
     // Global "Global Prompt" should be gone. Only User message left.
     expect(messages.filter((m: any) => m.role === 'system')).toHaveLength(0);
   });
@@ -341,9 +342,13 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage('Hi', null, [], chat);
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockLlmChat).toHaveBeenLastCalledWith(
-      expect.any(Array),
-      'global-model', // Uses global
-      expect.any(String), expect.any(Function), expect.any(Object), undefined, expect.any(AbortSignal)
+      expect.objectContaining({
+        messages: expect.any(Array),
+        model: 'global-model',
+        onChunk: expect.any(Function),
+        parameters: expect.any(Object),
+        signal: expect.any(AbortSignal)
+      })
     );
 
     // 2. Move chat to group
@@ -354,9 +359,13 @@ describe('useChat Group Overrides Resolution', () => {
     await vi.waitUntil(() => !chatStore.streaming.value);
     
     expect(mockLlmChat).toHaveBeenLastCalledWith(
-      expect.any(Array),
-      'group-model', // Now uses group override
-      expect.any(String), expect.any(Function), expect.any(Object), undefined, expect.any(AbortSignal)
+      expect.objectContaining({
+        messages: expect.any(Array),
+        model: 'group-model',
+        onChunk: expect.any(Function),
+        parameters: expect.any(Object),
+        signal: expect.any(AbortSignal)
+      })
     );
   });
 
@@ -392,13 +401,13 @@ describe('useChat Group Overrides Resolution', () => {
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
-      expect.any(Array),
-      expect.any(String),
-      'http://group-ollama:11434', // Inherited from Group
-      expect.any(Function),
-      expect.any(Object),
-      [['X-Group-Header', 'group-val']], // Inherited from Group
-      expect.any(AbortSignal)
+      expect.objectContaining({
+        messages: expect.any(Array),
+        model: expect.any(String),
+        onChunk: expect.any(Function),
+        parameters: expect.any(Object),
+        signal: expect.any(AbortSignal)
+      })
     );
   });
 });

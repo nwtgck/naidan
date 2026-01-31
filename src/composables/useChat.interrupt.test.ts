@@ -70,7 +70,8 @@ describe('useChat Interruption', () => {
 
     // 1. Start a slow generation
     let firstGenAborted = false;
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk, _params, _headers, signal) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void, signal: AbortSignal }) => {
+      const { onChunk, signal } = params;
       signal.addEventListener('abort', () => {
         firstGenAborted = true;
       });
@@ -97,8 +98,8 @@ describe('useChat Interruption', () => {
     const firstAssistantMsgId = userMsg.replies.items[0].id;
 
     // 2. Call regenerate while first one is still running
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('Second Response');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Second Response');
     });
 
     await regenerateMessage(firstAssistantMsgId);
@@ -132,7 +133,8 @@ describe('useChat Interruption', () => {
 
     // 1. Start a slow generation
     let firstGenAborted = false;
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk, _params, _headers, signal) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void, signal: AbortSignal }) => {
+      const { onChunk, signal } = params;
       signal.addEventListener('abort', () => {
         firstGenAborted = true;
       });
@@ -148,8 +150,8 @@ describe('useChat Interruption', () => {
     const userMsg = chat.root.items[0];
 
     // 2. Call editMessage (resend) while first one is still running
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('Edited Response');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Edited Response');
     });
 
     await editMessage(userMsg.id, 'Hello Again');

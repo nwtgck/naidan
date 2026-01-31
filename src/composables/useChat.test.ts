@@ -42,10 +42,10 @@ vi.mock('./useSettings', () => ({
 }));
 
 // Mock LLM Provider
-const mockLlmChat = vi.fn().mockImplementation(async (_msg: any[], _model: string, _url: string, onChunk: (chunk: string) => void) => {
-  onChunk('Hello');
+const mockLlmChat = vi.fn().mockImplementation(async (params: { onChunk: (chunk: string) => void }) => {
+  params.onChunk('Hello');
   await new Promise(r => setTimeout(r, 10)); // Simulate network delay
-  onChunk(' World');
+  params.onChunk(' World');
 });
 
 vi.mock('../services/llm', () => {
@@ -140,11 +140,11 @@ describe('useChat Composable Logic', () => {
     // Mock a slow LLM response
     let resolveGen: () => void;
     const genStarted = new Promise<void>(resolve => resolveGen = resolve);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('Started...');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Started...');
       resolveGen();
       await new Promise(r => setTimeout(r, 100)); // Simulate slow generation
-      onChunk(' Finished');
+      params.onChunk(' Finished');
     });
 
     const result = await sendMessage('Start background generation');
@@ -390,8 +390,8 @@ describe('useChat Composable Logic', () => {
     }) as any);
 
     // 1. Send first message and get first response
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('First Response');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('First Response');
     });
     await sendMessage('Hello');
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first generation to complete
@@ -404,8 +404,8 @@ describe('useChat Composable Logic', () => {
     expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
 
     // 2. Regenerate
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('Second Response');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Second Response');
     });
     await regenerateMessage(firstAssistantMsg!.id);
     await vi.waitUntil(() => (userMsg?.replies.items.length ?? 0) >= 2); 
@@ -767,9 +767,9 @@ describe('useChat Composable Logic', () => {
     __testOnlySetCurrentChat(chatObj as any);
 
     // Mock the LLM provider for title generation
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('Paris');
-      onChunk(' Title');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Paris');
+      params.onChunk(' Title');
     });
 
     const promise = generateChatTitle(chatObj.id);
@@ -795,8 +795,8 @@ describe('useChat Composable Logic', () => {
     });
     __testOnlySetCurrentChat(chatObj as any);
 
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('New Better Title');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('New Better Title');
     });
 
     chatObj.title = null; // Clear title to allow auto-generation to proceed

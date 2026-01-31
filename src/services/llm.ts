@@ -47,17 +47,15 @@ const OllamaTagsSchema = z.object({
 });
 
 export interface LLMProvider {
-  chat(
-    messages: ChatMessage[],
-    model: string,
-    endpoint: string,
-    onChunk: (chunk: string) => void,
-    parameters?: LmParameters,
-    headers?: [string, string][],
-    signal?: AbortSignal,
-  ): Promise<void>;
+  chat(params: {
+    messages: ChatMessage[];
+    model: string;
+    onChunk: (chunk: string) => void;
+    parameters?: LmParameters;
+    signal?: AbortSignal;
+  }): Promise<void>;
   
-  listModels(endpoint: string, headers?: [string, string][], signal?: AbortSignal): Promise<string[]>;
+  listModels(params: { signal?: AbortSignal }): Promise<string[]>;
 }
 
 interface OpenAICompletionRequest {
@@ -73,15 +71,24 @@ interface OpenAICompletionRequest {
 }
 
 export class OpenAIProvider implements LLMProvider {
-  async chat(
-    messages: ChatMessage[],
-    model: string,
-    endpoint: string,
-    onChunk: (chunk: string) => void,
-    parameters?: LmParameters,
-    headers?: [string, string][],
-    signal?: AbortSignal,
-  ): Promise<void> {
+  private config: {
+    endpoint: string;
+    headers?: [string, string][];
+  };
+
+  constructor(config: { endpoint: string; headers?: [string, string][] }) {
+    this.config = config;
+  }
+
+  async chat(params: {
+    messages: ChatMessage[];
+    model: string;
+    onChunk: (chunk: string) => void;
+    parameters?: LmParameters;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    const { messages, model, onChunk, parameters, signal } = params;
+    const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
     const body: OpenAICompletionRequest = {
       model,
@@ -176,7 +183,9 @@ export class OpenAIProvider implements LLMProvider {
     }
   }
 
-  async listModels(endpoint: string, headers?: [string, string][], signal?: AbortSignal): Promise<string[]> {
+  async listModels(params: { signal?: AbortSignal }): Promise<string[]> {
+    const { signal } = params;
+    const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/models`;
     let response: Response;
     try {
@@ -230,15 +239,24 @@ interface OllamaChatRequest {
 }
 
 export class OllamaProvider implements LLMProvider {
-  async chat(
-    messages: ChatMessage[],
-    model: string,
-    endpoint: string,
-    onChunk: (chunk: string) => void,
-    parameters?: LmParameters,
-    headers?: [string, string][],
-    signal?: AbortSignal,
-  ): Promise<void> {
+  private config: {
+    endpoint: string;
+    headers?: [string, string][];
+  };
+
+  constructor(config: { endpoint: string; headers?: [string, string][] }) {
+    this.config = config;
+  }
+
+  async chat(params: {
+    messages: ChatMessage[];
+    model: string;
+    onChunk: (chunk: string) => void;
+    parameters?: LmParameters;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    const { messages, model, onChunk, parameters, signal } = params;
+    const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
 
     // Transform messages to Ollama format
@@ -384,7 +402,9 @@ export class OllamaProvider implements LLMProvider {
     }
   }
 
-  async listModels(endpoint: string, headers?: [string, string][], signal?: AbortSignal): Promise<string[]> {
+  async listModels(params: { signal?: AbortSignal }): Promise<string[]> {
+    const { signal } = params;
+    const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/tags`;
     let response: Response;
     try {

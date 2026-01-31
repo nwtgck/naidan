@@ -1,7 +1,7 @@
 import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } from 'vue';
 import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
 import { storageService } from '../services/storage';
-import { OpenAIProvider, OllamaProvider } from '../services/llm';
+import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
@@ -327,9 +327,12 @@ export function useChat() {
     }
     
     try {
-      const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
       const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      const models = await provider.listModels(url, mutableHeaders);
+      const provider = type === 'ollama' 
+        ? new OllamaProvider({ endpoint: url, headers: mutableHeaders }) 
+        : new OpenAIProvider({ endpoint: url, headers: mutableHeaders });
+      
+      const models = await provider.listModels({});
       const result = Array.isArray(models) ? models : [];
       if ((mutableChat && _currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) || (!mutableChat && !chatId)) {
         availableModels.value = result;
@@ -595,8 +598,19 @@ export function useChat() {
     const resolvedModel = assistantNode.modelId || resolved.modelId;
 
     try {
-      const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-      const headers = resolved.endpointHttpHeaders;
+      let provider: LLMProvider;
+      switch (type) {
+      case 'openai':
+        provider = new OpenAIProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
+        break;
+      case 'ollama':
+        provider = new OllamaProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
+        break;
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unsupported endpoint type: ${_ex}`);
+      }
+      }
       const finalMessages: ChatMessage[] = [];
       resolved.systemPromptMessages.forEach(content => finalMessages.push({ role: 'system', content }));
 
@@ -621,21 +635,27 @@ export function useChat() {
 
       let lastSave = 0;
       let isSaving = false;
-      await provider.chat(finalMessages, resolvedModel, url, async (chunk) => {
-        assistantNode.content += chunk;
-        if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
-          triggerRef(_currentChat);
-        }
-        
-        const now = Date.now();
-        if (now - lastSave > 500 && !isSaving) {
-          isSaving = true;
-          try {
-            await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
-            lastSave = Date.now();
-          } finally { isSaving = false; }
-        }
-      }, resolved.lmParameters, headers, controller.signal);
+      await provider.chat({
+        messages: finalMessages,
+        model: resolvedModel,
+        onChunk: async (chunk: string) => {
+          assistantNode.content += chunk;
+          if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
+            triggerRef(_currentChat);
+          }
+          
+          const now = Date.now();
+          if (now - lastSave > 500 && !isSaving) {
+            isSaving = true;
+            try {
+              await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
+              lastSave = Date.now();
+            } finally { isSaving = false; }
+          }
+        },
+        parameters: resolved.lmParameters,
+        signal: controller.signal
+      });
 
       await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
       processThinking(assistantNode);
@@ -819,7 +839,20 @@ export function useChat() {
       if (!content || typeof content !== 'string') { decTask(taskId, 'title'); return; }
 
       let generatedTitle = '';
-      const titleProvider = resolved.endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+      const endpointType = resolved.endpointType;
+      let titleProvider: LLMProvider;
+      switch (endpointType) {
+      case 'openai':
+        titleProvider = new OpenAIProvider({ endpoint: resolved.endpointUrl, headers: resolved.endpointHttpHeaders });
+        break;
+      case 'ollama':
+        titleProvider = new OllamaProvider({ endpoint: resolved.endpointUrl, headers: resolved.endpointHttpHeaders });
+        break;
+      default: {
+        const _ex: never = endpointType;
+        throw new Error(`Unsupported endpoint type for title generation: ${_ex}`);
+      }
+      }
       const titleGenModel = settings.value.titleModelId || history[history.length - 1]?.modelId || resolved.modelId;
       if (!titleGenModel) return;
 
@@ -833,9 +866,14 @@ export function useChat() {
         { role: 'user', content: `Message content to summarize: "${content.slice(0, 1000)}"` },
       ];
 
-      await titleProvider.chat(promptMsgs, titleGenModel, resolved.endpointUrl, (chunk) => {
-        generatedTitle += chunk;
-      }, undefined, resolved.endpointHttpHeaders, signal);
+      await titleProvider.chat({
+        messages: promptMsgs,
+        model: titleGenModel,
+        onChunk: (chunk: string) => {
+          generatedTitle += chunk;
+        },
+        signal
+      });
 
       const finalTitle = cleanGeneratedTitle(generatedTitle);
       if (finalTitle) {

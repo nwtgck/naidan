@@ -79,15 +79,15 @@ vi.mock('../services/storage', () => ({
 vi.mock('../services/llm', () => {
   return {
     OpenAIProvider: class {
-      chat = vi.fn().mockImplementation((_msgs: any, _model: any, _end: any, onChunk: any) => {
-        onChunk('Response');
+      chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
+        params.onChunk('Response');
         return Promise.resolve();
       });
       listModels = vi.fn().mockResolvedValue(['test-model']);
     },
     OllamaProvider: class {
-      chat = vi.fn().mockImplementation((_msgs: any, _model: any, _end: any, onChunk: any) => {
-        onChunk('Response');
+      chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
+        params.onChunk('Response');
         return Promise.resolve();
       });
       listModels = vi.fn().mockResolvedValue(['test-model']);

@@ -3,7 +3,7 @@ import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, t
 import { storageService } from '../services/storage';
 import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
-import { OpenAIProvider, OllamaProvider } from '../services/llm';
+import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
 import { StorageTypeSchemaDto } from '../models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
 
@@ -107,12 +107,22 @@ export function useSettings() {
     }
     isFetchingModels.value = true;
     try {
-      const provider = type === 'ollama' 
-        ? new OllamaProvider() 
-        : new OpenAIProvider();
-      
       const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      const models = await provider.listModels(url, mutableHeaders);
+      let provider: LLMProvider;
+      switch (type) {
+      case 'openai':
+        provider = new OpenAIProvider({ endpoint: url, headers: mutableHeaders });
+        break;
+      case 'ollama':
+        provider = new OllamaProvider({ endpoint: url, headers: mutableHeaders });
+        break;
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unsupported endpoint type: ${_ex}`);
+      }
+      }
+      
+      const models = await provider.listModels({});
       availableModels.value = models;
       return models;
     } catch (err) {

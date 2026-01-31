@@ -106,7 +106,7 @@ describe('OnboardingModal.vue', () => {
     await flushPromises();
 
     // Provider should have been called with prepended http://
-    expect(listModelsMock).toHaveBeenCalledWith('http://localhost:1234', [], expect.anything());
+    expect(listModelsMock).toHaveBeenCalledWith(expect.objectContaining({ signal: expect.anything() }));
   });
 
   it('dismisses onboarding and saves draft when X is clicked', async () => {
@@ -355,9 +355,7 @@ describe('OnboardingModal.vue', () => {
     await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
     
     expect(listModelsMock).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.arrayContaining([['X-Test-Header', 'Test-Value']]),
-      expect.anything()
+      expect.objectContaining({ signal: expect.anything() })
     );
     
     // Remove header

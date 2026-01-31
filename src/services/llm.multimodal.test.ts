@@ -8,7 +8,7 @@ describe('LLM Providers - Multimodal Requests', () => {
   });
 
   it('OpenAIProvider should format multimodal messages correctly', async () => {
-    const provider = new OpenAIProvider();
+    const provider = new OpenAIProvider({ endpoint: 'http://test.api' });
     (global.fetch as any).mockResolvedValue({
       ok: true,
       body: {
@@ -30,7 +30,11 @@ describe('LLM Providers - Multimodal Requests', () => {
       }
     ];
 
-    await provider.chat(messages as any, 'gpt-4-vision', 'http://test.api', () => {});
+    await provider.chat({
+      messages: messages as any,
+      model: 'gpt-4-vision',
+      onChunk: () => {}
+    });
 
     const fetchCall = (global.fetch as any).mock.calls[0];
     const body = JSON.parse(fetchCall[1].body);
@@ -44,7 +48,7 @@ describe('LLM Providers - Multimodal Requests', () => {
   });
 
   it('OllamaProvider should handle multimodal messages correctly (string content + images array)', async () => {
-    const provider = new OllamaProvider();
+    const provider = new OllamaProvider({ endpoint: 'http://test.api' });
     (global.fetch as any).mockResolvedValue({
       ok: true,
       body: {
@@ -66,7 +70,11 @@ describe('LLM Providers - Multimodal Requests', () => {
       }
     ];
 
-    await provider.chat(messages as any, 'llava', 'http://test.api', () => {});
+    await provider.chat({
+      messages: messages as any,
+      model: 'llava',
+      onChunk: () => {}
+    });
 
     const fetchCall = (global.fetch as any).mock.calls[0];
     const body = JSON.parse(fetchCall[1].body);

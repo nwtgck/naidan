@@ -23,13 +23,15 @@ vi.mock('../composables/useSettings', () => ({
 let triggerChunk: (chunk: string) => void;
 vi.mock('../services/llm', () => ({
   OpenAIProvider: class {
-    async chat(_msg: unknown[], _model: string, _url: string, onChunk: (c: string) => void) {
-      triggerChunk = onChunk;
+    constructor() {}
+    async chat(params: { onChunk: (c: string) => void }) {
+      triggerChunk = params.onChunk;
       return new Promise<void>(() => {});
     }
     async listModels() { return ['gpt-4']; }
   },
   OllamaProvider: class {
+    constructor() {}
     async listModels() { return []; }
   },
 }));

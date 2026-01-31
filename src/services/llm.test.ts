@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OpenAIProvider, OllamaProvider } from './llm';
-import type { MessageNode } from '../models/types';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 
 describe('OpenAIProvider', () => {
@@ -8,7 +7,7 @@ describe('OpenAIProvider', () => {
   const { errorCount, clearEvents } = useGlobalEvents();
 
   beforeEach(() => {
-    provider = new OpenAIProvider();
+    provider = new OpenAIProvider({ endpoint: 'http://localhost:8282/v1' });
     vi.resetAllMocks();
     clearEvents();
   });
@@ -30,10 +29,13 @@ describe('OpenAIProvider', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const messages: MessageNode[] = [];
     const onChunk = vi.fn();
 
-    await provider.chat(messages, 'gpt-3.5', 'http://localhost:8282/v1', onChunk);
+    await provider.chat({
+      messages: [],
+      model: 'gpt-3.5',
+      onChunk
+    });
 
     expect(onChunk).toHaveBeenCalledWith('Hello');
   });
@@ -52,7 +54,12 @@ describe('OpenAIProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const headers: [string, string][] = [['X-Custom-Header', 'test-value']];
-    await provider.chat([], 'gpt-3.5', 'http://localhost:8282/v1', vi.fn(), {}, headers);
+    const customProvider = new OpenAIProvider({ endpoint: 'http://localhost:8282/v1', headers });
+    await customProvider.chat({
+      messages: [],
+      model: 'gpt-3.5',
+      onChunk: vi.fn()
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/chat/completions'),
@@ -70,7 +77,8 @@ describe('OpenAIProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const headers: [string, string][] = [['Authorization', 'Bearer secret']];
-    await provider.listModels('http://localhost:8282/v1', headers);
+    const customProvider = new OpenAIProvider({ endpoint: 'http://localhost:8282/v1', headers });
+    await customProvider.listModels({});
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/models'),
@@ -86,7 +94,7 @@ describe('OllamaProvider', () => {
   const { events, errorCount, clearEvents } = useGlobalEvents();
 
   beforeEach(() => {
-    provider = new OllamaProvider();
+    provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
     vi.resetAllMocks();
     clearEvents();
   });
@@ -107,10 +115,13 @@ describe('OllamaProvider', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const messages: MessageNode[] = [];
     const onChunk = vi.fn();
 
-    await provider.chat(messages, 'llama3', 'http://localhost:11434', onChunk);
+    await provider.chat({
+      messages: [],
+      model: 'llama3',
+      onChunk
+    });
 
     expect(onChunk).toHaveBeenCalledTimes(2);
     expect(errorCount.value).toBe(0);
@@ -133,7 +144,11 @@ describe('OllamaProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const onChunk = vi.fn();
-    await provider.chat([], 'llama3', 'http://localhost:11434', onChunk);
+    await provider.chat({
+      messages: [],
+      model: 'llama3',
+      onChunk
+    });
 
     expect(onChunk).toHaveBeenCalledWith('valid');
     expect(onChunk).toHaveBeenCalledTimes(1);
@@ -170,7 +185,11 @@ describe('OllamaProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const onChunk = vi.fn();
-    await provider.chat([], 'llama3', 'http://localhost:11434', onChunk);
+    await provider.chat({
+      messages: [],
+      model: 'llama3',
+      onChunk
+    });
 
     const calls = onChunk.mock.calls.map(c => c[0]);
     expect(calls).toEqual(['<think>', 'I am thinking', ' more', '</think>', 'Final answer']);
@@ -193,7 +212,11 @@ describe('OllamaProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const onChunk = vi.fn();
-    await provider.chat([], 'llama3', 'http://localhost:11434', onChunk);
+    await provider.chat({
+      messages: [],
+      model: 'llama3',
+      onChunk
+    });
 
     const calls = onChunk.mock.calls.map(c => c[0]);
     expect(calls).toEqual(['<think>', 'thought', '</think>']);
@@ -213,7 +236,12 @@ describe('OllamaProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const headers: [string, string][] = [['X-Custom', 'ollama-test']];
-    await provider.chat([], 'llama3', 'http://localhost:11434', vi.fn(), {}, headers);
+    const customProvider = new OllamaProvider({ endpoint: 'http://localhost:11434', headers });
+    await customProvider.chat({
+      messages: [],
+      model: 'llama3',
+      onChunk: vi.fn()
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/api/chat'),
@@ -231,7 +259,8 @@ describe('OllamaProvider', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const headers: [string, string][] = [['X-Header', 'val']];
-    await provider.listModels('http://localhost:11434', headers);
+    const customProvider = new OllamaProvider({ endpoint: 'http://localhost:11434', headers });
+    await customProvider.listModels({});
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/api/tags'),
@@ -245,7 +274,7 @@ describe('OllamaProvider', () => {
     vi.stubGlobal('location', { protocol: 'file:' });
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Failed to fetch')));
 
-    await expect(provider.listModels('http://localhost:11434')).rejects.toThrow(
+    await expect(provider.listModels({})).rejects.toThrow(
       /OLLAMA_ORIGINS='\*' ollama serve/
     );
 
@@ -264,7 +293,7 @@ describe('OllamaProvider', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(provider.listModels('http://localhost:11434')).rejects.toThrow(
+    await expect(provider.listModels({})).rejects.toThrow(
       /Failed to fetch models \(400\): Specific API Error Message/
     );
 

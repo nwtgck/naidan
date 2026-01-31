@@ -79,10 +79,10 @@ describe('useChat Streaming State Logic', () => {
     
     let resolveGen: () => void;
     const p = new Promise<void>(r => resolveGen = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('Start');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Start');
       await p;
-      onChunk('End');
+      params.onChunk('End');
     });
 
     const sendPromise = sendMessage('Hello');
@@ -106,7 +106,8 @@ describe('useChat Streaming State Logic', () => {
     
     let resolveGen: () => void;
     const p = new Promise<void>(r => resolveGen = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, _on, _p, signal) => {
+    mockLlmChat.mockImplementationOnce(async (params: { signal?: AbortSignal }) => {
+      const { signal } = params;
       await p;
       if (signal?.aborted) throw new Error('Aborted');
     });

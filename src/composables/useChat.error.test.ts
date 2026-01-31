@@ -94,8 +94,8 @@ describe('useChat Error Handling', () => {
 
     // 2. Retry (Success)
     // The next call to mockChat (for retry) should succeed
-    mockChat.mockImplementation(async (_msgs, _model, _url, onChunk) => {
-      onChunk('Success');
+    mockChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Success');
     });
 
     await regenerateMessage(failedMsg!.id);

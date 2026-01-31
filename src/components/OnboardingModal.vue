@@ -4,7 +4,7 @@ import { useSettings } from '../composables/useSettings';
 import ThemeToggle from './ThemeToggle.vue';
 import { useToast } from '../composables/useToast';
 import { useLayout } from '../composables/useLayout';
-import { OpenAIProvider, OllamaProvider } from '../services/llm';
+import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
 import { type EndpointType, type Settings as SettingsType } from '../models/types';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import Logo from './Logo.vue';
@@ -90,8 +90,20 @@ async function handleConnect() {
   abortController = new AbortController();
 
   try {
-    const provider = selectedType.value === 'openai' ? new OpenAIProvider() : new OllamaProvider();
-    const models = await provider.listModels(url, customHeaders.value, abortController.signal);
+    let provider: LLMProvider;
+    switch (selectedType.value) {
+    case 'openai':
+      provider = new OpenAIProvider({ endpoint: url, headers: customHeaders.value });
+      break;
+    case 'ollama':
+      provider = new OllamaProvider({ endpoint: url, headers: customHeaders.value });
+      break;
+    default: {
+      const _ex: never = selectedType.value;
+      throw new Error(`Unsupported endpoint type: ${_ex}`);
+    }
+    }
+    const models = await provider.listModels({ signal: abortController.signal });
 
     if (models.length === 0) {
       throw new Error('No models found at this endpoint.');

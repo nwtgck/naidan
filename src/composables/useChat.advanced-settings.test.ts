@@ -69,8 +69,8 @@ describe('useChat Advanced Settings Resolution', () => {
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'profile-gpt', 'chat-gpt']);
     mockOllamaModels.mockResolvedValue(['llama3']);
     
-    mockOpenAIChat.mockImplementation(async (_msg, _model, _url, onChunk) => onChunk('OpenAI Resp'));
-    mockOllamaChat.mockImplementation(async (_msg, _model, _url, onChunk) => onChunk('Ollama Resp'));
+    mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Resp'));
+    mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Resp'));
     
     const chat = await createNewChat();
     await openChat(chat!.id);
@@ -79,7 +79,8 @@ describe('useChat Advanced Settings Resolution', () => {
   describe('System Prompt Resolution', () => {
     it('uses Global System Prompt when nothing else is set', async () => {
       await sendMessage('Hi');
-      const messages = mockOpenAIChat.mock.calls[0]![0];
+      const params = mockOpenAIChat.mock.calls[0]![0];
+      const messages = params.messages;
       expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
     });
 
@@ -96,7 +97,8 @@ describe('useChat Advanced Settings Resolution', () => {
       });
 
       await sendMessage('Hi');
-      const messages = mockOpenAIChat.mock.calls[0]![0];
+      const params = mockOpenAIChat.mock.calls[0]![0];
+      const messages = params.messages;
       // Should find Global Default Prompt, NOT Profile Prompt
       expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
     });
@@ -105,7 +107,8 @@ describe('useChat Advanced Settings Resolution', () => {
       await updateChatSettings(currentChat.value!.id, { systemPrompt: { content: 'Chat Custom Prompt', behavior: 'override' } });
 
       await sendMessage('Hi');
-      const messages = mockOpenAIChat.mock.calls[0]![0];
+      const params = mockOpenAIChat.mock.calls[0]![0];
+      const messages = params.messages;
       expect(messages).toHaveLength(2); // System + User
       expect(messages[0]).toEqual({ role: 'system', content: 'Chat Custom Prompt' });
     });
@@ -124,7 +127,8 @@ describe('useChat Advanced Settings Resolution', () => {
       await updateChatSettings(currentChat.value!.id, { systemPrompt: { content: 'Chat Extra Prompt', behavior: 'append' } });
 
       await sendMessage('Hi');
-      const messages = mockOpenAIChat.mock.calls[0]![0];
+      const params = mockOpenAIChat.mock.calls[0]![0];
+      const messages = params.messages;
       // Should find Global Default Prompt + Chat Extra Prompt as separate messages
       expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
       expect(messages[1]).toEqual({ role: 'system', content: 'Chat Extra Prompt' });
@@ -161,7 +165,8 @@ describe('useChat Advanced Settings Resolution', () => {
       });
 
       await sendMessage('Hi');
-      const params = mockOpenAIChat.mock.calls[0]![4];
+      const callParams = mockOpenAIChat.mock.calls[0]![0];
+      const params = callParams.parameters;
       
       expect(params).toEqual({
         temperature: 0.1,         // From Global (Profile 0.5 ignored)
@@ -178,7 +183,8 @@ describe('useChat Advanced Settings Resolution', () => {
     it('passes stop sequences as array', async () => {
       await updateChatSettings(currentChat.value!.id, { lmParameters: { stop: ['\n', 'User:'] } });
       await sendMessage('Hi');
-      const params = mockOpenAIChat.mock.calls[0]![4];
+      const callParams = mockOpenAIChat.mock.calls[0]![0];
+      const params = callParams.parameters;
       expect(params.stop).toEqual(['\n', 'User:']);
     });
   });

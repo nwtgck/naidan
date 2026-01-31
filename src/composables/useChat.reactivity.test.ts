@@ -31,14 +31,12 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-import type { MessageNode } from '../models/types';
-
 // Mock LLM
 let onChunkCallback: (chunk: string) => void;
 vi.mock('../services/llm', () => {
   class MockOpenAI {
-    chat = vi.fn().mockImplementation(async (_msg: MessageNode[], _model: string, _url: string, onChunk: (c: string) => void) => {
-      onChunkCallback = onChunk;
+    chat = vi.fn().mockImplementation(async (params: { onChunk: (c: string) => void }) => {
+      onChunkCallback = params.onChunk;
       return new Promise<void>(() => {}); 
     });
     listModels = vi.fn().mockResolvedValue([]);
