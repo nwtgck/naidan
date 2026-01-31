@@ -13,7 +13,7 @@ export const rule = createRule({
       description: 'Enforce switch statements for string literal union type checks to ensure exhaustiveness',
     },
     messages: {
-      preferSwitch: `Use a switch statement with an exhaustive never check for union types instead of if/ternary.
+      preferSwitch: `Use a switch statement with an exhaustive never check for union types instead of \`{{condition}}\`.
 This ensures that all cases are handled when the union type is expanded.
 Consider using an IIFE if you need to assign the result:
 
@@ -32,6 +32,7 @@ const result = (() => {
   },
   defaultOptions: [],
   create(context) {
+    const sourceCode = context.sourceCode;
     const parserServices = ESLintUtils.getParserServices(context);
     const checker = parserServices.program.getTypeChecker();
 
@@ -79,6 +80,9 @@ const result = (() => {
           context.report({
             node: test,
             messageId: 'preferSwitch',
+            data: {
+              condition: sourceCode.getText(test),
+            },
           });
         }
       }

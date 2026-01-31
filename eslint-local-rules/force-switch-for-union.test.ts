@@ -63,6 +63,7 @@ describe('force-switch-for-union rule', () => {
     `;
     const messages = await lintCode(code);
     expect(messages.some(m => m.ruleId === 'local-rules/force-switch-for-union')).toBe(true);
+    expect(messages[0].message).toContain("instead of `t === 'a'`");
   });
 
   it('should report error for if-statement with object property access', async () => {
@@ -78,6 +79,7 @@ describe('force-switch-for-union rule', () => {
     `;
     const messages = await lintCode(code);
     expect(messages.some(m => m.ruleId === 'local-rules/force-switch-for-union')).toBe(true);
+    expect(messages[0].message).toContain("instead of `config.kind === 'A'`");
   });
 
   it('should NOT report error for union type check inside a logical expression', async () => {
