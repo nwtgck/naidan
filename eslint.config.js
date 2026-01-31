@@ -3,6 +3,7 @@ import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
 import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-init.js';
+// import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -62,7 +63,7 @@ import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-in
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**'],
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -74,6 +75,8 @@ export default tseslint.config(
         parser: tseslint.parser,
         extraFileExtensions: ['.vue'],
         sourceType: 'module',
+        project: ['./tsconfig.app.json', './tsconfig.node.json'],
+        tsconfigRootDir: import.meta.dirname,
       },
       globals: {
         ...globals.browser,
@@ -112,6 +115,7 @@ export default tseslint.config(
     },
   },
   ensureFileProtocolInit,
+  // forceSwitchForUnion,
   {
     files: ['**/*.test.ts'],
     languageOptions: {
@@ -122,6 +126,7 @@ export default tseslint.config(
     rules: {
       // '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-explicit-any': 'off',
+      'local-rules-switch/force-switch-for-union': 'off',
     }
   }
 );
