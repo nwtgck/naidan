@@ -3,6 +3,7 @@ import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, 
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
 import { TransformersJsProvider } from '../services/transformers-js-provider';
+import { transformersJsService } from '../services/transformers-js';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
@@ -106,9 +107,16 @@ watch(_currentChat, (newChat, oldChat) => {
   if (oldChat) unregisterLiveInstance(toRaw(oldChat).id);
   if (newChat) registerLiveInstance(newChat); // Already reactive or raw
 });
-
+  
+transformersJsService.subscribeModelList(async () => {
+  const { fetchAvailableModels, currentChat, resolvedSettings } = useChat();
+  const type = resolvedSettings.value?.endpointType;
+  if (type === 'transformers_js') {
+    await fetchAvailableModels(currentChat.value?.id);
+  }
+});
+  
 // --- Synchronization ---
-
 function syncLiveInstancesWithSidebar() {
   const sync = (items: SidebarItem[], parentGroupId: string | null) => {
     for (const item of items) {

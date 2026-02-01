@@ -47,7 +47,7 @@ function removeHeader(index: number) {
 }
 
 const isValidUrl = computed(() => {
-  return !!getNormalizedUrl();
+  return selectedType.value === 'transformers_js' || !!getNormalizedUrl();
 });
 
 function getNormalizedUrl() {
@@ -62,6 +62,19 @@ function getNormalizedUrl() {
     return null;
   }
 }
+
+function isLocalhost(url: string | undefined) {
+  if (!url) return false;
+  return url.includes('localhost') || url.includes('127.0.0.1');
+}
+
+// Auto-fetch for localhost or transformers_js when URL/Type changes
+watch([selectedType, customUrl], ([type, url]) => {
+  error.value = null;
+  if (type === 'transformers_js' || isLocalhost(url)) {
+    handleConnect();
+  }
+});
 
 function selectPreset(preset: typeof ENDPOINT_PRESETS[number]) {
   selectedType.value = preset.type;

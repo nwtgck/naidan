@@ -5,6 +5,7 @@ import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
 import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
 import { TransformersJsProvider } from '../services/transformers-js-provider';
+import { transformersJsService } from '../services/transformers-js';
 import { StorageTypeSchemaDto } from '../models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
 
@@ -30,6 +31,13 @@ storageService.subscribeToChanges(async (event) => {
     if (fresh) {
       _settings.value = fresh;
     }
+  }
+});
+
+transformersJsService.subscribeModelList(async () => {
+  if (_settings.value.endpointType === 'transformers_js') {
+    const { fetchModels } = useSettings();
+    await fetchModels();
   }
 });
 

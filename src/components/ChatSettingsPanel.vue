@@ -52,7 +52,8 @@ onMounted(() => {
   syncLocalWithCurrent();
   if (currentChat.value) {
     const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
-    if (isLocalhost(url)) {
+    const type = currentChat.value.endpointType || settings.value.endpointType;
+    if (type === 'transformers_js' || isLocalhost(url)) {
       fetchModels();
     }
   }

@@ -28,8 +28,15 @@ let currentDevice: string = 'wasm';
 type ProgressListener = (status: typeof loadingStatus, progress: number, error: string | null, isCached: boolean, isLoadingFromCache: boolean) => void;
 const listeners: Set<ProgressListener> = new Set();
 
+type ModelListListener = () => void;
+const modelListListeners: Set<ModelListListener> = new Set();
+
 function notify() {
   listeners.forEach(l => l(loadingStatus, loadingProgress, loadingError, isCached, isLoadingFromCache));
+}
+
+function notifyModelListChange() {
+  modelListListeners.forEach(l => l());
 }
 
 // Worker management
@@ -75,6 +82,11 @@ export const transformersJsService = {
     listeners.add(listener);
     listener(loadingStatus, loadingProgress, loadingError, isCached, isLoadingFromCache);
     return () => listeners.delete(listener);
+  },
+
+  subscribeModelList(listener: ModelListListener) {
+    modelListListeners.add(listener);
+    return () => modelListListeners.delete(listener);
   },
 
   getState() {
@@ -194,6 +206,7 @@ export const transformersJsService = {
 
     // Create per-file completion marker
     await currentDir.getFileHandle(`.${lastPart}.complete`, { create: true });
+    notifyModelListChange();
   },
 
   async deleteModel(modelId: string) {
@@ -232,6 +245,7 @@ export const transformersJsService = {
         await hfDir.removeEntry(modelId, { recursive: true });
       }
     }
+    notifyModelListChange();
   },
 
   async loadModel(modelId: string) {
@@ -321,6 +335,7 @@ export const transformersJsService = {
       loadingStatus = 'idle'; 
       loadingProgress = 0;
       notify();
+      notifyModelListChange();
     } catch (e) {
       console.error('[transformersJsService] Failed to download model:', modelId, e);
       const errorMsg = e instanceof Error ? e.message : String(e);
