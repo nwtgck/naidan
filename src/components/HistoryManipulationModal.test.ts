@@ -171,7 +171,7 @@ describe('HistoryManipulationModal', () => {
     expect(mockCommit).toHaveBeenCalledWith('chat-1', [
       expect.objectContaining({ content: 'Second' }),
       expect.objectContaining({ content: 'First' })
-    ]);
+    ], undefined);
   });
 
   it('calls commitFullHistoryManipulation on save', async () => {
@@ -194,8 +194,65 @@ describe('HistoryManipulationModal', () => {
     expect(mockCommit).toHaveBeenCalledWith('chat-1', [
       { role: 'user', content: 'Updated Msg 1', modelId: undefined, thinking: undefined, attachments: undefined },
       { role: 'assistant', content: 'Msg 2', modelId: undefined, thinking: undefined, attachments: undefined }
-    ]);
+    ], undefined);
     expect(wrapper.emitted().close).toBeTruthy();
+  });
+
+  it('commits system prompt changes', async () => {
+    mockActiveMessages.value = [{ id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } }] as any;
+    const wrapper = await mountModal();
+
+    // 1. Select 'override' (Section is already open)
+    const overrideButton = wrapper.findAll('button').find(b => b.text().toLowerCase() === 'override');
+    await overrideButton!.trigger('click');
+    await nextTick();
+
+    // 2. Set content
+    const sysTextarea = wrapper.find('textarea[placeholder="Enter system prompt content..."]');
+    await sysTextarea.setValue('New System Prompt');
+
+    // 3. Save
+    const saveButton = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('apply changes'));
+    await saveButton?.trigger('click');
+
+    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
+      expect.objectContaining({ content: 'Msg 1' })
+    ], { behavior: 'override', content: 'New System Prompt' });
+  });
+
+  it('commits system prompt CLEAR behavior', async () => {
+    mockActiveMessages.value = [{ id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } }] as any;
+    const wrapper = await mountModal();
+
+    // Select 'clear' (Section is already open)
+    const clearButton = wrapper.findAll('button').find(b => b.text().toLowerCase() === 'clear');
+    await clearButton!.trigger('click');
+    await nextTick();
+
+    const saveButton = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('apply changes'));
+    await saveButton?.trigger('click');
+
+    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
+      expect.objectContaining({ content: 'Msg 1' })
+    ], { behavior: 'override', content: null });
+  });
+
+  it('commits system prompt INHERIT behavior', async () => {
+    mockActiveMessages.value = [{ id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } }] as any;
+    mockCurrentChat.value = { id: 'chat-1', systemPrompt: { behavior: 'override', content: 'Old' } } as any;
+    const wrapper = await mountModal();
+
+    // Select 'inherit' (Section is already open)
+    const inheritButton = wrapper.findAll('button').find(b => b.text().toLowerCase() === 'inherit');
+    await inheritButton!.trigger('click');
+    await nextTick();
+
+    const saveButton = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('apply changes'));
+    await saveButton?.trigger('click');
+
+    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
+      expect.objectContaining({ content: 'Msg 1' })
+    ], undefined);
   });
 
   it('emits close on cancel', async () => {
@@ -217,8 +274,10 @@ describe('HistoryManipulationModal', () => {
     await addButton.trigger('click');
 
     const textareas = wrapper.findAll('textarea');
-    expect(textareas.length).toBe(1);
-    expect(textareas[0]!.element.value).toBe('');
+    // 2 textareas: 1 for system prompt (always present) + 1 newly added message
+    expect(textareas.length).toBe(2);
+    // The message textarea is the second one
+    expect((textareas[1]!.element as HTMLTextAreaElement).value).toBe('');
     // First message in empty history should be 'user'
     expect(wrapper.find('.text-blue-600').exists()).toBe(true);
   });
@@ -338,13 +397,15 @@ describe('HistoryManipulationModal', () => {
     global.URL.createObjectURL = mockCreateObjectURL;
 
     const wrapper = await mountModal();
-    const textarea = wrapper.find('textarea');
-    expect(textarea.exists()).toBe(true);
+    // Use second textarea (the message one) as the first one is for System Prompt
+    const textareas = wrapper.findAll('textarea');
+    const messageTextarea = textareas[1];
+    expect(messageTextarea?.exists()).toBe(true);
 
     const file = new File([''], 'test.png', { type: 'image/png' });
     
     // Trigger paste with mocked event
-    await textarea.trigger('paste', {
+    await messageTextarea!.trigger('paste', {
       clipboardData: {
         items: [
           {

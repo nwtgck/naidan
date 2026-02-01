@@ -1,5 +1,5 @@
 import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } from 'vue';
-import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
 import { TransformersJsProvider } from '../services/transformers-js-provider';
@@ -1181,10 +1181,13 @@ export function useChat() {
     });
   };
 
-  const commitFullHistoryManipulation = async (chatId: string, messages: HistoryItem[]) => {
+  const commitFullHistoryManipulation = async (chatId: string, messages: HistoryItem[], systemPrompt: SystemPrompt | undefined) => {
     const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
     if (!target) return;
     const chat = getLiveChat(target);
+
+    // Update system prompt (can be undefined to reset to inheritance)
+    chat.systemPrompt = systemPrompt;
 
     // Persist any new 'memory' attachments
     const canPersist = storageService.canPersistBinary;
