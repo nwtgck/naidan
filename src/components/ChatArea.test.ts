@@ -100,6 +100,10 @@ vi.mock('mermaid', () => ({
   },
 }));
 
+import { config } from '@vue/test-utils';
+config.global.stubs['HistoryManipulationModal'] = true;
+config.global.stubs['ChatSettingsPanel'] = true;
+
 interface ChatAreaExposed {
   scrollToBottom: () => void;
   container: HTMLElement | null;

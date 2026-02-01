@@ -22,7 +22,7 @@ describe('force-switch-for-union rule', () => {
         languageOptions: {
           parser: parser,
           parserOptions: {
-            project: './tsconfig.app.json',
+            project: './tsconfig.eslint-test.json',
             tsconfigRootDir: path.resolve(__dirname, '..'),
           },
         },

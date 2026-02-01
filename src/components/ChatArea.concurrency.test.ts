@@ -33,6 +33,10 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+import { config } from '@vue/test-utils';
+config.global.stubs['HistoryManipulationModal'] = true;
+config.global.stubs['ChatSettingsPanel'] = true;
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'gpt-4' } },

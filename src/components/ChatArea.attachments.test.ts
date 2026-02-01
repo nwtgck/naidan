@@ -73,6 +73,10 @@ vi.mock('../services/storage', () => ({
   }
 }));
 
+import { config } from '@vue/test-utils';
+config.global.stubs['HistoryManipulationModal'] = true;
+config.global.stubs['ChatSettingsPanel'] = true;
+
 describe('ChatArea - Attachment UI', () => {
   it('should show preview when files are selected', async () => {
     // Reset refs for this test

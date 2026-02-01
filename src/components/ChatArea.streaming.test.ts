@@ -71,6 +71,10 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
+import { config } from '@vue/test-utils';
+config.global.stubs['HistoryManipulationModal'] = true;
+config.global.stubs['ChatSettingsPanel'] = true;
+
 describe('ChatArea Streaming DOM Test', () => {
   const chatStore = useChat();
 
