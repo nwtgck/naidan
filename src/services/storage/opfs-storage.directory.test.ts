@@ -12,7 +12,9 @@ class MockFileSystemFileHandle {
   }
   createWritable() {
     return Promise.resolve({
-      write: (data: string) => { this.content = data; return Promise.resolve(); },
+      write: (data: string) => {
+        this.content = data; return Promise.resolve(); 
+      },
       close: () => Promise.resolve(),
     });
   }

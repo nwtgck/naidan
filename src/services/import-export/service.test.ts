@@ -121,7 +121,9 @@ describe('ImportExportService', () => {
       const calls = mockStorage.restore.mock.calls;
       const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
-      for await (const chunk of snapshot.contentStream) { chunks.push(chunk); }
+      for await (const chunk of snapshot.contentStream) {
+        chunks.push(chunk); 
+      }
 
       const chatChunk = chunks.find(c => c.type === 'chat');
       if (chatChunk?.type === 'chat') {
@@ -166,7 +168,9 @@ describe('ImportExportService', () => {
       const calls = mockStorage.restore.mock.calls;
       const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
-      for await (const chunk of snapshot.contentStream) { chunks.push(chunk); }
+      for await (const chunk of snapshot.contentStream) {
+        chunks.push(chunk); 
+      }
 
       const chatChunk = chunks.find(c => c.type === 'chat');
       if (chatChunk?.type === 'chat' && chatChunk.data.root) {
@@ -195,7 +199,9 @@ describe('ImportExportService', () => {
       const calls = mockStorage.restore.mock.calls;
       const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
-      for await (const chunk of snapshot.contentStream) { chunks.push(chunk); }
+      for await (const chunk of snapshot.contentStream) {
+        chunks.push(chunk); 
+      }
 
       expect(snapshot.structure.chatGroups.find(g => g.name === '[Group] General')).toBeDefined();
       expect(chunks.find(c => c.type === 'chat')?.data.title).toBe('[Chat] Old Title');

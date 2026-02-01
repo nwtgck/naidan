@@ -28,11 +28,15 @@ vi.mock('../services/llm', () => ({
       triggerChunk = params.onChunk;
       return new Promise<void>(() => {});
     }
-    async listModels() { return ['gpt-4']; }
+    async listModels() {
+      return ['gpt-4']; 
+    }
   },
   OllamaProvider: class {
     constructor() {}
-    async listModels() { return []; }
+    async listModels() {
+      return []; 
+    }
   },
 }));
 

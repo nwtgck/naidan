@@ -1076,7 +1076,9 @@ describe('ChatArea Textarea Sizing', () => {
     Object.defineProperty(container, 'scrollTop', {
       configurable: true,
       get: () => internalScrollTop,
-      set: (val) => { internalScrollTop = val; scrollTopSpy(val); },
+      set: (val) => {
+        internalScrollTop = val; scrollTopSpy(val); 
+      },
     });
 
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;

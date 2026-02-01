@@ -59,7 +59,8 @@ function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 
   default: {
     const _ex: never = source;
     throw new Error(`Unhandled source: ${_ex}`);
-  }  }
+  }  
+  }
 }
 
 const isCurrentChatStreaming = computed(() => {

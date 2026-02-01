@@ -57,13 +57,17 @@ const mockProvider = {
 
 vi.mock('./local-storage', () => ({
   LocalStorageProvider: class {
-    constructor() { return mockProvider; }
+    constructor() {
+      return mockProvider; 
+    }
   },
 }));
 
 vi.mock('./opfs-storage', () => ({
   OPFSStorageProvider: class {
-    constructor() { return mockProvider; }
+    constructor() {
+      return mockProvider; 
+    }
   },
 }));
 

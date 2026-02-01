@@ -234,7 +234,8 @@ export const transformersJsService = {
           }
           }
         }
-      } catch (e) { /* ignore */ }    } catch (err) {
+      } catch (e) { /* ignore */ }    
+    } catch (err) {
       console.warn('Failed to list cached models:', err);
     }
     return results;
@@ -302,7 +303,9 @@ export const transformersJsService = {
           
           // Clean up empty org directory
           let hasMore = false;
-          for await (const _ of (orgDir as FileSystemDirectoryHandleWithEntries).entries()) { hasMore = true; break; }
+          for await (const _ of (orgDir as FileSystemDirectoryHandleWithEntries).entries()) {
+            hasMore = true; break; 
+          }
           if (!hasMore) await hfDir.removeEntry(org);
         } else if (org) {
           await hfDir.removeEntry(org, { recursive: true });
@@ -506,9 +509,10 @@ export const transformersJsService = {
     
     if (!remote) throw new Error('Worker not initialized');
     
-    if (signal) {      signal.addEventListener('abort', () => {
-      this.interrupt().catch(console.error);
-    });
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        this.interrupt().catch(console.error);
+      });
     }
 
     try {

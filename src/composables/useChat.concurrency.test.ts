@@ -171,7 +171,9 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatA = currentChat.value!;
     
     let resolveChatA: () => void;
-    const chatAPromise = new Promise<void>(resolve => { resolveChatA = resolve; });
+    const chatAPromise = new Promise<void>(resolve => {
+      resolveChatA = resolve; 
+    });
     
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
       const { onChunk } = params;

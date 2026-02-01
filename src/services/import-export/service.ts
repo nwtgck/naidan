@@ -428,7 +428,8 @@ export class ImportExportService {
       }
       }
       return finalSettings;
-    });  }
+    });  
+  }
 
   private async createRestoreSnapshot(zip: JSZip, rootPath: string): Promise<StorageSnapshot> {
     const hierarchyFile = zip.file(rootPath + 'hierarchy.json');

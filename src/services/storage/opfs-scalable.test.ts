@@ -14,7 +14,9 @@ class MockFileSystemFileHandle {
   }
   async createWritable() {
     return {
-      write: async (data: string) => { this.content = data; },
+      write: async (data: string) => {
+        this.content = data; 
+      },
       close: async () => {},
     };
   }

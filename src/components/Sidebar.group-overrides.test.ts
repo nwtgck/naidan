@@ -9,7 +9,9 @@ const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockCurrentChatGroup = ref<ChatGroup | null>(null);
 const mockOpenChatGroup = vi.fn((id: string | null) => {
-  if (id === null) { mockCurrentChatGroup.value = null; return; }
+  if (id === null) {
+    mockCurrentChatGroup.value = null; return; 
+  }
   const group = mockChatGroups.value.find(g => g.id === id);
   if (group) mockCurrentChatGroup.value = group;
 });

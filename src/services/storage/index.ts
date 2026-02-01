@@ -314,7 +314,9 @@ export class StorageService {
             case 'chat':
               if (newProvider.canPersistBinary) {
                 const chat = await oldProvider.loadChat(chunk.data.id);
-                if (!chat) { yield chunk; continue; }
+                if (!chat) {
+                  yield chunk; continue; 
+                }
 
                 const rescued: MigrationChunkDto[] = [];
                 const findAndRescue = (nodes: MessageNode[]) => {

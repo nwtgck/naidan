@@ -188,7 +188,9 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
             listModels: vi.fn().mockResolvedValue(['gpt-4'])
           };
         },
-        OllamaProvider: function() { return { chat: vi.fn(), listModels: vi.fn() }; },
+        OllamaProvider: function() {
+          return { chat: vi.fn(), listModels: vi.fn() }; 
+        },
       };
     });
 

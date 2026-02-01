@@ -14,7 +14,9 @@ const mockOpenChatGroup = vi.fn();
 const mockSetChatGroupCollapsed = vi.fn();
 
 const mockActiveFocusArea = ref('chat');
-const mockSetActiveFocusArea = vi.fn((area) => { mockActiveFocusArea.value = area; });
+const mockSetActiveFocusArea = vi.fn((area) => {
+  mockActiveFocusArea.value = area; 
+});
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({

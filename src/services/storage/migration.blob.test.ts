@@ -19,8 +19,12 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
         return createMockFile(name);
       }),
       removeEntry: vi.fn().mockResolvedValue(undefined),
-      keys: async function* () { for (const k of entries.keys()) yield k; },
-      values: async function* () { for (const v of entries.values()) yield v; },
+      keys: async function* () {
+        for (const k of entries.keys()) yield k; 
+      },
+      values: async function* () {
+        for (const v of entries.values()) yield v; 
+      },
     };
 
     function createMockFile(name: string) {
@@ -29,7 +33,9 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
         kind: 'file',
         name,
         createWritable: vi.fn().mockResolvedValue({
-          write: vi.fn().mockImplementation(async (data) => { content = data; }),
+          write: vi.fn().mockImplementation(async (data) => {
+            content = data; 
+          }),
           close: vi.fn().mockResolvedValue(undefined),
         }),
         getFile: vi.fn().mockImplementation(async () => ({
@@ -52,8 +58,12 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
           return subEntries.get(n);
         }),
         removeEntry: vi.fn().mockResolvedValue(undefined),
-        keys: async function* () { for (const k of subEntries.keys()) yield k; },
-        values: async function* () { for (const v of subEntries.values()) yield v; },
+        keys: async function* () {
+          for (const k of subEntries.keys()) yield k; 
+        },
+        values: async function* () {
+          for (const v of subEntries.values()) yield v; 
+        },
       };
     }
 

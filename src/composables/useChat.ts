@@ -146,7 +146,8 @@ function syncLiveInstancesWithSidebar() {
       default: {
         const _ex: never = item;
         return _ex;
-      }      }
+      }      
+      }
     }
   };
   sync(rootItems.value, null);
@@ -305,7 +306,8 @@ export function useChat() {
       default: {
         const _ex: never = item;
         return _ex;
-      }      }
+      }      
+      }
     });
     return all;
   });
@@ -345,7 +347,9 @@ export function useChat() {
     return live;
   };
 
-  const loadData = async () => { rootItems.value = await storageService.getSidebarStructure(); };
+  const loadData = async () => {
+    rootItems.value = await storageService.getSidebarStructure(); 
+  };
 
   const fetchAvailableModels = async (chatId?: string, customEndpoint?: { type: EndpointType, url: string, headers?: readonly (readonly [string, string])[] }) => {
     const mutableChat = chatId ? liveChatRegistry.get(chatId) : undefined;
@@ -376,8 +380,9 @@ export function useChat() {
     }
 
     if (!url && type !== 'transformers_js') {
-      if (mutableChat) { decTask(mutableChat.id, 'fetch'); }
-      else if (!customEndpoint) {
+      if (mutableChat) {
+        decTask(mutableChat.id, 'fetch'); 
+      } else if (!customEndpoint) {
         const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
         if (val <= 0) activeTaskCounts.delete('fetch:global'); else activeTaskCounts.set('fetch:global', val);
       }
@@ -422,8 +427,9 @@ export function useChat() {
       addErrorEvent({ source: 'useChat:fetchAvailableModels', message: 'Failed to fetch models for resolution', details: e instanceof Error ? e : String(e), });
       return [];
     } finally {
-      if (mutableChat) { decTask(mutableChat.id, 'fetch'); }
-      else if (!customEndpoint) {
+      if (mutableChat) {
+        decTask(mutableChat.id, 'fetch'); 
+      } else if (!customEndpoint) {
         const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
         if (val <= 0) activeTaskCounts.delete('fetch:global'); else activeTaskCounts.set('fetch:global', val);
       }
@@ -476,7 +482,9 @@ export function useChat() {
       await storageService.updateHierarchy((curr) => {
         if (chatGroupId) {
           const group = curr.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
-          if (group) { group.chat_ids.unshift(chatId); return curr; }
+          if (group) {
+            group.chat_ids.unshift(chatId); return curr; 
+          }
         }
         const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
         const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
@@ -506,8 +514,7 @@ export function useChat() {
       _currentChatGroup.value = null;
       _currentChat.value = reactiveChat;
       return reactiveChat;
-    }
-    else {
+    } else {
       _currentChatGroup.value = null;
       _currentChat.value = null;
       return null;
@@ -515,7 +522,9 @@ export function useChat() {
   };
 
   const openChatGroup = (id: string | null) => {
-    if (id === null) { _currentChatGroup.value = null; return; }
+    if (id === null) {
+      _currentChatGroup.value = null; return; 
+    }
     const group = chatGroups.value.find(g => g.id === id);
     if (group) {
       _currentChat.value = null; // Clear chat when opening a group
@@ -553,7 +562,9 @@ export function useChat() {
     await loadData();
 
     const cleanup = async () => {
-      if (activeGenerations.has(id)) { activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id); }
+      if (activeGenerations.has(id)) {
+        activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id); 
+      }
       activeTaskCounts.delete('title:' + id);
       activeTaskCounts.delete('fetch:' + id);
       activeTaskCounts.delete('process:' + id);
@@ -578,7 +589,9 @@ export function useChat() {
               }
               }
             }) as HierarchyChatGroupNode;
-            if (group) { group.chat_ids.push(chatData.id); return curr; }
+            if (group) {
+              group.chat_ids.push(chatData.id); return curr; 
+            }
           }
           curr.items.push({ type: 'chat', id: chatData.id });
           return curr;
@@ -617,7 +630,9 @@ export function useChat() {
     const allGroups = await storageService.listChatGroups();
     for (const g of allGroups) await storageService.deleteChatGroup(g.id);
     
-    await storageService.updateHierarchy((curr) => { curr.items = []; return curr; });
+    await storageService.updateHierarchy((curr) => {
+      curr.items = []; return curr; 
+    });
     _currentChat.value = null;
     await loadData();
   };
@@ -763,7 +778,9 @@ export function useChat() {
             try {
               await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
               lastSave = Date.now();
-            } finally { isSaving = false; }
+            } finally {
+              isSaving = false; 
+            }
           }
         },
         parameters: resolved.lmParameters,
@@ -795,7 +812,9 @@ export function useChat() {
           try {
             const { useToast } = await import('./useToast');
             const { addToast } = useToast();
-            addToast({ message: `Generation failed in "${mutableChat.title || 'New Chat'}"`, actionLabel: 'View', onAction: async () => { await openChat(mutableChat.id); }, });
+            addToast({ message: `Generation failed in "${mutableChat.title || 'New Chat'}"`, actionLabel: 'View', onAction: async () => {
+              await openChat(mutableChat.id); 
+            }, });
           } catch (toastErr) { /* ignore */ }
         }
       }
@@ -874,7 +893,9 @@ export function useChat() {
             try {
               await storageService.saveFile(att.blob, att.id, att.originalName);
               processedAttachments.push({ id: att.id, originalName: att.originalName, mimeType: att.mimeType, size: att.size, uploadedAt: att.uploadedAt, status: 'persisted', });
-            } catch (e) { processedAttachments.push(att); }
+            } catch (e) {
+              processedAttachments.push(att); 
+            }
           } else processedAttachments.push(att);
           break;
         case 'persisted':
@@ -956,10 +977,14 @@ export function useChat() {
     registerLiveInstance(mutableChat);
     try {
       const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
-      if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') { decTask(taskId, 'title'); return; }
+      if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') {
+        decTask(taskId, 'title'); return; 
+      }
       const history = getChatBranch(mutableChat);
       const content = history[0]?.content || '';
-      if (!content || typeof content !== 'string') { decTask(taskId, 'title'); return; }
+      if (!content || typeof content !== 'string') {
+        decTask(taskId, 'title'); return; 
+      }
 
       let generatedTitle = '';
       const endpointType = resolved.endpointType;
@@ -1031,7 +1056,9 @@ export function useChat() {
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         }
       }
-    } finally { decTask(taskId, 'title'); }
+    } finally {
+      decTask(taskId, 'title'); 
+    }
   };
 
   const abortChat = (chatId?: string) => {
@@ -1075,7 +1102,9 @@ export function useChat() {
         const chatGroupId = mutableChat.groupId;
         if (chatGroupId) {
           const group = curr.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
-          if (group) { group.chat_ids.unshift(newChatId); return curr; }
+          if (group) {
+            group.chat_ids.unshift(newChatId); return curr; 
+          }
         }
         const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
         const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
@@ -1163,7 +1192,9 @@ export function useChat() {
       ...options
     };
     await storageService.updateChatGroup(id, () => newGroup);
-    await storageService.updateHierarchy((curr) => { curr.items.unshift({ type: 'chat_group', id, chat_ids: [] }); return curr; });
+    await storageService.updateHierarchy((curr) => {
+      curr.items.unshift({ type: 'chat_group', id, chat_ids: [] }); return curr; 
+    });
     await loadData();
     return id;
   };
@@ -1239,7 +1270,9 @@ export function useChat() {
   };
 
   const updateChatGroupMetadata = async (id: string, updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
-    if (_currentChatGroup.value?.id === id) { Object.assign(_currentChatGroup.value, updates); _currentChatGroup.value.updatedAt = Date.now(); }
+    if (_currentChatGroup.value?.id === id) {
+      Object.assign(_currentChatGroup.value, updates); _currentChatGroup.value.updatedAt = Date.now(); 
+    }
     await storageService.updateChatGroup(id, (curr) => {
       if (!curr) throw new Error('Chat group not found');
       return { ...curr, ...updates, updatedAt: Date.now() };
@@ -1308,8 +1341,12 @@ export function useChat() {
     _currentChat.value = chat;
     if (chat) registerLiveInstance(chat);
   };
-  const __testOnlySetCurrentChatGroup = (group: ChatGroup | null) => { _currentChatGroup.value = group; };
-  const clearLiveChatRegistry = () => { liveChatRegistry.clear(); };
+  const __testOnlySetCurrentChatGroup = (group: ChatGroup | null) => {
+    _currentChatGroup.value = group; 
+  };
+  const clearLiveChatRegistry = () => {
+    liveChatRegistry.clear(); 
+  };
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,

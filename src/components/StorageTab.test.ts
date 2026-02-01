@@ -11,8 +11,12 @@ import { useRouter, useRoute } from 'vue-router';
 // --- Mocks ---
 const mockListModels = vi.fn().mockResolvedValue(['model-1']);
 vi.mock('../services/llm', () => ({
-  OpenAIProvider: class { listModels = mockListModels; },
-  OllamaProvider: class { listModels = mockListModels; },
+  OpenAIProvider: class {
+    listModels = mockListModels; 
+  },
+  OllamaProvider: class {
+    listModels = mockListModels; 
+  },
 }));
 
 const mockSave = vi.fn();

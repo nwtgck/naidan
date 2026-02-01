@@ -178,7 +178,9 @@ async function handleCreateChatGroup() {
   newChatGroupName.value = '';
   isCreatingChatGroup.value = false;
   // Reset flag after transition would have finished
-  setTimeout(() => { skipLeaveAnimation.value = false; }, 200);
+  setTimeout(() => {
+    skipLeaveAnimation.value = false; 
+  }, 200);
 }
 
 function handleCreateChatGroupBlur() {

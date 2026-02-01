@@ -59,7 +59,9 @@ vi.mock('../services/llm', () => ({
     listModels = mockListModels;
   },
   OllamaProvider: class {
-    async listModels() { return []; }
+    async listModels() {
+      return []; 
+    }
   },
 }));
 

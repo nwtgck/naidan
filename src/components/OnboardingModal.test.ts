@@ -50,8 +50,12 @@ describe('OnboardingModal.vue', () => {
       availableModels: ref([]),
       isFetchingModels: ref(false),
       fetchModels: vi.fn(),
-      setIsOnboardingDismissed: (val: boolean) => { mockIsOnboardingDismissed.value = val; },
-      setOnboardingDraft: (val: any) => { mockOnboardingDraft.value = val; },
+      setIsOnboardingDismissed: (val: boolean) => {
+        mockIsOnboardingDismissed.value = val; 
+      },
+      setOnboardingDraft: (val: any) => {
+        mockOnboardingDraft.value = val; 
+      },
     });
 
     (useTheme as unknown as Mock).mockReturnValue({

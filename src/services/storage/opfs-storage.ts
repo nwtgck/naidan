@@ -60,7 +60,9 @@ export class OPFSStorageProvider extends IStorageProvider {
         }
       }
       return dtos;
-    } catch { return []; }
+    } catch {
+      return []; 
+    }
   }
 
   protected async listChatGroupsRaw(): Promise<ChatGroupDto[]> {
@@ -75,7 +77,9 @@ export class OPFSStorageProvider extends IStorageProvider {
         }
       }
       return dtos;
-    } catch { return []; }
+    } catch {
+      return []; 
+    }
   }
 
   // --- Hierarchy Management ---
@@ -143,7 +147,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
 
       return chat;
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async loadChatMeta(id: string): Promise<ChatMeta | null> {
@@ -160,7 +166,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
 
       return meta;
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async loadChatContent(id: string): Promise<ChatContent | null> {
@@ -169,7 +177,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       const contentFile = await (await contentDir.getFileHandle(`${id}.json`)).getFile();
       const dto = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
       return chatContentToDomain(dto);
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async deleteChat(id: string): Promise<void> {
@@ -205,7 +215,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       const chatMetas = allMetas.map(chatMetaToDomain);
       const h = hierarchy || { items: [] };
       return chatGroupToDomain(groupDto, h, chatMetas);
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async deleteChatGroup(id: string): Promise<void> {
@@ -250,7 +262,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       const fileDir = await uploadedFilesDir.getDirectoryHandle(attachmentId);
       const fileHandle = await fileDir.getFileHandle(originalName);
       return await fileHandle.getFile();
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async hasAttachments(): Promise<boolean> {
@@ -259,7 +273,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       // @ts-expect-error: values()
       for await (const entry of uploadedFilesDir.values()) if (entry) return true;
       return false;
-    } catch { return false; }
+    } catch {
+      return false; 
+    }
   }
 
   async saveSettings(settings: Settings): Promise<void> {
@@ -278,7 +294,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       const fileHandle = await this.root!.getFileHandle('settings.json');
       const file = await fileHandle.getFile();
       return settingsToDomain(SettingsSchemaDto.parse(JSON.parse(await file.text())));
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async clearAll(): Promise<void> {

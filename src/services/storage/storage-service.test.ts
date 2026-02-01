@@ -27,11 +27,15 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
 
 // Mock the modules
 vi.mock('./local-storage', () => ({
-  LocalStorageProvider: vi.fn().mockImplementation(function() { return mockLocalProvider; }),
+  LocalStorageProvider: vi.fn().mockImplementation(function() {
+    return mockLocalProvider; 
+  }),
 }));
 
 vi.mock('./opfs-storage', () => ({
-  OPFSStorageProvider: vi.fn().mockImplementation(function() { return mockOpfsProvider; }),
+  OPFSStorageProvider: vi.fn().mockImplementation(function() {
+    return mockOpfsProvider; 
+  }),
 }));
 
 const mockAddErrorEvent = vi.fn();

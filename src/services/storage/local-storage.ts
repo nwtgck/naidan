@@ -157,7 +157,9 @@ export class LocalStorageProvider extends IStorageProvider {
       restoreBlobs(chat.root.items);
 
       return chat;
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async loadChatMeta(id: string): Promise<ChatMeta | null> {
@@ -172,7 +174,9 @@ export class LocalStorageProvider extends IStorageProvider {
         if (group) meta.groupId = group.id;
       }
       return meta;
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async loadChatContent(id: string): Promise<ChatContent | null> {
@@ -208,7 +212,9 @@ export class LocalStorageProvider extends IStorageProvider {
       restoreBlobs(content.root.items);
 
       return content;
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async deleteChat(id: string): Promise<void> {
@@ -233,7 +239,9 @@ export class LocalStorageProvider extends IStorageProvider {
       const chatMetas = allMetas.map(chatMetaToDomain);
       const h = hierarchy || { items: [] };
       return chatGroupToDomain(ChatGroupSchemaDto.parse(JSON.parse(raw)), h, chatMetas);
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async deleteChatGroup(id: string): Promise<void> {
@@ -264,7 +272,9 @@ export class LocalStorageProvider extends IStorageProvider {
     if (!raw) return null;
     try {
       return settingsToDomain(SettingsSchemaDto.parse(JSON.parse(raw)));
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   // --- File Storage ---
