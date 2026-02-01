@@ -1192,13 +1192,25 @@ export function useChat() {
       if (msg.attachments) {
         for (let i = 0; i < msg.attachments.length; i++) {
           const att = msg.attachments[i]!;
-          if (att.status === 'memory' && canPersist) {
-            try {
-              await storageService.saveFile(att.blob, att.id, att.originalName);
-              msg.attachments[i] = { ...att, status: 'persisted' };
-            } catch (e) {
-              console.error('Failed to persist attachment during manipulation:', e);
+          const status = att.status;
+          switch (status) {
+          case 'memory':
+            if (canPersist) {
+              try {
+                await storageService.saveFile(att.blob, att.id, att.originalName);
+                msg.attachments[i] = { ...att, status: 'persisted' };
+              } catch (e) {
+                console.error('Failed to persist attachment during manipulation:', e);
+              }
             }
+            break;
+          case 'persisted':
+          case 'missing':
+            break;
+          default: {
+            const _ex: never = status;
+            throw new Error(`Unhandled attachment status: ${_ex}`);
+          }
           }
         }
       }

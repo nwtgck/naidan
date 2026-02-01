@@ -131,4 +131,102 @@ describe('HistoryManipulationModal', () => {
     expect(textareas.length).toBe(1);
     expect(textareas[0]!.element.value).toBe('');
   });
+
+  it('loads existing attachments and shows previews', async () => {
+    const mockAtt = { id: 'att-1', status: 'persisted', originalName: 'test.png', mimeType: 'image/png', size: 100, uploadedAt: Date.now() };
+    mockActiveMessages.value = [
+      { id: '1', role: 'user', content: 'Msg 1', attachments: [mockAtt], replies: { items: [] } }
+    ] as any;
+
+    const mockCreateObjectURL = vi.fn().mockReturnValue('blob:test-persisted');
+    global.URL.createObjectURL = mockCreateObjectURL;
+    // Mock storageService.getFile
+    vi.mock('../services/storage', () => ({
+      storageService: {
+        getFile: vi.fn().mockResolvedValue(new Blob([''], { type: 'image/png' })),
+        saveFile: vi.fn().mockResolvedValue(undefined),
+        canPersistBinary: true
+      }
+    }));
+
+    const wrapper = await mountModal();
+    
+    expect(wrapper.find('img').exists()).toBe(true);
+    expect(wrapper.find('img').attributes('src')).toBe('blob:test-persisted');
+  });
+
+  it('can add attachments via file input', async () => {
+    mockActiveMessages.value = [{ id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } }] as any;
+    const mockCreateObjectURL = vi.fn().mockReturnValue('blob:test-upload');
+    global.URL.createObjectURL = mockCreateObjectURL;
+
+    const wrapper = await mountModal();
+    
+    // Find the hidden file input
+    const fileInput = wrapper.find('input[type="file"]');
+    const file = new File([''], 'test.png', { type: 'image/png' });
+    
+    // Mock the change event
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file]
+    });
+    await fileInput.trigger('change');
+    await nextTick();
+
+    expect(wrapper.find('img').exists()).toBe(true);
+    expect(wrapper.find('img').attributes('src')).toBe('blob:test-upload');
+  });
+
+  it('can remove attachments', async () => {
+    const mockAtt = { id: 'att-1', status: 'memory', blob: new Blob(['']), originalName: 'test.png', mimeType: 'image/png', size: 100, uploadedAt: Date.now() };
+    mockActiveMessages.value = [
+      { id: '1', role: 'user', content: 'Msg 1', attachments: [mockAtt], replies: { items: [] } }
+    ] as any;
+
+    const mockRevokeObjectURL = vi.fn();
+    global.URL.revokeObjectURL = mockRevokeObjectURL;
+
+    const wrapper = await mountModal();
+    expect(wrapper.find('img').exists()).toBe(true);
+
+    // Find the remove button (the one with the X icon)
+    const removeAttButton = wrapper.find('.group\\/att button'); 
+    await removeAttButton.trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('img').exists()).toBe(false);
+  });
+
+  it('can paste images into a message', async () => {
+    // Ensure there is at least one message to paste into
+    mockActiveMessages.value = [{ id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } }] as any;
+    
+    // Mock URL.createObjectURL
+    const mockCreateObjectURL = vi.fn().mockReturnValue('blob:test');
+    global.URL.createObjectURL = mockCreateObjectURL;
+
+    const wrapper = await mountModal();
+    const textarea = wrapper.find('textarea');
+    expect(textarea.exists()).toBe(true);
+
+    const file = new File([''], 'test.png', { type: 'image/png' });
+    
+    // Trigger paste with mocked event
+    await textarea.trigger('paste', {
+      clipboardData: {
+        items: [
+          {
+            type: 'image/png',
+            getAsFile: () => file
+          }
+        ]
+      }
+    });
+    
+    await nextTick();
+
+    // Check if attachment preview is rendered
+    expect(wrapper.find('img').exists()).toBe(true);
+    expect(wrapper.find('img').attributes('src')).toBe('blob:test');
+  });
 });
