@@ -23,7 +23,7 @@ vi.mock('vuedraggable', () => ({
     props: [
       'modelValue', 'itemKey', 'ghostClass', 'swapThreshold', 'invertSwap',
       'scroll', 'scrollSensitivity', 'scrollSpeed', 'forceFallback', 'fallbackClass',
-      'tag', 'animation'
+      'tag', 'animation', 'delay', 'delayOnTouchOnly'
     ],
   }
 }));
@@ -153,6 +153,16 @@ describe('Sidebar DND Improvements', () => {
     });
   });
       
+  it('should have touch delay settings enabled to prevent accidental drags on mobile', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const draggables = wrapper.findAllComponents({ name: 'draggable' });
+    draggables.forEach(d => {
+      expect(d.props('delay')).toBe(200);
+      expect(d.props('delayOnTouchOnly')).toBe(true);
+    });
+  });
+
   it('should increase bottom padding during drag for easier end-of-list drops', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
