@@ -152,24 +152,31 @@ export const transformersJsService = {
         return { size, fileCount, lastModified, hasConfig };
       };
 
+      // Try 'user' directory (new)
+      try {
+        const userDir = await modelsDir.getDirectoryHandle('user', { create: false }) as FileSystemDirectoryHandleWithEntries;
+        for await (const [name, handle] of userDir.entries()) {
+          const h = handle as FileSystemHandle;
+          if (h.kind === 'directory') {
+            const stats = await getDirStats(h as FileSystemDirectoryHandle);
+            if (stats.hasConfig) {
+              results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+
+      // Try 'local' directory (old/fallback for migration)
       try {
         const localDir = await modelsDir.getDirectoryHandle('local', { create: false }) as FileSystemDirectoryHandleWithEntries;
         for await (const [name, handle] of localDir.entries()) {
           const h = handle as FileSystemHandle;
-          switch (h.kind) {
-          case 'directory': {
+          if (h.kind === 'directory') {
             const stats = await getDirStats(h as FileSystemDirectoryHandle);
             if (stats.hasConfig) {
-              results.push({ id: `local/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
+              // We still label it as 'user/' to the rest of the app
+              results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
             }
-            break;
-          }
-          case 'file':
-            break;
-          default: {
-            const _ex: never = h.kind as never;
-            throw new Error(`Unhandled handle kind: ${_ex}`);
-          }
           }
         }
       } catch (e) { /* ignore */ }
@@ -218,8 +225,8 @@ export const transformersJsService = {
   async importFile(modelName: string, fileName: string, data: ArrayBuffer | ReadableStream) {
     const root = await navigator.storage.getDirectory();
     const modelsDir = await root.getDirectoryHandle('models', { create: true });
-    const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-    const modelDir = await localDir.getDirectoryHandle(modelName, { create: true });
+    const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
+    const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
     
     const parts = fileName.split('/').filter(p => !!p);
     let currentDir = modelDir;
@@ -252,9 +259,18 @@ export const transformersJsService = {
     const root = await navigator.storage.getDirectory();
     const modelsDir = await root.getDirectoryHandle('models', { create: true });
     
-    if (modelId.startsWith('local/')) {
-      const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-      await localDir.removeEntry(modelId.substring(6), { recursive: true });
+    if (modelId.startsWith('user/')) {
+      const name = modelId.substring(5);
+      try {
+        const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
+        await userDir.removeEntry(name, { recursive: true });
+      } catch {
+        // Fallback for old 'local' directory
+        try {
+          const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
+          await localDir.removeEntry(name, { recursive: true });
+        } catch { /* ignore if both fail */ }
+      }
     } else if (modelId.startsWith('hf.co/')) {
       const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
       const parts = modelId.substring(6).split('/');
@@ -307,7 +323,7 @@ export const transformersJsService = {
       if (!remote) throw new Error('Worker not initialized');      // 1. Check cache FIRST before changing status to avoid UI flicker
       const cached = await this.listCachedModels();
       const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
-      const isLocal = modelId.startsWith('local/');
+      const isLocal = modelId.startsWith('user/');
       isLoadingFromCache = isLocal || cached.some(m => m.id === modelId || m.id === hfId);
 
       // 2. Now set loading state

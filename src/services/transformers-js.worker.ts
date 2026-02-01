@@ -44,7 +44,7 @@ interface TextGenerationModel extends PreTrainedModel {
 }
 
 // Configure environment
-env.allowLocalModels = false;
+env.allowLocalModels = true;
 env.allowRemoteModels = true;
 env.useBrowserCache = false;
 if (env.backends.onnx.wasm) {
@@ -69,22 +69,23 @@ function urlToPath(url: string): string | null {
 
     if (isLocalOrigin) {
       const first = pathParts[0];
-      if (first === 'local' || first === 'models') {
+      if (first === 'user' || first === 'local' || first === 'models') {
         let startIndex = 0;
         switch (first) {
         case 'models':
           startIndex++;
           break;
+        case 'user':
         case 'local':
           break;
         default: {
           const _ex: never = first;
           throw new Error(`Unhandled path part: ${_ex}`);
         }
-        }        if (pathParts[startIndex] === 'local') startIndex++;
+        }        if (pathParts[startIndex] === 'user' || pathParts[startIndex] === 'local') startIndex++;
         
         const cleanParts = pathParts.slice(startIndex);
-        const resolved = `models/local/${cleanParts.join('/')}`;
+        const resolved = `models/user/${cleanParts.join('/')}`;
         console.log(`[urlToPath] Local matched: ${url} -> ${resolved}`);
         return resolved;
       }
@@ -98,20 +99,21 @@ function urlToPath(url: string): string | null {
   } catch {
     const parts = url.split('/').filter(p => !!p);
     const first = parts[0];
-    if (first === 'local' || first === 'models') {
+    if (first === 'user' || first === 'local' || first === 'models') {
       let startIndex = 0;
       switch (first) {
       case 'models':
         startIndex++;
         break;
+      case 'user':
       case 'local':
         break;
       default: {
         const _ex: never = first;
         throw new Error(`Unhandled path part: ${_ex}`);
       }
-      }      if (parts[startIndex] === 'local') startIndex++;
-      const resolved = `models/local/${parts.slice(startIndex).join('/')}`;
+      }      if (parts[startIndex] === 'user' || parts[startIndex] === 'local') startIndex++;
+      const resolved = `models/user/${parts.slice(startIndex).join('/')}`;
       console.log(`[urlToPath] Relative matched: ${url} -> ${resolved}`);
       return resolved;
     }
@@ -239,7 +241,7 @@ const transformersJsWorker: ITransformersJsWorker = {
     if (cleanModelId.startsWith('hf.co/')) cleanModelId = cleanModelId.substring(6);
     else if (cleanModelId.startsWith('https://huggingface.co/')) cleanModelId = cleanModelId.substring(23);
 
-    const isLocal = cleanModelId.startsWith('local/');
+    const isLocal = cleanModelId.startsWith('user/');
 
     // 1. Download Tokenizer
     await AutoTokenizer.from_pretrained(cleanModelId, { 
@@ -268,7 +270,7 @@ const transformersJsWorker: ITransformersJsWorker = {
     if (cleanModelId.startsWith('hf.co/')) cleanModelId = cleanModelId.substring(6);
     else if (cleanModelId.startsWith('https://huggingface.co/')) cleanModelId = cleanModelId.substring(23);
 
-    const isLocal = cleanModelId.startsWith('local/');
+    const isLocal = cleanModelId.startsWith('user/');
 
     try {
       // 1. Load Model

@@ -34,6 +34,8 @@ const defaultModels = [
   'HuggingFaceTB/SmolLM2-1.7B-Instruct',
   'HuggingFaceTB/SmolLM3-3B-ONNX',
   'onnx-community/Qwen2.5-0.5B-Instruct',
+  'onnx-community/Qwen3-0.6B-ONNX',
+  'onnx-community/Qwen3-4B-Instruct-2507-ONNX',
   'onnx-community/Llama-3.2-1B-Instruct',
 ];
 
@@ -241,7 +243,7 @@ const handleImportLocalModel = async (event: Event) => {
       importProgress.value = Math.round((completed / files.length) * 100);
     }
     
-    addToast({ message: `Successfully imported model: local/${modelName}` });
+    addToast({ message: `Successfully imported model: user/${modelName}` });
     await refreshLocalModels();
   } catch (err) {
     console.error('Import failed:', err);
@@ -335,7 +337,7 @@ const handleImportLocalModel = async (event: Event) => {
                   </template>
                 </h4>
                 <div class="flex items-center gap-2 shrink-0">
-                  <span v-if="(status === 'loading' || status === 'ready') && (isLoadingFromCache || activeModelId?.startsWith('local/'))" class="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                  <span v-if="(status === 'loading' || status === 'ready') && (isLoadingFromCache || activeModelId?.startsWith('user/'))" class="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                     Local Cache
                   </span>
                   <span v-if="status === 'ready'" class="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 border border-purple-200 dark:border-purple-800">

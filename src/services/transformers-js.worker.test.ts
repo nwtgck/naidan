@@ -200,6 +200,7 @@ describe('transformers-js.worker', () => {
     const testCases = [
       { input: 'hf.co/org/repo', expected: 'org/repo' },
       { input: 'https://huggingface.co/org/repo', expected: 'org/repo' },
+      { input: 'user/my-model', expected: 'user/my-model' },
       { input: 'org/repo', expected: 'org/repo' }
     ];
 

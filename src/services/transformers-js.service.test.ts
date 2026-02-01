@@ -93,7 +93,7 @@ describe('transformersJsService', () => {
       })
     });
 
-    const mockLocalDir = createMockDir({
+    const mockUserDir = createMockDir({
       'my-custom-model': createMockDir({
         'weights.onnx': createMockFile(2000, 987654321),
         '.config.json.complete': createMockFile(0, 987654321)
@@ -102,7 +102,7 @@ describe('transformersJsService', () => {
 
     const mockModelsDir = createMockDir({
       'huggingface.co': mockHuggingFaceDir,
-      'local': mockLocalDir
+      'user': mockUserDir
     });
 
     vi.stubGlobal('navigator', {
@@ -122,7 +122,7 @@ describe('transformersJsService', () => {
       size: 1000
     }));
     expect(models).toContainEqual(expect.objectContaining({
-      id: 'local/my-custom-model',
+      id: 'user/my-custom-model',
       isLocal: true,
       size: 2000
     }));
@@ -237,8 +237,8 @@ describe('transformersJsService', () => {
 
     // Verify directory structure was created through the root mock
     const models = await mockRoot.getDirectoryHandle('models');
-    const local = await models.getDirectoryHandle('local');
-    const model = await local.getDirectoryHandle('my-model');
+    const user = await models.getDirectoryHandle('user');
+    const model = await user.getDirectoryHandle('my-model');
     const onnx = await model.getDirectoryHandle('onnx');
     
     expect(onnx.getFileHandle).toHaveBeenCalledWith('model.onnx', { create: true });
