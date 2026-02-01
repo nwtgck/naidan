@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick } from 'vue';
@@ -77,6 +77,14 @@ config.global.stubs['ChatSettingsPanel'] = true;
 
 describe('ChatArea Streaming DOM Test', () => {
   const chatStore = useChat();
+
+  beforeAll(async () => {
+    // Preload async components used in ChatArea to prevent "Closing rpc while fetch was pending" in CI.
+    await Promise.all([
+      import('./ChatSettingsPanel.vue'),
+      import('./HistoryManipulationModal.vue')
+    ]);
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();

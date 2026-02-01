@@ -1,9 +1,8 @@
 import { ref } from 'vue';
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
-import HistoryManipulationModal from './HistoryManipulationModal.vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 
@@ -18,6 +17,14 @@ vi.mock('vue-router', () => ({
 }));
 
 describe('ChatArea Design Specifications', () => {
+  beforeAll(async () => {
+    // Preload async components used in ChatArea to prevent "Closing rpc while fetch was pending" in CI.
+    await Promise.all([
+      import('./ChatSettingsPanel.vue'),
+      import('./HistoryManipulationModal.vue')
+    ]);
+  });
+
   beforeEach(() => {
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref({ id: '1', title: 'Test Chat', modelId: 'gemma3n:e2b' }),

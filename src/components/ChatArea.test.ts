@@ -144,6 +144,14 @@ function resetMocks() {
 }
 
 describe('ChatArea UI States', () => {
+  beforeAll(async () => {
+    // Preload async components used in ChatArea to prevent "Closing rpc while fetch was pending" in CI.
+    await Promise.all([
+      import('./ChatSettingsPanel.vue'),
+      import('./HistoryManipulationModal.vue')
+    ]);
+  });
+
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';

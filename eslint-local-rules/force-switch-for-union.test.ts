@@ -8,7 +8,8 @@ import * as parser from '@typescript-eslint/parser';
 describe('force-switch-for-union rule', () => {
   let eslint: ESLint;
   const testFileDir = path.resolve(__dirname, '../src/test-tmp');
-  const testFilePath = path.resolve(testFileDir, 'temp-lint-test.ts');
+  const testFileName = `temp-lint-test-${Math.random().toString(36).slice(2)}.ts`;
+  const testFilePath = path.resolve(testFileDir, testFileName);
 
   beforeAll(() => {
     if (!fs.existsSync(testFileDir)) {

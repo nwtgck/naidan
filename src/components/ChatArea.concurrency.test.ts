@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick, ref, computed, reactive } from 'vue';
@@ -44,6 +44,14 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 describe('ChatArea Concurrency Button State', () => {
+  beforeAll(async () => {
+    // Preload async components used in ChatArea to prevent "Closing rpc while fetch was pending" in CI.
+    await Promise.all([
+      import('./ChatSettingsPanel.vue'),
+      import('./HistoryManipulationModal.vue')
+    ]);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockActiveGenerations.clear();
