@@ -4,6 +4,15 @@ import HistoryManipulationModal from './HistoryManipulationModal.vue';
 import { useChat } from '../composables/useChat';
 import { nextTick, ref } from 'vue';
 
+// Mock vuedraggable
+vi.mock('vuedraggable', () => ({
+  default: {
+    name: 'draggable',
+    template: '<div class="draggable-root"><slot name="item" v-for="(element, index) in modelValue" :element="element" :index="index"></slot></div>',
+    props: ['modelValue', 'itemKey', 'handle']
+  }
+}));
+
 // Mock useChat
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn()
@@ -76,6 +85,20 @@ describe('HistoryManipulationModal', () => {
     expect((wrapper.findAll('textarea')[0]!.element as HTMLTextAreaElement).value).toBe(''); 
   });
 
+  it('can duplicate messages', async () => {
+    mockActiveMessages.value = [{ id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } }] as any;
+    const wrapper = await mountModal();
+
+    const duplicateButton = wrapper.find('button[title="Duplicate Message"]');
+    await duplicateButton.trigger('click');
+    await nextTick();
+
+    const textareas = wrapper.findAll('textarea');
+    expect(textareas.length).toBe(2);
+    expect((textareas[0]!.element as HTMLTextAreaElement).value).toBe('Msg 1');
+    expect((textareas[1]!.element as HTMLTextAreaElement).value).toBe('Msg 1');
+  });
+
   it('switches roles when clicking role button', async () => {
     const wrapper = await mountModal();
 
@@ -90,14 +113,80 @@ describe('HistoryManipulationModal', () => {
     expect(wrapper.find('.text-blue-600').exists()).toBe(true); 
   });
 
+  it('configures draggable correctly and updates order', async () => {
+    mockActiveMessages.value = [
+      { id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } },
+      { id: '2', role: 'assistant', content: 'Msg 2', replies: { items: [] } }
+    ] as any;
+    const wrapper = await mountModal();
+
+    const draggable = wrapper.findComponent({ name: 'draggable' });
+    expect(draggable.exists()).toBe(true);
+    expect(draggable.props('handle')).toBe('.handle');
+    expect(draggable.props('itemKey')).toBe('localId');
+
+    // Simulate drag start
+    await draggable.vm.$emit('start');
+    await nextTick();
+    expect(wrapper.find('.pb-32').exists()).toBe(true);
+
+    // Simulate reordering: swap Msg 1 and Msg 2
+    const currentList = draggable.props('modelValue');
+    const newList = [currentList[1], currentList[0]];
+    await draggable.vm.$emit('update:modelValue', newList);
+    await nextTick();
+
+    // Verify DOM reflects new order
+    const textareas = wrapper.findAll('textarea');
+    expect(textareas[0]!.element.value).toBe('Msg 2');
+    expect(textareas[1]!.element.value).toBe('Msg 1');
+
+    // Simulate drag end
+    await draggable.vm.$emit('end');
+    await nextTick();
+    expect(wrapper.find('.pb-32').exists()).toBe(false);
+  });
+
+  it('preserves new order when committing changes after drag-and-drop reordering', async () => {
+    mockActiveMessages.value = [
+      { id: '1', role: 'user', content: 'First', replies: { items: [] } },
+      { id: '2', role: 'assistant', content: 'Second', replies: { items: [] } }
+    ] as any;
+    const wrapper = await mountModal();
+
+    const draggable = wrapper.findComponent({ name: 'draggable' });
+    
+    // Simulate reordering: Second, then First
+    const currentList = draggable.props('modelValue');
+    const newList = [currentList[1], currentList[0]];
+    await draggable.vm.$emit('update:modelValue', newList);
+    await nextTick();
+
+    // Click Apply Changes
+    const buttons = wrapper.findAll('button');
+    const saveButton = buttons.find(b => b.text().includes('Apply Changes'));
+    await saveButton?.trigger('click');
+
+    // Verify commit call has the NEW order
+    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
+      expect.objectContaining({ content: 'Second' }),
+      expect.objectContaining({ content: 'First' })
+    ]);
+  });
+
   it('calls commitFullHistoryManipulation on save', async () => {
+    mockActiveMessages.value = [
+      { id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } },
+      { id: '2', role: 'assistant', content: 'Msg 2', replies: { items: [] } }
+    ] as any;
     const wrapper = await mountModal();
 
     // Edit content
-    const textarea = wrapper.find('textarea');
-    await textarea.setValue('Updated Msg 1');
+    const textareas = wrapper.findAll('textarea');
+    expect(textareas.length).toBe(2);
+    await textareas[0]!.setValue('Updated Msg 1');
 
-    // Click Apply - find by text content instead of icon class
+    // Click Apply
     const buttons = wrapper.findAll('button');
     const saveButton = buttons.find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');

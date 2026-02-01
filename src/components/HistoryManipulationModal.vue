@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue';
+import draggable from 'vuedraggable';
 import { 
   X, Save, Plus, Trash2, 
   User, Bot, Hammer, Cpu,
-  Paperclip, Image as ImageIcon, History
+  Paperclip, Image as ImageIcon, History,
+  Copy, GripVertical
 } from 'lucide-vue-next';
 import { useChat } from '../composables/useChat';
 import type { HistoryItem } from '../utils/chat-tree';
@@ -23,9 +25,14 @@ const chatStore = useChat();
 const { currentChat, activeMessages } = chatStore;
 const { setActiveFocusArea } = useLayout();
 
-const editableMessages = ref<HistoryItem[]>([]);
+interface EditableHistoryItem extends HistoryItem {
+  localId: string;
+}
+
+const editableMessages = ref<EditableHistoryItem[]>([]);
 const attachmentUrls = ref<Record<string, string>>({});
 const fileInputs = ref<(HTMLInputElement | null)[]>([]);
+const isDragging = ref(false);
 
 function setFileInputRef(el: unknown, index: number) {
   fileInputs.value[index] = el as HTMLInputElement | null;
@@ -39,8 +46,9 @@ watch(() => props.isOpen, async (open) => {
     Object.values(attachmentUrls.value).forEach(URL.revokeObjectURL);
     attachmentUrls.value = {};
 
-    // Deep copy current branch to editable state
+    // Deep copy current branch to editable state with localIds
     editableMessages.value = activeMessages.value.map(m => ({
+      localId: crypto.randomUUID(),
       role: m.role,
       content: m.content,
       modelId: m.modelId,
@@ -120,6 +128,7 @@ function predictNextRole(index: number): 'user' | 'assistant' {
 function addMessage(index: number) {
   const role = predictNextRole(index);
   editableMessages.value.splice(index + 1, 0, {
+    localId: crypto.randomUUID(),
     role,
     content: ''
   });
@@ -127,6 +136,17 @@ function addMessage(index: number) {
 
 function removeMessage(index: number) {
   editableMessages.value.splice(index, 1);
+}
+
+function duplicateMessage(index: number) {
+  const msg = editableMessages.value[index];
+  if (!msg) return;
+  
+  editableMessages.value.splice(index + 1, 0, {
+    ...msg,
+    localId: crypto.randomUUID(),
+    attachments: msg.attachments ? [...msg.attachments] : undefined
+  });
 }
 
 function triggerFileInput(index: number) {
@@ -205,7 +225,10 @@ function removeAttachment(msgIndex: number, attId: string) {
 async function handleSave() {
   if (!currentChat.value) return;
   
-  await chatStore.commitFullHistoryManipulation(currentChat.value.id, editableMessages.value);
+  // Clean up localIds before committing
+  const cleanMessages: HistoryItem[] = editableMessages.value.map(({ localId: _, ...msg }) => msg);
+  
+  await chatStore.commitFullHistoryManipulation(currentChat.value.id, cleanMessages);
   emit('close');
 }
 
@@ -245,95 +268,120 @@ function handleCancel() {
             </button>
           </div>
           
-          <div v-for="(msg, index) in editableMessages" :key="index" class="relative group">
-            <div class="flex gap-4 items-start">
-              <!-- Role Selector -->
-              <div class="flex flex-col items-center gap-2 pt-2">
-                <button 
-                  @click="msg.role = msg.role === 'user' ? 'assistant' : 'user'"
-                  class="p-2 rounded-xl transition-all shadow-sm border"
-                  :class="{
-                    'bg-blue-50 dark:bg-blue-900/20 text-blue-600 border-blue-100 dark:border-blue-800': msg.role === 'user',
-                    'bg-purple-50 dark:bg-purple-900/20 text-purple-600 border-purple-100 dark:border-purple-800': msg.role === 'assistant'
-                  }"
-                  :title="'Switch Role (Current: ' + msg.role + ')'"
-                >
-                  <User v-if="msg.role === 'user'" class="w-4 h-4" />
-                  <Bot v-else class="w-4 h-4" />
-                </button>
-                <div class="text-[10px] font-bold uppercase tracking-tighter opacity-50" data-testid="role-label">{{ msg.role }}</div>
-              </div>
-
-              <!-- Content Area -->
-              <div class="flex-1 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all flex flex-col">
-                <!-- Attachments -->
-                <div v-if="msg.attachments && msg.attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4">
-                  <div v-for="att in msg.attachments" :key="att.id" class="relative group/att">
-                    <img 
-                      v-if="att.mimeType.startsWith('image/')"
-                      :src="attachmentUrls[att.id]" 
-                      class="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
-                    />
-                    <div v-else class="w-16 h-16 flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-lg">
-                      <ImageIcon class="w-6 h-6 text-gray-400" />
+          <draggable 
+            v-model="editableMessages" 
+            item-key="localId"
+            handle=".handle"
+            tag="div"
+            :animation="200"
+            :delay="200"
+            :delay-on-touch-only="true"
+            @start="isDragging = true"
+            @end="isDragging = false"
+            ghost-class="sortable-ghost"
+            :class="['space-y-8', isDragging ? 'pb-32' : 'pb-4']"
+            :scroll="true"
+            :force-fallback="true"
+            fallback-class="opacity-0"
+          >
+            <template #item="{ element: msg, index }">
+              <div class="relative group">
+                <div class="flex gap-4 items-start">
+                  <!-- Drag Handle & Role Selector -->
+                  <div class="flex flex-col items-center gap-2 pt-2">
+                    <div class="handle p-1 text-gray-300 dark:text-gray-700 cursor-grab active:cursor-grabbing hover:text-gray-400 transition-colors">
+                      <GripVertical class="w-4 h-4" />
                     </div>
                     <button 
-                      @click="removeAttachment(index, att.id)"
-                      class="absolute -top-2 -right-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm opacity-0 group-hover/att:opacity-100 transition-opacity"
+                      @click="msg.role = msg.role === 'user' ? 'assistant' : 'user'"
+                      class="p-2 rounded-xl transition-all shadow-sm border"
+                      :class="{
+                        'bg-blue-50 dark:bg-blue-900/20 text-blue-600 border-blue-100 dark:border-blue-800': msg.role === 'user',
+                        'bg-purple-50 dark:bg-purple-900/20 text-purple-600 border-purple-100 dark:border-purple-800': msg.role === 'assistant'
+                      }"
+                      :title="'Switch Role (Current: ' + msg.role + ')'"
                     >
-                      <X class="w-3 h-3" />
+                      <User v-if="msg.role === 'user'" class="w-4 h-4" />
+                      <Bot v-else class="w-4 h-4" />
                     </button>
+                    <div class="text-[10px] font-bold uppercase tracking-tighter opacity-50" data-testid="role-label">{{ msg.role }}</div>
                   </div>
-                </div>
 
-                <textarea 
-                  v-model="msg.content"
-                  @paste="handlePaste($event, index)"
-                  class="w-full bg-transparent p-4 text-sm text-gray-800 dark:text-gray-100 focus:outline-none resize-none min-h-[100px]"
-                  placeholder="Message content..."
-                ></textarea>
+                  <!-- Content Area -->
+                  <div class="flex-1 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all flex flex-col">
+                    <!-- Attachments -->
+                    <div v-if="msg.attachments && msg.attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4">
+                      <div v-for="att in msg.attachments" :key="att.id" class="relative group/att">
+                        <img 
+                          v-if="att.mimeType.startsWith('image/')"
+                          :src="attachmentUrls[att.id]" 
+                          class="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                        />
+                        <div v-else class="w-16 h-16 flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-lg">
+                          <ImageIcon class="w-6 h-6 text-gray-400" />
+                        </div>
+                        <button 
+                          @click="removeAttachment(index, att.id)"
+                          class="absolute -top-2 -right-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm opacity-0 group-hover/att:opacity-100 transition-opacity"
+                        >
+                          <X class="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <textarea 
+                      v-model="msg.content"
+                      @paste="handlePaste($event, index)"
+                      class="w-full bg-transparent p-4 text-sm text-gray-800 dark:text-gray-100 focus:outline-none resize-none min-h-[100px]"
+                      placeholder="Message content..."
+                    ></textarea>
                 
-                <!-- Bottom Bar -->
-                <div class="px-4 py-2 bg-gray-100/30 dark:bg-gray-800/50 flex items-center justify-between border-t dark:border-gray-700">
-                  <div class="flex gap-4 text-[10px] font-mono text-gray-500">
-                    <span v-if="msg.modelId" class="flex items-center gap-1"><Cpu class="w-3 h-3" /> {{ msg.modelId }}</span>
-                    <span v-if="msg.thinking" class="flex items-center gap-1 truncate"><History class="w-3 h-3" /> Has Thinking Content</span>
-                  </div>
+                    <!-- Bottom Bar -->
+                    <div class="px-4 py-2 bg-gray-100/30 dark:bg-gray-800/50 flex items-center justify-between border-t dark:border-gray-700">
+                      <div class="flex gap-4 text-[10px] font-mono text-gray-500">
+                        <span v-if="msg.modelId" class="flex items-center gap-1"><Cpu class="w-3 h-3" /> {{ msg.modelId }}</span>
+                        <span v-if="msg.thinking" class="flex items-center gap-1 truncate"><History class="w-3 h-3" /> Has Thinking Content</span>
+                      </div>
                   
-                  <div class="flex items-center gap-2">
-                    <input 
-                      :ref="el => setFileInputRef(el, index)"
-                      type="file" 
-                      accept="image/*" 
-                      multiple 
-                      class="hidden" 
-                      @change="handleFileSelect($event, index)"
-                    />
-                    <button 
-                      @click="triggerFileInput(index)"
-                      class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-gray-700 transition-colors"
-                      title="Attach images"
-                    >
-                      <Paperclip class="w-3.5 h-3.5" />
+                      <div class="flex items-center gap-2">
+                        <input 
+                          :ref="el => setFileInputRef(el, index)"
+                          type="file" 
+                          accept="image/*" 
+                          multiple 
+                          class="hidden" 
+                          @change="handleFileSelect($event, index)"
+                        />
+                        <button 
+                          @click="triggerFileInput(index)"
+                          class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-gray-700 transition-colors"
+                          title="Attach images"
+                        >
+                          <Paperclip class="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Actions -->
+                  <div class="flex flex-col gap-2 transition-opacity">
+                    <button @click="removeMessage(index)" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Remove Message">
+                      <Trash2 class="w-4 h-4" />
+                    </button>
+                    <button @click="duplicateMessage(index)" class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" title="Duplicate Message">
+                      <Copy class="w-4 h-4" />
+                    </button>
+                    <button @click="addMessage(index)" class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" title="Add Message After">
+                      <Plus class="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-              </div>
-
-              <!-- Actions -->
-              <div class="flex flex-col gap-2 transition-opacity">
-                <button @click="removeMessage(index)" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Remove Message">
-                  <Trash2 class="w-4 h-4" />
-                </button>
-                <button @click="addMessage(index)" class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" title="Add Message After">
-                  <Plus class="w-4 h-4" />
-                </button>
-              </div>
-            </div>
             
-            <!-- Connection Line -->
-            <div v-if="index < editableMessages.length - 1" class="absolute left-[21px] top-[48px] bottom-[-32px] w-0.5 bg-gray-100 dark:bg-gray-800 -z-10"></div>
-          </div>
+                <!-- Connection Line -->
+                <div v-if="index < editableMessages.length - 1" class="absolute left-[21px] top-[48px] bottom-[-32px] w-0.5 bg-gray-100 dark:bg-gray-800 -z-10"></div>
+              </div>
+            </template>
+          </draggable>
 
           <div v-if="editableMessages.length > 0" class="flex justify-center pt-4">
             <button @click="addMessage(editableMessages.length - 1)" class="flex items-center gap-2 px-4 py-2 text-gray-400 hover:text-blue-600 transition-colors font-bold text-xs uppercase tracking-widest">
