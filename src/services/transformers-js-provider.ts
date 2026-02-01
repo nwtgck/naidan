@@ -15,10 +15,20 @@ export class TransformersJsProvider implements LLMProvider {
     // Auto-load if needed
     const state = transformersJsService.getState();
     if (state.activeModelId !== model || state.status !== 'ready') {
-      if (state.status === 'loading') {
+      const status = state.status;
+      switch (status) {
+      case 'loading':
         // Wait for the existing loading process to finish if it's the same model,
         // otherwise throw or wait for it to fail. For now, keep it simple.
         throw new Error('Engine is busy. Please wait for the current operation to finish.');
+      case 'idle':
+      case 'ready':
+      case 'error':
+        break;
+      default: {
+        const _ex: never = status;
+        throw new Error(`Unhandled status: ${_ex}`);
+      }
       }
       
       console.log(`[TransformersJsProvider] Auto-loading model: ${model}`);

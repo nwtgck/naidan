@@ -35,9 +35,20 @@ storageService.subscribeToChanges(async (event) => {
 });
 
 transformersJsService.subscribeModelList(async () => {
-  if (_settings.value.endpointType === 'transformers_js') {
+  const type = _settings.value.endpointType;
+  switch (type) {
+  case 'transformers_js': {
     const { fetchModels } = useSettings();
     await fetchModels();
+    break;
+  }
+  case 'openai':
+  case 'ollama':
+    break;
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
+  }
   }
 });
 

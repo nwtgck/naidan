@@ -41,7 +41,7 @@ function notifyModelListChange() {
 
 // Worker management
 let worker: Worker | null = null;
-let remote: any = null;
+let remote: Comlink.Remote<TransformersJsWorker> | null = null;
 
 /**
  * Initializes or re-initializes the Web Worker.
@@ -124,20 +124,27 @@ export const transformersJsService = {
         let hasConfig = false;
 
         const scan = async (d: FileSystemDirectoryHandle) => {
-          // @ts-expect-error: entries()
-          for await (const [name, handle] of d.entries()) {
-            if (handle.kind === 'file') {
-              const file = await (handle as FileSystemFileHandle).getFile();
+          for await (const [name, handle] of (d as FileSystemDirectoryHandleWithEntries).entries()) {
+            const h = handle as FileSystemHandle;
+            switch (h.kind) {
+            case 'file': {
+              const file = await (h as FileSystemFileHandle).getFile();
               size += file.size;
               fileCount++;
               if (file.lastModified > lastModified) lastModified = file.lastModified;
               if (name === '.config.json.complete') hasConfig = true;
-            } else if (handle.kind === 'directory') {
-              await scan(handle as FileSystemDirectoryHandle);
+              break;
+            }
+            case 'directory':
+              await scan(h as FileSystemDirectoryHandle);
+              break;
+            default: {
+              const _ex: never = h.kind as never;
+              throw new Error(`Unhandled handle kind: ${_ex}`);
+            }
             }
           }
         };
-
         await scan(dir);
         return { size, fileCount, lastModified, hasConfig };
       };
@@ -145,32 +152,61 @@ export const transformersJsService = {
       try {
         const localDir = await modelsDir.getDirectoryHandle('local', { create: false }) as FileSystemDirectoryHandleWithEntries;
         for await (const [name, handle] of localDir.entries()) {
-          if (handle.kind === 'directory') {
-            const stats = await getDirStats(handle as FileSystemDirectoryHandle);
+          const h = handle as FileSystemHandle;
+          switch (h.kind) {
+          case 'directory': {
+            const stats = await getDirStats(h as FileSystemDirectoryHandle);
             if (stats.hasConfig) {
               results.push({ id: `local/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
             }
+            break;
+          }
+          case 'file':
+            break;
+          default: {
+            const _ex: never = h.kind as never;
+            throw new Error(`Unhandled handle kind: ${_ex}`);
+          }
           }
         }
       } catch (e) { /* ignore */ }
-
+      
       try {
         const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false }) as FileSystemDirectoryHandleWithEntries;
         for await (const [orgName, orgHandle] of hfDir.entries()) {
-          if (orgHandle.kind === 'directory') {
-            const orgDir = orgHandle as FileSystemDirectoryHandleWithEntries;
+          const oh = orgHandle as FileSystemHandle;
+          switch (oh.kind) {
+          case 'directory': {
+            const orgDir = oh as FileSystemDirectoryHandleWithEntries;
             for await (const [repoName, repoHandle] of orgDir.entries()) {
-              if (repoHandle.kind === 'directory') {
-                const stats = await getDirStats(repoHandle as FileSystemDirectoryHandle);
+              const rh = repoHandle as FileSystemHandle;
+              switch (rh.kind) {
+              case 'directory': {
+                const stats = await getDirStats(rh as FileSystemDirectoryHandle);
                 if (stats.hasConfig) {
                   results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
                 }
+                break;
+              }
+              case 'file':
+                break;
+              default: {
+                const _ex: never = rh.kind as never;
+                throw new Error(`Unhandled handle kind: ${_ex}`);
+              }
               }
             }
+            break;
+          }
+          case 'file':
+            break;
+          default: {
+            const _ex: never = oh.kind as never;
+            throw new Error(`Unhandled handle kind: ${_ex}`);
+          }
           }
         }
-      } catch (e) { /* ignore */ }
-    } catch (err) {
+      } catch (e) { /* ignore */ }    } catch (err) {
       console.warn('Failed to list cached models:', err);
     }
     return results;
@@ -229,7 +265,7 @@ export const transformersJsService = {
           
           // Clean up empty org directory
           let hasMore = false;
-          for await (const _ of (orgDir as any).entries()) { hasMore = true; break; }
+          for await (const _ of (orgDir as FileSystemDirectoryHandleWithEntries).entries()) { hasMore = true; break; }
           if (!hasMore) await hfDir.removeEntry(org);
         } else if (org) {
           await hfDir.removeEntry(org, { recursive: true });
@@ -250,10 +286,22 @@ export const transformersJsService = {
 
   async loadModel(modelId: string) {
     if (activeModelId === modelId && loadingStatus === 'ready') return;
-    if (loadingStatus === 'loading') throw new Error('Another model is currently loading');
-
+    
+    switch (loadingStatus) {
+    case 'loading':
+      throw new Error('Another model is currently loading');
+    case 'idle':
+    case 'ready':
+    case 'error':
+      break;
+    default: {
+      const _ex: never = loadingStatus;
+      throw new Error(`Unhandled loading status: ${_ex}`);
+    }
+    }
+    
     try {
-      // 1. Check cache FIRST before changing status to avoid UI flicker
+      if (!remote) throw new Error('Worker not initialized');      // 1. Check cache FIRST before changing status to avoid UI flicker
       const cached = await this.listCachedModels();
       const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
       const isLocal = modelId.startsWith('local/');
@@ -301,10 +349,21 @@ export const transformersJsService = {
   },
 
   async downloadModel(modelId: string) {
-    if (loadingStatus === 'loading') throw new Error('Another operation is in progress');
-
+    switch (loadingStatus) {
+    case 'loading':
+      throw new Error('Another operation is in progress');
+    case 'idle':
+    case 'ready':
+    case 'error':
+      break;
+    default: {
+      const _ex: never = loadingStatus;
+      throw new Error(`Unhandled loading status: ${_ex}`);
+    }
+    }
+  
     try {
-      // 1. Cleanup: If directory exists but is not complete, delete it first
+      if (!remote) throw new Error('Worker not initialized');      // 1. Cleanup: If directory exists but is not complete, delete it first
       const cached = await this.listCachedModels();
       const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
       const isActuallyComplete = cached.some(m => m.id === modelId || m.id === hfId);
@@ -395,12 +454,24 @@ export const transformersJsService = {
     params?: LmParameters,
     signal?: AbortSignal
   ) {
-    if (loadingStatus !== 'ready') throw new Error('Model not loaded');
-
-    if (signal) {
-      signal.addEventListener('abort', () => {
-        this.interrupt().catch(console.error);
-      });
+    switch (loadingStatus) {
+    case 'idle':
+    case 'loading':
+    case 'error':
+      throw new Error('Model not loaded');
+    case 'ready':
+      break;
+    default: {
+      const _ex: never = loadingStatus;
+      throw new Error(`Unhandled loading status: ${_ex}`);
+    }
+    }
+    
+    if (!remote) throw new Error('Worker not initialized');
+    
+    if (signal) {      signal.addEventListener('abort', () => {
+      this.interrupt().catch(console.error);
+    });
     }
 
     try {

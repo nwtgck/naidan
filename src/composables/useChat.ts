@@ -111,8 +111,19 @@ watch(_currentChat, (newChat, oldChat) => {
 transformersJsService.subscribeModelList(async () => {
   const { fetchAvailableModels, currentChat, resolvedSettings } = useChat();
   const type = resolvedSettings.value?.endpointType;
-  if (type === 'transformers_js') {
-    await fetchAvailableModels(currentChat.value?.id);
+  if (type) {
+    switch (type) {
+    case 'transformers_js':
+      await fetchAvailableModels(currentChat.value?.id);
+      break;
+    case 'openai':
+    case 'ollama':
+      break;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled endpoint type: ${_ex}`);
+    }
+    }
   }
 });
   

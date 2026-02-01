@@ -84,11 +84,28 @@ export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
   updatedAt: dto.updatedAt,
   debugEnabled: dto.debugEnabled,
   modelId: dto.modelId,
-  endpoint: dto.endpoint ? {
-    type: dto.endpoint.type as EndpointType,
-    url: dto.endpoint.type !== 'transformers_js' ? dto.endpoint.url : undefined,
-    httpHeaders: dto.endpoint.type !== 'transformers_js' ? dto.endpoint.httpHeaders : undefined,
-  } : undefined,
+  endpoint: dto.endpoint ? (() => {
+    const endpoint = dto.endpoint;
+    switch (endpoint.type) {
+    case 'openai':
+    case 'ollama':
+      return {
+        type: endpoint.type as EndpointType,
+        url: endpoint.url,
+        httpHeaders: endpoint.httpHeaders,
+      };
+    case 'transformers_js':
+      return {
+        type: endpoint.type as EndpointType,
+        url: undefined,
+        httpHeaders: undefined,
+      };
+    default: {
+      const _ex: never = endpoint;
+      throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
+    }
+    }
+  })() : undefined,
   systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
   lmParameters: dto.lmParameters,
   currentLeafId: dto.currentLeafId,
@@ -131,11 +148,28 @@ export const chatGroupToDomain = (
     isCollapsed: dto.isCollapsed,
     updatedAt: dto.updatedAt,
     items,
-    endpoint: dto.endpoint ? {
-      type: dto.endpoint.type as EndpointType,
-      url: dto.endpoint.type !== 'transformers_js' ? dto.endpoint.url : undefined,
-      httpHeaders: dto.endpoint.type !== 'transformers_js' ? dto.endpoint.httpHeaders : undefined,
-    } : undefined,
+    endpoint: dto.endpoint ? (() => {
+      const endpoint = dto.endpoint;
+      switch (endpoint.type) {
+      case 'openai':
+      case 'ollama':
+        return {
+          type: endpoint.type as EndpointType,
+          url: endpoint.url,
+          httpHeaders: endpoint.httpHeaders,
+        };
+      case 'transformers_js':
+        return {
+          type: endpoint.type as EndpointType,
+          url: undefined,
+          httpHeaders: undefined,
+        };
+      default: {
+        const _ex: never = endpoint;
+        throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
+      }
+      }
+    })() : undefined,
     modelId: dto.modelId,
     systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
     lmParameters: dto.lmParameters,
@@ -282,6 +316,32 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     systemPrompt, lmParameters 
   } = dto;
 
+  const endpointInfo = endpoint ? (() => {
+    switch (endpoint.type) {
+    case 'openai':
+    case 'ollama':
+      return {
+        endpointType: endpoint.type as EndpointType,
+        endpointUrl: endpoint.url,
+        endpointHttpHeaders: endpoint.httpHeaders as [string, string][] | undefined,
+      };
+    case 'transformers_js':
+      return {
+        endpointType: endpoint.type as EndpointType,
+        endpointUrl: undefined,
+        endpointHttpHeaders: undefined,
+      };
+    default: {
+      const _ex: never = endpoint;
+      throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
+    }
+    }
+  })() : {
+    endpointType: undefined,
+    endpointUrl: undefined,
+    endpointHttpHeaders: undefined,
+  };
+
   return {
     id,
     title,
@@ -290,9 +350,7 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     createdAt,
     updatedAt,
     debugEnabled: debugEnabled ?? false,
-    endpointType: endpoint?.type as EndpointType | undefined,
-    endpointUrl: endpoint?.type !== 'transformers_js' ? endpoint?.url : undefined,
-    endpointHttpHeaders: endpoint?.type !== 'transformers_js' ? endpoint?.httpHeaders : undefined,
+    ...endpointInfo,
     modelId,
     originChatId,
     originMessageId,
@@ -418,19 +476,59 @@ export const buildSidebarItemsFromHierarchy = (
 
 export const settingsToDomain = (dto: SettingsDto): Settings => {
   const { endpoint, providerProfiles, storageType, ...rest } = dto;
+  
+  const endpointInfo = (() => {
+    switch (endpoint.type) {
+    case 'openai':
+    case 'ollama':
+      return {
+        endpointType: endpoint.type as EndpointType,
+        endpointUrl: endpoint.url,
+        endpointHttpHeaders: endpoint.httpHeaders as [string, string][] | undefined,
+      };
+    case 'transformers_js':
+      return {
+        endpointType: endpoint.type as EndpointType,
+        endpointUrl: undefined,
+        endpointHttpHeaders: undefined,
+      };
+    default: {
+      const _ex: never = endpoint;
+      throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
+    }
+    }
+  })();
+
   return {
     ...rest,
-    endpointType: endpoint.type as EndpointType,
-    endpointUrl: endpoint.type !== 'transformers_js' ? endpoint.url : undefined,
-    endpointHttpHeaders: endpoint.type !== 'transformers_js' ? endpoint.httpHeaders : undefined,
+    ...endpointInfo,
     storageType: storageType as StorageType,
     providerProfiles: providerProfiles?.map(p => {
       const { endpoint: pEndpoint, ...pRest } = p;
+      const pEndpointInfo = (() => {
+        switch (pEndpoint.type) {
+        case 'openai':
+        case 'ollama':
+          return {
+            endpointType: pEndpoint.type as EndpointType,
+            endpointUrl: pEndpoint.url,
+            endpointHttpHeaders: pEndpoint.httpHeaders as [string, string][] | undefined,
+          };
+        case 'transformers_js':
+          return {
+            endpointType: pEndpoint.type as EndpointType,
+            endpointUrl: undefined,
+            endpointHttpHeaders: undefined,
+          };
+        default: {
+          const _ex: never = pEndpoint;
+          throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
+        }
+        }
+      })();
       return {
         ...pRest,
-        endpointType: pEndpoint.type as EndpointType,
-        endpointUrl: pEndpoint.type !== 'transformers_js' ? pEndpoint.url : undefined,
-        endpointHttpHeaders: pEndpoint.type !== 'transformers_js' ? pEndpoint.httpHeaders : undefined,
+        ...pEndpointInfo,
       };
     }) ?? [],
   };

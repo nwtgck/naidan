@@ -79,10 +79,20 @@ function urlToPath(url: string): string | null {
                           parsed.hostname === '127.0.0.1';
 
     if (isLocalOrigin) {
-      if (pathParts[0] === 'local' || pathParts[0] === 'models') {
+      const first = pathParts[0];
+      if (first === 'local' || first === 'models') {
         let startIndex = 0;
-        if (pathParts[0] === 'models') startIndex++;
-        if (pathParts[startIndex] === 'local') startIndex++;
+        switch (first) {
+        case 'models':
+          startIndex++;
+          break;
+        case 'local':
+          break;
+        default: {
+          const _ex: never = first;
+          throw new Error(`Unhandled path part: ${_ex}`);
+        }
+        }        if (pathParts[startIndex] === 'local') startIndex++;
         
         const cleanParts = pathParts.slice(startIndex);
         const resolved = `models/local/${cleanParts.join('/')}`;
@@ -98,10 +108,20 @@ function urlToPath(url: string): string | null {
     return resolved;
   } catch {
     const parts = url.split('/').filter(p => !!p);
-    if (parts[0] === 'local' || parts[0] === 'models') {
+    const first = parts[0];
+    if (first === 'local' || first === 'models') {
       let startIndex = 0;
-      if (parts[0] === 'models') startIndex++;
-      if (parts[startIndex] === 'local') startIndex++;
+      switch (first) {
+      case 'models':
+        startIndex++;
+        break;
+      case 'local':
+        break;
+      default: {
+        const _ex: never = first;
+        throw new Error(`Unhandled path part: ${_ex}`);
+      }
+      }      if (parts[startIndex] === 'local') startIndex++;
       const resolved = `models/local/${parts.slice(startIndex).join('/')}`;
       console.log(`[urlToPath] Relative matched: ${url} -> ${resolved}`);
       return resolved;
