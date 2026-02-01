@@ -5,7 +5,7 @@ import {
   X, Save, Plus, Trash2, 
   User, Bot, Hammer, Cpu,
   Paperclip, Image as ImageIcon, History,
-  Copy, GripVertical, MessageSquareQuote, Check
+  Copy, GripVertical, MessageSquareQuote, Info
 } from 'lucide-vue-next';
 import { useChat } from '../composables/useChat';
 import type { HistoryItem } from '../utils/chat-tree';
@@ -99,13 +99,12 @@ onUnmounted(() => {
 function predictNextRole(index: number): 'user' | 'assistant' {
   if (editableMessages.value.length === 0) return 'user';
   
-  // If there's a message before the insertion point, pick the opposite role
   if (index >= 0 && index < editableMessages.value.length) {
     const prevRole = editableMessages.value[index]!.role;
     switch (prevRole) {
     case 'user': return 'assistant';
     case 'assistant': return 'user';
-    case 'system': return 'user'; // Fallback for system
+    case 'system': return 'user';
     default: {
       const _ex: never = prevRole;
       return _ex;
@@ -113,13 +112,12 @@ function predictNextRole(index: number): 'user' | 'assistant' {
     }
   }
   
-  // If inserting at the very beginning (index -1)
   if (index === -1 && editableMessages.value.length > 0) {
     const nextRole = editableMessages.value[0]!.role;
     switch (nextRole) {
     case 'user': return 'assistant';
     case 'assistant': return 'user';
-    case 'system': return 'user'; // Fallback for system
+    case 'system': return 'user';
     default: {
       const _ex: never = nextRole;
       return _ex;
@@ -180,7 +178,7 @@ async function handleFileSelect(event: Event, index: number) {
     msg.attachments.push(attachment);
     attachmentUrls.value[attachment.id] = URL.createObjectURL(file);
   }
-  target.value = ''; // Reset input
+  target.value = '';
 }
 
 async function handlePaste(event: ClipboardEvent, index: number) {
@@ -261,10 +259,7 @@ const systemPromptBehavior = computed({
 
 async function handleSave() {
   if (!currentChat.value) return;
-  
-  // Clean up localIds before committing
   const cleanMessages: HistoryItem[] = editableMessages.value.map(({ localId: _, ...msg }) => msg);
-  
   await chatStore.commitFullHistoryManipulation(currentChat.value.id, cleanMessages, localSystemPrompt.value);
   emit('close');
 }
@@ -272,90 +267,107 @@ async function handleSave() {
 function handleCancel() {
   emit('close');
 }
+
+function capitalize(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 </script>
 
 <template>
   <Transition name="modal">
     <div v-if="isOpen" class="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-6" @click.self="handleCancel">
-      <div class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col border border-gray-100 dark:border-gray-800 modal-content-zoom overflow-hidden">
+      <div class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col border border-gray-100 dark:border-gray-800 modal-content-zoom overflow-hidden">
+        
         <!-- Header -->
-        <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50">
-          <div class="flex items-center gap-3">
-            <div class="p-2 bg-orange-50 dark:bg-orange-900/20 rounded-xl text-orange-600">
-              <Hammer class="w-5 h-5" />
+        <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900 z-10">
+          <div class="flex items-center gap-4">
+            <div class="p-2.5 bg-orange-500/10 rounded-xl border border-orange-200 dark:border-orange-500/20">
+              <Hammer class="w-5 h-5 text-orange-500" />
             </div>
             <div>
-              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Super Edit</h2>
-              <p class="text-xs text-gray-500 dark:text-gray-400 font-medium">Manipulate personality and history. A new branch will be created.</p>
+              <h2 class="text-base font-bold text-gray-800 dark:text-white tracking-tight">Super Edit</h2>
+              <p class="text-[11px] text-gray-500 dark:text-gray-400 font-medium">Manipulate full chat history. A new branch will be created.</p>
             </div>
           </div>
-          <button @click="handleCancel" class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
+          <button @click="handleCancel" class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors">
             <X class="w-5 h-5" />
           </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto flex flex-col">
-          <!-- System Prompt Section -->
-          <div class="border-b border-gray-100 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-900/30">
-            <div class="px-6 py-4 flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <div class="p-1.5 bg-blue-500/10 rounded-lg">
-                  <MessageSquareQuote class="w-4 h-4 text-blue-500" />
-                </div>
-                <span class="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-tight">System Prompt Configuration</span>
-                <span v-if="localSystemPrompt" class="px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider">Active</span>
-              </div>
+        <div class="flex-1 overflow-y-auto flex flex-col overscroll-contain bg-gray-50/30 dark:bg-black/10">
+          
+          <!-- Banner -->
+          <div class="px-6 pt-6">
+            <div class="flex items-center gap-3 px-4 py-3 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-900/20 rounded-2xl">
+              <Info class="w-4 h-4 text-blue-500 shrink-0" />
+              <p class="text-[11px] text-blue-700/70 dark:text-blue-300/70 font-medium leading-relaxed">
+                Applying changes creates a <span class="font-bold text-blue-600 dark:text-blue-400">new branch</span> from the root. The original conversation remains preserved.
+              </p>
             </div>
+          </div>
 
-            <div class="px-6 pb-6 space-y-4">
-              <div class="flex gap-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl w-fit shadow-sm">
-                <button 
-                  v-for="b in (['inherit', 'clear', 'override', 'append'] as const)" 
-                  :key="b"
-                  @click="systemPromptBehavior = b"
-                  class="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all"
-                  :class="systemPromptBehavior === b ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200'"
-                >
-                  {{ b }}
-                </button>
+          <!-- Chat System Prompt Section -->
+          <div class="p-6">
+            <div class="space-y-4">
+              <div class="flex items-center justify-between px-1">
+                <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                  <MessageSquareQuote class="w-3.5 h-3.5" />
+                  Chat System Prompt
+                </label>
+              
+                <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+                  <button 
+                    v-for="b in (['inherit', 'clear', 'override', 'append'] as const)" 
+                    :key="b"
+                    @click="systemPromptBehavior = b"
+                    class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
+                    :class="systemPromptBehavior === b ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                  >
+                    {{ capitalize(b) }}
+                  </button>
+                </div>
               </div>
 
-              <div v-if="systemPromptBehavior === 'override' || systemPromptBehavior === 'append'" class="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div v-if="systemPromptBehavior === 'override' || systemPromptBehavior === 'append'" class="animate-in fade-in slide-in-from-top-1 duration-200">
                 <textarea 
                   v-model="localSystemPrompt!.content"
-                  class="w-full p-4 text-sm bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[120px] shadow-sm text-gray-800 dark:text-gray-100"
+                  class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none min-h-[120px]"
                   placeholder="Enter system prompt content..."
                 ></textarea>
-                <div class="text-[10px] text-gray-400 font-medium px-1 flex items-center gap-1.5">
-                  <div class="w-1 h-1 rounded-full bg-blue-400"></div>
-                  <span v-if="systemPromptBehavior === 'override'">Completely replaces group or global system prompts.</span>
-                  <span v-else>Will be appended to inherited instructions.</span>
-                </div>
               </div>
               
-              <div v-else-if="systemPromptBehavior === 'clear'" class="p-8 bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl text-center animate-in fade-in slide-in-from-top-1 duration-200">
-                <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">System Instruction Cleared</p>
-                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This chat path will not use any system instructions.</p>
+              <div v-else-if="systemPromptBehavior === 'clear'" class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center animate-in fade-in slide-in-from-top-1 duration-200">
+                <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Parent Prompt Cleared</p>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This chat will not use any system instructions.</p>
               </div>
 
-              <div v-else class="p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl border border-blue-100/50 dark:border-blue-900/20 animate-in fade-in slide-in-from-top-1 duration-200">
-                <div class="text-[10px] font-bold text-blue-600/70 dark:text-blue-400/70 uppercase tracking-widest mb-2 flex items-center gap-2">
-                  <Check class="w-3 h-3" />
-                  Effective Context (Inherited)
+              <div v-else class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div class="flex items-center justify-between text-[10px] font-bold">
+                  <span class="text-gray-400 uppercase tracking-widest">System Prompt Resolution</span>
+                  <span class="text-gray-300">Inherited</span>
                 </div>
-                <div class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed italic">
-                  {{ inheritedSettings?.systemPromptMessages.join('\n---\n') || 'No system prompt inherited.' }}
+                <div class="pt-2 border-t border-gray-50 dark:border-gray-800/50">
+                  <div class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed italic font-medium">
+                    {{ inheritedSettings?.systemPromptMessages.join('\n---\n') || 'No system prompt inherited.' }}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Message List -->
-          <div class="flex-1 p-6 space-y-8 min-h-0">
-            <div v-if="editableMessages.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
-              <Hammer class="w-12 h-12 opacity-20" />
-              <p>No messages in history. Add one to start.</p>
-              <button @click="addMessage(-1)" class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-bold text-sm">
+          <div class="p-6 pt-0 space-y-6">
+            <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <History class="w-3.5 h-3.5" />
+              Message List
+            </label>
+
+            <div v-if="editableMessages.length === 0" class="p-16 bg-white dark:bg-gray-900 border border-dashed border-gray-200 dark:border-gray-700 rounded-2xl flex flex-col items-center justify-center text-gray-400 gap-5 shadow-sm">
+              <div class="p-5 bg-orange-50 dark:bg-orange-900/20 rounded-full border border-orange-100 dark:border-orange-800">
+                <Hammer class="w-8 h-8 text-orange-500 opacity-40" />
+              </div>
+              <p class="text-xs font-bold uppercase tracking-widest opacity-60">Forge empty history</p>
+              <button @click="addMessage(-1)" class="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all font-bold text-[11px] uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95">
                 <Plus class="w-4 h-4" />
                 Add First Message
               </button>
@@ -366,58 +378,59 @@ function handleCancel() {
               item-key="localId"
               handle=".handle"
               tag="div"
-              :animation="200"
+              :animation="250"
               :delay="200"
               :delay-on-touch-only="true"
               @start="isDragging = true"
               @end="isDragging = false"
               ghost-class="sortable-ghost"
-              :class="['space-y-8', isDragging ? 'pb-32' : 'pb-4']"
+              :class="['space-y-6', isDragging ? 'pb-40' : 'pb-8']"
               :scroll="true"
               :force-fallback="true"
               fallback-class="opacity-0"
             >
               <template #item="{ element: msg, index }">
                 <div class="relative group">
-                  <div class="flex gap-4 items-start">
-                    <!-- Drag Handle & Role Selector -->
-                    <div class="flex flex-col items-center gap-2 pt-2">
-                      <div class="handle p-1 text-gray-300 dark:text-gray-700 cursor-grab active:cursor-grabbing hover:text-gray-400 transition-colors">
-                        <GripVertical class="w-4 h-4" />
+                  <div class="flex gap-5 items-start">
+                    <!-- Control Column -->
+                    <div class="flex flex-col items-center gap-3 pt-3 shrink-0">
+                      <div class="handle p-1.5 text-gray-300 dark:text-gray-700 cursor-grab active:cursor-grabbing hover:text-blue-500 transition-colors bg-white dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800 shadow-sm">
+                        <GripVertical class="w-3.5 h-3.5" />
                       </div>
+                      
                       <button 
                         @click="msg.role = msg.role === 'user' ? 'assistant' : 'user'"
-                        class="p-2 rounded-xl transition-all shadow-sm border"
+                        class="w-10 h-10 flex items-center justify-center rounded-xl transition-all shadow-sm border"
                         :class="{
-                          'bg-blue-50 dark:bg-blue-900/20 text-blue-600 border-blue-100 dark:border-blue-800': msg.role === 'user',
-                          'bg-purple-50 dark:bg-purple-900/20 text-purple-600 border-purple-100 dark:border-purple-800': msg.role === 'assistant'
+                          'bg-blue-50 dark:bg-blue-900/20 text-blue-600 border-blue-100 dark:border-blue-800/50': msg.role === 'user',
+                          'bg-purple-50 dark:bg-purple-900/20 text-purple-600 border-purple-100 dark:border-purple-800/50': msg.role === 'assistant'
                         }"
-                        :title="'Switch Role (Current: ' + msg.role + ')'"
+                        :title="'Switch Role'"
                       >
-                        <User v-if="msg.role === 'user'" class="w-4 h-4" />
-                        <Bot v-else class="w-4 h-4" />
+                        <User v-if="msg.role === 'user'" class="w-5 h-5" />
+                        <Bot v-else class="w-5 h-5" />
                       </button>
-                      <div class="text-[10px] font-bold uppercase tracking-tighter opacity-50" data-testid="role-label">{{ msg.role }}</div>
+                      <div class="text-[9px] font-bold text-gray-400 tracking-tight" data-testid="role-label">{{ capitalize(msg.role) }}</div>
                     </div>
 
-                    <!-- Content Area -->
-                    <div class="flex-1 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all flex flex-col">
+                    <!-- Message Card -->
+                    <div class="flex-1 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden focus-within:ring-4 focus-within:ring-blue-500/10 focus-within:border-blue-500 transition-all flex flex-col shadow-sm group-hover:shadow-md">
                       <!-- Attachments -->
-                      <div v-if="msg.attachments && msg.attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4">
-                        <div v-for="att in msg.attachments" :key="att.id" class="relative group/att">
+                      <div v-if="msg.attachments && msg.attachments.length > 0" class="flex flex-wrap gap-2.5 px-5 pt-5 bg-gray-50/30 dark:bg-gray-800/20">
+                        <div v-for="att in msg.attachments" :key="att.id" class="relative group/att pb-5">
                           <img 
                             v-if="att.mimeType.startsWith('image/')"
                             :src="attachmentUrls[att.id]" 
-                            class="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                            class="w-20 h-20 object-cover rounded-xl border-2 border-white dark:border-gray-800 shadow-sm"
                           />
-                          <div v-else class="w-16 h-16 flex items-center justify-center bg-gray-200 dark:bg-gray-700 rounded-lg">
-                            <ImageIcon class="w-6 h-6 text-gray-400" />
+                          <div v-else class="w-20 h-20 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                            <ImageIcon class="w-8 h-8 text-gray-400" />
                           </div>
                           <button 
                             @click="removeAttachment(index, att.id)"
-                            class="absolute -top-2 -right-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm opacity-0 group-hover/att:opacity-100 transition-opacity"
+                            class="absolute -top-2 -right-2 p-1.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-lg opacity-0 group-hover/att:opacity-100 transition-opacity"
                           >
-                            <X class="w-3 h-3" />
+                            <X class="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -425,30 +438,27 @@ function handleCancel() {
                       <textarea 
                         v-model="msg.content"
                         @paste="handlePaste($event, index)"
-                        class="w-full bg-transparent p-4 text-sm text-gray-800 dark:text-gray-100 focus:outline-none resize-none min-h-[100px]"
-                        placeholder="Message content..."
+                        class="w-full bg-transparent p-4 text-[14px] text-gray-800 dark:text-gray-100 focus:outline-none resize-none min-h-[100px] font-medium leading-relaxed"
+                        placeholder="Type message content..."
                       ></textarea>
                 
-                      <!-- Bottom Bar -->
-                      <div class="px-4 py-2 bg-gray-100/30 dark:bg-gray-800/50 flex items-center justify-between border-t dark:border-gray-700">
-                        <div class="flex gap-4 text-[10px] font-mono text-gray-500">
+                      <!-- Card Toolbar -->
+                      <div class="px-4 py-1.5 bg-gray-50/50 dark:bg-gray-800/30 flex items-center justify-between border-t border-gray-50 dark:border-gray-800">
+                        <div class="flex gap-4 text-[9px] font-bold font-mono text-gray-400/80 tracking-tight">
                           <span v-if="msg.modelId" class="flex items-center gap-1"><Cpu class="w-3 h-3" /> {{ msg.modelId }}</span>
-                          <span v-if="msg.thinking" class="flex items-center gap-1 truncate"><History class="w-3 h-3" /> Has Thinking Content</span>
+                          <span v-if="msg.thinking" class="flex items-center gap-1"><History class="w-3 h-3" /> Thoughts</span>
                         </div>
                   
                         <div class="flex items-center gap-2">
                           <input 
                             :ref="el => setFileInputRef(el, index)"
-                            type="file" 
-                            accept="image/*" 
-                            multiple 
-                            class="hidden" 
+                            type="file" accept="image/*" multiple class="hidden" 
                             @change="handleFileSelect($event, index)"
                           />
                           <button 
                             @click="triggerFileInput(index)"
-                            class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-white dark:hover:bg-gray-700 transition-colors"
-                            title="Attach images"
+                            class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-gray-800 transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-700 shadow-sm"
+                            title="Attach media"
                           >
                             <Paperclip class="w-3.5 h-3.5" />
                           </button>
@@ -456,43 +466,47 @@ function handleCancel() {
                       </div>
                     </div>
 
-                    <!-- Actions -->
-                    <div class="flex flex-col gap-2 transition-opacity">
-                      <button @click="removeMessage(index)" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Remove Message">
-                        <Trash2 class="w-4 h-4" />
+                    <!-- Side Action Column -->
+                    <div class="flex flex-col gap-2 pt-3">
+                      <button @click="removeMessage(index)" class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Remove Message">
+                        <Trash2 class="w-4.5 h-4.5" />
                       </button>
-                      <button @click="duplicateMessage(index)" class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" title="Duplicate Message">
-                        <Copy class="w-4 h-4" />
+                      <button @click="duplicateMessage(index)" class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Copy Message">
+                        <Copy class="w-4.5 h-4.5" />
                       </button>
-                      <button @click="addMessage(index)" class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" title="Add Message After">
-                        <Plus class="w-4 h-4" />
+                      <button @click="addMessage(index)" class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Add Message After">
+                        <Plus class="w-4.5 h-4.5" />
                       </button>
                     </div>
                   </div>
             
-                  <!-- Connection Line -->
-                  <div v-if="index < editableMessages.length - 1" class="absolute left-[21px] top-[48px] bottom-[-32px] w-0.5 bg-gray-100 dark:bg-gray-800 -z-10"></div>
+                  <!-- Connector Line -->
+                  <div v-if="index < editableMessages.length - 1" class="absolute left-[24.5px] top-[60px] bottom-[-32px] w-[2px] bg-gradient-to-b from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-800 dark:to-gray-700 -z-10 opacity-40"></div>
                 </div>
               </template>
             </draggable>
 
-            <div v-if="editableMessages.length > 0" class="flex justify-center pt-4">
-              <button @click="addMessage(editableMessages.length - 1)" class="flex items-center gap-2 px-4 py-2 text-gray-400 hover:text-blue-600 transition-colors font-bold text-xs uppercase tracking-widest">
+            <div v-if="editableMessages.length > 0" class="flex justify-center pt-4 pb-8">
+              <button 
+                @click="addMessage(editableMessages.length - 1)" 
+                class="flex items-center gap-2 px-6 py-2.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-all shadow-sm font-bold text-xs uppercase tracking-widest active:scale-95"
+              >
                 <Plus class="w-4 h-4" />
                 Append Message
               </button>
             </div>
           </div>
         </div>
+
         <!-- Footer -->
-        <div class="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-3 bg-gray-50/50 dark:bg-gray-800/50">
-          <button @click="handleCancel" class="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
-            Cancel
+        <div class="px-8 py-6 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-5 bg-white dark:bg-gray-900 shrink-0">
+          <button @click="handleCancel" class="px-6 py-2.5 text-[11px] font-bold text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors uppercase tracking-[0.15em]">
+            Discard
           </button>
           <button 
             @click="handleSave" 
             :disabled="editableMessages.length === 0"
-            class="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-500/30 font-bold text-sm"
+            class="flex items-center gap-2.5 px-10 py-3.5 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-500/25 font-bold text-[11px] uppercase tracking-[0.15em] active:scale-95"
           >
             <Save class="w-4 h-4" />
             Apply Changes
@@ -506,7 +520,7 @@ function handleCancel() {
 <style scoped>
 .modal-enter-active,
 .modal-leave-active {
-  transition: all 0.3s ease;
+  transition: opacity 0.3s ease;
 }
 
 .modal-enter-active .modal-content-zoom,
@@ -527,5 +541,23 @@ function handleCancel() {
 
 textarea {
   scrollbar-width: thin;
+}
+
+.animate-in {
+  animation-fill-mode: forwards;
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-in-from-top {
+  from { transform: translateY(-0.5rem); }
+  to { transform: translateY(0); }
+}
+.fade-in {
+  animation-name: fade-in;
+}
+.slide-in-from-top-1 {
+  animation-name: slide-in-from-top;
 }
 </style>
