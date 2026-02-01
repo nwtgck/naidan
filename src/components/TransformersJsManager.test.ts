@@ -1,9 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { ref } from 'vue';
 import TransformersJsManager from './TransformersJsManager.vue';
 import { transformersJsService } from '../services/transformers-js';
+import * as opfsDetection from '../services/storage/opfs-detection';
 
 // --- Mocks ---
+
+vi.mock('../services/storage/opfs-detection', () => ({
+  checkOPFSSupport: vi.fn(),
+}));
+
+vi.mock('@vueuse/core', async () => {
+  const actual = await vi.importActual('@vueuse/core') as any;
+  return {
+    ...actual,
+    computedAsync: (fn: any, initial: any) => {
+      const state = ref(initial);
+      const res = fn();
+      if (res && typeof res.then === 'function') {
+        res.then((val: any) => state.value = val);
+      } else {
+        state.value = res;
+      }
+      return state;
+    }
+  };
+});
 
 vi.mock('../services/transformers-js', () => ({
   transformersJsService: {
@@ -72,6 +95,9 @@ describe('TransformersJsManager.vue', () => {
     (transformersJsService.subscribe as any).mockImplementation((_cb: any) => {
       return () => {}; // Unsubscribe mock
     });
+    
+    // Default mock implementation
+    vi.mocked(opfsDetection.checkOPFSSupport).mockResolvedValue(true);
     
     // Define global constant
     (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
@@ -157,5 +183,72 @@ describe('TransformersJsManager.vue', () => {
     
     const progressBar = wrapper.find('.bg-blue-600');
     expect(progressBar.attributes('style')).toContain('width: 45%');
+  });
+
+  describe('Standalone Mode', () => {
+    it('does not show standalone warning in hosted mode', async () => {
+      (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
+      const wrapper = mount(TransformersJsManager);
+      
+      expect(wrapper.text()).not.toContain('In-browser AI (Transformers.js) is not available in the Standalone build');
+      
+      const mainSection = wrapper.find('.animate-in.fade-in.slide-in-from-bottom-2');
+      expect(mainSection.classes()).not.toContain('opacity-40');
+    });
+
+    it('renders with restrictions and warning in standalone mode', async () => {
+      (global as any).__BUILD_MODE_IS_STANDALONE__ = true;
+      const wrapper = mount(TransformersJsManager);
+      
+      // Standalone warning SHOULD be visible
+      expect(wrapper.text()).toContain('In-browser AI (Transformers.js) is not available in the Standalone build');
+      
+      // Main content area SHOULD be visually disabled
+      const mainSection = wrapper.find('.animate-in.fade-in.slide-in-from-bottom-2');
+      expect(mainSection.classes()).toContain('opacity-40');
+      expect(mainSection.classes()).toContain('pointer-events-none');
+      expect(mainSection.classes()).toContain('grayscale');
+      
+      // GitHub Releases link should be present
+      const externalLink = wrapper.find('a[href="https://github.com/nwtgck/naidan/releases"]');
+      expect(externalLink.exists()).toBe(true);
+      expect(externalLink.text()).toContain('Get Hosted Version (GitHub)');
+    });
+
+    it('displays the correct reason for unavailability in standalone mode', async () => {
+      (global as any).__BUILD_MODE_IS_STANDALONE__ = true;
+      const wrapper = mount(TransformersJsManager);
+      
+      expect(wrapper.text()).toContain('due to browser restrictions on Web Workers and WebAssembly');
+    });
+  });
+
+  describe('OPFS Support', () => {
+    it('shows warning when OPFS is not supported', async () => {
+      (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
+      vi.mocked(opfsDetection.checkOPFSSupport).mockResolvedValue(false);
+      
+      const wrapper = mount(TransformersJsManager);
+      await flushPromises();
+      
+      expect(wrapper.text()).toContain('the browser does not support or allow access to Origin Private File System (OPFS)');
+      
+      const mainSection = wrapper.find('.animate-in.fade-in.slide-in-from-bottom-2');
+      expect(mainSection.classes()).toContain('opacity-40');
+      expect(mainSection.classes()).toContain('pointer-events-none');
+    });
+
+    it('does not show OPFS warning when supported', async () => {
+      (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
+      vi.mocked(opfsDetection.checkOPFSSupport).mockResolvedValue(true);
+      
+      const wrapper = mount(TransformersJsManager);
+      await flushPromises();
+      
+      expect(wrapper.text()).not.toContain('the browser does not support or allow access to Origin Private File System (OPFS)');
+      
+      const mainSection = wrapper.find('.animate-in.fade-in.slide-in-from-bottom-2');
+      expect(mainSection.classes()).not.toContain('opacity-40');
+    });
   });
 });

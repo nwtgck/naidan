@@ -7,6 +7,8 @@ import {
 } from 'lucide-vue-next';
 import { useToast } from '../composables/useToast';
 import { useConfirm } from '../composables/useConfirm';
+import { checkOPFSSupport } from '../services/storage/opfs-detection';
+import { computedAsync } from '@vueuse/core';
 
 const { addToast } = useToast();
 const { showConfirm } = useConfirm();
@@ -20,6 +22,11 @@ const isLoadingFromCache = ref(transformersJsService.getState().isLoadingFromCac
 
 const isFileUrl = typeof window !== 'undefined' && window.location.protocol === 'file:';
 const isStandalone = __BUILD_MODE_IS_STANDALONE__;
+
+const isOpfsSupported = computedAsync(
+  () => checkOPFSSupport(),
+  true // Assume supported initially
+);
 
 const defaultModels = [
   'HuggingFaceTB/SmolLM2-135M-Instruct',
@@ -181,7 +188,7 @@ const downloadModel = async () => {
 const deleteModel = async (modelId: string) => {
   const confirmed = await showConfirm({
     title: 'Delete Downloaded Model',
-    message: `Are you sure you want to delete "${modelId}"? This will remove all associated files from your browser's local storage.`,
+    message: `Are you sure you want to delete "${modelId}"? This will remove all associated files from the browser's local storage.`,
     confirmButtonText: 'Delete',
     confirmButtonVariant: 'danger',
   });
@@ -249,7 +256,42 @@ const handleImportLocalModel = async (event: Event) => {
 
 <template>
   <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
-    <div class="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-400">
+    <!-- Standalone Mode Header Warning -->
+    <div v-if="isStandalone" class="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl space-y-4 animate-in fade-in slide-in-from-top-2 duration-400">
+      <div class="flex items-start gap-3 text-amber-700 dark:text-amber-400 leading-relaxed italic text-sm">
+        <AlertCircle class="w-5 h-5 shrink-0 mt-0.5" />
+        <p>
+          In-browser AI (Transformers.js) is not available in the Standalone build due to browser restrictions on Web Workers and WebAssembly when running from a local file.
+        </p>
+      </div>
+      <div class="flex justify-end border-t border-amber-200/30 dark:border-amber-900/20 pt-3">
+        <a 
+          href="https://github.com/nwtgck/naidan/releases" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95"
+        >
+          <ExternalLink class="w-3.5 h-3.5" />
+          Get Hosted Version (GitHub)
+        </a>
+      </div>
+    </div>
+
+    <!-- OPFS Support Warning -->
+    <div v-else-if="!isOpfsSupported" class="p-6 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-3xl space-y-4 animate-in fade-in slide-in-from-top-2 duration-400">
+      <div class="flex items-start gap-3 text-red-700 dark:text-red-400 leading-relaxed italic text-sm">
+        <AlertCircle class="w-5 h-5 shrink-0 mt-0.5" />
+        <p>
+          In-browser AI (Transformers.js) is not available because the browser does not support or allow access to <strong>Origin Private File System (OPFS)</strong>, which is required for storing model files. 
+          This often happens in private browsing modes or insecure contexts.
+        </p>
+      </div>
+    </div>
+
+    <div 
+      class="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-400"
+      :class="{ 'opacity-40 pointer-events-none grayscale select-none': isStandalone || !isOpfsSupported }"
+    >
       
       <!-- Section 1: Engine Status & Control -->
       <section class="space-y-6">
@@ -419,12 +461,7 @@ const handleImportLocalModel = async (event: Event) => {
           </a>
         </div>
 
-        <div v-if="isStandalone" class="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl text-sm text-amber-700 dark:text-amber-400 leading-relaxed italic">
-          <AlertCircle class="w-5 h-5 inline-block mr-2 -mt-1" />
-          In-browser AI (Transformers.js) is not available in the Standalone build to keep the file size minimal. Please use the Hosted version or connect to an external API (Ollama/OpenAI) to use AI features.
-        </div>
-
-        <template v-else>
+        <template v-if="!isStandalone">
           <!-- file:// Warning -->
           <div v-if="isFileUrl" class="flex items-start gap-3 p-5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/50 rounded-3xl text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
             <AlertCircle class="w-5 h-5 shrink-0 mt-0.5" />
@@ -525,7 +562,7 @@ const handleImportLocalModel = async (event: Event) => {
                 <div class="h-1.5 w-full bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
                   <div class="h-full bg-purple-600 dark:bg-purple-400 transition-all duration-300 ease-out" :style="{ width: progress + '%' }"></div>
                 </div>
-                <p class="text-[10px] text-gray-400 mt-2 ml-1 italic">Models are cached locally in your browser (OPFS) for offline use.</p>
+                <p class="text-[10px] text-gray-400 mt-2 ml-1 italic">Models are cached locally in the browser (OPFS) for offline use.</p>
               </template>
             </div>
           </div>

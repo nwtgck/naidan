@@ -249,7 +249,7 @@ defineExpose({
                   <option value="openai">OpenAI Compatible</option>
                   <option value="ollama">Ollama</option>
                   <option :disabled="isStandalone" value="transformers_js">
-                    Transformers.js (Experimental) {{ isStandalone ? '(Unavailable in Standalone)' : '' }}
+                    Transformers.js (Experimental) {{ isStandalone ? '(Unavailable in Standalone due to Worker/WASM restrictions)' : '' }}
                   </option>
                 </select>
               </div>
@@ -264,7 +264,7 @@ defineExpose({
                     <div class="flex-1 min-w-0">
                       <h3 class="text-sm font-bold text-purple-900 dark:text-purple-300">Local Browser AI Enabled</h3>
                       <p class="text-xs text-purple-600/80 dark:text-purple-400/80 leading-relaxed mt-1 font-medium">
-                        Models will run directly in your browser using WebGPU. No external API or server is required.
+                        Models will run directly in the browser using WebGPU. No external API or server is required.
                       </p>
                     </div>
                   </div>

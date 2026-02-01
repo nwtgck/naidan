@@ -52,7 +52,7 @@ async function handleEnablePersistence() {
   if (typeof navigator === 'undefined' || !navigator.storage || !navigator.storage.persist) {
     await showConfirm({
       title: 'Not Supported',
-      message: 'Persistent storage is not supported by your browser.',
+      message: 'Persistent storage is not supported by the browser.',
       confirmButtonText: 'Understand',
     });
     return;

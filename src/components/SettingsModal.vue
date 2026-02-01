@@ -43,7 +43,6 @@ const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
 
 const isHostedMode = __BUILD_MODE_IS_HOSTED__;
-const isStandaloneMode = __BUILD_MODE_IS_STANDALONE__;
 
 const form = ref<Settings>(JSON.parse(JSON.stringify(settings.value)));
 const initialFormState = ref('');
@@ -237,13 +236,12 @@ watch(() => props.isOpen, async (open) => {
             </button>
             <button 
               @click="activeTab = 'transformers_js'"
-              :disabled="isStandaloneMode"
-              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border disabled:opacity-50 disabled:cursor-not-allowed"
+              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'transformers_js' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-transformers-js"
             >
               <BrainCircuit class="w-4 h-4" />
-              Transformers.js {{ isStandaloneMode ? '(Unavailable)' : '' }}
+              Transformers.js
             </button>
             <button 
               @click="activeTab = 'recipes'"
