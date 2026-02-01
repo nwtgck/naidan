@@ -1,7 +1,14 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, afterAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { ref, isRef, reactive } from 'vue';
+import { asyncComponentTracker } from '../utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 // Define shared refs for the mock
 const mockCurrentChat = ref({
@@ -73,17 +80,9 @@ vi.mock('../services/storage', () => ({
   }
 }));
 
-import { config } from '@vue/test-utils';
-config.global.stubs['HistoryManipulationModal'] = true;
-config.global.stubs['ChatSettingsPanel'] = true;
-
 describe('ChatArea - Attachment UI', () => {
-  beforeAll(async () => {
-    // Preload async components used in ChatArea to prevent "Closing rpc while fetch was pending" in CI.
-    await Promise.all([
-      import('./ChatSettingsPanel.vue'),
-      import('./HistoryManipulationModal.vue')
-    ]);
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
   });
 
   it('should show preview when files are selected', async () => {

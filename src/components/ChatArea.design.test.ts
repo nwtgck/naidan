@@ -1,10 +1,17 @@
 import { ref } from 'vue';
-import { describe, it, expect, vi, beforeEach, beforeAll, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
+import { asyncComponentTracker } from '../utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(),
@@ -17,12 +24,8 @@ vi.mock('vue-router', () => ({
 }));
 
 describe('ChatArea Design Specifications', () => {
-  beforeAll(async () => {
-    // Preload async components used in ChatArea to prevent "Closing rpc while fetch was pending" in CI.
-    await Promise.all([
-      import('./ChatSettingsPanel.vue'),
-      import('./HistoryManipulationModal.vue')
-    ]);
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
   });
 
   beforeEach(() => {
@@ -50,15 +53,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('uses backdrop-blur-md on the header for a glass effect', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const header = wrapper.find('.backdrop-blur-md');
     expect(header.exists()).toBe(true);
@@ -67,15 +62,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('provides enough bottom padding to account for the floating input', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const scrollContainer = wrapper.find('[data-testid="scroll-container"]');
     const paddingBottom = (scrollContainer.element as HTMLElement).style.paddingBottom;
@@ -84,15 +71,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('uses a large conditional spacer for the maximized state', async () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     
     // Initially spacer should not exist
@@ -107,15 +86,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('preserves the case of the Model ID (no forced uppercase)', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const modelTrigger = wrapper.find('[data-testid="model-trigger"]');
     expect(modelTrigger.text()).toContain('gemma3n:e2b');
@@ -124,15 +95,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('preserves the case of the keyboard shortcut labels (e.g., Cmd + Enter)', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const sendBtn = wrapper.find('[data-testid="send-button"]');
     expect(sendBtn.exists()).toBe(true);
@@ -142,15 +105,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('uses rounded-2xl for the chat input container to match the premium aesthetic', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const container = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
     expect(container.classes()).toContain('rounded-2xl');
@@ -162,15 +117,7 @@ describe('ChatArea Design Specifications', () => {
     Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 1000 });
     
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     
     // Simulate maximization
@@ -189,15 +136,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('ensures the textarea and buttons are stacked vertically inside the floating container', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     
     const inputContainer = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
@@ -216,15 +155,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('applies animation classes when toggling maximized state', async () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     
     const textarea = wrapper.find('[data-testid="chat-input"]');
@@ -249,15 +180,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('uses gray-800 for chat content text to ensure eye comfort', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const title = wrapper.find('h2');
     expect(title.classes()).toContain('text-gray-800');
@@ -271,7 +194,6 @@ describe('ChatArea Design Specifications', () => {
           MessageItem: true, 
           WelcomeScreen: true,
           ChatSettingsPanel: ChatSettingsPanel,
-          HistoryManipulationModal: true
         }, 
       },
     });
@@ -287,15 +209,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('implements overflow-anchor: none to prevent message jumping during layout changes', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const scrollContainer = wrapper.find('[data-testid="scroll-container"]');
     expect((scrollContainer.element as HTMLElement).style.overflowAnchor).toBe('none');
@@ -303,15 +217,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('uses an opaque background for the input card to ensure readability', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const inputCard = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
     expect(inputCard.classes()).toContain('bg-white');
@@ -321,15 +227,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('contains a glass-zone-mask for the background blur effect', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const glassZone = wrapper.find('.glass-zone-mask');
     expect(glassZone.exists()).toBe(true);
@@ -339,15 +237,7 @@ describe('ChatArea Design Specifications', () => {
 
   it('positions the input area as absolute at the bottom to overlap messages', () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
-          WelcomeScreen: true,
-          ChatSettingsPanel: true,
-          HistoryManipulationModal: true
-        } 
-      },
+      global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     // The Input Layer (Overlay)
     const inputLayer = wrapper.find('.absolute.bottom-0.left-0.right-0.p-4');
