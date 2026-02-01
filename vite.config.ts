@@ -124,6 +124,7 @@ export default defineConfig(({ mode }) => {
       outDir,
       emptyOutDir: true,
       minify: true,
+      sourcemap: isHosted,
       // Using IIFE (Immediately Invoked Function Expression) format is necessary
       // for compatibility with the file:/// protocol, as it doesn't require 
       // the complex module loading system that standard ES modules do.
