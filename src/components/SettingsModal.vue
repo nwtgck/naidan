@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
 import { useToast } from '../composables/useToast';
@@ -41,6 +42,8 @@ const chatStore = useChat();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
+const route = useRoute();
+const router = useRouter();
 
 const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 
@@ -92,7 +95,21 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
 
 // Tab State
 type Tab = 'connection' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'developer' | 'about';
-const activeTab = ref<Tab>('connection');
+const activeTab = computed({
+  get: () => {
+    const tab = (route.params as { tab?: string }).tab;
+    if (tab === 'provider-profiles') return 'profiles';
+    if (tab === 'transformers-js') return 'transformers_js';
+    return (tab as Tab) || 'connection';
+  },
+  set: (val) => {
+    const pathMap: Record<string, string> = {
+      profiles: 'provider-profiles',
+      transformers_js: 'transformers-js',
+    };
+    router.push(`/settings/${pathMap[val] || val}`);
+  }
+});
 
 async function handleCancel() {
   if (hasUnsavedConnectionChanges.value) {

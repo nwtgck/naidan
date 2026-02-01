@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, defineAsyncComponent } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, watch, computed, defineAsyncComponent } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useChat } from './composables/useChat';
 import { useSettings } from './composables/useSettings';
@@ -18,11 +18,24 @@ const DebugPanel = defineAsyncComponent(() => import('./components/DebugPanel.vu
 const CustomDialog = defineAsyncComponent(() => import('./components/CustomDialog.vue'));
 const OPFSExplorer = defineAsyncComponent(() => import('./components/OPFSExplorer.vue'));
 
-const isSettingsOpen = ref(false);
 const chatStore = useChat();
 const settingsStore = useSettings();
 const { isSidebarOpen } = useLayout();
 const router = useRouter();
+const route = useRoute();
+
+const isSettingsOpen = computed(() => route.path.startsWith('/settings'));
+const lastNonSettingsPath = ref('/');
+
+watch(() => route.path, (path) => {
+  if (!path.startsWith('/settings')) {
+    lastNonSettingsPath.value = path;
+  }
+});
+
+const closeSettings = () => {
+  router.push(lastNonSettingsPath.value);
+};
 
 const { isOPFSOpen } = useOPFSExplorer();
 
@@ -109,7 +122,7 @@ onKeyStroke(['o', 'O'], async (e) => {
       class="border-r border-gray-100 dark:border-gray-800 shrink-0 h-full transition-all duration-300 ease-in-out relative z-30"
       :class="isSidebarOpen ? 'w-64' : 'w-10'"
     >
-      <Sidebar @open-settings="isSettingsOpen = true" />
+      <Sidebar @open-settings="router.push('/settings/connection')" />
     </div>
     
     <main class="flex-1 relative flex flex-col min-w-0 pb-10 bg-transparent">
@@ -122,7 +135,7 @@ onKeyStroke(['o', 'O'], async (e) => {
 
     <SettingsModal 
       :is-open="isSettingsOpen" 
-      @close="isSettingsOpen = false" 
+      @close="closeSettings" 
     />
 
     <OnboardingModal />

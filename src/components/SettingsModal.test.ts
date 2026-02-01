@@ -3,8 +3,8 @@ vi.mock('../assets/licenses.json', () => ({ default: [{ name: 'test-pkg', versio
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, nextTick } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, reactive, nextTick } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import AboutTab from './AboutTab.vue';
 import ConnectionTab from './ConnectionTab.vue';
@@ -61,6 +61,7 @@ vi.mock('../composables/useChat', () => ({
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
+  useRoute: vi.fn(),
 }));
 
 vi.mock('../composables/useSampleChat', () => ({
@@ -174,10 +175,16 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     vi.mocked(storageService.getCurrentType).mockReturnValue('local');
 
+    const currentRoute = reactive({ path: '/', params: {} as any });
     (useRouter as Mock).mockReturnValue({
-      push: vi.fn(),
-      currentRoute: ref({ path: '/' })
+      push: vi.fn((p) => {
+        currentRoute.path = p;
+        const segments = p.split('/');
+        currentRoute.params.tab = segments[segments.length - 1];
+      }),
+      replace: vi.fn(),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
 
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref(JSON.parse(JSON.stringify(mockSettings))),
@@ -766,15 +773,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   describe('Data Cleanup', () => {
     it('triggers clear all history after confirmation and navigates to root', async () => {
       const mockDeleteAllChats = vi.fn();
-      const mockPush = vi.fn();
       
       (useChat as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
         resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
-      });
-      (useRouter as Mock).mockReturnValue({
-        push: mockPush,
-        currentRoute: ref({ path: '/' })
       });
 
       const wrapper = mount(SettingsModal, { 
@@ -786,6 +788,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await flushPromises();
 
       await wrapper.findAll('nav button').find(b => b.text().includes('Storage'))?.trigger('click');
+      await flushPromises();
       
       const clearBtn = wrapper.find('[data-testid="setting-clear-history-button"]');
       expect(clearBtn.text()).toContain('Clear All Conversation History');
@@ -803,7 +806,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         }),
       );
       expect(mockDeleteAllChats).toHaveBeenCalled();
-      expect(mockPush).toHaveBeenCalledWith('/');
+      const router = useRouter();
+      expect(router.push).toHaveBeenCalledWith('/');
       expect(wrapper.emitted().close).toBeTruthy();
     });
 
@@ -816,15 +820,12 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         deleteAllChats: mockDeleteAllChats,
         resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
       });
-      (useRouter as Mock).mockReturnValue({
-        push: vi.fn(),
-        currentRoute: ref({ path: '/' })
-      });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
 
       await wrapper.findAll('nav button').find(b => b.text().includes('Storage'))?.trigger('click');
+      await flushPromises();
       mockShowConfirm.mockResolvedValueOnce(true);
 
       await wrapper.find('[data-testid="setting-clear-history-button"]').trigger('click');

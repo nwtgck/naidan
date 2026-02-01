@@ -44,6 +44,20 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/settings/': RouteRecordInfo<
+      '/settings/',
+      '/settings',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/[tab]': RouteRecordInfo<
+      '/settings/[tab]',
+      '/settings/:tab',
+      { tab: ParamValue<true> },
+      { tab: ParamValue<false> },
+      | never
+    >,
   }
 
   /**
@@ -72,6 +86,18 @@ declare module 'vue-router/auto-routes' {
     'src/pages/chat-group/[id].vue': {
       routes:
         | '/chat-group/[id]'
+      views:
+        | never
+    }
+    'src/pages/settings/index.vue': {
+      routes:
+        | '/settings/'
+      views:
+        | never
+    }
+    'src/pages/settings/[tab].vue': {
+      routes:
+        | '/settings/[tab]'
       views:
         | never
     }

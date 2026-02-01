@@ -47,6 +47,10 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({
     push: vi.fn(),
   }),
+  useRoute: () => ({
+    path: '/',
+    params: {},
+  }),
 }));
 
 // Global constant mock
@@ -63,6 +67,9 @@ describe('SettingsModal GitHub Link', () => {
           'router-link': true,
           'router-view': true,
           'LmParametersEditor': true,
+          'Transition': {
+            template: '<slot />'
+          },
           // Icons
           Github: true,
           ExternalLink: true,

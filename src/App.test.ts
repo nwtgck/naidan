@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, nextTick } from 'vue';
+import { ref, reactive, nextTick } from 'vue';
 import App from './App.vue';
 import type { Chat } from './models/types';
 
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 
 // Define mock refs in module scope so they can be shared
 const mockCreateNewChat = vi.fn();
@@ -47,6 +47,7 @@ vi.mock('./composables/useConfirm', () => ({
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
+  useRoute: vi.fn(),
   RouterView: {
     template: '<div data-testid="router-view"><slot /></div>',
   },
@@ -86,12 +87,21 @@ vi.mock('./components/ToastContainer.vue', () => ({
 
 describe('App', () => {
   const mockInit = vi.fn();
-  const mockRouterPush = vi.fn();
+  const currentRoute = reactive({ path: '/', query: {} as any });
+  const mockRouterPush = vi.fn((p) => {
+    if (typeof p === 'string') {
+      currentRoute.path = p;
+    } else if (p && typeof p === 'object' && p.path) {
+      currentRoute.path = p.path;
+    }
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockCurrentChat.value = null;
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    currentRoute.path = '/';
+    currentRoute.query = {};
 
     (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
@@ -100,10 +110,12 @@ describe('App', () => {
       isFetchingModels: ref(false),
       settings: ref({ endpointUrl: 'http://localhost:11434' }),
     });
+
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute: ref({ path: '/' }),
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as unknown as Mock).mockReturnValue(currentRoute);
   });
 
   const mountApp = () => mount(App, {
@@ -186,11 +198,12 @@ describe('App', () => {
 
   it('automatically creates a new chat when navigating back to root from another path if history is empty', async () => {
     mockChats.value = [];
-    const currentRoute = ref({ path: '/settings' });
+    const currentRoute = reactive({ path: '/settings' });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
 
     mountApp();
 
@@ -199,7 +212,7 @@ describe('App', () => {
     mockCreateNewChat.mockClear();
 
     // Navigate to root
-    currentRoute.value.path = '/';
+    currentRoute.path = '/';
     
     await nextTick();
     await nextTick();
@@ -210,11 +223,12 @@ describe('App', () => {
 
   it('automatically creates a new chat and preserves query param when q is present on root path', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
-    const currentRoute = ref({ path: '/', query: { q: 'hello' } });
+    const currentRoute = reactive({ path: '/', query: { q: 'hello' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
     mockCreateNewChat.mockImplementation(async () => {
       mockCurrentChat.value = { id: 'q-chat-id' } as unknown as Chat;
     });
@@ -235,11 +249,12 @@ describe('App', () => {
   it('automatically creates a new chat in a group when both q and chat-group are present', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
     mockChatGroups.value = [{ id: 'group-123', name: 'Existing Group' }];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'group-123' } });
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', 'chat-group': 'group-123' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
     mockCreateNewChat.mockImplementation(async (groupId) => {
       mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
     });
@@ -260,11 +275,12 @@ describe('App', () => {
   it('automatically creates a new chat in a group by name when chat-group matches a group name', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
     mockChatGroups.value = [{ id: 'group-uuid-123', name: 'Query Group' }];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'Query Group' } });
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', 'chat-group': 'Query Group' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
     mockCreateNewChat.mockImplementation(async (groupId) => {
       mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
     });
@@ -281,11 +297,12 @@ describe('App', () => {
   it('automatically creates a new group if chat-group name does not exist', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
     mockChatGroups.value = [];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'New Group Name' } });
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', 'chat-group': 'New Group Name' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
     mockCreateChatGroup.mockResolvedValue('new-group-uuid');
     mockCreateNewChat.mockImplementation(async (groupId) => {
       mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
@@ -303,11 +320,12 @@ describe('App', () => {
 
   it('automatically creates a new chat with model override when q and model are present', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', model: 'special-model' } });
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', model: 'special-model' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
     mockCreateNewChat.mockImplementation(async (groupId, modelId) => {
       mockCurrentChat.value = { id: 'model-chat-id', groupId, modelId } as unknown as Chat;
     });

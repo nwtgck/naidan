@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, reactive } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '../composables/useSettings';
 import { useConfirm } from '../composables/useConfirm';
+
+// Mock vue-router
+vi.mock('vue-router', () => ({
+  useRouter: vi.fn(),
+  useRoute: vi.fn(),
+}));
 
 // Mock dependencies
 vi.mock('../composables/useSettings', () => ({
@@ -51,18 +58,30 @@ describe('SettingsModal OPFS and Error Handling', () => {
       Logo: true, ImportExportModal: true, ChefHat: true, Download: true,
       Github: true, ExternalLink: true, Plus: true, Info: true,
       FileArchive: true, HardDrive: true, MessageSquareQuote: true,
+      TransformersJsManager: true, 
+      // Do not stub tabs that are tested
+      RecipeImportTab: true, DeveloperTab: true, AboutTab: true,
     },
-    provide: {
-      'Symbol(router)': {
-        push: vi.fn(),
-        currentRoute: ref({ path: '/' })
-      }
-    }
   };
+
+  const currentRoute = reactive({ path: '/', params: {} as any });
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
+
+    currentRoute.path = '/';
+    currentRoute.params = {};
+
+    (useRouter as any).mockReturnValue({
+      push: vi.fn((p) => {
+        currentRoute.path = p;
+        const segments = p.split('/');
+        currentRoute.params.tab = segments[segments.length - 1];
+      }),
+      replace: vi.fn(),
+    });
+    (useRoute as any).mockReturnValue(currentRoute);
   });
 
   async function wait() {

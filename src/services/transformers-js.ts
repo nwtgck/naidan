@@ -157,11 +157,20 @@ export const transformersJsService = {
         const userDir = await modelsDir.getDirectoryHandle('user', { create: false }) as FileSystemDirectoryHandleWithEntries;
         for await (const [name, handle] of userDir.entries()) {
           const h = handle as FileSystemHandle;
-          if (h.kind === 'directory') {
+          switch (h.kind) {
+          case 'directory': {
             const stats = await getDirStats(h as FileSystemDirectoryHandle);
             if (stats.hasConfig) {
               results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
             }
+            break;
+          }
+          case 'file':
+            break;
+          default: {
+            const _ex: never = h.kind;
+            return _ex;
+          }
           }
         }
       } catch (e) { /* ignore */ }
@@ -171,12 +180,21 @@ export const transformersJsService = {
         const localDir = await modelsDir.getDirectoryHandle('local', { create: false }) as FileSystemDirectoryHandleWithEntries;
         for await (const [name, handle] of localDir.entries()) {
           const h = handle as FileSystemHandle;
-          if (h.kind === 'directory') {
+          switch (h.kind) {
+          case 'directory': {
             const stats = await getDirStats(h as FileSystemDirectoryHandle);
             if (stats.hasConfig) {
               // We still label it as 'user/' to the rest of the app
               results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
             }
+            break;
+          }
+          case 'file':
+            break;
+          default: {
+            const _ex: never = h.kind;
+            return _ex;
+          }
           }
         }
       } catch (e) { /* ignore */ }
