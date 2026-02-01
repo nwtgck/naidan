@@ -218,16 +218,14 @@ describe('transformers-js.worker', () => {
       // Ensure self.fetch is mockable before importing worker
       global.fetch = originalFetchMock;
       if (!global.self) {
-        // @ts-expect-error
+        // @ts-expect-error: Mock global self for worker context
         global.self = global;
       }
-      // @ts-expect-error
       self.fetch = originalFetchMock;
     });
 
     it('should block requests to "user/" models with 404', async () => {
       await import('./transformers-js.worker');
-      // @ts-expect-error
       const interceptedFetch = self.fetch;
 
       const urls = [
@@ -246,7 +244,6 @@ describe('transformers-js.worker', () => {
 
     it('should block requests to "local/" models with 404', async () => {
       await import('./transformers-js.worker');
-      // @ts-expect-error
       const interceptedFetch = self.fetch;
 
       const res = await interceptedFetch('local/test/model.bin');
@@ -257,7 +254,6 @@ describe('transformers-js.worker', () => {
 
     it('should convert HTML responses to 404 for model files (SPA fallback)', async () => {
       await import('./transformers-js.worker');
-      // @ts-expect-error
       const interceptedFetch = self.fetch;
 
       originalFetchMock.mockResolvedValue(new Response('<!DOCTYPE html>...', {
@@ -284,7 +280,6 @@ describe('transformers-js.worker', () => {
 
     it('should allow normal JSON/Binary responses', async () => {
       await import('./transformers-js.worker');
-      // @ts-expect-error
       const interceptedFetch = self.fetch;
 
       const mockRes = new Response('{}', { status: 200 });
@@ -299,7 +294,6 @@ describe('transformers-js.worker', () => {
 
     it('should allow normal HTML pages (not model files)', async () => {
       await import('./transformers-js.worker');
-      // @ts-expect-error
       const interceptedFetch = self.fetch;
 
       const mockRes = new Response('<html>ok</html>', { 

@@ -2,7 +2,6 @@
 import { ref, computed, watch } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import ThemeToggle from './ThemeToggle.vue';
-import { useToast } from '../composables/useToast';
 import { useLayout } from '../composables/useLayout';
 import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
 import { TransformersJsProvider } from '../services/transformers-js-provider';
@@ -15,7 +14,6 @@ import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2 } fr
 import { naturalSort } from '../utils/string';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
-const toast = useToast();
 const { setActiveFocusArea } = useLayout();
 
 const show = computed(() => initialized.value && !isOnboardingDismissed.value);
@@ -149,15 +147,6 @@ async function handleClose() {
     selectedModel: selectedModel.value,
   });
   setIsOnboardingDismissed(true);
-  
-  toast.addToast({
-    message: 'Setup skipped. You can always configure it later in settings.',
-    actionLabel: 'Undo',
-    onAction: () => {
-      setIsOnboardingDismissed(false);
-    },
-    duration: 5000,
-  });
 }
 
 async function handleFinish() {
