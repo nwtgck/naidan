@@ -130,6 +130,49 @@ describe('HistoryManipulationModal', () => {
     const textareas = wrapper.findAll('textarea');
     expect(textareas.length).toBe(1);
     expect(textareas[0]!.element.value).toBe('');
+    // First message in empty history should be 'user'
+    expect(wrapper.find('.text-blue-600').exists()).toBe(true);
+  });
+
+  it('predicts roles correctly when inserting messages (alternating role heuristic)', async () => {
+    mockActiveMessages.value = [
+      { id: '1', role: 'user', content: 'U1', replies: { items: [] } },
+      { id: '2', role: 'assistant', content: 'A1', replies: { items: [] } }
+    ] as any;
+    const wrapper = await mountModal();
+
+    // 1. Add after 'user' (index 0) -> should be 'assistant'
+    const addButtons = wrapper.findAll('button[title="Add Message After"]');
+    await addButtons[0]!.trigger('click');
+    await nextTick();
+    
+    let labels = wrapper.findAll('[data-testid="role-label"]');
+    expect(labels[1]!.text()).toBe('assistant');
+
+    // 2. Add after 'assistant' (A1 is now at index 2) -> should be 'user'
+    // Refresh buttons list as DOM has changed
+    const newAddButtons = wrapper.findAll('button[title="Add Message After"]');
+    await newAddButtons[2]!.trigger('click'); // Click on A1's add button (now at index 2)
+    await nextTick();
+    
+    labels = wrapper.findAll('[data-testid="role-label"]');
+    // Sequence should be: [U1 (user), new1 (assistant), A1 (assistant), new2 (user)]
+    expect(labels[3]!.text()).toBe('user');
+  });
+
+  it('predicts role correctly when inserting at the beginning', async () => {
+    mockActiveMessages.value = [
+      { id: '1', role: 'user', content: 'U1', replies: { items: [] } }
+    ] as any;
+    const wrapper = await mountModal();
+
+    const buttons = wrapper.findAll('button');
+    const appendButton = buttons.find(b => b.text().includes('Append Message'));
+    await appendButton!.trigger('click');
+    await nextTick();
+
+    const labels = wrapper.findAll('[data-testid="role-label"]');
+    expect(labels[1]!.text()).toBe('assistant'); 
   });
 
   it('loads existing attachments and shows previews', async () => {

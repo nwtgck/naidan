@@ -83,9 +83,44 @@ onUnmounted(() => {
   Object.values(attachmentUrls.value).forEach(URL.revokeObjectURL);
 });
 
+function predictNextRole(index: number): 'user' | 'assistant' {
+  if (editableMessages.value.length === 0) return 'user';
+  
+  // If there's a message before the insertion point, pick the opposite role
+  if (index >= 0 && index < editableMessages.value.length) {
+    const prevRole = editableMessages.value[index]!.role;
+    switch (prevRole) {
+    case 'user': return 'assistant';
+    case 'assistant': return 'user';
+    case 'system': return 'user'; // Fallback for system
+    default: {
+      const _ex: never = prevRole;
+      return _ex;
+    }
+    }
+  }
+  
+  // If inserting at the very beginning (index -1)
+  if (index === -1 && editableMessages.value.length > 0) {
+    const nextRole = editableMessages.value[0]!.role;
+    switch (nextRole) {
+    case 'user': return 'assistant';
+    case 'assistant': return 'user';
+    case 'system': return 'user'; // Fallback for system
+    default: {
+      const _ex: never = nextRole;
+      return _ex;
+    }
+    }
+  }
+
+  return 'user';
+}
+
 function addMessage(index: number) {
+  const role = predictNextRole(index);
   editableMessages.value.splice(index + 1, 0, {
-    role: 'user',
+    role,
     content: ''
   });
 }
@@ -226,7 +261,7 @@ function handleCancel() {
                   <User v-if="msg.role === 'user'" class="w-4 h-4" />
                   <Bot v-else class="w-4 h-4" />
                 </button>
-                <div class="text-[10px] font-bold uppercase tracking-tighter opacity-50">{{ msg.role }}</div>
+                <div class="text-[10px] font-bold uppercase tracking-tighter opacity-50" data-testid="role-label">{{ msg.role }}</div>
               </div>
 
               <!-- Content Area -->
