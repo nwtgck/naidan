@@ -7,7 +7,7 @@
  */
 
 export function createTransformersWorker(): Worker | null {
-  if (__BUILD_MODE_IS_STANDALONE__) {
+  if (typeof __BUILD_MODE_IS_STANDALONE__ !== 'undefined' && __BUILD_MODE_IS_STANDALONE__) {
     // In standalone mode, we return null. 
     // The bundler should be able to tree-shake the following block.
     return null;

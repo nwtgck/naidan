@@ -1,7 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { ref, isRef, reactive } from 'vue';
+import { asyncComponentTracker } from '../utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 // Define shared refs for the mock
 const mockCurrentChat = ref({
@@ -74,6 +81,10 @@ vi.mock('../services/storage', () => ({
 }));
 
 describe('ChatArea - Attachment UI', () => {
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
+  });
+
   it('should show preview when files are selected', async () => {
     // Reset refs for this test
     mockCurrentChat.value = {

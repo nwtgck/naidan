@@ -1,9 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { ref, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '../models/types';
+import { asyncComponentTracker } from '../utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 // Mock dependencies
 const mockCurrentChat = ref<Chat | null>({
@@ -50,6 +57,10 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 describe('ChatArea Focus Specifications', () => {
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
+  });
+
   const router = createRouter({
     history: createWebHistory(),
     routes: [{ path: '/', component: { template: 'div' } }],
