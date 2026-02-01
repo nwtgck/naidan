@@ -7,11 +7,12 @@ import { capitalize, naturalSort } from '../utils/string';
 import { 
   Loader2, Trash2, Globe, Bot, Type, Save,
   CheckCircle2, BookmarkPlus,
-  Check, Activity, MessageSquareQuote, Plus, BrainCircuit
+  Check, Activity, MessageSquareQuote, Plus
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
 import ProviderProfilePreview from './ProviderProfilePreview.vue';
+import TransformersJsUpsell from './TransformersJsUpsell.vue';
 import { useConfirm } from '../composables/useConfirm';
 import { usePrompt } from '../composables/usePrompt';
 import { ENDPOINT_PRESETS } from '../models/constants';
@@ -254,32 +255,6 @@ defineExpose({
                 </select>
               </div>
 
-              <!-- Transformers.js Info Banner -->
-              <div v-if="form.endpointType === 'transformers_js'" class="animate-in fade-in slide-in-from-top-2 duration-300">
-                <div class="p-6 bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-3xl space-y-4 shadow-sm">
-                  <div class="flex items-start gap-4">
-                    <div class="p-2.5 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-purple-100 dark:border-purple-900/20">
-                      <BrainCircuit class="w-6 h-6 text-purple-600" />
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <h3 class="text-sm font-bold text-purple-900 dark:text-purple-300">Local Browser AI Enabled</h3>
-                      <p class="text-xs text-purple-600/80 dark:text-purple-400/80 leading-relaxed mt-1 font-medium">
-                        Models will run directly in the browser using WebGPU. No external API or server is required.
-                      </p>
-                    </div>
-                  </div>
-                  <div class="flex justify-end pt-2 border-t border-purple-100/50 dark:border-purple-900/20">
-                    <button 
-                      @click="emit('goToTransformersJs')"
-                      class="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold rounded-xl shadow-lg shadow-purple-500/20 transition-all active:scale-95"
-                    >
-                      <BrainCircuit class="w-3.5 h-3.5" />
-                      Manage Local Models
-                    </button>
-                  </div>
-                </div>
-              </div>
-
               <!-- Endpoint URL -->
               <div class="space-y-4" v-if="form.endpointType !== 'transformers_js'">
                 <div class="flex items-center justify-between ml-1">
@@ -401,6 +376,7 @@ defineExpose({
                   @refresh="fetchModels"
                   data-testid="setting-model-select"
                 />
+                <TransformersJsUpsell :show="form.endpointType === 'transformers_js'" />
                 <p class="text-[11px] font-medium text-gray-400 ml-1">Used for all new conversations unless overridden.</p>
               </div>
 

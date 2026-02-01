@@ -35,6 +35,7 @@ const defaultModels = [
   'HuggingFaceTB/SmolLM3-3B-ONNX',
   'onnx-community/Qwen2.5-0.5B-Instruct',
   'onnx-community/Qwen3-0.6B-ONNX',
+  // 'onnx-community/Qwen3-1.7B-ONNX', // failed
   'onnx-community/Qwen3-4B-Instruct-2507-ONNX',
   'onnx-community/Llama-3.2-1B-Instruct',
 ];
@@ -294,8 +295,155 @@ const handleImportLocalModel = async (event: Event) => {
       class="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-400"
       :class="{ 'opacity-40 pointer-events-none grayscale select-none': isStandalone || !isOpfsSupported }"
     >
+      <!-- Section 1: Model Downloader & Importer -->
+      <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
+        <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div class="flex items-center gap-2">
+            <HardDriveDownload class="w-5 h-5 text-purple-500" />
+            <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Add New Models</h2>
+          </div>
+          <a 
+            href="https://huggingface.co/onnx-community/models" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            class="flex items-center gap-1 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
+          >
+            Find more models
+            <ExternalLink class="w-3 h-3" />
+          </a>
+        </div>
+
+        <template v-if="!isStandalone">
+          <!-- file:// Warning -->
+          <div v-if="isFileUrl" class="flex items-start gap-3 p-5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/50 rounded-3xl text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+            <AlertCircle class="w-5 h-5 shrink-0 mt-0.5" />
+            <p>
+              <strong>Note:</strong> Browsers often disable the <strong>Cache API</strong> for local file URLs. To avoid downloading models on every reload, use a local web server or the hosted version.
+            </p>
+          </div>
+
+          <div class="space-y-4">
+            <div class="flex items-center justify-between ml-1">
+              <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Download from Hugging Face</label>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3">
+              <div class="relative flex-1 flex gap-2" ref="containerRef">
+                <div class="relative flex-1">
+                  <input 
+                    v-model="searchQuery"
+                    type="text"
+                    placeholder="Enter Hugging Face model ID (e.g. onnx-community/phi-4)"
+                    class="w-full pl-4 pr-10 py-3.5 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-purple-500/10 outline-none text-gray-900 dark:text-gray-100 transition-all disabled:opacity-60"
+                    @focus="isDropdownOpen = true"
+                    @keydown.enter="downloadModel"
+                  />
+                  <button 
+                    @click="isDropdownOpen = !isDropdownOpen"
+                    class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                    type="button"
+                  >
+                    <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': isDropdownOpen }" />
+                  </button>
+
+                  <!-- Dropdown Menu -->
+                  <div v-if="isDropdownOpen" class="absolute z-50 bottom-full mb-3 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
+                    <div class="max-h-[320px] overflow-y-auto p-2 custom-scrollbar overscroll-contain">
+                      <!-- Use Custom ID Option -->
+                      <div v-if="filteredPresets.showCustom">
+                        <button 
+                          @click="selectModelId(searchQuery)"
+                          class="w-full text-left px-4 py-3 rounded-2xl text-xs font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 flex items-center gap-2 border border-dashed border-purple-200 dark:border-purple-800/50 mb-2"
+                        >
+                          <Plus class="w-4 h-4" />
+                          Use Custom ID: "{{ searchQuery }}"
+                        </button>
+                      </div>
+
+                      <!-- Recommended Section -->
+                      <div v-if="filteredPresets.recommended.length > 0">
+                        <div class="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Preset Model Paths</div>
+                        <button 
+                          v-for="m in filteredPresets.recommended" 
+                          :key="m"
+                          @click="selectModelId(m)"
+                          class="w-full text-left px-4 py-3 rounded-2xl text-xs font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          :class="{ 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-bold': searchQuery === m }"
+                        >
+                          {{ m }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button 
+                @click="downloadModel" 
+                :disabled="status === 'loading' || !searchQuery.trim()"
+                class="flex items-center justify-center gap-2 px-8 py-3.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95 shrink-0"
+              >
+                <Download v-if="status !== 'loading'" class="w-4 h-4" />
+                <Loader2 v-else class="w-4 h-4 animate-spin" />
+                Download Model
+              </button>
+            </div>
+
+            <!-- Contextual Progress for Download -->
+            <div v-if="(status === 'loading' && !isLoadingFromCache) || lastDownloadError" class="animate-in fade-in slide-in-from-top-2 duration-300">
+              <template v-if="lastDownloadError">
+                <div class="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-2xl">
+                  <div class="flex items-start gap-3">
+                    <AlertCircle class="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs font-bold text-red-800 dark:text-red-300 mb-1">Download Failed</p>
+                      <p class="text-[11px] text-red-600/80 dark:text-red-400/80 leading-relaxed">{{ lastDownloadError }}</p>
+                    </div>
+                    <button @click="lastDownloadError = null" class="text-red-400 hover:text-red-600 transition-colors">
+                      <X class="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="flex items-center justify-between mb-2 px-1">
+                  <span class="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-2">
+                    <Loader2 class="w-3 h-3 animate-spin" />
+                    Downloading Assets...
+                  </span>
+                  <span class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ progress }}%</span>
+                </div>
+                <div class="h-1.5 w-full bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
+                  <div class="h-full bg-purple-600 dark:bg-purple-400 transition-all duration-300 ease-out" :style="{ width: progress + '%' }"></div>
+                </div>
+                <p class="text-[10px] text-gray-400 mt-2 ml-1 italic">Models are cached locally in the browser (OPFS) for offline use.</p>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- Local Import -->
+        <div class="bg-gray-50/30 dark:bg-gray-800/20 p-8 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700 space-y-6">
+          <div class="text-center">
+            <h3 class="text-sm font-bold text-gray-700 dark:text-gray-300">Import from Local Files</h3>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">Select a folder containing ONNX model files to import it into the browser's storage.</p>
+          </div>
+          
+          <div class="flex justify-center">
+            <label class="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 font-bold text-sm rounded-xl cursor-pointer transition-all border border-gray-200 dark:border-gray-700 shadow-sm active:scale-95">
+              <FolderOpen class="w-5 h-5" />
+              <span>Select Model Folder</span>
+              <input 
+                type="file" 
+                class="hidden" 
+                webkitdirectory 
+                @change="handleImportLocalModel"
+                :disabled="isImporting || status === 'loading'"
+              />
+            </label>
+          </div>
+        </div>
+      </section>
       
-      <!-- Section 1: Engine Status & Control -->
+      <!-- Section 2: Engine Status & Control -->
       <section class="space-y-6">
         <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
           <div class="flex items-center gap-2">
@@ -441,154 +589,6 @@ const handleImportLocalModel = async (event: Event) => {
             <p class="text-sm text-gray-400 italic">
               {{ listSearchQuery ? 'No models match your filter.' : 'No models downloaded yet.' }}
             </p>
-          </div>
-        </div>
-      </section>
-
-      <!-- Section 2: Model Downloader & Importer -->
-      <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
-        <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-          <div class="flex items-center gap-2">
-            <HardDriveDownload class="w-5 h-5 text-purple-500" />
-            <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Add New Models</h2>
-          </div>
-          <a 
-            href="https://huggingface.co/onnx-community/models" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            class="flex items-center gap-1 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
-          >
-            Find more models
-            <ExternalLink class="w-3 h-3" />
-          </a>
-        </div>
-
-        <template v-if="!isStandalone">
-          <!-- file:// Warning -->
-          <div v-if="isFileUrl" class="flex items-start gap-3 p-5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/50 rounded-3xl text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-            <AlertCircle class="w-5 h-5 shrink-0 mt-0.5" />
-            <p>
-              <strong>Note:</strong> Browsers often disable the <strong>Cache API</strong> for local file URLs. To avoid downloading models on every reload, use a local web server or the hosted version.
-            </p>
-          </div>
-
-          <div class="space-y-4">
-            <div class="flex items-center justify-between ml-1">
-              <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Download from Hugging Face</label>
-            </div>
-            <div class="flex flex-col sm:flex-row gap-3">
-              <div class="relative flex-1 flex gap-2" ref="containerRef">
-                <div class="relative flex-1">
-                  <input 
-                    v-model="searchQuery"
-                    type="text"
-                    placeholder="Enter Hugging Face model ID (e.g. onnx-community/phi-4)"
-                    class="w-full pl-4 pr-10 py-3.5 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-purple-500/10 outline-none text-gray-900 dark:text-gray-100 transition-all disabled:opacity-60"
-                    @focus="isDropdownOpen = true"
-                    @keydown.enter="downloadModel"
-                  />
-                  <button 
-                    @click="isDropdownOpen = !isDropdownOpen"
-                    class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-                    type="button"
-                  >
-                    <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': isDropdownOpen }" />
-                  </button>
-
-                  <!-- Dropdown Menu -->
-                  <div v-if="isDropdownOpen" class="absolute z-50 bottom-full mb-3 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
-                    <div class="max-h-[320px] overflow-y-auto p-2 custom-scrollbar overscroll-contain">
-                      <!-- Use Custom ID Option -->
-                      <div v-if="filteredPresets.showCustom">
-                        <button 
-                          @click="selectModelId(searchQuery)"
-                          class="w-full text-left px-4 py-3 rounded-2xl text-xs font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 flex items-center gap-2 border border-dashed border-purple-200 dark:border-purple-800/50 mb-2"
-                        >
-                          <Plus class="w-4 h-4" />
-                          Use Custom ID: "{{ searchQuery }}"
-                        </button>
-                      </div>
-
-                      <!-- Recommended Section -->
-                      <div v-if="filteredPresets.recommended.length > 0">
-                        <div class="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Preset Model Paths</div>
-                        <button 
-                          v-for="m in filteredPresets.recommended" 
-                          :key="m"
-                          @click="selectModelId(m)"
-                          class="w-full text-left px-4 py-3 rounded-2xl text-xs font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                          :class="{ 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-bold': searchQuery === m }"
-                        >
-                          {{ m }}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <button 
-                @click="downloadModel" 
-                :disabled="status === 'loading' || !searchQuery.trim()"
-                class="flex items-center justify-center gap-2 px-8 py-3.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95 shrink-0"
-              >
-                <Download v-if="status !== 'loading'" class="w-4 h-4" />
-                <Loader2 v-else class="w-4 h-4 animate-spin" />
-                Download Model
-              </button>
-            </div>
-
-            <!-- Contextual Progress for Download -->
-            <div v-if="(status === 'loading' && !isLoadingFromCache) || lastDownloadError" class="animate-in fade-in slide-in-from-top-2 duration-300">
-              <template v-if="lastDownloadError">
-                <div class="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-2xl">
-                  <div class="flex items-start gap-3">
-                    <AlertCircle class="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-                    <div class="flex-1 min-w-0">
-                      <p class="text-xs font-bold text-red-800 dark:text-red-300 mb-1">Download Failed</p>
-                      <p class="text-[11px] text-red-600/80 dark:text-red-400/80 leading-relaxed">{{ lastDownloadError }}</p>
-                    </div>
-                    <button @click="lastDownloadError = null" class="text-red-400 hover:text-red-600 transition-colors">
-                      <X class="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </template>
-              <template v-else>
-                <div class="flex items-center justify-between mb-2 px-1">
-                  <span class="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-2">
-                    <Loader2 class="w-3 h-3 animate-spin" />
-                    Downloading Assets...
-                  </span>
-                  <span class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ progress }}%</span>
-                </div>
-                <div class="h-1.5 w-full bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
-                  <div class="h-full bg-purple-600 dark:bg-purple-400 transition-all duration-300 ease-out" :style="{ width: progress + '%' }"></div>
-                </div>
-                <p class="text-[10px] text-gray-400 mt-2 ml-1 italic">Models are cached locally in the browser (OPFS) for offline use.</p>
-              </template>
-            </div>
-          </div>
-        </template>
-
-        <!-- Local Import -->
-        <div class="bg-gray-50/30 dark:bg-gray-800/20 p-8 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700 space-y-6">
-          <div class="text-center">
-            <h3 class="text-sm font-bold text-gray-700 dark:text-gray-300">Import from Local Files</h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">Select a folder containing ONNX model files to import it into the browser's storage.</p>
-          </div>
-          
-          <div class="flex justify-center">
-            <label class="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 font-bold text-sm rounded-xl cursor-pointer transition-all border border-gray-200 dark:border-gray-700 shadow-sm active:scale-95">
-              <FolderOpen class="w-5 h-5" />
-              <span>Select Model Folder</span>
-              <input 
-                type="file" 
-                class="hidden" 
-                webkitdirectory 
-                @change="handleImportLocalModel"
-                :disabled="isImporting || status === 'loading'"
-              />
-            </label>
           </div>
         </div>
       </section>

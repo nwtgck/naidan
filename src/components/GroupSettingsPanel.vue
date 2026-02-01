@@ -11,6 +11,7 @@ import {
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
 import RecipeExportModal from './RecipeExportModal.vue';
+import TransformersJsUpsell from './TransformersJsUpsell.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { ChatGroup } from '../models/types';
 import { naturalSort } from '../utils/string';
@@ -380,6 +381,7 @@ async function restoreDefaults() {
               @refresh="fetchModels"
               data-testid="group-setting-model-select"
             />
+            <TransformersJsUpsell :show="(localSettings.endpoint?.type || (localSettings.endpoint === undefined && settings.endpointType)) === 'transformers_js'" />
           </div>
         </div>
 

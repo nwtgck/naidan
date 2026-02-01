@@ -9,6 +9,7 @@ import {
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
+import TransformersJsUpsell from './TransformersJsUpsell.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { Chat } from '../models/types';
 import { naturalSort } from '../utils/string';
@@ -347,6 +348,7 @@ async function handleRestoreDefaults() {
                 @refresh="fetchModels"
                 data-testid="chat-setting-model-select"
               />
+              <TransformersJsUpsell :show="(localSettings.endpointType || resolvedSettings?.endpointType) === 'transformers_js'" />
             </div>
           </div>
 
