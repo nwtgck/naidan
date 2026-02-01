@@ -10,11 +10,12 @@ import ModelSelector from './ModelSelector.vue';
 import { naturalSort } from '../utils/string';
 
 const ChatSettingsPanel = defineAsyncComponent(() => import('./ChatSettingsPanel.vue'));
+const HistoryManipulationModal = defineAsyncComponent(() => import('./HistoryManipulationModal.vue'));
 import { 
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight,
+  Folder, FolderInput, ChevronRight, Hammer
 } from 'lucide-vue-next';
 import type { Attachment } from '../models/types';
 
@@ -102,6 +103,7 @@ const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navig
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 const showChatSettings = ref(false);
+const showHistoryModal = ref(false);
 const showMoreMenu = ref(false);
 const showMoveMenu = ref(false);
 
@@ -637,6 +639,16 @@ onUnmounted(() => {
           </button>
 
           <button 
+            v-if="activeMessages.length > 0"
+            @click="showHistoryModal = true"
+            class="p-2 rounded-xl transition-all text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 group/hammer"
+            title="Super Edit (Full History Manipulation)"
+            data-testid="super-edit-button"
+          >
+            <Hammer class="w-5 h-5 group-hover/hammer:-rotate-12 transition-all" />
+          </button>
+
+          <button 
             @click="exportChat"
             class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             title="Export Chat"
@@ -681,6 +693,12 @@ onUnmounted(() => {
     <ChatSettingsPanel 
       :show="showChatSettings" 
       @close="showChatSettings = false" 
+    />
+
+    <!-- History Manipulation Modal -->
+    <HistoryManipulationModal
+      :is-open="showHistoryModal"
+      @close="showHistoryModal = false"
     />
 
     <!-- Messages Layer -->

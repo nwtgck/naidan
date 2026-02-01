@@ -8,7 +8,7 @@ import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
-import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranch, processThinking } from '../utils/chat-tree';
+import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranch, processThinking, createBranchFromMessages, type HistoryItem } from '../utils/chat-tree';
 import { resolveChatSettings } from '../utils/chat-settings-resolver';
 import { detectLanguage, getTitleSystemPrompt, cleanGeneratedTitle } from '../utils/title-generator';
 
@@ -1181,6 +1181,29 @@ export function useChat() {
     });
   };
 
+  const commitFullHistoryManipulation = async (chatId: string, messages: HistoryItem[]) => {
+    const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
+    if (!target) return;
+    const chat = getLiveChat(target);
+
+    const newNodes = createBranchFromMessages(messages);
+
+    if (newNodes.length > 0) {
+      if (!chat.root) chat.root = { items: [] };
+      chat.root.items.push(newNodes[0]!);
+      chat.currentLeafId = newNodes[newNodes.length - 1]!.id;
+    }
+
+    chat.updatedAt = Date.now();
+    if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
+    
+    await updateChatContent(chat.id, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
+    await updateChatMeta(chat.id, (curr) => {
+      if (!curr) return chat;
+      return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
+    });
+  };
+
   const createChatGroup = async (name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
     const id = crypto.randomUUID();
     const newGroup: ChatGroup = { 
@@ -1350,7 +1373,7 @@ export function useChat() {
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, createChatGroup, deleteChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
     __testOnly: {
       liveChatRegistry,

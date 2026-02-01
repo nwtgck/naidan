@@ -70,3 +70,30 @@ export function findRestorationIndex(items: SidebarItem[], prevId: string | null
   if (nextIdx !== -1) return nextIdx;
   return 0;
 }
+
+export interface HistoryItem {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  modelId?: string;
+  thinking?: string;
+  attachments?: import('../models/types').Attachment[];
+}
+
+export function createBranchFromMessages(messages: HistoryItem[]): MessageNode[] {
+  const nodes: MessageNode[] = messages.map(m => ({
+    id: crypto.randomUUID(),
+    role: m.role,
+    content: m.content,
+    timestamp: Date.now(),
+    modelId: m.modelId,
+    thinking: m.thinking,
+    attachments: m.attachments,
+    replies: { items: [] },
+  }));
+
+  for (let i = 0; i < nodes.length - 1; i++) {
+    nodes[i]!.replies.items.push(nodes[i + 1]!);
+  }
+
+  return nodes;
+}
