@@ -586,7 +586,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     </div>
     <!-- Navigation List -->
     <div 
-      class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide focus:outline-none" 
+      class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide focus:outline-none overscroll-contain" 
       :class="{ 'is-dragging': isDragging }"
       data-testid="sidebar-nav"
       tabindex="0"
@@ -628,6 +628,8 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
           :group="{ name: 'sidebar' }"
           :move="checkMove"
           :animation="0"
+          :delay="200"
+          :delay-on-touch-only="true"
           @start="onDragStart"
           @end="onDragEnd"
           ghost-class="sortable-ghost"
@@ -706,6 +708,8 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                         item-key="id"
                         handle=".handle"
                         :animation="0"
+                        :delay="200"
+                        :delay-on-touch-only="true"
                         tag="div"
                         data-testid="nested-draggable"
                         @start="onDragStart"

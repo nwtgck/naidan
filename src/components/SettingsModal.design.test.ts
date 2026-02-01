@@ -183,7 +183,8 @@ describe('SettingsModal Design Specifications', () => {
 
     it('uses shrink-0 for the settings header to prevent height collapse', () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true } });
-      const header = wrapper.find('aside > div.p-6');
+      // Use a more resilient selector that doesn't depend on the specific padding class
+      const header = wrapper.find('aside > div:first-child');
       expect(header.classes()).toContain('shrink-0');
     });
   });

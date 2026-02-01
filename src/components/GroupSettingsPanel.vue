@@ -230,7 +230,7 @@ async function restoreDefaults() {
     />
 
     <!-- Content -->
-    <div class="flex-1 overflow-y-auto">
+    <div class="flex-1 overflow-y-auto overscroll-contain">
       <div class="max-w-4xl mx-auto p-6 sm:p-8 space-y-10">
         <!-- Recipe Export Action -->
         <div class="bg-blue-50/30 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-900/20 p-6 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm">

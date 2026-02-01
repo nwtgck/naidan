@@ -290,7 +290,7 @@ watch([windowWidth, windowHeight], () => {
         </div>
 
         <!-- List -->
-        <div ref="listContainerRef" class="max-h-60 overflow-y-auto py-1 custom-scrollbar">
+        <div ref="listContainerRef" class="max-h-60 overflow-y-auto py-1 custom-scrollbar overscroll-contain">
           <!-- Inherited / Default option -->
           <button
             v-if="allowClear"

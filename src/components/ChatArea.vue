@@ -687,7 +687,7 @@ onUnmounted(() => {
       <div 
         ref="container" 
         data-testid="scroll-container" 
-        class="absolute inset-0 overflow-y-auto"
+        class="absolute inset-0 overflow-y-auto overscroll-contain"
         style="overflow-anchor: none; padding-bottom: 300px;"
       >
         <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">

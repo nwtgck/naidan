@@ -2,7 +2,6 @@
 import { ref, computed, watch } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import ThemeToggle from './ThemeToggle.vue';
-import { useToast } from '../composables/useToast';
 import { useLayout } from '../composables/useLayout';
 import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
 import { TransformersJsProvider } from '../services/transformers-js-provider';
@@ -15,7 +14,6 @@ import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2 } fr
 import { naturalSort } from '../utils/string';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
-const toast = useToast();
 const { setActiveFocusArea } = useLayout();
 
 const show = computed(() => initialized.value && !isOnboardingDismissed.value);
@@ -149,15 +147,6 @@ async function handleClose() {
     selectedModel: selectedModel.value,
   });
   setIsOnboardingDismissed(true);
-  
-  toast.addToast({
-    message: 'Setup skipped. You can always configure it later in settings.',
-    actionLabel: 'Undo',
-    onAction: () => {
-      setIsOnboardingDismissed(false);
-    },
-    duration: 5000,
-  });
 }
 
 async function handleFinish() {
@@ -190,7 +179,7 @@ async function handleFinish() {
 <template>
   <Transition name="modal">
     <div v-if="show" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4">
-      <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl h-[640px] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative modal-content-zoom">
+      <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl md:h-[640px] max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative modal-content-zoom">
         <!-- Close Button (Top Right) -->
       
         <button 
@@ -201,26 +190,26 @@ async function handleFinish() {
           <X class="w-5 h-5" />
         </button>
 
-        <div class="px-10 py-4 flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
+        <div class="px-6 md:px-10 py-4 flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
           <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-            <Logo class="w-8 h-8" />
+            <Logo class="w-6 h-6 md:w-8 md:h-8" />
           </div>
           <div class="text-left flex-1">
-            <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Setup Endpoint</h2>
-            <p class="text-xs text-gray-600 dark:text-gray-400">Set up your local or remote LLM endpoint to start chatting.</p>
+            <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">Setup Endpoint</h2>
+            <p class="hidden sm:block text-xs text-gray-600 dark:text-gray-400">Set up your local or remote LLM endpoint to start chatting.</p>
           </div>
-          <div class="w-32 flex-shrink-0 mr-8">
+          <div class="w-24 md:w-32 flex-shrink-0 mr-8">
             <ThemeToggle />
           </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto min-h-0">
+        <div class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
 
           <div class="flex flex-col lg:flex-row h-full">
 
             <!-- Left Column: Configuration (Primary) -->
 
-            <div class="w-full lg:w-[62%] p-10 space-y-8">
+            <div class="w-full lg:w-[62%] p-6 md:p-10 space-y-6 md:space-y-8">
 
               <template v-if="availableModels.length === 0">
 
@@ -234,7 +223,7 @@ async function handleFinish() {
                       v-for="preset in ENDPOINT_PRESETS"
                       :key="preset.name"
                       @click="selectPreset(preset)"
-                      class="px-3 py-1.5 text-[11px] font-bold border rounded-lg transition-all duration-200"
+                      class="px-2.5 py-1.5 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold border rounded-lg transition-all duration-200"
                       :class="customUrl === preset.url ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600'"
                     >
                       {{ preset.name }}
@@ -242,24 +231,24 @@ async function handleFinish() {
                   </div>
                 </div>
                 <div class="space-y-3">
-                  <div class="flex items-center justify-between">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Endpoint Configuration</label>
-                    <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700">
+                    <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
                       <button 
                         @click="selectedType = 'openai'"
-                        class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
                         :class="selectedType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                       >OpenAI-compatible</button>
                                     
                       <button 
                         @click="selectedType = 'ollama'"
-                        class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors"
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors"
                         :class="selectedType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                       >Ollama</button>
 
                       <button 
                         @click="selectedType = 'transformers_js'"
-                        class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
                         :class="selectedType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                       >Transformers.js</button>
                     </div>
@@ -270,7 +259,7 @@ async function handleFinish() {
                     v-model="customUrl"
                     type="text"
                     placeholder="http://localhost:11434"
-                    class="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all dark:text-white"
+                    class="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all dark:text-white text-sm"
                     @keydown.enter="$event => !$event.isComposing && handleConnect()"
                   />
 
@@ -297,13 +286,13 @@ async function handleFinish() {
                         <input 
                           v-model="header[0]"
                           type="text"
-                          class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
+                          class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
                           placeholder="Name"
                         />
                         <input 
                           v-model="header[1]"
                           type="text"
-                          class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
+                          class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
                           placeholder="Value"
                         />
                         <button 
@@ -316,7 +305,7 @@ async function handleFinish() {
                     </div>
                   </div>
 
-                  <p v-if="error" class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
+                  <p v-if="error" class="text-[11px] text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
                     {{ error }}
                   </p>
                 </div>
@@ -326,7 +315,7 @@ async function handleFinish() {
                     <button
                       @click="handleConnect"
                       :disabled="!isValidUrl || isTesting"
-                      class="flex-1 py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2"
+                      class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                       data-testid="onboarding-connect-button"
                     >
                       <template v-if="isTesting">
@@ -341,14 +330,14 @@ async function handleFinish() {
                     <button
                       v-if="isTesting"
                       @click="handleCancelConnect"
-                      class="px-5 py-4 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/10 transition-all flex items-center gap-2"
+                      class="px-4 py-3.5 md:px-5 md:py-4 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/10 transition-all flex items-center gap-2 text-sm"
                     >
                       <span>Cancel</span>
                     </button>
                   </div>
                 
-                  <p class="flex items-center justify-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
-                    <Settings class="w-4 h-4 text-blue-500/60" />
+                  <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
+                    <Settings class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
                     You can change these settings later in the settings menu.
                   </p>
                 </div>
@@ -387,14 +376,14 @@ async function handleFinish() {
                   <div class="flex gap-2">
                     <button
                       @click="availableModels = []"
-                      class="px-5 py-4 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center gap-2"
+                      class="px-4 py-3.5 md:px-5 md:py-4 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center gap-2 text-sm"
                     >
                       <ArrowLeft class="w-5 h-5" />
                       <span>Back</span>
                     </button>
                     <button
                       @click="handleFinish"
-                      class="flex-1 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2"
+                      class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                       data-testid="onboarding-finish-button"
                     >
                       <Play class="w-5 h-5 fill-current" />
@@ -402,8 +391,8 @@ async function handleFinish() {
                     </button>
                   </div>
 
-                  <p class="flex items-center justify-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
-                    <Settings class="w-4 h-4 text-blue-500/60" />
+                  <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
+                    <Settings class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
                     You can change these settings later in the settings menu.
                   </p>
                 </div>
@@ -411,7 +400,7 @@ async function handleFinish() {
             </div>
 
             <!-- Right Column: Setup Guide (Secondary/Auxiliary) -->
-            <div class="w-full lg:w-[38%] p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
+            <div class="w-full lg:w-[38%] p-6 md:p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
               <div class="flex items-center gap-2 mb-4">
                 <span class="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-widest">Help & Guide</span>
               </div>

@@ -393,7 +393,7 @@ const handleImportLocalModel = async (event: Event) => {
             </div>
           </div>
 
-          <div v-if="filteredCachedModels.length > 0" class="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar -mr-2">
+          <div v-if="filteredCachedModels.length > 0" class="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar -mr-2 overscroll-contain">
             <div class="grid grid-cols-1 gap-2 pb-1">
               <div 
                 v-for="model in filteredCachedModels" 
@@ -497,7 +497,7 @@ const handleImportLocalModel = async (event: Event) => {
 
                   <!-- Dropdown Menu -->
                   <div v-if="isDropdownOpen" class="absolute z-50 bottom-full mb-3 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
-                    <div class="max-h-[320px] overflow-y-auto p-2 custom-scrollbar">
+                    <div class="max-h-[320px] overflow-y-auto p-2 custom-scrollbar overscroll-contain">
                       <!-- Use Custom ID Option -->
                       <div v-if="filteredPresets.showCustom">
                         <button 

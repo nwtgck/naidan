@@ -210,7 +210,7 @@ defineExpose({
 
 <template>
   <div class="flex-1 flex flex-col min-h-0">
-    <div class="flex-1 overflow-y-auto min-h-0">
+    <div class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
       <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
         <div class="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-400">
                   
@@ -472,10 +472,10 @@ defineExpose({
     </div>
 
     <!-- Footer Actions -->
-    <div class="p-8 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-4 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
+    <div class="p-4 md:p-8 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row justify-end gap-3 md:gap-4 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm shrink-0">
       <button 
         @click="handleCreateProviderProfile"
-        class="flex items-center justify-center gap-2 py-3 px-6 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-2xl text-sm font-bold transition-all shadow-sm active:scale-95"
+        class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-6 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-all shadow-sm active:scale-95"
         data-testid="setting-save-provider-profile-button"
       >
         <BookmarkPlus class="w-4 h-4" />
@@ -485,7 +485,7 @@ defineExpose({
       <button 
         @click="handleSave"
         :disabled="!hasUnsavedChanges"
-        class="flex items-center justify-center gap-2 py-3 px-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-95"
+        class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-bold rounded-xl md:rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-95"
         data-testid="setting-save-button"
       >
         <CheckCircle2 v-if="saveSuccess" class="w-4 h-4" />

@@ -221,7 +221,7 @@ async function handleRestoreDefaults() {
         </div>
 
         <!-- Scrollable Content -->
-        <div class="flex-1 overflow-y-auto p-6 space-y-8">
+        <div class="flex-1 overflow-y-auto p-6 space-y-8 overscroll-contain">
           <div class="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-200/50 dark:border-gray-800 pb-8 gap-6">
             <div class="flex flex-col md:flex-row gap-8 flex-1">
               <!-- Quick Switcher -->
