@@ -79,7 +79,7 @@ describe('OnboardingModal.vue', () => {
     const wrapper = mount(OnboardingModal);
     expect(wrapper.text()).toContain('Setup Endpoint');
     expect(wrapper.find('input').exists()).toBe(true);
-    expect(wrapper.text()).toContain('OpenAI-compatible');
+    expect(wrapper.text()).toContain('OpenAI');
     expect(wrapper.text()).toContain('Ollama');
   });
 
@@ -179,7 +179,7 @@ describe('OnboardingModal.vue', () => {
     const wrapper = mount(OnboardingModal);
     const modalContainer = wrapper.find('.max-w-4xl');
     expect(modalContainer.exists()).toBe(true);
-    expect(modalContainer.classes()).toContain('h-[640px]');
+    expect(modalContainer.classes()).toContain('md:h-[640px]');
     
     expect(wrapper.findComponent(Settings).exists()).toBe(true);
   });

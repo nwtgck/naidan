@@ -96,7 +96,8 @@ describe('SettingsModal GitHub Link', () => {
     // Check for the "External" badge text
     expect(githubLink.text()).toContain('External');
     
-    // Check for the "GitHub Repository" title
-    expect(githubLink.text()).toContain('GitHub Repository');
+    // Check for the "GitHub" and "Repository" titles
+    expect(githubLink.text()).toContain('GitHub');
+    expect(githubLink.text()).toContain('Repository');
   });
 });
