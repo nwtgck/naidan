@@ -64,7 +64,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
     },
   };
 
-  const currentRoute = reactive({ path: '/', params: {} as any });
+  const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -72,12 +72,17 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
     currentRoute.path = '/';
     currentRoute.params = {};
+    currentRoute.query = {};
 
     (useRouter as any).mockReturnValue({
       push: vi.fn((p) => {
-        currentRoute.path = p;
-        const segments = p.split('/');
-        currentRoute.params.tab = segments[segments.length - 1];
+        if (typeof p === 'string') {
+          currentRoute.path = p;
+          const segments = p.split('/');
+          currentRoute.params.tab = segments[segments.length - 1];
+        } else if (p && typeof p === 'object' && 'query' in p) {
+          currentRoute.query = { ...currentRoute.query, ...p.query };
+        }
       }),
       replace: vi.fn(),
     });

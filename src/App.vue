@@ -24,7 +24,7 @@ const { isSidebarOpen } = useLayout();
 const router = useRouter();
 const route = useRoute();
 
-const isSettingsOpen = computed(() => route.path.startsWith('/settings'));
+const isSettingsOpen = computed(() => route.path.startsWith('/settings') || !!route.query.settings);
 const lastNonSettingsPath = ref('/');
 
 watch(() => route.path, (path) => {
@@ -34,7 +34,13 @@ watch(() => route.path, (path) => {
 });
 
 const closeSettings = () => {
-  router.push(lastNonSettingsPath.value);
+  if (route.query.settings) {
+    const query = { ...route.query };
+    delete query.settings;
+    router.push({ path: route.path, query });
+  } else {
+    router.push(lastNonSettingsPath.value);
+  }
 };
 
 const { isOPFSOpen } = useOPFSExplorer();
@@ -122,7 +128,7 @@ onKeyStroke(['o', 'O'], async (e) => {
       class="border-r border-gray-100 dark:border-gray-800 shrink-0 h-full transition-all duration-300 ease-in-out relative z-30"
       :class="isSidebarOpen ? 'w-64' : 'w-10'"
     >
-      <Sidebar @open-settings="router.push('/settings/connection')" />
+      <Sidebar />
     </div>
     
     <main class="flex-1 relative flex flex-col min-w-0 pb-10 bg-transparent">

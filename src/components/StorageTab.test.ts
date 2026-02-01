@@ -105,6 +105,7 @@ const globalStubs = {
   Logo: true, ImportExportModal: true, ChefHat: true, Download: true,
   Github: true, ExternalLink: true, Plus: true, Info: true,
   FileArchive: true, HardDrive: true, MessageSquareQuote: true,
+  'router-link': true,
 };
 
 const globalMocks = {
@@ -112,11 +113,15 @@ const globalMocks = {
 };
 
 describe('StorageTab.vue Tests', () => {
-  const currentRoute = reactive({ path: '/', params: {} as any });
+  const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
   const mockPush = vi.fn((p) => {
-    currentRoute.path = p;
-    const segments = p.split('/');
-    currentRoute.params.tab = segments[segments.length - 1];
+    if (typeof p === 'string') {
+      currentRoute.path = p;
+      const segments = p.split('/');
+      currentRoute.params.tab = segments[segments.length - 1];
+    } else if (p && typeof p === 'object' && 'query' in p) {
+      currentRoute.query = { ...currentRoute.query, ...p.query };
+    }
   });
 
   beforeEach(() => {
@@ -125,6 +130,7 @@ describe('StorageTab.vue Tests', () => {
 
     currentRoute.path = '/';
     currentRoute.params = {};
+    currentRoute.query = {};
 
     (useRouter as any).mockReturnValue({
       push: mockPush,

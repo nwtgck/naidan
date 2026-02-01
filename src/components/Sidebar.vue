@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
@@ -30,6 +30,7 @@ const { isSidebarOpen, activeFocusArea, setActiveFocusArea, toggleSidebar } = us
 const { showConfirm } = useConfirm();
 
 const router = useRouter();
+const route = useRoute();
 
 defineEmits<{
   (e: 'open-settings'): void
@@ -838,7 +839,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
 
       <div class="flex items-center gap-2" :class="{ 'flex-col items-center': !isSidebarOpen }">
         <button 
-          @click="$emit('open-settings')" 
+          @click="router.push({ query: { ...route.query, settings: 'connection' } })" 
           class="flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm"
           :class="isSidebarOpen ? 'flex-1 py-3 px-2' : 'w-8 h-8'"
           title="Settings"

@@ -57,8 +57,7 @@ vi.mock('vue-router', () => ({
 vi.mock('./components/Sidebar.vue', () => ({
   default: {
     name: 'Sidebar',
-    template: '<div data-testid="sidebar"><button @click="$emit(\'open-settings\')">Settings</button></div>',
-    emits: ['open-settings'],
+    template: '<div data-testid="sidebar"></div>',
   },
 }));
 
@@ -198,7 +197,7 @@ describe('App', () => {
 
   it('automatically creates a new chat when navigating back to root from another path if history is empty', async () => {
     mockChats.value = [];
-    const currentRoute = reactive({ path: '/settings' });
+    const currentRoute = reactive({ path: '/settings', query: {} as any });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
       currentRoute: ref(currentRoute),
@@ -343,13 +342,14 @@ describe('App', () => {
     });
   });
 
-  it('opens SettingsModal when Sidebar emits open-settings', async () => {
+  it('opens SettingsModal when route query settings is present', async () => {
     const wrapper = mountApp();
     await flushPromises();
     
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
     
-    await wrapper.find('[data-testid="sidebar"] button').trigger('click');
+    currentRoute.query = { settings: 'connection' };
+    await nextTick();
     
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
   });

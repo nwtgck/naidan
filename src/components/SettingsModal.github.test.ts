@@ -50,6 +50,7 @@ vi.mock('vue-router', () => ({
   useRoute: () => ({
     path: '/',
     params: {},
+    query: {},
   }),
 }));
 

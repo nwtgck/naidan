@@ -21,7 +21,7 @@ defineProps<{
         </div>
       </div>
       <router-link 
-        to="/settings/transformers-js"
+        :to="{ query: { ...$route.query, settings: 'transformers-js' } }"
         class="flex items-center justify-center gap-2 w-full py-2 bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-bold rounded-xl shadow-lg shadow-purple-500/20 transition-all active:scale-[0.98] group"
       >
         <Plus class="w-3 h-3 group-hover:rotate-90 transition-transform duration-300" />

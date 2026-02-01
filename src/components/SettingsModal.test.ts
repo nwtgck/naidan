@@ -157,6 +157,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     AlertTriangle: true,
     ShieldCheck: true,
     Logo: true,
+    'router-link': true,
   };
 
   beforeEach(() => {
@@ -175,12 +176,16 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     vi.mocked(storageService.getCurrentType).mockReturnValue('local');
 
-    const currentRoute = reactive({ path: '/', params: {} as any });
+    const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
     (useRouter as Mock).mockReturnValue({
       push: vi.fn((p) => {
-        currentRoute.path = p;
-        const segments = p.split('/');
-        currentRoute.params.tab = segments[segments.length - 1];
+        if (typeof p === 'string') {
+          currentRoute.path = p;
+          const segments = p.split('/');
+          currentRoute.params.tab = segments[segments.length - 1];
+        } else if (p && typeof p === 'object' && 'query' in p) {
+          currentRoute.query = { ...currentRoute.query, ...p.query };
+        }
       }),
       replace: vi.fn(),
     });

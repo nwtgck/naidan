@@ -48,7 +48,7 @@ const router = useRouter();
 const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 
 const form = ref<Settings>(JSON.parse(JSON.stringify(settings.value)));
-const initialFormState = ref('');
+const initialFormState = ref(JSON.stringify(pickConnectionFields(form.value)));
 const connectionTabRef = ref<InstanceType<typeof ConnectionTab> | null>(null);
 
 function pickConnectionFields(s: Settings) {
@@ -97,6 +97,12 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
 type Tab = 'connection' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'developer' | 'about';
 const activeTab = computed({
   get: () => {
+    const queryTab = route.query.settings as string;
+    if (queryTab) {
+      if (queryTab === 'provider-profiles') return 'profiles';
+      if (queryTab === 'transformers-js') return 'transformers_js';
+      return (queryTab as Tab);
+    }
     const tab = (route.params as { tab?: string }).tab;
     if (tab === 'provider-profiles') return 'profiles';
     if (tab === 'transformers-js') return 'transformers_js';
@@ -107,7 +113,12 @@ const activeTab = computed({
       profiles: 'provider-profiles',
       transformers_js: 'transformers-js',
     };
-    router.push(`/settings/${pathMap[val] || val}`);
+    const mappedVal = pathMap[val] || val;
+    if (route.query.settings || !route.path.startsWith('/settings')) {
+      router.push({ query: { ...route.query, settings: mappedVal } });
+    } else {
+      router.push(`/settings/${mappedVal}`);
+    }
   }
 });
 
