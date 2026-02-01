@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { 
   X, ChefHat, Copy, Check, Plus, Trash2, Info, Globe, AlertCircle, MessageSquareQuote
 } from 'lucide-vue-next';
-import type { ChatGroupRecipe } from '../models/recipe';
+import type { ChatGroupRecipe, RecipeSystemPrompt } from '../models/recipe';
 import type { LmParameters, SystemPrompt } from '../models/types';
 import { generateDefaultModelPatterns } from '../utils/recipe-matcher';
 
@@ -22,7 +22,7 @@ const emit = defineEmits<{
 const recipeForm = ref({
   name: props.groupName,
   description: '',
-  systemPrompt: props.systemPrompt ? { ...props.systemPrompt } : { content: '', behavior: 'override' as const },
+  systemPrompt: props.systemPrompt ? { ...props.systemPrompt } : { content: '' as string | null, behavior: 'override' as const },
   models: [] as { id: string; pattern: string; caseSensitive: boolean }[],
 });
 
@@ -34,7 +34,7 @@ function initForm() {
   recipeForm.value = {
     name: props.groupName,
     description: '',
-    systemPrompt: props.systemPrompt ? { ...props.systemPrompt } : { content: '', behavior: 'override' as const },
+    systemPrompt: props.systemPrompt ? { ...props.systemPrompt } : { content: '' as string | null, behavior: 'override' as const },
     models: modelPatterns,
   };
 }
@@ -49,11 +49,15 @@ watch(() => props.isOpen, (open) => {
 const copySuccess = ref(false);
 
 const exportedRecipeJson = computed(() => {
+  // Use behavior 'override' with content null for "Clear"
+  const hasSystemPrompt = recipeForm.value.systemPrompt.content !== null || recipeForm.value.systemPrompt.behavior === 'append';
+  const isExplicitClear = recipeForm.value.systemPrompt.behavior === 'override' && recipeForm.value.systemPrompt.content === null;
+
   const recipe: ChatGroupRecipe = {
     type: 'chat_group_recipe',
     name: recipeForm.value.name,
     description: recipeForm.value.description || undefined,
-    systemPrompt: recipeForm.value.systemPrompt.content ? recipeForm.value.systemPrompt : undefined,
+    systemPrompt: (hasSystemPrompt || isExplicitClear) ? (recipeForm.value.systemPrompt as RecipeSystemPrompt) : undefined,
     lmParameters: props.lmParameters,
     models: recipeForm.value.models.map(m => ({
       type: 'regex',
@@ -152,14 +156,21 @@ async function copyToClipboard() {
                 
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                   <button 
-                    @click="recipeForm.systemPrompt.behavior = 'override'"
+                    @click="recipeForm.systemPrompt = { behavior: 'override', content: null }"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
-                    :class="recipeForm.systemPrompt.behavior === 'override' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                    :class="recipeForm.systemPrompt.behavior === 'override' && recipeForm.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                  >
+                    Clear
+                  </button>
+                  <button 
+                    @click="recipeForm.systemPrompt = { behavior: 'override', content: recipeForm.systemPrompt.content ?? '' }"
+                    class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
+                    :class="recipeForm.systemPrompt.behavior === 'override' && recipeForm.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Override
                   </button>
                   <button 
-                    @click="recipeForm.systemPrompt.behavior = 'append'"
+                    @click="recipeForm.systemPrompt = { behavior: 'append', content: recipeForm.systemPrompt.content ?? '' }"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="recipeForm.systemPrompt.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
@@ -168,11 +179,19 @@ async function copyToClipboard() {
                 </div>
               </div>
               <textarea 
+                v-if="!(recipeForm.systemPrompt.behavior === 'override' && recipeForm.systemPrompt.content === null)"
                 v-model="recipeForm.systemPrompt.content"
                 rows="5"
                 class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-4 focus:ring-blue-500/10 transition-all resize-none shadow-sm"
                 placeholder="Include custom instructions in the recipe..."
               ></textarea>
+              <div 
+                v-else
+                class="w-full bg-gray-50/50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center"
+              >
+                <p class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Parent Prompt Cleared</p>
+                <p class="text-[9px] text-gray-400 dark:text-gray-500 mt-1">This recipe will explicitly clear any inherited system instructions.</p>
+              </div>
             </div>
 
             <!-- Model Rules -->

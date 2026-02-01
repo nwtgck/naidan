@@ -19,8 +19,12 @@ export interface ResolvableSettings {
 }
 
 export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: ResolvableSettings) {
+
   const group = chat.groupId ? groups.find(g => g.id === chat.groupId) : null;
+
   const endpointType = chat.endpointType || group?.endpoint?.type || globalSettings.endpointType;
+
+
   const endpointUrl = chat.endpointUrl || group?.endpoint?.url || globalSettings.endpointUrl || '';
   const endpointHttpHeaders = (chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || globalSettings.endpointHttpHeaders) as [string, string][] | undefined;
   const modelId = chat.modelId || group?.modelId || globalSettings.defaultModelId || '';

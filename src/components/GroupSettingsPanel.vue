@@ -171,11 +171,26 @@ async function updateSystemPromptContent(content: string) {
 }
 */
 
-async function updateSystemPromptBehavior(behavior: 'override' | 'append') {
-  if (!localSettings.value.systemPrompt) {
+async function updateSystemPromptBehavior(behavior: 'override' | 'append', isClear = false) {
+  if (isClear) {
+    localSettings.value.systemPrompt = { behavior: 'override', content: null };
+  } else if (!localSettings.value.systemPrompt) {
     localSettings.value.systemPrompt = { content: '', behavior };
   } else {
-    localSettings.value.systemPrompt.behavior = behavior;
+    // When switching away from Clear to Override/Append, ensure content is at least an empty string
+    const content = localSettings.value.systemPrompt.content ?? '';
+    switch (behavior) {
+    case 'override':
+      localSettings.value.systemPrompt = { behavior: 'override', content };
+      break;
+    case 'append':
+      localSettings.value.systemPrompt = { behavior: 'append', content };
+      break;
+    default: {
+      const _ex: never = behavior;
+      throw new Error(`Unhandled behavior: ${_ex}`);
+    }
+    }
   }
   await saveChanges();
 }
@@ -441,9 +456,16 @@ async function restoreDefaults() {
                 
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                   <button 
+                    @click="updateSystemPromptBehavior('override', true)"
+                    class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
+                    :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                  >
+                    Clear
+                  </button>
+                  <button 
                     @click="updateSystemPromptBehavior('override')"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
-                    :class="localSettings.systemPrompt?.behavior !== 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                    :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Override
                   </button>
@@ -457,14 +479,29 @@ async function restoreDefaults() {
                 </div>
               </div>
               <textarea 
+                v-if="!(localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null)"
                 :value="localSettings.systemPrompt?.content || ''"
-                @input="e => { if(localSettings.systemPrompt) localSettings.systemPrompt.content = (e.target as HTMLTextAreaElement).value; else localSettings.systemPrompt = { content: (e.target as HTMLTextAreaElement).value, behavior: 'override' }; }"
+                @input="e => { 
+                  const val = (e.target as HTMLTextAreaElement).value;
+                  if(localSettings.systemPrompt) {
+                    localSettings.systemPrompt.content = val;
+                  } else {
+                    localSettings.systemPrompt = { content: val, behavior: 'override' };
+                  }
+                }"
                 @blur="saveChanges"
                 rows="6"
                 class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
                 :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
                 data-testid="group-setting-system-prompt-textarea"
               ></textarea>
+              <div 
+                v-else
+                class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center"
+              >
+                <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Global Prompt Cleared</p>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This group will not use any system instructions.</p>
+              </div>
             </div>
 
             <div class="space-y-4">
@@ -475,7 +512,9 @@ async function restoreDefaults() {
               <div class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3 shadow-sm">
                 <div class="flex items-center justify-between text-[10px] font-bold">
                   <span class="text-gray-400">System Prompt</span>
-                  <span :class="localSettings.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">{{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? 'Appending' : 'Overriding') : 'Global Default' }}</span>
+                  <span :class="localSettings.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">
+                    {{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? 'Appending' : (localSettings.systemPrompt.content === null ? 'Cleared' : 'Overriding')) : 'Global Default' }}
+                  </span>
                 </div>
                 <div class="flex items-center justify-between text-[10px] font-bold">
                   <span class="text-gray-400">Parameters</span>

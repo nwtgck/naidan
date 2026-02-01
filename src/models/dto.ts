@@ -42,10 +42,16 @@ export const LmParametersSchemaDto = z.object({
 });
 export type LmParametersDto = z.infer<typeof LmParametersSchemaDto>;
 
-export const SystemPromptSchemaDto = z.object({
-  content: z.string(),
-  behavior: z.enum(['override', 'append']),
-});
+export const SystemPromptSchemaDto = z.discriminatedUnion('behavior', [
+  z.object({
+    behavior: z.literal('override'),
+    content: z.string().nullable(),
+  }),
+  z.object({
+    behavior: z.literal('append'),
+    content: z.string(),
+  }),
+]);
 export type SystemPromptDto = z.infer<typeof SystemPromptSchemaDto>;
 
 // --- Grouping ---
