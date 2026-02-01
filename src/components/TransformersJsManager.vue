@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { transformersJsService } from '../services/transformers-js';
 import { 
   Loader2, CheckCircle2, AlertCircle, Download, FolderOpen, RefreshCcw, Trash2, 
-  ChevronDown, Plus, HardDriveDownload, X, BrainCircuit, PowerOff, ExternalLink 
+  ChevronDown, Plus, HardDriveDownload, X, BrainCircuit, PowerOff, ExternalLink, Search, FileCode, RotateCcw
 } from 'lucide-vue-next';
 import { useToast } from '../composables/useToast';
 import { useConfirm } from '../composables/useConfirm';
@@ -30,8 +30,9 @@ const defaultModels = [
   'onnx-community/Llama-3.2-1B-Instruct',
 ];
 
-const cachedModels = ref<Array<{ id: string; isLocal: boolean }>>([]);
+const cachedModels = ref<Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number }>>([]);
 const searchQuery = ref('');
+const listSearchQuery = ref('');
 const isDropdownOpen = ref(false);
 const containerRef = ref<HTMLElement | null>(null);
 const isImporting = ref(false);
@@ -42,6 +43,24 @@ let unsubscribe: (() => void) | null = null;
 
 const refreshLocalModels = async () => {
   cachedModels.value = await transformersJsService.listCachedModels();
+};
+
+const formatSize = (bytes: number) => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
+
+const formatDate = (timestamp: number) => {
+  if (!timestamp) return 'Unknown';
+  return new Date(timestamp).toLocaleDateString(undefined, { 
+    month: 'short', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 };
 
 const filteredPresets = computed(() => {
@@ -58,6 +77,16 @@ const filteredPresets = computed(() => {
     recommended: availablePresets.filter(m => m.toLowerCase().includes(query)),
     showCustom: query.length > 0 && !defaultModels.some(m => m.toLowerCase() === query)
   };
+});
+
+const filteredCachedModels = computed(() => {
+  const query = listSearchQuery.value.trim().toLowerCase();
+  const models = query 
+    ? cachedModels.value.filter(m => m.id.toLowerCase().includes(query))
+    : [...cachedModels.value];
+  
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  return models.sort((a, b) => collator.compare(a.id, b.id));
 });
 
 const selectModelId = (id: string) => {
@@ -107,6 +136,24 @@ const unloadModel = async () => {
     addToast({ message: 'Engine unloaded and resources released.' });
   } catch (err) {
     console.error('Unload failed:', err);
+  }
+};
+
+const handleRestart = async () => {
+  const confirmed = await showConfirm({
+    title: 'Restart AI Engine',
+    message: 'This will terminate the current background worker and start a fresh one. Use this if the engine becomes unresponsive or shows fatal errors.',
+    confirmButtonText: 'Restart',
+    confirmButtonVariant: 'danger',
+  });
+
+  if (!confirmed) return;
+
+  try {
+    await transformersJsService.restart();
+    addToast({ message: 'AI Engine worker restarted successfully.' });
+  } catch (err) {
+    console.error('Restart failed:', err);
   }
 };
 
@@ -160,10 +207,17 @@ const handleImportLocalModel = async (event: Event) => {
   if (!firstFile) return;
 
   const relativePath = firstFile.webkitRelativePath;
-  const modelName = relativePath.split('/')[0];
+  const pathSegments = relativePath.split('/');
+  let modelName = pathSegments[0];
 
-  if (!modelName) {
-    addToast({ message: 'Could not determine model name from folder.' });
+  // If the user selected a folder named 'models' or 'local', 
+  // try to take the actual model name from the next level
+  if ((modelName === 'models' || modelName === 'local') && pathSegments.length > 1) {
+    modelName = pathSegments[1]!;
+  }
+
+  if (!modelName || modelName === 'models' || modelName === 'local') {
+    addToast({ message: 'Could not determine a valid model name from folder structure.' });
     return;
   }
 
@@ -173,7 +227,7 @@ const handleImportLocalModel = async (event: Event) => {
   try {
     let completed = 0;
     for (const file of files) {
-      const fileName = file.webkitRelativePath.substring(modelName.length + 1);
+      const fileName = file.webkitRelativePath.substring(pathSegments[0]!.length + 1);
       if (!fileName) continue;
       await transformersJsService.importFile(modelName, fileName, file.stream());
       completed++;
@@ -199,9 +253,18 @@ const handleImportLocalModel = async (event: Event) => {
       
       <!-- Section 1: Engine Status & Control -->
       <section class="space-y-6">
-        <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-          <BrainCircuit class="w-5 h-5 text-purple-500" />
-          <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Engine Control</h2>
+        <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div class="flex items-center gap-2">
+            <BrainCircuit class="w-5 h-5 text-purple-500" />
+            <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Engine Control</h2>
+          </div>
+          <button 
+            @click="refreshLocalModels" 
+            class="flex items-center gap-1.5 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
+          >
+            <RefreshCcw class="w-3 h-3" :class="{ 'animate-spin': isImporting }" />
+            Refresh
+          </button>
         </div>
 
         <!-- Status Card -->
@@ -244,6 +307,13 @@ const handleImportLocalModel = async (event: Event) => {
                   >
                     <PowerOff class="w-4 h-4" />
                   </button>
+                  <button 
+                    @click="handleRestart"
+                    class="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
+                    title="Hard restart AI worker engine"
+                  >
+                    <RotateCcw class="w-4 h-4" />
+                  </button>
                 </div>
               </div>
               <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -266,61 +336,87 @@ const handleImportLocalModel = async (event: Event) => {
 
         <!-- Cached Models List -->
         <div class="space-y-4">
-          <div class="flex items-center justify-between ml-1">
-            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">Downloaded Models</h3>
-            <button 
-              @click="refreshLocalModels" 
-              class="flex items-center gap-1.5 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
-            >
-              <RefreshCcw class="w-3 h-3" :class="{ 'animate-spin': isImporting }" />
-              Refresh
-            </button>
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 ml-1">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest shrink-0">Downloaded Models</h3>
+            <div class="relative flex-1 max-w-sm">
+              <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input 
+                v-model="listSearchQuery"
+                type="text"
+                placeholder="Filter downloaded models..."
+                class="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-xs font-bold focus:ring-4 focus:ring-purple-500/10 outline-none text-gray-900 dark:text-gray-100 transition-all"
+              />
+            </div>
           </div>
 
-          <div v-if="cachedModels.length > 0" class="max-h-[320px] overflow-y-auto pr-2 custom-scrollbar -mr-2">
-            <div class="grid grid-cols-1 gap-2.5 pb-1">
+          <div v-if="filteredCachedModels.length > 0" class="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar -mr-2">
+            <div class="grid grid-cols-1 gap-2 pb-1">
               <div 
-                v-for="model in cachedModels" 
+                v-for="model in filteredCachedModels" 
                 :key="model.id"
-                class="flex items-center justify-between p-3.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl shadow-sm hover:border-purple-200 dark:hover:border-purple-900/50 transition-all group"
+                class="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-sm hover:border-purple-200 dark:hover:border-purple-900/50 transition-all group relative"
               >
                 <div class="flex-1 min-w-0 mr-4">
                   <div class="flex items-center gap-2 mb-0.5">
-                    <span class="text-sm font-bold text-gray-800 dark:text-gray-200 truncate">{{ model.id }}</span>
-                    <span v-if="model.isLocal" class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30">Local</span>
+                    <span class="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{{ model.id }}</span>
                   </div>
-                  <div class="text-[10px] text-gray-400 font-medium">Ready for offline use</div>
+                  <div class="flex items-center gap-3 text-[9px] text-gray-400 font-bold uppercase tracking-tight">
+                    <span class="flex items-center gap-1">
+                      <HardDriveDownload class="w-2.5 h-2.5" />
+                      {{ formatSize(model.size) }}
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <FileCode class="w-2.5 h-2.5" />
+                      {{ model.fileCount }}
+                    </span>
+                    <span v-if="model.lastModified">
+                      {{ formatDate(model.lastModified) }}
+                    </span>
+                  </div>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1 shrink-0">
                   <button 
                     @click="loadModel(model.id)"
                     :disabled="status === 'loading' || activeModelId === model.id"
-                    class="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-xl text-xs font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-all disabled:opacity-50"
+                    class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-[10px] font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-all disabled:opacity-50"
                   >
                     {{ activeModelId === model.id ? 'Active' : 'Load' }}
                   </button>
                   <button 
                     @click="deleteModel(model.id)"
-                    class="p-2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                    class="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                     title="Delete model"
                   >
-                    <Trash2 class="w-4 h-4" />
+                    <Trash2 class="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
             </div>
           </div>
-          <div v-else class="p-8 text-center bg-gray-50/50 dark:bg-gray-800/20 border border-dashed border-gray-200 dark:border-gray-700 rounded-3xl">
-            <p class="text-sm text-gray-400 italic">No models downloaded yet.</p>
+          <div v-else class="p-12 text-center bg-gray-50/50 dark:bg-gray-800/20 border border-dashed border-gray-200 dark:border-gray-700 rounded-3xl">
+            <p class="text-sm text-gray-400 italic">
+              {{ listSearchQuery ? 'No models match your filter.' : 'No models downloaded yet.' }}
+            </p>
           </div>
         </div>
       </section>
 
       <!-- Section 2: Model Downloader & Importer -->
       <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
-        <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-          <HardDriveDownload class="w-5 h-5 text-purple-500" />
-          <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Add New Models</h2>
+        <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div class="flex items-center gap-2">
+            <HardDriveDownload class="w-5 h-5 text-purple-500" />
+            <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Add New Models</h2>
+          </div>
+          <a 
+            href="https://huggingface.co/onnx-community/models" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            class="flex items-center gap-1 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
+          >
+            Find more models
+            <ExternalLink class="w-3 h-3" />
+          </a>
         </div>
 
         <div v-if="isStandalone" class="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl text-sm text-amber-700 dark:text-amber-400 leading-relaxed italic">
@@ -340,15 +436,6 @@ const handleImportLocalModel = async (event: Event) => {
           <div class="space-y-4">
             <div class="flex items-center justify-between ml-1">
               <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Download from Hugging Face</label>
-              <a 
-                href="https://huggingface.co/onnx-community/models" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                class="flex items-center gap-1 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
-              >
-                Find more models
-                <ExternalLink class="w-3 h-3" />
-              </a>
             </div>
             <div class="flex flex-col sm:flex-row gap-3">
               <div class="relative flex-1 flex gap-2" ref="containerRef">

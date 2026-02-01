@@ -56,6 +56,7 @@ interface TextGenerationModel extends PreTrainedModel {
 
 // Configure environment
 env.allowLocalModels = false;
+env.allowRemoteModels = true;
 env.useBrowserCache = false;
 if (env.backends.onnx.wasm) {
   env.backends.onnx.wasm.simd = true;
@@ -68,23 +69,45 @@ if (env.backends.onnx.wasm) {
 // Reduce log verbosity for performance
 env.backends.onnx.logLevel = 'error';
 
-/**
- * Converts a remote URL or local identifier to an OPFS-friendly file path.
- */
-function urlToPath(url: string): string {
+function urlToPath(url: string): string | null {
   try {
     const parsed = new URL(url);
     const pathParts = parsed.pathname.split('/').filter(p => !!p);
     
-    // For huggingface.co, we keep the full path but ensure it's under models/huggingface.co
-    const cleanPath = pathParts.join('/');
-    return `models/${parsed.hostname}/${cleanPath}`;
+    const isLocalOrigin = parsed.origin === self.location.origin || 
+                          parsed.hostname === 'localhost' || 
+                          parsed.hostname === '127.0.0.1';
+
+    if (isLocalOrigin) {
+      if (pathParts[0] === 'local' || pathParts[0] === 'models') {
+        let startIndex = 0;
+        if (pathParts[0] === 'models') startIndex++;
+        if (pathParts[startIndex] === 'local') startIndex++;
+        
+        const cleanParts = pathParts.slice(startIndex);
+        const resolved = `models/local/${cleanParts.join('/')}`;
+        console.log(`[urlToPath] Local matched: ${url} -> ${resolved}`);
+        return resolved;
+      }
+      console.log(`[urlToPath] Local ignored: ${url}`);
+      return null;
+    }
+
+    const resolved = `models/${parsed.hostname}/${pathParts.join('/')}`;
+    console.log(`[urlToPath] Remote matched: ${url} -> ${resolved}`);
+    return resolved;
   } catch {
     const parts = url.split('/').filter(p => !!p);
-    if (parts[0] === 'local') {
-      return `models/${parts.join('/')}`;
+    if (parts[0] === 'local' || parts[0] === 'models') {
+      let startIndex = 0;
+      if (parts[0] === 'models') startIndex++;
+      if (parts[startIndex] === 'local') startIndex++;
+      const resolved = `models/local/${parts.slice(startIndex).join('/')}`;
+      console.log(`[urlToPath] Relative matched: ${url} -> ${resolved}`);
+      return resolved;
     }
-    return `models/local/${parts.join('/')}`;
+    console.log(`[urlToPath] Not a model path: ${url}`);
+    return null;
   }
 }
 
@@ -97,6 +120,8 @@ const opfsCache = {
     if (typeof request !== 'string' && request.method && request.method !== 'GET') return undefined;
 
     const path = urlToPath(urlString);
+    if (!path) return undefined;
+
     const pathParts = path.split('/');
     const fileName = pathParts.pop()!;
 
@@ -121,6 +146,7 @@ const opfsCache = {
         return undefined;
       }
 
+      console.log(`[opfsCache] CACHE HIT: ${path} (${file.size} bytes)`);
       return new Response(file.stream(), {
         headers: {
           'Content-Type': urlString.endsWith('.json') ? 'application/json' : 'application/octet-stream',
@@ -129,6 +155,7 @@ const opfsCache = {
         }
       });
     } catch {
+      console.log(`[opfsCache] CACHE MISS: ${path}`);
       return undefined;
     }
   },
@@ -136,6 +163,19 @@ const opfsCache = {
   async put(request: string | Request, response: Response): Promise<void> {
     const urlString = typeof request === 'string' ? request : request.url;
     const path = urlToPath(urlString);
+    if (!path) return;
+
+    if (response.status !== 200) {
+      console.warn(`[opfsCache] SKIPPING CACHE (status ${response.status}): ${urlString}`);
+      return;
+    }
+
+    const contentType = response.headers.get('Content-Type') || '';
+    if (contentType.includes('text/html')) {
+      console.error(`[opfsCache] ERROR: Detected HTML response for model request! Possible 404 fallback from server. URL: ${urlString}`);
+      return;
+    }
+
     const pathParts = path.split('/');
     const fileName = pathParts.pop()!;
 
@@ -149,6 +189,7 @@ const opfsCache = {
 
       const fileHandle = await currentDir.getFileHandle(fileName, { create: true });
       if ('createWritable' in fileHandle) {
+        console.log(`[opfsCache] WRITING: ${path}...`);
         const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
         if (response.body) {
           await response.body.pipeTo(writable);
@@ -160,9 +201,10 @@ const opfsCache = {
 
         // Create completion marker after successful write/close
         await currentDir.getFileHandle(`.${fileName}.complete`, { create: true });
+        console.log(`[opfsCache] COMPLETED: ${path}`);
       }
     } catch (err) {
-      console.error(`[opfsCache] Failed to save cache for ${path}:`, err);
+      console.error(`[opfsCache] FAILED TO SAVE: ${path}:`, err);
     }
   }
 };
@@ -222,27 +264,40 @@ const transformersJsWorker = {
     try {
       // 1. Load Model
       // We try several combinations of device and dtype to find what works on this hardware/model
-      const tryLoad = async (device: 'webgpu' | 'wasm', dtype: 'q4f16' | 'q4') => {
-        console.log(`[transformersJsWorker] Attempting load: device=${device}, dtype=${dtype}`);
-        return await AutoModelForCausalLM.from_pretrained(cleanModelId, {
-          dtype,
-          device,
-          progress_callback: progressCallback,
-          local_files_only: isLocal,
-        });
+      const tryLoad = async (device: 'webgpu' | 'wasm', dtype: 'q4f16' | 'q4' | undefined) => {
+        console.log(`[transformersJsWorker] Attempting load: device=${device}, dtype=${dtype || 'default'}`);
+        try {
+          return await AutoModelForCausalLM.from_pretrained(cleanModelId, {
+            dtype,
+            device,
+            progress_callback: progressCallback,
+            local_files_only: isLocal,
+          });
+        } catch (err) {
+          // Wrap numeric errors so they can be handled by the retry logic
+          if (typeof err === 'number') {
+            throw new Error(`Numeric error ${err}`);
+          }
+          throw err;
+        }
       };
 
       try {
         model = await tryLoad('webgpu', 'q4f16');
       } catch (err) {
-        console.warn('[transformersJsWorker] First attempt (webgpu, q4f16) failed:', err);
+        console.warn('[transformersJsWorker] webgpu/q4f16 failed:', err);
         try {
-          // If q4f16 fails, try standard q4 on WebGPU
           model = await tryLoad('webgpu', 'q4');
         } catch (err2) {
-          console.warn('[transformersJsWorker] Second attempt (webgpu, q4) failed:', err2);
-          // Last resort: standard q4 on CPU (wasm)
-          model = await tryLoad('wasm', 'q4');
+          console.warn('[transformersJsWorker] webgpu/q4 failed:', err2);
+          try {
+            // Try without forced dtype (let library decide, e.g. use original fp32/fp16)
+            model = await tryLoad('webgpu', undefined);
+          } catch (err3) {
+            console.warn('[transformersJsWorker] webgpu/default failed, falling back to wasm:', err3);
+            // Last resort: standard CPU execution
+            model = await tryLoad('wasm', undefined);
+          }
         }
       }
       console.log('[transformersJsWorker] Model loaded successfully.');

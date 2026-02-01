@@ -32,12 +32,43 @@ function notify() {
   listeners.forEach(l => l(loadingStatus, loadingProgress, loadingError, isCached, isLoadingFromCache));
 }
 
-// Worker initialization
-const worker = new Worker(
-  new URL('./transformers-js.worker.ts', import.meta.url),
-  { type: 'module' }
-);
-const remote = Comlink.wrap<TransformersJsWorker>(worker);
+// Worker management
+let worker: Worker | null = null;
+let remote: any = null;
+
+/**
+ * Initializes or re-initializes the Web Worker.
+ * 
+ * WHY RESTART?
+ * Transformers.js (ONNX Runtime) runs in WebAssembly. When a fatal error occurs
+ * (like an Out-of-Memory or an incompatible kernel operation), the Wasm runtime
+ * calls abort(). This puts the Wasm instance into a permanently "broken" state
+ * that cannot be recovered from within the same execution context.
+ * Re-creating the Worker is the only way to provide a clean slate and a 
+ * fresh Wasm instance without requiring the user to reload the entire page.
+ */
+function initWorker() {
+  if (worker) {
+    worker.terminate();
+  }
+  worker = new Worker(
+    new URL('./transformers-js.worker.ts', import.meta.url),
+    { type: 'module' }
+  );
+  remote = Comlink.wrap<TransformersJsWorker>(worker);
+}
+
+// Initial setup
+initWorker();
+
+/**
+ * Checks if an error message indicates a fatal state that requires a worker restart.
+ */
+function isFatalError(msg: string): boolean {
+  return msg.includes('Aborted()') || 
+         msg.includes('[WebGPU] Kernel') || 
+         msg.includes('protobuf parsing failed');
+}
 
 export const transformersJsService = {
   subscribe(listener: ProgressListener) {
@@ -50,8 +81,20 @@ export const transformersJsService = {
     return { status: loadingStatus, progress: loadingProgress, error: loadingError, activeModelId, device: currentDevice, isCached, isLoadingFromCache };
   },
 
-  async listCachedModels(): Promise<Array<{ id: string; isLocal: boolean }>> {
-    const results: Array<{ id: string; isLocal: boolean }> = [];
+  /**
+   * Hard reset of the underlying engine worker.
+   */
+  async restart() {
+    initWorker();
+    activeModelId = null;
+    loadingStatus = 'idle';
+    loadingProgress = 0;
+    loadingError = null;
+    notify();
+  },
+
+  async listCachedModels(): Promise<Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number }>> {
+    const results: Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number }> = [];
     try {
       const root = await navigator.storage.getDirectory();
       let modelsDir: FileSystemDirectoryHandle;
@@ -61,32 +104,40 @@ export const transformersJsService = {
         return [];
       }
 
-      // A model is considered "known" if it has at least its config.json.complete marker
-      // We check recursively because HF models are often nested in resolve/main/
-      const isKnownModel = async (dir: FileSystemDirectoryHandle): Promise<boolean> => {
-        const hasMarker = async (d: FileSystemDirectoryHandle): Promise<boolean> => {
-          try {
-            await d.getFileHandle('.config.json.complete', { create: false });
-            return true;
-          } catch {
-            // Check subdirectories
-            // @ts-expect-error: values()
-            for await (const entry of d.values()) {
-              if (entry.kind === 'directory') {
-                if (await hasMarker(entry)) return true;
-              }
+      // Helper to calculate directory stats and check for marker
+      const getDirStats = async (dir: FileSystemDirectoryHandle): Promise<{ size: number; fileCount: number; lastModified: number; hasConfig: boolean }> => {
+        let size = 0;
+        let fileCount = 0;
+        let lastModified = 0;
+        let hasConfig = false;
+
+        const scan = async (d: FileSystemDirectoryHandle) => {
+          // @ts-expect-error: entries()
+          for await (const [name, handle] of d.entries()) {
+            if (handle.kind === 'file') {
+              const file = await (handle as FileSystemFileHandle).getFile();
+              size += file.size;
+              fileCount++;
+              if (file.lastModified > lastModified) lastModified = file.lastModified;
+              if (name === '.config.json.complete') hasConfig = true;
+            } else if (handle.kind === 'directory') {
+              await scan(handle as FileSystemDirectoryHandle);
             }
-            return false;
           }
         };
-        return await hasMarker(dir);
+
+        await scan(dir);
+        return { size, fileCount, lastModified, hasConfig };
       };
 
       try {
         const localDir = await modelsDir.getDirectoryHandle('local', { create: false }) as FileSystemDirectoryHandleWithEntries;
         for await (const [name, handle] of localDir.entries()) {
-          if (handle.kind === 'directory' && await isKnownModel(handle as FileSystemDirectoryHandle)) {
-            results.push({ id: `local/${name}`, isLocal: true });
+          if (handle.kind === 'directory') {
+            const stats = await getDirStats(handle as FileSystemDirectoryHandle);
+            if (stats.hasConfig) {
+              results.push({ id: `local/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
+            }
           }
         }
       } catch (e) { /* ignore */ }
@@ -97,8 +148,11 @@ export const transformersJsService = {
           if (orgHandle.kind === 'directory') {
             const orgDir = orgHandle as FileSystemDirectoryHandleWithEntries;
             for await (const [repoName, repoHandle] of orgDir.entries()) {
-              if (repoHandle.kind === 'directory' && await isKnownModel(repoHandle as FileSystemDirectoryHandle)) {
-                results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false });
+              if (repoHandle.kind === 'directory') {
+                const stats = await getDirStats(repoHandle as FileSystemDirectoryHandle);
+                if (stats.hasConfig) {
+                  results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
+                }
               }
             }
           }
@@ -162,8 +216,7 @@ export const transformersJsService = {
           
           // Clean up empty org directory
           let hasMore = false;
-          // @ts-expect-error: entries()
-          for await (const _ of orgDir.entries()) { hasMore = true; break; }
+          for await (const _ of (orgDir as any).entries()) { hasMore = true; break; }
           if (!hasMore) await hfDir.removeEntry(org);
         } else if (org) {
           await hfDir.removeEntry(org, { recursive: true });
@@ -217,8 +270,16 @@ export const transformersJsService = {
       notify();
     } catch (e) {
       console.error('[transformersJsService] Failed to load model:', modelId, e);
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      
+      // If the error is fatal, the worker is likely dead/poisoned and needs to be restarted
+      if (isFatalError(errorMsg)) {
+        console.warn(`[transformersJsService] Fatal error detected. Re-initializing worker...`);
+        initWorker();
+      }
+
       loadingStatus = 'error';
-      loadingError = e instanceof Error ? e.message : String(e);
+      loadingError = errorMsg;
       activeModelId = null;
       notify();
       throw e;
@@ -262,8 +323,15 @@ export const transformersJsService = {
       notify();
     } catch (e) {
       console.error('[transformersJsService] Failed to download model:', modelId, e);
+      const errorMsg = e instanceof Error ? e.message : String(e);
+
+      if (isFatalError(errorMsg)) {
+        console.warn('[transformersJsService] Fatal error detected during download. Re-initializing worker...');
+        initWorker();
+      }
+
       loadingStatus = 'error';
-      loadingError = e instanceof Error ? e.message : String(e);
+      loadingError = errorMsg;
       notify();
       throw e;
     }
@@ -271,7 +339,9 @@ export const transformersJsService = {
 
   async unloadModel() {
     try {
-      await remote.unloadModel();
+      if (remote) {
+        await remote.unloadModel();
+      }
       activeModelId = null;
       loadingStatus = 'idle';
       loadingProgress = 0;
@@ -281,16 +351,24 @@ export const transformersJsService = {
       notify();
     } catch (e) {
       console.error('[transformersJsService] Failed to unload model:', e);
-      throw e;
+      // If unload fails, it's likely the worker is dead anyway
+      initWorker();
+      activeModelId = null;
+      loadingStatus = 'idle';
+      notify();
     }
   },
 
   async interrupt() {
-    await remote.interrupt();
+    if (remote) {
+      await remote.interrupt();
+    }
   },
 
   async resetCache() {
-    await remote.resetCache();
+    if (remote) {
+      await remote.resetCache();
+    }
   },
 
   /**
@@ -310,10 +388,22 @@ export const transformersJsService = {
       });
     }
 
-    await remote.generateText(
-      messages, 
-      Comlink.proxy(onChunk), 
-      params
-    );
+    try {
+      await remote.generateText(
+        messages, 
+        Comlink.proxy(onChunk), 
+        params
+      );
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      if (isFatalError(errorMsg)) {
+        console.warn(`[transformersJsService] Fatal error detected during generation. Re-initializing worker...`);
+        initWorker();
+        activeModelId = null;
+        loadingStatus = 'idle';
+        notify();
+      }
+      throw e;
+    }
   }
 };

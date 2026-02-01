@@ -75,7 +75,7 @@ async function fetchModels() {
       headers: form.value.endpointHttpHeaders
     });
 
-    if (models.length === 0) {
+    if (models.length === 0 && form.value.endpointType !== 'transformers_js') {
       throw new Error('No models found at this endpoint.');
     }
 
