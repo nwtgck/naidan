@@ -210,7 +210,7 @@ defineExpose({
 
 <template>
   <div class="flex-1 flex flex-col min-h-0">
-    <div class="flex-1 overflow-y-auto min-h-0">
+    <div class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
       <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
         <div class="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-400">
                   

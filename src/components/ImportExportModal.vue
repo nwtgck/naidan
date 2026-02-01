@@ -259,7 +259,7 @@ async function handleImportExecute() {
         </div>
 
         <!-- Content -->
-        <div class="flex-1 overflow-y-auto p-6">
+        <div class="flex-1 overflow-y-auto p-6 overscroll-contain">
           
           <!-- Error Message -->
           <div v-if="error" class="mb-6 p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-2xl flex items-start gap-3">
@@ -362,7 +362,7 @@ async function handleImportExecute() {
               </div>
             </div>
 
-            <div class="max-h-60 overflow-y-auto p-4 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-2">
+            <div class="max-h-60 overflow-y-auto p-4 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-2 overscroll-contain">
               <h4 class="text-xs font-bold text-gray-400 uppercase tracking-widest sticky top-0 bg-white dark:bg-gray-900 pb-2">Content Preview</h4>
               <div v-for="(item, idx) in importPreview.items" :key="idx" class="text-sm">
                 <div v-if="item.type === 'chat_group'" class="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">

@@ -9,6 +9,7 @@
     padding: 0;
     height: 100%;
     font-size: 1.125rem;
+    overscroll-behavior: none;
     @apply bg-gray-50 text-gray-900 antialiased transition-colors duration-300;
   }
   

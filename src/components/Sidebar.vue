@@ -586,7 +586,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     </div>
     <!-- Navigation List -->
     <div 
-      class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide focus:outline-none" 
+      class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide focus:outline-none overscroll-contain" 
       :class="{ 'is-dragging': isDragging }"
       data-testid="sidebar-nav"
       tabindex="0"

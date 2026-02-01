@@ -232,7 +232,7 @@ watch(() => props.isOpen, async (open) => {
           </div>
 
           <!-- Navigation -->
-          <nav class="flex-1 overflow-x-auto md:overflow-y-auto p-4 flex md:flex-col gap-1.5 no-scrollbar min-h-0">
+          <nav class="flex-1 overflow-x-auto md:overflow-y-auto p-4 flex md:flex-col gap-1.5 no-scrollbar min-h-0 overscroll-contain">
             <button 
               @click="activeTab = 'connection'"
               class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
@@ -348,7 +348,7 @@ watch(() => props.isOpen, async (open) => {
             @go-to-profiles="activeTab = 'profiles'"
             @go-to-transformers-js="activeTab = 'transformers_js'"
           />
-          <div v-else class="flex-1 overflow-y-auto min-h-0">
+          <div v-else class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
             <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
 
               <!-- Provider Profiles Tab -->

@@ -214,7 +214,7 @@ async function handleFinish() {
           </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto min-h-0">
+        <div class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
 
           <div class="flex flex-col lg:flex-row h-full">
 

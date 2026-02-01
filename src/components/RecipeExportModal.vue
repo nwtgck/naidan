@@ -119,7 +119,7 @@ async function copyToClipboard() {
             </div>
           </div>
 
-          <div class="flex-1 overflow-y-auto p-6 space-y-8">
+          <div class="flex-1 overflow-y-auto p-6 space-y-8 overscroll-contain">
             <!-- Basic Info -->
             <div class="grid grid-cols-1 gap-6">
               <div class="space-y-2">
@@ -262,7 +262,7 @@ async function copyToClipboard() {
           </div>
           
           <div class="flex-1 overflow-hidden relative">
-            <pre class="h-full w-full p-6 overflow-auto font-mono text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed scrollbar-thin whitespace-pre-wrap break-words">{{ exportedRecipeJson }}</pre>
+            <pre class="h-full w-full p-6 overflow-auto font-mono text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed scrollbar-thin whitespace-pre-wrap break-words overscroll-contain">{{ exportedRecipeJson }}</pre>
             <div class="absolute bottom-0 inset-x-0 h-12 bg-gradient-to-t from-gray-50/80 dark:from-black/40 to-transparent pointer-events-none"></div>
           </div>
         </div>
