@@ -209,4 +209,110 @@ describe('transformers-js.worker', () => {
       expect(AutoTokenizer.from_pretrained).toHaveBeenCalledWith(expected, expect.anything());
     }
   });
+
+  describe('Fetch Interceptor', () => {
+    let originalFetchMock: any;
+
+    beforeEach(() => {
+      originalFetchMock = vi.fn();
+      // Ensure self.fetch is mockable before importing worker
+      global.fetch = originalFetchMock;
+      if (!global.self) {
+        // @ts-expect-error
+        global.self = global;
+      }
+      // @ts-expect-error
+      self.fetch = originalFetchMock;
+    });
+
+    it('should block requests to "user/" models with 404', async () => {
+      await import('./transformers-js.worker');
+      // @ts-expect-error
+      const interceptedFetch = self.fetch;
+
+      const urls = [
+        'https://example.com/models/user/my-model/config.json',
+        'models/user/my-model/tokenizer.json',
+        'user/my-model/model.onnx'
+      ];
+
+      for (const url of urls) {
+        const res = await interceptedFetch(url);
+        expect(res.status).toBe(404);
+        expect(res.statusText).toContain('Local Only');
+        expect(originalFetchMock).not.toHaveBeenCalled();
+      }
+    });
+
+    it('should block requests to "local/" models with 404', async () => {
+      await import('./transformers-js.worker');
+      // @ts-expect-error
+      const interceptedFetch = self.fetch;
+
+      const res = await interceptedFetch('local/test/model.bin');
+      expect(res.status).toBe(404);
+      expect(res.statusText).toContain('Local Only');
+      expect(originalFetchMock).not.toHaveBeenCalled();
+    });
+
+    it('should convert HTML responses to 404 for model files (SPA fallback)', async () => {
+      await import('./transformers-js.worker');
+      // @ts-expect-error
+      const interceptedFetch = self.fetch;
+
+      originalFetchMock.mockResolvedValue(new Response('<!DOCTYPE html>...', {
+        status: 200,
+        headers: { 'content-type': 'text/html' }
+      }));
+
+      const modelFiles = [
+        'https://hf.co/model/config.json',
+        'https://hf.co/model/model.onnx',
+        'https://hf.co/model/tokenizer.json',
+        'https://hf.co/model/weights.bin',
+        'https://hf.co/model/module.wasm'
+      ];
+
+      for (const url of modelFiles) {
+        const res = await interceptedFetch(url);
+        expect(originalFetchMock).toHaveBeenCalledWith(url, undefined);
+        expect(res.status).toBe(404);
+        expect(res.statusText).toBe('Not Found');
+        originalFetchMock.mockClear();
+      }
+    });
+
+    it('should allow normal JSON/Binary responses', async () => {
+      await import('./transformers-js.worker');
+      // @ts-expect-error
+      const interceptedFetch = self.fetch;
+
+      const mockRes = new Response('{}', { status: 200 });
+      originalFetchMock.mockResolvedValue(mockRes);
+
+      const url = 'https://hf.co/model/config.json';
+      const res = await interceptedFetch(url);
+
+      expect(res).toBe(mockRes);
+      expect(res.status).toBe(200);
+    });
+
+    it('should allow normal HTML pages (not model files)', async () => {
+      await import('./transformers-js.worker');
+      // @ts-expect-error
+      const interceptedFetch = self.fetch;
+
+      const mockRes = new Response('<html>ok</html>', { 
+        status: 200, 
+        headers: { 'content-type': 'text/html' } 
+      });
+      originalFetchMock.mockResolvedValue(mockRes);
+
+      const url = 'https://example.com/docs.html';
+      const res = await interceptedFetch(url);
+
+      expect(res).toBe(mockRes);
+      expect(res.status).toBe(200);
+    });
+  });
 });

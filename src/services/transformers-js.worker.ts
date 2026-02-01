@@ -43,6 +43,54 @@ interface TextGenerationModel extends PreTrainedModel {
   generate(inputs: Record<string, unknown>): Promise<GenerationResult & (ModelOutput | Tensor)>;
 }
 
+// Intercept fetch to handle SPA 404 fallback and enforce local-only constraints
+const originalFetch = self.fetch;
+self.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  let urlString = '';
+  if (typeof input === 'string') {
+    urlString = input;
+  } else if (input instanceof Request) {
+    urlString = input.url;
+  } else if (input instanceof URL) {
+    urlString = input.toString();
+  } else {
+    urlString = String(input);
+  }
+
+  // 1. Enforce "No Fetch" for local user models
+  // These should exist in OPFS. If we are here, they are missing from OPFS.
+  // We strictly return 404 without hitting the server/network.
+  if (/(^|\/)models\/(user|local)\//.test(urlString) || /^(user|local)\//.test(urlString)) {
+    console.debug(`[transformers-worker] Blocking fetch for local model: ${urlString}`);
+    return new Response(null, { status: 404, statusText: 'Not Found (Local Only)' });
+  }
+
+  // 2. Perform actual fetch
+  const response = await originalFetch(input, init);
+  
+  // 3. Handle SPA 404 Fallback (Server returning HTML for JSON/Binary)
+  // This helps when transformers.js checks for local existence of remote models via relative paths.
+  if (response.status === 200) {
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('text/html')) {
+      // If we are requesting a JSON/Binary file but got HTML, it's a 404 fallback
+      if (urlString.includes('/models/') || 
+          urlString.endsWith('.json') || 
+          urlString.endsWith('.onnx') || 
+          urlString.endsWith('.bin') ||
+          urlString.endsWith('.wasm')) {
+            
+        // Double check it's not actually an HTML file we wanted
+        if (!urlString.endsWith('.html')) {
+          console.warn(`[transformers-worker] Intercepted HTML response for ${urlString}. Treating as 404.`);
+          return new Response(null, { status: 404, statusText: 'Not Found' });
+        }
+      }
+    }
+  }
+  return response;
+};
+
 // Configure environment
 env.allowLocalModels = true;
 env.allowRemoteModels = true;
