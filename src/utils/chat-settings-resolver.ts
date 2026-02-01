@@ -31,31 +31,35 @@ export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSetti
 
   let systemPrompts: string[] = [];
   if (globalSettings.systemPrompt) systemPrompts.push(globalSettings.systemPrompt);
-  if (group?.systemPrompt) {
-    switch (group.systemPrompt.behavior) {
+  
+  const groupSystemPrompt = group?.systemPrompt;
+  if (groupSystemPrompt) {
+    switch (groupSystemPrompt.behavior) {
     case 'override':
-      systemPrompts = group.systemPrompt.content ? [group.systemPrompt.content] : [];
+      systemPrompts = groupSystemPrompt.content ? [groupSystemPrompt.content] : [];
       break;
     case 'append':
-      if (group.systemPrompt.content) systemPrompts.push(group.systemPrompt.content);
+      if (groupSystemPrompt.content) systemPrompts.push(groupSystemPrompt.content);
       break;
     default: {
-      const _ex: never = group.systemPrompt.behavior;
-      throw new Error(`Unhandled system prompt behavior: ${_ex}`);
+      const _ex: never = groupSystemPrompt as never;
+      throw new Error(`Unhandled system prompt behavior: ${(_ex as { behavior: string }).behavior}`);
     }
     }
   }
-  if (chat.systemPrompt) {
-    switch (chat.systemPrompt.behavior) {
+
+  const chatSystemPrompt = chat.systemPrompt;
+  if (chatSystemPrompt) {
+    switch (chatSystemPrompt.behavior) {
     case 'override':
-      systemPrompts = chat.systemPrompt.content ? [chat.systemPrompt.content] : [];
+      systemPrompts = chatSystemPrompt.content ? [chatSystemPrompt.content] : [];
       break;
     case 'append':
-      if (chat.systemPrompt.content) systemPrompts.push(chat.systemPrompt.content);
+      if (chatSystemPrompt.content) systemPrompts.push(chatSystemPrompt.content);
       break;
     default: {
-      const _ex: never = chat.systemPrompt.behavior;
-      throw new Error(`Unhandled system prompt behavior: ${_ex}`);
+      const _ex: never = chatSystemPrompt as never;
+      throw new Error(`Unhandled system prompt behavior: ${(_ex as { behavior: string }).behavior}`);
     }
     }
   }

@@ -639,7 +639,6 @@ onUnmounted(() => {
           </button>
 
           <button 
-            v-if="activeMessages.length > 0"
             @click="showHistoryModal = true"
             class="p-2 rounded-xl transition-all text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 group/hammer"
             title="Super Edit (Full History Manipulation)"

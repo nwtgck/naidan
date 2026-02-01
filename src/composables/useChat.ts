@@ -1186,6 +1186,24 @@ export function useChat() {
     if (!target) return;
     const chat = getLiveChat(target);
 
+    // Persist any new 'memory' attachments
+    const canPersist = storageService.canPersistBinary;
+    for (const msg of messages) {
+      if (msg.attachments) {
+        for (let i = 0; i < msg.attachments.length; i++) {
+          const att = msg.attachments[i]!;
+          if (att.status === 'memory' && canPersist) {
+            try {
+              await storageService.saveFile(att.blob, att.id, att.originalName);
+              msg.attachments[i] = { ...att, status: 'persisted' };
+            } catch (e) {
+              console.error('Failed to persist attachment during manipulation:', e);
+            }
+          }
+        }
+      }
+    }
+
     const newNodes = createBranchFromMessages(messages);
 
     if (newNodes.length > 0) {

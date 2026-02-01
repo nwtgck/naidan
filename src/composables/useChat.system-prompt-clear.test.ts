@@ -76,7 +76,7 @@ describe('useChat System Prompt Clear Policy', () => {
     await sendMessage('Hello again');
     
     // Check that system prompt is NOT present
-    const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1][0];
+    const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
     expect(systemMessages.length).toBe(0);
   });
@@ -92,7 +92,7 @@ describe('useChat System Prompt Clear Policy', () => {
     });
     await sendMessage('Empty string override');
     
-    const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1][0];
+    const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
     expect(systemMessages.length).toBe(0);
   });
@@ -114,7 +114,7 @@ describe('useChat System Prompt Clear Policy', () => {
 
     await sendMessage('In group');
     
-    const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1][0];
+    const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
     expect(systemMessages.length).toBe(0);
   });
@@ -138,7 +138,7 @@ describe('useChat System Prompt Clear Policy', () => {
 
     await sendMessage('Override');
     
-    const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1][0];
+    const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
     expect(systemMessages[0].content).toBe('Chat Specific Prompt');
   });

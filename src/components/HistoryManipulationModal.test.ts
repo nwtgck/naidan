@@ -55,8 +55,8 @@ describe('HistoryManipulationModal', () => {
     
     const textareas = wrapper.findAll('textarea');
     expect(textareas.length).toBe(2);
-    expect((textareas[0].element as HTMLTextAreaElement).value).toBe('Msg 1');
-    expect((textareas[1].element as HTMLTextAreaElement).value).toBe('Msg 2');
+    expect((textareas[0]!.element as HTMLTextAreaElement).value).toBe('Msg 1');
+    expect((textareas[1]!.element as HTMLTextAreaElement).value).toBe('Msg 2');
   });
 
   it('can add and remove messages', async () => {
@@ -64,16 +64,16 @@ describe('HistoryManipulationModal', () => {
 
     // Add message after first one
     const addButtons = wrapper.findAll('button[title="Add Message After"]');
-    await addButtons[0].trigger('click');
+    await addButtons[0]!.trigger('click');
     
     expect(wrapper.findAll('textarea').length).toBe(3);
 
     // Remove first message
     const removeButtons = wrapper.findAll('button[title="Remove Message"]');
-    await removeButtons[0].trigger('click');
+    await removeButtons[0]!.trigger('click');
 
     expect(wrapper.findAll('textarea').length).toBe(2);
-    expect((wrapper.findAll('textarea')[0].element as HTMLTextAreaElement).value).toBe(''); 
+    expect((wrapper.findAll('textarea')[0]!.element as HTMLTextAreaElement).value).toBe(''); 
   });
 
   it('switches roles when clicking role button', async () => {
@@ -82,11 +82,11 @@ describe('HistoryManipulationModal', () => {
     const roleButtons = wrapper.findAll('button[title^="Switch Role"]');
     
     // First message is 'user', click to change to 'assistant'
-    await roleButtons[0].trigger('click');
+    await roleButtons[0]!.trigger('click');
     expect(wrapper.find('.text-purple-600').exists()).toBe(true); 
     
     // Click again to change back to 'user'
-    await roleButtons[0].trigger('click');
+    await roleButtons[0]!.trigger('click');
     expect(wrapper.find('.text-blue-600').exists()).toBe(true); 
   });
 
@@ -116,5 +116,19 @@ describe('HistoryManipulationModal', () => {
     const cancelButton = buttons.find(b => b.text().includes('Cancel'));
     await cancelButton?.trigger('click');
     expect(wrapper.emitted().close).toBeTruthy();
+  });
+
+  it('renders empty state when no messages and can add first message', async () => {
+    mockActiveMessages.value = [];
+    const wrapper = await mountModal();
+
+    expect(wrapper.text()).toContain('No messages in history');
+    
+    const addButton = wrapper.find('button:has(.lucide-plus)');
+    await addButton.trigger('click');
+
+    const textareas = wrapper.findAll('textarea');
+    expect(textareas.length).toBe(1);
+    expect(textareas[0]!.element.value).toBe('');
   });
 });

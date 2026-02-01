@@ -187,7 +187,7 @@ describe('GroupSettingsPanel.vue', () => {
     await nextTick();
     expect(status.text()).toBe('Appending');
     
-    mockGroup.systemPrompt.behavior = 'override';
+    mockGroup.systemPrompt = { content: 'test', behavior: 'override' };
     await nextTick();
     expect(status.text()).toBe('Overriding');
   });

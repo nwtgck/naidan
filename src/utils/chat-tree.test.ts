@@ -15,22 +15,22 @@ describe('chat-tree utils', () => {
       expect(nodes.length).toBe(3);
       
       // Check first node
-      expect(nodes[0].role).toBe('user');
-      expect(nodes[0].content).toBe('Hello');
-      expect(nodes[0].replies.items.length).toBe(1);
-      expect(nodes[0].replies.items[0].id).toBe(nodes[1].id);
+      expect(nodes[0]!.role).toBe('user');
+      expect(nodes[0]!.content).toBe('Hello');
+      expect(nodes[0]!.replies.items.length).toBe(1);
+      expect(nodes[0]!.replies.items[0]!.id).toBe(nodes[1]!.id);
 
       // Check second node
-      expect(nodes[1].role).toBe('assistant');
-      expect(nodes[1].content).toBe('Hi there!');
-      expect(nodes[1].modelId).toBe('gpt-4');
-      expect(nodes[1].replies.items.length).toBe(1);
-      expect(nodes[1].replies.items[0].id).toBe(nodes[2].id);
+      expect(nodes[1]!.role).toBe('assistant');
+      expect(nodes[1]!.content).toBe('Hi there!');
+      expect(nodes[1]!.modelId).toBe('gpt-4');
+      expect(nodes[1]!.replies.items.length).toBe(1);
+      expect(nodes[1]!.replies.items[0]!.id).toBe(nodes[2]!.id);
 
       // Check third node
-      expect(nodes[2].role).toBe('user');
-      expect(nodes[2].content).toBe('How are you?');
-      expect(nodes[2].replies.items.length).toBe(0);
+      expect(nodes[2]!.role).toBe('user');
+      expect(nodes[2]!.content).toBe('How are you?');
+      expect(nodes[2]!.replies.items.length).toBe(0);
     });
 
     it('should return empty array for empty input', () => {
@@ -49,8 +49,8 @@ describe('chat-tree utils', () => {
       ];
 
       const nodes = createBranchFromMessages(messages);
-      expect(nodes[0].thinking).toBe('Inner thoughts');
-      expect(nodes[0].attachments?.[0].id).toBe('1');
+      expect(nodes[0]!.thinking).toBe('Inner thoughts');
+      expect(nodes[0]!.attachments?.[0]!.id).toBe('1');
     });
   });
 });

@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch } from 'vue';
 import { 
   X, Save, Plus, Trash2, 
-  User, Bot, Settings,
-  GripVertical, History, Hammer, Cpu
+  User, Bot, Hammer, Cpu
 } from 'lucide-vue-next';
 import { useChat } from '../composables/useChat';
 import type { HistoryItem } from '../utils/chat-tree';
