@@ -1,6 +1,7 @@
 import * as Comlink from 'comlink';
-import type { TransformersJsWorker, ProgressInfo } from './transformers-js.worker';
 import type { ChatMessage, LmParameters } from '../models/types';
+import { createTransformersWorker } from './transformers-js-loader';
+import type { ITransformersJsWorker, ProgressInfo } from './transformers-js.types';
 
 /**
  * Interface for FileSystemDirectoryHandle with entries() method.
@@ -41,7 +42,7 @@ function notifyModelListChange() {
 
 // Worker management
 let worker: Worker | null = null;
-let remote: Comlink.Remote<TransformersJsWorker> | null = null;
+let remote: Comlink.Remote<ITransformersJsWorker> | null = null;
 
 /**
  * Initializes or re-initializes the Web Worker.
@@ -60,17 +61,15 @@ function initWorker() {
   if (worker) {
     worker.terminate();
   }
-  worker = new Worker(
-    new URL('./transformers-js.worker.ts', import.meta.url),
-    { type: 'module' }
-  );
-  remote = Comlink.wrap<TransformersJsWorker>(worker);
+
+  worker = createTransformersWorker();
+  if (worker) {
+    remote = Comlink.wrap<ITransformersJsWorker>(worker);
+  }
 }
 
 // Initial setup
-if (typeof Worker !== 'undefined') {
-  initWorker();
-}
+initWorker();
 
 /**
  * Checks if an error message indicates a fatal state that requires a worker restart.

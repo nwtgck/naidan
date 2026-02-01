@@ -12,18 +12,7 @@ import {
   type Tensor
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters } from '../models/types';
-
-/**
- * Interface for progress callback information from Transformers.js
- */
-export interface ProgressInfo {
-  status: string;
-  progress?: number;
-  loaded?: number;
-  total?: number;
-  name?: string;
-  file?: string;
-}
+import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker } from './transformers-js.types';
 
 /**
  * Interface to extend FileSystemFileHandle with the non-standard createWritable method.
@@ -243,7 +232,7 @@ let tokenizer: PreTrainedTokenizer | null = null;
 let pastKeyValues: unknown = null;
 const stoppingCriteria = new InterruptableStoppingCriteria();
 
-const transformersJsWorker = {
+const transformersJsWorker: ITransformersJsWorker = {
   async downloadModel(modelId: string, progressCallback: (x: ProgressInfo) => void) {
     console.log('[transformersJsWorker] Starting downloadModel:', modelId);
     let cleanModelId = modelId;
@@ -270,7 +259,7 @@ const transformersJsWorker = {
     console.log('[transformersJsWorker] Download complete and model disposed.');
   },
 
-  async loadModel(modelId: string, progressCallback: (x: ProgressInfo) => void) {
+  async loadModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult> {
     console.log('[transformersJsWorker] Starting loadModel:', modelId);
     
     await this.unloadModel();
@@ -416,4 +405,4 @@ const transformersJsWorker = {
 };
 
 Comlink.expose(transformersJsWorker);
-export type TransformersJsWorker = typeof transformersJsWorker;
+export type { ITransformersJsWorker as TransformersJsWorker };

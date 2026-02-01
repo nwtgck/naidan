@@ -38,6 +38,7 @@ interface LicenseDependency {
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const isStandalone = mode === 'standalone'
+  const isHosted = mode === 'hosted'
   // Use nested directories in dist/ to keep things organized
   const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted'
 
@@ -60,8 +61,13 @@ export default defineConfig(({ mode }) => {
     // Inject global constants for compile-time conditional logic (tree-shaking)
     define: {
       __BUILD_MODE_IS_STANDALONE__: JSON.stringify(isStandalone),
-      __BUILD_MODE_IS_HOSTED__: JSON.stringify(!isStandalone),
+      __BUILD_MODE_IS_HOSTED__: JSON.stringify(isHosted || mode === 'development'),
       __APP_VERSION__: JSON.stringify(pkg.version),
+    },
+    resolve: {
+      alias: isStandalone ? {
+        './transformers-js-loader': path.resolve(__dirname, 'src/services/transformers-js-loader-noop.ts'),
+      } : ({} as Record<string, string>),
     },
     plugins: [
       VueRouter({
@@ -113,7 +119,7 @@ export default defineConfig(({ mode }) => {
       isStandalone && zipPackagerPlugin(outDir),
       // Hosted: Copy the previously generated Zip into the hosted output
       !isStandalone && copyZipPlugin(),
-    ],
+    ].filter((p): p is import('vite').PluginOption => !!p),
     build: {
       outDir,
       emptyOutDir: true,

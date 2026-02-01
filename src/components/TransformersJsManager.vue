@@ -421,7 +421,7 @@ const handleImportLocalModel = async (event: Event) => {
 
         <div v-if="isStandalone" class="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl text-sm text-amber-700 dark:text-amber-400 leading-relaxed italic">
           <AlertCircle class="w-5 h-5 inline-block mr-2 -mt-1" />
-          Model downloading is only available in Hosted mode. Please use the "Import" function below if you have files locally.
+          In-browser AI (Transformers.js) is not available in the Standalone build to keep the file size minimal. Please use the Hosted version or connect to an external API (Ollama/OpenAI) to use AI features.
         </div>
 
         <template v-else>

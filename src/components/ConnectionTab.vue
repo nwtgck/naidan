@@ -37,6 +37,8 @@ const { showConfirm } = useConfirm();
 const { showPrompt } = usePrompt();
 const { addToast } = useToast();
 
+const isStandalone = __BUILD_MODE_IS_STANDALONE__;
+
 const form = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val)
@@ -246,7 +248,9 @@ defineExpose({
                 >
                   <option value="openai">OpenAI Compatible</option>
                   <option value="ollama">Ollama</option>
-                  <option value="transformers_js">Transformers.js (Experimental)</option>
+                  <option :disabled="isStandalone" value="transformers_js">
+                    Transformers.js (Experimental) {{ isStandalone ? '(Unavailable in Standalone)' : '' }}
+                  </option>
                 </select>
               </div>
 
