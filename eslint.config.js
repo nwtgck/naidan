@@ -112,7 +112,37 @@ export default tseslint.config(
       'vue/define-emits-declaration': ['error', 'type-based'],
       'vue/component-api-style': ['error', ['script-setup']],
       'vue/block-lang': ['error', { script: { lang: 'ts' } }],
+      'no-restricted-imports': ['error', {
+        paths: [
+          {
+            name: '@huggingface/transformers',
+            message: 'Do not import @huggingface/transformers directly. Use the worker thread via transformers-js-loader to keep the UI responsive and allow proper tree-shaking in standalone mode.'
+          },
+          {
+            name: '@/services/transformers-js.worker',
+            message: 'Do not import the worker directly. Use transformers-js-loader instead.'
+          },
+          {
+            name: './transformers-js.worker',
+            message: 'Do not import the worker directly. Use transformers-js-loader instead.'
+          }
+        ]
+      }]
     },
+  },
+  {
+    // Exception: The worker itself must be allowed to import @huggingface/transformers
+    files: ['src/services/transformers-js.worker.ts'],
+    rules: {
+      'no-restricted-imports': 'off'
+    }
+  },
+  {
+    // Exception: The loader itself must be allowed to reference the worker (via URL)
+    files: ['src/services/transformers-js-loader.ts'],
+    rules: {
+      'no-restricted-imports': 'off'
+    }
   },
   ensureFileProtocolInit,
   forceSwitchForUnion,

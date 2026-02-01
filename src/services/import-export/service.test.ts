@@ -65,7 +65,18 @@ describe('ImportExportService', () => {
   describe('exportData', () => {
     it('handles empty storage gracefully and uses dumpWithoutLock', async () => {
       mockStorage.dumpWithoutLock.mockResolvedValue({
-        structure: { settings: {} as any, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
+        structure: { 
+          settings: {
+            endpointType: 'openai',
+            endpointUrl: '',
+            autoTitleEnabled: true,
+            storageType: 'local',
+            providerProfiles: []
+          } as any, 
+          hierarchy: { items: [] }, 
+          chatMetas: [], 
+          chatGroups: [] 
+        },
         contentStream: (async function* () {})()
       });
       const { filename } = await service.exportData({});
@@ -249,13 +260,13 @@ describe('ImportExportService', () => {
       const zip = new JSZip();
       zip.file('export-manifest.json', '{}');
       zip.file('settings.json', JSON.stringify(createValidSettingsDto({
-        providerProfiles: [{ id: UUID_G1, name: 'Imported', endpoint: { type: 'ollama' } } as any]
+        providerProfiles: [{ id: UUID_G1, name: 'Imported', endpoint: { type: 'ollama', url: 'http://localhost:11434' } } as any]
       })));
 
       mockStorage.loadSettings.mockResolvedValue({
         endpointType: 'ollama',
         storageType: 'local',
-        providerProfiles: [{ id: '018d476a-7b3a-73fd-8000-000000000009', name: 'Existing', endpoint: { type: 'openai' } }]
+        providerProfiles: [{ id: '018d476a-7b3a-73fd-8000-000000000009', name: 'Existing', endpointType: 'openai', endpointUrl: '' }]
       } as any);
 
       await service.executeImport(await zip.generateAsync({ type: 'blob' }), {

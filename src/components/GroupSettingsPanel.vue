@@ -52,8 +52,9 @@ function syncLocalWithCurrent() {
 onMounted(() => {
   syncLocalWithCurrent();
   if (currentChatGroup.value) {
-    const url = currentChatGroup.value.endpoint?.url || settings.value.endpointUrl;
-    if (isLocalhost(url)) {
+    const url = localSettings.value.endpoint?.url || settings.value.endpointUrl;
+    const type = localSettings.value.endpoint?.type || settings.value.endpointType;
+    if (type === 'transformers_js' || isLocalhost(url)) {
       fetchModels();
     }
   }
@@ -118,7 +119,7 @@ async function fetchModels() {
     const url = localSettings.value.endpoint?.url || settings.value.endpointUrl || '';
     const headers = localSettings.value.endpoint?.httpHeaders || settings.value.endpointHttpHeaders;
     
-    if (!url) {
+    if (!url && type !== 'transformers_js') {
       groupModels.value = [];
       return;
     }
@@ -142,13 +143,13 @@ async function fetchModels() {
   }
 }
 
-// Auto-fetch only for localhost when URL changes
+// Auto-fetch for localhost or transformers_js when URL/Type changes
 watch([
   () => localSettings.value.endpoint?.url, 
   () => localSettings.value.endpoint?.type,
-], ([url]) => {
+], ([url, type]) => {
   error.value = null;
-  if (url && isLocalhost(url as string)) {
+  if (type === 'transformers_js' || (url && isLocalhost(url as string))) {
     fetchModels();
   }
 });
@@ -298,14 +299,15 @@ async function restoreDefaults() {
             >
               <option value="openai">OpenAI Compatible</option>
               <option value="ollama">Ollama</option>
+              <option value="transformers_js">Transformers.js (Experimental)</option>
             </select>
             <div v-else class="text-sm font-bold text-gray-400 p-3 bg-gray-100/50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl italic flex items-center justify-between">
-              <span>Global ({{ settings.endpointType }})</span>
+              <span>Global ({{ settings.endpointType === 'transformers_js' ? 'Transformers.js' : settings.endpointType }})</span>
               <button @click="localSettings.endpoint = { type: 'openai', url: '' }; saveChanges();" class="text-[10px] font-bold text-blue-600 hover:underline">Customize</button>
             </div>
           </div>
 
-          <div class="space-y-2">
+          <div class="space-y-2" v-if="localSettings.endpoint?.type !== 'transformers_js'">
             <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
             <input 
               v-if="localSettings.endpoint"
@@ -322,7 +324,7 @@ async function restoreDefaults() {
             </div>
           </div>
 
-          <div class="space-y-2">
+          <div class="space-y-2" v-if="localSettings.endpoint?.type !== 'transformers_js'">
             <div class="flex items-center justify-between ml-1">
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
               <button 

@@ -5,6 +5,7 @@ import ThemeToggle from './ThemeToggle.vue';
 import { useToast } from '../composables/useToast';
 import { useLayout } from '../composables/useLayout';
 import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
+import { TransformersJsProvider } from '../services/transformers-js-provider';
 import { type EndpointType, type Settings as SettingsType } from '../models/types';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import Logo from './Logo.vue';
@@ -46,7 +47,7 @@ function removeHeader(index: number) {
 }
 
 const isValidUrl = computed(() => {
-  return !!getNormalizedUrl();
+  return selectedType.value === 'transformers_js' || !!getNormalizedUrl();
 });
 
 function getNormalizedUrl() {
@@ -61,6 +62,19 @@ function getNormalizedUrl() {
     return null;
   }
 }
+
+function isLocalhost(url: string | undefined) {
+  if (!url) return false;
+  return url.includes('localhost') || url.includes('127.0.0.1');
+}
+
+// Auto-fetch for localhost or transformers_js when URL/Type changes
+watch([selectedType, customUrl], ([type, url]) => {
+  error.value = null;
+  if (type === 'transformers_js' || isLocalhost(url)) {
+    handleConnect();
+  }
+});
 
 function selectPreset(preset: typeof ENDPOINT_PRESETS[number]) {
   selectedType.value = preset.type;
@@ -80,7 +94,7 @@ function handleCancelConnect() {
 
 async function handleConnect() {
   const url = getNormalizedUrl();
-  if (!url) {
+  if (!url && selectedType.value !== 'transformers_js') {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
   }
@@ -93,10 +107,13 @@ async function handleConnect() {
     let provider: LLMProvider;
     switch (selectedType.value) {
     case 'openai':
-      provider = new OpenAIProvider({ endpoint: url, headers: customHeaders.value });
+      provider = new OpenAIProvider({ endpoint: url || '', headers: customHeaders.value });
       break;
     case 'ollama':
-      provider = new OllamaProvider({ endpoint: url, headers: customHeaders.value });
+      provider = new OllamaProvider({ endpoint: url || '', headers: customHeaders.value });
+      break;
+    case 'transformers_js':
+      provider = new TransformersJsProvider();
       break;
     default: {
       const _ex: never = selectedType.value;
@@ -111,7 +128,7 @@ async function handleConnect() {
 
     availableModels.value = models;
     selectedModel.value = models[0] || '';
-    customUrl.value = url; // Update UI with normalized URL
+    if (url) customUrl.value = url; // Update UI with normalized URL
   } catch (e) {
     if ((e as Error).name === 'AbortError') {
       return;
@@ -146,7 +163,7 @@ async function handleClose() {
 async function handleFinish() {
   const url = getNormalizedUrl();
   
-  if (!url) {
+  if (!url && selectedType.value !== 'transformers_js') {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
   }
@@ -239,10 +256,17 @@ async function handleFinish() {
                         class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors"
                         :class="selectedType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                       >Ollama</button>
+
+                      <button 
+                        @click="selectedType = 'transformers_js'"
+                        class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
+                        :class="selectedType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
+                      >Transformers.js</button>
                     </div>
                   
                   </div>
                   <input
+                    v-if="selectedType !== 'transformers_js'"
                     v-model="customUrl"
                     type="text"
                     placeholder="http://localhost:11434"
@@ -251,7 +275,7 @@ async function handleFinish() {
                   />
 
                   <!-- Custom HTTP Headers -->
-                  <div class="space-y-3">
+                  <div class="space-y-3" v-if="selectedType !== 'transformers_js'">
                     <div class="flex items-center justify-between ml-1">
                       <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
                       <button 

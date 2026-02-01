@@ -504,7 +504,13 @@ export class ImportExportService {
 
     return {
       structure: {
-        settings: settingsDto ? settingsToDomain(settingsDto) : ({} as Settings),
+        settings: settingsDto ? settingsToDomain(settingsDto) : {
+          autoTitleEnabled: true,
+          providerProfiles: [],
+          storageType: 'local',
+          endpointType: 'openai',
+          endpointUrl: '',
+        } as Settings,
         hierarchy,
         chatMetas,
         chatGroups,
@@ -638,7 +644,18 @@ export class ImportExportService {
 
     const settings = await this.storage.loadSettings();
     return {
-      structure: { settings: settings || ({} as Settings), hierarchy: mergedHierarchy, chatMetas, chatGroups },
+      structure: { 
+        settings: settings || {
+          autoTitleEnabled: true,
+          providerProfiles: [],
+          storageType: 'local',
+          endpointType: 'openai',
+          endpointUrl: '',
+        } as Settings, 
+        hierarchy: mergedHierarchy, 
+        chatMetas, 
+        chatGroups 
+      },
       contentStream: contentStream(),
     };
   }

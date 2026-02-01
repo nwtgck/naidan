@@ -338,7 +338,13 @@ export class OPFSStorageProvider extends IStorageProvider {
 
     return {
       structure: {
-        settings: settings || ({} as Settings),
+        settings: settings || {
+          autoTitleEnabled: true,
+          providerProfiles: [],
+          storageType: 'opfs',
+          endpointType: 'openai',
+          endpointUrl: '',
+        } as Settings,
         hierarchy: hierarchy || { items: [] },
         chatMetas,
         chatGroups,

@@ -4,6 +4,8 @@ import { storageService } from '../services/storage';
 import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
 import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
+import { TransformersJsProvider } from '../services/transformers-js-provider';
+import { transformersJsService } from '../services/transformers-js';
 import { StorageTypeSchemaDto } from '../models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
 
@@ -29,6 +31,24 @@ storageService.subscribeToChanges(async (event) => {
     if (fresh) {
       _settings.value = fresh;
     }
+  }
+});
+
+transformersJsService.subscribeModelList(async () => {
+  const type = _settings.value.endpointType;
+  switch (type) {
+  case 'transformers_js': {
+    const { fetchModels } = useSettings();
+    await fetchModels();
+    break;
+  }
+  case 'openai':
+  case 'ollama':
+    break;
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
+  }
   }
 });
 
@@ -109,7 +129,7 @@ export function useSettings() {
         const s = await storageService.loadSettings();
         if (s) {
           _settings.value = s;
-          if (s.endpointUrl) {
+          if (s.endpointUrl || s.endpointType === 'transformers_js') {
             _isOnboardingDismissed.value = true;
             // Initial fetch of models if we have an endpoint
             fetchModels();
@@ -133,7 +153,7 @@ export function useSettings() {
     const type = overrides?.type ?? _settings.value.endpointType;
     const headers = overrides?.headers ?? _settings.value.endpointHttpHeaders;
 
-    if (!url) {
+    if (!url && type !== 'transformers_js') {
       availableModels.value = [];
       return [];
     }
@@ -143,10 +163,13 @@ export function useSettings() {
       let provider: LLMProvider;
       switch (type) {
       case 'openai':
-        provider = new OpenAIProvider({ endpoint: url, headers: mutableHeaders });
+        provider = new OpenAIProvider({ endpoint: url || '', headers: mutableHeaders });
         break;
       case 'ollama':
-        provider = new OllamaProvider({ endpoint: url, headers: mutableHeaders });
+        provider = new OllamaProvider({ endpoint: url || '', headers: mutableHeaders });
+        break;
+      case 'transformers_js':
+        provider = new TransformersJsProvider();
         break;
       default: {
         const _ex: never = type;
@@ -184,7 +207,10 @@ export function useSettings() {
     }
     
     // Persist as a patch to ensure we don't overwrite concurrent changes to other fields
-    await storageService.updateSettings((curr) => ({ ...curr, ...patch } as Settings));
+    await storageService.updateSettings((curr) => {
+      const base = curr || _settings.value;
+      return { ...base, ...patch } as Settings;
+    });
 
     // Re-fetch models if connection changed
     const urlChanged = patch.endpointUrl !== undefined && patch.endpointUrl !== oldUrl;
@@ -199,12 +225,12 @@ export function useSettings() {
   async function updateProviderProfiles(profiles: ProviderProfile[]) {
     const patch = { providerProfiles: [...profiles] };
     _settings.value.providerProfiles = patch.providerProfiles;
-    await storageService.updateSettings((curr) => ({ ...curr, ...patch } as Settings));
+    await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), ...patch } as Settings));
   }
 
   async function updateGlobalModel(modelId: string) {
     _settings.value.defaultModelId = modelId;
-    await storageService.updateSettings((curr) => ({ ...curr, ..._settings.value, defaultModelId: modelId }));
+    await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), defaultModelId: modelId }));
   }
 
   async function updateGlobalEndpoint(options: { type: EndpointType, url: string, headers?: [string, string][] }) {
@@ -216,8 +242,7 @@ export function useSettings() {
     _settings.value.endpointHttpHeaders = options.headers;
 
     await storageService.updateSettings((curr) => ({ 
-      ...curr, 
-      ..._settings.value,
+      ...(curr || _settings.value), 
       endpointType: options.type,
       endpointUrl: options.url,
       endpointHttpHeaders: options.headers
@@ -230,7 +255,7 @@ export function useSettings() {
 
   async function updateSystemPrompt(prompt: string) {
     _settings.value.systemPrompt = prompt;
-    await storageService.updateSettings((curr) => ({ ...curr, ..._settings.value, systemPrompt: prompt }));
+    await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), systemPrompt: prompt }));
   }
 
   async function updateStorageType(type: StorageType) {
@@ -238,7 +263,7 @@ export function useSettings() {
     
     _settings.value.storageType = type;
     await storageService.switchProvider(type);
-    await storageService.updateSettings((curr) => ({ ...curr, ..._settings.value, storageType: type }));
+    await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), storageType: type }));
   }
 
   function setIsOnboardingDismissed(dismissed: boolean) {
@@ -251,7 +276,7 @@ export function useSettings() {
 
   function setHeavyContentAlertDismissed(dismissed: boolean) {
     _settings.value.heavyContentAlertDismissed = dismissed;
-    storageService.updateSettings((curr) => ({ ...curr, ..._settings.value, heavyContentAlertDismissed: dismissed }));
+    storageService.updateSettings((curr) => ({ ...(curr || _settings.value), heavyContentAlertDismissed: dismissed }));
   }
 
   function __testOnlySetSettings(newSettings: Settings) {
