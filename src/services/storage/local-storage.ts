@@ -314,7 +314,13 @@ export class LocalStorageProvider extends IStorageProvider {
 
     return {
       structure: {
-        settings: settings || ({} as Settings),
+        settings: settings || {
+          autoTitleEnabled: true,
+          providerProfiles: [],
+          storageType: 'local',
+          endpointType: 'openai',
+          endpointUrl: '',
+        } as Settings,
         hierarchy: h,
         chatMetas,
         chatGroups,

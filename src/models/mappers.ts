@@ -91,7 +91,7 @@ export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
     case 'ollama':
       return {
         type: endpoint.type as EndpointType,
-        url: endpoint.url,
+        url: endpoint.url || undefined,
         httpHeaders: endpoint.httpHeaders,
       };
     case 'transformers_js':
@@ -155,7 +155,7 @@ export const chatGroupToDomain = (
       case 'ollama':
         return {
           type: endpoint.type as EndpointType,
-          url: endpoint.url,
+          url: endpoint.url || undefined,
           httpHeaders: endpoint.httpHeaders,
         };
       case 'transformers_js':
@@ -188,11 +188,12 @@ export const chatGroupToDto = (domain: ChatGroup): ChatGroupDto => ({
 });
 
 export const endpointToDto = (endpoint: Endpoint): EndpointDto => {
-  switch (endpoint.type) {
+  const type = endpoint.type;
+  switch (type) {
   case 'openai':
   case 'ollama':
     return {
-      type: endpoint.type,
+      type: type,
       url: endpoint.url || '',
       httpHeaders: endpoint.httpHeaders,
     };
@@ -201,7 +202,7 @@ export const endpointToDto = (endpoint: Endpoint): EndpointDto => {
       type: 'transformers_js',
     };
   default: {
-    const _ex: never = endpoint.type as never;
+    const _ex: never = type;
     throw new Error(`Unhandled endpoint type: ${_ex}`);
   }
   }
@@ -322,7 +323,7 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     case 'ollama':
       return {
         endpointType: endpoint.type as EndpointType,
-        endpointUrl: endpoint.url,
+        endpointUrl: endpoint.url || undefined,
         endpointHttpHeaders: endpoint.httpHeaders as [string, string][] | undefined,
       };
     case 'transformers_js':
@@ -483,7 +484,7 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
     case 'ollama':
       return {
         endpointType: endpoint.type as EndpointType,
-        endpointUrl: endpoint.url,
+        endpointUrl: endpoint.url || undefined,
         endpointHttpHeaders: endpoint.httpHeaders as [string, string][] | undefined,
       };
     case 'transformers_js':
@@ -511,7 +512,7 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
         case 'ollama':
           return {
             endpointType: pEndpoint.type as EndpointType,
-            endpointUrl: pEndpoint.url,
+            endpointUrl: pEndpoint.url || undefined,
             endpointHttpHeaders: pEndpoint.httpHeaders as [string, string][] | undefined,
           };
         case 'transformers_js':

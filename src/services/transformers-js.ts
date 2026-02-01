@@ -55,6 +55,8 @@ let remote: Comlink.Remote<TransformersJsWorker> | null = null;
  * fresh Wasm instance without requiring the user to reload the entire page.
  */
 function initWorker() {
+  if (typeof Worker === 'undefined') return;
+
   if (worker) {
     worker.terminate();
   }
@@ -66,7 +68,9 @@ function initWorker() {
 }
 
 // Initial setup
-initWorker();
+if (typeof Worker !== 'undefined') {
+  initWorker();
+}
 
 /**
  * Checks if an error message indicates a fatal state that requires a worker restart.

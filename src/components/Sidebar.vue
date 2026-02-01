@@ -328,6 +328,7 @@ watch(() => currentChat.value?.id, async (id) => {
   await nextTick();
   // Wait a bit for potential transitions
   setTimeout(() => {
+    if (typeof document === 'undefined') return;
     const el = document.querySelector(`[data-testid="sidebar-chat-item-${id}"]`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -340,6 +341,7 @@ watch(() => currentChatGroup.value?.id, async (id) => {
   if (!id || typeof document === 'undefined') return;
   await nextTick();
   setTimeout(() => {
+    if (typeof document === 'undefined') return;
     const el = document.querySelector(`[data-sidebar-group-id="${id}"]`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

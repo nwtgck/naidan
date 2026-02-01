@@ -24,7 +24,11 @@ jobs:
         id: npm_install
         run: npm ci
 
+      - name: Run lint
+        run: npm run lint
+
       - name: Run tests
+        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         run: npm run test
 
       - name: Run build
