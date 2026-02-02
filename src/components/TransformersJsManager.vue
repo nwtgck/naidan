@@ -346,7 +346,7 @@ const handleImportLocalModel = async (event: Event) => {
                   </button>
 
                   <!-- Dropdown Menu -->
-                  <div v-if="isDropdownOpen" class="absolute z-50 bottom-full mb-3 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  <div v-if="isDropdownOpen" class="absolute z-50 top-full mt-3 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                     <div class="max-h-[320px] overflow-y-auto p-2 custom-scrollbar overscroll-contain">
                       <!-- Use Custom ID Option -->
                       <div v-if="filteredPresets.showCustom">
