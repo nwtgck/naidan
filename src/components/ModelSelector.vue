@@ -220,8 +220,9 @@ watch(searchQuery, () => {
   }
 });
 
-// Close on scroll or resize to prevent floating detached dropdown
-watch([windowWidth, windowHeight], () => {
+// Close on width resize to prevent floating detached dropdown (e.g. orientation change)
+// We ignore height changes to prevent closing when mobile software keyboard appears
+watch(windowWidth, () => {
   if (isOpen.value) isOpen.value = false;
 });
 </script>
