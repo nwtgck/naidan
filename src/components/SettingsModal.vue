@@ -374,9 +374,9 @@ watch(() => props.isOpen, async (open) => {
               />
 
               <!-- Transformers.js Tab -->
-              <TransformersJsManager 
-                v-if="activeTab === 'transformers_js'"
-              />
+              <div v-if="activeTab === 'transformers_js'" class="max-w-4xl mx-auto">
+                <TransformersJsManager />
+              </div>
 
               <!-- Recipes Tab -->
               <RecipeImportTab 

@@ -12,6 +12,11 @@ import { computedAsync } from '@vueuse/core';
 
 const { addToast } = useToast();
 const { showConfirm } = useConfirm();
+
+const emit = defineEmits<{
+  (e: 'modelLoaded', modelId: string): void;
+}>();
+
 const status = ref(transformersJsService.getState().status);
 const progress = ref(transformersJsService.getState().progress);
 const error = ref(transformersJsService.getState().error);
@@ -135,6 +140,7 @@ const loadModel = async (modelId: string) => {
   lastDownloadError.value = null; // Clear previous download error when starting a fresh load
   try {
     await transformersJsService.loadModel(modelId);
+    emit('modelLoaded', modelId);
   } catch (e) {
     // Error is handled via subscription
   }
@@ -183,6 +189,9 @@ const downloadModel = async () => {
     await transformersJsService.downloadModel(modelId);
     await refreshLocalModels();
     addToast({ message: `Successfully downloaded: ${modelId}` });
+    
+    // Auto-load after download
+    await loadModel(modelId);
   } catch (e) {
     lastDownloadError.value = e instanceof Error ? e.message : String(e);
   }
@@ -258,7 +267,7 @@ const handleImportLocalModel = async (event: Event) => {
 </script>
 
 <template>
-  <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
+  <div class="p-0 space-y-8">
     <!-- Standalone Mode Header Warning -->
     <div v-if="isStandalone" class="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl space-y-4 animate-in fade-in slide-in-from-top-2 duration-400">
       <div class="flex items-start gap-3 text-amber-700 dark:text-amber-400 leading-relaxed italic text-sm">
@@ -296,7 +305,7 @@ const handleImportLocalModel = async (event: Event) => {
       :class="{ 'opacity-40 pointer-events-none grayscale select-none': isStandalone || !isOpfsSupported }"
     >
       <!-- Section 1: Model Downloader & Importer -->
-      <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
+      <section class="space-y-6">
         <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
           <div class="flex items-center gap-2">
             <HardDriveDownload class="w-5 h-5 text-purple-500" />

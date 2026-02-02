@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import ThemeToggle from './ThemeToggle.vue';
 import { useLayout } from '../composables/useLayout';
@@ -10,7 +10,9 @@ import { ENDPOINT_PRESETS } from '../models/constants';
 import Logo from './Logo.vue';
 import ServerSetupGuide from './ServerSetupGuide.vue';
 import ModelSelector from './ModelSelector.vue';
-import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2 } from 'lucide-vue-next';
+import TransformersJsManager from './TransformersJsManager.vue';
+import { transformersJsService } from '../services/transformers-js';
+import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2, FlaskConical } from 'lucide-vue-next';
 import { naturalSort } from '../utils/string';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
@@ -27,6 +29,79 @@ watch(show, (val) => {
 }, { immediate: true });
 
 const selectedType = ref<EndpointType>(onboardingDraft.value?.type || 'openai');
+
+const isTransformersJs = computed(() => {
+  const type = selectedType.value;
+  switch (type) {
+  case 'transformers_js':
+    return true;
+  case 'openai':
+  case 'ollama':
+    return false;
+  default: {
+    const _ex: never = type;
+    return _ex;
+  }
+  }
+});
+
+// Reactive sync with transformersJsService
+let unsubscribe: (() => void) | null = null;
+onMounted(() => {
+  unsubscribe = transformersJsService.subscribe(() => {
+    const state = transformersJsService.getState();
+    const type = selectedType.value;
+    switch (type) {
+    case 'transformers_js':
+      if (state.activeModelId) {
+        selectedModel.value = state.activeModelId;
+      }
+      break;
+    case 'openai':
+    case 'ollama':
+      break;
+    default: {
+      const _ex: never = type;
+      return _ex;
+    }
+    }
+  });
+});
+
+onUnmounted(() => {
+  if (unsubscribe) unsubscribe();
+});
+
+// Auto-load existing model when switching to transformers_js
+watch(selectedType, async (newType) => {
+  switch (newType) {
+  case 'transformers_js': {
+    const cached = await transformersJsService.listCachedModels();
+    if (cached.length > 0 && !transformersJsService.getState().activeModelId) {
+      // Load the most recently modified model
+      const sorted = [...cached].sort((a, b) => b.lastModified - a.lastModified);
+      const target = sorted[0]?.id;
+      if (target) {
+        try {
+          await transformersJsService.loadModel(target);
+          selectedModel.value = target;
+        } catch (e) {
+          console.warn('Auto-load failed:', e);
+        }
+      }
+    }
+    break;
+  }
+  case 'openai':
+  case 'ollama':
+    break;
+  default: {
+    const _ex: never = newType;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
+  }
+  }
+});
+
 const customUrl = ref(onboardingDraft.value?.url || '');
 const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers ? JSON.parse(JSON.stringify(onboardingDraft.value.headers)) : []);
 const isTesting = ref(false);
@@ -44,8 +119,14 @@ function removeHeader(index: number) {
   customHeaders.value.splice(index, 1);
 }
 
+function handleModelLoaded(modelId: string) {
+  if (isTransformersJs.value) {
+    selectedModel.value = modelId;
+  }
+}
+
 const isValidUrl = computed(() => {
-  return selectedType.value === 'transformers_js' || !!getNormalizedUrl();
+  return isTransformersJs.value || !!getNormalizedUrl();
 });
 
 function getNormalizedUrl() {
@@ -69,7 +150,21 @@ function isLocalhost(url: string | undefined) {
 // Auto-fetch for localhost or transformers_js when URL/Type changes
 watch([selectedType, customUrl], ([type, url]) => {
   error.value = null;
-  if (type === 'transformers_js' || isLocalhost(url)) {
+  const isAutoFetch = (() => {
+    switch (type) {
+    case 'transformers_js':
+      return true;
+    case 'openai':
+    case 'ollama':
+      return isLocalhost(url);
+    default: {
+      const _ex: never = type;
+      return _ex;
+    }
+    }
+  })();
+
+  if (isAutoFetch) {
     handleConnect();
   }
 });
@@ -92,7 +187,9 @@ function handleCancelConnect() {
 
 async function handleConnect() {
   const url = getNormalizedUrl();
-  if (!url && selectedType.value !== 'transformers_js') {
+  const type = selectedType.value;
+
+  if (!url && !isTransformersJs.value) {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
   }
@@ -103,7 +200,7 @@ async function handleConnect() {
 
   try {
     let provider: LLMProvider;
-    switch (selectedType.value) {
+    switch (type) {
     case 'openai':
       provider = new OpenAIProvider({ endpoint: url || '', headers: customHeaders.value });
       break;
@@ -114,7 +211,7 @@ async function handleConnect() {
       provider = new TransformersJsProvider();
       break;
     default: {
-      const _ex: never = selectedType.value;
+      const _ex: never = type;
       throw new Error(`Unsupported endpoint type: ${_ex}`);
     }
     }
@@ -151,8 +248,9 @@ async function handleClose() {
 
 async function handleFinish() {
   const url = getNormalizedUrl();
+  const type = selectedType.value;
   
-  if (!url && selectedType.value !== 'transformers_js') {
+  if (!url && !isTransformersJs.value) {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
   }
@@ -161,7 +259,7 @@ async function handleFinish() {
     const baseSettings = JSON.parse(JSON.stringify(settings.value)) as SettingsType;
     await save({
       ...baseSettings,
-      endpointType: selectedType.value,
+      endpointType: type,
       endpointUrl: url || undefined,
       endpointHttpHeaders: customHeaders.value.length > 0 ? customHeaders.value : undefined,
       defaultModelId: selectedModel.value || undefined,
@@ -209,9 +307,58 @@ async function handleFinish() {
 
             <!-- Left Column: Configuration (Primary) -->
 
-            <div class="w-full lg:w-[62%] p-6 md:p-10 space-y-6 md:space-y-8">
+            <div :class="isTransformersJs ? 'w-full' : 'w-full lg:w-[62%]'" class="p-6 md:p-10 space-y-6 md:space-y-8">
 
-              <template v-if="availableModels.length === 0">
+              <template v-if="isTransformersJs">
+                <!-- Transformers.js Integrated View -->
+                <div class="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <!-- Type Switcher (Repeated here for easy switching) -->
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
+                    <div>
+                      <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                        <FlaskConical class="w-4 h-4 text-purple-500" />
+                        In-Browser AI
+                        <span class="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-bold uppercase tracking-wider">Experimental</span>
+                      </h3>
+                      <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Run models locally in your browser using Transformers.js. No server required.</p>
+                    </div>
+                    <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit shrink-0">
+                      <button 
+                        @click="selectedType = 'openai'; availableModels = []"
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap text-gray-400"
+                      >OpenAI-compatible</button>
+                                    
+                      <button 
+                        @click="selectedType = 'ollama'; availableModels = []"
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors text-gray-400"
+                      >Ollama</button>
+
+                      <button 
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400"
+                      >Transformers.js</button>
+                    </div>
+                  </div>
+
+                  <TransformersJsManager @model-loaded="handleModelLoaded" />
+
+                  <div class="flex flex-col sm:flex-row items-center gap-4 pt-6 border-t border-gray-100 dark:border-gray-800">
+                    <button
+                      @click="handleFinish"
+                      :disabled="!selectedModel"
+                      class="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
+                    >
+                      <Play class="w-5 h-5 fill-current" />
+                      <span>Get Started</span>
+                    </button>
+                    <p class="flex items-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400">
+                      <Settings class="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-500/60" />
+                      Settings will be saved for local inference.
+                    </p>
+                  </div>
+                </div>
+              </template>
+
+              <template v-else-if="availableModels.length === 0">
 
                 <!-- Step 1: Configuration -->
 
@@ -248,14 +395,17 @@ async function handleFinish() {
 
                       <button 
                         @click="selectedType = 'transformers_js'"
-                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
-                        :class="selectedType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
-                      >Transformers.js</button>
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1"
+                        :class="isTransformersJs ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600'"
+                      >
+                        <FlaskConical class="w-2.5 h-2.5" />
+                        Transformers.js
+                      </button>
                     </div>
                   
                   </div>
                   <input
-                    v-if="selectedType !== 'transformers_js'"
+                    v-if="!isTransformersJs"
                     v-model="customUrl"
                     type="text"
                     placeholder="http://localhost:11434"
@@ -264,7 +414,7 @@ async function handleFinish() {
                   />
 
                   <!-- Custom HTTP Headers -->
-                  <div class="space-y-3" v-if="selectedType !== 'transformers_js'">
+                  <div class="space-y-3" v-if="!isTransformersJs">
                     <div class="flex items-center justify-between ml-1">
                       <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
                       <button 
@@ -400,7 +550,7 @@ async function handleFinish() {
             </div>
 
             <!-- Right Column: Setup Guide (Secondary/Auxiliary) -->
-            <div class="w-full lg:w-[38%] p-6 md:p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
+            <div v-if="!isTransformersJs" class="w-full lg:w-[38%] p-6 md:p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
               <div class="flex items-center gap-2 mb-4">
                 <span class="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-widest">Help & Guide</span>
               </div>
