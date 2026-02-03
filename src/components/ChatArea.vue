@@ -7,6 +7,7 @@ import { useLayout } from '../composables/useLayout';
 import MessageItem from './MessageItem.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ModelSelector from './ModelSelector.vue';
+import ChatToolsMenu from './ChatToolsMenu.vue';
 import { naturalSort } from '../utils/string';
 
 const ChatSettingsPanel = defineAsyncComponent(() => import('./ChatSettingsPanel.vue'));
@@ -15,7 +16,7 @@ import {
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight, Hammer
+  Folder, FolderInput, ChevronRight, Hammer, Image
 } from 'lucide-vue-next';
 import type { Attachment } from '../models/types';
 
@@ -34,6 +35,15 @@ const {
 } = chatStore;
 const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
 const { activeFocusArea, setActiveFocusArea } = useLayout();
+const imageModeMap = ref<Record<string, boolean>>({});
+const isImageMode = computed({
+  get: () => currentChat.value ? !!imageModeMap.value[currentChat.value.id] : false,
+  set: (val) => {
+    if (currentChat.value) {
+      imageModeMap.value[currentChat.value.id] = val;
+    }
+  }
+});
 useSettings();
 const router = useRouter();
 
@@ -338,8 +348,31 @@ async function fetchModels() {
   }
 }
 
+const canGenerateImage = computed(() => resolvedSettings.value?.endpointType === 'ollama');
+
+function toggleImageMode() {
+  isImageMode.value = !isImageMode.value;
+}
+
+async function handleGenerateImage() {
+  if (!currentChat.value || !input.value.trim() || isCurrentChatStreaming.value) return;
+  
+  const prompt = input.value;
+  const success = await chatStore.sendImageRequest({ prompt });
+  if (success) {
+    input.value = '';
+    nextTick(adjustTextareaHeight);
+  }
+}
+
 async function handleSend() {
   if ((!input.value.trim() && attachments.value.length === 0) || isCurrentChatStreaming.value) return;
+
+  if (isImageMode.value) {
+    await handleGenerateImage();
+    return;
+  }
+
   const text = input.value;
   const currentAttachments = [...attachments.value];
   
@@ -830,6 +863,19 @@ onUnmounted(() => {
 
         <div class="flex items-center justify-between px-4 pb-4">
           <div class="flex items-center gap-2">
+            <div class="w-[100px] sm:w-[180px]">
+              <ModelSelector 
+                :model-value="currentChat.modelId"
+                @update:model-value="val => currentChat && chatStore.updateChatModel(currentChat.id, val!)"
+                :models="sortedAvailableModels"
+                :placeholder="formatLabel(inheritedSettings?.modelId, inheritedSettings?.sources.modelId)"
+                :loading="fetchingModels"
+                allow-clear
+                @refresh="fetchModels"
+                data-testid="model-override-select"
+              />
+            </div>
+
             <input 
               ref="fileInputRef"
               type="file" 
@@ -846,18 +892,12 @@ onUnmounted(() => {
               <Paperclip class="w-5 h-5" />
             </button>
 
-            <div class="w-[100px] sm:w-[180px]">
-              <ModelSelector 
-                :model-value="currentChat.modelId"
-                @update:model-value="val => currentChat && chatStore.updateChatModel(currentChat.id, val!)"
-                :models="sortedAvailableModels"
-                :placeholder="formatLabel(inheritedSettings?.modelId, inheritedSettings?.sources.modelId)"
-                :loading="fetchingModels"
-                allow-clear
-                @refresh="fetchModels"
-                data-testid="model-override-select"
-              />
-            </div>
+            <ChatToolsMenu 
+              :can-generate-image="canGenerateImage"
+              :is-processing="isCurrentChatStreaming"
+              :is-image-mode="isImageMode"
+              @toggle-image-mode="toggleImageMode"
+            />
           </div>
 
           <button 
@@ -873,7 +913,8 @@ onUnmounted(() => {
             </template>
             <template v-else>
               <span class="text-[10px] font-bold opacity-90 hidden sm:inline tracking-wider">{{ sendShortcutText }}</span>
-              <Send class="w-4 h-4" />
+              <Image v-if="isImageMode" class="w-4 h-4 text-white" />
+              <Send v-else class="w-4 h-4" />
             </template>
           </button>
         </div>

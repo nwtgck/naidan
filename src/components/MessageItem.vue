@@ -31,6 +31,7 @@ import type { MessageNode } from '../models/types';
 import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import SpeechControl from './SpeechControl.vue';
+import ImageConjuringLoader from './ImageConjuringLoader.vue';
 
 const props = defineProps<{
   message: MessageNode;
@@ -416,6 +417,8 @@ const parsedContent = computed(() => {
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     FORBID_ATTR: ['onerror', 'onclick', 'onload'], // Explicitly forbid dangerous attributes
+    // Allow blob: protocol for experimental image generation
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|blob):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
   });
 });
 
@@ -595,8 +598,11 @@ function handleToggleThinking() {
         <!-- Content Display (Always shown if present) -->
         <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
 
-        <!-- Loading State (Initial Wait) -->
-        <div v-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
+        <!-- AI Image Synthesis Loader (Componentized) -->
+        <ImageConjuringLoader v-else-if="message.modelId === 'x/z-image-turbo' && message.role === 'assistant' && !message.error" />
+
+        <!-- Loading State (Initial Wait for regular text) -->
+        <div v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
           <Loader2 class="w-4 h-4 animate-spin" />
           <span class="text-xs font-medium">Waiting for response...</span>
         </div>

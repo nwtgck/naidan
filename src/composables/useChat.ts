@@ -1243,6 +1243,122 @@ export function useChat() {
     });
   };
 
+  const generateImage = async ({ chatId, prompt, model }: {
+    chatId: string;
+    prompt: string;
+    model: string;
+  }) => {
+    const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
+    if (!target) return;
+    const chat = getLiveChat(target);
+    const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
+
+    const type = resolved.endpointType;
+    switch (type) {
+    case 'ollama':
+      break;
+    case 'openai':
+    case 'transformers_js':
+      throw new Error('Image generation is only supported for Ollama');
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled endpoint type: ${_ex}`);
+    }
+    }
+
+    incTask(chatId, 'process');
+    try {
+      const provider = new OllamaProvider({ endpoint: resolved.endpointUrl, headers: resolved.endpointHttpHeaders });
+      const blob = await provider.generateImage({ prompt, model, signal: undefined });
+      return blob;
+    } finally {
+      decTask(chatId, 'process');
+    }
+  };
+
+  const sendImageRequest = async ({ prompt }: {
+    prompt: string;
+  }): Promise<boolean> => {
+    const target = _currentChat.value;
+    if (!target) return false;
+    const chat = getLiveChat(target);
+    const chatId = chat.id;
+
+    const imageModel = 'x/z-image-turbo';
+
+    // 1. Create immediate messages
+    const userMsg: MessageNode = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: prompt,
+      timestamp: Date.now(),
+      replies: { items: [] },
+    };
+    const assistantMsg: MessageNode = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      modelId: imageModel,
+      replies: { items: [] },
+    };
+    userMsg.replies.items.push(assistantMsg);
+
+    // 2. Append to root items (one-shot, root-level branch)
+    if (!chat.root) chat.root = { items: [] };
+    chat.root.items.push(userMsg);
+
+    chat.currentLeafId = assistantMsg.id;
+
+    // 3. Update UI and storage immediately
+    if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
+    await updateChatContent(chatId, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
+    await updateChatMeta(chatId, (curr) => {
+      if (!curr) return chat;
+      return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
+    });
+
+    // 4. Register as active generation to prevent reload and show loading state
+    const controller = new AbortController();
+    activeGenerations.set(chatId, { controller, chat });
+    storageService.notify({ type: 'chat_content_generation', id: chatId, status: 'started', timestamp: Date.now() });
+
+    // 5. Generate image in background
+    (async () => {
+      try {
+        const blob = await generateImage({ chatId, prompt, model: imageModel });
+        if (!blob) throw new Error('Failed to generate image');
+        
+        const url = URL.createObjectURL(blob);
+        // Re-find the node to ensure we update the reactive instance
+        const node = findNodeInBranch(chat.root.items, assistantMsg.id);
+        if (node) {
+          node.content = `![${prompt.replace(/[\[\]]/g, '')}](${url})`;
+        }
+      } catch (e) {
+        const node = findNodeInBranch(chat.root.items, assistantMsg.id);
+        if (node) {
+          node.error = (e as Error).message;
+          node.content = 'Failed to generate image.';
+        }
+      } finally {
+        activeGenerations.delete(chatId);
+        storageService.notify({ type: 'chat_content_generation', id: chatId, status: 'stopped', timestamp: Date.now() });
+
+        await updateChatContent(chatId, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
+        
+        if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
+          triggerRef(_currentChat);
+        }
+
+        // Trigger sidebar reload if needed
+        loadData().catch(() => {});
+      }
+    })();
+
+    return true;
+  };
+
   const createChatGroup = async (name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
     const id = crypto.randomUUID();
     const newGroup: ChatGroup = { 
@@ -1412,7 +1528,7 @@ export function useChat() {
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, createChatGroup, deleteChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, sendImageRequest, createChatGroup, deleteChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
     __testOnly: {
       liveChatRegistry,

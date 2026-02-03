@@ -46,6 +46,12 @@ const OllamaTagsSchema = z.object({
   })),
 });
 
+const OllamaImageGenerationSchema = z.object({
+  data: z.array(z.object({
+    b64_json: z.string(),
+  })),
+});
+
 export interface LLMProvider {
   chat(params: {
     messages: ChatMessage[];
@@ -466,5 +472,78 @@ export class OllamaProvider implements LLMProvider {
     // Validate with Zod
     const validated = OllamaTagsSchema.parse(rawJson);
     return validated.models.map((m) => m.name);
+  }
+
+  async generateImage({ prompt, model, signal }: {
+    prompt: string;
+    model: string;
+    signal: AbortSignal | undefined;
+  }): Promise<Blob> {
+    const { endpoint, headers } = this.config;
+    // OpenAI compatible endpoint on Ollama: often at /v1/images/generations
+    // We remove trailing slashes and /api if present to get the base
+    const baseUrl = endpoint.replace(/\/$/, '').replace(/\/api$/, '');
+    const url = `${baseUrl}/v1/images/generations`;
+
+    const body = {
+      model,
+      prompt,
+      size: '512x512',
+      response_format: 'b64_json',
+    };
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: [
+          ['Content-Type', 'application/json'],
+          ['Authorization', 'Bearer ollama'],
+          ...(headers || []),
+        ],
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch (e) {
+      const isAbort = e instanceof Error && e.name === 'AbortError';
+      if (!isAbort) {
+        const message = `Network error or CORS issue: ${e instanceof Error ? e.message : String(e)}`;
+        addErrorEvent({
+          source: 'OllamaProvider:generateImage',
+          message,
+          details: { error: e, url, method: 'POST' },
+        });
+        throw new Error(message);
+      }
+      throw e;
+    }
+
+    if (!response.ok) {
+      let details = response.statusText;
+      try {
+        const errorJson = await response.json();
+        details = errorJson.error?.message || errorJson.error || JSON.stringify(errorJson);
+      } catch (e) { /* ignore */ }
+      const errorMsg = `Ollama Image Generation Error (${response.status}): ${details}`;
+      addErrorEvent({
+        source: 'OllamaProvider:generateImage',
+        message: errorMsg,
+        details: { status: response.status, statusText: response.statusText, url }
+      });
+      throw new Error(errorMsg);
+    }
+
+    const rawJson = await response.json();
+    const validated = OllamaImageGenerationSchema.parse(rawJson);
+    const first = validated.data[0];
+    if (!first) {
+      throw new Error('Invalid response format from Ollama: data[0] is missing');
+    }
+    const b64Data = first.b64_json;
+    
+    // Convert base64 to Blob using fetch
+    const dataUrl = `data:image/png;base64,${b64Data}`;
+    const blobResponse = await fetch(dataUrl);
+    return await blobResponse.blob();
   }
 }
