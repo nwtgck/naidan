@@ -9,7 +9,6 @@ import WelcomeScreen from './WelcomeScreen.vue';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { naturalSort } from '../utils/string';
-import { findImageGenerationModel } from '../utils/image-generation';
 
 const ChatSettingsPanel = defineAsyncComponent(() => import('./ChatSettingsPanel.vue'));
 const HistoryManipulationModal = defineAsyncComponent(() => import('./HistoryManipulationModal.vue'));
@@ -33,30 +32,50 @@ const {
   resolvedSettings,
   inheritedSettings,
   isProcessing,
-  imageModeMap,
-  imageResolutionMap,
+  isImageMode: _isImageMode,
+  toggleImageMode: _toggleImageMode,
+  getResolution,
+  updateResolution: _updateResolution,
+  setImageModel,
+  getSelectedImageModel,
+  getSortedImageModels,
 } = chatStore;
 const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
 const { activeFocusArea, setActiveFocusArea } = useLayout();
 
 const isImageMode = computed({
-  get: () => currentChat.value ? !!imageModeMap.value[currentChat.value.id] : false,
-  set: (val) => {
+  get: () => currentChat.value ? _isImageMode({ chatId: currentChat.value.id }) : false,
+  set: () => {
     if (currentChat.value) {
-      imageModeMap.value[currentChat.value.id] = val;
+      _toggleImageMode({ chatId: currentChat.value.id });
     }
   }
 });
 
 const currentResolution = computed(() => {
-  return (currentChat.value ? imageResolutionMap.value[currentChat.value.id] : null) || { width: 512, height: 512 };
+  return currentChat.value ? getResolution({ chatId: currentChat.value.id }) : { width: 512, height: 512 };
 });
 
 function updateResolution(width: number, height: number) {
   if (currentChat.value) {
-    imageResolutionMap.value[currentChat.value.id] = { width, height };
+    _updateResolution({ chatId: currentChat.value.id, width, height });
   }
 }
+
+const availableImageModels = computed(() => {
+  return getSortedImageModels({ availableModels: availableModels.value });
+});
+
+const selectedImageModel = computed(() => {
+  return currentChat.value ? getSelectedImageModel({ chatId: currentChat.value.id, availableModels: availableModels.value }) : undefined;
+});
+
+function handleUpdateImageModel(modelId: string) {
+  if (currentChat.value) {
+    setImageModel({ chatId: currentChat.value.id, modelId });
+  }
+}
+
 useSettings();
 const router = useRouter();
 
@@ -362,10 +381,27 @@ async function fetchModels() {
 }
 
 const canGenerateImage = computed(() => {
-  if (resolvedSettings.value?.endpointType !== 'ollama') return false;
-  return !!findImageGenerationModel(availableModels.value);
+  const type = resolvedSettings.value?.endpointType;
+  if (!type) return false;
+
+  const isOllama = (() => {
+    switch (type) {
+    case 'ollama':
+      return true;
+    case 'openai':
+    case 'transformers_js':
+      return false;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled endpoint type: ${_ex}`);
+    }
+    }
+  })();
+
+  if (!isOllama) return false;
+  return availableImageModels.value.length > 0;
 });
-const hasImageModel = computed(() => findImageGenerationModel(availableModels.value) !== null);
+const hasImageModel = computed(() => availableImageModels.value.length > 0);
 
 function toggleImageMode() {
   isImageMode.value = !isImageMode.value;
@@ -920,8 +956,11 @@ onUnmounted(() => {
               :is-image-mode="isImageMode"
               :selected-width="currentResolution.width"
               :selected-height="currentResolution.height"
+              :available-image-models="availableImageModels"
+              :selected-image-model="selectedImageModel"
               @toggle-image-mode="toggleImageMode"
               @update:resolution="updateResolution"
+              @update:model="handleUpdateImageModel"
             />
           </div>
 

@@ -8,17 +8,16 @@ import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
+import { useImageGeneration } from './useImageGeneration';
 import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranch, processThinking, createBranchFromMessages, type HistoryItem } from '../utils/chat-tree';
 import { resolveChatSettings } from '../utils/chat-settings-resolver';
 import { detectLanguage, getTitleSystemPrompt, cleanGeneratedTitle } from '../utils/title-generator';
 import { 
   SENTINEL_IMAGE_PENDING, 
-  SENTINEL_IMAGE_PROCESSED, 
   isImageRequest, 
   parseImageRequest, 
   createImageRequestMarker, 
-  stripNaidanSentinels,
-  findImageGenerationModel
+  stripNaidanSentinels
 } from '../utils/image-generation';
 
 const rootItems = ref<SidebarItem[]>([]);
@@ -37,8 +36,6 @@ const fetchingModels = computed(() => Array.from(activeTaskCounts.keys()).some(k
 const creatingChat = ref(false);
 const availableModels = ref<string[]>([]);
 
-const imageModeMap = ref<Record<string, boolean>>({});
-const imageResolutionMap = ref<Record<string, { width: number, height: number }>>({});
 
 // --- Lifecycle & Cleanup ---
 
@@ -710,47 +707,56 @@ export function useChat() {
     });
   };
 
-  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height }: {
+  const { 
+    isImageMode, 
+    toggleImageMode, 
+    getResolution, 
+    updateResolution, 
+    setImageModel, 
+    getSelectedImageModel, 
+    getSortedImageModels,
+    performBase64Generation: _performGeneration,
+    handleImageGeneration: _handleImageGeneration,
+    sendImageRequest: _sendImageRequest,
+    imageModeMap,
+    imageResolutionMap,
+    imageModelOverrideMap
+  } = useImageGeneration();
+
+  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, model }: {
     chatId: string;
     assistantId: string;
     prompt: string;
     width: number;
     height: number;
+    model: string | undefined;
   }) => {
-    const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
+    const target = getLiveChat({ id: chatId } as Chat);
     if (!target) return;
-    const mutableChat = getLiveChat(target);
-    const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
-    if (!assistantNode) return;
+    const resolved = resolveChatSettings(target, chatGroups.value, settings.value);
 
-    const imageModel = findImageGenerationModel(availableModels.value);
-    if (!imageModel) {
-      assistantNode.error = 'No suitable image generation model found (starting with x/z-image-turbo:)';
-      assistantNode.content = 'Failed to generate image.';
-      return;
-    }
-
-    try {
-      assistantNode.content = SENTINEL_IMAGE_PENDING;
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
-
-      const blob = await generateImage({ chatId: mutableChat.id, prompt, model: imageModel, width, height });
-      if (!blob) throw new Error('Failed to generate image');
-
-      const url = settings.value.storageType === 'opfs' 
-        ? await fileToDataUrl(blob) 
-        : URL.createObjectURL(blob);
-
-      const displayWidth = width * 0.8;
-      const displayHeight = height * 0.8;
-      assistantNode.content = `${SENTINEL_IMAGE_PROCESSED}<img src="${url}" width="${displayWidth}" height="${displayHeight}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
-    } catch (e) {
-      assistantNode.error = (e as Error).message;
-      assistantNode.content = 'Failed to generate image.';
-    } finally {
-      await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
-      if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
-    }
+    await _handleImageGeneration({
+      chatId,
+      assistantId,
+      prompt,
+      width,
+      height,
+      model,
+      availableModels: availableModels.value,
+      endpointUrl: resolved.endpointUrl,
+      endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+      storageType: settings.value.storageType,
+      getLiveChat: ({ chat }) => getLiveChat(chat),
+      updateChatContent: ({ chatId, updater }) => updateChatContent(chatId, (curr) => {
+        if (!curr) throw new Error('Chat content not found');
+        return updater(curr);
+      }),
+      triggerChatRef: ({ chatId }) => {
+        if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
+      },
+      incTask: ({ chatId, type }) => incTask(chatId, type),
+      decTask: ({ chatId, type }) => decTask(chatId, type)
+    });
   };
 
   const generateResponse = async (chat: Chat | Readonly<Chat>, assistantId: string) => {
@@ -775,9 +781,9 @@ export function useChat() {
 
     try {
       if (imageRequest) {
-        const { width, height } = imageRequest;
+        const { width, height, model } = imageRequest;
         const prompt = stripNaidanSentinels(parentNode!.content).trim();
-        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height });
+        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, model });
         return;
       }
 
@@ -981,22 +987,22 @@ export function useChat() {
       }
 
       let finalContent = content;
-      const isImageMode = target ? !!imageModeMap.value[rawTarget.id] : false;
-      const imageModel = isImageMode ? findImageGenerationModel(availableModels.value) : null;
+      const isImgMode = isImageMode({ chatId: chat.id });
+      const imageModel = isImgMode ? getSelectedImageModel({ chatId: chat.id, availableModels: availableModels.value }) : undefined;
 
-      if (isImageMode && !isImageRequest(content)) {
+      if (isImgMode && !isImageRequest(content)) {
         if (!imageModel) {
           const { useGlobalEvents } = await import('../composables/useGlobalEvents');
           const { addErrorEvent } = useGlobalEvents();
           addErrorEvent({ source: 'useChat:sendMessage', message: 'No image generation model found (starting with x/z-image-turbo:).' });
           return false;
         }
-        const res = imageResolutionMap.value[rawTarget.id] || { width: 512, height: 512 };
-        finalContent = createImageRequestMarker(res) + content;
+        const res = getResolution({ chatId: chat.id });
+        finalContent = createImageRequestMarker({ ...res, model: imageModel }) + content;
       }
 
       const userMsg: MessageNode = { id: crypto.randomUUID(), role: 'user', content: finalContent, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
-      const assistantMsg: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: isImageMode ? SENTINEL_IMAGE_PENDING : '', timestamp: Date.now(), modelId: imageModel || resolvedModel, replies: { items: [] }, };
+      const assistantMsg: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: isImgMode ? SENTINEL_IMAGE_PENDING : '', timestamp: Date.now(), modelId: imageModel || resolvedModel, replies: { items: [] }, };
       userMsg.replies.items.push(assistantMsg);
 
       if (!chat.root) chat.root = { items: [] };
@@ -1331,39 +1337,22 @@ export function useChat() {
     });
   };
 
-  const generateImage = async ({ chatId, prompt, model, width, height }: {
-    chatId: string;
-    prompt: string;
-    model: string;
-    width: number;
-    height: number;
+  const generateImage = async ({ prompt, model, width, height, chat }: {
+    prompt: string,
+    model: string,
+    width: number,
+    height: number,
+    chat: Chat
   }) => {
-    const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
-    if (!target) return;
-    const chat = getLiveChat(target);
     const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
-
-    const type = resolved.endpointType;
-    switch (type) {
-    case 'ollama':
-      break;
-    case 'openai':
-    case 'transformers_js':
-      throw new Error('Image generation is only supported for Ollama');
-    default: {
-      const _ex: never = type;
-      throw new Error(`Unhandled endpoint type: ${_ex}`);
-    }
-    }
-
-    incTask(chatId, 'process');
-    try {
-      const provider = new OllamaProvider({ endpoint: resolved.endpointUrl, headers: resolved.endpointHttpHeaders });
-      const blob = await provider.generateImage({ prompt, model, width, height, signal: undefined });
-      return blob;
-    } finally {
-      decTask(chatId, 'process');
-    }
+    return await _performGeneration({
+      prompt,
+      model,
+      width,
+      height,
+      endpointUrl: resolved.endpointUrl,
+      endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined
+    });
   };
 
   const sendImageRequest = async ({ prompt, width, height }: {
@@ -1373,23 +1362,14 @@ export function useChat() {
   }): Promise<boolean> => {
     const target = _currentChat.value;
     if (!target) return false;
-    const chatId = toRaw(target).id;
-
-    // Temporarily set mode and resolution to ensure sendMessage adds the marker
-    const prevMode = !!imageModeMap.value[chatId];
-    const prevRes = imageResolutionMap.value[chatId];
-    
-    imageModeMap.value[chatId] = true;
-    imageResolutionMap.value[chatId] = { width, height };
-
-    try {
-      // Use parentId: null for root-level branching (one-shot)
-      return await sendMessage(prompt, null);
-    } finally {
-      // Restore previous settings if they were different
-      imageModeMap.value[chatId] = prevMode;
-      if (prevRes) imageResolutionMap.value[chatId] = prevRes;
-    }
+    return await _sendImageRequest({
+      prompt,
+      width,
+      height,
+      chatId: toRaw(target).id,
+      availableModels: availableModels.value,
+      sendMessage: ({ content, parentId }) => sendMessage(content, parentId || null)
+    });
   };
 
   const createChatGroup = async (name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
@@ -1561,7 +1541,8 @@ export function useChat() {
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,
-    imageModeMap, imageResolutionMap,
+    imageModeMap, imageResolutionMap, imageModelOverrideMap,
+    isImageMode, toggleImageMode, getResolution, updateResolution, setImageModel, getSelectedImageModel, getSortedImageModels,
     loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, sendImageRequest, createChatGroup, deleteChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
     __testOnly: {

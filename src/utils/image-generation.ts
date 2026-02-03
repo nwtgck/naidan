@@ -12,21 +12,22 @@ export const SENTINEL_IMAGE_PROCESSED = '<!-- naidan_experimental_image_generati
 export interface ImageRequestParams {
   width: number;
   height: number;
+  model: string;
 }
 
 /**
- * Finds an image generation model from a list of available models.
+ * Finds all image generation models from a list of available models.
  * Currently looks for any model starting with 'x/z-image-turbo:'.
  */
-export function findImageGenerationModel(models: string[]): string | null {
-  return models.find(m => m.startsWith('x/z-image-turbo:')) || null;
+export function getImageGenerationModels(models: string[]): string[] {
+  return models.filter(m => m.startsWith('x/z-image-turbo:'));
 }
 
 /**
  * Creates a sentinel marker for an image generation request.
  */
-export function createImageRequestMarker({ width, height }: ImageRequestParams): string {
-  const params = JSON.stringify({ width, height });
+export function createImageRequestMarker({ width, height, model }: ImageRequestParams): string {
+  const params = JSON.stringify({ width, height, model });
   return `${SENTINEL_IMAGE_REQUEST_PREFIX} ${params} -->`;
 }
 
@@ -47,11 +48,12 @@ export function parseImageRequest(content: string): ImageRequestParams | null {
     const params = JSON.parse(match[1] || '{}');
     return {
       width: typeof params.width === 'number' ? params.width : 512,
-      height: typeof params.height === 'number' ? params.height : 512
+      height: typeof params.height === 'number' ? params.height : 512,
+      model: typeof params.model === 'string' ? params.model : ''
     };
   } catch (e) {
     console.warn('Failed to parse image request params', e);
-    return { width: 512, height: 512 };
+    return null;
   }
 }
 

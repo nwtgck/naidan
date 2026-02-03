@@ -13,7 +13,7 @@
     <!-- Magical Particles (More visible & vibrant) -->
     <div class="absolute inset-0 overflow-hidden pointer-events-none">
       <div v-for="i in 30" :key="i" class="magic-particle" 
-        :style="`
+           :style="`
           --d: ${Math.random() * 360}deg; 
           --t: ${3 + Math.random() * 2}s; 
           --del: -${Math.random() * 5}s; 
