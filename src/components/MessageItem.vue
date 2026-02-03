@@ -30,6 +30,7 @@ import 'katex/dist/katex.min.css';
 import type { MessageNode } from '../models/types';
 import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
+import SpeechControl from './SpeechControl.vue';
 
 const props = defineProps<{
   message: MessageNode;
@@ -466,7 +467,10 @@ function handleToggleThinking() {
       </div>
       <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
         <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
-        <span v-else>{{ message.modelId || 'Assistant' }}</span>
+        <template v-else>
+          <span>{{ message.modelId || 'Assistant' }}</span>
+          <SpeechControl :message-id="message.id" :content="message.content" />
+        </template>
       </div>
     </div>
     
@@ -637,6 +641,9 @@ function handleToggleThinking() {
 
           <!-- Message Actions -->
           <div class="flex items-center gap-1">
+            <!-- Speech Controls -->
+            <SpeechControl :message-id="message.id" :content="message.content" show-full-controls />
+
             <button 
               v-if="!isUser"
               @click="emit('regenerate', message.id)"
