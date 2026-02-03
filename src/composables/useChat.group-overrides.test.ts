@@ -206,7 +206,7 @@ describe('useChat Group Overrides Resolution', () => {
     expect(chatStore.currentChatGroup.value).toBeNull();
 
     chatStore.__testOnly.__testOnlySetCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
-    await chatStore.createNewChat();
+    await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     expect(chatStore.currentChatGroup.value).toBeNull();
   });
 

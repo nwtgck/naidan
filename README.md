@@ -97,11 +97,14 @@ Naidan supports URL fragment parameters (following the `#`) to automate actions 
 -   `q`: **Auto-Prompt**. Automatically creates a new chat and sends this message upon opening.
 -   `model`: **Model Override**. Specifies the model ID to use for the new chat.
 -   `chat-group`: **Target Group**. The name or ID of the group for the new chat. If the group doesn't exist, it is created automatically.
+-   `system-prompt` (or `sp`): **System Prompt Override**. Specifies the system prompt for the new chat. This will set the chat's system behavior to `override` with the provided content.
 
 ### Examples
 
 -   **Quick Question**: Start a chat immediately with a prompt.
     `index.html#/?q=%s`
+-   **Custom Behavior**: Start a chat with a specific system instruction.
+    `index.html#/?sp=You+are+a+concise+assistant&q=%s`
 -   **Organized Chat**: Start a chat directly inside a specific group.
     `index.html#/?chat-group=Work&q=%s`
 

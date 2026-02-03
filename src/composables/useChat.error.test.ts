@@ -64,7 +64,7 @@ describe('useChat Error Handling', () => {
   it('should set error state on assistant node when generation fails', async () => {
     const chatStore = useChat();
     const { createNewChat, sendMessage, activeMessages } = chatStore;
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
     // Setup failure
     mockChat.mockRejectedValue(new Error('API Error'));
@@ -82,7 +82,7 @@ describe('useChat Error Handling', () => {
   it('should retry message by creating a sibling node', async () => {
     const chatStore = useChat();
     const { createNewChat, sendMessage, activeMessages, regenerateMessage, currentChat } = chatStore;
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
     // 1. Fail first
     mockChat.mockRejectedValueOnce(new Error('First Fail'));

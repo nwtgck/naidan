@@ -59,7 +59,7 @@ describe('useChat System Prompt Clear Policy', () => {
   });
 
   it('Policy: Override with null (Clear) should result in empty system message', async () => {
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
 
@@ -82,7 +82,7 @@ describe('useChat System Prompt Clear Policy', () => {
   });
 
   it('Policy: Override with empty string ("") should also result in empty system message', async () => {
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
 
@@ -98,7 +98,7 @@ describe('useChat System Prompt Clear Policy', () => {
   });
 
   it('Policy: Group-level Clear should affect chats in that group', async () => {
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
 
@@ -120,7 +120,7 @@ describe('useChat System Prompt Clear Policy', () => {
   });
 
   it('Policy: Chat can Override a Group-level Clear', async () => {
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
 

@@ -602,7 +602,7 @@ describe('useChat Composable Logic', () => {
     await chatStore.loadChats(); 
     expect(rootItems.value).toHaveLength(2);
 
-    await chatStore.createNewChat();
+    await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
     expect(mockHierarchy.items).toHaveLength(3);
     expect(mockHierarchy.items[0]?.id).toBe('g1');
@@ -629,13 +629,28 @@ describe('useChat Composable Logic', () => {
       ];
       await chatStore.loadChats();
 
-      await chatStore.createNewChat();
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       expect(mockHierarchy.items).toHaveLength(4);
       expect(mockHierarchy.items[0]?.id).toBe('g1');
       expect(mockHierarchy.items[1]?.id).toBe('g2');
       expect(mockHierarchy.items[2]?.type).toBe('chat');
       expect(mockHierarchy.items[3]?.id).toBe('c1');
+    });
+
+    it('should correctly initialize a new chat with a system prompt override', async () => {
+      const chat = await chatStore.createNewChat({ 
+        groupId: undefined, 
+        modelId: undefined, 
+        systemPrompt: { behavior: 'override', content: 'Custom system prompt' } 
+      });
+      expect(chat!.systemPrompt).toEqual({ behavior: 'override', content: 'Custom system prompt' });
+      
+      // Verify persistence call
+      expect(storageService.updateChatMeta).toHaveBeenCalledWith(
+        chat!.id,
+        expect.any(Function)
+      );
     });
 
     it('should insert before the first chat even if groups exist later in the list', async () => {
@@ -649,7 +664,7 @@ describe('useChat Composable Logic', () => {
       ];
       await chatStore.loadChats();
 
-      await chatStore.createNewChat();
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       expect(mockHierarchy.items[1]?.id).toBe('g2');
       expect(mockHierarchy.items[2]?.type).toBe('chat');
@@ -666,7 +681,7 @@ describe('useChat Composable Logic', () => {
       ];
       await chatStore.loadChats();
 
-      await chatStore.createNewChat();
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       // Should be: g1, g2, NEW, c1, c2, g3
       expect(mockHierarchy.items).toHaveLength(6);
@@ -691,7 +706,7 @@ describe('useChat Composable Logic', () => {
       ];
       await chatStore.loadChats();
 
-      await chatStore.createNewChat();
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       expect(mockHierarchy.items[0]?.type).toBe('chat');
       expect(mockHierarchy.items[0]?.id).not.toBe('c1');
@@ -710,7 +725,7 @@ describe('useChat Composable Logic', () => {
       ];
       await chatStore.loadChats();
 
-      await chatStore.createNewChat();
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       expect(mockHierarchy.items).toHaveLength(2);
       expect(mockHierarchy.items[0]?.id).toBe('g1');

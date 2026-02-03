@@ -84,7 +84,7 @@ describe('useChat Settings Resolution Policy', () => {
       defaultModelId: 'global-gpt',
     });
     
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
 
@@ -110,7 +110,7 @@ describe('useChat Settings Resolution Policy', () => {
   });
 
   it('Policy: Prioritize chat-level modelId (Pinning)', async () => {
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
     await updateChatModel(id, 'pinned-model');
@@ -127,7 +127,7 @@ describe('useChat Settings Resolution Policy', () => {
   });
 
   it('Policy: Respect chat-level endpoint settings while following global model if not pinned', async () => {
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
     await updateChatSettings(id, {
@@ -148,7 +148,7 @@ describe('useChat Settings Resolution Policy', () => {
   });
 
   it('Policy: Dynamic resolution when preferred model is unavailable', async () => {
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
 
@@ -162,7 +162,7 @@ describe('useChat Settings Resolution Policy', () => {
   it('Policy: Resolve headers hierarchically (Chat > Global)', async () => {
     // 1. Global only
     __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), endpointHttpHeaders: [['X-Global', '1']] });
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
 
@@ -181,7 +181,7 @@ describe('useChat Settings Resolution Policy', () => {
     const { rootItems, resolvedSettings, createNewChat, openChat, updateChatModel, updateChatGroupOverride } = chatStore;
     
     // 1. Initial State: Global Default
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
 

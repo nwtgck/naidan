@@ -72,7 +72,7 @@ describe('useChat Advanced Settings Resolution', () => {
     mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Resp'));
     mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Resp'));
     
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await openChat(chat!.id);
   });
 

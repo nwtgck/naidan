@@ -56,7 +56,7 @@ describe('useChat Reactivity', () => {
   });
 
   it('should reflect streamed chunks in activeMessages immediately', async () => {
-    await chatStore.createNewChat();
+    await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chat = chatStore.currentChat.value!;
 
     // Start sending

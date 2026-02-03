@@ -71,7 +71,7 @@ describe('useChat Persistence Timing', () => {
     const chatStore = useChat();
     const { sendMessage, createNewChat } = chatStore;
     
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     
     // First message (User -> Assistant)
     await sendMessage('Hello');
@@ -86,7 +86,7 @@ describe('useChat Persistence Timing', () => {
     const chatStore = useChat();
     const { sendMessage, createNewChat } = chatStore;
     
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     
     // First message
     await sendMessage('Message 1');
@@ -105,13 +105,13 @@ describe('useChat Persistence Timing', () => {
     const { sendMessage, createNewChat } = chatStore;
     
     // Chat 1
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await sendMessage('Chat 1 Message 1');
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(persistMock).toHaveBeenCalledTimes(1);
     
     // Chat 2
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await sendMessage('Chat 2 Message 1');
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(persistMock).toHaveBeenCalledTimes(1); // Should still be 1 because of module-level session flag

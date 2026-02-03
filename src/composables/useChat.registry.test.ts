@@ -82,7 +82,7 @@ describe('useChat Registry Lifecycle', () => {
     activeGenerations.clear();
     liveChatRegistry.clear();
 
-    const chatObj = await createNewChat();
+    const chatObj = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chatObj?.id;
     await openChat(chatId!);
     const chat = currentChat.value!;
@@ -140,7 +140,7 @@ describe('useChat Registry Lifecycle', () => {
     const { liveChatRegistry, __testOnlySetCurrentChat } = __testOnly;
     liveChatRegistry.clear();
     
-    const chatObj = await createNewChat();
+    const chatObj = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chatObj?.id;
     await openChat(chatId!);
     const chat = currentChat.value!;

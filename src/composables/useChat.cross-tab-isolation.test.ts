@@ -203,7 +203,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
   it('should sync title changes (chat_meta_and_chat_group)', async () => {
     const tabA = await createTab();
     const tabB = await createTab();
-    const chat = await tabA.createNewChat(null, 'gpt-4');
+    const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
     await tabB.openChat(chat!.id);
     await tabA.renameChat(chat!.id, 'New Title');
@@ -215,7 +215,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
   it('should sync sidebar reordering (chat_meta_and_chat_group)', async () => {
     const tabA = await createTab();
     const tabB = await createTab();
-    const chat = await tabA.createNewChat(null, 'gpt-4');
+    const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
     await nextTick();
     expect(tabB.rootItems.value.length).toBe(1);
@@ -236,7 +236,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
   it('should sync message additions (chat_content)', async () => {
     const tabA = await createTab();
     const tabB = await createTab();
-    const chat = await tabA.createNewChat(null, 'gpt-4');
+    const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
     await tabB.openChat(chat!.id);
 
@@ -264,7 +264,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
   it('should clear everything and close chat on migration event', async () => {
     const tabA = await createTab();
     const tabB = await createTab();
-    const chat = await tabA.createNewChat(null, 'gpt-4');
+    const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
     await tabB.openChat(chat!.id);
     expect(tabB.currentChat.value).not.toBeNull();
@@ -282,7 +282,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabA = await createTab();
     const tabB = await createTab();
     
-    const chat = await tabA.createNewChat(null, 'gpt-4');
+    const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
     await tabB.openChat(chat!.id);
     
@@ -313,8 +313,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tab2 = await createTab();
     
     // 1. Setup two chats
-    const chat1 = await tab1.createNewChat(null, 'gpt-4');
-    const chat2 = await tab2.createNewChat(null, 'gpt-4');
+    const chat1 = await tab1.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
+    const chat2 = await tab2.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
 
     // 2. Both tabs open both chats (in reality they see them in sidebar)

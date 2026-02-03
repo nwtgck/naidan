@@ -74,7 +74,7 @@ describe('useChat Streaming State Logic', () => {
   });
 
   it('should correctly set streaming state when generation starts and ends', async () => {
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chat = currentChat.value!;
     
     let resolveGen: () => void;
@@ -101,7 +101,7 @@ describe('useChat Streaming State Logic', () => {
   });
 
   it('should clear streaming state when aborted', async () => {
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chat = currentChat.value!;
     
     let resolveGen: () => void;

@@ -167,7 +167,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
   it('should allow multiple chats to stream concurrently', async () => {
     const { createNewChat, sendMessage } = useChat();
 
-    const chatAId = (await createNewChat())!.id;
+    const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = currentChat.value!;
     
     let resolveChatA: () => void;
@@ -186,7 +186,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chatAId);
 
-    const chatBId = (await createNewChat())!.id;
+    const chatBId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatB = currentChat.value!;
 
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
@@ -218,7 +218,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage } = useChat();
 
     // 1. Create Chat A (Individual)
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatA = currentChat.value!;
     const chatAId = chatA.id;
 
@@ -253,7 +253,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
   it('should not overwrite manual renames if renamed while generating in background', async () => {
     const { createNewChat, sendMessage, renameChat } = useChat();
 
-    const chatAId = (await createNewChat())!.id;
+    const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = await storageService.loadChat(chatAId) as Chat;
     chatA.title = 'Original Title';
     await storageService.updateChatMeta(chatAId, () => chatA);
@@ -283,7 +283,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
   it('should not resurrect a deleted chat when background generation finishes', async () => {
     const { createNewChat, currentChat, sendMessage, deleteChat } = useChat();
 
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatA = currentChat.value!;
     const chatAId = chatA.id;
 
@@ -313,7 +313,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage, deleteAllChats } = useChat();
 
     // 1. Start two background generations
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatAId = currentChat.value!.id;
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
@@ -325,7 +325,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const sendA = sendMessage('A');
     await waitForRegistry(chatAId);
 
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatBId = currentChat.value!.id;
     let resolveB: () => void;
     const pB = new Promise<void>(r => resolveB = r);
@@ -354,7 +354,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage, renameChat } = useChat();
 
     // 1. Start Chat A
-    const chatAId = (await createNewChat())!.id;
+    const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = await storageService.loadChat(chatAId) as Chat;
     chatA.title = 'Original';
     await storageService.updateChatMeta(chatAId, () => chatA);
@@ -370,7 +370,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // 2. Switch away from A
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     expect(currentChat.value?.id).not.toBe(chatAId);
 
     // 3. Rename A in background (simulating sidebar edit)
@@ -390,7 +390,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     mockSettings.value.autoTitleEnabled = true;
 
     // 1. Setup Chat A
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatA = currentChat.value!;
     const chatAId = chatA.id;
 
@@ -431,7 +431,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage } = useChat();
 
     // 1. Setup Chat A in Group 1
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatA = currentChat.value!;
     const chatAId = chatA.id;
     
@@ -471,7 +471,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage } = useChat();
     
     // 1. Start Chat A
-    const chatA = await createNewChat();
+    const chatA = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatAId = chatA!.id;
     const chatA_initial = await storageService.loadChat(chatAId) as Chat;
     
@@ -480,7 +480,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     });
     
     // 2. Switch to Chat B (Active)
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatBId = currentChat.value!.id;
     expect(currentChat.value?.id).toBe(chatBId);
 
@@ -502,7 +502,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage, abortChat } = useChat();
 
     // 1. Start Chat A
-    const chatAId = (await createNewChat())!.id;
+    const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = currentChat.value!;
 
     let resolveA: () => void;
@@ -517,7 +517,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // 2. Start Chat B
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatB = currentChat.value!;
     const chatBId = chatB.id;
                             
@@ -560,7 +560,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
   it('should prevent multiple simultaneous sendMessage calls for the same chat', async () => {
     const { createNewChat, currentChat, sendMessage } = useChat();
 
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chat = currentChat.value!;
     
     let resolveModels: (v: string[]) => void;
@@ -589,7 +589,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     mockListModels.mockResolvedValue(['gpt-4']); // Reset for this test
 
     // 1. Start Chat A (Slow Generation)
-    const chatAId = (await createNewChat())!.id;
+    const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = currentChat.value!;
     
     let resolveA: () => void;
@@ -605,7 +605,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // 2. Create Chat B while A is still streaming
-    const chatBId = (await createNewChat())!.id;
+    const chatBId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatB = currentChat.value!;
     expect(chatBId).not.toBe(chatAId);
     expect(activeGenerations.has(chatAId)).toBe(true);

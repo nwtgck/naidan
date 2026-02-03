@@ -215,9 +215,13 @@ async function handleDeleteChatGroup(group: ChatGroup) {
   await chatStore.deleteChatGroup(group.id);
 }
 
-async function handleNewChat(chatGroupId: string | null = null) {
+async function handleNewChat(groupId: string | undefined = undefined) {
   setActiveFocusArea('chat');
-  await chatStore.createNewChat(chatGroupId);
+  await chatStore.createNewChat({ 
+    groupId, 
+    modelId: undefined, 
+    systemPrompt: undefined 
+  });
   if (currentChat.value) {
     router.push(`/chat/${currentChat.value.id}`);
   }
@@ -564,7 +568,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     <div class="py-4 space-y-2" :class="isSidebarOpen ? 'px-4' : 'px-1'">
       <div class="flex gap-2" :class="{ 'flex-col items-center': !isSidebarOpen }">
         <button 
-          @click="handleNewChat(null)"
+          @click="handleNewChat(undefined)"
           class="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
           :class="isSidebarOpen ? 'flex-1 px-3 py-3 text-xs' : 'w-8 h-8'"
           data-testid="new-chat-button"

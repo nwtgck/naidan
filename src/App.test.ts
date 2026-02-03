@@ -264,7 +264,11 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalledWith('group-123', null);
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: 'group-123',
+      modelId: undefined,
+      systemPrompt: undefined
+    });
     expect(mockRouterPush).toHaveBeenCalledWith({
       path: '/chat/grouped-chat-id',
       query: { q: 'hello' }
@@ -280,8 +284,8 @@ describe('App', () => {
       currentRoute: ref(currentRoute),
     });
     (useRoute as Mock).mockReturnValue(currentRoute);
-    mockCreateNewChat.mockImplementation(async (groupId) => {
-      mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
+    mockCreateNewChat.mockImplementation(async (options) => {
+      mockCurrentChat.value = { id: 'grouped-chat-id', groupId: options.groupId } as unknown as Chat;
     });
 
     mountApp();
@@ -290,7 +294,11 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalledWith('group-uuid-123', null);
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: 'group-uuid-123',
+      modelId: undefined,
+      systemPrompt: undefined
+    });
   });
 
   it('automatically creates a new group if chat-group name does not exist', async () => {
@@ -303,8 +311,8 @@ describe('App', () => {
     });
     (useRoute as Mock).mockReturnValue(currentRoute);
     mockCreateChatGroup.mockResolvedValue('new-group-uuid');
-    mockCreateNewChat.mockImplementation(async (groupId) => {
-      mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
+    mockCreateNewChat.mockImplementation(async (options) => {
+      mockCurrentChat.value = { id: 'grouped-chat-id', groupId: options.groupId } as unknown as Chat;
     });
 
     mountApp();
@@ -314,7 +322,11 @@ describe('App', () => {
     await nextTick();
 
     expect(mockCreateChatGroup).toHaveBeenCalledWith('New Group Name');
-    expect(mockCreateNewChat).toHaveBeenCalledWith('new-group-uuid', null);
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: 'new-group-uuid',
+      modelId: undefined,
+      systemPrompt: undefined
+    });
   });
 
   it('automatically creates a new chat with model override when q and model are present', async () => {
@@ -325,8 +337,8 @@ describe('App', () => {
       currentRoute: ref(currentRoute),
     });
     (useRoute as Mock).mockReturnValue(currentRoute);
-    mockCreateNewChat.mockImplementation(async (groupId, modelId) => {
-      mockCurrentChat.value = { id: 'model-chat-id', groupId, modelId } as unknown as Chat;
+    mockCreateNewChat.mockImplementation(async (options) => {
+      mockCurrentChat.value = { id: 'model-chat-id', groupId: options.groupId, modelId: options.modelId } as unknown as Chat;
     });
 
     mountApp();
@@ -335,10 +347,103 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalledWith(null, 'special-model');
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: 'special-model',
+      systemPrompt: undefined
+    });
     expect(mockRouterPush).toHaveBeenCalledWith({
       path: '/chat/model-chat-id',
       query: { q: 'hello' }
+    });
+  });
+
+  it('automatically creates a new chat with system prompt override when system-prompt query is present', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', 'system-prompt': 'You are a helpful assistant' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute: ref(currentRoute),
+    });
+    (useRoute as Mock).mockReturnValue(currentRoute);
+    mockCreateNewChat.mockImplementation(async (options) => {
+      mockCurrentChat.value = { id: 'sp-chat-id', systemPrompt: options.systemPrompt } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: { behavior: 'override', content: 'You are a helpful assistant' }
+    });
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      path: '/chat/sp-chat-id',
+      query: { q: 'hello' }
+    });
+  });
+
+  it('does NOT create a new chat when system-prompt is present but q is missing', async () => {
+    mockChats.value = [{ id: 'existing' } as any]; // Non-empty list
+    const currentRoute = reactive({ path: '/', query: { 'system-prompt': 'You are a cat' } });
+    (useRouter as any).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute: ref(currentRoute),
+    });
+    (useRoute as any).mockReturnValue(currentRoute);
+
+    mountApp();
+    await flushPromises();
+
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
+  });
+
+  it('creates a plain chat when list is empty even if system-prompt is in URL but q is missing', async () => {
+    mockChats.value = []; // Empty list
+    const currentRoute = reactive({ path: '/', query: { 'system-prompt': 'You are a cat' } });
+    (useRouter as any).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute: ref(currentRoute),
+    });
+    (useRoute as any).mockReturnValue(currentRoute);
+
+    mountApp();
+    await flushPromises();
+
+    // Should create a chat because len === 0, but parameters should be ignored
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: undefined
+    });
+  });
+
+  it('automatically creates a new chat with system prompt override when sp query is present', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', sp: 'Be concise' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute: ref(currentRoute),
+    });
+    (useRoute as Mock).mockReturnValue(currentRoute);
+    mockCreateNewChat.mockImplementation(async (options) => {
+      mockCurrentChat.value = { id: 'sp-alias-id', systemPrompt: options.systemPrompt } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: { behavior: 'override', content: 'Be concise' }
     });
   });
 
@@ -414,7 +519,11 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalled();
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: undefined
+    });
     expect(mockRouterPush).toHaveBeenCalledWith('/chat/new-chat-id');
   });
 
@@ -438,7 +547,11 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalled();
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: undefined
+    });
     expect(mockRouterPush).toHaveBeenCalledWith('/chat/mac-chat-id');
   });
 

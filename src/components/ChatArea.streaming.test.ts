@@ -93,7 +93,11 @@ describe('ChatArea Streaming DOM Test', () => {
 
   it('should render assistant chunks in the DOM in real-time', async () => {
     const { createNewChat } = useChat();
-    await createNewChat(); 
+    await createNewChat({ 
+      groupId: undefined, 
+      modelId: undefined, 
+      systemPrompt: undefined 
+    }); 
 
     const wrapper = mount(ChatArea, {
       global: {

@@ -463,16 +463,22 @@ export function useChat() {
     });
   };
 
-  const createNewChat = async (chatGroupId: string | null = null, modelId: string | null = null): Promise<Chat | null> => {
+  const createNewChat = async (options: { 
+    groupId: string | undefined; 
+    modelId: string | undefined; 
+    systemPrompt: SystemPrompt | undefined; 
+  }): Promise<Chat | null> => {
+    const { groupId, modelId, systemPrompt } = options;
     if (creatingChat.value) return null;
     _currentChatGroup.value = null;
     creatingChat.value = true;
     const chatId = crypto.randomUUID();
     try {
       const chatObj: Chat = reactive({
-        id: chatId, title: null, groupId: chatGroupId, root: { items: [] },
+        id: chatId, title: null, groupId: groupId ?? null, root: { items: [] },
         createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
         modelId: modelId ?? undefined,
+        systemPrompt,
       });
 
       registerLiveInstance(chatObj);
@@ -480,8 +486,8 @@ export function useChat() {
       await updateChatMeta(chatId, () => chatObj);
 
       await storageService.updateHierarchy((curr) => {
-        if (chatGroupId) {
-          const group = curr.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
+        if (groupId) {
+          const group = curr.items.find(i => i.type === 'chat_group' && i.id === groupId) as HierarchyChatGroupNode;
           if (group) {
             group.chat_ids.unshift(chatId); return curr; 
           }

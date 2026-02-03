@@ -133,7 +133,7 @@ describe('useChat - Attachment & Migration Logic', () => {
 
   it('should keep attachments in memory status when using LocalStorage', async () => {
     const { sendMessage, createNewChat, openChat } = chatStore;
-    const newChat = await createNewChat();
+    const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatObj = await openChat(newChat!.id);
 
     const mockAttachment: Attachment = {
@@ -161,7 +161,7 @@ describe('useChat - Attachment & Migration Logic', () => {
     (storageService as any).canPersistBinary = true;
     
     const { sendMessage, createNewChat, openChat } = chatStore;
-    const newChat = await createNewChat();
+    const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatObj = await openChat(newChat!.id);
 
     const mockAttachment: Attachment = {
