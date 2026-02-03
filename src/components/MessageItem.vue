@@ -488,7 +488,7 @@ function handleToggleThinking() {
         <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
         <template v-else>
           <span>{{ message.modelId || 'Assistant' }}</span>
-          <SpeechControl :message-id="message.id" :content="speechText" />
+          <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" />
         </template>
       </div>
     </div>
@@ -664,7 +664,7 @@ function handleToggleThinking() {
           <!-- Message Actions -->
           <div class="flex items-center gap-1">
             <!-- Speech Controls -->
-            <SpeechControl :message-id="message.id" :content="speechText" show-full-controls />
+            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" show-full-controls />
 
             <button 
               v-if="!isUser"
