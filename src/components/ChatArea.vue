@@ -44,6 +44,16 @@ const isImageMode = computed({
     }
   }
 });
+const imageResolutionMap = ref<Record<string, { width: number, height: number }>>({});
+const currentResolution = computed(() => {
+  return (currentChat.value ? imageResolutionMap.value[currentChat.value.id] : null) || { width: 512, height: 512 };
+});
+
+function updateResolution(width: number, height: number) {
+  if (currentChat.value) {
+    imageResolutionMap.value[currentChat.value.id] = { width, height };
+  }
+}
 useSettings();
 const router = useRouter();
 
@@ -358,7 +368,12 @@ async function handleGenerateImage() {
   if (!currentChat.value || !input.value.trim() || isCurrentChatStreaming.value) return;
   
   const prompt = input.value;
-  const success = await chatStore.sendImageRequest({ prompt });
+  const { width, height } = currentResolution.value;
+  const success = await chatStore.sendImageRequest({ 
+    prompt, 
+    width, 
+    height 
+  });
   if (success) {
     input.value = '';
     nextTick(adjustTextareaHeight);
@@ -896,7 +911,10 @@ onUnmounted(() => {
               :can-generate-image="canGenerateImage"
               :is-processing="isCurrentChatStreaming"
               :is-image-mode="isImageMode"
+              :selected-width="currentResolution.width"
+              :selected-height="currentResolution.height"
               @toggle-image-mode="toggleImageMode"
+              @update:resolution="updateResolution"
             />
           </div>
 

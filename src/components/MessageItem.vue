@@ -400,7 +400,10 @@ const displayContent = computed(() => {
   let content = props.message.content;
   
   // Remove <think> blocks for display
-  const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '');
+  const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+
+  // Treat image generation sentinel as empty for display purposes
+  if (cleanContent === '<!-- naidan_experimental_image_generation_pending -->') return '';
   
   // If we have any content after removing <think>, return it (even if just whitespace)
   // to signal that we are no longer in "initial loading" state.
@@ -417,8 +420,8 @@ const parsedContent = computed(() => {
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     FORBID_ATTR: ['onerror', 'onclick', 'onload'], // Explicitly forbid dangerous attributes
-    // Allow blob: protocol for experimental image generation
-    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|blob):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    // Allow blob: and data: protocols for experimental image generation
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|blob|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
   });
 });
 
@@ -599,7 +602,7 @@ function handleToggleThinking() {
         <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
 
         <!-- AI Image Synthesis Loader (Componentized) -->
-        <ImageConjuringLoader v-else-if="message.modelId === 'x/z-image-turbo' && message.role === 'assistant' && !message.error" />
+        <ImageConjuringLoader v-else-if="message.content === '<!-- naidan_experimental_image_generation_pending -->' && message.role === 'assistant' && !message.error" />
 
         <!-- Loading State (Initial Wait for regular text) -->
         <div v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">

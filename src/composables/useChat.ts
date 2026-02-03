@@ -1243,10 +1243,12 @@ export function useChat() {
     });
   };
 
-  const generateImage = async ({ chatId, prompt, model }: {
+  const generateImage = async ({ chatId, prompt, model, width, height }: {
     chatId: string;
     prompt: string;
     model: string;
+    width: number;
+    height: number;
   }) => {
     const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
     if (!target) return;
@@ -1269,15 +1271,17 @@ export function useChat() {
     incTask(chatId, 'process');
     try {
       const provider = new OllamaProvider({ endpoint: resolved.endpointUrl, headers: resolved.endpointHttpHeaders });
-      const blob = await provider.generateImage({ prompt, model, signal: undefined });
+      const blob = await provider.generateImage({ prompt, model, width, height, signal: undefined });
       return blob;
     } finally {
       decTask(chatId, 'process');
     }
   };
 
-  const sendImageRequest = async ({ prompt }: {
+  const sendImageRequest = async ({ prompt, width, height }: {
     prompt: string;
+    width: number;
+    height: number;
   }): Promise<boolean> => {
     const target = _currentChat.value;
     if (!target) return false;
@@ -1297,7 +1301,7 @@ export function useChat() {
     const assistantMsg: MessageNode = {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: '',
+      content: '<!-- naidan_experimental_image_generation_pending -->',
       timestamp: Date.now(),
       modelId: imageModel,
       replies: { items: [] },
@@ -1326,14 +1330,17 @@ export function useChat() {
     // 5. Generate image in background
     (async () => {
       try {
-        const blob = await generateImage({ chatId, prompt, model: imageModel });
+        const blob = await generateImage({ chatId, prompt, model: imageModel, width, height });
         if (!blob) throw new Error('Failed to generate image');
         
-        const url = URL.createObjectURL(blob);
+        const url = settings.value.storageType === 'opfs' 
+          ? await fileToDataUrl(blob) 
+          : URL.createObjectURL(blob);
+
         // Re-find the node to ensure we update the reactive instance
         const node = findNodeInBranch(chat.root.items, assistantMsg.id);
         if (node) {
-          node.content = `![${prompt.replace(/[\[\]]/g, '')}](${url})`;
+          node.content = `![generated image](${url})`;
         }
       } catch (e) {
         const node = findNodeInBranch(chat.root.items, assistantMsg.id);

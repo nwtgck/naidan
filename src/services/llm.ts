@@ -474,9 +474,11 @@ export class OllamaProvider implements LLMProvider {
     return validated.models.map((m) => m.name);
   }
 
-  async generateImage({ prompt, model, signal }: {
+  async generateImage({ prompt, model, width, height, signal }: {
     prompt: string;
     model: string;
+    width: number;
+    height: number;
     signal: AbortSignal | undefined;
   }): Promise<Blob> {
     const { endpoint, headers } = this.config;
@@ -488,7 +490,7 @@ export class OllamaProvider implements LLMProvider {
     const body = {
       model,
       prompt,
-      size: '512x512',
+      size: `${width}x${height}`,
       response_format: 'b64_json',
     };
 
