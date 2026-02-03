@@ -63,13 +63,14 @@ export function useImageGeneration() {
     return naturalSort(getImageGenerationModels(availableModels));
   };
 
-  const performBase64Generation = async ({ prompt, model, width, height, endpointUrl, endpointHttpHeaders }: {
+  const performBase64Generation = async ({ prompt, model, width, height, endpointUrl, endpointHttpHeaders, signal }: {
     prompt: string,
     model: string,
     width: number,
     height: number,
     endpointUrl: string,
-    endpointHttpHeaders: [string, string][] | undefined
+    endpointHttpHeaders: [string, string][] | undefined,
+    signal: AbortSignal | undefined
   }) => {
     const provider = new OllamaProvider({ 
       endpoint: endpointUrl, 
@@ -81,7 +82,7 @@ export function useImageGeneration() {
       model, 
       width, 
       height, 
-      signal: undefined 
+      signal 
     });
   };
 
@@ -96,6 +97,7 @@ export function useImageGeneration() {
     endpointUrl,
     endpointHttpHeaders,
     storageType,
+    signal,
     getLiveChat,
     updateChatContent,
     triggerChatRef,
@@ -112,6 +114,7 @@ export function useImageGeneration() {
     endpointUrl: string,
     endpointHttpHeaders: [string, string][] | undefined,
     storageType: 'opfs' | 'local',
+    signal: AbortSignal | undefined,
     getLiveChat: ({ chat }: { chat: Chat }) => Chat | undefined,
     updateChatContent: ({ chatId, updater }: { chatId: string, updater: (current: ChatContent) => ChatContent }) => Promise<void>,
     triggerChatRef: ({ chatId }: { chatId: string }) => void,
@@ -149,7 +152,8 @@ export function useImageGeneration() {
         width, 
         height, 
         endpointUrl,
-        endpointHttpHeaders
+        endpointHttpHeaders,
+        signal
       });
       if (!blob) throw new Error('Failed to generate image');
 

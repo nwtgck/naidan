@@ -723,13 +723,14 @@ export function useChat() {
     imageModelOverrideMap
   } = useImageGeneration();
 
-  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, model }: {
+  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, model, signal }: {
     chatId: string;
     assistantId: string;
     prompt: string;
     width: number;
     height: number;
     model: string | undefined;
+    signal: AbortSignal | undefined;
   }) => {
     const target = getLiveChat({ id: chatId } as Chat);
     if (!target) return;
@@ -746,6 +747,7 @@ export function useChat() {
       endpointUrl: resolved.endpointUrl,
       endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
       storageType: settings.value.storageType,
+      signal,
       getLiveChat: ({ chat }) => getLiveChat(chat),
       updateChatContent: ({ chatId, updater }) => updateChatContent(chatId, (curr) => {
         if (!curr) throw new Error('Chat content not found');
@@ -783,7 +785,7 @@ export function useChat() {
       if (imageRequest) {
         const { width, height, model } = imageRequest;
         const prompt = stripNaidanSentinels(parentNode!.content).trim();
-        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, model });
+        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, model, signal: controller.signal });
         return;
       }
 
@@ -1337,12 +1339,13 @@ export function useChat() {
     });
   };
 
-  const generateImage = async ({ prompt, model, width, height, chat }: {
+  const generateImage = async ({ prompt, model, width, height, chat, signal }: {
     prompt: string,
     model: string,
     width: number,
     height: number,
-    chat: Chat
+    chat: Chat,
+    signal: AbortSignal | undefined
   }) => {
     const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
     return await _performGeneration({
@@ -1351,7 +1354,8 @@ export function useChat() {
       width,
       height,
       endpointUrl: resolved.endpointUrl,
-      endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined
+      endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+      signal
     });
   };
 
