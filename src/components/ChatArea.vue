@@ -9,6 +9,7 @@ import WelcomeScreen from './WelcomeScreen.vue';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { naturalSort } from '../utils/string';
+import { findImageGenerationModel } from '../utils/image-generation';
 
 const ChatSettingsPanel = defineAsyncComponent(() => import('./ChatSettingsPanel.vue'));
 const HistoryManipulationModal = defineAsyncComponent(() => import('./HistoryManipulationModal.vue'));
@@ -32,10 +33,12 @@ const {
   resolvedSettings,
   inheritedSettings,
   isProcessing,
+  imageModeMap,
+  imageResolutionMap,
 } = chatStore;
 const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
 const { activeFocusArea, setActiveFocusArea } = useLayout();
-const imageModeMap = ref<Record<string, boolean>>({});
+
 const isImageMode = computed({
   get: () => currentChat.value ? !!imageModeMap.value[currentChat.value.id] : false,
   set: (val) => {
@@ -44,7 +47,7 @@ const isImageMode = computed({
     }
   }
 });
-const imageResolutionMap = ref<Record<string, { width: number, height: number }>>({});
+
 const currentResolution = computed(() => {
   return (currentChat.value ? imageResolutionMap.value[currentChat.value.id] : null) || { width: 512, height: 512 };
 });
@@ -358,7 +361,11 @@ async function fetchModels() {
   }
 }
 
-const canGenerateImage = computed(() => resolvedSettings.value?.endpointType === 'ollama');
+const canGenerateImage = computed(() => {
+  if (resolvedSettings.value?.endpointType !== 'ollama') return false;
+  return !!findImageGenerationModel(availableModels.value);
+});
+const hasImageModel = computed(() => findImageGenerationModel(availableModels.value) !== null);
 
 function toggleImageMode() {
   isImageMode.value = !isImageMode.value;
@@ -908,7 +915,7 @@ onUnmounted(() => {
             </button>
 
             <ChatToolsMenu 
-              :can-generate-image="canGenerateImage"
+              :can-generate-image="canGenerateImage && hasImageModel"
               :is-processing="isCurrentChatStreaming"
               :is-image-mode="isImageMode"
               :selected-width="currentResolution.width"

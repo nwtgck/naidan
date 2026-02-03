@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue';
 import { Volume2, Pause, Square, RotateCcw } from 'lucide-vue-next';
 import { webSpeechService } from '../services/web-speech';
+import { isImageGenerationPending, isImageGenerationProcessed } from '../utils/image-generation';
 
 const props = defineProps<{
   messageId: string;
@@ -14,6 +15,10 @@ const isThisMessageActive = computed(() => webSpeechService.state.activeMessageI
 const isPlaying = computed(() => isThisMessageActive.value && webSpeechService.state.status === 'playing');
 const isPaused = computed(() => isThisMessageActive.value && webSpeechService.state.status === 'paused');
 const isSpeechActive = computed(() => isThisMessageActive.value && webSpeechService.state.status !== 'inactive');
+
+const isHidden = computed(() => {
+  return isImageGenerationProcessed(props.content) || isImageGenerationPending(props.content);
+});
 
 function handleToggleSpeech() {
   if (isPlaying.value) {
@@ -44,7 +49,7 @@ watch(() => props.content, (newContent) => {
 </script>
 
 <template>
-  <div v-if="isSupported" class="flex items-center" :class="{ 'gap-1': isSpeechActive && showFullControls }">
+  <div v-if="isSupported && !isHidden" class="flex items-center" :class="{ 'gap-1': isSpeechActive && showFullControls }">
     <!-- Flat Toggle Button (Shown when inactive OR when full controls are not requested) -->
     <button 
       v-if="!isSpeechActive || !showFullControls"
