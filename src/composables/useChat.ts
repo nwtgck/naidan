@@ -1075,7 +1075,7 @@ export function useChat() {
         decTask(taskId, 'title'); return; 
       }
       const history = getChatBranch(mutableChat);
-      const content = history[0]?.content || '';
+      const content = stripNaidanSentinels(history[0]?.content || '');
       if (!content || typeof content !== 'string') {
         decTask(taskId, 'title'); return; 
       }

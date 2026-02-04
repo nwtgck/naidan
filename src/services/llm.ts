@@ -545,7 +545,7 @@ export class OllamaProvider implements LLMProvider {
     
     // Convert base64 to Blob using fetch
     const dataUrl = `data:image/png;base64,${b64Data}`;
-    const blobResponse = await fetch(dataUrl);
+    const blobResponse = await fetch(dataUrl, { signal });
     return await blobResponse.blob();
   }
 }
