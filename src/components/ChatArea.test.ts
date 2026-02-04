@@ -80,6 +80,16 @@ vi.mock('../composables/useChat', () => ({
     moveChatToGroup: mockMoveChatToGroup,
     isTaskRunning: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
     isProcessing: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
+    isImageMode: vi.fn(() => false),
+    toggleImageMode: vi.fn(),
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    updateResolution: vi.fn(),
+    setImageModel: vi.fn(),
+    getSelectedImageModel: vi.fn(),
+    getSortedImageModels: vi.fn(() => []),
+    imageModeMap: ref({}),
+    imageResolutionMap: ref({}),
+    imageModelOverrideMap: ref({}),
   }),
 }));
 

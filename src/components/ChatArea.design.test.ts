@@ -45,6 +45,16 @@ describe('ChatArea Design Specifications', () => {
       isTaskRunning: vi.fn().mockReturnValue(false),
       isProcessing: vi.fn().mockReturnValue(false),
       abortChat: vi.fn(),
+      isImageMode: vi.fn(() => false),
+      toggleImageMode: vi.fn(),
+      getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+      updateResolution: vi.fn(),
+      setImageModel: vi.fn(),
+      getSelectedImageModel: vi.fn(),
+      getSortedImageModels: vi.fn(() => []),
+      imageModeMap: ref({}),
+      imageResolutionMap: ref({}),
+      imageModelOverrideMap: ref({}),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),
