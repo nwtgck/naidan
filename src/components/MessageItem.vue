@@ -31,6 +31,8 @@ import type { MessageNode } from '../models/types';
 import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import SpeechControl from './SpeechControl.vue';
+import ImageConjuringLoader from './ImageConjuringLoader.vue';
+import { isImageGenerationPending, isImageGenerationProcessed, stripNaidanSentinels } from '../utils/image-generation';
 
 const props = defineProps<{
   message: MessageNode;
@@ -105,7 +107,7 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 // Focus and move cursor to end when editing starts
 watch(isEditing, (editing) => {
   if (editing) {
-    editContent.value = props.message.content.trimEnd();
+    editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
     nextTick(() => {
       if (textareaRef.value) {
         textareaRef.value.focus();
@@ -398,14 +400,29 @@ const displayThinking = computed(() => {
 const displayContent = computed(() => {
   let content = props.message.content;
   
+  // Remove technical comments (including image request and processed markers)
+  content = stripNaidanSentinels(content);
+
   // Remove <think> blocks for display
-  const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '');
+  const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+
+  // Treat image generation sentinel as empty for display purposes
+  if (isImageGenerationPending(props.message.content)) return '';
   
   // If we have any content after removing <think>, return it (even if just whitespace)
   // to signal that we are no longer in "initial loading" state.
   if (cleanContent.length > 0) return cleanContent;
   
   return '';
+});
+
+const isImageResponse = computed(() => isImageGenerationProcessed(props.message.content));
+
+const speechText = computed(() => {
+  if (!displayContent.value) return '';
+  if (isImageResponse.value) return 'Image generated.'; // Don't read out HTML tags
+  // For regular messages, strip HTML if we want to be safe, but at least handle images
+  return displayContent.value.replace(/<[^>]*>/g, '');
 });
 
 const parsedContent = computed(() => {
@@ -416,6 +433,8 @@ const parsedContent = computed(() => {
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     FORBID_ATTR: ['onerror', 'onclick', 'onload'], // Explicitly forbid dangerous attributes
+    // Allow blob: and data: protocols for experimental image generation
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|blob|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
   });
 });
 
@@ -469,7 +488,7 @@ function handleToggleThinking() {
         <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
         <template v-else>
           <span>{{ message.modelId || 'Assistant' }}</span>
-          <SpeechControl :message-id="message.id" :content="message.content" />
+          <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" />
         </template>
       </div>
     </div>
@@ -595,8 +614,11 @@ function handleToggleThinking() {
         <!-- Content Display (Always shown if present) -->
         <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
 
-        <!-- Loading State (Initial Wait) -->
-        <div v-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
+        <!-- AI Image Synthesis Loader (Componentized) -->
+        <ImageConjuringLoader v-else-if="isImageGenerationPending(message.content) && message.role === 'assistant' && !message.error" />
+
+        <!-- Loading State (Initial Wait for regular text) -->
+        <div v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
           <Loader2 class="w-4 h-4 animate-spin" />
           <span class="text-xs font-medium">Waiting for response...</span>
         </div>
@@ -642,7 +664,7 @@ function handleToggleThinking() {
           <!-- Message Actions -->
           <div class="flex items-center gap-1">
             <!-- Speech Controls -->
-            <SpeechControl :message-id="message.id" :content="message.content" show-full-controls />
+            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" show-full-controls />
 
             <button 
               v-if="!isUser"

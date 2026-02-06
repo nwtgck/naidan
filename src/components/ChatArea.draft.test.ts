@@ -61,6 +61,16 @@ vi.mock('../composables/useChat', () => ({
     forkChat: vi.fn(),
     isTaskRunning: vi.fn().mockReturnValue(false),
     isProcessing: vi.fn().mockReturnValue(false),
+    isImageMode: vi.fn(() => false),
+    toggleImageMode: vi.fn(),
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    updateResolution: vi.fn(),
+    setImageModel: vi.fn(),
+    getSelectedImageModel: vi.fn(),
+    getSortedImageModels: vi.fn(() => []),
+    imageModeMap: ref({}),
+    imageResolutionMap: ref({}),
+    imageModelOverrideMap: ref({}),
   }),
 }));
 
