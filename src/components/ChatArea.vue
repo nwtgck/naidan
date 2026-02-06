@@ -408,17 +408,20 @@ function toggleImageMode() {
 }
 
 async function handleGenerateImage() {
-  if (!currentChat.value || !input.value.trim() || isCurrentChatStreaming.value) return;
+  if (!currentChat.value || (!input.value.trim() && attachments.value.length === 0) || isCurrentChatStreaming.value) return;
   
   const prompt = input.value;
+  const currentAttachments = [...attachments.value];
   const { width, height } = currentResolution.value;
   const success = await chatStore.sendImageRequest({ 
     prompt, 
     width, 
-    height 
+    height,
+    attachments: currentAttachments
   });
   if (success) {
     input.value = '';
+    attachments.value = [];
     nextTick(adjustTextareaHeight);
   }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { useImageGeneration } from './useImageGeneration';
 
 describe('useImageGeneration', () => {
@@ -56,6 +56,7 @@ describe('useImageGeneration', () => {
         width: 1024,
         height: 1024,
         chatId,
+        attachments: [],
         availableModels,
         sendMessage
       });
@@ -63,7 +64,8 @@ describe('useImageGeneration', () => {
       expect(result).toBe(true);
       expect(sendMessage).toHaveBeenCalledWith({
         content: expect.stringContaining('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1"} -->a sunset'),
-        parentId: undefined
+        parentId: undefined,
+        attachments: []
       });
     });
   });

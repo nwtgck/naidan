@@ -7,7 +7,7 @@ import {
   createImageRequestMarker
 } from '../utils/image-generation';
 import { naturalSort } from '../utils/string';
-import type { Chat, ChatContent } from '../models/types';
+import type { Chat, ChatContent, Attachment } from '../models/types';
 import { findNodeInBranch, fileToDataUrl } from '../utils/chat-tree';
 
 // Shared state across all instances to maintain consistency
@@ -63,11 +63,12 @@ export function useImageGeneration() {
     return naturalSort(getImageGenerationModels(availableModels));
   };
 
-  const performBase64Generation = async ({ prompt, model, width, height, endpointUrl, endpointHttpHeaders, signal }: {
+  const performBase64Generation = async ({ prompt, model, width, height, images, endpointUrl, endpointHttpHeaders, signal }: {
     prompt: string,
     model: string,
     width: number,
     height: number,
+    images: { blob: Blob }[],
     endpointUrl: string,
     endpointHttpHeaders: [string, string][] | undefined,
     signal: AbortSignal | undefined
@@ -82,7 +83,8 @@ export function useImageGeneration() {
       model, 
       width, 
       height, 
-      signal 
+      images,
+      signal
     });
   };
 
@@ -92,6 +94,7 @@ export function useImageGeneration() {
     prompt, 
     width, 
     height,
+    images,
     model: requestedModel,
     availableModels,
     endpointUrl,
@@ -109,6 +112,7 @@ export function useImageGeneration() {
     prompt: string,
     width: number,
     height: number,
+    images: { blob: Blob }[],
     model: string | undefined,
     availableModels: string[],
     endpointUrl: string,
@@ -151,6 +155,7 @@ export function useImageGeneration() {
         model: imageModel, 
         width, 
         height, 
+        images,
         endpointUrl,
         endpointHttpHeaders,
         signal
@@ -192,6 +197,7 @@ export function useImageGeneration() {
     width, 
     height, 
     chatId, 
+    attachments,
     availableModels,
     sendMessage 
   }: {
@@ -199,8 +205,9 @@ export function useImageGeneration() {
     width: number,
     height: number,
     chatId: string,
+    attachments: Attachment[],
     availableModels: string[],
-    sendMessage: ({ content, parentId }: { content: string, parentId: string | undefined }) => Promise<boolean>
+    sendMessage: ({ content, parentId, attachments }: { content: string, parentId: string | undefined, attachments: Attachment[] }) => Promise<boolean>
   }): Promise<boolean> => {
     const prevMode = !!imageModeMap.value[chatId];
     const prevRes = imageResolutionMap.value[chatId];
@@ -214,7 +221,7 @@ export function useImageGeneration() {
       const content = model 
         ? createImageRequestMarker({ width, height, model }) + prompt
         : prompt;
-      return await sendMessage({ content, parentId: undefined });
+      return await sendMessage({ content, parentId: undefined, attachments });
     } finally {
       imageModeMap.value[chatId] = prevMode;
       if (prevRes) imageResolutionMap.value[chatId] = prevRes;

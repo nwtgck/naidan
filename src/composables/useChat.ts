@@ -723,12 +723,13 @@ export function useChat() {
     imageModelOverrideMap
   } = useImageGeneration();
 
-  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, model, signal }: {
+  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, images, model, signal }: {
     chatId: string;
     assistantId: string;
     prompt: string;
     width: number;
     height: number;
+    images: { blob: Blob }[];
     model: string | undefined;
     signal: AbortSignal | undefined;
   }) => {
@@ -742,6 +743,7 @@ export function useChat() {
       prompt,
       width,
       height,
+      images,
       model,
       availableModels: availableModels.value,
       endpointUrl: resolved.endpointUrl,
@@ -785,7 +787,33 @@ export function useChat() {
       if (imageRequest) {
         const { width, height, model } = imageRequest;
         const prompt = stripNaidanSentinels(parentNode!.content).trim();
-        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, model, signal: controller.signal });
+        
+        const images: { blob: Blob }[] = [];
+        if (parentNode?.attachments) {
+          for (const att of parentNode.attachments) {
+            if (att.mimeType.startsWith('image/')) {
+              let blob: Blob | null = null;
+              switch (att.status) {
+              case 'memory':
+                blob = att.blob || null;
+                break;
+              case 'persisted':
+                blob = await storageService.getFile(att.id, att.originalName);
+                break;
+              case 'missing':
+                blob = null;
+                break;
+              default: {
+                const _ex: never = att;
+                throw new Error(`Unhandled attachment status: ${_ex}`);
+              }
+              }
+              if (blob) images.push({ blob });
+            }
+          }
+        }
+
+        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, images, model, signal: controller.signal });
         return;
       }
 
@@ -1339,11 +1367,12 @@ export function useChat() {
     });
   };
 
-  const generateImage = async ({ prompt, model, width, height, chat, signal }: {
+  const generateImage = async ({ prompt, model, width, height, images, chat, signal }: {
     prompt: string,
     model: string,
     width: number,
     height: number,
+    images: { blob: Blob }[],
     chat: Chat,
     signal: AbortSignal | undefined
   }) => {
@@ -1353,16 +1382,18 @@ export function useChat() {
       model,
       width,
       height,
+      images,
       endpointUrl: resolved.endpointUrl,
       endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
       signal
     });
   };
 
-  const sendImageRequest = async ({ prompt, width, height }: {
+  const sendImageRequest = async ({ prompt, width, height, attachments }: {
     prompt: string;
     width: number;
     height: number;
+    attachments: Attachment[];
   }): Promise<boolean> => {
     const target = _currentChat.value;
     if (!target) return false;
@@ -1371,8 +1402,9 @@ export function useChat() {
       width,
       height,
       chatId: toRaw(target).id,
+      attachments,
       availableModels: availableModels.value,
-      sendMessage: ({ content, parentId }) => sendMessage(content, parentId || null)
+      sendMessage: ({ content, parentId, attachments: atts }) => sendMessage(content, parentId || null, atts)
     });
   };
 

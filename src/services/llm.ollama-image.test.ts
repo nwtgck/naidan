@@ -3,7 +3,7 @@ import { OllamaProvider } from './llm';
 
 describe('OllamaProvider Image Generation', () => {
   const config = {
-    endpoint: 'http://localhost:11434/api',
+    endpoint: 'http://localhost:11434',
   };
 
   beforeEach(() => {
@@ -30,6 +30,7 @@ describe('OllamaProvider Image Generation', () => {
       model: 'x/z-image-turbo:test',
       width: 512,
       height: 512,
+      images: [],
       signal: undefined
     });
 
@@ -43,6 +44,55 @@ describe('OllamaProvider Image Generation', () => {
           prompt: 'test prompt',
           size: '512x512',
           response_format: 'b64_json'
+        })
+      })
+    );
+  });
+
+  it('successfully generates an image from another image (multimodal)', async () => {
+    // Mock FileReader
+    function MockFileReader(this: any) {
+      this.readAsDataURL = vi.fn(() => {
+        this.result = 'data:image/png;base64,YmFzZTY0ZGF0YQ==';
+        if (this.onloadend) this.onloadend();
+      });
+    }
+    vi.stubGlobal('FileReader', MockFileReader);
+
+    const mockResponse = {
+      ok: true,
+      json: () => Promise.resolve({
+        image: 'YmFzZTY0cmVzcG9uc2U=' // "base64response" in base64
+      })
+    };
+    (fetch as any).mockResolvedValueOnce(mockResponse);
+    
+    // Mock for the subsequent fetch that converts data URL to blob
+    (fetch as any).mockResolvedValueOnce({
+      blob: () => Promise.resolve(new Blob(['dummy'], { type: 'image/png' }))
+    });
+
+    const provider = new OllamaProvider(config);
+    const inputBlob = new Blob(['input'], { type: 'image/png' });
+    const blob = await provider.generateImage({
+      prompt: 'test prompt',
+      model: 'x/z-image-turbo:test',
+      width: 512,
+      height: 512,
+      images: [{ blob: inputBlob }],
+      signal: undefined
+    });
+
+    expect(blob).toBeInstanceOf(Blob);
+    expect(fetch).toHaveBeenCalledWith(
+      'http://localhost:11434/api/generate',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          model: 'x/z-image-turbo:test',
+          prompt: 'test prompt',
+          images: ['YmFzZTY0ZGF0YQ=='],
+          stream: false
         })
       })
     );
@@ -63,6 +113,7 @@ describe('OllamaProvider Image Generation', () => {
       model: 'test',
       width: 512,
       height: 512,
+      images: [],
       signal: undefined
     })).rejects.toThrow('Ollama Image Generation Error (500): Something went wrong');
   });
@@ -80,6 +131,7 @@ describe('OllamaProvider Image Generation', () => {
       model: 'test',
       width: 512,
       height: 512,
+      images: [],
       signal: controller.signal
     });
 

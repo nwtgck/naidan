@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '../services/storage';
-import { SENTINEL_IMAGE_PENDING, createImageRequestMarker } from '../utils/image-generation';
-import { ref, toRaw } from 'vue';
+import { SENTINEL_IMAGE_PENDING } from '../utils/image-generation';
+import { toRaw } from 'vue';
 
 // Mock LLM
 const mockOllamaChat = vi.fn();
@@ -35,6 +35,8 @@ vi.mock('../services/storage', () => ({
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     notify: vi.fn(),
+    getFile: vi.fn().mockResolvedValue(new Blob([])),
+    canPersistBinary: true,
   },
 }));
 
@@ -61,7 +63,7 @@ describe('useChat Image Generation', () => {
     chatStore.registerLiveInstance(chat);
     chatStore.toggleImageMode({ chatId: 'chat-1' });
 
-    const success = await chatStore.sendMessage('draw a cat', null, undefined, chat);
+    const success = await chatStore.sendMessage('draw a cat', null, [], chat);
     expect(success).toBe(true);
 
     const userMessage = chat.root.items[0];
@@ -85,15 +87,39 @@ describe('useChat Image Generation', () => {
     const success = await chatStore.sendImageRequest({
       prompt: 'a cat',
       width: 1024,
-      height: 1024
+      height: 1024,
+      attachments: []
     });
 
     expect(success).toBe(true);
     expect(updateSpy).toHaveBeenCalled();
     // Check if the content updated by storageService contains the image request
     const updater = updateSpy.mock.calls[0]![1];
-    const result = await updater({ id: 'chat-1', root: { items: [] } } as any);
+    const result = (await updater({ id: 'chat-1', root: { items: [] } } as any)) as any;
     expect(result.root.items[0].content).toContain('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1"} -->a cat');
+  });
+
+  it('sendImageRequest with attachments passes them to sendMessage', async () => {
+    const chat = { id: 'chat-attachments', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
+    chatStore.registerLiveInstance(chat);
+    await chatStore.openChat('chat-attachments');
+    
+    const updateSpy = vi.spyOn(storageService, 'updateChatContent');
+    const mockAttachment = { id: 'att-1', originalName: 'test.png', mimeType: 'image/png', status: 'memory', blob: new Blob(['test'], { type: 'image/png' }) } as any;
+
+    const success = await chatStore.sendImageRequest({
+      prompt: 'remix this image',
+      width: 1024,
+      height: 1024,
+      attachments: [mockAttachment]
+    });
+
+    expect(success).toBe(true);
+    // Check if the content updated by storageService contains the image request and attachments
+    const updater = updateSpy.mock.calls[0]![1];
+    const result = (await updater({ id: 'chat-attachments', root: { items: [] } } as any)) as any;
+    expect(result.root.items[0].attachments).toHaveLength(1);
+    expect(result.root.items[0].attachments[0].id).toBe('att-1');
   });
 
   it('generateChatTitle strips sentinels from content', async () => {
@@ -140,13 +166,13 @@ describe('useChat Image Generation', () => {
     const forkedChatId = await chatStore.forkChat('a1', 'chat-fork');
     
     expect(forkedChatId).toBeDefined();
-    const forkedChat = chatStore.getLiveChat({ id: forkedChatId! } as any);
+    const forkedChat = chatStore.getLiveChat({ id: forkedChatId! } as any) as any;
     expect(forkedChat).toBeDefined();
-    expect(forkedChat!.root.items[0].content).toContain('naidan_experimental_image_request');
+    expect(forkedChat.root.items[0].content).toContain('naidan_experimental_image_request');
     
     // Regerenerating on the forked chat should trigger image generation again
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
-    await chatStore.regenerateMessage('a1', forkedChat!);
+    await chatStore.regenerateMessage('a1');
     
     expect(updateSpy).toHaveBeenCalled();
   });
@@ -181,7 +207,7 @@ describe('useChat Image Generation', () => {
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
     
     // Directly call regenerateMessage to trigger background generation
-    await chatStore.regenerateMessage('a1', chat);
+    await chatStore.regenerateMessage('a1');
     
     // It should trigger updateChatContent at least once (for pending)
     await vi.waitFor(() => {

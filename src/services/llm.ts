@@ -244,6 +244,19 @@ interface OllamaChatRequest {
   options?: Record<string, unknown>;
 }
 
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      const base64 = result.split(',')[1];
+      resolve(base64 || '');
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 export class OllamaProvider implements LLMProvider {
   private config: {
     endpoint: string;
@@ -474,14 +487,91 @@ export class OllamaProvider implements LLMProvider {
     return validated.models.map((m) => m.name);
   }
 
-  async generateImage({ prompt, model, width, height, signal }: {
+  async generateImage({ prompt, model, width, height, images, signal }: {
     prompt: string;
     model: string;
     width: number;
     height: number;
+    images: { blob: Blob }[];
     signal: AbortSignal | undefined;
   }): Promise<Blob> {
     const { endpoint, headers } = this.config;
+
+    if (images.length > 0) {
+      const url = `${endpoint.replace(/\/$/, '')}/api/generate`;
+      
+      const b64Images = await Promise.all(images.map(img => blobToBase64(img.blob)));
+      
+      const body = {
+        model,
+        prompt,
+        images: b64Images,
+        stream: false,
+      };
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: [
+            ['Content-Type', 'application/json'],
+            ...(headers || []),
+          ],
+          body: JSON.stringify(body),
+          signal,
+        });
+      } catch (e) {
+        const isAbort = e instanceof Error && e.name === 'AbortError';
+        if (!isAbort) {
+          const message = `Network error or CORS issue: ${e instanceof Error ? e.message : String(e)}`;
+          addErrorEvent({
+            source: 'OllamaProvider:generateImage',
+            message,
+            details: { error: e, url, method: 'POST' },
+          });
+          throw new Error(message);
+        }
+        throw e;
+      }
+
+      if (!response.ok) {
+        let details = response.statusText;
+        try {
+          const errorJson = await response.json();
+          details = errorJson.error || JSON.stringify(errorJson);
+        } catch (e) { /* ignore */ }
+        const errorMsg = `Ollama Image Generation Error (/api/generate, ${response.status}): ${details}`;
+        addErrorEvent({
+          source: 'OllamaProvider:generateImage',
+          message: errorMsg,
+          details: { status: response.status, statusText: response.statusText, url }
+        });
+        throw new Error(errorMsg);
+      }
+
+      const rawJson = await response.json();
+      console.log('Ollama /api/generate response:', rawJson);
+
+      let b64Data = '';
+      if (rawJson.response && typeof rawJson.response === 'string' && rawJson.response.length > 100) {
+        b64Data = rawJson.response;
+      } else if (rawJson.image && typeof rawJson.image === 'string') {
+        b64Data = rawJson.image;
+      } else if (Array.isArray(rawJson.images) && rawJson.images[0]) {
+        b64Data = rawJson.images[0];
+      }
+
+      if (!b64Data) {
+        throw new Error('Could not find image data in Ollama response. Check console for response structure.');
+      }
+
+      b64Data = b64Data.replace(/^data:image\/[a-z]+;base64,/, '');
+
+      const dataUrl = `data:image/png;base64,${b64Data}`;
+      const blobResponse = await fetch(dataUrl, { signal });
+      return await blobResponse.blob();
+    }
+
     // OpenAI compatible endpoint on Ollama: often at /v1/images/generations
     // We remove trailing slashes and /api if present to get the base
     const baseUrl = endpoint.replace(/\/$/, '').replace(/\/api$/, '');

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
-import { ref, computed, nextTick } from 'vue';
+import { ref, nextTick } from 'vue';
 import { Image, Send } from 'lucide-vue-next';
 
 // Mock useChat singleton
@@ -17,7 +17,9 @@ const mockChatStore = {
   inheritedSettings: ref({ sources: {} }),
   isProcessing: vi.fn(() => false),
   isImageMode: vi.fn(() => mockIsImageMode.value),
-  toggleImageMode: vi.fn(() => { mockIsImageMode.value = !mockIsImageMode.value; }),
+  toggleImageMode: vi.fn(() => {
+    mockIsImageMode.value = !mockIsImageMode.value; 
+  }),
   getResolution: vi.fn(() => ({ width: 512, height: 512 })),
   updateResolution: vi.fn(),
   setImageModel: vi.fn(),
@@ -32,6 +34,10 @@ const mockChatStore = {
   registerLiveInstance: vi.fn(),
   unregisterLiveInstance: vi.fn(),
   loadChats: vi.fn(),
+  moveChatToGroup: vi.fn(),
+  chatGroups: ref([]),
+  toggleDebug: vi.fn(),
+  abortChat: vi.fn(),
 };
 
 vi.mock('../composables/useChat', () => ({
@@ -74,8 +80,37 @@ describe('ChatArea Image Generation Integration', () => {
     expect(mockChatStore.sendImageRequest).toHaveBeenCalledWith({
       prompt: 'a majestic mountain',
       width: 512,
-      height: 512
+      height: 512,
+      attachments: []
     });
+  });
+
+  it('calls sendImageRequest with attachments when images are attached', async () => {
+    mockIsImageMode.value = true;
+    
+    const wrapper = mount(ChatArea);
+    const vm = wrapper.vm as any;
+    
+    const mockFile = new File(['test'], 'test.png', { type: 'image/png' });
+    const mockAttachment = { id: 'att-1', originalName: 'test.png', mimeType: 'image/png', status: 'memory', blob: mockFile };
+    
+    vm.attachments = [mockAttachment];
+    vm.input = 'remix this';
+    await nextTick();
+    
+    const sendButton = wrapper.find('[data-testid="send-button"]');
+    await sendButton.trigger('click');
+    
+    expect(mockChatStore.sendImageRequest).toHaveBeenCalledWith({
+      prompt: 'remix this',
+      width: 512,
+      height: 512,
+      attachments: expect.arrayContaining([expect.objectContaining({ id: 'att-1' })])
+    });
+    
+    // Check if attachments are cleared after success
+    await nextTick();
+    expect(vm.attachments).toHaveLength(0);
   });
 
   it('can toggle image mode from the tools menu', async () => {
