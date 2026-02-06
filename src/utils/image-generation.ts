@@ -20,7 +20,7 @@ export interface ImageRequestParams {
  * Currently looks for any model starting with 'x/z-image-turbo:'.
  */
 export function getImageGenerationModels(models: string[]): string[] {
-  return models.filter(m => m.startsWith('x/z-image-turbo:'));
+  return models.filter(m => m.startsWith('x/z-image-turbo:') || m.startsWith('x/flux2-klein:'));
 }
 
 /**

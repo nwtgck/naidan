@@ -60,7 +60,7 @@ describe('MessageItem Image Generation', () => {
     expect(wrapper.findComponent({ name: 'SpeechControl' }).exists()).toBe(false);
   });
 
-  it('uses specific speech text for processed images', () => {
+  it('hides speech controls for processed image responses', () => {
     const content = `${SENTINEL_IMAGE_PROCESSED}<img src="blob:test">`;
     const message = createMessage(content);
     const wrapper = mount(MessageItem, {
@@ -68,7 +68,6 @@ describe('MessageItem Image Generation', () => {
     });
     
     const speechControl = wrapper.findComponent({ name: 'SpeechControl' });
-    expect(speechControl.exists()).toBe(true);
-    expect(speechControl.props('content')).toBe('Image generated.');
+    expect(speechControl.exists()).toBe(false);
   });
 });
