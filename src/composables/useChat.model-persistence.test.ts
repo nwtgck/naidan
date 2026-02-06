@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '../services/storage';
 import { reactive, triggerRef } from 'vue';
-import type { Chat, MessageNode, SidebarItem } from '../models/types';
+import type { Chat, SidebarItem } from '../models/types';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
@@ -43,12 +43,13 @@ vi.mock('./useSettings', () => ({
 }));
 
 // Mock LLM Provider
-const mockChat = vi.fn().mockImplementation(async (_msg: MessageNode[], _model: string, _url: string, onChunk: (chunk: string) => void) => {
-  onChunk('Response from ' + _model);
+const mockChat = vi.fn().mockImplementation(async (params: { model: string, onChunk: (chunk: string) => void }) => {
+  params.onChunk('Response from ' + params.model);
 });
 
 vi.mock('../services/llm', () => {
   class MockOpenAI {
+    constructor() {}
     chat = mockChat;
     listModels = vi.fn().mockResolvedValue(['gpt-3.5-turbo', 'gpt-4']);
   }

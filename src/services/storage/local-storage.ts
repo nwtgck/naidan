@@ -135,9 +135,19 @@ export class LocalStorageProvider extends IStorageProvider {
         for (const node of nodes) {
           if (node.attachments) {
             for (const att of node.attachments) {
-              if (att.status === 'memory') {
+              switch (att.status) {
+              case 'memory': {
                 const cached = this.blobCache.get(att.id);
                 if (cached) (att as unknown as { blob: Blob }).blob = cached;
+                break;
+              }
+              case 'persisted':
+              case 'missing':
+                break;
+              default: {
+                const _ex: never = att;
+                throw new Error(`Unhandled attachment status: ${_ex}`);
+              }
               }
             }
           }
@@ -147,7 +157,9 @@ export class LocalStorageProvider extends IStorageProvider {
       restoreBlobs(chat.root.items);
 
       return chat;
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async loadChatMeta(id: string): Promise<ChatMeta | null> {
@@ -162,7 +174,9 @@ export class LocalStorageProvider extends IStorageProvider {
         if (group) meta.groupId = group.id;
       }
       return meta;
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async loadChatContent(id: string): Promise<ChatContent | null> {
@@ -176,9 +190,19 @@ export class LocalStorageProvider extends IStorageProvider {
         for (const node of nodes) {
           if (node.attachments) {
             for (const att of node.attachments) {
-              if (att.status === 'memory') {
+              switch (att.status) {
+              case 'memory': {
                 const cached = this.blobCache.get(att.id);
                 if (cached) (att as unknown as { blob: Blob }).blob = cached;
+                break;
+              }
+              case 'persisted':
+              case 'missing':
+                break;
+              default: {
+                const _ex: never = att;
+                throw new Error(`Unhandled attachment status: ${_ex}`);
+              }
               }
             }
           }
@@ -188,7 +212,9 @@ export class LocalStorageProvider extends IStorageProvider {
       restoreBlobs(content.root.items);
 
       return content;
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async deleteChat(id: string): Promise<void> {
@@ -213,7 +239,9 @@ export class LocalStorageProvider extends IStorageProvider {
       const chatMetas = allMetas.map(chatMetaToDomain);
       const h = hierarchy || { items: [] };
       return chatGroupToDomain(ChatGroupSchemaDto.parse(JSON.parse(raw)), h, chatMetas);
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   async deleteChatGroup(id: string): Promise<void> {
@@ -244,7 +272,9 @@ export class LocalStorageProvider extends IStorageProvider {
     if (!raw) return null;
     try {
       return settingsToDomain(SettingsSchemaDto.parse(JSON.parse(raw)));
-    } catch { return null; }
+    } catch {
+      return null; 
+    }
   }
 
   // --- File Storage ---
@@ -294,7 +324,13 @@ export class LocalStorageProvider extends IStorageProvider {
 
     return {
       structure: {
-        settings: settings || ({} as Settings),
+        settings: settings || {
+          autoTitleEnabled: true,
+          providerProfiles: [],
+          storageType: 'local',
+          endpointType: 'openai',
+          endpointUrl: '',
+        } as Settings,
         hierarchy: h,
         chatMetas,
         chatGroups,

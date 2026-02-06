@@ -1,7 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { ref, isRef, reactive } from 'vue';
+import { asyncComponentTracker } from '../utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 // Define shared refs for the mock
 const mockCurrentChat = ref({
@@ -29,9 +36,21 @@ vi.mock('../composables/useChat', () => ({
     saveChat: vi.fn(),
     moveChatToGroup: vi.fn(),
     chatGroups: ref([]),
+    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
     isTaskRunning: vi.fn().mockReturnValue(false),
     isProcessing: vi.fn().mockReturnValue(false),
     abortChat: vi.fn(),
+    isImageMode: vi.fn(() => false),
+    toggleImageMode: vi.fn(),
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    updateResolution: vi.fn(),
+    setImageModel: vi.fn(),
+    getSelectedImageModel: vi.fn(),
+    getSortedImageModels: vi.fn(() => []),
+    imageModeMap: ref({}),
+    imageResolutionMap: ref({}),
+    imageModelOverrideMap: ref({}),
   })
 }));
 
@@ -74,6 +93,10 @@ vi.mock('../services/storage', () => ({
 }));
 
 describe('ChatArea - Attachment UI', () => {
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
+  });
+
   it('should show preview when files are selected', async () => {
     // Reset refs for this test
     mockCurrentChat.value = {

@@ -78,8 +78,12 @@ vi.mock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockR
 vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
 vi.mock('../services/llm', () => ({
-  OpenAIProvider: function() { return { chat: vi.fn().mockImplementation((_m, _mo, _u, onChunk) => onChunk('OK')), listModels: vi.fn().mockResolvedValue(['gpt-4']) }; },
-  OllamaProvider: function() { return { chat: vi.fn(), listModels: vi.fn() }; },
+  OpenAIProvider: function() {
+    return { chat: vi.fn().mockImplementation((_m, _mo, _u, onChunk) => onChunk('OK')), listModels: vi.fn().mockResolvedValue(['gpt-4']) }; 
+  },
+  OllamaProvider: function() {
+    return { chat: vi.fn(), listModels: vi.fn() }; 
+  },
 }));
 
 describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {

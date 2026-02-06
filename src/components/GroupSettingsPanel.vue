@@ -11,6 +11,7 @@ import {
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
 import RecipeExportModal from './RecipeExportModal.vue';
+import TransformersJsUpsell from './TransformersJsUpsell.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { ChatGroup } from '../models/types';
 import { naturalSort } from '../utils/string';
@@ -27,6 +28,10 @@ const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
 const groupModels = ref<string[]>([]);
 const sortedGroupModels = computed(() => naturalSort(groupModels.value || []));
+
+const effectiveEndpointType = computed(() => {
+  return localSettings.value.endpoint?.type || settings.value.endpointType;
+});
 
 // Local state for editing
 const localSettings = ref<Partial<Pick<ChatGroup, 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>>({});
@@ -52,8 +57,9 @@ function syncLocalWithCurrent() {
 onMounted(() => {
   syncLocalWithCurrent();
   if (currentChatGroup.value) {
-    const url = currentChatGroup.value.endpoint?.url || settings.value.endpointUrl;
-    if (isLocalhost(url)) {
+    const url = localSettings.value.endpoint?.url || settings.value.endpointUrl;
+    const type = localSettings.value.endpoint?.type || settings.value.endpointType;
+    if (type === 'transformers_js' || isLocalhost(url)) {
       fetchModels();
     }
   }
@@ -118,7 +124,7 @@ async function fetchModels() {
     const url = localSettings.value.endpoint?.url || settings.value.endpointUrl || '';
     const headers = localSettings.value.endpoint?.httpHeaders || settings.value.endpointHttpHeaders;
     
-    if (!url) {
+    if (!url && type !== 'transformers_js') {
       groupModels.value = [];
       return;
     }
@@ -142,13 +148,13 @@ async function fetchModels() {
   }
 }
 
-// Auto-fetch only for localhost when URL changes
+// Auto-fetch for localhost or transformers_js when URL/Type changes
 watch([
   () => localSettings.value.endpoint?.url, 
   () => localSettings.value.endpoint?.type,
-], ([url]) => {
+], ([url, type]) => {
   error.value = null;
-  if (url && isLocalhost(url as string)) {
+  if (type === 'transformers_js' || (url && isLocalhost(url as string))) {
     fetchModels();
   }
 });
@@ -165,11 +171,26 @@ async function updateSystemPromptContent(content: string) {
 }
 */
 
-async function updateSystemPromptBehavior(behavior: 'override' | 'append') {
-  if (!localSettings.value.systemPrompt) {
+async function updateSystemPromptBehavior(behavior: 'override' | 'append', isClear = false) {
+  if (isClear) {
+    localSettings.value.systemPrompt = { behavior: 'override', content: null };
+  } else if (!localSettings.value.systemPrompt) {
     localSettings.value.systemPrompt = { content: '', behavior };
   } else {
-    localSettings.value.systemPrompt.behavior = behavior;
+    // When switching away from Clear to Override/Append, ensure content is at least an empty string
+    const content = localSettings.value.systemPrompt.content ?? '';
+    switch (behavior) {
+    case 'override':
+      localSettings.value.systemPrompt = { behavior: 'override', content };
+      break;
+    case 'append':
+      localSettings.value.systemPrompt = { behavior: 'append', content };
+      break;
+    default: {
+      const _ex: never = behavior;
+      throw new Error(`Unhandled behavior: ${_ex}`);
+    }
+    }
   }
   await saveChanges();
 }
@@ -229,7 +250,7 @@ async function restoreDefaults() {
     />
 
     <!-- Content -->
-    <div class="flex-1 overflow-y-auto">
+    <div class="flex-1 overflow-y-auto overscroll-contain">
       <div class="max-w-4xl mx-auto p-6 sm:p-8 space-y-10">
         <!-- Recipe Export Action -->
         <div class="bg-blue-50/30 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-900/20 p-6 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm">
@@ -290,22 +311,31 @@ async function restoreDefaults() {
           <div class="space-y-2">
             <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint Type</label>
             <select 
-              v-if="localSettings.endpoint"
-              v-model="localSettings.endpoint.type"
-              @change="saveChanges"
+              :value="localSettings.endpoint?.type || 'global'"
+              @change="async (e) => {
+                const val = (e.target as HTMLSelectElement).value;
+                if (val === 'global') {
+                  localSettings.endpoint = undefined;
+                } else {
+                  if (!localSettings.endpoint) {
+                    localSettings.endpoint = { type: val as any, url: '' };
+                  } else {
+                    localSettings.endpoint.type = val as any;
+                  }
+                }
+                await saveChanges();
+              }"
               class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
               style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
             >
+              <option value="global">Global ({{ settings.endpointType === 'transformers_js' ? 'Transformers.js' : settings.endpointType }})</option>
               <option value="openai">OpenAI Compatible</option>
               <option value="ollama">Ollama</option>
+              <option value="transformers_js">Transformers.js (Experimental)</option>
             </select>
-            <div v-else class="text-sm font-bold text-gray-400 p-3 bg-gray-100/50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl italic flex items-center justify-between">
-              <span>Global ({{ settings.endpointType }})</span>
-              <button @click="localSettings.endpoint = { type: 'openai', url: '' }; saveChanges();" class="text-[10px] font-bold text-blue-600 hover:underline">Customize</button>
-            </div>
           </div>
 
-          <div class="space-y-2">
+          <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
             <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
             <input 
               v-if="localSettings.endpoint"
@@ -322,7 +352,7 @@ async function restoreDefaults() {
             </div>
           </div>
 
-          <div class="space-y-2">
+          <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
             <div class="flex items-center justify-between ml-1">
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
               <button 
@@ -378,6 +408,7 @@ async function restoreDefaults() {
               @refresh="fetchModels"
               data-testid="group-setting-model-select"
             />
+            <TransformersJsUpsell :show="effectiveEndpointType === 'transformers_js'" />
           </div>
         </div>
 
@@ -425,9 +456,16 @@ async function restoreDefaults() {
                 
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                   <button 
+                    @click="updateSystemPromptBehavior('override', true)"
+                    class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
+                    :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                  >
+                    Clear
+                  </button>
+                  <button 
                     @click="updateSystemPromptBehavior('override')"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
-                    :class="localSettings.systemPrompt?.behavior !== 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                    :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Override
                   </button>
@@ -441,14 +479,29 @@ async function restoreDefaults() {
                 </div>
               </div>
               <textarea 
+                v-if="!(localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null)"
                 :value="localSettings.systemPrompt?.content || ''"
-                @input="e => { if(localSettings.systemPrompt) localSettings.systemPrompt.content = (e.target as HTMLTextAreaElement).value; else localSettings.systemPrompt = { content: (e.target as HTMLTextAreaElement).value, behavior: 'override' }; }"
+                @input="e => { 
+                  const val = (e.target as HTMLTextAreaElement).value;
+                  if(localSettings.systemPrompt) {
+                    localSettings.systemPrompt.content = val;
+                  } else {
+                    localSettings.systemPrompt = { content: val, behavior: 'override' };
+                  }
+                }"
                 @blur="saveChanges"
                 rows="6"
                 class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
                 :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
                 data-testid="group-setting-system-prompt-textarea"
               ></textarea>
+              <div 
+                v-else
+                class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center"
+              >
+                <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Global Prompt Cleared</p>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This group will not use any system instructions.</p>
+              </div>
             </div>
 
             <div class="space-y-4">
@@ -459,7 +512,9 @@ async function restoreDefaults() {
               <div class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3 shadow-sm">
                 <div class="flex items-center justify-between text-[10px] font-bold">
                   <span class="text-gray-400">System Prompt</span>
-                  <span :class="localSettings.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">{{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? 'Appending' : 'Overriding') : 'Global Default' }}</span>
+                  <span :class="localSettings.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">
+                    {{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? 'Appending' : (localSettings.systemPrompt.content === null ? 'Cleared' : 'Overriding')) : 'Global Default' }}
+                  </span>
                 </div>
                 <div class="flex items-center justify-between text-[10px] font-bold">
                   <span class="text-gray-400">Parameters</span>

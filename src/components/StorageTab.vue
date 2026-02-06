@@ -52,7 +52,7 @@ async function handleEnablePersistence() {
   if (typeof navigator === 'undefined' || !navigator.storage || !navigator.storage.persist) {
     await showConfirm({
       title: 'Not Supported',
-      message: 'Persistent storage is not supported by your browser.',
+      message: 'Persistent storage is not supported by the browser.',
       confirmButtonText: 'Understand',
     });
     return;
@@ -101,7 +101,16 @@ async function handleStorageChange(targetType: 'local' | 'opfs') {
 
   const confirmed = await showConfirm({
     title: 'Confirm Storage Switch',
-    message: `Are you sure you want to switch to ${targetType === 'opfs' ? 'OPFS' : 'Local Storage'}? This will migrate all your data and the application will reload.`,
+    message: `Are you sure you want to switch to ${(() => {
+      switch (targetType) {
+      case 'opfs': return 'OPFS';
+      case 'local': return 'Local Storage';
+      default: {
+        const _ex: never = targetType;
+        return _ex;
+      }
+      }
+    })()}? This will migrate all your data and the application will reload.`,
     confirmButtonText: 'Switch and Migrate',
   });
 

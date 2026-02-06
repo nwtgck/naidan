@@ -79,10 +79,28 @@ const floatingStyle = computed((): CSSProperties => {
   }
   if (left < 16) left = 16;
 
+  const verticalStyle = (() => {
+    switch (preferredPosition) {
+    case 'bottom':
+      return {
+        top: `${rect.bottom.value + margin}px`,
+        bottom: 'auto',
+      };
+    case 'top':
+      return {
+        top: 'auto',
+        bottom: `${windowHeight.value - rect.top.value + margin}px`,
+      };
+    default: {
+      const _ex: never = preferredPosition;
+      throw new Error(`Unhandled position: ${_ex}`);
+    }
+    }
+  })();
+
   return {
     position: 'fixed',
-    top: preferredPosition === 'bottom' ? `${rect.bottom.value + margin}px` : 'auto',
-    bottom: preferredPosition === 'top' ? `${windowHeight.value - rect.top.value + margin}px` : 'auto',
+    ...verticalStyle,
     left: `${left}px`,
     width: `${width}px`,
     maxWidth: `${maxWidth}px`,
@@ -202,8 +220,9 @@ watch(searchQuery, () => {
   }
 });
 
-// Close on scroll or resize to prevent floating detached dropdown
-watch([windowWidth, windowHeight], () => {
+// Close on width resize to prevent floating detached dropdown (e.g. orientation change)
+// We ignore height changes to prevent closing when mobile software keyboard appears
+watch(windowWidth, () => {
   if (isOpen.value) isOpen.value = false;
 });
 </script>
@@ -272,7 +291,7 @@ watch([windowWidth, windowHeight], () => {
         </div>
 
         <!-- List -->
-        <div ref="listContainerRef" class="max-h-60 overflow-y-auto py-1 custom-scrollbar">
+        <div ref="listContainerRef" class="max-h-60 overflow-y-auto py-1 custom-scrollbar overscroll-contain">
           <!-- Inherited / Default option -->
           <button
             v-if="allowClear"

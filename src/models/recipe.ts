@@ -17,10 +17,16 @@ export const RecipeLmParametersSchema = z.object({
  * Recipe-specific system prompt schema.
  * Copied from SystemPromptSchemaDto to ensure recipes remain independent of DTO changes.
  */
-export const RecipeSystemPromptSchema = z.object({
-  content: z.string(),
-  behavior: z.enum(['override', 'append']),
-});
+export const RecipeSystemPromptSchema = z.discriminatedUnion('behavior', [
+  z.object({
+    behavior: z.literal('override'),
+    content: z.string().nullable(),
+  }),
+  z.object({
+    behavior: z.literal('append'),
+    content: z.string(),
+  }),
+]);
 
 /**
  * Regex flags (JavaScript RegExp compatible).

@@ -48,12 +48,30 @@ export abstract class IStorageProvider {
     const allSummaries: ChatSummary[] = [];
     
     sidebar.forEach(item => {
-      if (item.type === 'chat_group') {
+      switch (item.type) {
+      case 'chat_group':
         item.chatGroup.items.forEach(nested => {
-          if (nested.type === 'chat') allSummaries.push(nested.chat);
+          switch (nested.type) {
+          case 'chat':
+            allSummaries.push(nested.chat);
+            break;
+          case 'chat_group':
+            // Nested groups not supported but handled for exhaustiveness
+            break;
+          default: {
+            const _ex: never = nested;
+            throw new Error(`Unhandled sidebar item type: ${_ex}`);
+          }
+          }
         });
-      } else {
+        break;
+      case 'chat':
         allSummaries.push(item.chat);
+        break;
+      default: {
+        const _ex: never = item;
+        throw new Error(`Unhandled sidebar item type: ${_ex}`);
+      }
       }
     });
     return allSummaries;

@@ -42,10 +42,10 @@ vi.mock('./useSettings', () => ({
 }));
 
 // Mock LLM Provider
-const mockLlmChat = vi.fn().mockImplementation(async (_msg: any[], _model: string, _url: string, onChunk: (chunk: string) => void) => {
-  onChunk('Hello');
+const mockLlmChat = vi.fn().mockImplementation(async (params: { onChunk: (chunk: string) => void }) => {
+  params.onChunk('Hello');
   await new Promise(r => setTimeout(r, 10)); // Simulate network delay
-  onChunk(' World');
+  params.onChunk(' World');
 });
 
 vi.mock('../services/llm', () => {
@@ -140,11 +140,11 @@ describe('useChat Composable Logic', () => {
     // Mock a slow LLM response
     let resolveGen: () => void;
     const genStarted = new Promise<void>(resolve => resolveGen = resolve);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('Started...');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Started...');
       resolveGen();
       await new Promise(r => setTimeout(r, 100)); // Simulate slow generation
-      onChunk(' Finished');
+      params.onChunk(' Finished');
     });
 
     const result = await sendMessage('Start background generation');
@@ -390,8 +390,8 @@ describe('useChat Composable Logic', () => {
     }) as any);
 
     // 1. Send first message and get first response
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('First Response');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('First Response');
     });
     await sendMessage('Hello');
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first generation to complete
@@ -404,8 +404,8 @@ describe('useChat Composable Logic', () => {
     expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
 
     // 2. Regenerate
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('Second Response');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Second Response');
     });
     await regenerateMessage(firstAssistantMsg!.id);
     await vi.waitUntil(() => (userMsg?.replies.items.length ?? 0) >= 2); 
@@ -602,7 +602,7 @@ describe('useChat Composable Logic', () => {
     await chatStore.loadChats(); 
     expect(rootItems.value).toHaveLength(2);
 
-    await chatStore.createNewChat();
+    await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
     expect(mockHierarchy.items).toHaveLength(3);
     expect(mockHierarchy.items[0]?.id).toBe('g1');
@@ -629,13 +629,28 @@ describe('useChat Composable Logic', () => {
       ];
       await chatStore.loadChats();
 
-      await chatStore.createNewChat();
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       expect(mockHierarchy.items).toHaveLength(4);
       expect(mockHierarchy.items[0]?.id).toBe('g1');
       expect(mockHierarchy.items[1]?.id).toBe('g2');
       expect(mockHierarchy.items[2]?.type).toBe('chat');
       expect(mockHierarchy.items[3]?.id).toBe('c1');
+    });
+
+    it('should correctly initialize a new chat with a system prompt override', async () => {
+      const chat = await chatStore.createNewChat({ 
+        groupId: undefined, 
+        modelId: undefined, 
+        systemPrompt: { behavior: 'override', content: 'Custom system prompt' } 
+      });
+      expect(chat!.systemPrompt).toEqual({ behavior: 'override', content: 'Custom system prompt' });
+      
+      // Verify persistence call
+      expect(storageService.updateChatMeta).toHaveBeenCalledWith(
+        chat!.id,
+        expect.any(Function)
+      );
     });
 
     it('should insert before the first chat even if groups exist later in the list', async () => {
@@ -649,7 +664,7 @@ describe('useChat Composable Logic', () => {
       ];
       await chatStore.loadChats();
 
-      await chatStore.createNewChat();
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       expect(mockHierarchy.items[1]?.id).toBe('g2');
       expect(mockHierarchy.items[2]?.type).toBe('chat');
@@ -666,7 +681,7 @@ describe('useChat Composable Logic', () => {
       ];
       await chatStore.loadChats();
 
-      await chatStore.createNewChat();
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       // Should be: g1, g2, NEW, c1, c2, g3
       expect(mockHierarchy.items).toHaveLength(6);
@@ -691,7 +706,7 @@ describe('useChat Composable Logic', () => {
       ];
       await chatStore.loadChats();
 
-      await chatStore.createNewChat();
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       expect(mockHierarchy.items[0]?.type).toBe('chat');
       expect(mockHierarchy.items[0]?.id).not.toBe('c1');
@@ -710,7 +725,7 @@ describe('useChat Composable Logic', () => {
       ];
       await chatStore.loadChats();
 
-      await chatStore.createNewChat();
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       expect(mockHierarchy.items).toHaveLength(2);
       expect(mockHierarchy.items[0]?.id).toBe('g1');
@@ -767,9 +782,9 @@ describe('useChat Composable Logic', () => {
     __testOnlySetCurrentChat(chatObj as any);
 
     // Mock the LLM provider for title generation
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('Paris');
-      onChunk(' Title');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Paris');
+      params.onChunk(' Title');
     });
 
     const promise = generateChatTitle(chatObj.id);
@@ -795,8 +810,8 @@ describe('useChat Composable Logic', () => {
     });
     __testOnlySetCurrentChat(chatObj as any);
 
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-      onChunk('New Better Title');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      params.onChunk('New Better Title');
     });
 
     chatObj.title = null; // Clear title to allow auto-generation to proceed

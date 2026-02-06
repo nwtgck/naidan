@@ -1,6 +1,7 @@
-import { ref } from 'vue';
+import { ref, reactive } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
@@ -8,6 +9,11 @@ import { useToast } from '../composables/useToast';
 import { useConfirm } from '../composables/useConfirm';
 import { usePrompt } from '../composables/usePrompt';
 import { useSampleChat } from '../composables/useSampleChat';
+
+vi.mock('vue-router', () => ({
+  useRouter: vi.fn(),
+  useRoute: vi.fn(),
+}));
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
@@ -29,7 +35,28 @@ vi.mock('../composables/useSampleChat', () => ({
 }));
 
 describe('SettingsModal Design Specifications', () => {
+  const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
+
   beforeEach(() => {
+    vi.clearAllMocks();
+    currentRoute.path = '/';
+    currentRoute.params = {};
+    currentRoute.query = {};
+
+    (useRouter as Mock).mockReturnValue({
+      push: vi.fn((p) => {
+        if (typeof p === 'string') {
+          currentRoute.path = p;
+          const segments = p.split('/');
+          currentRoute.params.tab = segments[segments.length - 1];
+        } else if (p && typeof p === 'object' && 'query' in p) {
+          currentRoute.query = { ...currentRoute.query, ...p.query };
+        }
+      }),
+      replace: vi.fn(),
+    });
+    (useRoute as Mock).mockReturnValue(currentRoute);
+
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ providerProfiles: [] }),
       availableModels: ref([]),
@@ -161,7 +188,8 @@ describe('SettingsModal Design Specifications', () => {
 
     it('uses shrink-0 for the settings header to prevent height collapse', () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true } });
-      const header = wrapper.find('aside > div.p-6');
+      // Use a more resilient selector that doesn't depend on the specific padding class
+      const header = wrapper.find('aside > div:first-child');
       expect(header.classes()).toContain('shrink-0');
     });
   });

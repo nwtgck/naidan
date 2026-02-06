@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, defineAsyncComponent } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, watch, computed, defineAsyncComponent } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useChat } from './composables/useChat';
 import { useSettings } from './composables/useSettings';
@@ -18,11 +18,30 @@ const DebugPanel = defineAsyncComponent(() => import('./components/DebugPanel.vu
 const CustomDialog = defineAsyncComponent(() => import('./components/CustomDialog.vue'));
 const OPFSExplorer = defineAsyncComponent(() => import('./components/OPFSExplorer.vue'));
 
-const isSettingsOpen = ref(false);
 const chatStore = useChat();
 const settingsStore = useSettings();
 const { isSidebarOpen } = useLayout();
 const router = useRouter();
+const route = useRoute();
+
+const isSettingsOpen = computed(() => route.path.startsWith('/settings') || !!route.query.settings);
+const lastNonSettingsPath = ref('/');
+
+watch(() => route.path, (path) => {
+  if (!path.startsWith('/settings')) {
+    lastNonSettingsPath.value = path;
+  }
+});
+
+const closeSettings = () => {
+  if (route.query.settings) {
+    const query = { ...route.query };
+    delete query.settings;
+    router.push({ path: route.path, query });
+  } else {
+    router.push(lastNonSettingsPath.value);
+  }
+};
 
 const { isOPFSOpen } = useOPFSExplorer();
 
@@ -51,15 +70,31 @@ watch(
     () => router.currentRoute.value?.query?.q,
     () => router.currentRoute.value?.query?.['chat-group'],
     () => router.currentRoute.value?.query?.model,
+    () => router.currentRoute.value?.query?.['system-prompt'] || router.currentRoute.value?.query?.sp,
     () => settingsStore.initialized.value,
     () => settingsStore.isOnboardingDismissed.value
   ],
-  async ([len, path, q, chatGroupId, modelId, initialized, dismissed]) => {
+  async ([len, path, q, chatGroupId, modelId, systemPromptStr, initialized, dismissed]) => {
     if (!initialized || !dismissed || path !== '/') return;
 
-    if (q || len === 0) {
-      let targetGroupId: string | null = null;
-      if (q && typeof chatGroupId === 'string') {
+    // 1. Handle empty state fallback (e.g. first time users or after clearing all chats)
+    // This ignores URL parameters and just ensures the user has something to interact with.
+    if (len === 0 && !q) {
+      const { setActiveFocusArea } = useLayout();
+      setActiveFocusArea('chat');
+      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+      if (chatStore.currentChat.value) {
+        router.push(`/chat/${chatStore.currentChat.value.id}`);
+      }
+      return;
+    }
+
+    // 2. Handle URL Query Parameters
+    // We only trigger this if 'q' is provided. 'system-prompt' or 'model' alone 
+    // does not trigger a new chat.
+    if (q) {
+      let targetGroupId: string | undefined = undefined;
+      if (typeof chatGroupId === 'string') {
         const group = chatStore.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
         if (group) {
           targetGroupId = group.id;
@@ -68,21 +103,25 @@ watch(
         }
       }
 
-      const targetModelId = (q && typeof modelId === 'string') ? modelId : null;
+      const targetModelId = (typeof modelId === 'string') ? modelId : undefined;
+      const systemPrompt = (typeof systemPromptStr === 'string' && systemPromptStr) 
+        ? { behavior: 'override' as const, content: systemPromptStr } 
+        : undefined;
+
       const { setActiveFocusArea } = useLayout();
       setActiveFocusArea('chat');
-      await chatStore.createNewChat(targetGroupId, targetModelId);
+      await chatStore.createNewChat({ 
+        groupId: targetGroupId, 
+        modelId: targetModelId,
+        systemPrompt 
+      });
       
       if (chatStore.currentChat.value) {
         const id = chatStore.currentChat.value.id;
-        if (q) {
-          router.push({
-            path: `/chat/${id}`,
-            query: { q: q.toString() }
-          });
-        } else {
-          router.push(`/chat/${id}`);
-        }
+        router.push({
+          path: `/chat/${id}`,
+          query: { q: q.toString() }
+        });
       }
     }
   },
@@ -95,7 +134,11 @@ onKeyStroke(['o', 'O'], async (e) => {
     e.preventDefault();
     const { setActiveFocusArea } = useLayout();
     setActiveFocusArea('chat');
-    await chatStore.createNewChat();
+    await chatStore.createNewChat({ 
+      groupId: undefined, 
+      modelId: undefined, 
+      systemPrompt: undefined 
+    });
     if (chatStore.currentChat.value) {
       router.push(`/chat/${chatStore.currentChat.value.id}`);
     }
@@ -109,7 +152,7 @@ onKeyStroke(['o', 'O'], async (e) => {
       class="border-r border-gray-100 dark:border-gray-800 shrink-0 h-full transition-all duration-300 ease-in-out relative z-30"
       :class="isSidebarOpen ? 'w-64' : 'w-10'"
     >
-      <Sidebar @open-settings="isSettingsOpen = true" />
+      <Sidebar />
     </div>
     
     <main class="flex-1 relative flex flex-col min-w-0 pb-10 bg-transparent">
@@ -122,7 +165,7 @@ onKeyStroke(['o', 'O'], async (e) => {
 
     <SettingsModal 
       :is-open="isSettingsOpen" 
-      @close="isSettingsOpen = false" 
+      @close="closeSettings" 
     />
 
     <OnboardingModal />

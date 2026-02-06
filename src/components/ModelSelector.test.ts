@@ -308,15 +308,21 @@ describe('ModelSelector.vue', () => {
       wrapper.unmount();
     });
 
-    it('closes the dropdown automatically on window resize', async () => {
+    it('closes on window width resize but stays open on height resize', async () => {
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
       expect(document.body.querySelector('.animate-in')).toBeTruthy();
 
+      // Height change (like keyboard opening) - should STAY OPEN
+      mockWindowSize.height.value = 400;
+      await nextTick();
+      expect(document.body.querySelector('.animate-in')).toBeTruthy();
+
+      // Width change (like orientation change) - should CLOSE
       mockWindowSize.width.value = 800;
       await nextTick();
-
       expect(document.body.querySelector('.animate-in')).toBeFalsy();
+      
       wrapper.unmount();
     });
 
@@ -355,6 +361,30 @@ describe('ModelSelector.vue', () => {
       
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
       expect(parseFloat(dropdown.style.width)).toBe(480);
+      wrapper.unmount();
+    });
+
+    it('remains open when search input is focused and triggers height change (keyboard regression)', async () => {
+      const wrapper = mount(ModelSelector, { 
+        props: { modelValue: 'model-a' },
+        attachTo: document.body 
+      });
+      
+      // 1. Open dropdown
+      await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+      expect(document.body.querySelector('.animate-in')).toBeTruthy();
+
+      // 2. Search input is automatically focused on toggle
+      const input = document.body.querySelector('input') as HTMLInputElement;
+      expect(document.activeElement).toBe(input);
+
+      // 3. Simulate software keyboard opening (triggers height change)
+      mockWindowSize.height.value = 350; // Significant height reduction
+      await nextTick();
+
+      // Dropdown should REMAIN OPEN
+      expect(document.body.querySelector('.animate-in')).toBeTruthy();
+      
       wrapper.unmount();
     });
   });

@@ -47,6 +47,11 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({
     push: vi.fn(),
   }),
+  useRoute: () => ({
+    path: '/',
+    params: {},
+    query: {},
+  }),
 }));
 
 // Global constant mock
@@ -63,6 +68,9 @@ describe('SettingsModal GitHub Link', () => {
           'router-link': true,
           'router-view': true,
           'LmParametersEditor': true,
+          'Transition': {
+            template: '<slot />'
+          },
           // Icons
           Github: true,
           ExternalLink: true,
@@ -89,7 +97,8 @@ describe('SettingsModal GitHub Link', () => {
     // Check for the "External" badge text
     expect(githubLink.text()).toContain('External');
     
-    // Check for the "GitHub Repository" title
-    expect(githubLink.text()).toContain('GitHub Repository');
+    // Check for the "GitHub" and "Repository" titles
+    expect(githubLink.text()).toContain('GitHub');
+    expect(githubLink.text()).toContain('Repository');
   });
 });

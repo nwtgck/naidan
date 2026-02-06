@@ -167,13 +167,16 @@ describe('useChat Concurrency & Stale State Protection', () => {
   it('should allow multiple chats to stream concurrently', async () => {
     const { createNewChat, sendMessage } = useChat();
 
-    const chatAId = (await createNewChat())!.id;
+    const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = currentChat.value!;
     
     let resolveChatA: () => void;
-    const chatAPromise = new Promise<void>(resolve => { resolveChatA = resolve; });
+    const chatAPromise = new Promise<void>(resolve => {
+      resolveChatA = resolve; 
+    });
     
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       onChunk('A-Start');
       await chatAPromise;
       onChunk('A-End');
@@ -183,10 +186,11 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chatAId);
 
-    const chatBId = (await createNewChat())!.id;
+    const chatBId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatB = currentChat.value!;
 
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       await new Promise(r => setTimeout(r, 100));
       onChunk('B-Response');
     });
@@ -214,13 +218,14 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage } = useChat();
 
     // 1. Create Chat A (Individual)
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatA = currentChat.value!;
     const chatAId = chatA.id;
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       onChunk('Thinking...');
       await p;
       onChunk('Done');
@@ -248,14 +253,15 @@ describe('useChat Concurrency & Stale State Protection', () => {
   it('should not overwrite manual renames if renamed while generating in background', async () => {
     const { createNewChat, sendMessage, renameChat } = useChat();
 
-    const chatAId = (await createNewChat())!.id;
+    const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = await storageService.loadChat(chatAId) as Chat;
     chatA.title = 'Original Title';
     await storageService.updateChatMeta(chatAId, () => chatA);
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       onChunk('Thinking...');
       await p;
     });
@@ -277,13 +283,14 @@ describe('useChat Concurrency & Stale State Protection', () => {
   it('should not resurrect a deleted chat when background generation finishes', async () => {
     const { createNewChat, currentChat, sendMessage, deleteChat } = useChat();
 
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatA = currentChat.value!;
     const chatAId = chatA.id;
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       onChunk('Thinking...');
       await p;
     });
@@ -306,22 +313,24 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage, deleteAllChats } = useChat();
 
     // 1. Start two background generations
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatAId = currentChat.value!.id;
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       onChunk('A...');
       await pA;
     });
     const sendA = sendMessage('A');
     await waitForRegistry(chatAId);
 
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatBId = currentChat.value!.id;
     let resolveB: () => void;
     const pB = new Promise<void>(r => resolveB = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       onChunk('B...');
       await pB;
     });
@@ -345,14 +354,15 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage, renameChat } = useChat();
 
     // 1. Start Chat A
-    const chatAId = (await createNewChat())!.id;
+    const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = await storageService.loadChat(chatAId) as Chat;
     chatA.title = 'Original';
     await storageService.updateChatMeta(chatAId, () => chatA);
 
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       onChunk('A...');
       await pA;
     });
@@ -360,7 +370,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // 2. Switch away from A
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     expect(currentChat.value?.id).not.toBe(chatAId);
 
     // 3. Rename A in background (simulating sidebar edit)
@@ -380,7 +390,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     mockSettings.value.autoTitleEnabled = true;
 
     // 1. Setup Chat A
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatA = currentChat.value!;
     const chatAId = chatA.id;
 
@@ -389,12 +399,12 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const titleP = new Promise<void>(r => resolveTitle = r);
     
     mockLlmChat
-      .mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
-        onChunk('Response');
+      .mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+        params.onChunk('Response');
       })
-      .mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+      .mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
         await titleP;
-        onChunk('Auto Title');
+        params.onChunk('Auto Title');
       });
 
     // 2. Start generation (response finishes, title gen starts and waits)
@@ -421,13 +431,14 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage } = useChat();
 
     // 1. Setup Chat A in Group 1
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatA = currentChat.value!;
     const chatAId = chatA.id;
     
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       onChunk('Thinking...');
       await p;
     });
@@ -460,7 +471,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage } = useChat();
     
     // 1. Start Chat A
-    const chatA = await createNewChat();
+    const chatA = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatAId = chatA!.id;
     const chatA_initial = await storageService.loadChat(chatAId) as Chat;
     
@@ -469,7 +480,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     });
     
     // 2. Switch to Chat B (Active)
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatBId = currentChat.value!.id;
     expect(currentChat.value?.id).toBe(chatBId);
 
@@ -491,12 +502,13 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const { createNewChat, currentChat, sendMessage, abortChat } = useChat();
 
     // 1. Start Chat A
-    const chatAId = (await createNewChat())!.id;
+    const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = currentChat.value!;
 
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, _on, _p, _h, signal) => {
+    mockLlmChat.mockImplementationOnce(async (params: { signal: AbortSignal }) => {
+      const { signal } = params;
       await pA;
       if (signal?.aborted) throw new Error('Aborted');
     });
@@ -505,11 +517,12 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // 2. Start Chat B
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatB = currentChat.value!;
     const chatBId = chatB.id;
                             
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk, _p, _h, signal) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void, signal: AbortSignal }) => {
+      const { onChunk, signal } = params;
       onChunk('B-Response');
       // Wait for signal abort
       await new Promise<void>((_, reject) => {
@@ -547,7 +560,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
   it('should prevent multiple simultaneous sendMessage calls for the same chat', async () => {
     const { createNewChat, currentChat, sendMessage } = useChat();
 
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chat = currentChat.value!;
     
     let resolveModels: (v: string[]) => void;
@@ -576,12 +589,13 @@ describe('useChat Concurrency & Stale State Protection', () => {
     mockListModels.mockResolvedValue(['gpt-4']); // Reset for this test
 
     // 1. Start Chat A (Slow Generation)
-    const chatAId = (await createNewChat())!.id;
+    const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = currentChat.value!;
     
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       onChunk('A-Start');
       await pA;
       onChunk('A-End');
@@ -591,7 +605,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // 2. Create Chat B while A is still streaming
-    const chatBId = (await createNewChat())!.id;
+    const chatBId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatB = currentChat.value!;
     expect(chatBId).not.toBe(chatAId);
     expect(activeGenerations.has(chatAId)).toBe(true);
@@ -599,7 +613,8 @@ describe('useChat Concurrency & Stale State Protection', () => {
     // 3. Start Chat B (Concurrent Generation)
     let resolveBStarted: () => void;
     const pBStarted = new Promise<void>(r => resolveBStarted = r);
-    mockLlmChat.mockImplementationOnce(async (_msg, _model, _url, onChunk) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      const { onChunk } = params;
       onChunk('B-Response');
       resolveBStarted();
     });

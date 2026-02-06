@@ -1,20 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import ThemeToggle from './ThemeToggle.vue';
-import { useToast } from '../composables/useToast';
 import { useLayout } from '../composables/useLayout';
-import { OpenAIProvider, OllamaProvider } from '../services/llm';
+import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
+import { TransformersJsProvider } from '../services/transformers-js-provider';
 import { type EndpointType, type Settings as SettingsType } from '../models/types';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import Logo from './Logo.vue';
 import ServerSetupGuide from './ServerSetupGuide.vue';
 import ModelSelector from './ModelSelector.vue';
-import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2 } from 'lucide-vue-next';
+import TransformersJsManager from './TransformersJsManager.vue';
+import { transformersJsService } from '../services/transformers-js';
+import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2, FlaskConical } from 'lucide-vue-next';
 import { naturalSort } from '../utils/string';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
-const toast = useToast();
 const { setActiveFocusArea } = useLayout();
 
 const show = computed(() => initialized.value && !isOnboardingDismissed.value);
@@ -28,6 +29,79 @@ watch(show, (val) => {
 }, { immediate: true });
 
 const selectedType = ref<EndpointType>(onboardingDraft.value?.type || 'openai');
+
+const isTransformersJs = computed(() => {
+  const type = selectedType.value;
+  switch (type) {
+  case 'transformers_js':
+    return true;
+  case 'openai':
+  case 'ollama':
+    return false;
+  default: {
+    const _ex: never = type;
+    return _ex;
+  }
+  }
+});
+
+// Reactive sync with transformersJsService
+let unsubscribe: (() => void) | null = null;
+onMounted(() => {
+  unsubscribe = transformersJsService.subscribe(() => {
+    const state = transformersJsService.getState();
+    const type = selectedType.value;
+    switch (type) {
+    case 'transformers_js':
+      if (state.activeModelId) {
+        selectedModel.value = state.activeModelId;
+      }
+      break;
+    case 'openai':
+    case 'ollama':
+      break;
+    default: {
+      const _ex: never = type;
+      return _ex;
+    }
+    }
+  });
+});
+
+onUnmounted(() => {
+  if (unsubscribe) unsubscribe();
+});
+
+// Auto-load existing model when switching to transformers_js
+watch(selectedType, async (newType) => {
+  switch (newType) {
+  case 'transformers_js': {
+    const cached = await transformersJsService.listCachedModels();
+    if (cached.length > 0 && !transformersJsService.getState().activeModelId) {
+      // Load the most recently modified model
+      const sorted = [...cached].sort((a, b) => b.lastModified - a.lastModified);
+      const target = sorted[0]?.id;
+      if (target) {
+        try {
+          await transformersJsService.loadModel(target);
+          selectedModel.value = target;
+        } catch (e) {
+          console.warn('Auto-load failed:', e);
+        }
+      }
+    }
+    break;
+  }
+  case 'openai':
+  case 'ollama':
+    break;
+  default: {
+    const _ex: never = newType;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
+  }
+  }
+});
+
 const customUrl = ref(onboardingDraft.value?.url || '');
 const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers ? JSON.parse(JSON.stringify(onboardingDraft.value.headers)) : []);
 const isTesting = ref(false);
@@ -45,8 +119,14 @@ function removeHeader(index: number) {
   customHeaders.value.splice(index, 1);
 }
 
+function handleModelLoaded(modelId: string) {
+  if (isTransformersJs.value) {
+    selectedModel.value = modelId;
+  }
+}
+
 const isValidUrl = computed(() => {
-  return !!getNormalizedUrl();
+  return isTransformersJs.value || !!getNormalizedUrl();
 });
 
 function getNormalizedUrl() {
@@ -61,6 +141,33 @@ function getNormalizedUrl() {
     return null;
   }
 }
+
+function isLocalhost(url: string | undefined) {
+  if (!url) return false;
+  return url.includes('localhost') || url.includes('127.0.0.1');
+}
+
+// Auto-fetch for localhost or transformers_js when URL/Type changes
+watch([selectedType, customUrl], ([type, url]) => {
+  error.value = null;
+  const isAutoFetch = (() => {
+    switch (type) {
+    case 'transformers_js':
+      return true;
+    case 'openai':
+    case 'ollama':
+      return isLocalhost(url);
+    default: {
+      const _ex: never = type;
+      return _ex;
+    }
+    }
+  })();
+
+  if (isAutoFetch) {
+    handleConnect();
+  }
+});
 
 function selectPreset(preset: typeof ENDPOINT_PRESETS[number]) {
   selectedType.value = preset.type;
@@ -80,7 +187,9 @@ function handleCancelConnect() {
 
 async function handleConnect() {
   const url = getNormalizedUrl();
-  if (!url) {
+  const type = selectedType.value;
+
+  if (!url && !isTransformersJs.value) {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
   }
@@ -90,8 +199,23 @@ async function handleConnect() {
   abortController = new AbortController();
 
   try {
-    const provider = selectedType.value === 'openai' ? new OpenAIProvider() : new OllamaProvider();
-    const models = await provider.listModels(url, customHeaders.value, abortController.signal);
+    let provider: LLMProvider;
+    switch (type) {
+    case 'openai':
+      provider = new OpenAIProvider({ endpoint: url || '', headers: customHeaders.value });
+      break;
+    case 'ollama':
+      provider = new OllamaProvider({ endpoint: url || '', headers: customHeaders.value });
+      break;
+    case 'transformers_js':
+      provider = new TransformersJsProvider();
+      break;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unsupported endpoint type: ${_ex}`);
+    }
+    }
+    const models = await provider.listModels({ signal: abortController.signal });
 
     if (models.length === 0) {
       throw new Error('No models found at this endpoint.');
@@ -99,7 +223,7 @@ async function handleConnect() {
 
     availableModels.value = models;
     selectedModel.value = models[0] || '';
-    customUrl.value = url; // Update UI with normalized URL
+    if (url) customUrl.value = url; // Update UI with normalized URL
   } catch (e) {
     if ((e as Error).name === 'AbortError') {
       return;
@@ -120,21 +244,13 @@ async function handleClose() {
     selectedModel: selectedModel.value,
   });
   setIsOnboardingDismissed(true);
-  
-  toast.addToast({
-    message: 'Setup skipped. You can always configure it later in settings.',
-    actionLabel: 'Undo',
-    onAction: () => {
-      setIsOnboardingDismissed(false);
-    },
-    duration: 5000,
-  });
 }
 
 async function handleFinish() {
   const url = getNormalizedUrl();
+  const type = selectedType.value;
   
-  if (!url) {
+  if (!url && !isTransformersJs.value) {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
   }
@@ -143,7 +259,7 @@ async function handleFinish() {
     const baseSettings = JSON.parse(JSON.stringify(settings.value)) as SettingsType;
     await save({
       ...baseSettings,
-      endpointType: selectedType.value,
+      endpointType: type,
       endpointUrl: url || undefined,
       endpointHttpHeaders: customHeaders.value.length > 0 ? customHeaders.value : undefined,
       defaultModelId: selectedModel.value || undefined,
@@ -161,7 +277,7 @@ async function handleFinish() {
 <template>
   <Transition name="modal">
     <div v-if="show" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4">
-      <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl h-[640px] max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative modal-content-zoom">
+      <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl md:h-[640px] max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative modal-content-zoom">
         <!-- Close Button (Top Right) -->
       
         <button 
@@ -172,28 +288,77 @@ async function handleFinish() {
           <X class="w-5 h-5" />
         </button>
 
-        <div class="px-10 py-4 flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
+        <div class="px-6 md:px-10 py-4 flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
           <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-            <Logo class="w-8 h-8" />
+            <Logo class="w-6 h-6 md:w-8 md:h-8" />
           </div>
           <div class="text-left flex-1">
-            <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Setup Endpoint</h2>
-            <p class="text-xs text-gray-600 dark:text-gray-400">Set up your local or remote LLM endpoint to start chatting.</p>
+            <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">Setup Endpoint</h2>
+            <p class="hidden sm:block text-xs text-gray-600 dark:text-gray-400">Set up your local or remote LLM endpoint to start chatting.</p>
           </div>
-          <div class="w-32 flex-shrink-0 mr-8">
+          <div class="w-24 md:w-32 flex-shrink-0 mr-8">
             <ThemeToggle />
           </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto min-h-0">
+        <div class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
 
           <div class="flex flex-col lg:flex-row h-full">
 
             <!-- Left Column: Configuration (Primary) -->
 
-            <div class="w-full lg:w-[62%] p-10 space-y-8">
+            <div :class="isTransformersJs ? 'w-full' : 'w-full lg:w-[62%]'" class="p-6 md:p-10 space-y-6 md:space-y-8">
 
-              <template v-if="availableModels.length === 0">
+              <template v-if="isTransformersJs">
+                <!-- Transformers.js Integrated View -->
+                <div class="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <!-- Type Switcher (Repeated here for easy switching) -->
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
+                    <div>
+                      <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                        <FlaskConical class="w-4 h-4 text-purple-500" />
+                        In-Browser AI
+                        <span class="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-bold uppercase tracking-wider">Experimental</span>
+                      </h3>
+                      <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Run models locally in your browser using Transformers.js. No server required.</p>
+                    </div>
+                    <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit shrink-0">
+                      <button 
+                        @click="selectedType = 'openai'; availableModels = []"
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap text-gray-400"
+                      >OpenAI-compatible</button>
+                                    
+                      <button 
+                        @click="selectedType = 'ollama'; availableModels = []"
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors text-gray-400"
+                      >Ollama</button>
+
+                      <button 
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400"
+                      >Transformers.js</button>
+                    </div>
+                  </div>
+
+                  <TransformersJsManager @model-loaded="handleModelLoaded" />
+
+                  <div class="flex flex-col sm:flex-row items-center gap-4 pt-6 border-t border-gray-100 dark:border-gray-800">
+                    <button
+                      @click="handleFinish"
+                      :disabled="!selectedModel"
+                      class="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
+                    >
+                      <Play class="w-5 h-5 fill-current" />
+                      <span>Get Started</span>
+                    </button>
+                    <p class="flex items-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400">
+                      <Settings class="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-500/60" />
+                      Settings will be saved for local inference.
+                    </p>
+                  </div>
+                </div>
+              </template>
+
+              <template v-else-if="availableModels.length === 0">
 
                 <!-- Step 1: Configuration -->
 
@@ -205,7 +370,7 @@ async function handleFinish() {
                       v-for="preset in ENDPOINT_PRESETS"
                       :key="preset.name"
                       @click="selectPreset(preset)"
-                      class="px-3 py-1.5 text-[11px] font-bold border rounded-lg transition-all duration-200"
+                      class="px-2.5 py-1.5 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold border rounded-lg transition-all duration-200"
                       :class="customUrl === preset.url ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600'"
                     >
                       {{ preset.name }}
@@ -213,33 +378,43 @@ async function handleFinish() {
                   </div>
                 </div>
                 <div class="space-y-3">
-                  <div class="flex items-center justify-between">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Endpoint Configuration</label>
-                    <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700">
+                    <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
                       <button 
                         @click="selectedType = 'openai'"
-                        class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
                         :class="selectedType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                       >OpenAI-compatible</button>
                                     
                       <button 
                         @click="selectedType = 'ollama'"
-                        class="px-2.5 py-1 text-[10px] font-bold rounded-md transition-colors"
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors"
                         :class="selectedType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                       >Ollama</button>
+
+                      <button 
+                        @click="selectedType = 'transformers_js'"
+                        class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1"
+                        :class="isTransformersJs ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600'"
+                      >
+                        <FlaskConical class="w-2.5 h-2.5" />
+                        Transformers.js
+                      </button>
                     </div>
                   
                   </div>
                   <input
+                    v-if="!isTransformersJs"
                     v-model="customUrl"
                     type="text"
                     placeholder="http://localhost:11434"
-                    class="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all dark:text-white"
+                    class="w-full px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all dark:text-white text-sm"
                     @keydown.enter="$event => !$event.isComposing && handleConnect()"
                   />
 
                   <!-- Custom HTTP Headers -->
-                  <div class="space-y-3">
+                  <div class="space-y-3" v-if="!isTransformersJs">
                     <div class="flex items-center justify-between ml-1">
                       <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
                       <button 
@@ -261,13 +436,13 @@ async function handleFinish() {
                         <input 
                           v-model="header[0]"
                           type="text"
-                          class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
+                          class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
                           placeholder="Name"
                         />
                         <input 
                           v-model="header[1]"
                           type="text"
-                          class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
+                          class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
                           placeholder="Value"
                         />
                         <button 
@@ -280,7 +455,7 @@ async function handleFinish() {
                     </div>
                   </div>
 
-                  <p v-if="error" class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
+                  <p v-if="error" class="text-[11px] text-red-500 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30">
                     {{ error }}
                   </p>
                 </div>
@@ -290,7 +465,7 @@ async function handleFinish() {
                     <button
                       @click="handleConnect"
                       :disabled="!isValidUrl || isTesting"
-                      class="flex-1 py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2"
+                      class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                       data-testid="onboarding-connect-button"
                     >
                       <template v-if="isTesting">
@@ -305,14 +480,14 @@ async function handleFinish() {
                     <button
                       v-if="isTesting"
                       @click="handleCancelConnect"
-                      class="px-5 py-4 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/10 transition-all flex items-center gap-2"
+                      class="px-4 py-3.5 md:px-5 md:py-4 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 font-bold rounded-xl hover:bg-red-50 dark:hover:bg-red-900/10 transition-all flex items-center gap-2 text-sm"
                     >
                       <span>Cancel</span>
                     </button>
                   </div>
                 
-                  <p class="flex items-center justify-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
-                    <Settings class="w-4 h-4 text-blue-500/60" />
+                  <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
+                    <Settings class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
                     You can change these settings later in the settings menu.
                   </p>
                 </div>
@@ -351,14 +526,14 @@ async function handleFinish() {
                   <div class="flex gap-2">
                     <button
                       @click="availableModels = []"
-                      class="px-5 py-4 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center gap-2"
+                      class="px-4 py-3.5 md:px-5 md:py-4 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center gap-2 text-sm"
                     >
                       <ArrowLeft class="w-5 h-5" />
                       <span>Back</span>
                     </button>
                     <button
                       @click="handleFinish"
-                      class="flex-1 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2"
+                      class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                       data-testid="onboarding-finish-button"
                     >
                       <Play class="w-5 h-5 fill-current" />
@@ -366,8 +541,8 @@ async function handleFinish() {
                     </button>
                   </div>
 
-                  <p class="flex items-center justify-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
-                    <Settings class="w-4 h-4 text-blue-500/60" />
+                  <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
+                    <Settings class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
                     You can change these settings later in the settings menu.
                   </p>
                 </div>
@@ -375,7 +550,7 @@ async function handleFinish() {
             </div>
 
             <!-- Right Column: Setup Guide (Secondary/Auxiliary) -->
-            <div class="w-full lg:w-[38%] p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
+            <div v-if="!isTransformersJs" class="w-full lg:w-[38%] p-6 md:p-8 bg-gray-50/30 dark:bg-black/20 border-t lg:border-t-0 lg:border-l border-gray-100 dark:border-gray-800/50">
               <div class="flex items-center gap-2 mb-4">
                 <span class="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-bold uppercase tracking-widest">Help & Guide</span>
               </div>

@@ -8,7 +8,7 @@ import type {
   ChatMetaDto,
   ChatGroupDto,
   SettingsDto,
-  EndpointTypeDto,
+  EndpointDto,
   StorageTypeDto,
   AttachmentDto,
   HierarchyDto,
@@ -24,6 +24,7 @@ import type {
   SidebarItem,
   Settings,
   EndpointType,
+  Endpoint,
   StorageType,
   SystemPrompt,
   Attachment,
@@ -48,20 +49,30 @@ export const roleToDomain = (dto: RoleDto): Role => {
  */
 export const hierarchyToDomain = (dto: HierarchyDto): Hierarchy => ({
   items: dto.items.map(item => {
-    if (item.type === 'chat') {
+    switch (item.type) {
+    case 'chat':
       return { type: 'chat', id: item.id };
-    } else {
+    case 'chat_group':
       return { type: 'chat_group', id: item.id, chat_ids: item.chat_ids };
+    default: {
+      const _ex: never = item;
+      throw new Error(`Unhandled hierarchy item type: ${_ex}`);
+    }
     }
   }),
 });
 
 export const hierarchyToDto = (domain: Hierarchy): HierarchyDto => ({
   items: domain.items.map(item => {
-    if (item.type === 'chat') {
+    switch (item.type) {
+    case 'chat':
       return { type: 'chat', id: item.id };
-    } else {
+    case 'chat_group':
       return { type: 'chat_group', id: item.id, chat_ids: item.chat_ids };
+    default: {
+      const _ex: never = item;
+      throw new Error(`Unhandled hierarchy item type: ${_ex}`);
+    }
     }
   }),
 });
@@ -73,11 +84,28 @@ export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
   updatedAt: dto.updatedAt,
   debugEnabled: dto.debugEnabled,
   modelId: dto.modelId,
-  endpoint: dto.endpoint ? {
-    type: dto.endpoint.type as EndpointType,
-    url: dto.endpoint.url,
-    httpHeaders: dto.endpoint.httpHeaders,
-  } : undefined,
+  endpoint: dto.endpoint ? (() => {
+    const endpoint = dto.endpoint;
+    switch (endpoint.type) {
+    case 'openai':
+    case 'ollama':
+      return {
+        type: endpoint.type as EndpointType,
+        url: endpoint.url || undefined,
+        httpHeaders: endpoint.httpHeaders,
+      };
+    case 'transformers_js':
+      return {
+        type: endpoint.type as EndpointType,
+        url: undefined,
+        httpHeaders: undefined,
+      };
+    default: {
+      const _ex: never = endpoint;
+      throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
+    }
+    }
+  })() : undefined,
   systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
   lmParameters: dto.lmParameters,
   currentLeafId: dto.currentLeafId,
@@ -120,11 +148,28 @@ export const chatGroupToDomain = (
     isCollapsed: dto.isCollapsed,
     updatedAt: dto.updatedAt,
     items,
-    endpoint: dto.endpoint ? {
-      type: dto.endpoint.type as EndpointType,
-      url: dto.endpoint.url,
-      httpHeaders: dto.endpoint.httpHeaders,
-    } : undefined,
+    endpoint: dto.endpoint ? (() => {
+      const endpoint = dto.endpoint;
+      switch (endpoint.type) {
+      case 'openai':
+      case 'ollama':
+        return {
+          type: endpoint.type as EndpointType,
+          url: endpoint.url || undefined,
+          httpHeaders: endpoint.httpHeaders,
+        };
+      case 'transformers_js':
+        return {
+          type: endpoint.type as EndpointType,
+          url: undefined,
+          httpHeaders: undefined,
+        };
+      default: {
+        const _ex: never = endpoint;
+        throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
+      }
+      }
+    })() : undefined,
     modelId: dto.modelId,
     systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
     lmParameters: dto.lmParameters,
@@ -136,15 +181,32 @@ export const chatGroupToDto = (domain: ChatGroup): ChatGroupDto => ({
   name: domain.name,
   isCollapsed: domain.isCollapsed,
   updatedAt: domain.updatedAt,
-  endpoint: domain.endpoint ? {
-    type: domain.endpoint.type as EndpointTypeDto,
-    url: domain.endpoint.url,
-    httpHeaders: domain.endpoint.httpHeaders,
-  } : undefined,
+  endpoint: domain.endpoint ? endpointToDto(domain.endpoint) : undefined,
   modelId: domain.modelId,
   systemPrompt: domain.systemPrompt,
   lmParameters: domain.lmParameters,
 });
+
+export const endpointToDto = (endpoint: Endpoint): EndpointDto => {
+  const type = endpoint.type;
+  switch (type) {
+  case 'openai':
+  case 'ollama':
+    return {
+      type: type,
+      url: endpoint.url || '',
+      httpHeaders: endpoint.httpHeaders,
+    };
+  case 'transformers_js':
+    return {
+      type: 'transformers_js',
+    };
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
+  }
+  }
+};
 
 const attachmentToDomain = (dto: AttachmentDto): Attachment => {
   const base = {
@@ -155,11 +217,17 @@ const attachmentToDomain = (dto: AttachmentDto): Attachment => {
     uploadedAt: dto.uploadedAt,
   };
 
-  if (dto.status === 'persisted') return { ...base, status: 'persisted' };
-  if (dto.status === 'missing') return { ...base, status: 'missing' };
-  
-  // For 'memory' status from DTO, we might not have the blob yet.
-  return { ...base, status: 'memory' } as unknown as Attachment;
+  switch (dto.status) {
+  case 'persisted': return { ...base, status: 'persisted' };
+  case 'missing': return { ...base, status: 'missing' };
+  case 'memory':
+    // For 'memory' status from DTO, we might not have the blob yet.
+    return { ...base, status: 'memory' } as unknown as Attachment;
+  default: {
+    const _ex: never = dto.status;
+    throw new Error(`Unhandled attachment status: ${_ex}`);
+  }
+  }
 };
 
 const attachmentToDto = (domain: Attachment): AttachmentDto => {
@@ -249,6 +317,32 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     systemPrompt, lmParameters 
   } = dto;
 
+  const endpointInfo = endpoint ? (() => {
+    switch (endpoint.type) {
+    case 'openai':
+    case 'ollama':
+      return {
+        endpointType: endpoint.type as EndpointType,
+        endpointUrl: endpoint.url || undefined,
+        endpointHttpHeaders: endpoint.httpHeaders as [string, string][] | undefined,
+      };
+    case 'transformers_js':
+      return {
+        endpointType: endpoint.type as EndpointType,
+        endpointUrl: undefined,
+        endpointHttpHeaders: undefined,
+      };
+    default: {
+      const _ex: never = endpoint;
+      throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
+    }
+    }
+  })() : {
+    endpointType: undefined,
+    endpointUrl: undefined,
+    endpointHttpHeaders: undefined,
+  };
+
   return {
     id,
     title,
@@ -257,9 +351,7 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     createdAt,
     updatedAt,
     debugEnabled: debugEnabled ?? false,
-    endpointType: endpoint?.type as EndpointType | undefined,
-    endpointUrl: endpoint?.url,
-    endpointHttpHeaders: endpoint?.httpHeaders,
+    ...endpointInfo,
     modelId,
     originChatId,
     originMessageId,
@@ -280,11 +372,7 @@ export const chatMetaToDto = (domain: ChatMeta): ChatMetaDto => ({
   createdAt: domain.createdAt,
   updatedAt: domain.updatedAt,
   debugEnabled: domain.debugEnabled,
-  endpoint: domain.endpoint ? {
-    type: domain.endpoint.type as EndpointTypeDto,
-    url: domain.endpoint.url,
-    httpHeaders: domain.endpoint.httpHeaders,
-  } : undefined,
+  endpoint: domain.endpoint ? endpointToDto(domain.endpoint) : undefined,
   modelId: domain.modelId,
   originChatId: domain.originChatId,
   originMessageId: domain.originMessageId,
@@ -317,11 +405,11 @@ export const chatToDto = (domain: Chat): ChatDto => {
     createdAt,
     updatedAt,
     debugEnabled,
-    endpoint: endpointType ? {
-      type: endpointType as EndpointTypeDto,
+    endpoint: endpointType ? endpointToDto({
+      type: endpointType,
       url: endpointUrl,
       httpHeaders: endpointHttpHeaders,
-    } : undefined,
+    }) : undefined,
     modelId,
     originChatId,
     originMessageId,
@@ -343,7 +431,8 @@ export const buildSidebarItemsFromHierarchy = (
   const groupMap = new Map(chatGroups.map(g => [g.id, g]));
 
   const assembleNode = (node: HierarchyNode): SidebarItem | null => {
-    if (node.type === 'chat') {
+    switch (node.type) {
+    case 'chat': {
       const meta = metaMap.get(node.id);
       if (!meta) return null;
       return { 
@@ -351,10 +440,11 @@ export const buildSidebarItemsFromHierarchy = (
         type: 'chat', 
         chat: { ...chatMetaToSummary(meta), groupId: null } 
       };
-    } else {
+    }
+    case 'chat_group': {
       const groupMeta = groupMap.get(node.id);
       if (!groupMeta) return null;
-      
+        
       const nestedItems: SidebarItem[] = node.chat_ids
         .map(cid => {
           const m = metaMap.get(cid);
@@ -373,6 +463,11 @@ export const buildSidebarItemsFromHierarchy = (
         chatGroup: { ...groupMeta, items: nestedItems }
       };
     }
+    default: {
+      const _ex: never = node;
+      throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+    }
+    }
   };
 
   return hierarchy.items
@@ -382,19 +477,59 @@ export const buildSidebarItemsFromHierarchy = (
 
 export const settingsToDomain = (dto: SettingsDto): Settings => {
   const { endpoint, providerProfiles, storageType, ...rest } = dto;
+  
+  const endpointInfo = (() => {
+    switch (endpoint.type) {
+    case 'openai':
+    case 'ollama':
+      return {
+        endpointType: endpoint.type as EndpointType,
+        endpointUrl: endpoint.url || undefined,
+        endpointHttpHeaders: endpoint.httpHeaders as [string, string][] | undefined,
+      };
+    case 'transformers_js':
+      return {
+        endpointType: endpoint.type as EndpointType,
+        endpointUrl: undefined,
+        endpointHttpHeaders: undefined,
+      };
+    default: {
+      const _ex: never = endpoint;
+      throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
+    }
+    }
+  })();
+
   return {
     ...rest,
-    endpointType: endpoint.type as EndpointType,
-    endpointUrl: endpoint.url,
-    endpointHttpHeaders: endpoint.httpHeaders,
+    ...endpointInfo,
     storageType: storageType as StorageType,
     providerProfiles: providerProfiles?.map(p => {
       const { endpoint: pEndpoint, ...pRest } = p;
+      const pEndpointInfo = (() => {
+        switch (pEndpoint.type) {
+        case 'openai':
+        case 'ollama':
+          return {
+            endpointType: pEndpoint.type as EndpointType,
+            endpointUrl: pEndpoint.url || undefined,
+            endpointHttpHeaders: pEndpoint.httpHeaders as [string, string][] | undefined,
+          };
+        case 'transformers_js':
+          return {
+            endpointType: pEndpoint.type as EndpointType,
+            endpointUrl: undefined,
+            endpointHttpHeaders: undefined,
+          };
+        default: {
+          const _ex: never = pEndpoint;
+          throw new Error(`Unhandled endpoint type: ${(_ex as { type: string }).type}`);
+        }
+        }
+      })();
       return {
         ...pRest,
-        endpointType: pEndpoint.type as EndpointType,
-        endpointUrl: pEndpoint.url,
-        endpointHttpHeaders: pEndpoint.httpHeaders,
+        ...pEndpointInfo,
       };
     }) ?? [],
   };
@@ -405,26 +540,28 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
     endpointType, endpointUrl, endpointHttpHeaders, 
     storageType, providerProfiles, ...rest 
   } = domain;
+
   return {
     ...rest,
-    endpoint: {
-      type: endpointType as EndpointTypeDto,
+    endpoint: endpointToDto({
+      type: endpointType,
       url: endpointUrl,
       httpHeaders: endpointHttpHeaders,
-    },
+    }),
     storageType: storageType as StorageTypeDto,
     providerProfiles: (providerProfiles || []).map(p => {
       const { 
         endpointType: pType, endpointUrl: pUrl, endpointHttpHeaders: pHeaders, 
         ...pRest 
       } = p;
+      
       return {
         ...pRest,
-        endpoint: {
-          type: pType as EndpointTypeDto,
+        endpoint: endpointToDto({
+          type: pType,
           url: pUrl,
           httpHeaders: pHeaders,
-        },
+        }),
       };
     }),
   };

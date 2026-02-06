@@ -19,21 +19,49 @@ export interface ResolvableSettings {
 }
 
 export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: ResolvableSettings) {
+
   const group = chat.groupId ? groups.find(g => g.id === chat.groupId) : null;
+
   const endpointType = chat.endpointType || group?.endpoint?.type || globalSettings.endpointType;
+
+
   const endpointUrl = chat.endpointUrl || group?.endpoint?.url || globalSettings.endpointUrl || '';
   const endpointHttpHeaders = (chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || globalSettings.endpointHttpHeaders) as [string, string][] | undefined;
   const modelId = chat.modelId || group?.modelId || globalSettings.defaultModelId || '';
 
   let systemPrompts: string[] = [];
   if (globalSettings.systemPrompt) systemPrompts.push(globalSettings.systemPrompt);
-  if (group?.systemPrompt) {
-    if (group.systemPrompt.behavior === 'override') systemPrompts = group.systemPrompt.content ? [group.systemPrompt.content] : [];
-    else if (group.systemPrompt.content) systemPrompts.push(group.systemPrompt.content);
+  
+  const groupSystemPrompt = group?.systemPrompt;
+  if (groupSystemPrompt) {
+    switch (groupSystemPrompt.behavior) {
+    case 'override':
+      systemPrompts = groupSystemPrompt.content ? [groupSystemPrompt.content] : [];
+      break;
+    case 'append':
+      if (groupSystemPrompt.content) systemPrompts.push(groupSystemPrompt.content);
+      break;
+    default: {
+      const _ex: never = groupSystemPrompt as never;
+      throw new Error(`Unhandled system prompt behavior: ${(_ex as { behavior: string }).behavior}`);
+    }
+    }
   }
-  if (chat.systemPrompt) {
-    if (chat.systemPrompt.behavior === 'override') systemPrompts = chat.systemPrompt.content ? [chat.systemPrompt.content] : [];
-    else if (chat.systemPrompt.content) systemPrompts.push(chat.systemPrompt.content);
+
+  const chatSystemPrompt = chat.systemPrompt;
+  if (chatSystemPrompt) {
+    switch (chatSystemPrompt.behavior) {
+    case 'override':
+      systemPrompts = chatSystemPrompt.content ? [chatSystemPrompt.content] : [];
+      break;
+    case 'append':
+      if (chatSystemPrompt.content) systemPrompts.push(chatSystemPrompt.content);
+      break;
+    default: {
+      const _ex: never = chatSystemPrompt as never;
+      throw new Error(`Unhandled system prompt behavior: ${(_ex as { behavior: string }).behavior}`);
+    }
+    }
   }
 
   const lmParameters = { 

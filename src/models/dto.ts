@@ -9,18 +9,26 @@ export type RoleDto = z.infer<typeof RoleSchemaDto>;
 export const StorageTypeSchemaDto = z.enum(['local', 'opfs']);
 export type StorageTypeDto = z.infer<typeof StorageTypeSchemaDto>;
 
-export const EndpointTypeSchemaDto = z.enum(['openai', 'ollama']);
-export type EndpointTypeDto = z.infer<typeof EndpointTypeSchemaDto>;
-
 export const HttpHeaderSchemaDto = z.tuple([z.string(), z.string()]);
 export type HttpHeaderDto = z.infer<typeof HttpHeaderSchemaDto>;
 
-export const EndpointSchemaDto = z.object({
-  type: EndpointTypeSchemaDto,
-  url: z.string().optional(),
+export const HttpEndpointSchemaDto = z.object({
+  type: z.enum(['openai', 'ollama']),
+  url: z.string(),
   httpHeaders: z.array(HttpHeaderSchemaDto).optional(),
 });
+
+export const TransformersJsEndpointSchemaDto = z.object({
+  type: z.literal('transformers_js'),
+});
+
+export const EndpointSchemaDto = z.discriminatedUnion('type', [
+  HttpEndpointSchemaDto,
+  TransformersJsEndpointSchemaDto,
+]);
+
 export type EndpointDto = z.infer<typeof EndpointSchemaDto>;
+export type EndpointTypeDto = EndpointDto['type'];
 
 // --- Language Model Parameters ---
 
@@ -34,10 +42,16 @@ export const LmParametersSchemaDto = z.object({
 });
 export type LmParametersDto = z.infer<typeof LmParametersSchemaDto>;
 
-export const SystemPromptSchemaDto = z.object({
-  content: z.string(),
-  behavior: z.enum(['override', 'append']),
-});
+export const SystemPromptSchemaDto = z.discriminatedUnion('behavior', [
+  z.object({
+    behavior: z.literal('override'),
+    content: z.string().nullable(),
+  }),
+  z.object({
+    behavior: z.literal('append'),
+    content: z.string(),
+  }),
+]);
 export type SystemPromptDto = z.infer<typeof SystemPromptSchemaDto>;
 
 // --- Grouping ---

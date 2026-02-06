@@ -12,6 +12,7 @@ import {
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
 import ProviderProfilePreview from './ProviderProfilePreview.vue';
+import TransformersJsUpsell from './TransformersJsUpsell.vue';
 import { useConfirm } from '../composables/useConfirm';
 import { usePrompt } from '../composables/usePrompt';
 import { ENDPOINT_PRESETS } from '../models/constants';
@@ -27,6 +28,7 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: Settings): void;
   (e: 'save'): void;
   (e: 'goToProfiles'): void;
+  (e: 'goToTransformersJs'): void;
 }>();
 
 const sortedModels = computed(() => naturalSort(Array.isArray(props.availableModels) ? props.availableModels : []));
@@ -35,6 +37,8 @@ const { save, fetchModels: fetchModelsGlobal, updateProviderProfiles } = useSett
 const { showConfirm } = useConfirm();
 const { showPrompt } = usePrompt();
 const { addToast } = useToast();
+
+const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 
 const form = computed({
   get: () => props.modelValue,
@@ -60,20 +64,21 @@ function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
 }
 
 async function fetchModels() {
-  if (!form.value.endpointUrl) {
+  if (!form.value.endpointUrl && form.value.endpointType !== 'transformers_js') {
     return;
   }
   
   error.value = null;
   try {
+    const url = form.value.endpointUrl || '';
     // Trigger global fetch with current form values (may be unsaved)
     const models = await fetchModelsGlobal({
-      url: form.value.endpointUrl,
+      url,
       type: form.value.endpointType,
       headers: form.value.endpointHttpHeaders
     });
 
-    if (models.length === 0) {
+    if (models.length === 0 && form.value.endpointType !== 'transformers_js') {
       throw new Error('No models found at this endpoint.');
     }
 
@@ -192,9 +197,9 @@ function removeHeader(index: number) {
   }
 }
 
-// Auto-fetch only for localhost
-watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url]) => {
-  if (url && (url.includes('localhost') || url.includes('127.0.0.1'))) {
+// Auto-fetch for localhost or transformers_js
+watch([() => form.value.endpointUrl, () => form.value.endpointType], ([url, type]) => {
+  if (type === 'transformers_js' || (url && (url.includes('localhost') || url.includes('127.0.0.1')))) {
     fetchModels();
   }
 });
@@ -206,7 +211,7 @@ defineExpose({
 
 <template>
   <div class="flex-1 flex flex-col min-h-0">
-    <div class="flex-1 overflow-y-auto min-h-0">
+    <div class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
       <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
         <div class="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-400">
                   
@@ -244,11 +249,14 @@ defineExpose({
                 >
                   <option value="openai">OpenAI Compatible</option>
                   <option value="ollama">Ollama</option>
+                  <option :disabled="isStandalone" value="transformers_js">
+                    Transformers.js (Experimental) {{ isStandalone ? '(Unavailable in Standalone due to Worker/WASM restrictions)' : '' }}
+                  </option>
                 </select>
               </div>
 
               <!-- Endpoint URL -->
-              <div class="space-y-4">
+              <div class="space-y-4" v-if="form.endpointType !== 'transformers_js'">
                 <div class="flex items-center justify-between ml-1">
                   <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Endpoint URL</label>
                   <div class="flex flex-wrap gap-1.5">
@@ -368,6 +376,7 @@ defineExpose({
                   @refresh="fetchModels"
                   data-testid="setting-model-select"
                 />
+                <TransformersJsUpsell :show="form.endpointType === 'transformers_js'" />
                 <p class="text-[11px] font-medium text-gray-400 ml-1">Used for all new conversations unless overridden.</p>
               </div>
 
@@ -439,10 +448,10 @@ defineExpose({
     </div>
 
     <!-- Footer Actions -->
-    <div class="p-8 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-4 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm">
+    <div class="p-4 md:p-8 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row justify-end gap-3 md:gap-4 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm shrink-0">
       <button 
         @click="handleCreateProviderProfile"
-        class="flex items-center justify-center gap-2 py-3 px-6 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-2xl text-sm font-bold transition-all shadow-sm active:scale-95"
+        class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-6 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-all shadow-sm active:scale-95"
         data-testid="setting-save-provider-profile-button"
       >
         <BookmarkPlus class="w-4 h-4" />
@@ -452,7 +461,7 @@ defineExpose({
       <button 
         @click="handleSave"
         :disabled="!hasUnsavedChanges"
-        class="flex items-center justify-center gap-2 py-3 px-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-95"
+        class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-bold rounded-xl md:rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-95"
         data-testid="setting-save-button"
       >
         <CheckCircle2 v-if="saveSuccess" class="w-4 h-4" />

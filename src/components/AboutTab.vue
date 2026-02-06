@@ -7,7 +7,7 @@ interface OssLicense {
   name: string;
   version: string;
   license: string | null;
-  licenseText: string;
+  licenseText: string | null;
 }
 
 const isStandalone = __BUILD_MODE_IS_STANDALONE__;
@@ -84,7 +84,7 @@ onMounted(() => {
           <Loader2 class="w-6 h-6 text-blue-500 animate-spin" />
           <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Loading licenses...</p>
         </div>
-        <div v-else class="w-full max-h-[400px] overflow-y-auto p-2 space-y-1">
+        <div v-else class="w-full max-h-[400px] overflow-y-auto p-2 space-y-1 overscroll-contain">
           <div 
             v-for="license in ossLicenses" 
             :key="license.name"

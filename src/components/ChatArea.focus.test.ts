@@ -1,9 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { ref, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '../models/types';
+import { asyncComponentTracker } from '../utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 // Mock dependencies
 const mockCurrentChat = ref<Chat | null>({
@@ -17,7 +24,9 @@ const mockCurrentChat = ref<Chat | null>({
 });
 
 const mockActiveFocusArea = ref('chat');
-const mockSetActiveFocusArea = vi.fn((area) => { mockActiveFocusArea.value = area; });
+const mockSetActiveFocusArea = vi.fn((area) => {
+  mockActiveFocusArea.value = area; 
+});
 
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
@@ -31,11 +40,29 @@ vi.mock('../composables/useLayout', () => ({
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
+    chatGroups: ref([]),
+    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    availableModels: ref([]),
+    fetchingModels: ref(false),
+    generatingTitle: ref(false),
     streaming: ref(false),
     activeMessages: ref([]),
     isProcessing: vi.fn().mockReturnValue(false),
     fetchAvailableModels: vi.fn(),
     getSiblings: vi.fn().mockReturnValue([]),
+    abortChat: vi.fn(),
+    updateChatModel: vi.fn(),
+    isImageMode: vi.fn(() => false),
+    toggleImageMode: vi.fn(),
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    updateResolution: vi.fn(),
+    setImageModel: vi.fn(),
+    getSelectedImageModel: vi.fn(),
+    getSortedImageModels: vi.fn(() => []),
+    imageModeMap: ref({}),
+    imageResolutionMap: ref({}),
+    imageModelOverrideMap: ref({}),
   }),
 }));
 
@@ -48,6 +75,10 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 describe('ChatArea Focus Specifications', () => {
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
+  });
+
   const router = createRouter({
     history: createWebHistory(),
     routes: [{ path: '/', component: { template: 'div' } }],

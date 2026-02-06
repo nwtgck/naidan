@@ -38,7 +38,24 @@ export class StorageSynchronizer {
   private broadcastChannel: BroadcastChannel | null = null;
 
   constructor() {
-    if (typeof window !== 'undefined') {
+    if ((() => {
+      const t = typeof window;
+      switch (t) {
+      case 'undefined': return false;
+      case 'object':
+      case 'boolean':
+      case 'string':
+      case 'number':
+      case 'function':
+      case 'symbol':
+      case 'bigint':
+        return true;
+      default: {
+        const _ex: never = t;
+        return _ex;
+      }
+      }
+    })()) {
       // 1. LocalStorage Signal (Primary mechanism for file:// compatibility)
       window.addEventListener('storage', (e) => {
         if (e.key === SYNC_SIGNAL_KEY && e.newValue) {
@@ -57,7 +74,24 @@ export class StorageSynchronizer {
       });
 
       // 2. BroadcastChannel (Optimization)
-      if (typeof BroadcastChannel !== 'undefined') {
+      if ((() => {
+        const t = typeof BroadcastChannel;
+        switch (t) {
+        case 'undefined': return false;
+        case 'function':
+        case 'object':
+        case 'boolean':
+        case 'string':
+        case 'number':
+        case 'symbol':
+        case 'bigint':
+          return true;
+        default: {
+          const _ex: never = t;
+          return _ex;
+        }
+        }
+      })()) {
         try {
           this.broadcastChannel = new BroadcastChannel('naidan_storage_sync');
           this.broadcastChannel.onmessage = (ev) => {
@@ -147,14 +181,29 @@ export class StorageSynchronizer {
   notify(type: string, id?: string): void;
   notify(eventOrType: StorageChangeEvent | string, id?: string): void {
     let event: StorageChangeEvent;
-    if (typeof eventOrType === 'string') {
+    const t = typeof eventOrType;
+    switch (t) {
+    case 'string':
       event = {
-        type: eventOrType,
+        type: eventOrType as string,
         id,
         timestamp: Date.now(),
       } as unknown as StorageChangeEvent;
-    } else {
-      event = eventOrType;
+      break;
+    case 'object':
+      event = eventOrType as StorageChangeEvent;
+      break;
+    case 'undefined':
+    case 'boolean':
+    case 'number':
+    case 'function':
+    case 'symbol':
+    case 'bigint':
+      throw new Error(`Unexpected event type: ${t}`);
+    default: {
+      const _ex: never = t;
+      throw new Error(`Unhandled event type: ${_ex}`);
+    }
     }
 
     // 1. LocalStorage Signal

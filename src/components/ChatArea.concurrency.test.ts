@@ -1,8 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick, ref, computed, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
+import { asyncComponentTracker } from '../utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 // --- Mocks ---
 
@@ -27,9 +34,22 @@ vi.mock('../composables/useChat', () => ({
     saveChat: vi.fn(),
     moveChatToGroup: vi.fn(),
     chatGroups: ref([]),
+    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    availableModels: ref([]),
     isTaskRunning: vi.fn((id: string) => mockActiveGenerations.has(id)),
     isProcessing: vi.fn((id: string) => mockActiveGenerations.has(id)),
     abortChat: vi.fn(),
+    isImageMode: vi.fn(() => false),
+    toggleImageMode: vi.fn(),
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    updateResolution: vi.fn(),
+    setImageModel: vi.fn(),
+    getSelectedImageModel: vi.fn(),
+    getSortedImageModels: vi.fn(() => []),
+    imageModeMap: ref({}),
+    imageResolutionMap: ref({}),
+    imageModelOverrideMap: ref({}),
   }),
 }));
 
@@ -40,6 +60,10 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 describe('ChatArea Concurrency Button State', () => {
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockActiveGenerations.clear();
@@ -113,6 +137,19 @@ describe('ChatArea Concurrency Button State', () => {
       isTaskRunning: vi.fn((id: string) => mockActiveGenerations.has(id)),
       isProcessing: vi.fn((id: string) => mockActiveGenerations.has(id)),
       abortChat: vi.fn(),
+      resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+      inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+      availableModels: ref([]),
+      isImageMode: vi.fn(() => false),
+      toggleImageMode: vi.fn(),
+      getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+      updateResolution: vi.fn(),
+      setImageModel: vi.fn(),
+      getSelectedImageModel: vi.fn(),
+      getSortedImageModels: vi.fn(() => []),
+      imageModeMap: ref({}),
+      imageResolutionMap: ref({}),
+      imageModelOverrideMap: ref({}),
     } as any);
 
     const wrapper = mount(ChatArea, {

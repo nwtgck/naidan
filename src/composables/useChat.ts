@@ -1,14 +1,24 @@
 import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } from 'vue';
-import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode } from '../models/types';
+import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt } from '../models/types';
 import { storageService } from '../services/storage';
-import { OpenAIProvider, OllamaProvider } from '../services/llm';
+import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
+import { TransformersJsProvider } from '../services/transformers-js-provider';
+import { transformersJsService } from '../services/transformers-js';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
-import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranch, processThinking } from '../utils/chat-tree';
+import { useImageGeneration } from './useImageGeneration';
+import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranch, processThinking, createBranchFromMessages, type HistoryItem } from '../utils/chat-tree';
 import { resolveChatSettings } from '../utils/chat-settings-resolver';
 import { detectLanguage, getTitleSystemPrompt, cleanGeneratedTitle } from '../utils/title-generator';
+import { 
+  SENTINEL_IMAGE_PENDING, 
+  isImageRequest, 
+  parseImageRequest, 
+  createImageRequestMarker, 
+  stripNaidanSentinels
+} from '../utils/image-generation';
 
 const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
@@ -26,9 +36,27 @@ const fetchingModels = computed(() => Array.from(activeTaskCounts.keys()).some(k
 const creatingChat = ref(false);
 const availableModels = ref<string[]>([]);
 
+
 // --- Lifecycle & Cleanup ---
 
-if (typeof window !== 'undefined') {
+if ((() => {
+  const t = typeof window;
+  switch (t) {
+  case 'undefined': return false;
+  case 'object':
+  case 'boolean':
+  case 'string':
+  case 'number':
+  case 'function':
+  case 'symbol':
+  case 'bigint':
+    return true;
+  default: {
+    const _ex: never = t;
+    return _ex;
+  }
+  }
+})()) {
   window.addEventListener('beforeunload', () => {
     for (const item of activeGenerations.values()) {
       item.controller.abort();
@@ -88,9 +116,27 @@ watch(_currentChat, (newChat, oldChat) => {
   if (oldChat) unregisterLiveInstance(toRaw(oldChat).id);
   if (newChat) registerLiveInstance(newChat); // Already reactive or raw
 });
-
+  
+transformersJsService.subscribeModelList(async () => {
+  const { fetchAvailableModels, currentChat, resolvedSettings } = useChat();
+  const type = resolvedSettings.value?.endpointType;
+  if (type) {
+    switch (type) {
+    case 'transformers_js':
+      await fetchAvailableModels(currentChat.value?.id);
+      break;
+    case 'openai':
+    case 'ollama':
+      break;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled endpoint type: ${_ex}`);
+    }
+    }
+  }
+});
+  
 // --- Synchronization ---
-
 function syncLiveInstancesWithSidebar() {
   const sync = (items: SidebarItem[], parentGroupId: string | null) => {
     for (const item of items) {
@@ -109,7 +155,8 @@ function syncLiveInstancesWithSidebar() {
       default: {
         const _ex: never = item;
         return _ex;
-      }      }
+      }      
+      }
     }
   };
   sync(rootItems.value, null);
@@ -141,7 +188,8 @@ const debouncedSidebarReload = () => {
 };
 
 storageService.subscribeToChanges(async (event) => {
-  if (event.type === 'chat_meta_and_chat_group') {
+  switch (event.type) {
+  case 'chat_meta_and_chat_group': {
     debouncedSidebarReload();
 
     if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
@@ -158,35 +206,46 @@ storageService.subscribeToChanges(async (event) => {
       const allGroups = await storageService.listChatGroups();
       _currentChatGroup.value = allGroups.find(g => g.id === event.id) || null;
     }
-  } 
-  
-  if (event.type === 'chat_content_generation') {
-    if (event.status === 'started') {
+    break;
+  }
+  case 'chat_content_generation': {
+    switch (event.status) {
+    case 'started':
       if (!activeGenerations.has(event.id)) {
         externalGenerations.add(event.id);
       }
-    } else if (event.status === 'stopped') {
+      break;
+    case 'stopped':
       externalGenerations.delete(event.id);
-    } else if (event.status === 'abort_request') {
+      break;
+    case 'abort_request': {
       const local = activeGenerations.get(event.id);
       if (local) {
         local.controller.abort();
       }
+      break;
     }
+    default: {
+      const _ex: never = event.status;
+      throw new Error(`Unhandled status: ${_ex}`);
+    }
+    }
+    break;
   }
-
-  if (event.type === 'chat_content' && event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
-    if (!activeGenerations.has(event.id)) {
-      const fresh = await storageService.loadChat(event.id);
-      if (fresh && _currentChat.value) {
-        _currentChat.value.root = fresh.root;
-        _currentChat.value.currentLeafId = fresh.currentLeafId;
-        triggerRef(_currentChat);
+  case 'chat_content': {
+    if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
+      if (!activeGenerations.has(event.id)) {
+        const fresh = await storageService.loadChat(event.id);
+        if (fresh && _currentChat.value) {
+          _currentChat.value.root = fresh.root;
+          _currentChat.value.currentLeafId = fresh.currentLeafId;
+          triggerRef(_currentChat);
+        }
       }
     }
+    break;
   }
-  
-  if (event.type === 'migration') {
+  case 'migration': {
     for (const item of activeGenerations.values()) item.controller.abort();
     activeGenerations.clear();
     activeTaskCounts.clear();
@@ -201,6 +260,15 @@ storageService.subscribeToChanges(async (event) => {
       const allGroups = await storageService.listChatGroups();
       _currentChatGroup.value = allGroups.find(g => g.id === _currentChatGroup.value?.id) || null;
     }
+    break;
+  }
+  case 'settings':
+    // Handled by components via useSettings
+    break;
+  default: {
+    const _ex: never = event;
+    throw new Error(`Unhandled event: ${_ex}`);
+  }
   }
 });
 
@@ -247,7 +315,8 @@ export function useChat() {
       default: {
         const _ex: never = item;
         return _ex;
-      }      }
+      }      
+      }
     });
     return all;
   });
@@ -287,7 +356,9 @@ export function useChat() {
     return live;
   };
 
-  const loadData = async () => { rootItems.value = await storageService.getSidebarStructure(); };
+  const loadData = async () => {
+    rootItems.value = await storageService.getSidebarStructure(); 
+  };
 
   const fetchAvailableModels = async (chatId?: string, customEndpoint?: { type: EndpointType, url: string, headers?: readonly (readonly [string, string])[] }) => {
     const mutableChat = chatId ? liveChatRegistry.get(chatId) : undefined;
@@ -317,9 +388,10 @@ export function useChat() {
       headers = settings.value.endpointHttpHeaders;
     }
 
-    if (!url) {
-      if (mutableChat) { decTask(mutableChat.id, 'fetch'); }
-      else if (!customEndpoint) {
+    if (!url && type !== 'transformers_js') {
+      if (mutableChat) {
+        decTask(mutableChat.id, 'fetch'); 
+      } else if (!customEndpoint) {
         const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
         if (val <= 0) activeTaskCounts.delete('fetch:global'); else activeTaskCounts.set('fetch:global', val);
       }
@@ -327,9 +399,23 @@ export function useChat() {
     }
     
     try {
-      const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
       const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      const models = await provider.listModels(url, mutableHeaders);
+      const provider = (() => {
+        switch (type) {
+        case 'ollama':
+          return new OllamaProvider({ endpoint: url, headers: mutableHeaders });
+        case 'openai':
+          return new OpenAIProvider({ endpoint: url, headers: mutableHeaders });
+        case 'transformers_js':
+          return new TransformersJsProvider();
+        default: {
+          const _ex: never = type;
+          throw new Error(`Unhandled endpoint type: ${_ex}`);
+        }
+        }
+      })();
+      
+      const models = await provider.listModels({});
       const result = Array.isArray(models) ? models : [];
       if ((mutableChat && _currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) || (!mutableChat && !chatId)) {
         availableModels.value = result;
@@ -350,8 +436,9 @@ export function useChat() {
       addErrorEvent({ source: 'useChat:fetchAvailableModels', message: 'Failed to fetch models for resolution', details: e instanceof Error ? e : String(e), });
       return [];
     } finally {
-      if (mutableChat) { decTask(mutableChat.id, 'fetch'); }
-      else if (!customEndpoint) {
+      if (mutableChat) {
+        decTask(mutableChat.id, 'fetch'); 
+      } else if (!customEndpoint) {
         const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
         if (val <= 0) activeTaskCounts.delete('fetch:global'); else activeTaskCounts.set('fetch:global', val);
       }
@@ -385,16 +472,22 @@ export function useChat() {
     });
   };
 
-  const createNewChat = async (chatGroupId: string | null = null, modelId: string | null = null): Promise<Chat | null> => {
+  const createNewChat = async (options: { 
+    groupId: string | undefined; 
+    modelId: string | undefined; 
+    systemPrompt: SystemPrompt | undefined; 
+  }): Promise<Chat | null> => {
+    const { groupId, modelId, systemPrompt } = options;
     if (creatingChat.value) return null;
     _currentChatGroup.value = null;
     creatingChat.value = true;
     const chatId = crypto.randomUUID();
     try {
       const chatObj: Chat = reactive({
-        id: chatId, title: null, groupId: chatGroupId, root: { items: [] },
+        id: chatId, title: null, groupId: groupId ?? null, root: { items: [] },
         createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
         modelId: modelId ?? undefined,
+        systemPrompt,
       });
 
       registerLiveInstance(chatObj);
@@ -402,9 +495,11 @@ export function useChat() {
       await updateChatMeta(chatId, () => chatObj);
 
       await storageService.updateHierarchy((curr) => {
-        if (chatGroupId) {
-          const group = curr.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
-          if (group) { group.chat_ids.unshift(chatId); return curr; }
+        if (groupId) {
+          const group = curr.items.find(i => i.type === 'chat_group' && i.id === groupId) as HierarchyChatGroupNode;
+          if (group) {
+            group.chat_ids.unshift(chatId); return curr; 
+          }
         }
         const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
         const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
@@ -434,8 +529,7 @@ export function useChat() {
       _currentChatGroup.value = null;
       _currentChat.value = reactiveChat;
       return reactiveChat;
-    }
-    else {
+    } else {
       _currentChatGroup.value = null;
       _currentChat.value = null;
       return null;
@@ -443,7 +537,9 @@ export function useChat() {
   };
 
   const openChatGroup = (id: string | null) => {
-    if (id === null) { _currentChatGroup.value = null; return; }
+    if (id === null) {
+      _currentChatGroup.value = null; return; 
+    }
     const group = chatGroups.value.find(g => g.id === id);
     if (group) {
       _currentChat.value = null; // Clear chat when opening a group
@@ -460,8 +556,18 @@ export function useChat() {
 
     await storageService.updateHierarchy((curr) => {
       curr.items = curr.items.filter(i => {
-        if (i.type === 'chat' && i.id === id) return false;
-        if (i.type === 'chat_group') i.chat_ids = i.chat_ids.filter(cid => cid !== id);
+        switch (i.type) {
+        case 'chat':
+          if (i.id === id) return false;
+          break;
+        case 'chat_group':
+          i.chat_ids = i.chat_ids.filter(cid => cid !== id);
+          break;
+        default: {
+          const _ex: never = i;
+          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+        }
+        }
         return true;
       });
       return curr;
@@ -471,7 +577,9 @@ export function useChat() {
     await loadData();
 
     const cleanup = async () => {
-      if (activeGenerations.has(id)) { activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id); }
+      if (activeGenerations.has(id)) {
+        activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id); 
+      }
       activeTaskCounts.delete('title:' + id);
       activeTaskCounts.delete('fetch:' + id);
       activeTaskCounts.delete('process:' + id);
@@ -486,8 +594,19 @@ export function useChat() {
         const originalGroupId = chatData.groupId;
         await storageService.updateHierarchy((curr) => {
           if (originalGroupId) {
-            const group = curr.items.find(i => i.type === 'chat_group' && i.id === originalGroupId) as HierarchyChatGroupNode;
-            if (group) { group.chat_ids.push(chatData.id); return curr; }
+            const group = curr.items.find(i => {
+              switch (i.type) {
+              case 'chat_group': return i.id === originalGroupId;
+              case 'chat': return false;
+              default: {
+                const _ex: never = i;
+                throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+              }
+              }
+            }) as HierarchyChatGroupNode;
+            if (group) {
+              group.chat_ids.push(chatData.id); return curr; 
+            }
           }
           curr.items.push({ type: 'chat', id: chatData.id });
           return curr;
@@ -496,10 +615,19 @@ export function useChat() {
         await openChat(chatData.id);
       },
       onClose: async (reason) => {
-        if (reason === 'action') return;
-        await cleanup();
-      }
-    });
+        switch (reason) {
+        case 'action':
+          return;
+        case 'timeout':
+        case 'dismiss':
+          await cleanup();
+          break;
+        default: {
+          const _ex: never = reason;
+          throw new Error(`Unhandled close reason: ${_ex}`);
+        }
+        }
+      }    });
 
     if (!toastId) {
       await cleanup();
@@ -517,7 +645,9 @@ export function useChat() {
     const allGroups = await storageService.listChatGroups();
     for (const g of allGroups) await storageService.deleteChatGroup(g.id);
     
-    await storageService.updateHierarchy((curr) => { curr.items = []; return curr; });
+    await storageService.updateHierarchy((curr) => {
+      curr.items = []; return curr; 
+    });
     _currentChat.value = null;
     await loadData();
   };
@@ -577,6 +707,62 @@ export function useChat() {
     });
   };
 
+  const { 
+    isImageMode, 
+    toggleImageMode, 
+    getResolution, 
+    updateResolution, 
+    setImageModel, 
+    getSelectedImageModel, 
+    getSortedImageModels,
+    performBase64Generation: _performGeneration,
+    handleImageGeneration: _handleImageGeneration,
+    sendImageRequest: _sendImageRequest,
+    imageModeMap,
+    imageResolutionMap,
+    imageModelOverrideMap
+  } = useImageGeneration();
+
+  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, images, model, signal }: {
+    chatId: string;
+    assistantId: string;
+    prompt: string;
+    width: number;
+    height: number;
+    images: { blob: Blob }[];
+    model: string | undefined;
+    signal: AbortSignal | undefined;
+  }) => {
+    const target = getLiveChat({ id: chatId } as Chat);
+    if (!target) return;
+    const resolved = resolveChatSettings(target, chatGroups.value, settings.value);
+
+    await _handleImageGeneration({
+      chatId,
+      assistantId,
+      prompt,
+      width,
+      height,
+      images,
+      model,
+      availableModels: availableModels.value,
+      endpointUrl: resolved.endpointUrl,
+      endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+      storageType: settings.value.storageType,
+      signal,
+      getLiveChat: ({ chat }) => getLiveChat(chat),
+      updateChatContent: ({ chatId, updater }) => updateChatContent(chatId, (curr) => {
+        if (!curr) throw new Error('Chat content not found');
+        return updater(curr);
+      }),
+      triggerChatRef: ({ chatId }) => {
+        if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
+      },
+      incTask: ({ chatId, type }) => incTask(chatId, type),
+      decTask: ({ chatId, type }) => decTask(chatId, type)
+    });
+  };
+
   const generateResponse = async (chat: Chat | Readonly<Chat>, assistantId: string) => {
     const mutableChat = getLiveChat(chat);
     const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
@@ -594,9 +780,59 @@ export function useChat() {
     const url = resolved.endpointUrl;
     const resolvedModel = assistantNode.modelId || resolved.modelId;
 
+    const parentNode = findParentInBranch(mutableChat.root.items, assistantId);
+    const imageRequest = parentNode ? parseImageRequest(parentNode.content) : null;
+
     try {
-      const provider = type === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
-      const headers = resolved.endpointHttpHeaders;
+      if (imageRequest) {
+        const { width, height, model } = imageRequest;
+        const prompt = stripNaidanSentinels(parentNode!.content).trim();
+        
+        const images: { blob: Blob }[] = [];
+        if (parentNode?.attachments) {
+          for (const att of parentNode.attachments) {
+            if (att.mimeType.startsWith('image/')) {
+              let blob: Blob | null = null;
+              switch (att.status) {
+              case 'memory':
+                blob = att.blob || null;
+                break;
+              case 'persisted':
+                blob = await storageService.getFile(att.id, att.originalName);
+                break;
+              case 'missing':
+                blob = null;
+                break;
+              default: {
+                const _ex: never = att;
+                throw new Error(`Unhandled attachment status: ${_ex}`);
+              }
+              }
+              if (blob) images.push({ blob });
+            }
+          }
+        }
+
+        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, images, model, signal: controller.signal });
+        return;
+      }
+
+      let provider: LLMProvider;
+      switch (type) {
+      case 'openai':
+        provider = new OpenAIProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
+        break;
+      case 'ollama':
+        provider = new OllamaProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
+        break;
+      case 'transformers_js':
+        provider = new TransformersJsProvider();
+        break;
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unsupported endpoint type: ${_ex}`);
+      }
+      }
       const finalMessages: ChatMessage[] = [];
       resolved.systemPromptMessages.forEach(content => finalMessages.push({ role: 'system', content }));
 
@@ -606,8 +842,21 @@ export function useChat() {
           const content: MultimodalContent[] = [{ type: 'text', text: m.content }];
           for (const att of m.attachments) {
             let blob: Blob | null = null;
-            if (att.status === 'memory') blob = att.blob;
-            else if (att.status === 'persisted') blob = await storageService.getFile(att.id, att.originalName);
+            switch (att.status) {
+            case 'memory':
+              blob = att.blob;
+              break;
+            case 'persisted':
+              blob = await storageService.getFile(att.id, att.originalName);
+              break;
+            case 'missing':
+              blob = null;
+              break;
+            default: {
+              const _ex: never = att;
+              throw new Error(`Unhandled attachment status: ${_ex}`);
+            }
+            }
             if (blob && att.mimeType.startsWith('image/')) {
               const b64 = await fileToDataUrl(blob);
               content.push({ type: 'image_url', image_url: { url: b64 } });
@@ -621,21 +870,29 @@ export function useChat() {
 
       let lastSave = 0;
       let isSaving = false;
-      await provider.chat(finalMessages, resolvedModel, url, async (chunk) => {
-        assistantNode.content += chunk;
-        if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
-          triggerRef(_currentChat);
-        }
-        
-        const now = Date.now();
-        if (now - lastSave > 500 && !isSaving) {
-          isSaving = true;
-          try {
-            await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
-            lastSave = Date.now();
-          } finally { isSaving = false; }
-        }
-      }, resolved.lmParameters, headers, controller.signal);
+      await provider.chat({
+        messages: finalMessages,
+        model: resolvedModel,
+        onChunk: async (chunk: string) => {
+          assistantNode.content += chunk;
+          if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
+            triggerRef(_currentChat);
+          }
+          
+          const now = Date.now();
+          if (now - lastSave > 500 && !isSaving) {
+            isSaving = true;
+            try {
+              await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
+              lastSave = Date.now();
+            } finally {
+              isSaving = false; 
+            }
+          }
+        },
+        parameters: resolved.lmParameters,
+        signal: controller.signal
+      });
 
       await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
       processThinking(assistantNode);
@@ -662,7 +919,9 @@ export function useChat() {
           try {
             const { useToast } = await import('./useToast');
             const { addToast } = useToast();
-            addToast({ message: `Generation failed in "${mutableChat.title || 'New Chat'}"`, actionLabel: 'View', onAction: async () => { await openChat(mutableChat.id); }, });
+            addToast({ message: `Generation failed in "${mutableChat.title || 'New Chat'}"`, actionLabel: 'View', onAction: async () => {
+              await openChat(mutableChat.id); 
+            }, });
           } catch (toastErr) { /* ignore */ }
         }
       }
@@ -706,7 +965,7 @@ export function useChat() {
       const url = resolved.endpointUrl;
       let resolvedModel = chat.modelId || resolved.modelId;
 
-      if (url) {
+      if (url || type === 'transformers_js') {
         const models = await fetchAvailableModels(chat.id);
         if (models.length > 0) {
           const preferredModel = chat.modelId || resolved.modelId;
@@ -715,7 +974,7 @@ export function useChat() {
         }
       }
 
-      if (!url || !resolvedModel) {
+      if ((!url && type !== 'transformers_js') || !resolvedModel) {
         const models = await fetchAvailableModels(chat.id);
         setOnboardingDraft({ url, type, models, selectedModel: models[0] || '', });
         setIsOnboardingDismissed(false);
@@ -735,18 +994,45 @@ export function useChat() {
       }
 
       for (const att of attachments) {
-        if (att.status === 'memory') {
+        switch (att.status) {
+        case 'memory':
           if (canPersist) {
             try {
               await storageService.saveFile(att.blob, att.id, att.originalName);
               processedAttachments.push({ id: att.id, originalName: att.originalName, mimeType: att.mimeType, size: att.size, uploadedAt: att.uploadedAt, status: 'persisted', });
-            } catch (e) { processedAttachments.push(att); }
+            } catch (e) {
+              processedAttachments.push(att); 
+            }
           } else processedAttachments.push(att);
-        } else processedAttachments.push(att);
+          break;
+        case 'persisted':
+        case 'missing':
+          processedAttachments.push(att);
+          break;
+        default: {
+          const _ex: never = att;
+          throw new Error(`Unhandled attachment status: ${_ex}`);
+        }
+        }
       }
 
-      const userMsg: MessageNode = { id: crypto.randomUUID(), role: 'user', content, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
-      const assistantMsg: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: '', timestamp: Date.now(), modelId: resolvedModel, replies: { items: [] }, };
+      let finalContent = content;
+      const isImgMode = isImageMode({ chatId: chat.id });
+      const imageModel = isImgMode ? getSelectedImageModel({ chatId: chat.id, availableModels: availableModels.value }) : undefined;
+
+      if (isImgMode && !isImageRequest(content)) {
+        if (!imageModel) {
+          const { useGlobalEvents } = await import('../composables/useGlobalEvents');
+          const { addErrorEvent } = useGlobalEvents();
+          addErrorEvent({ source: 'useChat:sendMessage', message: 'No image generation model found (starting with x/z-image-turbo:).' });
+          return false;
+        }
+        const res = getResolution({ chatId: chat.id });
+        finalContent = createImageRequestMarker({ ...res, model: imageModel }) + content;
+      }
+
+      const userMsg: MessageNode = { id: crypto.randomUUID(), role: 'user', content: finalContent, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
+      const assistantMsg: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: isImgMode ? SENTINEL_IMAGE_PENDING : '', timestamp: Date.now(), modelId: imageModel || resolvedModel, replies: { items: [] }, };
       userMsg.replies.items.push(assistantMsg);
 
       if (!chat.root) chat.root = { items: [] };
@@ -813,19 +1099,56 @@ export function useChat() {
     registerLiveInstance(mutableChat);
     try {
       const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
-      if (!resolved.endpointUrl) { decTask(taskId, 'title'); return; }
+      if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') {
+        decTask(taskId, 'title'); return; 
+      }
       const history = getChatBranch(mutableChat);
-      const content = history[0]?.content || '';
-      if (!content || typeof content !== 'string') { decTask(taskId, 'title'); return; }
+      const content = stripNaidanSentinels(history[0]?.content || '');
+      if (!content || typeof content !== 'string') {
+        decTask(taskId, 'title'); return; 
+      }
 
       let generatedTitle = '';
-      const titleProvider = resolved.endpointType === 'ollama' ? new OllamaProvider() : new OpenAIProvider();
+      const endpointType = resolved.endpointType;
+      let titleProvider: LLMProvider;
+      switch (endpointType) {
+      case 'openai':
+        titleProvider = new OpenAIProvider({ endpoint: resolved.endpointUrl, headers: resolved.endpointHttpHeaders });
+        break;
+      case 'ollama':
+        titleProvider = new OllamaProvider({ endpoint: resolved.endpointUrl, headers: resolved.endpointHttpHeaders });
+        break;
+      case 'transformers_js':
+        titleProvider = new TransformersJsProvider();
+        break;
+      default: {
+        const _ex: never = endpointType;
+        throw new Error(`Unsupported endpoint type for title generation: ${_ex}`);
+      }
+      }
       const titleGenModel = settings.value.titleModelId || history[history.length - 1]?.modelId || resolved.modelId;
       if (!titleGenModel) return;
 
       const lang = detectLanguage({ 
         content, 
-        fallbackLanguage: typeof navigator !== 'undefined' ? navigator.language : 'en' 
+        fallbackLanguage: (() => {
+          const t = typeof navigator;
+          switch (t) {
+          case 'undefined': return 'en';
+          case 'object':
+          case 'boolean':
+          case 'string':
+          case 'number':
+          case 'function':
+          case 'symbol':
+          case 'bigint':
+            return navigator.language;
+          default: {
+            const _ex: never = t;
+            return _ex;
+          }
+          }
+        })()
       });
       const systemPrompt = getTitleSystemPrompt(lang);
       const promptMsgs: ChatMessage[] = [
@@ -833,9 +1156,14 @@ export function useChat() {
         { role: 'user', content: `Message content to summarize: "${content.slice(0, 1000)}"` },
       ];
 
-      await titleProvider.chat(promptMsgs, titleGenModel, resolved.endpointUrl, (chunk) => {
-        generatedTitle += chunk;
-      }, undefined, resolved.endpointHttpHeaders, signal);
+      await titleProvider.chat({
+        messages: promptMsgs,
+        model: titleGenModel,
+        onChunk: (chunk: string) => {
+          generatedTitle += chunk;
+        },
+        signal
+      });
 
       const finalTitle = cleanGeneratedTitle(generatedTitle);
       if (finalTitle) {
@@ -850,7 +1178,9 @@ export function useChat() {
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         }
       }
-    } finally { decTask(taskId, 'title'); }
+    } finally {
+      decTask(taskId, 'title'); 
+    }
   };
 
   const abortChat = (chatId?: string) => {
@@ -894,7 +1224,9 @@ export function useChat() {
         const chatGroupId = mutableChat.groupId;
         if (chatGroupId) {
           const group = curr.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
-          if (group) { group.chat_ids.unshift(newChatId); return curr; }
+          if (group) {
+            group.chat_ids.unshift(newChatId); return curr; 
+          }
         }
         const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
         const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
@@ -916,7 +1248,8 @@ export function useChat() {
 
     const chat = getLiveChat(_currentChat.value);
     const node = findNodeInBranch(chat.root.items, messageId); if (!node) return;
-    if (node.role === 'assistant') {
+    switch (node.role) {
+    case 'assistant': {
       const correctedNode: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: newContent, attachments: node.attachments, timestamp: Date.now(), modelId: node.modelId, replies: { items: [] }, };
       const parent = findParentInBranch(chat.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);
@@ -924,9 +1257,26 @@ export function useChat() {
       chat.currentLeafId = correctedNode.id;
       await updateChatContent(chat.id, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
       if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-    } else {
+      break;
+    }
+    case 'user':
+    case 'system': {
       const parent = findParentInBranch(chat.root.items, messageId);
-      await sendMessage(newContent, parent ? parent.id : null, node.attachments, chat);
+      
+      // Preserve image request markers if present
+      let finalContent = newContent;
+      const imageRequest = parseImageRequest(node.content);
+      if (imageRequest && !isImageRequest(newContent)) {
+        finalContent = createImageRequestMarker(imageRequest) + newContent;
+      }
+
+      await sendMessage(finalContent, parent ? parent.id : null, node.attachments, chat);
+      break;
+    }
+    default: {
+      const _ex: never = node.role;
+      throw new Error(`Unhandled role: ${_ex}`);
+    }
     }
   };
 
@@ -961,6 +1311,103 @@ export function useChat() {
     });
   };
 
+  const commitFullHistoryManipulation = async (chatId: string, messages: HistoryItem[], systemPrompt: SystemPrompt | undefined) => {
+    const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
+    if (!target) return;
+    const chat = getLiveChat(target);
+
+    // Update system prompt (can be undefined to reset to inheritance)
+    chat.systemPrompt = systemPrompt;
+
+    // Persist any new 'memory' attachments
+    const canPersist = storageService.canPersistBinary;
+    for (const msg of messages) {
+      if (msg.attachments) {
+        for (let i = 0; i < msg.attachments.length; i++) {
+          const att = msg.attachments[i]!;
+          const status = att.status;
+          switch (status) {
+          case 'memory':
+            if (canPersist) {
+              try {
+                await storageService.saveFile(att.blob, att.id, att.originalName);
+                msg.attachments[i] = { ...att, status: 'persisted' };
+              } catch (e) {
+                console.error('Failed to persist attachment during manipulation:', e);
+              }
+            }
+            break;
+          case 'persisted':
+          case 'missing':
+            break;
+          default: {
+            const _ex: never = status;
+            throw new Error(`Unhandled attachment status: ${_ex}`);
+          }
+          }
+        }
+      }
+    }
+
+    const newNodes = createBranchFromMessages(messages);
+
+    if (newNodes.length > 0) {
+      if (!chat.root) chat.root = { items: [] };
+      chat.root.items.push(newNodes[0]!);
+      chat.currentLeafId = newNodes[newNodes.length - 1]!.id;
+    }
+
+    chat.updatedAt = Date.now();
+    if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
+    
+    await updateChatContent(chat.id, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
+    await updateChatMeta(chat.id, (curr) => {
+      if (!curr) return chat;
+      return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
+    });
+  };
+
+  const generateImage = async ({ prompt, model, width, height, images, chat, signal }: {
+    prompt: string,
+    model: string,
+    width: number,
+    height: number,
+    images: { blob: Blob }[],
+    chat: Chat,
+    signal: AbortSignal | undefined
+  }) => {
+    const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
+    return await _performGeneration({
+      prompt,
+      model,
+      width,
+      height,
+      images,
+      endpointUrl: resolved.endpointUrl,
+      endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+      signal
+    });
+  };
+
+  const sendImageRequest = async ({ prompt, width, height, attachments }: {
+    prompt: string;
+    width: number;
+    height: number;
+    attachments: Attachment[];
+  }): Promise<boolean> => {
+    const target = _currentChat.value;
+    if (!target) return false;
+    return await _sendImageRequest({
+      prompt,
+      width,
+      height,
+      chatId: toRaw(target).id,
+      attachments,
+      availableModels: availableModels.value,
+      sendMessage: ({ content, parentId, attachments: atts }) => sendMessage(content, parentId || null, atts)
+    });
+  };
+
   const createChatGroup = async (name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
     const id = crypto.randomUUID();
     const newGroup: ChatGroup = { 
@@ -972,7 +1419,9 @@ export function useChat() {
       ...options
     };
     await storageService.updateChatGroup(id, () => newGroup);
-    await storageService.updateHierarchy((curr) => { curr.items.unshift({ type: 'chat_group', id, chat_ids: [] }); return curr; });
+    await storageService.updateHierarchy((curr) => {
+      curr.items.unshift({ type: 'chat_group', id, chat_ids: [] }); return curr; 
+    });
     await loadData();
     return id;
   };
@@ -981,10 +1430,37 @@ export function useChat() {
     const group = chatGroups.value.find(g => g.id === id);
     if (!group) return;
     const items = [...group.items];
-    for (const item of items) if (item.type === 'chat') await deleteChat(item.chat.id, () => '');
+    for (const item of items) {
+      switch (item.type) {
+      case 'chat':
+        await deleteChat(item.chat.id, () => '');
+        break;
+      case 'chat_group':
+        // Nested groups not supported in UI but handled for exhaustiveness
+        break;
+      default: {
+        const _ex: never = item;
+        throw new Error(`Unhandled sidebar item type: ${_ex}`);
+      }
+      }
+    }
     if (_currentChatGroup.value?.id === id) _currentChatGroup.value = null;
     await storageService.deleteChatGroup(id);
-    await storageService.updateHierarchy((curr) => { curr.items = curr.items.filter(i => i.type !== 'chat_group' || i.id !== id); return curr; });
+    await storageService.updateHierarchy((curr) => {
+      curr.items = curr.items.filter(i => {
+        switch (i.type) {
+        case 'chat_group':
+          return i.id !== id;
+        case 'chat':
+          return true;
+        default: {
+          const _ex: never = i;
+          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+        }
+        }
+      });
+      return curr;
+    });
     await loadData();
   };
 
@@ -1021,7 +1497,9 @@ export function useChat() {
   };
 
   const updateChatGroupMetadata = async (id: string, updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
-    if (_currentChatGroup.value?.id === id) { Object.assign(_currentChatGroup.value, updates); _currentChatGroup.value.updatedAt = Date.now(); }
+    if (_currentChatGroup.value?.id === id) {
+      Object.assign(_currentChatGroup.value, updates); _currentChatGroup.value.updatedAt = Date.now(); 
+    }
     await storageService.updateChatGroup(id, (curr) => {
       if (!curr) throw new Error('Chat group not found');
       return { ...curr, ...updates, updatedAt: Date.now() };
@@ -1090,12 +1568,18 @@ export function useChat() {
     _currentChat.value = chat;
     if (chat) registerLiveInstance(chat);
   };
-  const __testOnlySetCurrentChatGroup = (group: ChatGroup | null) => { _currentChatGroup.value = group; };
-  const clearLiveChatRegistry = () => { liveChatRegistry.clear(); };
+  const __testOnlySetCurrentChatGroup = (group: ChatGroup | null) => {
+    _currentChatGroup.value = group; 
+  };
+  const clearLiveChatRegistry = () => {
+    liveChatRegistry.clear(); 
+  };
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, createChatGroup, deleteChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
+    imageModeMap, imageResolutionMap, imageModelOverrideMap,
+    isImageMode, toggleImageMode, getResolution, updateResolution, setImageModel, getSelectedImageModel, getSortedImageModels,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, sendImageRequest, createChatGroup, deleteChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
     __testOnly: {
       liveChatRegistry,

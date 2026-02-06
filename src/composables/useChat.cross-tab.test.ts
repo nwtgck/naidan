@@ -114,7 +114,7 @@ describe('useChat Cross-Tab Synchronization', () => {
 
   it('should update current chat title when renamed in another tab', async () => {
     const { createNewChat, currentChat } = chatStore;
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
     const updatedChat = { ...currentChat.value!, title: 'New Title' };
     mocks.mockChatStorage.set(chatId, JSON.parse(JSON.stringify(updatedChat)));
@@ -127,7 +127,7 @@ describe('useChat Cross-Tab Synchronization', () => {
 
   it('should close current chat when deleted in another tab', async () => {
     const { createNewChat, currentChat } = chatStore;
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
     
     mocks.mockChatStorage.delete(chatId);
@@ -155,7 +155,7 @@ describe('useChat Cross-Tab Synchronization', () => {
 
   it('should reload chat content when updated in another tab (if not generating)', async () => {
     const { createNewChat, currentChat } = chatStore;
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
     const updatedChat = JSON.parse(JSON.stringify(chat));
     updatedChat.root.items.push({ id: 'msg-ext', role: 'user', content: 'Ext', timestamp: Date.now(), replies: { items: [] } });
@@ -170,7 +170,7 @@ describe('useChat Cross-Tab Synchronization', () => {
   it('should NOT reload chat content if we are currently generating for it', async () => {
     const { createNewChat, currentChat, __testOnly } = chatStore;
     const { activeGenerations } = __testOnly;
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
     activeGenerations.set(chatId, { controller: new AbortController(), chat: chat as any });
     const updatedChat = JSON.parse(JSON.stringify(chat));
@@ -187,7 +187,7 @@ describe('useChat Cross-Tab Synchronization', () => {
   it('should update metadata but preserve local messages during background generation', async () => {
     const { createNewChat, currentChat, __testOnly } = chatStore;
     const { activeGenerations } = __testOnly;
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
     activeGenerations.set(chatId, { controller: new AbortController(), chat: chat as any });
     const updatedChat = JSON.parse(JSON.stringify(chat));
@@ -205,7 +205,7 @@ describe('useChat Cross-Tab Synchronization', () => {
 
   it('should handle full migration event by reloading everything', async () => {
     const { createNewChat, currentChat, rootItems } = chatStore;
-    await createNewChat();
+    await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     mocks.mockChatStorage.clear();
     mocks.mockRootItems.length = 0;
     const migratedChatSummary: ChatSummary = { id: 'm1', title: 'M', updatedAt: Date.now(), groupId: null };
@@ -221,7 +221,7 @@ describe('useChat Cross-Tab Synchronization', () => {
   it('should maintain the latest group ID if moved externally while generating', async () => {
     const { createNewChat, __testOnly, updateChatMeta } = chatStore;
     const { activeGenerations } = __testOnly;
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
     activeGenerations.set(chatId, { controller: new AbortController(), chat: chat as any });
     
@@ -256,7 +256,7 @@ describe('useChat Cross-Tab Synchronization', () => {
   it('should maintain group ID if hierarchy changed externally without specific chat ID', async () => {
     const { createNewChat, __testOnly, updateChatMeta } = chatStore;
     const { activeGenerations } = __testOnly;
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
     activeGenerations.set(chatId, { controller: new AbortController(), chat: chatStore.currentChat.value! as any });
     mocks.mockRootItems.length = 0;
@@ -300,7 +300,7 @@ describe('useChat Cross-Tab Synchronization', () => {
   it('should abort active generations when a migration occurs', async () => {
     const { createNewChat, __testOnly } = chatStore;
     const { activeGenerations } = __testOnly;
-    const chat = await createNewChat();
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
     const controller = new AbortController();
     const abortSpy = vi.spyOn(controller, 'abort');

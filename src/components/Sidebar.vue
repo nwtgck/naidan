@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
@@ -30,6 +30,7 @@ const { isSidebarOpen, activeFocusArea, setActiveFocusArea, toggleSidebar } = us
 const { showConfirm } = useConfirm();
 
 const router = useRouter();
+const route = useRoute();
 
 defineEmits<{
   (e: 'open-settings'): void
@@ -178,7 +179,9 @@ async function handleCreateChatGroup() {
   newChatGroupName.value = '';
   isCreatingChatGroup.value = false;
   // Reset flag after transition would have finished
-  setTimeout(() => { skipLeaveAnimation.value = false; }, 200);
+  setTimeout(() => {
+    skipLeaveAnimation.value = false; 
+  }, 200);
 }
 
 function handleCreateChatGroupBlur() {
@@ -212,9 +215,13 @@ async function handleDeleteChatGroup(group: ChatGroup) {
   await chatStore.deleteChatGroup(group.id);
 }
 
-async function handleNewChat(chatGroupId: string | null = null) {
+async function handleNewChat(groupId: string | undefined = undefined) {
   setActiveFocusArea('chat');
-  await chatStore.createNewChat(chatGroupId);
+  await chatStore.createNewChat({ 
+    groupId, 
+    modelId: undefined, 
+    systemPrompt: undefined 
+  });
   if (currentChat.value) {
     router.push(`/chat/${currentChat.value.id}`);
   }
@@ -328,6 +335,7 @@ watch(() => currentChat.value?.id, async (id) => {
   await nextTick();
   // Wait a bit for potential transitions
   setTimeout(() => {
+    if (typeof document === 'undefined') return;
     const el = document.querySelector(`[data-testid="sidebar-chat-item-${id}"]`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -340,6 +348,7 @@ watch(() => currentChatGroup.value?.id, async (id) => {
   if (!id || typeof document === 'undefined') return;
   await nextTick();
   setTimeout(() => {
+    if (typeof document === 'undefined') return;
     const el = document.querySelector(`[data-sidebar-group-id="${id}"]`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -394,7 +403,23 @@ const focusedId = computed(() => {
 });
 
 onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
-  if (activeFocusArea.value !== 'sidebar') return;
+  const area = activeFocusArea.value;
+  switch (area) {
+  case 'sidebar':
+    break;
+  case 'chat':
+  case 'chat-group-settings':
+  case 'chat-settings':
+  case 'settings':
+  case 'onboarding':
+  case 'dialog':
+  case 'none':
+    return;
+  default: {
+    const _ex: never = area;
+    throw new Error(`Unhandled focus area: ${_ex}`);
+  }
+  }
 
   if (
     editingId.value || 
@@ -425,9 +450,21 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
       const item = visibleItems.value[nextIndex];
       if (item) {
         lastNavigatedId.value = item.id;
-        if (item.type === 'chat') handleOpenChat(item.id);
-        else if (item.type === 'chat_group') handleOpenChatGroup(item.id);
-        // for expand_button, we just update lastNavigatedId
+        const type = item.type;
+        switch (type) {
+        case 'chat':
+          handleOpenChat(item.id);
+          break;
+        case 'chat_group':
+          handleOpenChatGroup(item.id);
+          break;
+        case 'expand_button':
+          break;
+        default: {
+          const _ex: never = type;
+          throw new Error(`Unhandled item type: ${_ex}`);
+        }
+        }
       }
     }
   } else if (e.key === 'ArrowUp') {
@@ -437,8 +474,21 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
       const item = visibleItems.value[nextIndex];
       if (item) {
         lastNavigatedId.value = item.id;
-        if (item.type === 'chat') handleOpenChat(item.id);
-        else if (item.type === 'chat_group') handleOpenChatGroup(item.id);
+        const type = item.type;
+        switch (type) {
+        case 'chat':
+          handleOpenChat(item.id);
+          break;
+        case 'chat_group':
+          handleOpenChatGroup(item.id);
+          break;
+        case 'expand_button':
+          break;
+        default: {
+          const _ex: never = type;
+          throw new Error(`Unhandled item type: ${_ex}`);
+        }
+        }
       }
     }
   } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
@@ -476,6 +526,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
           handleToggleChatGroupCollapse(group);
         }
       }
+    // eslint-disable-next-line local-rules-switch/force-switch-for-union
     } else if (e.key === 'ArrowLeft') {
       // Use toRaw to ensure we access the underlying data properties reliably
       const rawChat = toRaw(currentChat.value);
@@ -517,7 +568,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     <div class="py-4 space-y-2" :class="isSidebarOpen ? 'px-4' : 'px-1'">
       <div class="flex gap-2" :class="{ 'flex-col items-center': !isSidebarOpen }">
         <button 
-          @click="handleNewChat(null)"
+          @click="handleNewChat(undefined)"
           class="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
           :class="isSidebarOpen ? 'flex-1 px-3 py-3 text-xs' : 'w-8 h-8'"
           data-testid="new-chat-button"
@@ -542,7 +593,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     </div>
     <!-- Navigation List -->
     <div 
-      class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide focus:outline-none" 
+      class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide focus:outline-none overscroll-contain" 
       :class="{ 'is-dragging': isDragging }"
       data-testid="sidebar-nav"
       tabindex="0"
@@ -584,6 +635,8 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
           :group="{ name: 'sidebar' }"
           :move="checkMove"
           :animation="0"
+          :delay="200"
+          :delay-on-touch-only="true"
           @start="onDragStart"
           @end="onDragEnd"
           ghost-class="sortable-ghost"
@@ -662,6 +715,8 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                         item-key="id"
                         handle=".handle"
                         :animation="0"
+                        :delay="200"
+                        :delay-on-touch-only="true"
                         tag="div"
                         data-testid="nested-draggable"
                         @start="onDragStart"
@@ -770,7 +825,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     <!-- Footer -->
     <div class="border-t border-gray-100 dark:border-gray-800 space-y-4 bg-gray-50/30 dark:bg-black/20" :class="isSidebarOpen ? 'p-3' : 'py-3 px-1'">
       <!-- Global Model Selector -->
-      <div v-if="isSidebarOpen && settings.endpointUrl" class="px-1 space-y-2 animate-in fade-in duration-300">
+      <div v-if="isSidebarOpen && (settings.endpointUrl || settings.endpointType === 'transformers_js')" class="px-1 space-y-2 animate-in fade-in duration-300">
         <div class="flex items-center justify-between px-1">
           <label class="flex items-center gap-2 text-[11px] font-semibold text-gray-400 dark:text-gray-500">
             <Bot class="w-3 h-3" />
@@ -788,7 +843,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
 
       <div class="flex items-center gap-2" :class="{ 'flex-col items-center': !isSidebarOpen }">
         <button 
-          @click="$emit('open-settings')" 
+          @click="router.push({ query: { ...route.query, settings: 'connection' } })" 
           class="flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm"
           :class="isSidebarOpen ? 'flex-1 py-3 px-2' : 'w-8 h-8'"
           title="Settings"

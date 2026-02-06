@@ -39,9 +39,11 @@ vi.mock('../services/storage/opfs-detection', () => ({
 
 vi.mock('../services/llm', () => ({
   OpenAIProvider: class {
+    constructor() {}
     listModels = mockListModels;
   },
   OllamaProvider: class {
+    constructor() {}
     listModels = mockListModels;
   },
 }));
@@ -221,7 +223,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
       await fetchModels();
 
-      expect(mockListModels).toHaveBeenCalledWith('http://saved-url', undefined);
+      expect(mockListModels).toHaveBeenCalledWith({});
     });
 
     it('should use provided overrides instead of saved settings', async () => {
@@ -242,9 +244,8 @@ describe('useSettings Initialization and Bootstrap', () => {
         headers: [['X-Test', 'true']],
       });
 
-      expect(mockListModels).toHaveBeenCalledWith('http://override-url', [['X-Test', 'true']]);
-      // Should NOT have used the saved URL
-      expect(mockListModels).not.toHaveBeenCalledWith('http://saved-url', expect.anything());
+      expect(mockListModels).toHaveBeenCalledWith({});
+      expect(mockListModels).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -1,13 +1,22 @@
 import { ref, defineComponent, h, nextTick, reactive } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { useRouter, useRoute } from 'vue-router';
 import Sidebar from './Sidebar.vue';
 import { useChat } from '../composables/useChat';
 import { useTheme } from '../composables/useTheme';
 import { useConfirm } from '../composables/useConfirm';
+import { useSettings } from '../composables/useSettings';
+import { useLayout } from '../composables/useLayout';
 
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(),
+}));
+vi.mock('../composables/useSettings', () => ({
+  useSettings: vi.fn(),
+}));
+vi.mock('../composables/useLayout', () => ({
+  useLayout: vi.fn(),
 }));
 vi.mock('../composables/useTheme', () => ({
   useTheme: vi.fn(),
@@ -17,6 +26,7 @@ vi.mock('../composables/useConfirm', () => ({
 }));
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
+  useRoute: vi.fn(),
 }));
 
 const DraggableStub = defineComponent({
@@ -36,6 +46,20 @@ const DraggableStub = defineComponent({
 
 describe('Sidebar Design Specifications', () => {
   beforeEach(() => {
+    (useRouter as Mock).mockReturnValue({ push: vi.fn() });
+    (useRoute as Mock).mockReturnValue({ path: '/', query: {}, params: {} });
+    (useSettings as unknown as Mock).mockReturnValue({
+      settings: ref({ endpointUrl: 'http://localhost' }),
+      availableModels: ref([]),
+      isFetchingModels: ref(false),
+      updateGlobalModel: vi.fn(),
+    });
+    (useLayout as unknown as Mock).mockReturnValue({
+      isSidebarOpen: ref(true),
+      activeFocusArea: ref('chat'),
+      setActiveFocusArea: vi.fn(),
+      toggleSidebar: vi.fn(),
+    });
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref(null),
       currentChatGroup: ref(null),

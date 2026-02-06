@@ -48,6 +48,7 @@ vi.mock('../composables/useSettings', () => ({
 const globalStubs = {
   'lucide-vue-next': true,
   'LmParametersEditor': true,
+  'TransformersJsUpsell': true,
   'ModelSelector': {
     name: 'ModelSelector',
     template: '<div data-testid="model-selector-mock"><button data-testid="refresh-btn" @click="$emit(\'refresh\')">Refresh</button></div>',
@@ -74,6 +75,9 @@ describe('GroupSettingsPanel.vue', () => {
       systemPrompt: undefined,
       lmParameters: {},
     });
+    // Default global settings
+    mockSettings.endpointType = 'openai';
+    mockSettings.endpointUrl = 'http://global-url';
   });
 
   it('shows detailed error message when refresh fails', async () => {
@@ -107,21 +111,49 @@ describe('GroupSettingsPanel.vue', () => {
     expect(wrapper.text()).toContain('Active Overrides');
   });
 
-  it('toggles endpoint customization', async () => {
+  it('toggles endpoint customization via select', async () => {
     const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
     
-    // Initially showing global default
+    // Initially showing global default (Inherit)
+    // URL input should NOT exist because local endpoint is undefined and global is openai (but local still undefined)
     expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(false);
     
-    // Click customize
-    await wrapper.find('button.text-blue-600').trigger('click');
+    // Change select to 'ollama'
+    const select = wrapper.find('select');
+    await select.setValue('ollama');
+    await select.trigger('change');
     
     expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
-      endpoint: expect.objectContaining({ type: 'openai' })
+      endpoint: expect.objectContaining({ type: 'ollama' })
     }));
     
     await nextTick();
+    // Now local endpoint is set, so URL input should exist
     expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(true);
+  });
+
+  it('hides endpoint URL when effective type is transformers_js', async () => {
+    // 1. Local override is transformers_js
+    mockGroup.endpoint = { type: 'transformers_js', url: '' };
+    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+    expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(false);
+
+    // 2. Local is undefined (global inherit), and global is transformers_js
+    mockGroup.endpoint = undefined;
+    mockSettings.endpointType = 'transformers_js';
+    const wrapper2 = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+    expect(wrapper2.find('[data-testid="group-setting-url-input"]').exists()).toBe(false);
+  });
+
+  it('shows upsell component when effective type is transformers_js', async () => {
+    mockSettings.endpointType = 'transformers_js';
+    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+    
+    const upsell = wrapper.findComponent({ name: 'TransformersJsUpsell' });
+    expect(upsell.props('show')).toBe(true);
   });
 
   it('updates system prompt behavior correctly', async () => {
@@ -155,7 +187,7 @@ describe('GroupSettingsPanel.vue', () => {
     await nextTick();
     expect(status.text()).toBe('Appending');
     
-    mockGroup.systemPrompt.behavior = 'override';
+    mockGroup.systemPrompt = { content: 'test', behavior: 'override' };
     await nextTick();
     expect(status.text()).toBe('Overriding');
   });

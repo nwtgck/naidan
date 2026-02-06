@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, nextTick } from 'vue';
+import { ref, reactive, nextTick } from 'vue';
 import App from './App.vue';
 import type { Chat } from './models/types';
 
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 
 // Define mock refs in module scope so they can be shared
 const mockCreateNewChat = vi.fn();
@@ -47,6 +47,7 @@ vi.mock('./composables/useConfirm', () => ({
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
+  useRoute: vi.fn(),
   RouterView: {
     template: '<div data-testid="router-view"><slot /></div>',
   },
@@ -56,8 +57,7 @@ vi.mock('vue-router', () => ({
 vi.mock('./components/Sidebar.vue', () => ({
   default: {
     name: 'Sidebar',
-    template: '<div data-testid="sidebar"><button @click="$emit(\'open-settings\')">Settings</button></div>',
-    emits: ['open-settings'],
+    template: '<div data-testid="sidebar"></div>',
   },
 }));
 
@@ -86,12 +86,21 @@ vi.mock('./components/ToastContainer.vue', () => ({
 
 describe('App', () => {
   const mockInit = vi.fn();
-  const mockRouterPush = vi.fn();
+  const currentRoute = reactive({ path: '/', query: {} as any });
+  const mockRouterPush = vi.fn((p) => {
+    if (typeof p === 'string') {
+      currentRoute.path = p;
+    } else if (p && typeof p === 'object' && p.path) {
+      currentRoute.path = p.path;
+    }
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockCurrentChat.value = null;
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    currentRoute.path = '/';
+    currentRoute.query = {};
 
     (useSettings as unknown as Mock).mockReturnValue({
       init: mockInit,
@@ -100,10 +109,12 @@ describe('App', () => {
       isFetchingModels: ref(false),
       settings: ref({ endpointUrl: 'http://localhost:11434' }),
     });
+
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute: ref({ path: '/' }),
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as unknown as Mock).mockReturnValue(currentRoute);
   });
 
   const mountApp = () => mount(App, {
@@ -186,11 +197,12 @@ describe('App', () => {
 
   it('automatically creates a new chat when navigating back to root from another path if history is empty', async () => {
     mockChats.value = [];
-    const currentRoute = ref({ path: '/settings' });
+    const currentRoute = reactive({ path: '/settings', query: {} as any });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
 
     mountApp();
 
@@ -199,7 +211,7 @@ describe('App', () => {
     mockCreateNewChat.mockClear();
 
     // Navigate to root
-    currentRoute.value.path = '/';
+    currentRoute.path = '/';
     
     await nextTick();
     await nextTick();
@@ -210,11 +222,12 @@ describe('App', () => {
 
   it('automatically creates a new chat and preserves query param when q is present on root path', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
-    const currentRoute = ref({ path: '/', query: { q: 'hello' } });
+    const currentRoute = reactive({ path: '/', query: { q: 'hello' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
     mockCreateNewChat.mockImplementation(async () => {
       mockCurrentChat.value = { id: 'q-chat-id' } as unknown as Chat;
     });
@@ -235,11 +248,12 @@ describe('App', () => {
   it('automatically creates a new chat in a group when both q and chat-group are present', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
     mockChatGroups.value = [{ id: 'group-123', name: 'Existing Group' }];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'group-123' } });
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', 'chat-group': 'group-123' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
     mockCreateNewChat.mockImplementation(async (groupId) => {
       mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
     });
@@ -250,7 +264,11 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalledWith('group-123', null);
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: 'group-123',
+      modelId: undefined,
+      systemPrompt: undefined
+    });
     expect(mockRouterPush).toHaveBeenCalledWith({
       path: '/chat/grouped-chat-id',
       query: { q: 'hello' }
@@ -260,13 +278,14 @@ describe('App', () => {
   it('automatically creates a new chat in a group by name when chat-group matches a group name', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
     mockChatGroups.value = [{ id: 'group-uuid-123', name: 'Query Group' }];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'Query Group' } });
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', 'chat-group': 'Query Group' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
-    mockCreateNewChat.mockImplementation(async (groupId) => {
-      mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
+    (useRoute as Mock).mockReturnValue(currentRoute);
+    mockCreateNewChat.mockImplementation(async (options) => {
+      mockCurrentChat.value = { id: 'grouped-chat-id', groupId: options.groupId } as unknown as Chat;
     });
 
     mountApp();
@@ -275,20 +294,25 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalledWith('group-uuid-123', null);
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: 'group-uuid-123',
+      modelId: undefined,
+      systemPrompt: undefined
+    });
   });
 
   it('automatically creates a new group if chat-group name does not exist', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
     mockChatGroups.value = [];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', 'chat-group': 'New Group Name' } });
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', 'chat-group': 'New Group Name' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
+    (useRoute as Mock).mockReturnValue(currentRoute);
     mockCreateChatGroup.mockResolvedValue('new-group-uuid');
-    mockCreateNewChat.mockImplementation(async (groupId) => {
-      mockCurrentChat.value = { id: 'grouped-chat-id', groupId } as unknown as Chat;
+    mockCreateNewChat.mockImplementation(async (options) => {
+      mockCurrentChat.value = { id: 'grouped-chat-id', groupId: options.groupId } as unknown as Chat;
     });
 
     mountApp();
@@ -298,18 +322,23 @@ describe('App', () => {
     await nextTick();
 
     expect(mockCreateChatGroup).toHaveBeenCalledWith('New Group Name');
-    expect(mockCreateNewChat).toHaveBeenCalledWith('new-group-uuid', null);
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: 'new-group-uuid',
+      modelId: undefined,
+      systemPrompt: undefined
+    });
   });
 
   it('automatically creates a new chat with model override when q and model are present', async () => {
     mockChats.value = [{ id: 'existing' } as unknown as Chat];
-    const currentRoute = ref({ path: '/', query: { q: 'hello', model: 'special-model' } });
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', model: 'special-model' } });
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
-      currentRoute,
+      currentRoute: ref(currentRoute),
     });
-    mockCreateNewChat.mockImplementation(async (groupId, modelId) => {
-      mockCurrentChat.value = { id: 'model-chat-id', groupId, modelId } as unknown as Chat;
+    (useRoute as Mock).mockReturnValue(currentRoute);
+    mockCreateNewChat.mockImplementation(async (options) => {
+      mockCurrentChat.value = { id: 'model-chat-id', groupId: options.groupId, modelId: options.modelId } as unknown as Chat;
     });
 
     mountApp();
@@ -318,20 +347,114 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalledWith(null, 'special-model');
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: 'special-model',
+      systemPrompt: undefined
+    });
     expect(mockRouterPush).toHaveBeenCalledWith({
       path: '/chat/model-chat-id',
       query: { q: 'hello' }
     });
   });
 
-  it('opens SettingsModal when Sidebar emits open-settings', async () => {
+  it('automatically creates a new chat with system prompt override when system-prompt query is present', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', 'system-prompt': 'You are a helpful assistant' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute: ref(currentRoute),
+    });
+    (useRoute as Mock).mockReturnValue(currentRoute);
+    mockCreateNewChat.mockImplementation(async (options) => {
+      mockCurrentChat.value = { id: 'sp-chat-id', systemPrompt: options.systemPrompt } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: { behavior: 'override', content: 'You are a helpful assistant' }
+    });
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      path: '/chat/sp-chat-id',
+      query: { q: 'hello' }
+    });
+  });
+
+  it('does NOT create a new chat when system-prompt is present but q is missing', async () => {
+    mockChats.value = [{ id: 'existing' } as any]; // Non-empty list
+    const currentRoute = reactive({ path: '/', query: { 'system-prompt': 'You are a cat' } });
+    (useRouter as any).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute: ref(currentRoute),
+    });
+    (useRoute as any).mockReturnValue(currentRoute);
+
+    mountApp();
+    await flushPromises();
+
+    expect(mockCreateNewChat).not.toHaveBeenCalled();
+  });
+
+  it('creates a plain chat when list is empty even if system-prompt is in URL but q is missing', async () => {
+    mockChats.value = []; // Empty list
+    const currentRoute = reactive({ path: '/', query: { 'system-prompt': 'You are a cat' } });
+    (useRouter as any).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute: ref(currentRoute),
+    });
+    (useRoute as any).mockReturnValue(currentRoute);
+
+    mountApp();
+    await flushPromises();
+
+    // Should create a chat because len === 0, but parameters should be ignored
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: undefined
+    });
+  });
+
+  it('automatically creates a new chat with system prompt override when sp query is present', async () => {
+    mockChats.value = [{ id: 'existing' } as unknown as Chat];
+    const currentRoute = reactive({ path: '/', query: { q: 'hello', sp: 'Be concise' } });
+    (useRouter as unknown as Mock).mockReturnValue({
+      push: mockRouterPush,
+      currentRoute: ref(currentRoute),
+    });
+    (useRoute as Mock).mockReturnValue(currentRoute);
+    mockCreateNewChat.mockImplementation(async (options) => {
+      mockCurrentChat.value = { id: 'sp-alias-id', systemPrompt: options.systemPrompt } as unknown as Chat;
+    });
+
+    mountApp();
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: { behavior: 'override', content: 'Be concise' }
+    });
+  });
+
+  it('opens SettingsModal when route query settings is present', async () => {
     const wrapper = mountApp();
     await flushPromises();
     
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
     
-    await wrapper.find('[data-testid="sidebar"] button').trigger('click');
+    currentRoute.query = { settings: 'connection' };
+    await nextTick();
     
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
   });
@@ -396,7 +519,11 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalled();
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: undefined
+    });
     expect(mockRouterPush).toHaveBeenCalledWith('/chat/new-chat-id');
   });
 
@@ -420,7 +547,11 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateNewChat).toHaveBeenCalled();
+    expect(mockCreateNewChat).toHaveBeenCalledWith({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: undefined
+    });
     expect(mockRouterPush).toHaveBeenCalledWith('/chat/mac-chat-id');
   });
 

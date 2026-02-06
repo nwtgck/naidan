@@ -7,14 +7,16 @@ import { useLayout } from '../composables/useLayout';
 import MessageItem from './MessageItem.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ModelSelector from './ModelSelector.vue';
+import ChatToolsMenu from './ChatToolsMenu.vue';
 import { naturalSort } from '../utils/string';
 
 const ChatSettingsPanel = defineAsyncComponent(() => import('./ChatSettingsPanel.vue'));
+const HistoryManipulationModal = defineAsyncComponent(() => import('./HistoryManipulationModal.vue'));
 import { 
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight,
+  Folder, FolderInput, ChevronRight, Hammer, Image
 } from 'lucide-vue-next';
 import type { Attachment } from '../models/types';
 
@@ -30,9 +32,50 @@ const {
   resolvedSettings,
   inheritedSettings,
   isProcessing,
+  isImageMode: _isImageMode,
+  toggleImageMode: _toggleImageMode,
+  getResolution,
+  updateResolution: _updateResolution,
+  setImageModel,
+  getSelectedImageModel,
+  getSortedImageModels,
 } = chatStore;
 const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
 const { activeFocusArea, setActiveFocusArea } = useLayout();
+
+const isImageMode = computed({
+  get: () => currentChat.value ? _isImageMode({ chatId: currentChat.value.id }) : false,
+  set: () => {
+    if (currentChat.value) {
+      _toggleImageMode({ chatId: currentChat.value.id });
+    }
+  }
+});
+
+const currentResolution = computed(() => {
+  return currentChat.value ? getResolution({ chatId: currentChat.value.id }) : { width: 512, height: 512 };
+});
+
+function updateResolution(width: number, height: number) {
+  if (currentChat.value) {
+    _updateResolution({ chatId: currentChat.value.id, width, height });
+  }
+}
+
+const availableImageModels = computed(() => {
+  return getSortedImageModels({ availableModels: availableModels.value });
+});
+
+const selectedImageModel = computed(() => {
+  return currentChat.value ? getSelectedImageModel({ chatId: currentChat.value.id, availableModels: availableModels.value }) : undefined;
+});
+
+function handleUpdateImageModel(modelId: string) {
+  if (currentChat.value) {
+    setImageModel({ chatId: currentChat.value.id, modelId });
+  }
+}
+
 useSettings();
 const router = useRouter();
 
@@ -48,9 +91,19 @@ const input = ref('');
 
 function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
   if (!value) return 'Default';
-  if (source === 'chat_group') return `${value} (Group)`;
-  if (source === 'global') return `${value} (Global)`;
-  return value;
+  switch (source) {
+  case 'chat_group':
+    return `${value} (Group)`;
+  case 'global':
+    return `${value} (Global)`;
+  case 'chat':
+  case undefined:
+    return value;
+  default: {
+    const _ex: never = source;
+    throw new Error(`Unhandled source: ${_ex}`);
+  }  
+  }
 }
 
 const isCurrentChatStreaming = computed(() => {
@@ -92,6 +145,7 @@ const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navig
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
 const showChatSettings = ref(false);
+const showHistoryModal = ref(false);
 const showMoreMenu = ref(false);
 const showMoveMenu = ref(false);
 
@@ -263,7 +317,17 @@ function exportChat() {
   let markdownContent = `# ${currentChat.value.title || 'New Chat'}\n\n`;
 
   activeMessages.value.forEach(msg => {
-    const role = msg.role === 'user' ? 'User' : 'AI';
+    const role = (() => {
+      switch (msg.role) {
+      case 'user': return 'User';
+      case 'assistant': return 'AI';
+      case 'system': return 'System';
+      default: {
+        const _ex: never = msg.role;
+        return _ex;
+      }
+      }
+    })();
     markdownContent += `## ${role}:\n${msg.content}\n\n`;
   });
 
@@ -280,7 +344,22 @@ function exportChat() {
 }
 
 function focusInput() {
-  if (activeFocusArea.value === 'sidebar') return;
+  switch (activeFocusArea.value) {
+  case 'sidebar':
+    return;
+  case 'chat':
+  case 'chat-group-settings':
+  case 'chat-settings':
+  case 'settings':
+  case 'onboarding':
+  case 'dialog':
+  case 'none':
+    break;
+  default: {
+    const _ex: never = activeFocusArea.value;
+    throw new Error(`Unhandled focus area: ${_ex}`);
+  }
+  }
   nextTick(() => {
     textareaRef.value?.focus();
   });
@@ -301,8 +380,60 @@ async function fetchModels() {
   }
 }
 
+const canGenerateImage = computed(() => {
+  const type = resolvedSettings.value?.endpointType;
+  if (!type) return false;
+
+  const isOllama = (() => {
+    switch (type) {
+    case 'ollama':
+      return true;
+    case 'openai':
+    case 'transformers_js':
+      return false;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled endpoint type: ${_ex}`);
+    }
+    }
+  })();
+
+  if (!isOllama) return false;
+  return availableImageModels.value.length > 0;
+});
+const hasImageModel = computed(() => availableImageModels.value.length > 0);
+
+function toggleImageMode() {
+  isImageMode.value = !isImageMode.value;
+}
+
+async function handleGenerateImage() {
+  if (!currentChat.value || (!input.value.trim() && attachments.value.length === 0) || isCurrentChatStreaming.value) return;
+  
+  const prompt = input.value;
+  const currentAttachments = [...attachments.value];
+  const { width, height } = currentResolution.value;
+  const success = await chatStore.sendImageRequest({ 
+    prompt, 
+    width, 
+    height,
+    attachments: currentAttachments
+  });
+  if (success) {
+    input.value = '';
+    attachments.value = [];
+    nextTick(adjustTextareaHeight);
+  }
+}
+
 async function handleSend() {
   if ((!input.value.trim() && attachments.value.length === 0) || isCurrentChatStreaming.value) return;
+
+  if (isImageMode.value) {
+    await handleGenerateImage();
+    return;
+  }
+
   const text = input.value;
   const currentAttachments = [...attachments.value];
   
@@ -602,6 +733,15 @@ onUnmounted(() => {
           </button>
 
           <button 
+            @click="showHistoryModal = true"
+            class="p-2 rounded-xl transition-all text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 group/hammer"
+            title="Super Edit (Full History Manipulation)"
+            data-testid="super-edit-button"
+          >
+            <Hammer class="w-5 h-5 group-hover/hammer:-rotate-12 transition-all" />
+          </button>
+
+          <button 
             @click="exportChat"
             class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             title="Export Chat"
@@ -648,12 +788,18 @@ onUnmounted(() => {
       @close="showChatSettings = false" 
     />
 
+    <!-- History Manipulation Modal -->
+    <HistoryManipulationModal
+      :is-open="showHistoryModal"
+      @close="showHistoryModal = false"
+    />
+
     <!-- Messages Layer -->
     <div class="flex-1 relative overflow-hidden">
       <div 
         ref="container" 
         data-testid="scroll-container" 
-        class="absolute inset-0 overflow-y-auto"
+        class="absolute inset-0 overflow-y-auto overscroll-contain"
         style="overflow-anchor: none; padding-bottom: 300px;"
       >
         <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
@@ -778,6 +924,19 @@ onUnmounted(() => {
 
         <div class="flex items-center justify-between px-4 pb-4">
           <div class="flex items-center gap-2">
+            <div class="w-[100px] sm:w-[180px]">
+              <ModelSelector 
+                :model-value="currentChat.modelId"
+                @update:model-value="val => currentChat && chatStore.updateChatModel(currentChat.id, val!)"
+                :models="sortedAvailableModels"
+                :placeholder="formatLabel(inheritedSettings?.modelId, inheritedSettings?.sources.modelId)"
+                :loading="fetchingModels"
+                allow-clear
+                @refresh="fetchModels"
+                data-testid="model-override-select"
+              />
+            </div>
+
             <input 
               ref="fileInputRef"
               type="file" 
@@ -794,18 +953,18 @@ onUnmounted(() => {
               <Paperclip class="w-5 h-5" />
             </button>
 
-            <div class="w-[100px] sm:w-[180px]">
-              <ModelSelector 
-                :model-value="currentChat.modelId"
-                @update:model-value="val => currentChat && chatStore.updateChatModel(currentChat.id, val!)"
-                :models="sortedAvailableModels"
-                :placeholder="formatLabel(inheritedSettings?.modelId, inheritedSettings?.sources.modelId)"
-                :loading="fetchingModels"
-                allow-clear
-                @refresh="fetchModels"
-                data-testid="model-override-select"
-              />
-            </div>
+            <ChatToolsMenu 
+              :can-generate-image="canGenerateImage && hasImageModel"
+              :is-processing="isCurrentChatStreaming"
+              :is-image-mode="isImageMode"
+              :selected-width="currentResolution.width"
+              :selected-height="currentResolution.height"
+              :available-image-models="availableImageModels"
+              :selected-image-model="selectedImageModel"
+              @toggle-image-mode="toggleImageMode"
+              @update:resolution="updateResolution"
+              @update:model="handleUpdateImageModel"
+            />
           </div>
 
           <button 
@@ -821,7 +980,8 @@ onUnmounted(() => {
             </template>
             <template v-else>
               <span class="text-[10px] font-bold opacity-90 hidden sm:inline tracking-wider">{{ sendShortcutText }}</span>
-              <Send class="w-4 h-4" />
+              <Image v-if="isImageMode" class="w-4 h-4 text-white" />
+              <Send v-else class="w-4 h-4" />
             </template>
           </button>
         </div>

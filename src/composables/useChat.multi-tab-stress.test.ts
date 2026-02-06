@@ -83,8 +83,12 @@ vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
 const mockLlmChat = vi.fn();
 vi.mock('../services/llm', () => ({
-  OpenAIProvider: function() { return { chat: (...args: any[]) => mockLlmChat(...args), listModels: vi.fn().mockResolvedValue(['gpt-4']) }; },
-  OllamaProvider: function() { return { chat: vi.fn(), listModels: vi.fn() }; },
+  OpenAIProvider: function() {
+    return { chat: (...args: any[]) => mockLlmChat(...args), listModels: vi.fn().mockResolvedValue(['gpt-4']) }; 
+  },
+  OllamaProvider: function() {
+    return { chat: vi.fn(), listModels: vi.fn() }; 
+  },
 }));
 
 describe('useChat Multi-Tab Stress Scenarios', () => {

@@ -10,7 +10,7 @@
 
 export type Role = 'user' | 'assistant' | 'system';
 export type StorageType = 'local' | 'opfs';
-export type EndpointType = 'openai' | 'ollama';
+export type EndpointType = 'openai' | 'ollama' | 'transformers_js';
 
 export interface LmParameters {
   temperature?: number;
@@ -21,10 +21,9 @@ export interface LmParameters {
   stop?: string[];
 }
 
-export interface SystemPrompt {
-  content: string;
-  behavior: 'override' | 'append';
-}
+export type SystemPrompt = 
+  | { behavior: 'override'; content: string | null }
+  | { behavior: 'append'; content: string };
 
 export interface Endpoint {
   type: EndpointType;

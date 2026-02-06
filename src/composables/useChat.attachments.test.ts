@@ -79,15 +79,15 @@ vi.mock('../services/storage', () => ({
 vi.mock('../services/llm', () => {
   return {
     OpenAIProvider: class {
-      chat = vi.fn().mockImplementation((_msgs: any, _model: any, _end: any, onChunk: any) => {
-        onChunk('Response');
+      chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
+        params.onChunk('Response');
         return Promise.resolve();
       });
       listModels = vi.fn().mockResolvedValue(['test-model']);
     },
     OllamaProvider: class {
-      chat = vi.fn().mockImplementation((_msgs: any, _model: any, _end: any, onChunk: any) => {
-        onChunk('Response');
+      chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
+        params.onChunk('Response');
         return Promise.resolve();
       });
       listModels = vi.fn().mockResolvedValue(['test-model']);
@@ -122,7 +122,9 @@ describe('useChat - Attachment & Migration Logic', () => {
       settings,
       isOnboardingDismissed: ref(true),
       onboardingDraft: ref({}),
-      setHeavyContentAlertDismissed: (val: boolean) => { settings.value.heavyContentAlertDismissed = val; },
+      setHeavyContentAlertDismissed: (val: boolean) => {
+        settings.value.heavyContentAlertDismissed = val; 
+      },
       setOnboardingDraft: vi.fn(),
       setIsOnboardingDismissed: vi.fn(),
     });
@@ -131,7 +133,7 @@ describe('useChat - Attachment & Migration Logic', () => {
 
   it('should keep attachments in memory status when using LocalStorage', async () => {
     const { sendMessage, createNewChat, openChat } = chatStore;
-    const newChat = await createNewChat();
+    const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatObj = await openChat(newChat!.id);
 
     const mockAttachment: Attachment = {
@@ -159,7 +161,7 @@ describe('useChat - Attachment & Migration Logic', () => {
     (storageService as any).canPersistBinary = true;
     
     const { sendMessage, createNewChat, openChat } = chatStore;
-    const newChat = await createNewChat();
+    const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatObj = await openChat(newChat!.id);
 
     const mockAttachment: Attachment = {

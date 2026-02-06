@@ -9,6 +9,7 @@ import {
 } from 'lucide-vue-next';
 import LmParametersEditor from './LmParametersEditor.vue';
 import ModelSelector from './ModelSelector.vue';
+import TransformersJsUpsell from './TransformersJsUpsell.vue';
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { Chat } from '../models/types';
 import { naturalSort } from '../utils/string';
@@ -32,6 +33,10 @@ const sortedAvailableModels = computed(() => naturalSort(availableModels?.value 
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 
+const effectiveEndpointType = computed(() => {
+  return localSettings.value.endpointType || resolvedSettings?.value?.endpointType;
+});
+
 // Local state for editing
 const localSettings = ref<Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'systemPrompt' | 'lmParameters'>>>({});
 
@@ -52,7 +57,8 @@ onMounted(() => {
   syncLocalWithCurrent();
   if (currentChat.value) {
     const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
-    if (isLocalhost(url)) {
+    const type = currentChat.value.endpointType || settings.value.endpointType;
+    if (type === 'transformers_js' || isLocalhost(url)) {
       fetchModels();
     }
   }
@@ -77,9 +83,19 @@ async function saveChanges() {
 
 function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
   if (!value) return 'Default';
-  if (source === 'chat_group') return `${value} (Group)`;
-  if (source === 'global') return `${value} (Global)`;
-  return value;
+  switch (source) {
+  case 'chat_group':
+    return `${value} (Group)`;
+  case 'global':
+    return `${value} (Global)`;
+  case 'chat':
+  case undefined:
+    return value;
+  default: {
+    const _ex: never = source;
+    throw new Error(`Unhandled source: ${_ex}`);
+  }  
+  }
 }
 
 const selectedProviderProfileId = ref('');
@@ -144,13 +160,13 @@ async function fetchModels() {
   }
 }
 
-// Auto-fetch only for localhost when URL changes
+// Auto-fetch for localhost or transformers_js when URL/Type changes
 watch([
   () => localSettings.value.endpointUrl, 
   () => localSettings.value.endpointType,
-], ([url]) => {
+], ([url, type]) => {
   error.value = null;
-  if (url && isLocalhost(url as string)) {
+  if (type === 'transformers_js' || (url && isLocalhost(url as string))) {
     fetchModels();
   }
 });
@@ -167,11 +183,26 @@ async function updateSystemPromptContent(content: string) {
 }
 */
 
-async function updateSystemPromptBehavior(behavior: 'override' | 'append') {
-  if (!localSettings.value.systemPrompt) {
+async function updateSystemPromptBehavior(behavior: 'override' | 'append', isClear = false) {
+  if (isClear) {
+    localSettings.value.systemPrompt = { behavior: 'override', content: null };
+  } else if (!localSettings.value.systemPrompt) {
     localSettings.value.systemPrompt = { content: '', behavior };
   } else {
-    localSettings.value.systemPrompt.behavior = behavior;
+    // When switching away from Clear to Override/Append, ensure content is at least an empty string
+    const content = localSettings.value.systemPrompt.content ?? '';
+    switch (behavior) {
+    case 'override':
+      localSettings.value.systemPrompt = { behavior: 'override', content };
+      break;
+    case 'append':
+      localSettings.value.systemPrompt = { behavior: 'append', content };
+      break;
+    default: {
+      const _ex: never = behavior;
+      throw new Error(`Unhandled behavior: ${_ex}`);
+    }
+    }
   }
   await saveChanges();
 }
@@ -211,7 +242,7 @@ async function handleRestoreDefaults() {
         </div>
 
         <!-- Scrollable Content -->
-        <div class="flex-1 overflow-y-auto p-6 space-y-8">
+        <div class="flex-1 overflow-y-auto p-6 space-y-8 overscroll-contain">
           <div class="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-200/50 dark:border-gray-800 pb-8 gap-6">
             <div class="flex flex-col md:flex-row gap-8 flex-1">
               <!-- Quick Switcher -->
@@ -251,18 +282,23 @@ async function handleRestoreDefaults() {
             <div class="space-y-2">
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint Type</label>
               <select 
-                v-model="localSettings.endpointType"
-                @change="saveChanges"
+                :value="localSettings.endpointType || 'global'"
+                @change="async (e) => {
+                  const val = (e.target as HTMLSelectElement).value;
+                  localSettings.endpointType = val === 'global' ? undefined : val as any;
+                  await saveChanges();
+                }"
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
               >
-                <option :value="undefined">{{ formatLabel(resolvedSettings?.endpointType, resolvedSettings?.sources.endpointType) }}</option>
+                <option value="global">{{ formatLabel(resolvedSettings?.endpointType === 'transformers_js' ? 'Transformers.js' : resolvedSettings?.endpointType, resolvedSettings?.sources.endpointType) }}</option>
                 <option value="openai">OpenAI Compatible</option>
                 <option value="ollama">Ollama</option>
+                <option value="transformers_js">Transformers.js (Experimental)</option>
               </select>
             </div>
 
-            <div class="space-y-2">
+            <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
               <input 
                 v-model="localSettings.endpointUrl"
@@ -279,7 +315,7 @@ async function handleRestoreDefaults() {
               </div>
             </div>
 
-            <div class="space-y-2">
+            <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
               <div class="flex items-center justify-between ml-1">
                 <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
                 <button 
@@ -335,6 +371,7 @@ async function handleRestoreDefaults() {
                 @refresh="fetchModels"
                 data-testid="chat-setting-model-select"
               />
+              <TransformersJsUpsell :show="effectiveEndpointType === 'transformers_js'" />
             </div>
           </div>
 
@@ -382,9 +419,16 @@ async function handleRestoreDefaults() {
                 
                   <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                     <button 
+                      @click="updateSystemPromptBehavior('override', true)"
+                      class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
+                      :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                    >
+                      Clear
+                    </button>
+                    <button 
                       @click="updateSystemPromptBehavior('override')"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
-                      :class="localSettings.systemPrompt?.behavior !== 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                      :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Override
                     </button>
@@ -398,14 +442,29 @@ async function handleRestoreDefaults() {
                   </div>
                 </div>
                 <textarea 
+                  v-if="!(localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null)"
                   :value="localSettings.systemPrompt?.content || ''"
-                  @input="e => { if(localSettings.systemPrompt) localSettings.systemPrompt.content = (e.target as HTMLTextAreaElement).value; else localSettings.systemPrompt = { content: (e.target as HTMLTextAreaElement).value, behavior: 'override' }; }"
+                  @input="e => { 
+                    const val = (e.target as HTMLTextAreaElement).value;
+                    if(localSettings.systemPrompt) {
+                      localSettings.systemPrompt.content = val;
+                    } else {
+                      localSettings.systemPrompt = { content: val, behavior: 'override' };
+                    }
+                  }"
                   @blur="saveChanges"
                   rows="4"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
                   :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
                   data-testid="chat-setting-system-prompt-textarea"
                 ></textarea>
+                <div 
+                  v-else
+                  class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center"
+                >
+                  <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Parent Prompt Cleared</p>
+                  <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This chat will not use any system instructions.</p>
+                </div>
               </div>
 
               <div class="space-y-4">
@@ -416,7 +475,9 @@ async function handleRestoreDefaults() {
                 <div class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3">
                   <div class="flex items-center justify-between text-[10px] font-bold">
                     <span class="text-gray-400">System Prompt</span>
-                    <span :class="localSettings.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">{{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? 'Appending' : 'Overriding') : 'Group/Global Default' }}</span>
+                    <span :class="localSettings.systemPrompt ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-system-prompt">
+                      {{ localSettings.systemPrompt ? (localSettings.systemPrompt.behavior === 'append' ? 'Appending' : (localSettings.systemPrompt.content === null ? 'Cleared' : 'Overriding')) : 'Group/Global Default' }}
+                    </span>
                   </div>
                   <div class="flex items-center justify-between text-[10px] font-bold">
                     <span class="text-gray-400">Parameters</span>

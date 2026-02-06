@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
 import { useToast } from '../composables/useToast';
@@ -13,10 +14,11 @@ import {
   Database, Settings2, BookmarkPlus,
   Cpu, Info,
   ChefHat,
-  Github, ExternalLink, Download
+  Github, ExternalLink, Download, BrainCircuit
 } from 'lucide-vue-next';
 import RecipeImportTab from './RecipeImportTab.vue';
 import ProviderProfilesTab from './ProviderProfilesTab.vue';
+import TransformersJsManager from './TransformersJsManager.vue';
 import StorageTab from './StorageTab.vue';
 import DeveloperTab from './DeveloperTab.vue';
 import AboutTab from './AboutTab.vue';
@@ -40,11 +42,13 @@ const chatStore = useChat();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
+const route = useRoute();
+const router = useRouter();
 
 const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 
 const form = ref<Settings>(JSON.parse(JSON.stringify(settings.value)));
-const initialFormState = ref('');
+const initialFormState = ref(JSON.stringify(pickConnectionFields(form.value)));
 const connectionTabRef = ref<InstanceType<typeof ConnectionTab> | null>(null);
 
 function pickConnectionFields(s: Settings) {
@@ -90,8 +94,33 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
 }
 
 // Tab State
-type Tab = 'connection' | 'recipes' | 'profiles' | 'storage' | 'developer' | 'about';
-const activeTab = ref<Tab>('connection');
+type Tab = 'connection' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'developer' | 'about';
+const activeTab = computed({
+  get: () => {
+    const queryTab = route.query.settings as string;
+    if (queryTab) {
+      if (queryTab === 'provider-profiles') return 'profiles';
+      if (queryTab === 'transformers-js') return 'transformers_js';
+      return (queryTab as Tab);
+    }
+    const tab = (route.params as { tab?: string }).tab;
+    if (tab === 'provider-profiles') return 'profiles';
+    if (tab === 'transformers-js') return 'transformers_js';
+    return (tab as Tab) || 'connection';
+  },
+  set: (val) => {
+    const pathMap: Record<string, string> = {
+      profiles: 'provider-profiles',
+      transformers_js: 'transformers-js',
+    };
+    const mappedVal = pathMap[val] || val;
+    if (route.query.settings || !route.path.startsWith('/settings')) {
+      router.push({ query: { ...route.query, settings: mappedVal } });
+    } else {
+      router.push(`/settings/${mappedVal}`);
+    }
+  }
+});
 
 async function handleCancel() {
   if (hasUnsavedConnectionChanges.value) {
@@ -206,18 +235,18 @@ watch(() => props.isOpen, async (open) => {
         <!-- Sidebar (Tabs) -->
         <aside class="w-full md:w-72 flex-shrink-0 bg-gray-50/50 dark:bg-black/20 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800/50 flex flex-col min-h-0 transition-colors">
           <!-- Header -->
-          <div class="p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center gap-3 shrink-0">
+          <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center gap-3 shrink-0">
             <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-              <Settings2 class="w-5 h-5 text-blue-600" />
+              <Settings2 class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
             </div>
-            <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Settings</h2>
+            <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">Settings</h2>
           </div>
 
           <!-- Navigation -->
-          <nav class="flex-1 overflow-x-auto md:overflow-y-auto p-4 flex md:flex-col gap-1.5 no-scrollbar min-h-0">
+          <nav class="flex-1 overflow-x-auto md:overflow-y-auto p-3 md:p-4 flex md:flex-col gap-1.5 no-scrollbar min-h-0 overscroll-contain">
             <button 
               @click="activeTab = 'connection'"
-              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'connection' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-connection"
             >
@@ -226,7 +255,7 @@ watch(() => props.isOpen, async (open) => {
             </button>
             <button 
               @click="activeTab = 'profiles'"
-              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'profiles' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-profiles"
             >
@@ -234,8 +263,17 @@ watch(() => props.isOpen, async (open) => {
               Provider Profiles
             </button>
             <button 
+              @click="activeTab = 'transformers_js'"
+              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              :class="activeTab === 'transformers_js' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              data-testid="tab-transformers-js"
+            >
+              <BrainCircuit class="w-4 h-4" />
+              Transformers.js
+            </button>
+            <button 
               @click="activeTab = 'recipes'"
-              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'recipes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-recipes"
             >
@@ -244,7 +282,7 @@ watch(() => props.isOpen, async (open) => {
             </button>
             <button 
               @click="activeTab = 'storage'"
-              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'storage' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-storage"
             >
@@ -253,7 +291,7 @@ watch(() => props.isOpen, async (open) => {
             </button>
             <button 
               @click="activeTab = 'developer'"
-              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'developer' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-developer"
             >
@@ -262,7 +300,7 @@ watch(() => props.isOpen, async (open) => {
             </button>
             <button 
               @click="activeTab = 'about'"
-              class="flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'about' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-about"
             >
@@ -272,37 +310,41 @@ watch(() => props.isOpen, async (open) => {
           </nav>
 
           <!-- GitHub & Download Footer -->
-          <div class="p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto space-y-2">
+          <div class="p-3 md:p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto flex flex-row md:flex-col gap-2">
             <a 
               href="https://github.com/nwtgck/naidan" 
               target="_blank" 
               rel="noopener noreferrer"
-              class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all group no-underline shadow-sm"
+              class="flex-1 flex items-center gap-2 md:gap-3 px-3 py-2 md:px-4 md:py-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all group no-underline shadow-sm"
             >
-              <Github class="w-4 h-4 text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
+              <Github class="w-4 h-4 text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors shrink-0" />
               <div class="flex-1 min-w-0 text-left">
-                <div class="text-[11px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                  GitHub Repository
-                  <span class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400">External</span>
+                <div class="text-[10px] md:text-[11px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                  <span class="truncate">GitHub</span>
+                  <span class="hidden md:inline">Repository</span>
+                  <span class="hidden md:inline text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400">External</span>
                 </div>
-                <div class="text-[10px] text-gray-500/70 dark:text-gray-400/60 font-medium">View source code</div>
+                <div class="hidden md:block text-[10px] text-gray-500/70 dark:text-gray-400/60 font-medium">View source code</div>
               </div>
-              <ExternalLink class="w-3 h-3 text-gray-400 opacity-50" />
+              <ExternalLink class="hidden md:block w-3 h-3 text-gray-400 opacity-50" />
             </a>
 
             <a 
               v-if="isHostedMode"
               href="./naidan-standalone.zip" 
               download="naidan-standalone.zip"
-              class="flex items-center gap-3 px-4 py-3 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
+              class="flex-1 flex items-center gap-2 md:gap-3 px-3 py-2 md:px-4 md:py-3 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
               data-testid="sidebar-download-button"
             >
-              <div class="p-2 bg-green-100 dark:bg-green-800/50 rounded-lg text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">
-                <Download class="w-4 h-4" />
+              <div class="p-1 md:p-2 bg-green-100 dark:bg-green-800/50 rounded-lg text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0">
+                <Download class="w-3.5 h-3.5 md:w-4 md:h-4" />
               </div>
               <div class="flex-1 min-w-0 text-left">
-                <div class="text-xs font-bold text-green-800 dark:text-green-300">Offline Standalone</div>
-                <div class="text-[10px] text-green-600/70 dark:text-green-400/60 font-medium truncate">Runs locally via file://</div>
+                <div class="text-[10px] md:text-xs font-bold text-green-800 dark:text-green-300">
+                  <span class="truncate">Offline</span>
+                  <span class="hidden md:inline"> Standalone</span>
+                </div>
+                <div class="hidden md:block text-[10px] text-green-600/70 dark:text-green-400/60 font-medium truncate">Runs locally via file://</div>
               </div>
             </a>
           </div>
@@ -319,8 +361,9 @@ watch(() => props.isOpen, async (open) => {
             :has-unsaved-changes="hasUnsavedConnectionChanges"
             @save="initialFormState = JSON.stringify(pickConnectionFields(form))"
             @go-to-profiles="activeTab = 'profiles'"
+            @go-to-transformers-js="activeTab = 'transformers_js'"
           />
-          <div v-else class="flex-1 overflow-y-auto min-h-0">
+          <div v-else class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
             <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
 
               <!-- Provider Profiles Tab -->
@@ -329,6 +372,11 @@ watch(() => props.isOpen, async (open) => {
                 v-model:profiles="form.providerProfiles"
                 @go-to-connection="activeTab = 'connection'"
               />
+
+              <!-- Transformers.js Tab -->
+              <div v-if="activeTab === 'transformers_js'" class="max-w-4xl mx-auto">
+                <TransformersJsManager />
+              </div>
 
               <!-- Recipes Tab -->
               <RecipeImportTab 

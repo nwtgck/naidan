@@ -1,17 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, reactive } from 'vue';
 import StorageTab from './StorageTab.vue';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '../composables/useSettings';
 import { storageService } from '../services/storage';
 import type { ProviderProfile } from '../models/types';
+import { useRouter, useRoute } from 'vue-router';
 
 // --- Mocks ---
 const mockListModels = vi.fn().mockResolvedValue(['model-1']);
 vi.mock('../services/llm', () => ({
-  OpenAIProvider: class { listModels = mockListModels; },
-  OllamaProvider: class { listModels = mockListModels; },
+  OpenAIProvider: class {
+    listModels = mockListModels; 
+  },
+  OllamaProvider: class {
+    listModels = mockListModels; 
+  },
 }));
 
 const mockSave = vi.fn();
@@ -36,12 +41,9 @@ vi.mock('../composables/useChat', () => ({
   })),
 }));
 
-const mockPush = vi.fn();
 vi.mock('vue-router', () => ({
-  useRouter: vi.fn(() => ({
-    push: mockPush,
-    currentRoute: ref({ path: '/' })
-  })),
+  useRouter: vi.fn(),
+  useRoute: vi.fn(),
 }));
 
 vi.mock('../composables/useSampleChat', () => ({
@@ -103,22 +105,38 @@ const globalStubs = {
   Logo: true, ImportExportModal: true, ChefHat: true, Download: true,
   Github: true, ExternalLink: true, Plus: true, Info: true,
   FileArchive: true, HardDrive: true, MessageSquareQuote: true,
+  'router-link': true,
 };
 
 const globalMocks = {
   stubs: globalStubs,
-  provide: {
-    'Symbol(router)': {
-      push: mockPush,
-      currentRoute: ref({ path: '/' })
-    }
-  }
 };
 
 describe('StorageTab.vue Tests', () => {
+  const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
+  const mockPush = vi.fn((p) => {
+    if (typeof p === 'string') {
+      currentRoute.path = p;
+      const segments = p.split('/');
+      currentRoute.params.tab = segments[segments.length - 1];
+    } else if (p && typeof p === 'object' && 'query' in p) {
+      currentRoute.query = { ...currentRoute.query, ...p.query };
+    }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('isSecureContext', true);
+
+    currentRoute.path = '/';
+    currentRoute.params = {};
+    currentRoute.query = {};
+
+    (useRouter as any).mockReturnValue({
+      push: mockPush,
+      replace: vi.fn(),
+    });
+    (useRoute as any).mockReturnValue(currentRoute);
     
     const mockFileHandle = {
       createWritable: vi.fn().mockResolvedValue({}),

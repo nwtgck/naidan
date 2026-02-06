@@ -1,9 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '../composables/useChat';
+import { asyncComponentTracker } from '../utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 // --- Mocks ---
 
@@ -23,14 +30,20 @@ vi.mock('../composables/useSettings', () => ({
 let triggerChunk: (chunk: string) => void;
 vi.mock('../services/llm', () => ({
   OpenAIProvider: class {
-    async chat(_msg: unknown[], _model: string, _url: string, onChunk: (c: string) => void) {
-      triggerChunk = onChunk;
+    constructor() {}
+    async chat(params: { onChunk: (c: string) => void }) {
+      triggerChunk = params.onChunk;
       return new Promise<void>(() => {});
     }
-    async listModels() { return ['gpt-4']; }
+    async listModels() {
+      return ['gpt-4']; 
+    }
   },
   OllamaProvider: class {
-    async listModels() { return []; }
+    constructor() {}
+    async listModels() {
+      return []; 
+    }
   },
 }));
 
@@ -68,6 +81,10 @@ vi.mock('../services/storage', () => ({
 describe('ChatArea Streaming DOM Test', () => {
   const chatStore = useChat();
 
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     chats.clear();
@@ -76,7 +93,11 @@ describe('ChatArea Streaming DOM Test', () => {
 
   it('should render assistant chunks in the DOM in real-time', async () => {
     const { createNewChat } = useChat();
-    await createNewChat(); 
+    await createNewChat({ 
+      groupId: undefined, 
+      modelId: undefined, 
+      systemPrompt: undefined 
+    }); 
 
     const wrapper = mount(ChatArea, {
       global: {

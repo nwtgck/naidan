@@ -1,7 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { ref, reactive, nextTick } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+
+vi.mock('vue-router', () => ({
+  useRouter: vi.fn(),
+  useRoute: vi.fn(),
+}));
 
 vi.mock('lucide-vue-next', () => {
   const mockIcon = { render: () => null };
@@ -137,6 +143,8 @@ vi.mock('../composables/useSettings', () => ({
 describe('Sidebar Animation Logic', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    (useRouter as Mock).mockReturnValue({ push: vi.fn() });
+    (useRoute as Mock).mockReturnValue({ path: '/', query: {}, params: {} });
     
     const items = [
       { id: 'c1', title: 'Chat 1' },

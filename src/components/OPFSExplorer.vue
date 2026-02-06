@@ -76,7 +76,16 @@ async function loadDirectory(handle: FileSystemDirectoryHandle) {
     // Sort: directories first, then files
     entries.value = newEntries.sort((a, b) => {
       if (a.kind === b.kind) return a.name.localeCompare(b.name);
-      return a.kind === 'directory' ? -1 : 1;
+      return (() => {
+        switch (a.kind) {
+        case 'directory': return -1;
+        case 'file': return 1;
+        default: {
+          const _ex: never = a.kind;
+          return _ex;
+        }
+        }
+      })();
     });
     currentHandle.value = handle;
     selectedFile.value = null;
@@ -89,11 +98,18 @@ async function loadDirectory(handle: FileSystemDirectoryHandle) {
 }
 
 async function navigateTo(entry: OPFSEntry) {
-  if (entry.kind === 'directory') {
+  switch (entry.kind) {
+  case 'directory':
     pathStack.value.push(currentHandle.value!);
     await loadDirectory(entry.handle as FileSystemDirectoryHandle);
-  } else {
+    break;
+  case 'file':
     await viewFile(entry);
+    break;
+  default: {
+    const _ex: never = entry.kind;
+    throw new Error(`Unhandled entry kind: ${_ex}`);
+  }
   }
 }
 
@@ -229,7 +245,7 @@ function close() {
       <!-- Main Content -->
       <div class="flex-1 flex overflow-hidden">
         <!-- Explorer Sidebar -->
-        <div class="w-72 border-r border-gray-100 dark:border-gray-800 overflow-y-auto bg-gray-50/30 dark:bg-black/20 flex-shrink-0">
+        <div class="w-72 border-r border-gray-100 dark:border-gray-800 overflow-y-auto bg-gray-50/30 dark:bg-black/20 flex-shrink-0 overscroll-contain">
           <div v-if="error" class="p-4 m-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-xl flex gap-3 text-red-600 dark:text-red-400">
             <AlertCircle class="w-4 h-4 shrink-0" />
             <p class="text-xs font-bold">{{ error }}</p>
@@ -301,7 +317,7 @@ function close() {
                 {{ isFormatted ? 'Formatted' : 'Format JSON' }}
               </button>
             </div>
-            <div v-if="selectedFile.isText" class="flex-1 overflow-auto bg-white dark:bg-gray-900">
+            <div v-if="selectedFile.isText" class="flex-1 overflow-auto bg-white dark:bg-gray-900 overscroll-contain">
               <pre class="p-6 text-[11px] leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre selection:bg-blue-100 dark:selection:bg-blue-900/50 min-w-max">{{ fileContent }}</pre>
             </div>
             <div v-else class="flex-1 flex flex-col items-center justify-center text-gray-400 p-8 text-center">

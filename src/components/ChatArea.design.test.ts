@@ -1,10 +1,17 @@
 import { ref } from 'vue';
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
+import { asyncComponentTracker } from '../utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(),
@@ -17,6 +24,10 @@ vi.mock('vue-router', () => ({
 }));
 
 describe('ChatArea Design Specifications', () => {
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
+  });
+
   beforeEach(() => {
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref({ id: '1', title: 'Test Chat', modelId: 'gemma3n:e2b' }),
@@ -34,6 +45,16 @@ describe('ChatArea Design Specifications', () => {
       isTaskRunning: vi.fn().mockReturnValue(false),
       isProcessing: vi.fn().mockReturnValue(false),
       abortChat: vi.fn(),
+      isImageMode: vi.fn(() => false),
+      toggleImageMode: vi.fn(),
+      getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+      updateResolution: vi.fn(),
+      setImageModel: vi.fn(),
+      getSelectedImageModel: vi.fn(),
+      getSortedImageModels: vi.fn(() => []),
+      imageModeMap: ref({}),
+      imageResolutionMap: ref({}),
+      imageModelOverrideMap: ref({}),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),
@@ -182,7 +203,7 @@ describe('ChatArea Design Specifications', () => {
           Logo: true, 
           MessageItem: true, 
           WelcomeScreen: true,
-          ChatSettingsPanel
+          ChatSettingsPanel: ChatSettingsPanel,
         }, 
       },
     });

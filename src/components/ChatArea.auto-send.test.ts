@@ -1,8 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick, ref, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
+import { asyncComponentTracker } from '../utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 // Mock router
 const router = createRouter({
@@ -53,6 +60,16 @@ vi.mock('../composables/useChat', () => ({
     moveChatToGroup: vi.fn(),
     isTaskRunning: vi.fn((_id: string) => mockIsTaskRunningValue.value || mockStreaming.value),
     isProcessing: vi.fn((_id: string) => mockStreaming.value),
+    isImageMode: vi.fn(() => false),
+    toggleImageMode: vi.fn(),
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    updateResolution: vi.fn(),
+    setImageModel: vi.fn(),
+    getSelectedImageModel: vi.fn(),
+    getSortedImageModels: vi.fn(() => []),
+    imageModeMap: ref({}),
+    imageResolutionMap: ref({}),
+    imageModelOverrideMap: ref({}),
   }),
 }));
 
@@ -74,6 +91,10 @@ vi.mock('mermaid', () => ({
 }));
 
 describe('ChatArea Auto-send', () => {
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockCurrentChat.value = {
