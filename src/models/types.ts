@@ -165,6 +165,14 @@ export interface Hierarchy {
   items: HierarchyNode[];
 }
 
+export interface BinaryObject {
+  id: string;
+  mimeType: string;
+  size: number;
+  createdAt: number;
+  name?: string;
+}
+
 /**
  * Storage Snapshot
  * Represents a complete snapshot of the storage for migration or backup.

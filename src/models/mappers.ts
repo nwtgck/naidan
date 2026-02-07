@@ -13,6 +13,7 @@ import type {
   AttachmentDto,
   HierarchyDto,
   ChatContentDto,
+  BinaryObjectDto,
 } from './dto';
 import type { 
   Role, 
@@ -33,6 +34,7 @@ import type {
   Hierarchy,
   HierarchyNode,
   HierarchyChatGroupNode,
+  BinaryObject,
 } from './types';
 
 export const roleToDomain = (dto: RoleDto): Role => {
@@ -590,3 +592,19 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
     }),
   };
 };
+
+export const binaryObjectToDomain = (dto: BinaryObjectDto): BinaryObject => ({
+  id: dto.id,
+  mimeType: dto.mimeType,
+  size: dto.size,
+  createdAt: dto.createdAt,
+  name: dto.name,
+});
+
+export const binaryObjectToDto = (domain: BinaryObject): BinaryObjectDto => ({
+  id: domain.id,
+  mimeType: domain.mimeType,
+  size: domain.size,
+  createdAt: domain.createdAt,
+  name: domain.name,
+});

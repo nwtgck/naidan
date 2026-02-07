@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot } from '../../models/types';
+import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '../../models/types';
 import { 
   type ChatMetaDto,
   type ChatGroupDto,
@@ -305,6 +305,14 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async hasAttachments(): Promise<boolean> {
     return false;
+  }
+
+  async *listBinaryObjects(): AsyncIterable<BinaryObject> {
+    // Yields nothing
+  }
+
+  async deleteBinaryObject(_binaryObjectId: string): Promise<void> {
+    // No-op
   }
 
   async clearAll(): Promise<void> {

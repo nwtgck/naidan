@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot } from '../../models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '../../models/types';
 import { 
   type ChatMetaDto,
   type ChatGroupDto,
@@ -23,6 +23,7 @@ import {
   chatContentToDto,
   chatContentToDomain,
   buildSidebarItemsFromHierarchy,
+  binaryObjectToDomain,
 } from '../../models/mappers';import { IStorageProvider } from './interface';
 
 import { 
@@ -604,6 +605,54 @@ export class OPFSStorageProvider extends IStorageProvider {
       return false;
     } catch {
       return false; 
+    }
+  }
+
+  async *listBinaryObjects(): AsyncIterable<BinaryObject> {
+    await this.init();
+    try {
+      const baseDir = await this.getBinaryObjectsDir();
+      for await (const shardEntry of baseDir.values()) {
+        const kind = shardEntry.kind;
+        switch (kind) {
+        case 'directory': {
+          const index = await this.loadShardIndex(shardEntry.name);
+          for (const obj of Object.values(index.objects)) {
+            yield binaryObjectToDomain(obj);
+          }
+          break;
+        }
+        case 'file':
+          break;
+        default: {
+          const _ex: never = kind;
+          throw new Error(`Unhandled entry kind: ${_ex}`);
+        }
+        }
+      }
+    } catch (e) {
+      console.error('[OPFSStorageProvider] Failed to list binary objects', e);
+    }
+  }
+
+  async deleteBinaryObject(binaryObjectId: string): Promise<void> {
+    await this.init();
+    const shard = this.getBinaryObjectShardPath(binaryObjectId);
+    const dir = await this.getShardDir(shard);
+    const fileName = `${binaryObjectId}.bin`;
+    const markerName = `.${fileName}.complete`;
+
+    try {
+      await dir.removeEntry(fileName);
+    } catch { /* ignore */ }
+    try {
+      await dir.removeEntry(markerName);
+    } catch { /* ignore */ }
+
+    const index = await this.loadShardIndex(shard);
+    if (index.objects[binaryObjectId]) {
+      delete index.objects[binaryObjectId];
+      await this.saveShardIndex(shard, index);
     }
   }
 

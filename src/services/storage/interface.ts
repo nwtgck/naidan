@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot } from '../../models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '../../models/types';
 import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '../../models/dto';
 
 export type { ChatSummary };
@@ -120,4 +120,6 @@ export abstract class IStorageProvider {
   }): Promise<void>;
   abstract getFile(binaryObjectId: string): Promise<Blob | null>;
   abstract hasAttachments(): Promise<boolean>;
+  abstract listBinaryObjects(): AsyncIterable<BinaryObject>;
+  abstract deleteBinaryObject(binaryObjectId: string): Promise<void>;
 }

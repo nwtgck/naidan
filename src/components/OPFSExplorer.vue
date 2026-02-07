@@ -338,7 +338,7 @@ function close() {
               <p class="text-sm font-bold text-gray-600 dark:text-gray-400 mb-1">Binary File</p>
               <p class="text-[10px] uppercase tracking-widest opacity-50 font-bold">Preview not available for this file type</p>
               <div class="mt-6 px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl">
-                <span class="text-[10px] font-bold font-mono">Size: {{ formatSize(selectedFile.size) }} ({{ selectedFile.size.toLocaleString() }} bytes)</span>
+                <span class="text-[10px] font-bold font-mono">Size: {{ formatSize(selectedFile.size) }} ({{ selectedFile.size }} bytes)</span>
               </div>
             </div>
           </div>

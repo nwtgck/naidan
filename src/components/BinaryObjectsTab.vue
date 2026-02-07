@@ -1,0 +1,561 @@
+<script setup lang="ts">
+import { ref, onMounted, computed, watch } from 'vue';
+import { storageService } from '../services/storage';
+import type { BinaryObject } from '../models/types';
+import { 
+  File, Search, ArrowUp, ArrowDown, Download, 
+  Eye, Calendar, HardDrive, 
+  Trash2, RefreshCw, LayoutGrid, List, X,
+  Info
+} from 'lucide-vue-next';
+import { useConfirm } from '../composables/useConfirm';
+import { Semaphore } from '../utils/concurrency';
+
+const objects = ref<BinaryObject[]>([]);
+const isLoading = ref(true);
+const searchQuery = ref('');
+const sortBy = ref<'createdAt' | 'name' | 'size' | 'mimeType'>('createdAt');
+const sortOrder = ref<'asc' | 'desc'>('desc');
+const viewMode = ref<'table' | 'grid'>('table');
+
+const { showConfirm } = useConfirm();
+
+// Limit to 3 concurrent image processing tasks to prevent UI stutter
+const thumbnailSemaphore = new Semaphore(3);
+
+const fetchObjects = async () => {
+  isLoading.value = true;
+  const newObjects: BinaryObject[] = [];
+  try {
+    const iterable = storageService.listBinaryObjects();
+    for await (const obj of iterable) {
+      newObjects.push(obj);
+    }
+    objects.value = newObjects;
+    // Auto-trigger thumbnail generation for the new list
+    generateVisibleThumbnails();
+  } catch (error) {
+    console.error('Failed to fetch binary objects:', error);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+onMounted(fetchObjects);
+
+const filteredObjects = computed(() => {
+  let result = [...objects.value];
+
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase();
+    result = result.filter(f => 
+      (f.name || 'unnamed').toLowerCase().includes(q) || 
+      f.id.toLowerCase().includes(q) ||
+      f.mimeType.toLowerCase().includes(q)
+    );
+  }
+
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  
+  result.sort((a, b) => {
+    let cmp = 0;
+    switch (sortBy.value) {
+    case 'createdAt':
+      cmp = a.createdAt - b.createdAt;
+      break;
+    case 'size':
+      cmp = a.size - b.size;
+      break;
+    case 'mimeType':
+      cmp = collator.compare(a.mimeType, b.mimeType);
+      break;
+    case 'name':
+    default:
+      cmp = collator.compare(a.name || '', b.name || '');
+      break;
+    }
+    const cmpResult = (() => {
+      switch (sortOrder.value) {
+      case 'asc': return cmp;
+      case 'desc': return -cmp;
+      default: {
+        const _ex: never = sortOrder.value;
+        console.error('Unhandled sort order:', _ex);
+        return cmp;
+      }      
+      }
+    })();
+    return cmpResult;
+  });
+
+  return result;
+});
+
+const handleSort = (key: typeof sortBy.value) => {
+  if (sortBy.value === key) {
+    sortOrder.value = (() => {
+      switch (sortOrder.value) {
+      case 'asc': return 'desc';
+      case 'desc': return 'asc';
+      default: {
+        const _ex: never = sortOrder.value;
+        return _ex;
+      }
+      }
+    })();
+  } else {
+    sortBy.value = key;
+    sortOrder.value = (() => {
+      switch (key) {
+      case 'createdAt':
+      case 'size':
+        return 'desc';
+      case 'name':
+      case 'mimeType':
+        return 'asc';
+      default: {
+        const _ex: never = key;
+        return _ex;
+      }
+      }
+    })();
+  }
+};
+
+const formatSize = (bytes: number) => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const formatDate = (timestamp: number) => {
+  return new Date(timestamp).toLocaleString();
+};
+
+const handleDownload = async (obj: BinaryObject) => {
+  const blob = await storageService.getFile(obj.id);
+  if (!blob) return;
+  
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = obj.name || obj.id;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+const previewUrl = ref<string | null>(null);
+const previewObject = ref<BinaryObject | null>(null);
+const isPreviewLoading = ref(false);
+
+const handlePreview = async (obj: BinaryObject) => {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = null;
+  previewObject.value = obj;
+  isPreviewLoading.value = true;
+  
+  try {
+    const blob = await storageService.getFile(obj.id);
+    if (blob && previewObject.value?.id === obj.id) {
+      previewUrl.value = URL.createObjectURL(blob);
+    }
+  } catch (e) {
+    console.error('Failed to load preview:', e);
+  } finally {
+    if (previewObject.value?.id === obj.id) {
+      isPreviewLoading.value = false;
+    }
+  }
+};
+
+const closePreview = () => {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = null;
+  previewObject.value = null;
+};
+
+const handleDelete = async (obj: BinaryObject) => {
+  const confirmed = await showConfirm({
+    title: 'Delete Binary Object?',
+    message: `Are you sure you want to delete "${obj.name || obj.id}"? This action cannot be undone. Any chat messages referencing this file will show it as missing.`,
+    confirmButtonText: 'Delete Permanently',
+    confirmButtonVariant: 'danger',
+  });
+
+  if (confirmed) {
+    try {
+      await storageService.deleteBinaryObject(obj.id);
+      if (previewObject.value?.id === obj.id) closePreview();
+      // Remove from local list to avoid full refresh flash
+      objects.value = objects.value.filter(o => o.id !== obj.id);
+    } catch (error) {
+      console.error('Failed to delete binary object:', error);
+    }
+  }
+};
+
+// Thumbnail Management
+const thumbnails = ref<Record<string, string>>({});
+const thumbnailLoading = ref<Set<string>>(new Set());
+
+const createThumbnail = (blob: Blob, size: number = 120): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error('Canvas context not available'));
+        return;
+      }
+
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > size) {
+          height *= size / width;
+          width = size;
+        }
+      } else {
+        if (height > size) {
+          width *= size / height;
+          height = size;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.7)); // Reduced size JPEG
+    };
+    img.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e);
+    };
+    img.src = url;
+  });
+};
+
+const loadThumbnail = async (obj: BinaryObject) => {
+  if (thumbnails.value[obj.id] || thumbnailLoading.value.has(obj.id)) return;
+  if (!obj.mimeType.startsWith('image/')) return;
+
+  thumbnailLoading.value.add(obj.id);
+  try {
+    // Use semaphore to limit CPU/Memory intensive canvas operations
+    await thumbnailSemaphore.run(async () => {
+      const blob = await storageService.getFile(obj.id);
+      if (blob) {
+        const thumbUrl = await createThumbnail(blob);
+        thumbnails.value[obj.id] = thumbUrl;
+      }
+    });
+  } catch (e) {
+    console.error('Failed to load thumbnail:', e);
+  } finally {
+    thumbnailLoading.value.delete(obj.id);
+  }
+};
+
+/**
+ * Triggers thumbnail generation for the current filtered list.
+ * Since they are processed in order, the ones at the top get priority.
+ */
+function generateVisibleThumbnails() {
+  for (const obj of filteredObjects.value) {
+    if (obj.mimeType.startsWith('image/') && !thumbnails.value[obj.id]) {
+      // Trigger as async without awaiting here, so the loop doesn't block
+      // The semaphore inside loadThumbnail will handle the actual queueing.
+      loadThumbnail(obj);
+    }
+  }
+}
+
+// Watch for sorting/filtering changes to re-prioritize thumbnails
+watch(filteredObjects, () => {
+  generateVisibleThumbnails();
+}, { deep: false });
+
+// Cleanup object URLs (though we use DataURL for thumbnails now, preview still uses ObjectURL)
+watch(objects, (newObjs, oldObjs) => {
+  const newIds = new Set(newObjs.map(o => o.id));
+  if (oldObjs) {
+    for (const oldObj of oldObjs) {
+      if (!newIds.has(oldObj.id) && thumbnails.value[oldObj.id]) {
+        // thumbnails.value[oldObj.id] is a DataURL now, no need to revoke, but we delete from ref
+        delete thumbnails.value[oldObj.id];
+      }
+    }
+  }
+});
+</script>
+
+<template>
+  <div class="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+    <!-- Header Section -->
+    <div class="flex flex-col gap-6">
+      <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+            <HardDrive class="w-5 h-5 text-blue-500" />
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Binary Objects</h2>
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Manage and browse persisted files</p>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-1 flex">
+            <button 
+              @click="viewMode = 'grid'" 
+              class="p-1.5 rounded-lg transition-all"
+              :class="viewMode === 'grid' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400 hover:text-gray-600'"
+            >
+              <LayoutGrid class="w-4 h-4" />
+            </button>
+            <button 
+              @click="viewMode = 'table'" 
+              class="p-1.5 rounded-lg transition-all"
+              :class="viewMode === 'table' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400 hover:text-gray-600'"
+            >
+              <List class="w-4 h-4" />
+            </button>
+          </div>
+          <button 
+            @click="fetchObjects" 
+            class="p-2 text-gray-400 hover:text-blue-500 transition-colors"
+            :class="{ 'animate-spin': isLoading }"
+          >
+            <RefreshCw class="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="flex gap-4">
+        <div class="relative flex-1 group">
+          <Search class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+          <input 
+            v-model="searchQuery"
+            type="text" 
+            placeholder="Search by name, ID, or type..."
+            class="w-full pl-10 pr-4 py-2.5 bg-gray-50/50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all dark:text-gray-200"
+          >
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-3xl overflow-hidden shadow-sm transition-all duration-300">
+      <!-- Table View -->
+      <div v-if="viewMode === 'table'" class="overflow-x-auto">
+        <table class="w-full text-left border-collapse min-w-[700px]">
+          <thead>
+            <tr class="bg-gray-50/50 dark:bg-black/20 border-b border-gray-100 dark:border-gray-800 sticky top-0 z-10">
+              <th @click="handleSort('name')" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
+                <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
+                  Name
+                  <span class="transition-opacity" :class="sortBy === 'name' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
+                    <ArrowUp v-if="sortBy === 'name' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
+                    <ArrowDown v-else class="w-3 h-3 text-blue-500" />
+                  </span>
+                </div>
+              </th>
+              <th @click="handleSort('size')" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
+                <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
+                  Size
+                  <span class="transition-opacity" :class="sortBy === 'size' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
+                    <ArrowUp v-if="sortBy === 'size' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
+                    <ArrowDown v-else class="w-3 h-3 text-blue-500" />
+                  </span>
+                </div>
+              </th>
+              <th @click="handleSort('createdAt')" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
+                <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
+                  Date
+                  <span class="transition-opacity" :class="sortBy === 'createdAt' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
+                    <ArrowUp v-if="sortBy === 'createdAt' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
+                    <ArrowDown v-else class="w-3 h-3 text-blue-500" />
+                  </span>
+                </div>
+              </th>
+              <th class="px-6 py-3 text-right"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50 dark:divide-gray-800">
+            <tr v-if="isLoading && objects.length === 0">
+              <td colspan="4" class="px-6 py-12 text-center opacity-40 italic text-sm">Loading objects...</td>
+            </tr>
+            <tr v-else-if="filteredObjects.length === 0">
+              <td colspan="4" class="px-6 py-12 text-center opacity-40 italic text-sm">No objects found</td>
+            </tr>
+            <tr 
+              v-for="obj in filteredObjects" 
+              :key="obj.id"
+              @click="handlePreview(obj)"
+              @mouseenter="loadThumbnail(obj)"
+              class="group cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-colors"
+            >
+              <td class="px-6 py-3">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-10 h-10 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg shrink-0 overflow-hidden border border-gray-100 dark:border-gray-700">
+                    <img v-if="thumbnails[obj.id]" :src="thumbnails[obj.id]" class="w-full h-full object-cover" />
+                    <div v-else class="flex items-center justify-center w-full h-full">
+                      <Eye v-if="obj.mimeType.startsWith('image/')" class="w-4 h-4 text-blue-500 opacity-50" />
+                      <File v-else class="w-4 h-4 text-gray-400" />
+                    </div>
+                  </div>
+                  <div class="flex flex-col min-w-0">
+                    <span class="text-sm font-bold text-gray-700 dark:text-gray-200 truncate">{{ obj.name || 'Unnamed' }}</span>
+                    <span class="text-[9px] font-medium text-gray-400 truncate lowercase">{{ obj.mimeType }}</span>
+                  </div>
+                </div>
+              </td>
+              <td class="px-6 py-3">
+                <span class="text-[11px] font-bold text-gray-500">{{ formatSize(obj.size) }}</span>
+              </td>
+              <td class="px-6 py-3">
+                <span class="text-[11px] font-medium text-gray-400 whitespace-nowrap">{{ formatDate(obj.createdAt) }}</span>
+              </td>
+              <td class="px-6 py-3 text-right">
+                <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button @click.stop="handleDownload(obj)" class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors" title="Download">
+                    <Download class="w-4 h-4" />
+                  </button>
+                  <button @click.stop="handleDelete(obj)" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors" title="Delete">
+                    <Trash2 class="w-4 h-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Grid/Thumbnail View -->
+      <div v-else class="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div v-if="isLoading && objects.length === 0" class="col-span-full py-20 text-center opacity-40 italic text-sm">Loading objects...</div>
+        <div v-else-if="filteredObjects.length === 0" class="col-span-full py-20 text-center opacity-40 italic text-sm">No objects found</div>
+        
+        <div 
+          v-for="obj in filteredObjects" 
+          :key="obj.id"
+          @click="handlePreview(obj)"
+          @mouseenter="loadThumbnail(obj)"
+          class="group relative aspect-square bg-gray-50 dark:bg-gray-800 rounded-2xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-blue-500 hover:shadow-lg transition-all"
+        >
+          <!-- Thumbnail -->
+          <div class="absolute inset-0 flex items-center justify-center p-4">
+            <img v-if="thumbnails[obj.id]" :src="thumbnails[obj.id]" class="w-full h-full object-contain transition-transform group-hover:scale-110" />
+            <div v-else class="flex flex-col items-center gap-2 opacity-40">
+              <Eye v-if="obj.mimeType.startsWith('image/')" class="w-8 h-8 text-blue-500" />
+              <File v-else class="w-8 h-8 text-gray-400" />
+              <span class="text-[10px] font-bold truncate max-w-[80px] lowercase">{{ obj.mimeType.split('/')[1] }}</span>
+            </div>
+          </div>
+
+          <!-- Overlay Info -->
+          <div class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+            <p class="text-[10px] font-bold text-white truncate">{{ obj.name || 'Unnamed' }}</p>
+            <p class="text-[9px] text-white/70">{{ formatSize(obj.size) }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview Modal (Teleported to body) -->
+    <Teleport to="body">
+      <div v-if="previewObject" class="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" @click="closePreview">
+        <div class="bg-white dark:bg-gray-900 rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in-95 duration-200" @click.stop>
+          <!-- Modal Header -->
+          <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-black/20">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm">
+                <Eye class="w-5 h-5 text-blue-500" />
+              </div>
+              <div class="min-w-0">
+                <h3 class="font-bold text-gray-800 dark:text-white truncate text-base">{{ previewObject.name || 'Unnamed Object' }}</h3>
+                <div class="flex items-center gap-3 text-[10px] text-gray-500 font-bold tracking-widest">
+                  <span class="lowercase">{{ previewObject.mimeType }}</span>
+                  <span class="w-1 h-1 rounded-full bg-gray-300"></span>
+                  <span>{{ formatSize(previewObject.size) }} ({{ previewObject.size }} B)</span>
+                </div>
+              </div>
+            </div>
+            <button @click="closePreview" class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all shadow-sm">
+              <X class="w-6 h-6" />
+            </button>
+          </div>
+
+          <!-- Modal Body -->
+          <div class="flex-1 overflow-auto bg-gray-100 dark:bg-black/40 p-4 md:p-12 flex items-center justify-center relative min-h-[300px]">
+            <div class="absolute inset-0 opacity-10 pointer-events-none" style="background-image: radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0); background-size: 24px 24px;"></div>
+            
+            <div v-if="isPreviewLoading" class="flex flex-col items-center gap-4">
+              <RefreshCw class="w-8 h-8 text-blue-500 animate-spin" />
+              <p class="text-xs font-bold text-gray-400 tracking-widest">Loading Preview...</p>
+            </div>
+            
+            <template v-else-if="previewUrl">
+              <img v-if="previewObject.mimeType.startsWith('image/')" :src="previewUrl" class="max-w-full max-h-full object-contain rounded-2xl shadow-2xl z-10 border-4 border-white dark:border-gray-800" />
+              <div v-else class="text-center space-y-6 z-10">
+                <div class="p-10 bg-white dark:bg-gray-800 rounded-[40px] shadow-xl inline-block border border-gray-100 dark:border-gray-700">
+                  <File class="w-16 h-16 text-gray-200 dark:text-gray-600" />
+                </div>
+                <div class="space-y-2">
+                  <p class="text-sm font-bold text-gray-400 tracking-widest">Preview Unavailable</p>
+                  <p class="text-xs font-medium text-gray-500 max-w-[240px] mx-auto">This file type cannot be previewed directly in the browser.</p>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-black/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex flex-col gap-1 text-[10px] text-gray-400 font-medium">
+              <div class="flex items-center gap-2"><Calendar class="w-3 h-3" /> Created: {{ formatDate(previewObject.createdAt) }}</div>
+              <div class="flex items-center gap-2 font-mono"><Info class="w-3 h-3" /> ID: {{ previewObject.id }}</div>
+            </div>
+            
+            <div class="flex gap-3 w-full sm:w-auto">
+              <button 
+                @click="handleDelete(previewObject)"
+                class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 border border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl text-xs font-bold transition-all hover:bg-red-50 dark:hover:bg-red-900/10 active:scale-95"
+              >
+                <Trash2 class="w-4 h-4" />
+                Delete
+              </button>
+              <button 
+                @click="handleDownload(previewObject)"
+                class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-bold transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+              >
+                <Download class="w-4 h-4" />
+                Download
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+  </div>
+</template>
+
+<style scoped>
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+</style>
