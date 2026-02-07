@@ -104,6 +104,15 @@ export const BinaryObjectSchemaDto = z.object({
 });
 export type BinaryObjectDto = z.infer<typeof BinaryObjectSchemaDto>;
 
+/**
+ * Shard Index
+ * Stores metadata for all binary objects within a specific shard.
+ */
+export const BinaryShardIndexSchemaDto = z.object({
+  objects: z.record(z.string().uuid(), BinaryObjectSchemaDto),
+});
+export type BinaryShardIndexDto = z.infer<typeof BinaryShardIndexSchemaDto>;
+
 export const AttachmentSchemaDtoV1 = z.object({
   id: z.string().uuid(),
   originalName: z.string(),

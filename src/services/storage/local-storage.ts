@@ -279,7 +279,23 @@ export class LocalStorageProvider extends IStorageProvider {
 
   // --- File Storage ---
   
-  async saveFile(_blob: Blob, _binaryObjectId: string, _name: string): Promise<void> {
+  /**
+   * @deprecated Use the named arguments version instead.
+   */
+  async saveFile(blob: Blob, binaryObjectId: string, name: string, mimeType?: string, size?: number): Promise<void>;
+  async saveFile(params: {
+    blob: Blob;
+    binaryObjectId: string;
+    name: string;
+    mimeType: string | undefined;
+  }): Promise<void>;
+  async saveFile(
+    _blobOrParams: Blob | { blob: Blob; binaryObjectId: string; name: string; mimeType: string | undefined },
+    _binaryObjectId?: string,
+    _name?: string,
+    _mimeType?: string,
+    _size?: number
+  ): Promise<void> {
     throw new Error('File persistence is not supported in LocalStorage provider.');
   }
 

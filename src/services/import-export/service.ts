@@ -20,7 +20,10 @@ import {
   type ChatDto,
   type MessageNodeDto,
   type HierarchyDto,
-  type ChatGroupDto
+  type ChatGroupDto,
+  type BinaryObjectDto,
+  type BinaryShardIndexDto,
+  BinaryShardIndexSchemaDto
 } from '../../models/dto';
 import {
   settingsToDomain,
@@ -120,23 +123,52 @@ export class ImportExportService {
     const metasDto = structure.chatMetas.map(chatMetaToDto);
     root.file('chat-metas.json', JSON.stringify({ entries: metasDto }, null, 2));
 
+    const shardIndices = new Map<string, BinaryShardIndexDto>();
+    const getShard = (id: string) => id.slice(-2).toLowerCase();
+
     try {
+      const binFolder = root.folder('binary-objects');
+      if (!binFolder) throw new Error('Failed to create binary-objects folder in ZIP');
+
       for await (const chunk of contentStream) {
         const type = chunk.type;
         switch (type) {
         case 'chat':
           root.folder('chat-contents')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
           break;
-        case 'attachment':
-          // We keep a flat structure in the ZIP for human readability/legacy compatibility.
-          // The Import process will re-shard it into the target storage.
-          root.folder('uploaded-files')!.folder(chunk.attachmentId)!.file(chunk.name, chunk.blob);
+        case 'attachment': {
+          const shard = getShard(chunk.binaryObjectId);
+          const shardFolder = binFolder.folder(shard);
+          if (!shardFolder) throw new Error(`Failed to create shard folder ${shard} in ZIP`);
+
+          const fileName = `${chunk.binaryObjectId}.bin`;
+          shardFolder.file(fileName, chunk.blob);
+          shardFolder.file(`.${fileName}.complete`, new Blob([]));
+
+          let index = shardIndices.get(shard);
+          if (!index) {
+            index = { objects: {} };
+            shardIndices.set(shard, index);
+          }
+          index.objects[chunk.binaryObjectId] = {
+            id: chunk.binaryObjectId,
+            mimeType: chunk.mimeType,
+            size: chunk.size,
+            createdAt: chunk.createdAt,
+            name: chunk.name
+          };
           break;
+        }
         default: {
           const _ex: never = type;
           throw new Error(`Unknown chunk type: ${_ex}`);
         }
         }
+      }
+      
+      // Write shard indexes
+      for (const [shard, index] of shardIndices.entries()) {
+        binFolder.folder(shard)!.file('index.json', JSON.stringify(index, null, 2));
       }
     } catch (err) {
       this.globalEvents.addErrorEvent({ source: 'ImportExportService', message: 'Export dump failed', details: err as Error });
@@ -182,9 +214,13 @@ export class ImportExportService {
       } catch (e) { /* Ignore */ }
     }
 
-    // 2. Attachments
-    const attPrefix = rootPath + 'uploaded-files/';
-    stats.attachmentsCount = Object.keys(zip.files).filter(f => f.startsWith(attPrefix) && f !== attPrefix && !f.endsWith('/')).length;
+    // 2. Binary Objects
+    const binPrefix = rootPath + 'binary-objects/';
+    stats.attachmentsCount = Object.keys(zip.files).filter(f => 
+      f.startsWith(binPrefix) && 
+      f.endsWith('.bin') && 
+      !f.includes('/.') // Ignore markers
+    ).length;
 
     // 3. Chat Groups
     const groupsPrefix = rootPath + 'chat-groups/';
@@ -467,57 +503,51 @@ export class ImportExportService {
     const settingsFile = zip.file(rootPath + 'settings.json');
     const settingsDto = settingsFile ? SettingsSchemaDto.parse(JSON.parse(await settingsFile.async('string'))) : null;
 
+    // Load all shard indices from the ZIP
+    const binPrefix = rootPath + 'binary-objects/';
+    const unifiedBinIndex: Record<string, BinaryObjectDto> = {};
+    for (const filename of Object.keys(zip.files)) {
+      if (filename.startsWith(binPrefix) && filename.endsWith('index.json')) {
+        try {
+          const shardIndex = BinaryShardIndexSchemaDto.parse(JSON.parse(await zip.file(filename)!.async('string')));
+          Object.assign(unifiedBinIndex, shardIndex.objects);
+        } catch (e) { /* Ignore corrupted index */ }
+      }
+    }
+
     const chatMetas = metasDto.map(chatMetaToDomain);
     const hierarchy = hierarchyDto;
     const chatGroups = groupsDto.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
-      const attachmentMetadata = new Map<string, { binaryObjectId: string, name: string, mimeType: string, size: number, uploadedAt: number }>();
       for (const meta of metasDto) {
         const contentFile = zip.file(`${rootPath}chat-contents/${meta.id}.json`);
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
-            const chatDto: ChatDto = { ...meta, ...content };
-            const extract = (node: MessageNodeDto) => {
-              if (node.attachments) {
-                node.attachments.forEach(a => {
-                  // Handle Union DTO (V1 or V2)
-                  const binaryObjectId = ('binaryObjectId' in a) ? a.binaryObjectId : a.id;
-                  const name = ('name' in a) ? a.name : a.originalName;
-                  const mimeType = ('mimeType' in a) ? a.mimeType : 'application/octet-stream';
-                  const size = ('size' in a) ? a.size : 0;
-                  const uploadedAt = ('uploadedAt' in a) ? a.uploadedAt : Date.now();
-
-                  attachmentMetadata.set(a.id, { binaryObjectId, name, mimeType, size, uploadedAt });
-                });
-              }
-              if (node.replies?.items) node.replies.items.forEach(extract);
-            };
-            if (chatDto.root?.items) chatDto.root.items.forEach(extract);
-            yield { type: 'chat' as const, data: chatDto };
+            yield { type: 'chat' as const, data: { ...meta, ...content } };
           } catch (e) { /* Ignore */ }
         }
       }
 
-      const attPrefix = rootPath + 'uploaded-files/';
+      // Yield binary objects found in shards
       for (const filename of Object.keys(zip.files)) {
-        if (filename.startsWith(attPrefix) && !filename.endsWith('/') && filename !== attPrefix) {
-          const parts = filename.substring(attPrefix.length).split('/');
+        if (filename.startsWith(binPrefix) && filename.endsWith('.bin') && !filename.includes('/.')) {
+          const parts = filename.substring(binPrefix.length).split('/');
           if (parts.length === 2) {
-            const attachmentId = parts[0];
-            const meta = attachmentId ? attachmentMetadata.get(attachmentId) : undefined;
-            if (attachmentId && meta) {
+            const bId = parts[1]!.replace('.bin', '');
+            const meta = unifiedBinIndex[bId];
+            if (meta) {
               const blob = await zip.file(filename)!.async('blob');
               yield { 
                 type: 'attachment' as const, 
                 chatId: '', 
-                attachmentId, 
-                binaryObjectId: meta.binaryObjectId,
-                name: meta.name,
+                attachmentId: '', // Not strictly needed for restore as binaryObjectId is present
+                binaryObjectId: bId,
+                name: meta.name || 'file',
                 mimeType: meta.mimeType,
                 size: meta.size,
-                createdAt: meta.uploadedAt,
+                createdAt: meta.createdAt,
                 blob 
               };
             }
@@ -546,7 +576,6 @@ export class ImportExportService {
   private async createAppendSnapshot(zip: JSZip, rootPath: string, config: ImportConfig): Promise<StorageSnapshot> {
     const groupIdMap = new Map<string, string>();
     const chatIdMap = new Map<string, string>();
-    const attachmentIdMap = new Map<string, string>();
     
     // 1. Groups
     const groupsPrefix = rootPath + 'chat-groups/';
@@ -622,7 +651,21 @@ export class ImportExportService {
     const chatGroups = importedGroupsDto.map(g => chatGroupToDomain(g, mergedHierarchy, chatMetas));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
-      const attachmentMetadata = new Map<string, { binaryObjectId: string, name: string, mimeType: string, size: number, createdAt: number }>();
+      // 1. Unified metadata lookup for append remapping
+      const binPrefix = rootPath + 'binary-objects/';
+      const unifiedBinIndex: Record<string, BinaryObjectDto> = {};
+      for (const filename of Object.keys(zip.files)) {
+        if (filename.startsWith(binPrefix) && filename.endsWith('index.json')) {
+          try {
+            const shardIndex = BinaryShardIndexSchemaDto.parse(JSON.parse(await zip.file(filename)!.async('string')));
+            Object.assign(unifiedBinIndex, shardIndex.objects);
+          } catch (e) { /* skip */ }
+        }
+      }
+
+      // Map to track which original binaryObjectId has been remapped to which new one
+      const binaryRemapMap = new Map<string, string>();
+
       for (const { dto: meta, originalId } of importedMetas) {
         const contentFile = zip.file(`${rootPath}chat-contents/${originalId}.json`);
         if (contentFile) {
@@ -633,38 +676,31 @@ export class ImportExportService {
               node.id = crypto.randomUUID();
               if (node.attachments) {
                 node.attachments.forEach(a => {
-                  if (!attachmentIdMap.has(a.id)) {
-                    const newAttId = crypto.randomUUID();
-                    const newBinaryObjectId = crypto.randomUUID();
-                    attachmentIdMap.set(a.id, newAttId);
-                    
-                    // Extract info from V1 or V2
-                    const name = ('name' in a) ? a.name : a.originalName;
-                    const mimeType = ('mimeType' in a) ? a.mimeType : 'application/octet-stream';
-                    const size = ('size' in a) ? a.size : 0;
-                    const createdAt = ('uploadedAt' in a) ? a.uploadedAt : Date.now();
+                  // remap attachment ID (the reference)
+                  const originalAttId = a.id;
+                  a.id = crypto.randomUUID();
 
-                    attachmentMetadata.set(newAttId, { 
-                      binaryObjectId: newBinaryObjectId, 
-                      name, 
-                      mimeType, 
-                      size, 
-                      createdAt 
-                    });
+                  // Resolve binaryObjectId from V1 or V2
+                  const oldBinaryId = ('binaryObjectId' in a) ? a.binaryObjectId : originalAttId;
+                  
+                  if (!binaryRemapMap.has(oldBinaryId)) {
+                    binaryRemapMap.set(oldBinaryId, crypto.randomUUID());
                   }
                   
-                  const mapped = attachmentMetadata.get(attachmentIdMap.get(a.id)!)!;
+                  const newBinaryId = binaryRemapMap.get(oldBinaryId)!;
                   
-                  // Update properties to V2 format while removing V1 fields
+                  // Use Record to mutate properties while keeping it somewhat safe
                   const mutAtt = a as unknown as Record<string, unknown>;
-                  mutAtt.id = attachmentIdMap.get(a.id)!;
-                  mutAtt.binaryObjectId = mapped.binaryObjectId;
-                  mutAtt.name = mapped.name;
+                  mutAtt.binaryObjectId = newBinaryId;
                   
-                  delete mutAtt.originalName;
-                  delete mutAtt.mimeType;
-                  delete mutAtt.size;
-                  delete mutAtt.uploadedAt;
+                  // Ensure it looks like V2
+                  if (!('name' in a)) {
+                    mutAtt.name = (a as unknown as { originalName: string }).originalName || 'file';
+                    delete mutAtt.originalName;
+                    delete mutAtt.mimeType;
+                    delete mutAtt.size;
+                    delete mutAtt.uploadedAt;
+                  }
                 });
               }
               if (node.replies?.items) node.replies.items.forEach(process);
@@ -675,22 +711,22 @@ export class ImportExportService {
         }
       }
 
-      const attPrefix = rootPath + 'uploaded-files/';
+      // Yield binary objects from shards using the remapped IDs
       for (const filename of Object.keys(zip.files)) {
-        if (filename.startsWith(attPrefix) && !filename.endsWith('/') && filename !== attPrefix) {
-          const parts = filename.substring(attPrefix.length).split('/');
+        if (filename.startsWith(binPrefix) && filename.endsWith('.bin') && !filename.includes('/.')) {
+          const parts = filename.substring(binPrefix.length).split('/');
           if (parts.length === 2) {
-            const oldId = parts[0];
-            const newId = oldId ? attachmentIdMap.get(oldId) : null;
-            const meta = newId ? attachmentMetadata.get(newId) : null;
-            if (newId && meta) {
+            const oldBinaryId = parts[1]!.replace('.bin', '');
+            const newBinaryId = binaryRemapMap.get(oldBinaryId);
+            const meta = unifiedBinIndex[oldBinaryId];
+            if (newBinaryId && meta) {
               const blob = await zip.file(filename)!.async('blob');
               yield { 
                 type: 'attachment' as const, 
                 chatId: '', 
-                attachmentId: newId, 
-                binaryObjectId: meta.binaryObjectId,
-                name: meta.name,
+                attachmentId: '', // not used in restore
+                binaryObjectId: newBinaryId,
+                name: meta.name || 'file',
                 mimeType: meta.mimeType,
                 size: meta.size,
                 createdAt: meta.createdAt,

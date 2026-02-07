@@ -108,7 +108,16 @@ export abstract class IStorageProvider {
   abstract clearAll(): Promise<void>;
 
   // --- File Storage ---
-  abstract saveFile(blob: Blob, binaryObjectId: string, name: string): Promise<void>;
+  /**
+   * @deprecated Use the named arguments version instead.
+   */
+  abstract saveFile(blob: Blob, binaryObjectId: string, name: string, mimeType?: string, size?: number): Promise<void>;
+  abstract saveFile(params: {
+    blob: Blob;
+    binaryObjectId: string;
+    name: string;
+    mimeType: string | undefined;
+  }): Promise<void>;
   abstract getFile(binaryObjectId: string): Promise<Blob | null>;
   abstract hasAttachments(): Promise<boolean>;
 }

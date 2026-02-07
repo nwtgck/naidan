@@ -26,9 +26,10 @@ import {
 } from '../../models/mappers';import { IStorageProvider } from './interface';
 
 import { 
-  type BinaryObjectDto,
   type MigrationStateDto,
+  type BinaryShardIndexDto,
   MigrationStateSchemaDto,
+  BinaryShardIndexSchemaDto,
 } from '../../models/dto';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
@@ -37,7 +38,7 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
 
 const MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS = 'v1_uploaded_files_to_binary_objects';
 
-type BinaryShardIndex = Record<string, BinaryObjectDto>;
+type BinaryShardIndex = BinaryShardIndexDto;
 
 export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
@@ -219,9 +220,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       const dir = await this.getShardDir(shard);
       const fileHandle = await dir.getFileHandle('index.json');
       const file = await fileHandle.getFile();
-      return JSON.parse(await file.text());
+      return BinaryShardIndexSchemaDto.parse(JSON.parse(await file.text()));
     } catch {
-      return {};
+      return { objects: {} };
     }
   }
 
@@ -253,7 +254,7 @@ export class OPFSStorageProvider extends IStorageProvider {
                 shardCache.set(shard, index);
               }
 
-              const meta = index[att.binaryObjectId];
+              const meta = index.objects[att.binaryObjectId];
               if (meta) {
                 att.mimeType = meta.mimeType;
                 att.size = meta.size;
@@ -517,30 +518,47 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   // --- Binary Object Storage ---
 
-  async saveFile(blob: Blob, binaryObjectId: string, name: string): Promise<void> {
-    const shard = this.getBinaryObjectShardPath(binaryObjectId);
+  async saveFile(blobOrParams: Blob | { blob: Blob; binaryObjectId: string; name: string; mimeType: string | undefined }, binaryObjectId?: string, name?: string, mimeType?: string): Promise<void> {
+    let blob: Blob;
+    let bId: string;
+    let fileName: string;
+    let mType: string | undefined;
+
+    if (blobOrParams instanceof Blob) {
+      blob = blobOrParams;
+      bId = binaryObjectId!;
+      fileName = name!;
+      mType = mimeType;
+    } else {
+      blob = blobOrParams.blob;
+      bId = blobOrParams.binaryObjectId;
+      fileName = blobOrParams.name;
+      mType = blobOrParams.mimeType;
+    }
+
+    const shard = this.getBinaryObjectShardPath(bId);
     const dir = await this.getShardDir(shard);
 
     // 1. Write Blob
-    const fileName = `${binaryObjectId}.bin`;
-    const fileHandle = await dir.getFileHandle(fileName, { create: true }) as FileSystemFileHandleWithWritable;
+    const binFileName = `${bId}.bin`;
+    const fileHandle = await dir.getFileHandle(binFileName, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
     // Convert blob to ArrayBuffer for compatibility
     await writable.write(await blob.arrayBuffer());
     await writable.close();
 
     // 2. Write Marker
-    const markerName = `.${fileName}.complete`;
+    const markerName = `.${binFileName}.complete`;
     await dir.getFileHandle(markerName, { create: true });
 
     // 3. Update Index
     const index = await this.loadShardIndex(shard);
-    index[binaryObjectId] = {
-      id: binaryObjectId,
-      mimeType: blob.type || 'application/octet-stream',
+    index.objects[bId] = {
+      id: bId,
+      mimeType: mType || blob.type || 'application/octet-stream',
       size: blob.size,
       createdAt: Date.now(),
-      name: name,
+      name: fileName,
     };
     await this.saveShardIndex(shard, index);
   }
@@ -719,7 +737,12 @@ export class OPFSStorageProvider extends IStorageProvider {
         break;
       }
       case 'attachment': 
-        await this.saveFile(chunk.blob, chunk.binaryObjectId, chunk.name); 
+        await this.saveFile({
+          blob: chunk.blob,
+          binaryObjectId: chunk.binaryObjectId,
+          name: chunk.name,
+          mimeType: chunk.mimeType
+        }); 
         break;
       default: {
         const _ex: never = type;
