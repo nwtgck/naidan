@@ -379,7 +379,7 @@ export class LocalStorageProvider extends IStorageProvider {
         await this.saveChatMeta(domainChat);
         break;
       }
-      case 'attachment':
+      case 'binary_object':
         // LocalStorage does not support binary attachments, skip
         break;
       default: {

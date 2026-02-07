@@ -184,7 +184,7 @@ describe('ImportExportService', () => {
         const nestedNode = chatChunk.data.root.items[0]!.replies.items[0];
         expect(nestedNode!.attachments![0]!.id).toBe(NEW_UUID);
       }
-      expect(chunks.find(c => c.type === 'attachment')?.binaryObjectId).toBe(NEW_UUID);
+      expect(chunks.find(c => c.type === 'binary_object')?.id).toBe(NEW_UUID);
     });
 
     it('applies prefixes to both chat titles and group names', async () => {

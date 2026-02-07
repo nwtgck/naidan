@@ -136,12 +136,12 @@ export class ImportExportService {
         case 'chat':
           root.folder('chat-contents')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
           break;
-        case 'attachment': {
-          const shard = getShard(chunk.binaryObjectId);
+        case 'binary_object': {
+          const shard = getShard(chunk.id);
           const shardFolder = binFolder.folder(shard);
           if (!shardFolder) throw new Error(`Failed to create shard folder ${shard} in ZIP`);
 
-          const fileName = `${chunk.binaryObjectId}.bin`;
+          const fileName = `${chunk.id}.bin`;
           shardFolder.file(fileName, chunk.blob);
           shardFolder.file(`.${fileName}.complete`, new Blob([]));
 
@@ -150,8 +150,8 @@ export class ImportExportService {
             index = { objects: {} };
             shardIndices.set(shard, index);
           }
-          index.objects[chunk.binaryObjectId] = {
-            id: chunk.binaryObjectId,
+          index.objects[chunk.id] = {
+            id: chunk.id,
             mimeType: chunk.mimeType,
             size: chunk.size,
             createdAt: chunk.createdAt,
@@ -540,10 +540,8 @@ export class ImportExportService {
             if (meta) {
               const blob = await zip.file(filename)!.async('blob');
               yield { 
-                type: 'attachment' as const, 
-                chatId: '', 
-                attachmentId: '', // Not strictly needed for restore as binaryObjectId is present
-                binaryObjectId: bId,
+                type: 'binary_object' as const, 
+                id: bId,
                 name: meta.name || 'file',
                 mimeType: meta.mimeType,
                 size: meta.size,
@@ -722,10 +720,8 @@ export class ImportExportService {
             if (newBinaryId && meta) {
               const blob = await zip.file(filename)!.async('blob');
               yield { 
-                type: 'attachment' as const, 
-                chatId: '', 
-                attachmentId: '', // not used in restore
-                binaryObjectId: newBinaryId,
+                type: 'binary_object' as const, 
+                id: newBinaryId,
                 name: meta.name || 'file',
                 mimeType: meta.mimeType,
                 size: meta.size,

@@ -650,48 +650,50 @@ export class OPFSStorageProvider extends IStorageProvider {
     const chatMetas = rawMetas.map(chatMetaToDomain);
 
     const contentStream = async function* (this: OPFSStorageProvider): AsyncGenerator<MigrationChunkDto> {
+      // 1. Stream all chats
       for (const meta of rawMetas) {
         const chat = await this.loadChat(meta.id);
         if (chat) {
           yield { type: 'chat' as const, data: chatToDto(chat) };
-          const findAndYieldFiles = async function* (this: OPFSStorageProvider, nodes: MessageNode[]): AsyncGenerator<MigrationChunkDto> {
-            for (const node of nodes) {
-              if (node.attachments) {
-                for (const att of node.attachments) {
-                  const status = att.status;
-                  switch (status) {
-                  case 'persisted': {
-                    const blob = await this.getFile(att.binaryObjectId);
-                    if (blob) {
-                      yield { 
-                        type: 'attachment' as const, 
-                        chatId: chat.id, 
-                        attachmentId: att.id, 
-                        binaryObjectId: att.binaryObjectId,
-                        name: att.originalName, 
-                        mimeType: att.mimeType, 
-                        size: att.size, 
-                        createdAt: att.uploadedAt, 
-                        blob 
-                      };
-                    }
-                    break;
-                  }
-                  case 'memory':
-                  case 'missing':
-                    break;
-                  default: {
-                    const _ex: never = status;
-                    throw new Error(`Unhandled attachment status: ${_ex}`);
-                  }
-                  }
-                }
-              }
-              if (node.replies?.items) yield* findAndYieldFiles.call(this, node.replies.items);
-            }
-          };
-          yield* findAndYieldFiles.call(this, chat.root.items);
         }
+      }
+
+      // 2. Stream all binary objects directly from storage (independent of chat references)
+      try {
+        const baseDir = await this.getBinaryObjectsDir();
+        for await (const shardEntry of baseDir.values()) {
+          const kind = shardEntry.kind;
+          switch (kind) {
+          case 'directory': {
+            const shard = shardEntry.name;
+            const index = await this.loadShardIndex(shard);
+            for (const bId of Object.keys(index.objects)) {
+              const meta = index.objects[bId]!;
+              const blob = await this.getFile(bId);
+              if (blob) {
+                yield {
+                  type: 'binary_object' as const,
+                  id: bId,
+                  name: meta.name || 'file',
+                  mimeType: meta.mimeType,
+                  size: meta.size,
+                  createdAt: meta.createdAt,
+                  blob
+                };
+              }
+            }
+            break;
+          }
+          case 'file':
+            break;
+          default: {
+            const _ex: never = kind;
+            throw new Error(`Unhandled entry kind: ${_ex}`);
+          }
+          }
+        }
+      } catch (e) {
+        console.warn('[OPFSStorageProvider] Failed to dump some binary objects', e);
       }
     };
 
@@ -736,10 +738,10 @@ export class OPFSStorageProvider extends IStorageProvider {
         await this.saveChatMeta(domainChat);
         break;
       }
-      case 'attachment': 
+      case 'binary_object': 
         await this.saveFile({
           blob: chunk.blob,
-          binaryObjectId: chunk.binaryObjectId,
+          binaryObjectId: chunk.id,
           name: chunk.name,
           mimeType: chunk.mimeType
         }); 

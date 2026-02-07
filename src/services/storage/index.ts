@@ -330,10 +330,8 @@ export class StorageService {
                         case 'memory':
                           if (att.blob) {
                             rescued.push({
-                              type: 'attachment',
-                              chatId: chat.id,
-                              attachmentId: att.id,
-                              binaryObjectId: att.binaryObjectId,
+                              type: 'binary_object',
+                              id: att.binaryObjectId,
                               name: att.originalName,
                               mimeType: att.mimeType,
                               size: att.size,
@@ -363,7 +361,7 @@ export class StorageService {
                 yield chunk;
               }
               break;
-            case 'attachment':
+            case 'binary_object':
               yield chunk;
               break;
             default: {

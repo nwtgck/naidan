@@ -257,10 +257,8 @@ export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
 export type MigrationChunkDto = 
   | { type: 'chat'; data: ChatDto }
   | { 
-      type: 'attachment'; 
-      chatId: string; 
-      attachmentId: string; 
-      binaryObjectId: string;
+      type: 'binary_object'; 
+      id: string; // The binaryObjectId
       name: string; 
       mimeType: string;
       size: number;
