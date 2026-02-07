@@ -279,11 +279,11 @@ export class LocalStorageProvider extends IStorageProvider {
 
   // --- File Storage ---
   
-  async saveFile(_blob: Blob, _attachmentId: string, _originalName: string): Promise<void> {
+  async saveFile(_blob: Blob, _binaryObjectId: string, _name: string): Promise<void> {
     throw new Error('File persistence is not supported in LocalStorage provider.');
   }
 
-  async getFile(_attachmentId: string, _originalName: string): Promise<Blob | null> {
+  async getFile(_binaryObjectId: string): Promise<Blob | null> {
     return null;
   }
 

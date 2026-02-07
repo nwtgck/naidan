@@ -108,7 +108,7 @@ export abstract class IStorageProvider {
   abstract clearAll(): Promise<void>;
 
   // --- File Storage ---
-  abstract saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void>;
-  abstract getFile(attachmentId: string, originalName: string): Promise<Blob | null>;
+  abstract saveFile(blob: Blob, binaryObjectId: string, name: string): Promise<void>;
+  abstract getFile(binaryObjectId: string): Promise<Blob | null>;
   abstract hasAttachments(): Promise<boolean>;
 }

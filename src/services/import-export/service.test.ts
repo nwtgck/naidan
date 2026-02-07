@@ -148,7 +148,7 @@ describe('ImportExportService', () => {
               items: [{
                 id: UUID_M2, role: 'assistant', content: 'response', timestamp: now + 100,
                 attachments: [{ 
-                  id: UUID_A1, originalName: 'img.png', mimeType: 'image/png', 
+                  id: UUID_A1, binaryObjectId: UUID_A1, originalName: 'img.png', mimeType: 'image/png', 
                   size: 100, uploadedAt: now, status: 'persisted' 
                 }],
                 replies: { items: [] }

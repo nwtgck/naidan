@@ -442,6 +442,7 @@ describe('MessageItem Attachment Rendering', () => {
 
     const message = createMessageWithAttachments([{
       id: 'att-persisted',
+      binaryObjectId: 'binary-id-123',
       status: 'persisted',
       originalName: 'persisted.png',
       mimeType: 'image/png',
@@ -456,7 +457,7 @@ describe('MessageItem Attachment Rendering', () => {
 
     const img = wrapper.find('img');
     expect(img.exists()).toBe(true);
-    expect(storageService.getFile).toHaveBeenCalledWith('att-persisted', 'persisted.png');
+    expect(storageService.getFile).toHaveBeenCalledWith('binary-id-123');
   });
 
   it('renders a fallback for missing attachments', async () => {

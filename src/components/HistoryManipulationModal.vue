@@ -68,7 +68,7 @@ watch(() => props.isOpen, async (open) => {
           const status = att.status;
           switch (status) {
           case 'persisted': {
-            const blob = await storageService.getFile(att.id, att.originalName);
+            const blob = await storageService.getFile(att.binaryObjectId);
             if (blob) {
               attachmentUrls.value[att.id] = URL.createObjectURL(blob);
             }
@@ -166,8 +166,10 @@ async function handleFileSelect(event: Event, index: number) {
   for (const file of Array.from(target.files)) {
     if (!file.type.startsWith('image/')) continue;
     
+    const attachmentId = crypto.randomUUID();
     const attachment: Attachment = {
-      id: crypto.randomUUID(),
+      id: attachmentId,
+      binaryObjectId: crypto.randomUUID(),
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
@@ -199,8 +201,10 @@ async function handlePaste(event: ClipboardEvent, index: number) {
     if (!msg.attachments) msg.attachments = [];
 
     for (const file of files) {
+      const attachmentId = crypto.randomUUID();
       const attachment: Attachment = {
-        id: crypto.randomUUID(),
+        id: attachmentId,
+        binaryObjectId: crypto.randomUUID(),
         originalName: file.name,
         mimeType: file.type,
         size: file.size,

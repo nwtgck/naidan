@@ -209,34 +209,58 @@ export const endpointToDto = (endpoint: Endpoint): EndpointDto => {
 };
 
 const attachmentToDomain = (dto: AttachmentDto): Attachment => {
-  const base = {
-    id: dto.id,
-    originalName: dto.originalName,
-    mimeType: dto.mimeType,
-    size: dto.size,
-    uploadedAt: dto.uploadedAt,
-  };
+  if ('binaryObjectId' in dto) {
+    // V2
+    const base = {
+      id: dto.id,
+      binaryObjectId: dto.binaryObjectId,
+      originalName: dto.name,
+      // Metadata will be hydrated by the StorageProvider
+      mimeType: 'application/octet-stream',
+      size: 0,
+      uploadedAt: Date.now(),
+    };
 
-  switch (dto.status) {
-  case 'persisted': return { ...base, status: 'persisted' };
-  case 'missing': return { ...base, status: 'missing' };
-  case 'memory':
-    // For 'memory' status from DTO, we might not have the blob yet.
-    return { ...base, status: 'memory' } as unknown as Attachment;
-  default: {
-    const _ex: never = dto.status;
-    throw new Error(`Unhandled attachment status: ${_ex}`);
-  }
+    switch (dto.status) {
+    case 'persisted': return { ...base, status: 'persisted' };
+    case 'missing': return { ...base, status: 'missing' };
+    case 'memory':
+      return { ...base, status: 'memory' } as unknown as Attachment;
+    default: {
+      const _ex: never = dto.status;
+      throw new Error(`Unhandled attachment status: ${_ex}`);
+    }
+    }
+  } else {
+    // V1 (Legacy)
+    const base = {
+      id: dto.id,
+      binaryObjectId: dto.id, // Legacy use id as binaryObjectId
+      originalName: dto.originalName,
+      mimeType: dto.mimeType,
+      size: dto.size,
+      uploadedAt: dto.uploadedAt,
+    };
+
+    switch (dto.status) {
+    case 'persisted': return { ...base, status: 'persisted' };
+    case 'missing': return { ...base, status: 'missing' };
+    case 'memory':
+      return { ...base, status: 'memory' } as unknown as Attachment;
+    default: {
+      const _ex: never = dto.status;
+      throw new Error(`Unhandled attachment status: ${_ex}`);
+    }
+    }
   }
 };
 
 const attachmentToDto = (domain: Attachment): AttachmentDto => {
+  // Always output V2
   return {
     id: domain.id,
-    originalName: domain.originalName,
-    mimeType: domain.mimeType,
-    size: domain.size,
-    uploadedAt: domain.uploadedAt,
+    binaryObjectId: domain.binaryObjectId,
+    name: domain.originalName,
     status: domain.status,
   };
 };

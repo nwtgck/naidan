@@ -56,15 +56,26 @@ async function loadDirectory(handle: FileSystemDirectoryHandle) {
   try {
     error.value = null;
     const newEntries: OPFSEntry[] = [];
-    // @ts-expect-error: values() is not in the standard TS lib for FileSystemDirectoryHandle yet
     for await (const entry of handle.values()) {
       let size: number | undefined;
       let lastModified: number | undefined;
-      if (entry.kind === 'file') {
+      
+      const kind = entry.kind;
+      switch (kind) {
+      case 'file': {
         const file = await (entry as FileSystemFileHandle).getFile();
         size = file.size;
         lastModified = file.lastModified;
+        break;
       }
+      case 'directory':
+        break;
+      default: {
+        const _ex: never = kind;
+        throw new Error(`Unhandled entry kind: ${_ex}`);
+      }
+      }
+
       newEntries.push({
         name: entry.name,
         kind: entry.kind,

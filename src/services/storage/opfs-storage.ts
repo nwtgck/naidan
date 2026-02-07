@@ -25,9 +25,19 @@ import {
   buildSidebarItemsFromHierarchy,
 } from '../../models/mappers';import { IStorageProvider } from './interface';
 
+import { 
+  type BinaryObjectDto,
+  type MigrationStateDto,
+  MigrationStateSchemaDto,
+} from '../../models/dto';
+
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>;
 }
+
+const MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS = 'v1_uploaded_files_to_binary_objects';
+
+type BinaryShardIndex = Record<string, BinaryObjectDto>;
 
 export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
@@ -38,12 +48,246 @@ export class OPFSStorageProvider extends IStorageProvider {
     if (!this.root) {
       const opfsRoot = await navigator.storage.getDirectory();
       this.root = await opfsRoot.getDirectoryHandle(this.STORAGE_DIR, { create: true });
+      await this.runMigrations();
     }
   }
 
-  private async getDir(name: string): Promise<FileSystemDirectoryHandle> {
+  private async loadMigrationState(): Promise<MigrationStateDto> {
+    try {
+      const fileHandle = await this.root!.getFileHandle('migration-state.json');
+      const file = await fileHandle.getFile();
+      return MigrationStateSchemaDto.parse(JSON.parse(await file.text()));
+    } catch {
+      return { completedMigrations: [] };
+    }
+  }
+
+  private async saveMigrationState(state: MigrationStateDto): Promise<void> {
+    const fileHandle = await this.root!.getFileHandle('migration-state.json', { create: true }) as FileSystemFileHandleWithWritable;
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(state));
+    await writable.close();
+  }
+
+  private async runMigrations(): Promise<void> {
+    const state = await this.loadMigrationState();
+    const completed = new Set(state.completedMigrations.map(m => m.name));
+
+    if (!completed.has(MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS)) {
+      await this.migrateV1UploadedFilesToBinaryObjects();
+      state.completedMigrations.push({
+        name: MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS,
+        completedAt: Date.now()
+      });
+      await this.saveMigrationState(state);
+    }
+  }
+
+  private async migrateV1UploadedFilesToBinaryObjects(): Promise<void> {
+    try {
+      const legacyDir = await this.root!.getDirectoryHandle('uploaded-files');
+      console.log(`[OPFSStorageProvider] Starting migration: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`);
+
+      // 1. Migrate Files and Create Mapping (attachmentId -> binaryObjectId)
+      const idMap = new Map<string, string>();
+      
+      for await (const attachmentDirEntry of legacyDir.values()) {
+        const entryKind = attachmentDirEntry.kind;
+        switch (entryKind) {
+        case 'directory': {
+          const attachmentId = attachmentDirEntry.name;
+          for await (const fileEntry of (attachmentDirEntry as FileSystemDirectoryHandle).values()) {
+            const fileKind = fileEntry.kind;
+            switch (fileKind) {
+            case 'file': {
+              const blob = await (fileEntry as FileSystemFileHandle).getFile();
+              const newBinaryObjectId = crypto.randomUUID();
+              
+              // Save to new location with NEW ID
+              await this.saveFile(blob, newBinaryObjectId, fileEntry.name);
+              idMap.set(attachmentId, newBinaryObjectId);
+              break;
+            }
+            case 'directory':
+              break;
+            default: {
+              const _ex: never = fileKind;
+              throw new Error(`Unhandled file kind: ${_ex}`);
+            }
+            }
+          }
+          break;
+        }
+        case 'file':
+          break;
+        default: {
+          const _ex: never = entryKind;
+          throw new Error(`Unhandled entry kind: ${_ex}`);
+        }
+        }
+      }
+
+      // 2. Update all Chat Content JSON files to point to the new IDs
+      const contentDir = await this.getDir('chat-contents');
+      for await (const entry of contentDir.values()) {
+        const entryKind = entry.kind;
+        switch (entryKind) {
+        case 'file': {
+          if (entry.name.endsWith('.json')) {
+            try {
+              const file = await (entry as FileSystemFileHandle).getFile();
+              const content = JSON.parse(await file.text());
+              
+              let modified = false;
+              const processNodes = (nodes: unknown[]) => {
+                for (const node of nodes) {
+                  const nodeObj = node as Record<string, unknown>;
+                  const attachments = nodeObj.attachments as Record<string, unknown>[] | undefined;
+                  if (attachments) {
+                    for (const att of attachments) {
+                      // If it's a V1 attachment (no binaryObjectId), look up in map
+                      if (!att.binaryObjectId && typeof att.id === 'string' && idMap.has(att.id)) {
+                        att.binaryObjectId = idMap.get(att.id);
+                        att.name = att.name || att.originalName;
+                        modified = true;
+                      }
+                    }
+                  }
+                  const replies = nodeObj.replies as Record<string, unknown> | undefined;
+                  if (replies?.items) processNodes(replies.items as unknown[]);
+                }
+              };
+
+              if (content.root?.items) {
+                processNodes(content.root.items);
+                if (modified) {
+                  const writable = await (entry as unknown as FileSystemFileHandleWithWritable).createWritable();
+                  await writable.write(JSON.stringify(content));
+                  await writable.close();
+                }
+              }
+            } catch (jsonErr) {
+              console.warn(`[OPFSStorageProvider] Skipping corrupted chat content file: ${entry.name}`, jsonErr);
+            }
+          }
+          break;
+        }
+        case 'directory':
+          break;
+        default: {
+          const _ex: never = entryKind;
+          throw new Error(`Unhandled entry kind: ${_ex}`);
+        }
+        }
+      }
+
+      // 3. Cleanup
+      await this.root!.removeEntry('uploaded-files', { recursive: true });
+      console.log(`[OPFSStorageProvider] Migration completed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`);
+    } catch (e) {
+      // If uploaded-files doesn't exist, migration is not needed
+      const isNotFound = e instanceof Error && (e.name === 'NotFoundError' || (e as { code?: number }).code === 8);
+      if (!isNotFound) {
+        console.error(`[OPFSStorageProvider] Migration failed: ${MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS}`, e);
+        throw e;
+      }
+    }
+  }
+
+  private async getDir(name: string, parent: FileSystemDirectoryHandle = this.root!): Promise<FileSystemDirectoryHandle> {
     await this.init();
-    return await this.root!.getDirectoryHandle(name, { create: true });
+    return await parent.getDirectoryHandle(name, { create: true });
+  }
+
+  // --- Binary Object Storage (Sharded) ---
+
+  private getBinaryObjectShardPath(id: string): string {
+    return id.slice(-2).toLowerCase();
+  }
+
+  private async getBinaryObjectsDir(): Promise<FileSystemDirectoryHandle> {
+    return await this.getDir('binary-objects');
+  }
+
+  private async getShardDir(shard: string): Promise<FileSystemDirectoryHandle> {
+    const baseDir = await this.getBinaryObjectsDir();
+    return await this.getDir(shard, baseDir);
+  }
+
+  private async loadShardIndex(shard: string): Promise<BinaryShardIndex> {
+    try {
+      const dir = await this.getShardDir(shard);
+      const fileHandle = await dir.getFileHandle('index.json');
+      const file = await fileHandle.getFile();
+      return JSON.parse(await file.text());
+    } catch {
+      return {};
+    }
+  }
+
+  private async saveShardIndex(shard: string, index: BinaryShardIndex): Promise<void> {
+    const dir = await this.getShardDir(shard);
+    const fileHandle = await dir.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(index));
+    await writable.close();
+  }
+
+  private async hydrateAttachments(nodes: MessageNode[]): Promise<void> {
+    const shardCache = new Map<string, BinaryShardIndex>();
+
+    const processNodes = async (items: MessageNode[]) => {
+      for (const node of items) {
+        if (node.attachments) {
+          for (let i = 0; i < node.attachments.length; i++) {
+            const att = node.attachments[i];
+            if (!att) continue;
+            
+            const status = att.status;
+            switch (status) {
+            case 'persisted': {
+              const shard = this.getBinaryObjectShardPath(att.binaryObjectId);
+              let index = shardCache.get(shard);
+              if (!index) {
+                index = await this.loadShardIndex(shard);
+                shardCache.set(shard, index);
+              }
+
+              const meta = index[att.binaryObjectId];
+              if (meta) {
+                att.mimeType = meta.mimeType;
+                att.size = meta.size;
+                att.uploadedAt = meta.createdAt;
+              } else {
+                node.attachments[i] = {
+                  id: att.id,
+                  binaryObjectId: att.binaryObjectId,
+                  originalName: att.originalName,
+                  mimeType: att.mimeType,
+                  size: att.size,
+                  uploadedAt: att.uploadedAt,
+                  status: 'missing'
+                };
+              }
+              break;
+            }
+            case 'memory':
+            case 'missing':
+              break;
+            default: {
+              const _ex: never = status;
+              throw new Error(`Unhandled attachment status: ${_ex}`);
+            }
+            }
+          }
+        }
+        if (node.replies?.items) {
+          await processNodes(node.replies.items);
+        }
+      }
+    };
+
+    await processNodes(nodes);
   }
 
   // --- Internal Data Access ---
@@ -52,11 +296,22 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       const dir = await this.getDir('chat-metas');
       const dtos: ChatMetaDto[] = [];
-      // @ts-expect-error: values() is missing in some types
       for await (const entry of dir.values()) {
-        if (entry.kind === 'file' && entry.name.endsWith('.json')) {
-          const file = await entry.getFile();
-          dtos.push(JSON.parse(await file.text()));
+        const kind = entry.kind;
+        switch (kind) {
+        case 'file': {
+          if (entry.name.endsWith('.json')) {
+            const file = await (entry as FileSystemFileHandle).getFile();
+            dtos.push(JSON.parse(await file.text()));
+          }
+          break;
+        }
+        case 'directory':
+          break;
+        default: {
+          const _ex: never = kind;
+          throw new Error(`Unhandled entry kind: ${_ex}`);
+        }
         }
       }
       return dtos;
@@ -69,11 +324,22 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       const dir = await this.getDir('chat-groups');
       const dtos: ChatGroupDto[] = [];
-      // @ts-expect-error: values() is missing in some types
       for await (const entry of dir.values()) {
-        if (entry.kind === 'file' && entry.name.endsWith('.json')) {
-          const file = await entry.getFile();
-          dtos.push(JSON.parse(await file.text()));
+        const kind = entry.kind;
+        switch (kind) {
+        case 'file': {
+          if (entry.name.endsWith('.json')) {
+            const file = await (entry as FileSystemFileHandle).getFile();
+            dtos.push(JSON.parse(await file.text()));
+          }
+          break;
+        }
+        case 'directory':
+          break;
+        default: {
+          const _ex: never = kind;
+          throw new Error(`Unhandled entry kind: ${_ex}`);
+        }
         }
       }
       return dtos;
@@ -146,6 +412,9 @@ export class OPFSStorageProvider extends IStorageProvider {
         if (group) chat.groupId = group.id;
       }
 
+      // Hydrate attachments with metadata from BinaryObject indices
+      await this.hydrateAttachments(chat.root.items);
+
       return chat;
     } catch {
       return null; 
@@ -176,7 +445,12 @@ export class OPFSStorageProvider extends IStorageProvider {
       const contentDir = await this.getDir('chat-contents');
       const contentFile = await (await contentDir.getFileHandle(`${id}.json`)).getFile();
       const dto = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
-      return chatContentToDomain(dto);
+      const content = chatContentToDomain(dto);
+
+      // Hydrate attachments
+      await this.hydrateAttachments(content.root.items);
+
+      return content;
     } catch {
       return null; 
     }
@@ -241,26 +515,47 @@ export class OPFSStorageProvider extends IStorageProvider {
     return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
   }
 
-  // --- File Storage ---
+  // --- Binary Object Storage ---
 
-  private async getUploadedFilesDir(): Promise<FileSystemDirectoryHandle> {
-    return await this.getDir('uploaded-files');
-  }
+  async saveFile(blob: Blob, binaryObjectId: string, name: string): Promise<void> {
+    const shard = this.getBinaryObjectShardPath(binaryObjectId);
+    const dir = await this.getShardDir(shard);
 
-  async saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void> {
-    const uploadedFilesDir = await this.getUploadedFilesDir();
-    const fileDir = await uploadedFilesDir.getDirectoryHandle(attachmentId, { create: true });
-    const fileHandle = await fileDir.getFileHandle(originalName, { create: true }) as FileSystemFileHandleWithWritable;
+    // 1. Write Blob
+    const fileName = `${binaryObjectId}.bin`;
+    const fileHandle = await dir.getFileHandle(fileName, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(blob);
+    // Convert blob to ArrayBuffer for compatibility
+    await writable.write(await blob.arrayBuffer());
     await writable.close();
+
+    // 2. Write Marker
+    const markerName = `.${fileName}.complete`;
+    await dir.getFileHandle(markerName, { create: true });
+
+    // 3. Update Index
+    const index = await this.loadShardIndex(shard);
+    index[binaryObjectId] = {
+      id: binaryObjectId,
+      mimeType: blob.type || 'application/octet-stream',
+      size: blob.size,
+      createdAt: Date.now(),
+      name: name,
+    };
+    await this.saveShardIndex(shard, index);
   }
 
-  async getFile(attachmentId: string, originalName: string): Promise<Blob | null> {
+  async getFile(binaryObjectId: string): Promise<Blob | null> {
     try {
-      const uploadedFilesDir = await this.getUploadedFilesDir();
-      const fileDir = await uploadedFilesDir.getDirectoryHandle(attachmentId);
-      const fileHandle = await fileDir.getFileHandle(originalName);
+      const shard = this.getBinaryObjectShardPath(binaryObjectId);
+      const dir = await this.getShardDir(shard);
+      const fileName = `${binaryObjectId}.bin`;
+      const markerName = `.${fileName}.complete`;
+
+      // Verify completion marker
+      await dir.getFileHandle(markerName);
+
+      const fileHandle = await dir.getFileHandle(fileName);
       return await fileHandle.getFile();
     } catch {
       return null; 
@@ -269,9 +564,25 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async hasAttachments(): Promise<boolean> {
     try {
-      const uploadedFilesDir = await this.getUploadedFilesDir();
-      // @ts-expect-error: values()
-      for await (const entry of uploadedFilesDir.values()) if (entry) return true;
+      const baseDir = await this.getBinaryObjectsDir();
+      for await (const entry of baseDir.values()) {
+        const kind = entry.kind;
+        switch (kind) {
+        case 'directory': {
+          // Check if shard has any files other than index.json
+          for await (const shardEntry of (entry as FileSystemDirectoryHandle).values()) {
+            if (shardEntry.name !== 'index.json') return true;
+          }
+          break;
+        }
+        case 'file':
+          break;
+        default: {
+          const _ex: never = kind;
+          throw new Error(`Unhandled entry kind: ${_ex}`);
+        }
+        }
+      }
       return false;
     } catch {
       return false; 
@@ -301,7 +612,6 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async clearAll(): Promise<void> {
     await this.init();
-    // @ts-expect-error: keys()
     for await (const key of this.root!.keys()) {
       await this.root!.removeEntry(key, { recursive: true });
     }
@@ -330,17 +640,30 @@ export class OPFSStorageProvider extends IStorageProvider {
             for (const node of nodes) {
               if (node.attachments) {
                 for (const att of node.attachments) {
-                  switch (att.status) {
+                  const status = att.status;
+                  switch (status) {
                   case 'persisted': {
-                    const blob = await this.getFile(att.id, att.originalName);
-                    if (blob) yield { type: 'attachment' as const, chatId: chat.id, attachmentId: att.id, originalName: att.originalName, mimeType: att.mimeType, size: att.size, uploadedAt: att.uploadedAt, blob };
+                    const blob = await this.getFile(att.binaryObjectId);
+                    if (blob) {
+                      yield { 
+                        type: 'attachment' as const, 
+                        chatId: chat.id, 
+                        attachmentId: att.id, 
+                        binaryObjectId: att.binaryObjectId,
+                        name: att.originalName, 
+                        mimeType: att.mimeType, 
+                        size: att.size, 
+                        createdAt: att.uploadedAt, 
+                        blob 
+                      };
+                    }
                     break;
                   }
                   case 'memory':
                   case 'missing':
                     break;
                   default: {
-                    const _ex: never = att;
+                    const _ex: never = status;
                     throw new Error(`Unhandled attachment status: ${_ex}`);
                   }
                   }
@@ -395,7 +718,9 @@ export class OPFSStorageProvider extends IStorageProvider {
         await this.saveChatMeta(domainChat);
         break;
       }
-      case 'attachment': await this.saveFile(chunk.blob, chunk.attachmentId, chunk.originalName); break;
+      case 'attachment': 
+        await this.saveFile(chunk.blob, chunk.binaryObjectId, chunk.name); 
+        break;
       default: {
         const _ex: never = type;
         throw new Error(`Unknown chunk type: ${_ex}`);

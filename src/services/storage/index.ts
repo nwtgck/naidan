@@ -266,10 +266,10 @@ export class StorageService {
 
   // --- File Storage Methods ---
 
-  async saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void> {
+  async saveFile(blob: Blob, binaryObjectId: string, name: string): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        await this.getProvider().saveFile(blob, attachmentId, originalName);
+        await this.getProvider().saveFile(blob, binaryObjectId, name);
       }, { lockKey: LOCK_METADATA, ...this.getLockOptions('saveFile') });
     } catch (e) {
       this.handleStorageError(e, 'saveFile');
@@ -277,8 +277,8 @@ export class StorageService {
     }
   }
 
-  async getFile(attachmentId: string, originalName: string): Promise<Blob | null> {
-    return this.getProvider().getFile(attachmentId, originalName);
+  async getFile(binaryObjectId: string): Promise<Blob | null> {
+    return this.getProvider().getFile(binaryObjectId);
   }
 
   async hasAttachments(): Promise<boolean> {
@@ -310,7 +310,8 @@ export class StorageService {
         // Wrap content stream to rescue memory blobs
         const migrationStream = async function* (): AsyncGenerator<MigrationChunkDto> {
           for await (const chunk of snapshot.contentStream) {
-            switch (chunk.type) {
+            const chunkType = chunk.type;
+            switch (chunkType) {
             case 'chat':
               if (newProvider.canPersistBinary) {
                 const chat = await oldProvider.loadChat(chunk.data.id);
@@ -324,17 +325,19 @@ export class StorageService {
                     if (node.attachments) {
                       for (let i = 0; i < node.attachments.length; i++) {
                         const att = node.attachments[i]!;
-                        switch (att.status) {
+                        const status = att.status;
+                        switch (status) {
                         case 'memory':
                           if (att.blob) {
                             rescued.push({
                               type: 'attachment',
                               chatId: chat.id,
                               attachmentId: att.id,
-                              originalName: att.originalName,
+                              binaryObjectId: att.binaryObjectId,
+                              name: att.originalName,
                               mimeType: att.mimeType,
                               size: att.size,
-                              uploadedAt: att.uploadedAt,
+                              createdAt: att.uploadedAt,
                               blob: att.blob
                             });
                             node.attachments[i] = { ...att, status: 'persisted' as const };
@@ -344,7 +347,7 @@ export class StorageService {
                         case 'missing':
                           break;
                         default: {
-                          const _ex: never = att;
+                          const _ex: never = status;
                           throw new Error(`Unhandled attachment status: ${_ex}`);
                         }
                         }
@@ -364,7 +367,7 @@ export class StorageService {
               yield chunk;
               break;
             default: {
-              const _ex: never = chunk;
+              const _ex: never = chunkType;
               throw new Error(`Unhandled migration chunk type: ${_ex}`);
             }
             }

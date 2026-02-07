@@ -128,7 +128,9 @@ export class ImportExportService {
           root.folder('chat-contents')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
           break;
         case 'attachment':
-          root.folder('uploaded-files')!.folder(chunk.attachmentId)!.file(chunk.originalName, chunk.blob);
+          // We keep a flat structure in the ZIP for human readability/legacy compatibility.
+          // The Import process will re-shard it into the target storage.
+          root.folder('uploaded-files')!.folder(chunk.attachmentId)!.file(chunk.name, chunk.blob);
           break;
         default: {
           const _ex: never = type;
@@ -470,7 +472,7 @@ export class ImportExportService {
     const chatGroups = groupsDto.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
-      const attachmentMetadata = new Map<string, { originalName: string, mimeType: string, size: number, uploadedAt: number }>();
+      const attachmentMetadata = new Map<string, { binaryObjectId: string, name: string, mimeType: string, size: number, uploadedAt: number }>();
       for (const meta of metasDto) {
         const contentFile = zip.file(`${rootPath}chat-contents/${meta.id}.json`);
         if (contentFile) {
@@ -478,7 +480,18 @@ export class ImportExportService {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
             const chatDto: ChatDto = { ...meta, ...content };
             const extract = (node: MessageNodeDto) => {
-              if (node.attachments) node.attachments.forEach(a => attachmentMetadata.set(a.id, a));
+              if (node.attachments) {
+                node.attachments.forEach(a => {
+                  // Handle Union DTO (V1 or V2)
+                  const binaryObjectId = ('binaryObjectId' in a) ? a.binaryObjectId : a.id;
+                  const name = ('name' in a) ? a.name : a.originalName;
+                  const mimeType = ('mimeType' in a) ? a.mimeType : 'application/octet-stream';
+                  const size = ('size' in a) ? a.size : 0;
+                  const uploadedAt = ('uploadedAt' in a) ? a.uploadedAt : Date.now();
+
+                  attachmentMetadata.set(a.id, { binaryObjectId, name, mimeType, size, uploadedAt });
+                });
+              }
               if (node.replies?.items) node.replies.items.forEach(extract);
             };
             if (chatDto.root?.items) chatDto.root.items.forEach(extract);
@@ -496,7 +509,17 @@ export class ImportExportService {
             const meta = attachmentId ? attachmentMetadata.get(attachmentId) : undefined;
             if (attachmentId && meta) {
               const blob = await zip.file(filename)!.async('blob');
-              yield { type: 'attachment' as const, chatId: '', attachmentId, ...meta, blob };
+              yield { 
+                type: 'attachment' as const, 
+                chatId: '', 
+                attachmentId, 
+                binaryObjectId: meta.binaryObjectId,
+                name: meta.name,
+                mimeType: meta.mimeType,
+                size: meta.size,
+                createdAt: meta.uploadedAt,
+                blob 
+              };
             }
           }
         }
@@ -599,7 +622,7 @@ export class ImportExportService {
     const chatGroups = importedGroupsDto.map(g => chatGroupToDomain(g, mergedHierarchy, chatMetas));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
-      const attachmentMetadata = new Map<string, { originalName: string, mimeType: string, size: number, uploadedAt: number }>();
+      const attachmentMetadata = new Map<string, { binaryObjectId: string, name: string, mimeType: string, size: number, createdAt: number }>();
       for (const { dto: meta, originalId } of importedMetas) {
         const contentFile = zip.file(`${rootPath}chat-contents/${originalId}.json`);
         if (contentFile) {
@@ -612,10 +635,36 @@ export class ImportExportService {
                 node.attachments.forEach(a => {
                   if (!attachmentIdMap.has(a.id)) {
                     const newAttId = crypto.randomUUID();
+                    const newBinaryObjectId = crypto.randomUUID();
                     attachmentIdMap.set(a.id, newAttId);
-                    attachmentMetadata.set(newAttId, a);
+                    
+                    // Extract info from V1 or V2
+                    const name = ('name' in a) ? a.name : a.originalName;
+                    const mimeType = ('mimeType' in a) ? a.mimeType : 'application/octet-stream';
+                    const size = ('size' in a) ? a.size : 0;
+                    const createdAt = ('uploadedAt' in a) ? a.uploadedAt : Date.now();
+
+                    attachmentMetadata.set(newAttId, { 
+                      binaryObjectId: newBinaryObjectId, 
+                      name, 
+                      mimeType, 
+                      size, 
+                      createdAt 
+                    });
                   }
-                  a.id = attachmentIdMap.get(a.id)!;
+                  
+                  const mapped = attachmentMetadata.get(attachmentIdMap.get(a.id)!)!;
+                  
+                  // Update properties to V2 format while removing V1 fields
+                  const mutAtt = a as unknown as Record<string, unknown>;
+                  mutAtt.id = attachmentIdMap.get(a.id)!;
+                  mutAtt.binaryObjectId = mapped.binaryObjectId;
+                  mutAtt.name = mapped.name;
+                  
+                  delete mutAtt.originalName;
+                  delete mutAtt.mimeType;
+                  delete mutAtt.size;
+                  delete mutAtt.uploadedAt;
                 });
               }
               if (node.replies?.items) node.replies.items.forEach(process);
@@ -636,7 +685,17 @@ export class ImportExportService {
             const meta = newId ? attachmentMetadata.get(newId) : null;
             if (newId && meta) {
               const blob = await zip.file(filename)!.async('blob');
-              yield { type: 'attachment' as const, chatId: '', attachmentId: newId, ...meta, blob };
+              yield { 
+                type: 'attachment' as const, 
+                chatId: '', 
+                attachmentId: newId, 
+                binaryObjectId: meta.binaryObjectId,
+                name: meta.name,
+                mimeType: meta.mimeType,
+                size: meta.size,
+                createdAt: meta.createdAt,
+                blob 
+              };
             }
           }
         }

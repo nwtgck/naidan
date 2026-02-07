@@ -41,7 +41,8 @@ export interface ChatMessage {
 }
 
 export interface AttachmentBase {
-  id: string;           // UUID (directory name)
+  id: string;           // Attachment ID
+  binaryObjectId: string; // Pointer to the immutable Binary Object
   originalName: string;
   mimeType: string;
   size: number;

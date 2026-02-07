@@ -29,18 +29,32 @@ class MockFileSystemDirectoryHandle {
   constructor(public name: string) {}
 
   async getDirectoryHandle(name: string, options?: { create?: boolean }) {
-    if (!this.entries.has(name) && options?.create) {
-      this.entries.set(name, new MockFileSystemDirectoryHandle(name));
+    if (!this.entries.has(name)) {
+      if (options?.create) {
+        this.entries.set(name, new MockFileSystemDirectoryHandle(name));
+      } else {
+        const err = new Error(`Directory not found: ${name}`);
+        err.name = 'NotFoundError';
+        throw err;
+      }
     }
     const entry = this.entries.get(name);
+    if (entry?.kind !== 'directory') throw new Error(`Not a directory: ${name}`);
     return entry as MockFileSystemDirectoryHandle;
   }
 
   async getFileHandle(name: string, options?: { create?: boolean }) {
-    if (!this.entries.has(name) && options?.create) {
-      this.entries.set(name, new MockFileSystemFileHandle(name));
+    if (!this.entries.has(name)) {
+      if (options?.create) {
+        this.entries.set(name, new MockFileSystemFileHandle(name));
+      } else {
+        const err = new Error(`File not found: ${name}`);
+        err.name = 'NotFoundError';
+        throw err;
+      }
     }
     const entry = this.entries.get(name);
+    if (entry?.kind !== 'file') throw new Error(`Not a file: ${name}`);
     return entry as MockFileSystemFileHandle;
   }
 

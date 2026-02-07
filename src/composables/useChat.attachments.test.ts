@@ -138,6 +138,7 @@ describe('useChat - Attachment & Migration Logic', () => {
 
     const mockAttachment: Attachment = {
       id: '550e8400-e29b-41d4-a716-446655440000',
+      binaryObjectId: '550e8400-e29b-41d4-a716-446655440000',
       originalName: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -166,6 +167,7 @@ describe('useChat - Attachment & Migration Logic', () => {
 
     const mockAttachment: Attachment = {
       id: '550e8400-e29b-41d4-a716-446655440001',
+      binaryObjectId: '550e8400-e29b-41d4-a716-446655440001',
       originalName: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -204,6 +206,7 @@ describe('useChat - Attachment & Migration Logic', () => {
     const mockBlob = new Blob(['binary data'], { type: 'image/png' });
     const mockAttachment: Attachment = {
       id: '550e8400-e29b-41d4-a716-446655440002',
+      binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
       originalName: 'to-migrate.png',
       mimeType: 'image/png',
       size: 100,
@@ -231,9 +234,10 @@ describe('useChat - Attachment & Migration Logic', () => {
           const att = msg.attachments[i];
           if (att && att.status === 'memory') {
             const blob = (att as any).blob;
-            await storageService.saveFile(blob, att.id, att.originalName);
+            await storageService.saveFile(blob, att.binaryObjectId, att.originalName);
             msg.attachments[i] = {
               id: att.id,
+              binaryObjectId: att.binaryObjectId,
               originalName: att.originalName,
               mimeType: att.mimeType,
               size: att.size,
