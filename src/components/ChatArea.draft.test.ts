@@ -4,6 +4,7 @@ import ChatArea from './ChatArea.vue';
 import { nextTick, ref } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { asyncComponentTracker } from '../utils/async-component-test-utils';
+import { useChatDraft } from '../composables/useChatDraft';
 
 vi.mock('vue', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue')>();
@@ -88,6 +89,8 @@ describe('ChatArea Draft Maintenance', () => {
   });
 
   beforeEach(() => {
+    const { clearAllDrafts } = useChatDraft();
+    clearAllDrafts();
     mockCurrentChat.value = {
       id: '1', 
       title: 'Chat 1', 
@@ -113,7 +116,7 @@ describe('ChatArea Draft Maintenance', () => {
     if (wrapper) wrapper.unmount();
   });
 
-  it('should maintain input text when switching between chats', async () => {
+  it('should maintain input text independently when switching between chats', async () => {
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
@@ -139,12 +142,33 @@ describe('ChatArea Draft Maintenance', () => {
     
     await nextTick();
     
-    // 3. Verify the text is still there
-    // (This is the current behavior because ChatArea is reused and doesn't clear input)
+    // 3. Verify the text is empty for Chat 2
+    expect(textarea.element.value).toBe('');
+
+    // 4. Type something in Chat 2
+    await textarea.setValue('Draft for Chat 2');
+    expect(textarea.element.value).toBe('Draft for Chat 2');
+
+    // 5. Switch back to Chat 1
+    mockCurrentChat.value = {
+      id: '1', 
+      title: 'Chat 1', 
+      root: { items: [] },
+      currentLeafId: undefined,
+      debugEnabled: false, 
+      originChatId: undefined,
+      modelId: undefined,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    await nextTick();
+
+    // 6. Verify Chat 1's draft is restored
     expect(textarea.element.value).toBe('Draft for Chat 1');
   });
 
-  it('should reset maximized state when switching chats but maintain input', async () => {
+  it('should reset maximized state when switching chats and load respective draft', async () => {
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
@@ -160,17 +184,17 @@ describe('ChatArea Draft Maintenance', () => {
     mockCurrentChat.value = { ...mockCurrentChat.value!, id: 'chat-new' };
     await nextTick();
 
-    // Verify input is maintained but maximized is reset
-    expect(textarea.element.value).toBe('Some text');
+    // Verify input is empty for new chat and maximized is reset
+    expect(textarea.element.value).toBe('');
     expect(wrapper.vm.isMaximized).toBe(false);
   });
 
-  it('should maintain attachments when switching chats', async () => {
+  it('should maintain attachments independently when switching chats', async () => {
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
 
-    // Add a mock attachment
+    // 1. Add a mock attachment to Chat 1
     const attachment = {
       id: 'att-1',
       originalName: 'hello.png',
@@ -184,13 +208,88 @@ describe('ChatArea Draft Maintenance', () => {
     wrapper.vm.attachments.push(attachment);
     expect(wrapper.vm.attachments.length).toBe(1);
 
-    // Switch chat
-    mockCurrentChat.value = { ...mockCurrentChat.value!, id: 'chat-new' };
+    // 2. Switch to Chat 2
+    mockCurrentChat.value = {
+      id: '2', 
+      title: 'Chat 2', 
+      root: { items: [] },
+      currentLeafId: undefined,
+      debugEnabled: false, 
+      originChatId: undefined,
+      modelId: undefined,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
     await nextTick();
 
-    // Verify attachments are maintained
+    // 3. Verify attachments are empty for Chat 2
+    expect(wrapper.vm.attachments.length).toBe(0);
+
+    // 4. Switch back to Chat 1
+    mockCurrentChat.value = {
+      id: '1', 
+      title: 'Chat 1', 
+      root: { items: [] },
+      currentLeafId: undefined,
+      debugEnabled: false, 
+      originChatId: undefined,
+      modelId: undefined,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await nextTick();
+
+    // 5. Verify Chat 1's attachment is restored
     expect(wrapper.vm.attachments.length).toBe(1);
     expect(wrapper.vm.attachments[0].id).toBe('att-1');
+  });
+
+  it('should NOT clear the input of the NEW chat if a message from the PREVIOUS chat finishes sending', async () => {
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    
+    // 1. Start sending in Chat 1 but don't finish yet (Pending Promise)
+    let resolveSendMessage: (val: boolean) => void;
+    mockSendMessage.mockReturnValueOnce(new Promise(resolve => {
+      resolveSendMessage = resolve;
+    }));
+
+    await textarea.setValue('Message for Chat 1');
+    const sendPromise = (wrapper.vm as any).handleSend(); // Start sending
+
+    // 2. Switch to Chat 2 while sending is in progress
+    mockCurrentChat.value = {
+      id: '2', 
+      title: 'Chat 2', 
+      root: { items: [] },
+      currentLeafId: undefined,
+      debugEnabled: false, 
+      originChatId: undefined,
+      modelId: undefined,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await nextTick();
+    
+    // 3. Start writing something new in Chat 2
+    await textarea.setValue('Writing something for Chat 2');
+    expect(textarea.element.value).toBe('Writing something for Chat 2');
+
+    // 4. Chat 1's sending completes now
+    resolveSendMessage!(true);
+    await sendPromise;
+    await nextTick();
+
+    // 5. Verification: Chat 2's input should NOT be cleared
+    expect(textarea.element.value).toBe('Writing something for Chat 2');
+
+    // 6. Verification: Chat 1's draft should be cleared (switch back to check)
+    mockCurrentChat.value = { ...mockCurrentChat.value!, id: '1' };
+    await nextTick();
+    expect(textarea.element.value).toBe('');
   });
 
   it('should clear input text only after message is successfully sent', async () => {
