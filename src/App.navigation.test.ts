@@ -1,9 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, defineComponent } from 'vue';
 import App from './App.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { Chat } from './models/types';
+import { asyncComponentTracker } from './utils/async-component-test-utils';
+
+vi.mock('vue', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue')>();
+  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('./utils/async-component-test-utils');
+  return wrapVueWithAsyncTracking(actual);
+});
 
 // Mock ChatArea to track mounting/unmounting
 const mountSpy = vi.fn();
@@ -120,6 +127,10 @@ vi.mock('./components/CustomDialog.vue', () => ({ default: { template: '<div></d
 vi.mock('./components/OPFSExplorer.vue', () => ({ default: { template: '<div></div>' } }));
 
 describe('App Navigation & Regression Tests', () => {
+  afterAll(async () => {
+    await asyncComponentTracker.wait();
+  });
+
   beforeEach(async () => {
     vi.clearAllMocks();
     mountSpy.mockClear();
