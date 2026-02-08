@@ -9,7 +9,10 @@ import MessageItem from './MessageItem.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
+import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
 import { naturalSort } from '../utils/string';
+import { useImagePreview } from '../composables/useImagePreview';
+import { useBinaryActions } from '../composables/useBinaryActions';
 
 const ChatSettingsPanel = defineAsyncComponent(() => import('./ChatSettingsPanel.vue'));
 const HistoryManipulationModal = defineAsyncComponent(() => import('./HistoryManipulationModal.vue'));
@@ -24,6 +27,8 @@ import type { Attachment } from '../models/types';
 
 const chatStore = useChat();
 const { getDraft, saveDraft, clearDraft } = useChatDraft();
+const { state: previewState, closePreview } = useImagePreview(true); // Scoped instance
+const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
   currentChat,
   streaming,
@@ -1056,6 +1061,16 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Preview Modal -->
+    <BinaryObjectPreviewModal
+      v-if="previewState"
+      :objects="previewState.objects"
+      :initial-id="previewState.initialId"
+      @close="closePreview"
+      @delete="(obj) => deleteBinaryObject(obj.id)"
+      @download="(obj) => downloadBinaryObject(obj)"
+    />
   </div>
 </template>
 

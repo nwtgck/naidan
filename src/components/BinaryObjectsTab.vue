@@ -7,9 +7,10 @@ import {
   Eye, HardDrive, 
   Trash2, RefreshCw, LayoutGrid, List
 } from 'lucide-vue-next';
-import { useConfirm } from '../composables/useConfirm';
 import { Semaphore } from '../utils/concurrency';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
+import { useImagePreview } from '../composables/useImagePreview';
+import { useBinaryActions } from '../composables/useBinaryActions';
 
 const objects = ref<BinaryObject[]>([]);
 const isLoading = ref(true);
@@ -18,7 +19,8 @@ const sortBy = ref<'createdAt' | 'name' | 'size' | 'mimeType'>('createdAt');
 const sortOrder = ref<'asc' | 'desc'>('desc');
 const viewMode = ref<'table' | 'grid'>('table');
 
-const { showConfirm } = useConfirm();
+const { state: previewState, openPreview, closePreview } = useImagePreview();
+const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 
 // Limit to 3 concurrent image processing tasks to prevent UI stutter
 const thumbnailSemaphore = new Semaphore(3);
@@ -135,46 +137,18 @@ const formatDate = (timestamp: number) => {
 };
 
 const handleDownload = async (obj: BinaryObject) => {
-  const blob = await storageService.getFile(obj.id);
-  if (!blob) return;
-  
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = obj.name || obj.id;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  await downloadBinaryObject(obj);
 };
-
-const previewId = ref<string | null>(null);
 
 const handlePreview = (obj: BinaryObject) => {
-  previewId.value = obj.id;
-};
-
-const closePreview = () => {
-  previewId.value = null;
+  openPreview({ objects: filteredObjects.value, initialId: obj.id });
 };
 
 const handleDelete = async (obj: BinaryObject) => {
-  const confirmed = await showConfirm({
-    title: 'Delete Binary Object?',
-    message: `Are you sure you want to delete "${obj.name || obj.id}"? This action cannot be undone. Any chat messages referencing this file will show it as missing.`,
-    confirmButtonText: 'Delete Permanently',
-    confirmButtonVariant: 'danger',
-  });
-
-  if (confirmed) {
-    try {
-      await storageService.deleteBinaryObject(obj.id);
-      if (previewId.value === obj.id) closePreview();
-      // Remove from local list to avoid full refresh flash
-      objects.value = objects.value.filter(o => o.id !== obj.id);
-    } catch (error) {
-      console.error('Failed to delete binary object:', error);
-    }
+  const success = await deleteBinaryObject(obj.id);
+  if (success) {
+    // Remove from local list to avoid full refresh flash
+    objects.value = objects.value.filter(o => o.id !== obj.id);
   }
 };
 
@@ -452,15 +426,14 @@ watch(objects, (newObjs, oldObjs) => {
         </div>
       </div>
     </div>
-
     <!-- Preview Modal -->
     <BinaryObjectPreviewModal
-      v-if="previewId"
-      :objects="filteredObjects"
-      :initial-id="previewId"
+      v-if="previewState"
+      :objects="previewState.objects"
+      :initial-id="previewState.initialId"
       @close="closePreview"
-      @delete="handleDelete"
-      @download="handleDownload"
+      @delete="(obj: BinaryObject) => handleDelete(obj)"
+      @download="(obj: BinaryObject) => handleDownload(obj)"
     />
   </div>
 </template>

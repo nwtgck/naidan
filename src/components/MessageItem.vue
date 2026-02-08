@@ -26,7 +26,7 @@ const DOMPurify = (() => {
 })();
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
-import type { MessageNode } from '../models/types';
+import type { MessageNode, BinaryObject } from '../models/types';
 import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
@@ -34,6 +34,7 @@ import { sanitizeFilename } from '../utils/string';
 import SpeechControl from './SpeechControl.vue';
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
+import { useImagePreview } from '../composables/useImagePreview';
 import { 
   isImageGenerationPending, 
   isImageGenerationProcessed, 
@@ -78,6 +79,38 @@ const editImageParams = ref({
 
 const attachmentUrls = ref<Record<string, string>>({});
 const generatedImageUrls = ref<Record<string, string>>({});
+
+const { openPreview } = useImagePreview();
+
+async function handlePreviewImage(id: string) {
+  // To support next/prev navigation, we'd ideally pass all images in this chat or message.
+  // For now, let's at least try to fetch metadata for the clicked one.
+  const obj = await storageService.getBinaryObject({ binaryObjectId: id });
+  if (obj) {
+    // If it's a message attachment, we can pass all images in this message for navigation
+    const allImages: BinaryObject[] = (props.message.attachments || [])
+      .filter(a => a.status !== 'missing' && a.mimeType.startsWith('image/'))
+      .map(a => ({ id: a.binaryObjectId, mimeType: a.mimeType, size: a.size, createdAt: a.uploadedAt, name: a.originalName }));
+    
+    // Also include generated images if they exist in this message's content
+    const placeholders = messageRef.value?.querySelectorAll('.naidan-generated-image');
+    if (placeholders) {
+      for (const el of placeholders) {
+        const hid = (el as HTMLElement).dataset.id;
+        if (hid && !allImages.find(i => i.id === hid)) {
+          // Fetch meta if missing
+          const meta = await storageService.getBinaryObject({ binaryObjectId: hid });
+          if (meta) allImages.push(meta);
+        }
+      }
+    }
+
+    openPreview({ 
+      objects: allImages.length > 0 ? allImages : [obj], 
+      initialId: id 
+    });
+  }
+}
 
 async function loadAttachments() {
   if (!props.message.attachments) return;
@@ -138,7 +171,7 @@ async function loadGeneratedImages() {
       const url = generatedImageUrls.value[id];
       if (url) {
         htmlEl.innerHTML = `
-          <img src="${url}" width="${w}" height="${h}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block">
+          <img src="${url}" width="${w}" height="${h}" alt="generated image" class="naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity">
           <button class="naidan-download-gen-image absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 group-hover/gen-img:opacity-100 transition-all z-10" title="Download image">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
           </button>
@@ -450,6 +483,15 @@ onMounted(() => {
       return;
     }
 
+    // Generated image click (preview)
+    const genImg = target.closest('.naidan-clickable-img') as HTMLImageElement;
+    if (genImg) {
+      const block = genImg.closest('.naidan-generated-image') as HTMLElement;
+      const id = block?.dataset.id;
+      if (id) handlePreviewImage(id);
+      return;
+    }
+
     // Mermaid copy button
     const mCopyBtn = target.closest('.mermaid-copy-btn') as HTMLButtonElement;
     if (mCopyBtn && !mCopyBtn.dataset.copied) {
@@ -681,7 +723,8 @@ function handleToggleThinking() {
           <template v-if="att.status !== 'missing' && attachmentUrls[att.id]">
             <img 
               :src="attachmentUrls[att.id]" 
-              class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm"
+              @click="handlePreviewImage(att.binaryObjectId)"
+              class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
             />
             <a 
               :href="attachmentUrls[att.id]" 
