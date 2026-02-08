@@ -32,6 +32,9 @@ vi.mock('../services/storage', () => ({
   storageService: {
     getFile: vi.fn(),
     getBinaryObject: vi.fn(),
+    subscribeToChanges: vi.fn(),
+    loadSettings: vi.fn().mockResolvedValue({}),
+    saveSettings: vi.fn(),
   }
 }));
 

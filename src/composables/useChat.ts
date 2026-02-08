@@ -1281,15 +1281,7 @@ export function useChat() {
     case 'user':
     case 'system': {
       const parent = findParentInBranch(chat.root.items, messageId);
-      
-      // Preserve image request markers if present
-      let finalContent = newContent;
-      const imageRequest = parseImageRequest(node.content);
-      if (imageRequest && !isImageRequest(newContent)) {
-        finalContent = createImageRequestMarker(imageRequest) + newContent;
-      }
-
-      await sendMessage(finalContent, parent ? parent.id : null, node.attachments, chat);
+      await sendMessage(newContent, parent ? parent.id : null, node.attachments, chat);
       break;
     }
     default: {

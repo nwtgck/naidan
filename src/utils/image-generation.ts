@@ -126,9 +126,10 @@ export function parseImageResponse(content: string): ImageResponseParams | null 
 
 /**
  * Removes all naidan-specific technical comments from the content.
+ * Also removes a trailing newline if it immediately follows a sentinel.
  */
 export function stripNaidanSentinels(content: string): string {
-  return content.replace(/<!-- naidan_.*? -->/g, '');
+  return content.replace(/<!-- naidan_.*? -->\n?/g, '');
 }
 
 /**

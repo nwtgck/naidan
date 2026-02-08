@@ -33,18 +33,25 @@ import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
 import SpeechControl from './SpeechControl.vue';
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
+import ChatToolsMenu from './ChatToolsMenu.vue';
 import { 
   isImageGenerationPending, 
   isImageGenerationProcessed, 
   getImageGenerationProgress,
   stripNaidanSentinels, 
   IMAGE_BLOCK_LANG,
-  GeneratedImageBlockSchema
+  GeneratedImageBlockSchema,
+  isImageRequest,
+  parseImageRequest,
+  createImageRequestMarker
 } from '../utils/image-generation';
 
 const props = defineProps<{
   message: MessageNode;
   siblings?: MessageNode[];
+  canGenerateImage?: boolean;
+  isProcessing?: boolean;
+  availableImageModels?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -58,6 +65,16 @@ const isEditing = ref(false);
 const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const copied = ref(false);
+
+const isImageRequestMsg = computed(() => isImageRequest(props.message.content));
+const editImageMode = ref(false);
+const editImageParams = ref({
+  width: 512,
+  height: 512,
+  model: undefined as string | undefined,
+  count: 1,
+  persistAs: 'original' as 'original' | 'webp' | 'jpeg' | 'png'
+});
 
 const attachmentUrls = ref<Record<string, string>>({});
 const generatedImageUrls = ref<Record<string, string>>({});
@@ -158,6 +175,24 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 watch(isEditing, (editing) => {
   if (editing) {
     editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
+    
+    // Initialize image generation settings if it's an image request
+    if (isImageRequestMsg.value) {
+      editImageMode.value = true;
+      const parsed = parseImageRequest(props.message.content);
+      if (parsed) {
+        editImageParams.value = {
+          width: parsed.width ?? 512,
+          height: parsed.height ?? 512,
+          model: parsed.model || undefined,
+          count: parsed.count ?? 1,
+          persistAs: parsed.persistAs ?? 'original'
+        };
+      }
+    } else {
+      editImageMode.value = false;
+    }
+
     nextTick(() => {
       if (textareaRef.value) {
         textareaRef.value.focus();
@@ -184,13 +219,24 @@ const versionInfo = computed(() => {
 
 function handleSaveEdit() {
   if (editContent.value.trim()) {
-    emit('edit', props.message.id, editContent.value);
+    let finalContent = editContent.value.trimEnd();
+    if (editImageMode.value) {
+      const marker = createImageRequestMarker({
+        width: editImageParams.value.width,
+        height: editImageParams.value.height,
+        model: editImageParams.value.model,
+        count: editImageParams.value.count,
+        persistAs: editImageParams.value.persistAs
+      });
+      finalContent = marker + '\n' + finalContent;
+    }
+    emit('edit', props.message.id, finalContent);
   }
   isEditing.value = false;
 }
 
 function handleCancelEdit() {
-  editContent.value = props.message.content.trimEnd();
+  editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
   isEditing.value = false;
 }
 
@@ -628,7 +674,7 @@ function handleToggleThinking() {
       </div>
     </div>
     
-    <div class="overflow-hidden">
+    <div :class="isEditing ? 'overflow-visible' : 'overflow-hidden'">
       <!-- Attachments -->
       <div v-if="message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
         <div v-for="att in message.attachments" :key="att.id" class="relative group/att">
@@ -728,21 +774,46 @@ function handleToggleThinking() {
 
       <!-- Content -->
       <div v-if="isEditing" class="mt-1" data-testid="edit-mode">
-        <textarea 
-          ref="textareaRef"
-          v-model="editContent"
-          @keydown.enter.ctrl.prevent="handleSaveEdit"
-          @keydown.enter.meta.prevent="handleSaveEdit"
-          @keydown.esc.prevent="handleCancelEdit"
-          class="w-full border border-gray-200 dark:border-gray-600 rounded-xl p-4 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-32 shadow-sm transition-all"
-          data-testid="edit-textarea"
-        ></textarea>
-        <div class="flex justify-end gap-2 mt-2">
-          <button @click="handleCancelEdit" class="px-4 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">Cancel</button>
-          <button @click="handleSaveEdit" class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
-            <span>{{ isUser ? 'Send & Branch' : 'Update & Branch' }}</span>
-            <span class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
-          </button>
+        <div class="border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all overflow-visible">
+          <textarea 
+            ref="textareaRef"
+            v-model="editContent"
+            @keydown.enter.ctrl.prevent="handleSaveEdit"
+            @keydown.enter.meta.prevent="handleSaveEdit"
+            @keydown.esc.prevent="handleCancelEdit"
+            class="w-full p-4 bg-transparent text-gray-800 dark:text-gray-100 text-sm focus:outline-none h-32 resize-none"
+            data-testid="edit-textarea"
+          ></textarea>
+          
+          <div class="flex items-center justify-between px-3 pb-3">
+            <div class="flex items-center gap-1">
+              <ChatToolsMenu 
+                v-if="canGenerateImage"
+                :can-generate-image="canGenerateImage"
+                :is-processing="isProcessing ?? false"
+                :is-image-mode="editImageMode"
+                :selected-width="editImageParams.width"
+                :selected-height="editImageParams.height"
+                :selected-count="editImageParams.count"
+                :selected-persist-as="editImageParams.persistAs"
+                :available-image-models="availableImageModels ?? []"
+                :selected-image-model="editImageParams.model"
+                direction="down"
+                @toggle-image-mode="editImageMode = !editImageMode"
+                @update:resolution="(w, h) => { editImageParams.width = w; editImageParams.height = h; }"
+                @update:count="c => editImageParams.count = c"
+                @update:persist-as="f => editImageParams.persistAs = f"
+                @update:model="m => editImageParams.model = m"
+              />
+            </div>
+            <div class="flex items-center gap-2">
+              <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">Cancel</button>
+              <button @click="handleSaveEdit" class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
+                <span>{{ isUser ? 'Send & Branch' : 'Update & Branch' }}</span>
+                <span class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <div v-else>

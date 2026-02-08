@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
-import { Settings2, Image, Loader2, Check } from 'lucide-vue-next';
-import ModelSelector from './ModelSelector.vue';
+import { Settings2 } from 'lucide-vue-next';
+import ImageGenerationSettings from './ImageGenerationSettings.vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   canGenerateImage: boolean;
   isProcessing: boolean;
   isImageMode: boolean;
@@ -13,7 +13,10 @@ const props = defineProps<{
   selectedPersistAs: 'original' | 'webp' | 'jpeg' | 'png';
   availableImageModels: string[];
   selectedImageModel: string | undefined;
-}>();
+  direction?: 'up' | 'down';
+}>(), {
+  direction: 'up'
+});
 
 const emit = defineEmits<{
   (e: 'toggle-image-mode'): void;
@@ -23,31 +26,8 @@ const emit = defineEmits<{
   (e: 'update:model', modelId: string): void;
 }>();
 
-const resolutions = [
-  { width: 256, height: 256 },
-  { width: 512, height: 512 },
-  { width: 1024, height: 1024 },
-];
-
-const counts = [1, 2, 3, 4];
-
-const saveFormats = [
-  { label: 'Original', value: 'original' },
-  { label: 'WebP', value: 'webp' },
-  { label: 'JPEG', value: 'jpeg' },
-  { label: 'PNG', value: 'png' },
-] as const;
-
 const showMenu = ref(false);
 const containerRef = ref<HTMLElement | null>(null);
-
-function handleCountInput(event: Event) {
-  const target = event.target as HTMLInputElement;
-  const val = parseInt(target.value);
-  if (!isNaN(val) && val > 0) {
-    emit('update:count', val);
-  }
-}
 
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement;
@@ -72,11 +52,6 @@ function handleClickOutside(event: MouseEvent) {
 
   // 3. Otherwise, it's a true outside click
   showMenu.value = false;
-}
-
-function handleModelUpdate(modelId: string) {
-  emit('update:model', modelId);
-  // We no longer close the menu automatically here, allowing further adjustments
 }
 
 onMounted(() => {
@@ -106,105 +81,20 @@ onUnmounted(() => {
     <Transition name="dropdown">
       <div 
         v-if="showMenu" 
-        class="absolute left-0 bottom-full mb-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden origin-bottom-left"
+        class="absolute left-0 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden"
+        :class="[
+          direction === 'up' ? 'bottom-full mb-2 origin-bottom-left' : 'top-full mt-2 origin-top-left'
+        ]"
       >
-        <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
-          Experimental Tools
-        </div>
-        
-        <button 
-          v-if="canGenerateImage"
-          @click="emit('toggle-image-mode')"
-          class="w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
-          :class="isImageMode ? 'text-blue-600 font-bold bg-blue-50/50 dark:bg-blue-900/10' : 'text-gray-600 dark:text-gray-300'"
-          data-testid="toggle-image-mode-button"
-        >
-          <Image class="w-4 h-4" :class="isImageMode ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'" />
-          <span class="flex-1">Create image (Experimental)</span>
-          <Check v-if="isImageMode" class="w-4 h-4 text-blue-500" />
-          <Loader2 v-if="isProcessing && isImageMode" class="w-3 h-3 animate-spin text-blue-500" />
-        </button>
-
-        <div v-if="isImageMode" class="border-t dark:border-gray-700 mt-1">
-          <!-- Model Selector -->
-          <div v-if="availableImageModels.length > 0" class="px-3 py-2 border-b dark:border-gray-700">
-            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Image Model</div>
-            <ModelSelector 
-              :model-value="selectedImageModel"
-              @update:model-value="val => val && handleModelUpdate(val)"
-              :models="availableImageModels"
-              placeholder="Select image model"
-              class="w-full"
-            />
-          </div>
-
-          <!-- Resolution Selector -->
-          <div class="px-3 py-2">
-            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Resolution</div>
-            <div class="flex gap-1.5">
-              <button 
-                v-for="res in resolutions" 
-                :key="`${res.width}x${res.height}`"
-                @click="emit('update:resolution', res.width, res.height)"
-                class="flex-1 px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap"
-                :class="selectedWidth === res.width && selectedHeight === res.height 
-                  ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
-                  : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
-              >
-                {{ res.width }}x{{ res.height }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Count Selector -->
-          <div class="px-3 py-2 border-t dark:border-gray-700">
-            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Number of Images</div>
-            <div class="flex gap-1.5 items-center">
-              <div class="flex flex-1 gap-1">
-                <button 
-                  v-for="count in counts" 
-                  :key="count"
-                  @click="emit('update:count', count)"
-                  class="flex-1 px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap"
-                  :class="selectedCount === count 
-                    ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
-                    : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
-                >
-                  {{ count }}
-                </button>
-              </div>
-              <input 
-                type="number" 
-                min="1"
-                :value="selectedCount"
-                @input="handleCountInput"
-                class="w-12 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                placeholder="Qty"
-              />
-            </div>
-          </div>
-
-          <!-- Save Format Selector -->
-          <div class="px-3 py-2 border-t dark:border-gray-700">
-            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Save Format</div>
-            <div class="flex flex-wrap gap-1.5">
-              <button 
-                v-for="format in saveFormats" 
-                :key="format.value"
-                @click="emit('update:persist-as', format.value)"
-                class="flex-1 px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap"
-                :class="selectedPersistAs === format.value 
-                  ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
-                  : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
-              >
-                {{ format.label }}
-              </button>
-            </div>
-          </div>
-        </div>
-        <div v-else-if="!canGenerateImage" class="px-3 py-2 text-xs text-gray-400 italic">
-          No tools available for this provider
-        </div>
+        <ImageGenerationSettings 
+          v-bind="props"
+          show-header
+          @toggle-image-mode="emit('toggle-image-mode')"
+          @update:resolution="(w, h) => emit('update:resolution', w, h)"
+          @update:count="c => emit('update:count', c)"
+          @update:persist-as="f => emit('update:persist-as', f)"
+          @update:model="m => emit('update:model', m)"
+        />
       </div>
     </Transition>
   </div>
