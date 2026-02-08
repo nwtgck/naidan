@@ -9,6 +9,7 @@ describe('ChatToolsMenu', () => {
     isImageMode: false,
     selectedWidth: 512,
     selectedHeight: 512,
+    selectedCount: 1,
     availableImageModels: ['model-1', 'model-2'],
     selectedImageModel: 'model-1'
   };
@@ -39,7 +40,7 @@ describe('ChatToolsMenu', () => {
     expect(wrapper.emitted('toggle-image-mode')).toBeTruthy();
   });
 
-  it('shows resolution and model selectors when image mode is on', async () => {
+  it('shows resolution, count and model selectors when image mode is on', async () => {
     const wrapper = mount(ChatToolsMenu, { 
       props: { ...defaultProps, isImageMode: true } 
     });
@@ -47,9 +48,13 @@ describe('ChatToolsMenu', () => {
     
     expect(wrapper.text()).toContain('Image Model');
     expect(wrapper.text()).toContain('Resolution');
+    expect(wrapper.text()).toContain('Number of Images');
     
     const resButtons = wrapper.findAll('button').filter(b => /^\d+x\d+$/.test(b.text()));
     expect(resButtons.length).toBe(3); // 256x256, 512x512, 1024x1024
+
+    const countButtons = wrapper.findAll('button').filter(b => /^[1-4]$/.test(b.text()));
+    expect(countButtons.length).toBe(4); // 1, 2, 3, 4
   });
 
   it('emits update:resolution when a resolution is selected', async () => {
@@ -62,6 +67,30 @@ describe('ChatToolsMenu', () => {
     await res256?.trigger('click');
     
     expect(wrapper.emitted('update:resolution')).toEqual([[256, 256]]);
+  });
+
+  it('emits update:count when a count is selected', async () => {
+    const wrapper = mount(ChatToolsMenu, { 
+      props: { ...defaultProps, isImageMode: true } 
+    });
+    await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    
+    const count2 = wrapper.findAll('button').find(b => b.text() === '2');
+    await count2?.trigger('click');
+    
+    expect(wrapper.emitted('update:count')).toEqual([[2]]);
+  });
+
+  it('emits update:count when a custom count is entered', async () => {
+    const wrapper = mount(ChatToolsMenu, { 
+      props: { ...defaultProps, isImageMode: true } 
+    });
+    await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    
+    const input = wrapper.find('input[type="number"]');
+    await input.setValue(10);
+    
+    expect(wrapper.emitted('update:count')).toEqual([[10]]);
   });
 
   it('shows empty state when no tools are available', async () => {

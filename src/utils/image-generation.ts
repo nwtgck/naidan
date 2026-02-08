@@ -7,6 +7,7 @@
 import { z } from 'zod';
 
 export const SENTINEL_IMAGE_REQUEST_PREFIX = '<!-- naidan_experimental_image_request';
+export const SENTINEL_IMAGE_RESPONSE_PREFIX = '<!-- naidan_experimental_image_response';
 export const SENTINEL_IMAGE_PENDING = '<!-- naidan_experimental_image_generation_pending -->';
 export const SENTINEL_IMAGE_PROCESSED = '<!-- naidan_experimental_image_generation_processed -->';
 
@@ -21,11 +22,20 @@ export const GeneratedImageBlockSchema = z.object({
 
 export type GeneratedImageBlock = z.infer<typeof GeneratedImageBlockSchema>;
 
-export interface ImageRequestParams {
-  width: number;
-  height: number;
-  model: string;
-}
+export const ImageRequestParamsSchema = z.object({
+  width: z.number().optional(),
+  height: z.number().optional(),
+  model: z.string().optional(),
+  count: z.number().optional(),
+});
+
+export type ImageRequestParams = z.infer<typeof ImageRequestParamsSchema>;
+
+export const ImageResponseParamsSchema = z.object({
+  count: z.number().optional(),
+});
+
+export type ImageResponseParams = z.infer<typeof ImageResponseParamsSchema>;
 
 /**
  * Finds all image generation models from a list of available models.
@@ -38,9 +48,17 @@ export function getImageGenerationModels(models: string[]): string[] {
 /**
  * Creates a sentinel marker for an image generation request.
  */
-export function createImageRequestMarker({ width, height, model }: ImageRequestParams): string {
-  const params = JSON.stringify({ width, height, model });
+export function createImageRequestMarker({ width, height, model, count }: ImageRequestParams): string {
+  const params = JSON.stringify({ width, height, model, count });
   return `${SENTINEL_IMAGE_REQUEST_PREFIX} ${params} -->`;
+}
+
+/**
+ * Creates a sentinel marker for an image generation response.
+ */
+export function createImageResponseMarker({ count }: ImageResponseParams): string {
+  const params = JSON.stringify({ count });
+  return `${SENTINEL_IMAGE_RESPONSE_PREFIX} ${params} -->`;
 }
 
 /**
@@ -51,20 +69,55 @@ export function isImageRequest(content: string): boolean {
 }
 
 /**
+ * Checks if the content contains an image generation response metadata.
+ */
+export function isImageResponse(content: string): boolean {
+  return content.includes(SENTINEL_IMAGE_RESPONSE_PREFIX);
+}
+
+/**
  * Parses the image request parameters from the content.
  */
 export function parseImageRequest(content: string): ImageRequestParams | null {
   const match = content.match(/<!-- naidan_experimental_image_request (\{.*?\}) -->/);
   if (!match) return null;
   try {
-    const params = JSON.parse(match[1] || '{}');
+    const result = ImageRequestParamsSchema.safeParse(JSON.parse(match[1] || '{}'));
+    if (!result.success) {
+      console.warn('Failed to validate image request params', result.error);
+      return null;
+    }
+    const data = result.data;
     return {
-      width: typeof params.width === 'number' ? params.width : 512,
-      height: typeof params.height === 'number' ? params.height : 512,
-      model: typeof params.model === 'string' ? params.model : ''
+      width: data.width ?? 512,
+      height: data.height ?? 512,
+      model: data.model ?? '',
+      count: data.count ?? 1
     };
   } catch (e) {
-    console.warn('Failed to parse image request params', e);
+    console.warn('Failed to parse image request params JSON', e);
+    return null;
+  }
+}
+
+/**
+ * Parses the image response parameters from the content.
+ */
+export function parseImageResponse(content: string): ImageResponseParams | null {
+  const match = content.match(/<!-- naidan_experimental_image_response (\{.*?\}) -->/);
+  if (!match) return null;
+  try {
+    const result = ImageResponseParamsSchema.safeParse(JSON.parse(match[1] || '{}'));
+    if (!result.success) {
+      console.warn('Failed to validate image response params', result.error);
+      return null;
+    }
+    const data = result.data;
+    return {
+      count: data.count ?? 1
+    };
+  } catch (e) {
+    console.warn('Failed to parse image response params JSON', e);
     return null;
   }
 }
@@ -88,4 +141,25 @@ export function isImageGenerationPending(content: string): boolean {
  */
 export function isImageGenerationProcessed(content: string): boolean {
   return content.includes(SENTINEL_IMAGE_PROCESSED);
+}
+
+/**
+ * Calculates the progress of image generation from the content.
+ * Returns total count and current remaining count.
+ */
+export function getImageGenerationProgress(content: string): { totalCount: number | undefined, remainingCount: number | undefined } {
+  const response = parseImageResponse(content);
+  if (!response) return { totalCount: undefined, remainingCount: undefined };
+
+  const totalCount = response.count ?? 1;
+  
+  // Count already generated images in both OPFS (Markdown block) and local (img tag) modes
+  const processedCount = 
+    (content.match(new RegExp('```' + IMAGE_BLOCK_LANG, 'g')) || []).length +
+    (content.match(/<img/g) || []).length;
+
+  return {
+    totalCount,
+    remainingCount: Math.max(0, totalCount - processedCount)
+  };
 }

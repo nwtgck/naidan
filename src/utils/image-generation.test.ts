@@ -55,7 +55,8 @@ describe('image-generation utilities', () => {
       expect(parseImageRequest(content)).toEqual({
         width: 256,
         height: 256,
-        model: 'turbo-1'
+        model: 'turbo-1',
+        count: 1
       });
     });
 
@@ -64,7 +65,8 @@ describe('image-generation utilities', () => {
       expect(parseImageRequest(content)).toEqual({
         width: 512,
         height: 512,
-        model: 'turbo-1'
+        model: 'turbo-1',
+        count: 1
       });
     });
 

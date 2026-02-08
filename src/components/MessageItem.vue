@@ -36,6 +36,7 @@ import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import { 
   isImageGenerationPending, 
   isImageGenerationProcessed, 
+  getImageGenerationProgress,
   stripNaidanSentinels, 
   IMAGE_BLOCK_LANG,
   GeneratedImageBlockSchema
@@ -530,9 +531,6 @@ const displayContent = computed(() => {
   // Remove <think> blocks for display
   const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
 
-  // Treat image generation sentinel as empty for display purposes
-  if (isImageGenerationPending(props.message.content)) return '';
-  
   // If we have any content after removing <think>, return it (even if just whitespace)
   // to signal that we are no longer in "initial loading" state.
   if (cleanContent.length > 0) return cleanContent;
@@ -739,10 +737,13 @@ function handleToggleThinking() {
         <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
 
         <!-- AI Image Synthesis Loader (Componentized) -->
-        <ImageConjuringLoader v-else-if="isImageGenerationPending(message.content) && message.role === 'assistant' && !message.error" />
+        <ImageConjuringLoader 
+          v-if="isImageGenerationPending(message.content) && message.role === 'assistant' && !message.error" 
+          v-bind="getImageGenerationProgress(message.content)"
+        />
 
         <!-- Loading State (Initial Wait for regular text) -->
-        <div v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
+        <div v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending(message.content)" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
           <Loader2 class="w-4 h-4 animate-spin" />
           <span class="text-xs font-medium">Waiting for response...</span>
         </div>

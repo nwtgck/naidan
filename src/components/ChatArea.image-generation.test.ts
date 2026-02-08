@@ -27,7 +27,7 @@ const mockChatStore = {
   toggleImageMode: vi.fn(() => {
     mockIsImageMode.value = !mockIsImageMode.value; 
   }),
-  getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+  getResolution: vi.fn(() => ({ width: 512, height: 512 })), getCount: vi.fn(() => 1), updateCount: vi.fn(),
   updateResolution: vi.fn(),
   setImageModel: vi.fn(),
   getSelectedImageModel: vi.fn(() => 'x/z-image-turbo:v1'),
@@ -92,6 +92,7 @@ describe('ChatArea Image Generation Integration', () => {
       prompt: 'a majestic mountain',
       width: 512,
       height: 512,
+      count: 1,
       attachments: []
     });
   });
@@ -116,6 +117,7 @@ describe('ChatArea Image Generation Integration', () => {
       prompt: 'remix this',
       width: 512,
       height: 512,
+      count: 1,
       attachments: expect.arrayContaining([expect.objectContaining({ id: 'att-1' })])
     });
     
@@ -152,5 +154,22 @@ describe('ChatArea Image Generation Integration', () => {
     
     expect(wrapper.findComponent(Image).exists()).toBe(false);
     expect(wrapper.findComponent(Send).exists()).toBe(true);
+  });
+
+  it('passes the requested image count to sendImageRequest', async () => {
+    mockIsImageMode.value = true;
+    mockChatStore.getCount.mockReturnValue(3); // User requested 3 images
+    
+    const wrapper = mount(ChatArea);
+    const textarea = wrapper.find('textarea');
+    await textarea.setValue('a futuristic city');
+    
+    const sendButton = wrapper.find('[data-testid="send-button"]');
+    await sendButton.trigger('click');
+    
+    expect(mockChatStore.sendImageRequest).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: 'a futuristic city',
+      count: 3
+    }));
   });
 });

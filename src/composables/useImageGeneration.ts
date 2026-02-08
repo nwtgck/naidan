@@ -6,6 +6,7 @@ import {
   SENTINEL_IMAGE_PENDING, 
   SENTINEL_IMAGE_PROCESSED,
   createImageRequestMarker,
+  createImageResponseMarker,
   IMAGE_BLOCK_LANG,
   type GeneratedImageBlock
 } from '../utils/image-generation';
@@ -16,6 +17,7 @@ import { findNodeInBranch } from '../utils/chat-tree';
 // Shared state across all instances to maintain consistency
 const imageModeMap = ref<Record<string, boolean>>({});
 const imageResolutionMap = ref<Record<string, { width: number, height: number }>>({});
+const imageCountMap = ref<Record<string, number>>({});
 const imageModelOverrideMap = ref<Record<string, string>>({});
 
 export function useImageGeneration() {
@@ -35,6 +37,17 @@ export function useImageGeneration() {
     height: number 
   }) => {
     imageResolutionMap.value[chatId] = { width, height };
+  };
+
+  const getCount = ({ chatId }: { chatId: string }) => {
+    return imageCountMap.value[chatId] || 1;
+  };
+
+  const updateCount = ({ chatId, count }: { 
+    chatId: string, 
+    count: number 
+  }) => {
+    imageCountMap.value[chatId] = count;
   };
 
   const setImageModel = ({ chatId, modelId }: { 
@@ -97,6 +110,7 @@ export function useImageGeneration() {
     prompt, 
     width, 
     height,
+    count,
     images,
     model: requestedModel,
     availableModels,
@@ -115,6 +129,7 @@ export function useImageGeneration() {
     prompt: string,
     width: number,
     height: number,
+    count: number | undefined,
     images: { blob: Blob }[],
     model: string | undefined,
     availableModels: string[],
@@ -148,59 +163,95 @@ export function useImageGeneration() {
 
     incTask({ chatId, type: 'process' });
     try {
-      assistantNode.content = SENTINEL_IMAGE_PENDING;
+      const imageCount = count || getCount({ chatId });
+      const responseMarker = createImageResponseMarker({ count: imageCount });
+      assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING;
+          
       // Ensure the assistant node uses the actual model ID for metadata
       assistantNode.modelId = imageModel;
       triggerChatRef({ chatId });
-
-      const blob = await performBase64Generation({ 
-        prompt, 
-        model: imageModel, 
-        width, 
-        height, 
-        images,
-        endpointUrl,
-        endpointHttpHeaders,
-        signal
-      });
-      if (!blob) throw new Error('Failed to generate image');
-
-      const displayWidth = width * 0.8;
-      const displayHeight = height * 0.8;
-
-      switch (storageType) {
-      case 'opfs': {
-        const binaryObjectId = crypto.randomUUID();
-        const fileName = sanitizeFilename({
-          base: prompt,
-          suffix: '.png',
-          fallback: `generated-${Date.now()}`
+    
+      const blocks: GeneratedImageBlock[] = [];
+    
+      for (let i = 0; i < imageCount; i++) {
+        if (signal?.aborted) break;
+    
+        const blob = await performBase64Generation({ 
+          prompt, 
+          model: imageModel, 
+          width, 
+          height, 
+          images,
+          endpointUrl,
+          endpointHttpHeaders,
+          signal
         });
-        await storageService.saveFile(blob, binaryObjectId, fileName);
-        
-        const block: GeneratedImageBlock = { 
-          binaryObjectId, 
-          displayWidth, 
-          displayHeight,
-          prompt
-        };
-        
-        assistantNode.content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(block, null, 2)}\n\`\`\``;
-        break;
-      }
-      case 'local': {
-        const url = URL.createObjectURL(blob);
-        assistantNode.content = `${SENTINEL_IMAGE_PROCESSED}<img src="${url}" width="${displayWidth}" height="${displayHeight}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
-        break;
-      }
-      default: {
-        const _ex: never = storageType;
-        throw new Error(`Unhandled storage type: ${_ex}`);
-      }
-      }
+        if (!blob) throw new Error('Failed to generate image');
+    
+        const displayWidth = width * 0.8;
+        const displayHeight = height * 0.8;
+    
+        switch (storageType) {
+        case 'opfs': {
+          const binaryObjectId = crypto.randomUUID();
+          const fileName = sanitizeFilename({
+            base: prompt,
+            suffix: '.png',
+            fallback: `generated-${Date.now()}-${i}`
+          });
+          await storageService.saveFile(blob, binaryObjectId, fileName);
+                
+          blocks.push({ 
+            binaryObjectId, 
+            displayWidth, 
+            displayHeight,
+            prompt
+          });
+          break;
+        }
+        case 'local': {
+          const url = URL.createObjectURL(blob);
+          const blockHtml = `<img src="${url}" width="${displayWidth}" height="${displayHeight}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
+                
+          if (i === 0) {
+            assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + blockHtml;
+          } else {
+            assistantNode.content += '\n\n' + blockHtml;
+          }
+          break;
+        }
+        default: {
+          const _ex: never = storageType;
+          throw new Error(`Unhandled storage type: ${_ex}`);
+        }
+        }
+            
+        switch (storageType) {
+        case 'opfs': {
+          const blocksContent = blocks.map(b => `\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(b, null, 2)}\n\`\`\``).join('\n\n');
+          assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + blocksContent;
+          break;
+        }
+        case 'local':
+          // Already handled inside the loop
+          break;
+        default: {
+          const _ex: never = storageType;
+          throw new Error(`Unhandled storage type: ${_ex}`);
+        }
+        }
+            
+        triggerChatRef({ chatId });
+      }    
+      // Finalize: replace PENDING with PROCESSED (if not aborted)
+      if (!signal?.aborted) {
+        assistantNode.content = assistantNode.content.replace(SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED);
+      }    
     } catch (e) {
       assistantNode.error = (e as Error).message;
-      assistantNode.content = 'Failed to generate image.';
+      if (assistantNode.content === SENTINEL_IMAGE_PENDING) {
+        assistantNode.content = 'Failed to generate image.';
+      }
     } finally {
       decTask({ chatId, type: 'process' });
       await updateChatContent({ 
@@ -216,6 +267,7 @@ export function useImageGeneration() {
     prompt, 
     width, 
     height, 
+    count,
     chatId, 
     attachments,
     availableModels,
@@ -224,6 +276,7 @@ export function useImageGeneration() {
     prompt: string,
     width: number,
     height: number,
+    count: number,
     chatId: string,
     attachments: Attachment[],
     availableModels: string[],
@@ -231,31 +284,37 @@ export function useImageGeneration() {
   }): Promise<boolean> => {
     const prevMode = !!imageModeMap.value[chatId];
     const prevRes = imageResolutionMap.value[chatId];
+    const prevCount = imageCountMap.value[chatId];
     const model = getSelectedImageModel({ chatId, availableModels });
     
     imageModeMap.value[chatId] = true;
     imageResolutionMap.value[chatId] = { width, height };
+    imageCountMap.value[chatId] = count;
 
     try {
       // If we have a specific model, we can pre-create the marker to embed it
       const content = model 
-        ? createImageRequestMarker({ width, height, model }) + prompt
+        ? createImageRequestMarker({ width, height, model, count }) + prompt
         : prompt;
       return await sendMessage({ content, parentId: undefined, attachments });
     } finally {
       imageModeMap.value[chatId] = prevMode;
       if (prevRes) imageResolutionMap.value[chatId] = prevRes;
+      if (prevCount !== undefined) imageCountMap.value[chatId] = prevCount;
     }
   };
 
   return {
     imageModeMap,
     imageResolutionMap,
+    imageCountMap,
     imageModelOverrideMap,
     isImageMode,
     toggleImageMode,
     getResolution,
     updateResolution,
+    getCount,
+    updateCount,
     setImageModel,
     getSelectedImageModel,
     getSortedImageModels,

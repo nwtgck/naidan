@@ -81,6 +81,7 @@ describe('useImageGeneration', () => {
         prompt: 'a sunset',
         width: 1024,
         height: 1024,
+        count: 1,
         chatId,
         attachments: [],
         availableModels,
@@ -89,7 +90,7 @@ describe('useImageGeneration', () => {
 
       expect(result).toBe(true);
       expect(sendMessage).toHaveBeenCalledWith({
-        content: expect.stringContaining('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1"} -->a sunset'),
+        content: expect.stringContaining('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1","count":1} -->a sunset'),
         parentId: undefined,
         attachments: []
       });
@@ -113,6 +114,7 @@ describe('useImageGeneration', () => {
       prompt: 'a futuristic city',
       width: 512,
       height: 512,
+      count: 1,
       images: [],
       model: 'x/z-image-turbo:v1',
       availableModels: ['x/z-image-turbo:v1'],
@@ -157,6 +159,33 @@ describe('useImageGeneration', () => {
       expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
       expect(assistantNode!.content).toContain('<img src="blob:');
       expect(assistantNode!.content).not.toContain('```' + IMAGE_BLOCK_LANG);
+    });
+
+    it('generates multiple images sequentially', async () => {
+      const { handleImageGeneration } = useImageGeneration();
+      const triggerChatRef = vi.fn();
+      
+      // Reset assistant content
+      mockChat.root.items[0]!.content = '';
+
+      await handleImageGeneration({
+        ...commonParams,
+        count: 3,
+        storageType: 'local',
+        triggerChatRef
+      });
+
+      const assistantNode = mockChat.root.items[0];
+      
+      // Should have 3 image tags
+      const imgMatches = assistantNode!.content.match(/<img/g);
+      expect(imgMatches?.length).toBe(3);
+      
+      // Should have triggered ref update at least once for each image + start/end
+      expect(triggerChatRef).toHaveBeenCalled();
+      
+      // Verify final content has the processed sentinel
+      expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
     });
   });
 });

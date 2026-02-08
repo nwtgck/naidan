@@ -9,6 +9,7 @@ const props = defineProps<{
   isImageMode: boolean;
   selectedWidth: number;
   selectedHeight: number;
+  selectedCount: number;
   availableImageModels: string[];
   selectedImageModel: string | undefined;
 }>();
@@ -16,6 +17,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'toggle-image-mode'): void;
   (e: 'update:resolution', width: number, height: number): void;
+  (e: 'update:count', count: number): void;
   (e: 'update:model', modelId: string): void;
 }>();
 
@@ -25,8 +27,18 @@ const resolutions = [
   { width: 1024, height: 1024 },
 ];
 
+const counts = [1, 2, 3, 4];
+
 const showMenu = ref(false);
 const containerRef = ref<HTMLElement | null>(null);
+
+function handleCountInput(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const val = parseInt(target.value);
+  if (!isNaN(val) && val > 0) {
+    emit('update:count', val);
+  }
+}
 
 function handleClickOutside(event: MouseEvent) {
   const target = event.target as HTMLElement;
@@ -132,6 +144,34 @@ onUnmounted(() => {
               >
                 {{ res.width }}x{{ res.height }}
               </button>
+            </div>
+          </div>
+
+          <!-- Count Selector -->
+          <div class="px-3 py-2 border-t dark:border-gray-700">
+            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Number of Images</div>
+            <div class="flex gap-1.5 items-center">
+              <div class="flex flex-1 gap-1">
+                <button 
+                  v-for="count in counts" 
+                  :key="count"
+                  @click="emit('update:count', count)"
+                  class="flex-1 px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap"
+                  :class="selectedCount === count 
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
+                    : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
+                >
+                  {{ count }}
+                </button>
+              </div>
+              <input 
+                type="number" 
+                min="1"
+                :value="selectedCount"
+                @input="handleCountInput"
+                class="w-12 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                placeholder="Qty"
+              />
             </div>
           </div>
         </div>

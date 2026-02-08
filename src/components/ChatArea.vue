@@ -38,6 +38,8 @@ const {
   toggleImageMode: _toggleImageMode,
   getResolution,
   updateResolution: _updateResolution,
+  getCount,
+  updateCount: _updateCount,
   setImageModel,
   getSelectedImageModel,
   getSortedImageModels,
@@ -61,6 +63,16 @@ const currentResolution = computed(() => {
 function updateResolution(width: number, height: number) {
   if (currentChat.value) {
     _updateResolution({ chatId: currentChat.value.id, width, height });
+  }
+}
+
+const currentCount = computed(() => {
+  return currentChat.value ? getCount({ chatId: currentChat.value.id }) : 1;
+});
+
+function updateCount(count: number) {
+  if (currentChat.value) {
+    _updateCount({ chatId: currentChat.value.id, count });
   }
 }
 
@@ -418,10 +430,12 @@ async function handleGenerateImage() {
   const currentAttachments = [...attachments.value];
   const sendingChatId = currentChat.value.id;
   const { width, height } = currentResolution.value;
+  const count = currentCount.value;
   const success = await chatStore.sendImageRequest({ 
     prompt, 
     width, 
     height,
+    count,
     attachments: currentAttachments
   });
   if (success) {
@@ -994,10 +1008,12 @@ onUnmounted(() => {
               :is-image-mode="isImageMode"
               :selected-width="currentResolution.width"
               :selected-height="currentResolution.height"
+              :selected-count="currentCount"
               :available-image-models="availableImageModels"
               :selected-image-model="selectedImageModel"
               @toggle-image-mode="toggleImageMode"
               @update:resolution="updateResolution"
+              @update:count="updateCount"
               @update:model="handleUpdateImageModel"
             />
           </div>
