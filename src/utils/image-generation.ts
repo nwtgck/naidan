@@ -4,10 +4,22 @@
  * Handles technical comments (sentinels) and model discovery for the 
  * experimental image generation feature.
  */
+import { z } from 'zod';
 
 export const SENTINEL_IMAGE_REQUEST_PREFIX = '<!-- naidan_experimental_image_request';
 export const SENTINEL_IMAGE_PENDING = '<!-- naidan_experimental_image_generation_pending -->';
 export const SENTINEL_IMAGE_PROCESSED = '<!-- naidan_experimental_image_generation_processed -->';
+
+export const IMAGE_BLOCK_LANG = 'naidan_experimental_image';
+
+export const GeneratedImageBlockSchema = z.object({
+  binaryObjectId: z.string().uuid(),
+  displayWidth: z.number(),
+  displayHeight: z.number(),
+  prompt: z.string().optional(),
+});
+
+export type GeneratedImageBlock = z.infer<typeof GeneratedImageBlockSchema>;
 
 export interface ImageRequestParams {
   width: number;

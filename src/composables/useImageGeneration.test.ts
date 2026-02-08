@@ -1,8 +1,34 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useImageGeneration } from './useImageGeneration';
+
+import { SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '../utils/image-generation';
+
+// Mock storage service
+vi.mock('../services/storage', () => ({
+  storageService: {
+    saveFile: vi.fn().mockResolvedValue(undefined)
+  }
+}));
+
+// Mock global URL
+global.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-url');
+global.URL.revokeObjectURL = vi.fn();
+
+// Mock LLM provider
+vi.mock('../services/llm', () => {
+  return {
+    OllamaProvider: class {
+      generateImage = vi.fn().mockResolvedValue(new Blob(['test-image'], { type: 'image/png' }))
+    }
+  };
+});
 
 describe('useImageGeneration', () => {
   const chatId = 'test-chat-123';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it('toggles image mode', () => {
     const { isImageMode, toggleImageMode } = useImageGeneration();
@@ -67,6 +93,70 @@ describe('useImageGeneration', () => {
         parentId: undefined,
         attachments: []
       });
+    });
+  });
+
+  describe('handleImageGeneration', () => {
+    const assistantId = 'msg-assistant-1';
+    const mockChat = {
+      id: chatId,
+      root: {
+        items: [
+          { id: assistantId, role: 'assistant', content: '', replies: { items: [] } }
+        ]
+      }
+    };
+
+    const commonParams = {
+      chatId,
+      assistantId,
+      prompt: 'a futuristic city',
+      width: 512,
+      height: 512,
+      images: [],
+      model: 'x/z-image-turbo:v1',
+      availableModels: ['x/z-image-turbo:v1'],
+      endpointUrl: 'http://localhost:11434',
+      endpointHttpHeaders: undefined,
+      signal: undefined,
+      getLiveChat: () => mockChat as any,
+      updateChatContent: vi.fn(),
+      triggerChatRef: vi.fn(),
+      incTask: vi.fn(),
+      decTask: vi.fn(),
+    };
+
+    it('generates a specialized markdown block when using OPFS', async () => {
+      const { handleImageGeneration } = useImageGeneration();
+      
+      await handleImageGeneration({
+        ...commonParams,
+        storageType: 'opfs'
+      });
+
+      const assistantNode = mockChat.root.items[0];
+      expect(assistantNode).toBeDefined();
+      expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
+      expect(assistantNode!.content).toContain('```' + IMAGE_BLOCK_LANG);
+      expect(assistantNode!.content).toContain('"binaryObjectId":');
+      expect(assistantNode!.content).toContain('"displayWidth": 409.6');
+      expect(assistantNode!.content).toContain('"displayHeight": 409.6');
+      expect(assistantNode!.content).toContain('"prompt": "a futuristic city"');
+    });
+
+    it('generates a legacy img tag when using local storage', async () => {
+      const { handleImageGeneration } = useImageGeneration();
+      
+      await handleImageGeneration({
+        ...commonParams,
+        storageType: 'local'
+      });
+
+      const assistantNode = mockChat.root.items[0];
+      expect(assistantNode).toBeDefined();
+      expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
+      expect(assistantNode!.content).toContain('<img src="blob:');
+      expect(assistantNode!.content).not.toContain('```' + IMAGE_BLOCK_LANG);
     });
   });
 });

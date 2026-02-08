@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick, watch } from 'vue';
 import { Marked } from 'marked';
-import { markedHighlight } from 'marked-highlight';
 import markedKatex from 'marked-katex-extension';
 import createDOMPurify from 'dompurify';
 import hljs from 'highlight.js';
@@ -30,9 +29,17 @@ import 'katex/dist/katex.min.css';
 import type { MessageNode } from '../models/types';
 import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
+import { useGlobalEvents } from '../composables/useGlobalEvents';
+import { sanitizeFilename } from '../utils/string';
 import SpeechControl from './SpeechControl.vue';
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
-import { isImageGenerationPending, isImageGenerationProcessed, stripNaidanSentinels } from '../utils/image-generation';
+import { 
+  isImageGenerationPending, 
+  isImageGenerationProcessed, 
+  stripNaidanSentinels, 
+  IMAGE_BLOCK_LANG,
+  GeneratedImageBlockSchema
+} from '../utils/image-generation';
 
 const props = defineProps<{
   message: MessageNode;
@@ -52,6 +59,7 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const copied = ref(false);
 
 const attachmentUrls = ref<Record<string, string>>({});
+const generatedImageUrls = ref<Record<string, string>>({});
 
 async function loadAttachments() {
   if (!props.message.attachments) return;
@@ -77,6 +85,47 @@ async function loadAttachments() {
       const _ex: never = att;
       throw new Error(`Unhandled attachment status: ${_ex}`);
     }
+    }
+  }
+}
+
+async function loadGeneratedImages() {
+  await nextTick();
+  if (!messageRef.value) return;
+  const placeholders = messageRef.value.querySelectorAll('.naidan-generated-image');
+  
+  for (const el of placeholders) {
+    const htmlEl = el as HTMLElement;
+    const id = htmlEl.dataset.id;
+    const w = htmlEl.dataset.width;
+    const h = htmlEl.dataset.height;
+    
+    if (id) {
+      if (!generatedImageUrls.value[id]) {
+        try {
+          const blob = await storageService.getFile(id);
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            generatedImageUrls.value[id] = url;
+          } else {
+            throw new Error('Image not found in storage');
+          }
+        } catch (e) {
+          console.error('Failed to load generated image:', e);
+          htmlEl.innerHTML = `<div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs">Failed to load generated image</div>`;
+          continue;
+        }
+      }
+
+      const url = generatedImageUrls.value[id];
+      if (url) {
+        htmlEl.innerHTML = `
+          <img src="${url}" width="${w}" height="${h}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block">
+          <button class="naidan-download-gen-image absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 group-hover/gen-img:opacity-100 transition-all z-10" title="Download image">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          </button>
+        `;
+      }
     }
   }
 }
@@ -186,10 +235,60 @@ mermaid.initialize({
   theme: 'dark',
 });
 
-const marked = new Marked(
-  markedHighlight({
-    langPrefix: 'hljs language-',
-    highlight(code, lang) {
+const { addErrorEvent } = useGlobalEvents();
+
+const marked = new Marked();
+
+marked.use(markedKatex({
+  throwOnError: false,
+  output: 'html',
+}));
+
+marked.use({
+  renderer: {
+    code(token) {
+      const code = token.text;
+      const lang = token.lang || '';
+
+      // 1. Generated Image Block
+      if (lang === IMAGE_BLOCK_LANG) {
+        try {
+          const result = GeneratedImageBlockSchema.safeParse(JSON.parse(code));
+          if (result.success) {
+            const { binaryObjectId: id, displayWidth: w, displayHeight: h, prompt: p } = result.data;
+            
+            const div = document.createElement('div');
+            div.className = 'naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl overflow-hidden';
+            div.dataset.id = id;
+            div.dataset.width = String(w);
+            div.dataset.height = String(h);
+            div.dataset.prompt = p || '';
+            
+            div.innerHTML = `<div class="flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0" style="width: ${w}px; height: ${h}px; max-width: 100%">
+                               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image text-gray-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                             </div>`;
+            
+            return div.outerHTML;
+          } else {
+            console.error('Failed to validate generated image block', result.error);
+            addErrorEvent({
+              source: 'MessageItem:MarkdownRenderer',
+              message: 'Failed to validate generated image metadata.',
+              details: result.error.message,
+            });
+          }
+        } catch (e) {
+          console.error('Failed to parse generated image block JSON', e);
+          addErrorEvent({
+            source: 'MessageItem:MarkdownRenderer',
+            message: 'Failed to parse generated image metadata.',
+            details: e instanceof Error ? e.message : String(e),
+          });
+        }
+        return `<pre class="hljs"><code>${hljs.highlight(code, { language: 'json' }).value}</code></pre>`;
+      }
+
+      // 2. Mermaid Block
       if (lang === 'mermaid') {
         const mode = mermaidMode.value;
         const encodedCode = btoa(unescape(encodeURIComponent(code))); // Base64 to safely store in attribute
@@ -254,29 +353,24 @@ const marked = new Marked(
   })()}"><code>${hljs.highlight(code, { language: 'plaintext' }).value}</code></pre>
                 </div>`;
       }
+
+      // 3. Standard Code Block
       const language = hljs.getLanguage(lang) ? lang : 'plaintext';
       const highlighted = hljs.highlight(code, { language }).value;
                                     
       return `<div class="code-block-wrapper my-4 rounded-lg overflow-hidden border border-gray-700/50 bg-[#0d1117] group/code">` +
-                                                              `<div class="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700/50 text-xs text-gray-400">` +
-                                                                `<span class="font-mono">${language}</span>` +
-                                                                `<button class="code-copy-btn flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer" title="Copy code">` +
-                                                                  actionIcons.copy +
-                                                                  `<span>Copy</span>` +
-                                                                `</button>` +
-                                                              `</div>` +
-                                                              `<pre class="!m-0 !p-4 !bg-transparent !rounded-b-lg overflow-x-auto"><code class="!bg-transparent !p-0 !border-none text-sm font-mono leading-relaxed text-gray-200 hljs language-${language}">${highlighted}</code></pre>` +
-                                                            `</div>`;
-                                              
-    },
-                              
-  }),
-);
-
-marked.use(markedKatex({
-  throwOnError: false,
-  output: 'html',
-}));
+               `<div class="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700/50 text-xs text-gray-400">` +
+                 `<span class="font-mono">${language}</span>` +
+                 `<button class="code-copy-btn flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer" title="Copy code">` +
+                   actionIcons.copy +
+                   `<span>Copy</span>` +
+                 `</button>` +
+               `</div>` +
+               `<pre class="!m-0 !p-4 !bg-transparent !rounded-b-lg overflow-x-auto"><code class="!bg-transparent !p-0 !border-none text-sm font-mono leading-relaxed text-gray-200 hljs language-${language}">${highlighted}</code></pre>` +
+             `</div>`;
+    }
+  }
+});
 
 const renderMermaid = async () => {
   await nextTick();
@@ -296,6 +390,7 @@ const renderMermaid = async () => {
 onMounted(() => {
   renderMermaid();
   loadAttachments();
+  loadGeneratedImages();
   // Handle clicks via event delegation
   messageRef.value?.addEventListener('click', async (e) => {
     const target = e.target as HTMLElement;
@@ -326,6 +421,31 @@ onMounted(() => {
         } catch (err) {
           console.error('Failed to copy mermaid code:', err);
         }
+      }
+      return;
+    }
+
+    // Generated image download button
+    const gDownloadBtn = target.closest('.naidan-download-gen-image') as HTMLButtonElement;
+    if (gDownloadBtn) {
+      const block = gDownloadBtn.closest('.naidan-generated-image') as HTMLElement;
+      const id = block?.dataset.id;
+      const prompt = block?.dataset.prompt || '';
+      const url = id ? generatedImageUrls.value[id] : null;
+      
+      if (url) {
+        const filename = sanitizeFilename({
+          base: prompt,
+          suffix: '.png',
+          fallback: 'generated-image',
+        });
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
       return;
     }
@@ -363,9 +483,13 @@ import { onUnmounted } from 'vue';
 onUnmounted(() => {
   // Revoke all created URLs
   Object.values(attachmentUrls.value).forEach(url => URL.revokeObjectURL(url));
+  Object.values(generatedImageUrls.value).forEach(url => URL.revokeObjectURL(url));
 });
 
-watch(() => props.message.content, renderMermaid);
+watch(() => props.message.content, () => {
+  renderMermaid();
+  loadGeneratedImages();
+});
 
 const messageRef = ref<HTMLElement | null>(null);
 
