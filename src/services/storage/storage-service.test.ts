@@ -168,6 +168,7 @@ describe('StorageService Migration', () => {
           content: 'hello',
           attachments: [{
             id: 'att-1',
+            binaryObjectId: 'bin-1',
             status: 'memory',
             blob: mockBlob,
             originalName: 'test.png',
@@ -200,10 +201,10 @@ describe('StorageService Migration', () => {
     await storageService.switchProvider('opfs');
 
     // Should have rescued the attachment
-    const attachmentChunk = receivedChunks.find(c => c.type === 'attachment');
-    expect(attachmentChunk).toBeDefined();
-    expect(attachmentChunk.attachmentId).toBe('att-1');
-    expect(attachmentChunk.blob).toBe(mockBlob);
+    const binaryChunk = receivedChunks.find(c => c.type === 'binary_object');
+    expect(binaryChunk).toBeDefined();
+    expect(binaryChunk.id).toBe('bin-1');
+    expect(binaryChunk.blob).toBe(mockBlob);
 
     // Chat chunk should have been updated to 'persisted' status
     const chatChunk = receivedChunks.find(c => c.type === 'chat');
@@ -222,6 +223,7 @@ describe('StorageService Migration', () => {
               id: 'msg-2',
               attachments: [{
                 id: 'att-nested',
+                binaryObjectId: 'bin-nested',
                 status: 'memory',
                 blob: mockBlob,
                 originalName: 'nested.png',
@@ -254,8 +256,8 @@ describe('StorageService Migration', () => {
 
     await storageService.switchProvider('opfs');
 
-    const attachmentChunk = receivedChunks.find(c => c.type === 'attachment');
-    expect(attachmentChunk).toBeDefined();
-    expect(attachmentChunk.attachmentId).toBe('att-nested');
+    const binaryChunk = receivedChunks.find(c => c.type === 'binary_object');
+    expect(binaryChunk).toBeDefined();
+    expect(binaryChunk.id).toBe('bin-nested');
   });
 });

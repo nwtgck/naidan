@@ -14,12 +14,14 @@ import {
   Database, Settings2, BookmarkPlus,
   Cpu, Info,
   ChefHat,
-  Github, ExternalLink, Download, BrainCircuit
+  Github, ExternalLink, Download, BrainCircuit,
+  File
 } from 'lucide-vue-next';
 import RecipeImportTab from './RecipeImportTab.vue';
 import ProviderProfilesTab from './ProviderProfilesTab.vue';
 import TransformersJsManager from './TransformersJsManager.vue';
 import StorageTab from './StorageTab.vue';
+import BinaryObjectsTab from './BinaryObjectsTab.vue';
 import DeveloperTab from './DeveloperTab.vue';
 import AboutTab from './AboutTab.vue';
 import ConnectionTab from './ConnectionTab.vue';
@@ -94,24 +96,27 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
 }
 
 // Tab State
-type Tab = 'connection' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'developer' | 'about';
+type Tab = 'connection' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'binary_objects' | 'developer' | 'about';
 const activeTab = computed({
   get: () => {
     const queryTab = route.query.settings as string;
     if (queryTab) {
       if (queryTab === 'provider-profiles') return 'profiles';
       if (queryTab === 'transformers-js') return 'transformers_js';
+      if (queryTab === 'binary-objects') return 'binary_objects';
       return (queryTab as Tab);
     }
     const tab = (route.params as { tab?: string }).tab;
     if (tab === 'provider-profiles') return 'profiles';
     if (tab === 'transformers-js') return 'transformers_js';
+    if (tab === 'binary-objects') return 'binary_objects';
     return (tab as Tab) || 'connection';
   },
   set: (val) => {
     const pathMap: Record<string, string> = {
       profiles: 'provider-profiles',
       transformers_js: 'transformers-js',
+      binary_objects: 'binary-objects',
     };
     const mappedVal = pathMap[val] || val;
     if (route.query.settings || !route.path.startsWith('/settings')) {
@@ -290,6 +295,15 @@ watch(() => props.isOpen, async (open) => {
               Storage
             </button>
             <button 
+              @click="activeTab = 'binary_objects'"
+              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              :class="activeTab === 'binary_objects' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              data-testid="tab-files"
+            >
+              <File class="w-4 h-4" />
+              Files
+            </button>
+            <button 
               @click="activeTab = 'developer'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'developer' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -392,6 +406,9 @@ watch(() => props.isOpen, async (open) => {
                 v-model:storage-type="form.storageType"
                 @close="emit('close')"
               />
+
+              <!-- Binary Objects Tab -->
+              <BinaryObjectsTab v-if="activeTab === 'binary_objects'" />
 
               <!-- Developer Tab -->
               <DeveloperTab 

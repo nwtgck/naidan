@@ -148,8 +148,7 @@ describe('ImportExportService', () => {
               items: [{
                 id: UUID_M2, role: 'assistant', content: 'response', timestamp: now + 100,
                 attachments: [{ 
-                  id: UUID_A1, originalName: 'img.png', mimeType: 'image/png', 
-                  size: 100, uploadedAt: now, status: 'persisted' 
+                  id: UUID_A1, binaryObjectId: UUID_A1, name: 'img.png', status: 'persisted' 
                 }],
                 replies: { items: [] }
               }]
@@ -158,7 +157,15 @@ describe('ImportExportService', () => {
         }
       };
       zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify(content));
-      zip.folder('uploaded-files')!.folder(UUID_A1)!.file('img.png', new Blob(['...']));
+      
+      const shard = UUID_A1.slice(-2);
+      const binFolder = zip.folder('binary-objects')!.folder(shard);
+      binFolder!.file(`${UUID_A1}.bin`, new Blob(['...']));
+      binFolder!.file('index.json', JSON.stringify({
+        objects: {
+          [UUID_A1]: { id: UUID_A1, mimeType: 'image/png', size: 100, createdAt: now, name: 'img.png' }
+        }
+      }));
 
       await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
         data: { mode: 'append' },
@@ -177,7 +184,7 @@ describe('ImportExportService', () => {
         const nestedNode = chatChunk.data.root.items[0]!.replies.items[0];
         expect(nestedNode!.attachments![0]!.id).toBe(NEW_UUID);
       }
-      expect(chunks.find(c => c.type === 'attachment')?.attachmentId).toBe(NEW_UUID);
+      expect(chunks.find(c => c.type === 'binary_object')?.id).toBe(NEW_UUID);
     });
 
     it('applies prefixes to both chat titles and group names', async () => {
@@ -313,10 +320,15 @@ describe('ImportExportService', () => {
         { id: UUID_C2, title: 'C2', groupId: null, updatedAt: now, createdAt: now },
         { id: 'invalid-uuid', title: 'Broken' }
       ] }));
+
+      // Add a binary object in a shard
+      const shard = UUID_A1.slice(-2);
+      zip.folder('binary-objects')!.folder(shard)!.file(`${UUID_A1}.bin`, new Blob(['...']));
       
       const preview = await service.analyze(await zip.generateAsync({ type: 'blob' }));
       
       expect(preview.stats.chatsCount).toBe(2); // Broken is skipped
+      expect(preview.stats.attachmentsCount).toBe(1);
       expect(preview.items).toHaveLength(2); // Group 1 and Root Chat C2
       const groupItem = preview.items.find(i => i.type === 'chat_group');
       if (groupItem?.type === 'chat_group') {

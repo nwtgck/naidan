@@ -165,8 +165,10 @@ async function processFiles(files: File[]) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
     
+    const attachmentId = crypto.randomUUID();
     const attachment: Attachment = {
-      id: crypto.randomUUID(),
+      id: attachmentId,
+      binaryObjectId: crypto.randomUUID(),
       originalName: file.name,
       mimeType: file.type,
       size: file.size,

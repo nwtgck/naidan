@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot } from '../../models/types';
+import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '../../models/types';
 import { 
   type ChatMetaDto,
   type ChatGroupDto,
@@ -279,16 +279,40 @@ export class LocalStorageProvider extends IStorageProvider {
 
   // --- File Storage ---
   
-  async saveFile(_blob: Blob, _attachmentId: string, _originalName: string): Promise<void> {
+  /**
+   * @deprecated Use the named arguments version instead.
+   */
+  async saveFile(blob: Blob, binaryObjectId: string, name: string, mimeType?: string, size?: number): Promise<void>;
+  async saveFile(params: {
+    blob: Blob;
+    binaryObjectId: string;
+    name: string;
+    mimeType: string | undefined;
+  }): Promise<void>;
+  async saveFile(
+    _blobOrParams: Blob | { blob: Blob; binaryObjectId: string; name: string; mimeType: string | undefined },
+    _binaryObjectId?: string,
+    _name?: string,
+    _mimeType?: string,
+    _size?: number
+  ): Promise<void> {
     throw new Error('File persistence is not supported in LocalStorage provider.');
   }
 
-  async getFile(_attachmentId: string, _originalName: string): Promise<Blob | null> {
+  async getFile(_binaryObjectId: string): Promise<Blob | null> {
     return null;
   }
 
   async hasAttachments(): Promise<boolean> {
     return false;
+  }
+
+  async *listBinaryObjects(): AsyncIterable<BinaryObject> {
+    // Yields nothing
+  }
+
+  async deleteBinaryObject(_binaryObjectId: string): Promise<void> {
+    // No-op
   }
 
   async clearAll(): Promise<void> {
@@ -363,7 +387,7 @@ export class LocalStorageProvider extends IStorageProvider {
         await this.saveChatMeta(domainChat);
         break;
       }
-      case 'attachment':
+      case 'binary_object':
         // LocalStorage does not support binary attachments, skip
         break;
       default: {

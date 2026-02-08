@@ -241,7 +241,7 @@ describe('useChat Composable Logic', () => {
   it('should inherit attachments and modelId during fork', async () => {
     const { forkChat } = useChat();
     
-    const att: Attachment = { id: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
+    const att: Attachment = { id: 'a1', binaryObjectId: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
     const m1: MessageNode = { 
       id: 'm1', 
       role: 'assistant', 
@@ -281,7 +281,7 @@ describe('useChat Composable Logic', () => {
   it('should preserve attachments during editMessage', async () => {
     const { editMessage, currentChat } = useChat();
     
-    const att: Attachment = { id: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
+    const att: Attachment = { id: 'a1', binaryObjectId: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
     const m1: MessageNode = { 
       id: 'm1', 
       role: 'assistant', 

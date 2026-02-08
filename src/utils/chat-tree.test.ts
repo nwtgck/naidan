@@ -44,7 +44,7 @@ describe('chat-tree utils', () => {
           role: 'assistant', 
           content: 'I thought about it.', 
           thinking: 'Inner thoughts',
-          attachments: [{ id: '1', status: 'persisted', originalName: 'n.png', mimeType: 'image/png', size: 10, uploadedAt: 0 }]
+          attachments: [{ id: '1', binaryObjectId: '1', status: 'persisted', originalName: 'n.png', mimeType: 'image/png', size: 10, uploadedAt: 0 }]
         }
       ];
 

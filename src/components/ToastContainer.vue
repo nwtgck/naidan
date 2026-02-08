@@ -13,7 +13,7 @@ async function handleAction(id: string, onAction?: () => void | Promise<void>) {
 </script>
 
 <template>
-  <div class="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 pointer-events-none">
+  <div class="fixed bottom-6 right-6 z-[250] flex flex-col gap-3 pointer-events-none">
     <TransitionGroup name="toast">
       <div 
         v-for="toast in toasts" 

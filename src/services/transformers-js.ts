@@ -4,13 +4,6 @@ import { createTransformersWorker } from './transformers-js-loader';
 import type { ITransformersJsWorker, ProgressInfo } from './transformers-js.types';
 
 /**
- * Interface for FileSystemDirectoryHandle with entries() method.
- */
-interface FileSystemDirectoryHandleWithEntries extends FileSystemDirectoryHandle {
-  entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
-}
-
-/**
  * Interface for FileSystemFileHandle with createWritable() method.
  */
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
@@ -127,7 +120,7 @@ export const transformersJsService = {
         let hasConfig = false;
 
         const scan = async (d: FileSystemDirectoryHandle) => {
-          for await (const [name, handle] of (d as FileSystemDirectoryHandleWithEntries).entries()) {
+          for await (const [name, handle] of d.entries()) {
             const h = handle as FileSystemHandle;
             switch (h.kind) {
             case 'file': {
@@ -154,7 +147,7 @@ export const transformersJsService = {
 
       // Try 'user' directory (new)
       try {
-        const userDir = await modelsDir.getDirectoryHandle('user', { create: false }) as FileSystemDirectoryHandleWithEntries;
+        const userDir = await modelsDir.getDirectoryHandle('user', { create: false });
         for await (const [name, handle] of userDir.entries()) {
           const h = handle as FileSystemHandle;
           switch (h.kind) {
@@ -177,7 +170,7 @@ export const transformersJsService = {
 
       // Try 'local' directory (old/fallback for migration)
       try {
-        const localDir = await modelsDir.getDirectoryHandle('local', { create: false }) as FileSystemDirectoryHandleWithEntries;
+        const localDir = await modelsDir.getDirectoryHandle('local', { create: false });
         for await (const [name, handle] of localDir.entries()) {
           const h = handle as FileSystemHandle;
           switch (h.kind) {
@@ -200,12 +193,12 @@ export const transformersJsService = {
       } catch (e) { /* ignore */ }
       
       try {
-        const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false }) as FileSystemDirectoryHandleWithEntries;
+        const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
         for await (const [orgName, orgHandle] of hfDir.entries()) {
           const oh = orgHandle as FileSystemHandle;
           switch (oh.kind) {
           case 'directory': {
-            const orgDir = oh as FileSystemDirectoryHandleWithEntries;
+            const orgDir = oh as FileSystemDirectoryHandle;
             for await (const [repoName, repoHandle] of orgDir.entries()) {
               const rh = repoHandle as FileSystemHandle;
               switch (rh.kind) {
@@ -303,7 +296,7 @@ export const transformersJsService = {
           
           // Clean up empty org directory
           let hasMore = false;
-          for await (const _ of (orgDir as FileSystemDirectoryHandleWithEntries).entries()) {
+          for await (const _ of orgDir.entries()) {
             hasMore = true; break; 
           }
           if (!hasMore) await hfDir.removeEntry(org);

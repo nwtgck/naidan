@@ -63,7 +63,7 @@ async function loadAttachments() {
       break;
     case 'persisted':
       try {
-        const blob = await storageService.getFile(att.id, att.originalName);
+        const blob = await storageService.getFile(att.binaryObjectId);
         if (blob) {
           attachmentUrls.value[att.id] = URL.createObjectURL(blob);
         }

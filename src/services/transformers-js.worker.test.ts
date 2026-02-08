@@ -52,7 +52,9 @@ function createMockDir(entries: Record<string, any> = {}) {
         entries[name] = createMockDir();
         return entries[name];
       }
-      throw new Error('Not found');
+      const err = new Error('Not found');
+      err.name = 'NotFoundError';
+      throw err;
     }),
     getFileHandle: vi.fn(async (name: string, options?: { create?: boolean }) => {
       if (entries[name]) return entries[name];
@@ -60,7 +62,9 @@ function createMockDir(entries: Record<string, any> = {}) {
         entries[name] = createMockFile(0);
         return entries[name];
       }
-      throw new Error('Not found');
+      const err = new Error('Not found');
+      err.name = 'NotFoundError';
+      throw err;
     }),
     removeEntry: vi.fn(async (name: string) => {
       delete entries[name];
