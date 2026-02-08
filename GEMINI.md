@@ -8,7 +8,7 @@
 
 # Function Signatures & Named Arguments
 
-For **new** or **refactored** functions, use a single mandatory argument object (Swift-style) for clarity and extensibility.
+For **new** or **refactored** functions, use a single mandatory argument object (Swift-style) for clarity and extensibility. **This applies even if the function has only one argument.**
 
 - **Explicit > Implicit**: Avoid property defaults. They hide intent and create "implicit knowledge". Require explicit values (including `undefined`) so the state is fully visible at the call site.
 - **Inline Types**: Prefer inline destructuring and type definitions in signatures.
@@ -23,6 +23,10 @@ async function processRecord(id: string, retryCount: number | undefined, isSilen
 
 // Caller: What do 3 and true mean here? Is the second arg retryCount or something else?
 await processRecord("rec_123", 3, true);
+
+// Even single arguments should not be positional
+async function deleteUser(id: string) { ... }
+await deleteUser("user_123");
 ```
 
 #### ❌ BAD (Implicit Defaults)
@@ -56,6 +60,10 @@ await processRecord({
   retryCount: 3,
   isSilent: true,
 });
+
+// Even single arguments use the object-based named argument style
+async function deleteUser({ id }: { id: string }) { ... }
+await deleteUser({ id: "user_123" });
 ```
 
 # Type Design: Avoid Booleans for Future-Proofing

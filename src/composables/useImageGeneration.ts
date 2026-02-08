@@ -8,8 +8,10 @@ import {
   createImageRequestMarker,
   createImageResponseMarker,
   IMAGE_BLOCK_LANG,
-  type GeneratedImageBlock
+  type GeneratedImageBlock,
+  type ImageRequestParams
 } from '../utils/image-generation';
+import { reencodeImage } from '../utils/image-processing';
 import { naturalSort, sanitizeFilename } from '../utils/string';
 import type { Chat, ChatContent, Attachment } from '../models/types';
 import { findNodeInBranch } from '../utils/chat-tree';
@@ -19,6 +21,7 @@ const imageModeMap = ref<Record<string, boolean>>({});
 const imageResolutionMap = ref<Record<string, { width: number, height: number }>>({});
 const imageCountMap = ref<Record<string, number>>({});
 const imageModelOverrideMap = ref<Record<string, string>>({});
+const imagePersistAsMap = ref<Record<string, ImageRequestParams['persistAs']>>({});
 
 export function useImageGeneration() {
   const isImageMode = ({ chatId }: { chatId: string }) => !!imageModeMap.value[chatId];
@@ -48,6 +51,17 @@ export function useImageGeneration() {
     count: number 
   }) => {
     imageCountMap.value[chatId] = count;
+  };
+
+  const getPersistAs = ({ chatId }: { chatId: string }): ImageRequestParams['persistAs'] => {
+    return imagePersistAsMap.value[chatId] || 'original';
+  };
+
+  const updatePersistAs = ({ chatId, format }: { 
+    chatId: string, 
+    format: ImageRequestParams['persistAs'] 
+  }) => {
+    imagePersistAsMap.value[chatId] = format;
   };
 
   const setImageModel = ({ chatId, modelId }: { 
@@ -111,6 +125,7 @@ export function useImageGeneration() {
     width, 
     height,
     count,
+    persistAs: requestedPersistAs,
     images,
     model: requestedModel,
     availableModels,
@@ -130,6 +145,7 @@ export function useImageGeneration() {
     width: number,
     height: number,
     count: number | undefined,
+    persistAs: ImageRequestParams['persistAs'] | undefined,
     images: { blob: Blob }[],
     model: string | undefined,
     availableModels: string[],
@@ -164,6 +180,7 @@ export function useImageGeneration() {
     incTask({ chatId, type: 'process' });
     try {
       const imageCount = count || getCount({ chatId });
+      const persistAs = requestedPersistAs || getPersistAs({ chatId });
       const responseMarker = createImageResponseMarker({ count: imageCount });
       assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING;
           
@@ -187,6 +204,24 @@ export function useImageGeneration() {
           signal
         });
         if (!blob) throw new Error('Failed to generate image');
+
+        let finalBlob = blob;
+        let extension = '.png';
+
+        if (persistAs && persistAs !== 'original') {
+          try {
+            finalBlob = await reencodeImage({ blob, format: persistAs });
+            extension = `.${persistAs}`;
+          } catch (e) {
+            const { useGlobalEvents } = await import('../composables/useGlobalEvents');
+            const { addErrorEvent } = useGlobalEvents();
+            addErrorEvent({ 
+              source: 'useImageGeneration:handleImageGeneration', 
+              message: `Failed to re-encode image to ${persistAs}, falling back to original`,
+              details: e instanceof Error ? e : String(e)
+            });
+          }
+        }
     
         const displayWidth = width * 0.8;
         const displayHeight = height * 0.8;
@@ -196,10 +231,10 @@ export function useImageGeneration() {
           const binaryObjectId = crypto.randomUUID();
           const fileName = sanitizeFilename({
             base: prompt,
-            suffix: '.png',
+            suffix: extension,
             fallback: `generated-${Date.now()}-${i}`
           });
-          await storageService.saveFile(blob, binaryObjectId, fileName);
+          await storageService.saveFile(finalBlob, binaryObjectId, fileName);
                 
           blocks.push({ 
             binaryObjectId, 
@@ -210,7 +245,7 @@ export function useImageGeneration() {
           break;
         }
         case 'local': {
-          const url = URL.createObjectURL(blob);
+          const url = URL.createObjectURL(finalBlob);
           const blockHtml = `<img src="${url}" width="${displayWidth}" height="${displayHeight}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
                 
           if (i === 0) {
@@ -268,6 +303,7 @@ export function useImageGeneration() {
     width, 
     height, 
     count,
+    persistAs,
     chatId, 
     attachments,
     availableModels,
@@ -277,6 +313,7 @@ export function useImageGeneration() {
     width: number,
     height: number,
     count: number,
+    persistAs: ImageRequestParams['persistAs'],
     chatId: string,
     attachments: Attachment[],
     availableModels: string[],
@@ -285,22 +322,25 @@ export function useImageGeneration() {
     const prevMode = !!imageModeMap.value[chatId];
     const prevRes = imageResolutionMap.value[chatId];
     const prevCount = imageCountMap.value[chatId];
+    const prevPersistAs = imagePersistAsMap.value[chatId];
     const model = getSelectedImageModel({ chatId, availableModels });
     
     imageModeMap.value[chatId] = true;
     imageResolutionMap.value[chatId] = { width, height };
     imageCountMap.value[chatId] = count;
+    imagePersistAsMap.value[chatId] = persistAs;
 
     try {
       // If we have a specific model, we can pre-create the marker to embed it
       const content = model 
-        ? createImageRequestMarker({ width, height, model, count }) + prompt
+        ? createImageRequestMarker({ width, height, model, count, persistAs }) + prompt
         : prompt;
       return await sendMessage({ content, parentId: undefined, attachments });
     } finally {
       imageModeMap.value[chatId] = prevMode;
       if (prevRes) imageResolutionMap.value[chatId] = prevRes;
       if (prevCount !== undefined) imageCountMap.value[chatId] = prevCount;
+      if (prevPersistAs !== undefined) imagePersistAsMap.value[chatId] = prevPersistAs;
     }
   };
 
@@ -308,6 +348,7 @@ export function useImageGeneration() {
     imageModeMap,
     imageResolutionMap,
     imageCountMap,
+    imagePersistAsMap,
     imageModelOverrideMap,
     isImageMode,
     toggleImageMode,
@@ -315,6 +356,8 @@ export function useImageGeneration() {
     updateResolution,
     getCount,
     updateCount,
+    getPersistAs,
+    updatePersistAs,
     setImageModel,
     getSelectedImageModel,
     getSortedImageModels,

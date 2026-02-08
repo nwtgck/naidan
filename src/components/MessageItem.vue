@@ -434,19 +434,32 @@ onMounted(() => {
       const prompt = block?.dataset.prompt || '';
       const url = id ? generatedImageUrls.value[id] : null;
       
-      if (url) {
-        const filename = sanitizeFilename({
-          base: prompt,
-          suffix: '.png',
-          fallback: 'generated-image',
-        });
-        
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+      if (url && id) {
+        try {
+          const obj = await storageService.getBinaryObject({ binaryObjectId: id });
+          let suffix = '.png';
+          if (obj?.name) {
+            const lastDot = obj.name.lastIndexOf('.');
+            if (lastDot !== -1) {
+              suffix = obj.name.slice(lastDot);
+            }
+          }
+
+          const filename = sanitizeFilename({
+            base: prompt,
+            suffix,
+            fallback: 'generated-image',
+          });
+          
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (err) {
+          console.error('Failed to get binary object info for download:', err);
+        }
       }
       return;
     }

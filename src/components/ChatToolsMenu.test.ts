@@ -10,6 +10,7 @@ describe('ChatToolsMenu', () => {
     selectedWidth: 512,
     selectedHeight: 512,
     selectedCount: 1,
+    selectedPersistAs: 'original' as const,
     availableImageModels: ['model-1', 'model-2'],
     selectedImageModel: 'model-1'
   };
@@ -49,12 +50,16 @@ describe('ChatToolsMenu', () => {
     expect(wrapper.text()).toContain('Image Model');
     expect(wrapper.text()).toContain('Resolution');
     expect(wrapper.text()).toContain('Number of Images');
+    expect(wrapper.text()).toContain('Save Format');
     
     const resButtons = wrapper.findAll('button').filter(b => /^\d+x\d+$/.test(b.text()));
     expect(resButtons.length).toBe(3); // 256x256, 512x512, 1024x1024
 
     const countButtons = wrapper.findAll('button').filter(b => /^[1-4]$/.test(b.text()));
     expect(countButtons.length).toBe(4); // 1, 2, 3, 4
+
+    const formatButtons = wrapper.findAll('button').filter(b => ['Original', 'WebP', 'JPEG', 'PNG'].includes(b.text()));
+    expect(formatButtons.length).toBe(4);
   });
 
   it('emits update:resolution when a resolution is selected', async () => {
@@ -91,6 +96,18 @@ describe('ChatToolsMenu', () => {
     await input.setValue(10);
     
     expect(wrapper.emitted('update:count')).toEqual([[10]]);
+  });
+
+  it('emits update:persist-as when a format is selected', async () => {
+    const wrapper = mount(ChatToolsMenu, { 
+      props: { ...defaultProps, isImageMode: true } 
+    });
+    await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    
+    const webpBtn = wrapper.findAll('button').find(b => b.text() === 'WebP');
+    await webpBtn?.trigger('click');
+    
+    expect(wrapper.emitted('update:persist-as')).toEqual([['webp']]);
   });
 
   it('shows empty state when no tools are available', async () => {

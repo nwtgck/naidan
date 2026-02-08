@@ -40,6 +40,8 @@ const {
   updateResolution: _updateResolution,
   getCount,
   updateCount: _updateCount,
+  getPersistAs,
+  updatePersistAs: _updatePersistAs,
   setImageModel,
   getSelectedImageModel,
   getSortedImageModels,
@@ -73,6 +75,16 @@ const currentCount = computed(() => {
 function updateCount(count: number) {
   if (currentChat.value) {
     _updateCount({ chatId: currentChat.value.id, count });
+  }
+}
+
+const currentPersistAs = computed(() => {
+  return currentChat.value ? getPersistAs({ chatId: currentChat.value.id }) : 'original';
+});
+
+function updatePersistAs(format: 'original' | 'webp' | 'jpeg' | 'png') {
+  if (currentChat.value) {
+    _updatePersistAs({ chatId: currentChat.value.id, format });
   }
 }
 
@@ -436,6 +448,7 @@ async function handleGenerateImage() {
     width, 
     height,
     count,
+    persistAs: currentPersistAs.value,
     attachments: currentAttachments
   });
   if (success) {
@@ -1009,11 +1022,13 @@ onUnmounted(() => {
               :selected-width="currentResolution.width"
               :selected-height="currentResolution.height"
               :selected-count="currentCount"
+              :selected-persist-as="currentPersistAs"
               :available-image-models="availableImageModels"
               :selected-image-model="selectedImageModel"
               @toggle-image-mode="toggleImageMode"
               @update:resolution="updateResolution"
               @update:count="updateCount"
+              @update:persist-as="updatePersistAs"
               @update:model="handleUpdateImageModel"
             />
           </div>

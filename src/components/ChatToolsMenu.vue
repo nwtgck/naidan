@@ -10,6 +10,7 @@ const props = defineProps<{
   selectedWidth: number;
   selectedHeight: number;
   selectedCount: number;
+  selectedPersistAs: 'original' | 'webp' | 'jpeg' | 'png';
   availableImageModels: string[];
   selectedImageModel: string | undefined;
 }>();
@@ -18,6 +19,7 @@ const emit = defineEmits<{
   (e: 'toggle-image-mode'): void;
   (e: 'update:resolution', width: number, height: number): void;
   (e: 'update:count', count: number): void;
+  (e: 'update:persist-as', format: 'original' | 'webp' | 'jpeg' | 'png'): void;
   (e: 'update:model', modelId: string): void;
 }>();
 
@@ -28,6 +30,13 @@ const resolutions = [
 ];
 
 const counts = [1, 2, 3, 4];
+
+const saveFormats = [
+  { label: 'Original', value: 'original' },
+  { label: 'WebP', value: 'webp' },
+  { label: 'JPEG', value: 'jpeg' },
+  { label: 'PNG', value: 'png' },
+] as const;
 
 const showMenu = ref(false);
 const containerRef = ref<HTMLElement | null>(null);
@@ -172,6 +181,24 @@ onUnmounted(() => {
                 class="w-12 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 placeholder="Qty"
               />
+            </div>
+          </div>
+
+          <!-- Save Format Selector -->
+          <div class="px-3 py-2 border-t dark:border-gray-700">
+            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Save Format</div>
+            <div class="flex flex-wrap gap-1.5">
+              <button 
+                v-for="format in saveFormats" 
+                :key="format.value"
+                @click="emit('update:persist-as', format.value)"
+                class="flex-1 px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap"
+                :class="selectedPersistAs === format.value 
+                  ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
+                  : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
+              >
+                {{ format.label }}
+              </button>
             </div>
           </div>
         </div>

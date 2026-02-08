@@ -27,7 +27,12 @@ const mockChatStore = {
   toggleImageMode: vi.fn(() => {
     mockIsImageMode.value = !mockIsImageMode.value; 
   }),
-  getResolution: vi.fn(() => ({ width: 512, height: 512 })), getCount: vi.fn(() => 1), updateCount: vi.fn(),
+  getResolution: vi.fn(() => ({ width: 512, height: 512 })), 
+  getCount: vi.fn(() => 1), 
+  updateCount: vi.fn(),
+  getPersistAs: vi.fn(() => 'original'),
+  updatePersistAs: vi.fn(),
+  imagePersistAsMap: ref({}),
   updateResolution: vi.fn(),
   setImageModel: vi.fn(),
   getSelectedImageModel: vi.fn(() => 'x/z-image-turbo:v1'),
@@ -93,6 +98,7 @@ describe('ChatArea Image Generation Integration', () => {
       width: 512,
       height: 512,
       count: 1,
+      persistAs: 'original',
       attachments: []
     });
   });
@@ -118,6 +124,7 @@ describe('ChatArea Image Generation Integration', () => {
       width: 512,
       height: 512,
       count: 1,
+      persistAs: 'original',
       attachments: expect.arrayContaining([expect.objectContaining({ id: 'att-1' })])
     });
     
@@ -169,7 +176,8 @@ describe('ChatArea Image Generation Integration', () => {
     
     expect(mockChatStore.sendImageRequest).toHaveBeenCalledWith(expect.objectContaining({
       prompt: 'a futuristic city',
-      count: 3
+      count: 3,
+      persistAs: 'original'
     }));
   });
 });

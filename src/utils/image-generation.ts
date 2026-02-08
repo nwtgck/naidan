@@ -27,6 +27,7 @@ export const ImageRequestParamsSchema = z.object({
   height: z.number().optional(),
   model: z.string().optional(),
   count: z.number().optional(),
+  persistAs: z.enum(['original', 'webp', 'jpeg', 'png']).default('original'),
 });
 
 export type ImageRequestParams = z.infer<typeof ImageRequestParamsSchema>;
@@ -48,8 +49,8 @@ export function getImageGenerationModels(models: string[]): string[] {
 /**
  * Creates a sentinel marker for an image generation request.
  */
-export function createImageRequestMarker({ width, height, model, count }: ImageRequestParams): string {
-  const params = JSON.stringify({ width, height, model, count });
+export function createImageRequestMarker({ width, height, model, count, persistAs }: ImageRequestParams): string {
+  const params = JSON.stringify({ width, height, model, count, persistAs });
   return `${SENTINEL_IMAGE_REQUEST_PREFIX} ${params} -->`;
 }
 
@@ -92,7 +93,8 @@ export function parseImageRequest(content: string): ImageRequestParams | null {
       width: data.width ?? 512,
       height: data.height ?? 512,
       model: data.model ?? '',
-      count: data.count ?? 1
+      count: data.count ?? 1,
+      persistAs: data.persistAs ?? 'original'
     };
   } catch (e) {
     console.warn('Failed to parse image request params JSON', e);
