@@ -576,8 +576,20 @@ export class OPFSStorageProvider extends IStorageProvider {
 
       const fileHandle = await dir.getFileHandle(fileName);
       return await fileHandle.getFile();
-    } catch {
+    } catch (e) {
+      console.error('Failed to get file from OPFS storage:', e);
       return null; 
+    }
+  }
+
+  async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<BinaryObject | null> {
+    try {
+      const shard = this.getBinaryObjectShardPath(binaryObjectId);
+      const index = await this.loadShardIndex(shard);
+      return index.objects[binaryObjectId] || null;
+    } catch (e) {
+      console.error('Failed to get binary object info:', e);
+      return null;
     }
   }
 

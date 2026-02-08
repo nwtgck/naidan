@@ -9,7 +9,10 @@ import MessageItem from './MessageItem.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
+import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
 import { naturalSort } from '../utils/string';
+import { useImagePreview } from '../composables/useImagePreview';
+import { useBinaryActions } from '../composables/useBinaryActions';
 
 const ChatSettingsPanel = defineAsyncComponent(() => import('./ChatSettingsPanel.vue'));
 const HistoryManipulationModal = defineAsyncComponent(() => import('./HistoryManipulationModal.vue'));
@@ -24,6 +27,8 @@ import type { Attachment } from '../models/types';
 
 const chatStore = useChat();
 const { getDraft, saveDraft, clearDraft } = useChatDraft();
+const { state: previewState, closePreview } = useImagePreview(true); // Scoped instance
+const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
   currentChat,
   streaming,
@@ -38,6 +43,10 @@ const {
   toggleImageMode: _toggleImageMode,
   getResolution,
   updateResolution: _updateResolution,
+  getCount,
+  updateCount: _updateCount,
+  getPersistAs,
+  updatePersistAs: _updatePersistAs,
   setImageModel,
   getSelectedImageModel,
   getSortedImageModels,
@@ -61,6 +70,26 @@ const currentResolution = computed(() => {
 function updateResolution(width: number, height: number) {
   if (currentChat.value) {
     _updateResolution({ chatId: currentChat.value.id, width, height });
+  }
+}
+
+const currentCount = computed(() => {
+  return currentChat.value ? getCount({ chatId: currentChat.value.id }) : 1;
+});
+
+function updateCount(count: number) {
+  if (currentChat.value) {
+    _updateCount({ chatId: currentChat.value.id, count });
+  }
+}
+
+const currentPersistAs = computed(() => {
+  return currentChat.value ? getPersistAs({ chatId: currentChat.value.id }) : 'original';
+});
+
+function updatePersistAs(format: 'original' | 'webp' | 'jpeg' | 'png') {
+  if (currentChat.value) {
+    _updatePersistAs({ chatId: currentChat.value.id, format });
   }
 }
 
@@ -418,10 +447,13 @@ async function handleGenerateImage() {
   const currentAttachments = [...attachments.value];
   const sendingChatId = currentChat.value.id;
   const { width, height } = currentResolution.value;
+  const count = currentCount.value;
   const success = await chatStore.sendImageRequest({ 
     prompt, 
     width, 
     height,
+    count,
+    persistAs: currentPersistAs.value,
     attachments: currentAttachments
   });
   if (success) {
@@ -847,6 +879,9 @@ onUnmounted(() => {
               :key="msg.id" 
               :message="msg" 
               :siblings="chatStore.getSiblings(msg.id)"
+              :can-generate-image="canGenerateImage && hasImageModel"
+              :is-processing="isCurrentChatStreaming"
+              :available-image-models="availableImageModels"
               @fork="handleFork"
               @edit="handleEdit"
               @switch-version="handleSwitchVersion"
@@ -994,10 +1029,14 @@ onUnmounted(() => {
               :is-image-mode="isImageMode"
               :selected-width="currentResolution.width"
               :selected-height="currentResolution.height"
+              :selected-count="currentCount"
+              :selected-persist-as="currentPersistAs"
               :available-image-models="availableImageModels"
               :selected-image-model="selectedImageModel"
               @toggle-image-mode="toggleImageMode"
               @update:resolution="updateResolution"
+              @update:count="updateCount"
+              @update:persist-as="updatePersistAs"
               @update:model="handleUpdateImageModel"
             />
           </div>
@@ -1022,6 +1061,16 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Preview Modal -->
+    <BinaryObjectPreviewModal
+      v-if="previewState"
+      :objects="previewState.objects"
+      :initial-id="previewState.initialId"
+      @close="closePreview"
+      @delete="(obj) => deleteBinaryObject(obj.id)"
+      @download="(obj) => downloadBinaryObject(obj)"
+    />
   </div>
 </template>
 

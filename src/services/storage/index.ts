@@ -281,6 +281,10 @@ export class StorageService {
     return this.getProvider().getFile(binaryObjectId);
   }
 
+  async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<BinaryObject | null> {
+    return this.getProvider().getBinaryObject({ binaryObjectId });
+  }
+
   async hasAttachments(): Promise<boolean> {
     return this.getProvider().hasAttachments();
   }

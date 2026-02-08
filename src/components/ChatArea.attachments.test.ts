@@ -46,11 +46,17 @@ vi.mock('../composables/useChat', () => ({
     toggleImageMode: vi.fn(),
     getResolution: vi.fn(() => ({ width: 512, height: 512 })),
     updateResolution: vi.fn(),
+    getCount: vi.fn(() => 1),
+    updateCount: vi.fn(),
+    getPersistAs: vi.fn(() => 'original'),
+    updatePersistAs: vi.fn(),
     setImageModel: vi.fn(),
     getSelectedImageModel: vi.fn(),
     getSortedImageModels: vi.fn(() => []),
     imageModeMap: ref({}),
     imageResolutionMap: ref({}),
+    imageCountMap: ref({}),
+    imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
   })
 }));

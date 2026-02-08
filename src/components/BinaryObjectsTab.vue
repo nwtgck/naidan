@@ -4,12 +4,13 @@ import { storageService } from '../services/storage';
 import type { BinaryObject } from '../models/types';
 import { 
   File, Search, ArrowUp, ArrowDown, Download, 
-  Eye, Calendar, HardDrive, 
-  Trash2, RefreshCw, LayoutGrid, List, X,
-  Info
+  Eye, HardDrive, 
+  Trash2, RefreshCw, LayoutGrid, List
 } from 'lucide-vue-next';
-import { useConfirm } from '../composables/useConfirm';
 import { Semaphore } from '../utils/concurrency';
+import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
+import { useImagePreview } from '../composables/useImagePreview';
+import { useBinaryActions } from '../composables/useBinaryActions';
 
 const objects = ref<BinaryObject[]>([]);
 const isLoading = ref(true);
@@ -18,7 +19,8 @@ const sortBy = ref<'createdAt' | 'name' | 'size' | 'mimeType'>('createdAt');
 const sortOrder = ref<'asc' | 'desc'>('desc');
 const viewMode = ref<'table' | 'grid'>('table');
 
-const { showConfirm } = useConfirm();
+const { state: previewState, openPreview, closePreview } = useImagePreview();
+const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 
 // Limit to 3 concurrent image processing tasks to prevent UI stutter
 const thumbnailSemaphore = new Semaphore(3);
@@ -135,66 +137,18 @@ const formatDate = (timestamp: number) => {
 };
 
 const handleDownload = async (obj: BinaryObject) => {
-  const blob = await storageService.getFile(obj.id);
-  if (!blob) return;
-  
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = obj.name || obj.id;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  await downloadBinaryObject(obj);
 };
 
-const previewUrl = ref<string | null>(null);
-const previewObject = ref<BinaryObject | null>(null);
-const isPreviewLoading = ref(false);
-
-const handlePreview = async (obj: BinaryObject) => {
-  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
-  previewUrl.value = null;
-  previewObject.value = obj;
-  isPreviewLoading.value = true;
-  
-  try {
-    const blob = await storageService.getFile(obj.id);
-    if (blob && previewObject.value?.id === obj.id) {
-      previewUrl.value = URL.createObjectURL(blob);
-    }
-  } catch (e) {
-    console.error('Failed to load preview:', e);
-  } finally {
-    if (previewObject.value?.id === obj.id) {
-      isPreviewLoading.value = false;
-    }
-  }
-};
-
-const closePreview = () => {
-  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
-  previewUrl.value = null;
-  previewObject.value = null;
+const handlePreview = (obj: BinaryObject) => {
+  openPreview({ objects: filteredObjects.value, initialId: obj.id });
 };
 
 const handleDelete = async (obj: BinaryObject) => {
-  const confirmed = await showConfirm({
-    title: 'Delete Binary Object?',
-    message: `Are you sure you want to delete "${obj.name || obj.id}"? This action cannot be undone. Any chat messages referencing this file will show it as missing.`,
-    confirmButtonText: 'Delete Permanently',
-    confirmButtonVariant: 'danger',
-  });
-
-  if (confirmed) {
-    try {
-      await storageService.deleteBinaryObject(obj.id);
-      if (previewObject.value?.id === obj.id) closePreview();
-      // Remove from local list to avoid full refresh flash
-      objects.value = objects.value.filter(o => o.id !== obj.id);
-    } catch (error) {
-      console.error('Failed to delete binary object:', error);
-    }
+  const success = await deleteBinaryObject(obj.id);
+  if (success) {
+    // Remove from local list to avoid full refresh flash
+    objects.value = objects.value.filter(o => o.id !== obj.id);
   }
 };
 
@@ -472,81 +426,15 @@ watch(objects, (newObjs, oldObjs) => {
         </div>
       </div>
     </div>
-
-    <!-- Preview Modal (Teleported to body) -->
-    <Teleport to="body">
-      <div v-if="previewObject" class="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" @click="closePreview">
-        <div class="bg-white dark:bg-gray-900 rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in-95 duration-200" @click.stop>
-          <!-- Modal Header -->
-          <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-black/20">
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm">
-                <Eye class="w-5 h-5 text-blue-500" />
-              </div>
-              <div class="min-w-0">
-                <h3 class="font-bold text-gray-800 dark:text-white truncate text-base">{{ previewObject.name || 'Unnamed Object' }}</h3>
-                <div class="flex items-center gap-3 text-[10px] text-gray-500 font-bold tracking-widest">
-                  <span class="lowercase">{{ previewObject.mimeType }}</span>
-                  <span class="w-1 h-1 rounded-full bg-gray-300"></span>
-                  <span>{{ formatSize(previewObject.size) }} ({{ previewObject.size }} B)</span>
-                </div>
-              </div>
-            </div>
-            <button @click="closePreview" class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all shadow-sm">
-              <X class="w-6 h-6" />
-            </button>
-          </div>
-
-          <!-- Modal Body -->
-          <div class="flex-1 overflow-auto bg-gray-100 dark:bg-black/40 p-4 md:p-12 flex items-center justify-center relative min-h-[300px]">
-            <div class="absolute inset-0 opacity-10 pointer-events-none" style="background-image: radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0); background-size: 24px 24px;"></div>
-            
-            <div v-if="isPreviewLoading" class="flex flex-col items-center gap-4">
-              <RefreshCw class="w-8 h-8 text-blue-500 animate-spin" />
-              <p class="text-xs font-bold text-gray-400 tracking-widest">Loading Preview...</p>
-            </div>
-            
-            <template v-else-if="previewUrl">
-              <img v-if="previewObject.mimeType.startsWith('image/')" :src="previewUrl" class="max-w-full max-h-full object-contain rounded-2xl shadow-2xl z-10 border-4 border-white dark:border-gray-800" />
-              <div v-else class="text-center space-y-6 z-10">
-                <div class="p-10 bg-white dark:bg-gray-800 rounded-[40px] shadow-xl inline-block border border-gray-100 dark:border-gray-700">
-                  <File class="w-16 h-16 text-gray-200 dark:text-gray-600" />
-                </div>
-                <div class="space-y-2">
-                  <p class="text-sm font-bold text-gray-400 tracking-widest">Preview Unavailable</p>
-                  <p class="text-xs font-medium text-gray-500 max-w-[240px] mx-auto">This file type cannot be previewed directly in the browser.</p>
-                </div>
-              </div>
-            </template>
-          </div>
-
-          <!-- Modal Footer -->
-          <div class="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-black/20 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div class="flex flex-col gap-1 text-[10px] text-gray-400 font-medium">
-              <div class="flex items-center gap-2"><Calendar class="w-3 h-3" /> Created: {{ formatDate(previewObject.createdAt) }}</div>
-              <div class="flex items-center gap-2 font-mono"><Info class="w-3 h-3" /> ID: {{ previewObject.id }}</div>
-            </div>
-            
-            <div class="flex gap-3 w-full sm:w-auto">
-              <button 
-                @click="handleDelete(previewObject)"
-                class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 border border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl text-xs font-bold transition-all hover:bg-red-50 dark:hover:bg-red-900/10 active:scale-95"
-              >
-                <Trash2 class="w-4 h-4" />
-                Delete
-              </button>
-              <button 
-                @click="handleDownload(previewObject)"
-                class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-bold transition-all shadow-xl shadow-blue-500/20 active:scale-95"
-              >
-                <Download class="w-4 h-4" />
-                Download
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <!-- Preview Modal -->
+    <BinaryObjectPreviewModal
+      v-if="previewState"
+      :objects="previewState.objects"
+      :initial-id="previewState.initialId"
+      @close="closePreview"
+      @delete="(obj: BinaryObject) => handleDelete(obj)"
+      @download="(obj: BinaryObject) => handleDownload(obj)"
+    />
   </div>
 </template>
 

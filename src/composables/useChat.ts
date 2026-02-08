@@ -17,7 +17,9 @@ import {
   isImageRequest, 
   parseImageRequest, 
   createImageRequestMarker, 
-  stripNaidanSentinels
+  createImageResponseMarker,
+  stripNaidanSentinels,
+  type ImageRequestParams
 } from '../utils/image-generation';
 
 const rootItems = ref<SidebarItem[]>([]);
@@ -712,6 +714,10 @@ export function useChat() {
     toggleImageMode, 
     getResolution, 
     updateResolution, 
+    getCount,
+    updateCount,
+    getPersistAs,
+    updatePersistAs,
     setImageModel, 
     getSelectedImageModel, 
     getSortedImageModels,
@@ -720,15 +726,19 @@ export function useChat() {
     sendImageRequest: _sendImageRequest,
     imageModeMap,
     imageResolutionMap,
+    imageCountMap,
+    imagePersistAsMap,
     imageModelOverrideMap
   } = useImageGeneration();
 
-  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, images, model, signal }: {
+  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, count, persistAs, images, model, signal }: {
     chatId: string;
     assistantId: string;
     prompt: string;
     width: number;
     height: number;
+    count: number;
+    persistAs: ImageRequestParams['persistAs'] | undefined;
     images: { blob: Blob }[];
     model: string | undefined;
     signal: AbortSignal | undefined;
@@ -743,6 +753,8 @@ export function useChat() {
       prompt,
       width,
       height,
+      count,
+      persistAs,
       images,
       model,
       availableModels: availableModels.value,
@@ -785,7 +797,7 @@ export function useChat() {
 
     try {
       if (imageRequest) {
-        const { width, height, model } = imageRequest;
+        const { width = 512, height = 512, model, count = 1, persistAs } = imageRequest;
         const prompt = stripNaidanSentinels(parentNode!.content).trim();
         
         const images: { blob: Blob }[] = [];
@@ -813,7 +825,7 @@ export function useChat() {
           }
         }
 
-        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, images, model, signal: controller.signal });
+        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, count, persistAs, images, model, signal: controller.signal });
         return;
       }
 
@@ -1019,6 +1031,9 @@ export function useChat() {
       let finalContent = content;
       const isImgMode = isImageMode({ chatId: chat.id });
       const imageModel = isImgMode ? getSelectedImageModel({ chatId: chat.id, availableModels: availableModels.value }) : undefined;
+      const res = getResolution({ chatId: chat.id });
+      const count = getCount({ chatId: chat.id });
+      const persistAs = getPersistAs({ chatId: chat.id });
 
       if (isImgMode && !isImageRequest(content)) {
         if (!imageModel) {
@@ -1027,12 +1042,16 @@ export function useChat() {
           addErrorEvent({ source: 'useChat:sendMessage', message: 'No image generation model found (starting with x/z-image-turbo:).' });
           return false;
         }
-        const res = getResolution({ chatId: chat.id });
-        finalContent = createImageRequestMarker({ ...res, model: imageModel }) + content;
+        finalContent = createImageRequestMarker({ ...res, model: imageModel, count, persistAs }) + content;
       }
 
       const userMsg: MessageNode = { id: crypto.randomUUID(), role: 'user', content: finalContent, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
-      const assistantMsg: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: isImgMode ? SENTINEL_IMAGE_PENDING : '', timestamp: Date.now(), modelId: imageModel || resolvedModel, replies: { items: [] }, };
+      
+      const assistantContent = isImgMode 
+        ? createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING
+        : '';
+
+      const assistantMsg: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: assistantContent, timestamp: Date.now(), modelId: imageModel || resolvedModel, replies: { items: [] }, };
       userMsg.replies.items.push(assistantMsg);
 
       if (!chat.root) chat.root = { items: [] };
@@ -1262,15 +1281,7 @@ export function useChat() {
     case 'user':
     case 'system': {
       const parent = findParentInBranch(chat.root.items, messageId);
-      
-      // Preserve image request markers if present
-      let finalContent = newContent;
-      const imageRequest = parseImageRequest(node.content);
-      if (imageRequest && !isImageRequest(newContent)) {
-        finalContent = createImageRequestMarker(imageRequest) + newContent;
-      }
-
-      await sendMessage(finalContent, parent ? parent.id : null, node.attachments, chat);
+      await sendMessage(newContent, parent ? parent.id : null, node.attachments, chat);
       break;
     }
     default: {
@@ -1389,10 +1400,12 @@ export function useChat() {
     });
   };
 
-  const sendImageRequest = async ({ prompt, width, height, attachments }: {
+  const sendImageRequest = async ({ prompt, width, height, count, persistAs, attachments }: {
     prompt: string;
     width: number;
     height: number;
+    count: number;
+    persistAs: ImageRequestParams['persistAs'];
     attachments: Attachment[];
   }): Promise<boolean> => {
     const target = _currentChat.value;
@@ -1401,6 +1414,8 @@ export function useChat() {
       prompt,
       width,
       height,
+      count,
+      persistAs,
       chatId: toRaw(target).id,
       attachments,
       availableModels: availableModels.value,
@@ -1577,8 +1592,8 @@ export function useChat() {
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,
-    imageModeMap, imageResolutionMap, imageModelOverrideMap,
-    isImageMode, toggleImageMode, getResolution, updateResolution, setImageModel, getSelectedImageModel, getSortedImageModels,
+    imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageModelOverrideMap,
+    isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels,
     loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, sendImageRequest, createChatGroup, deleteChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
     __testOnly: {

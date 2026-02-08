@@ -34,8 +34,8 @@ describe('image-generation utilities', () => {
 
   describe('createImageRequestMarker', () => {
     it('should create a correct sentinel string', () => {
-      const marker = createImageRequestMarker({ width: 1024, height: 1024, model: 'test-model' });
-      expect(marker).toBe('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"test-model"} -->');
+      const marker = createImageRequestMarker({ width: 1024, height: 1024, model: 'test-model', persistAs: 'webp' });
+      expect(marker).toBe('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"test-model","persistAs":"webp"} -->');
     });
   });
 
@@ -51,11 +51,13 @@ describe('image-generation utilities', () => {
 
   describe('parseImageRequest', () => {
     it('should parse valid request parameters', () => {
-      const content = '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"turbo-1"} -->';
+      const content = '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"turbo-1","persistAs":"jpeg"} -->';
       expect(parseImageRequest(content)).toEqual({
         width: 256,
         height: 256,
-        model: 'turbo-1'
+        model: 'turbo-1',
+        count: 1,
+        persistAs: 'jpeg'
       });
     });
 
@@ -64,7 +66,9 @@ describe('image-generation utilities', () => {
       expect(parseImageRequest(content)).toEqual({
         width: 512,
         height: 512,
-        model: 'turbo-1'
+        model: 'turbo-1',
+        count: 1,
+        persistAs: 'original'
       });
     });
 

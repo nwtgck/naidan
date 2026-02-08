@@ -6,8 +6,17 @@ import { SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '../utils/image-gener
 // Mock storage service
 vi.mock('../services/storage', () => ({
   storageService: {
+    getFile: vi.fn(),
     saveFile: vi.fn().mockResolvedValue(undefined)
   }
+}));
+
+// Mock image processing
+const mockReencodeImage = vi.fn().mockImplementation(({ format }) => {
+  return Promise.resolve(new Blob([`reencoded-${format}`], { type: `image/${format}` }));
+});
+vi.mock('../utils/image-processing', () => ({
+  reencodeImage: (...args: any[]) => mockReencodeImage(...args)
 }));
 
 // Mock global URL
@@ -81,6 +90,8 @@ describe('useImageGeneration', () => {
         prompt: 'a sunset',
         width: 1024,
         height: 1024,
+        count: 1,
+        persistAs: 'original',
         chatId,
         attachments: [],
         availableModels,
@@ -89,7 +100,7 @@ describe('useImageGeneration', () => {
 
       expect(result).toBe(true);
       expect(sendMessage).toHaveBeenCalledWith({
-        content: expect.stringContaining('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1"} -->a sunset'),
+        content: expect.stringContaining('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1","count":1,"persistAs":"original"} -->a sunset'),
         parentId: undefined,
         attachments: []
       });
@@ -113,6 +124,8 @@ describe('useImageGeneration', () => {
       prompt: 'a futuristic city',
       width: 512,
       height: 512,
+      count: 1,
+      persistAs: 'original' as const,
       images: [],
       model: 'x/z-image-turbo:v1',
       availableModels: ['x/z-image-turbo:v1'],
@@ -157,6 +170,78 @@ describe('useImageGeneration', () => {
       expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
       expect(assistantNode!.content).toContain('<img src="blob:');
       expect(assistantNode!.content).not.toContain('```' + IMAGE_BLOCK_LANG);
+    });
+
+    it('generates multiple images sequentially', async () => {
+      const { handleImageGeneration } = useImageGeneration();
+      const triggerChatRef = vi.fn();
+      
+      // Reset assistant content
+      mockChat.root.items[0]!.content = '';
+
+      await handleImageGeneration({
+        ...commonParams,
+        count: 3,
+        storageType: 'local',
+        triggerChatRef
+      });
+
+      const assistantNode = mockChat.root.items[0];
+      
+      // Should have 3 image tags
+      const imgMatches = assistantNode!.content.match(/<img/g);
+      expect(imgMatches?.length).toBe(3);
+      
+      // Should have triggered ref update at least once for each image + start/end
+      expect(triggerChatRef).toHaveBeenCalled();
+      
+      // Verify final content has the processed sentinel
+      expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
+    });
+
+    it('converts image to requested format when persistAs is specified', async () => {
+      const { handleImageGeneration } = useImageGeneration();
+      const { storageService } = await import('../services/storage');
+      
+      await handleImageGeneration({
+        ...commonParams,
+        persistAs: 'webp',
+        storageType: 'opfs'
+      });
+
+      // Should have called reencodeImage
+      expect(mockReencodeImage).toHaveBeenCalledWith({
+        blob: expect.any(Blob),
+        format: 'webp'
+      });
+
+      // Should have saved with .webp extension
+      expect(storageService.saveFile).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'image/webp' }),
+        expect.any(String),
+        expect.stringMatching(/\.webp$/)
+      );
+    });
+
+    it('falls back to original format if re-encoding fails', async () => {
+      const { handleImageGeneration } = useImageGeneration();
+      const { storageService } = await import('../services/storage');
+      
+      // Force failure
+      mockReencodeImage.mockRejectedValueOnce(new Error('Canvas failure'));
+
+      await handleImageGeneration({
+        ...commonParams,
+        persistAs: 'jpeg',
+        storageType: 'opfs'
+      });
+
+      // Should have saved original blob with .png extension (default)
+      expect(storageService.saveFile).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'image/png' }),
+        expect.any(String),
+        expect.stringMatching(/\.png$/)
+      );
     });
   });
 });

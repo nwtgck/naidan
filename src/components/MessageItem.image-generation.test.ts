@@ -30,7 +30,11 @@ vi.mock('../composables/useGlobalEvents', () => ({
 // Mock storage service
 vi.mock('../services/storage', () => ({
   storageService: {
-    getFile: vi.fn()
+    getFile: vi.fn(),
+    getBinaryObject: vi.fn(),
+    subscribeToChanges: vi.fn(),
+    loadSettings: vi.fn().mockResolvedValue({}),
+    saveSettings: vi.fn(),
   }
 }));
 
@@ -214,5 +218,52 @@ describe('MessageItem Image Generation', () => {
     
     const speechControl = wrapper.findComponent({ name: 'SpeechControl' });
     expect(speechControl.exists()).toBe(false);
+  });
+
+  it('uses correct extension from storage when downloading a generated image', async () => {
+    const binaryObjectId = '4dbb8a9f-d41f-4d18-b145-73ffcbf1661a';
+    const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n{ "binaryObjectId": "${binaryObjectId}", "displayWidth": 100, "displayHeight": 100, "prompt": "blue cat" }\n\`\`\``;
+    const message = createMessage(content);
+
+    vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/webp' }));
+    vi.mocked(storageService.getBinaryObject).mockResolvedValue({
+      id: binaryObjectId,
+      name: 'blue cat.webp',
+      mimeType: 'image/webp',
+      size: 123,
+      createdAt: Date.now()
+    });
+
+    const wrapper = mount(MessageItem, {
+      props: { message, isCurrentChatStreaming: false }
+    });
+
+    await flushPromises();
+
+    // Mock document.createElement for the link
+    const link = {
+      click: vi.fn(),
+      download: '',
+      href: '',
+      style: {}
+    };
+    const createElementSpy = vi.spyOn(document, 'createElement').mockReturnValue(link as any);
+    const appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation(() => link as any);
+    const removeChildSpy = vi.spyOn(document.body, 'removeChild').mockImplementation(() => link as any);
+
+    // Trigger download
+    const downloadBtn = wrapper.find('.naidan-download-gen-image');
+    await downloadBtn.trigger('click');
+
+    // Should have called getBinaryObject
+    expect(storageService.getBinaryObject).toHaveBeenCalledWith({ binaryObjectId });
+
+    // Should have set correct filename with .webp extension
+    expect(link.download).toBe('blue cat.webp');
+    expect(link.click).toHaveBeenCalled();
+
+    createElementSpy.mockRestore();
+    appendChildSpy.mockRestore();
+    removeChildSpy.mockRestore();
   });
 });

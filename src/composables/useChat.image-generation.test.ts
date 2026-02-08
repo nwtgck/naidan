@@ -71,7 +71,10 @@ describe('useChat Image Generation', () => {
 
     // Initially it should be pending
     expect(userMessage.content).toContain('<!-- naidan_experimental_image_request');
-    expect(assistantMessage.content).toBe(SENTINEL_IMAGE_PENDING);
+    expect(userMessage.content).toContain('"count":1');
+    expect(userMessage.content).toContain('"persistAs":"original"');
+    expect(assistantMessage.content).toContain(SENTINEL_IMAGE_PENDING);
+    expect(assistantMessage.content).toContain('<!-- naidan_experimental_image_response');
   });
 
   it('sendImageRequest triggers message sending with correct parameters', async () => {
@@ -88,6 +91,8 @@ describe('useChat Image Generation', () => {
       prompt: 'a cat',
       width: 1024,
       height: 1024,
+      count: 1,
+      persistAs: 'original',
       attachments: []
     });
 
@@ -96,7 +101,7 @@ describe('useChat Image Generation', () => {
     // Check if the content updated by storageService contains the image request
     const updater = updateSpy.mock.calls[0]![1];
     const result = (await updater({ id: 'chat-1', root: { items: [] } } as any)) as any;
-    expect(result.root.items[0].content).toContain('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1"} -->a cat');
+    expect(result.root.items[0].content).toContain('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1","count":1,"persistAs":"original"} -->a cat');
   });
 
   it('sendImageRequest with attachments passes them to sendMessage', async () => {
@@ -111,6 +116,8 @@ describe('useChat Image Generation', () => {
       prompt: 'remix this image',
       width: 1024,
       height: 1024,
+      count: 1,
+      persistAs: 'original',
       attachments: [mockAttachment]
     });
 

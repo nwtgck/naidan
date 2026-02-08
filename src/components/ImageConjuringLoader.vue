@@ -1,5 +1,21 @@
 <script setup lang="ts">
-// Refined magical loader: more vibrant particles and stronger presence
+import { computed } from 'vue';
+
+const props = defineProps<{
+  remainingCount?: number;
+  totalCount?: number;
+}>();
+
+const currentNumber = computed(() => {
+  if (props.totalCount === undefined || props.remainingCount === undefined) return undefined;
+  return Math.min(props.totalCount, Math.max(1, props.totalCount - props.remainingCount + 1));
+});
+
+const label = computed(() => {
+  if (props.totalCount === undefined || props.remainingCount === undefined) return 'Generating image...';
+  if (props.totalCount <= 1) return 'Generating image...';
+  return `Generating images (${currentNumber.value} / ${props.totalCount})`;
+});
 </script>
 
 <template>
@@ -25,18 +41,32 @@
     </div>
 
     <!-- Central Core -->
-    <div class="relative flex flex-col items-center gap-4">
+    <div class="relative flex flex-col items-center gap-6">
       <!-- Stronger ambient glow around text -->
       <div class="absolute w-40 h-40 bg-blue-500/15 blur-[50px] animate-pulse"></div>
       
       <!-- Typography: Increased opacity and vibrance -->
-      <div class="relative z-10 flex flex-col items-center gap-2">
+      <div class="relative z-10 flex flex-col items-center gap-3">
         <span class="text-[11px] font-mono font-bold text-blue-400 dark:text-blue-300 animate-subtle-pulse mix-blend-plus-lighter whitespace-nowrap drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]">
-          Generating image...
+          {{ label }}
         </span>
         
-        <!-- Breathing line -->
-        <div class="w-10 h-[1px] bg-gradient-to-r from-transparent via-blue-500/60 to-transparent shadow-[0_0_10px_rgba(59,130,246,0.3)]"></div>
+        <!-- Progress Indicators (Dots) for multiple images -->
+        <div v-if="totalCount && totalCount > 1" class="flex gap-1.5">
+          <div 
+            v-for="i in totalCount" 
+            :key="i"
+            class="w-1.5 h-1.5 rounded-full transition-all duration-500"
+            :class="[
+              i < (currentNumber || 0) ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' : 
+              i === (currentNumber || 0) ? 'bg-blue-400 animate-pulse scale-125' : 
+              'bg-gray-200 dark:bg-gray-700'
+            ]"
+          ></div>
+        </div>
+
+        <!-- Breathing line (fallback for single image or when count unknown) -->
+        <div v-else class="w-10 h-[1px] bg-gradient-to-r from-transparent via-blue-500/60 to-transparent shadow-[0_0_10px_rgba(59,130,246,0.3)]"></div>
       </div>
     </div>
   </div>

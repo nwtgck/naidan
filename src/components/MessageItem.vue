@@ -26,24 +26,33 @@ const DOMPurify = (() => {
 })();
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
-import type { MessageNode } from '../models/types';
+import type { MessageNode, BinaryObject } from '../models/types';
 import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
 import SpeechControl from './SpeechControl.vue';
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
+import ChatToolsMenu from './ChatToolsMenu.vue';
+import { useImagePreview } from '../composables/useImagePreview';
 import { 
   isImageGenerationPending, 
   isImageGenerationProcessed, 
+  getImageGenerationProgress,
   stripNaidanSentinels, 
   IMAGE_BLOCK_LANG,
-  GeneratedImageBlockSchema
+  GeneratedImageBlockSchema,
+  isImageRequest,
+  parseImageRequest,
+  createImageRequestMarker
 } from '../utils/image-generation';
 
 const props = defineProps<{
   message: MessageNode;
   siblings?: MessageNode[];
+  canGenerateImage?: boolean;
+  isProcessing?: boolean;
+  availableImageModels?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -58,8 +67,50 @@ const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const copied = ref(false);
 
+const isImageRequestMsg = computed(() => isImageRequest(props.message.content));
+const editImageMode = ref(false);
+const editImageParams = ref({
+  width: 512,
+  height: 512,
+  model: undefined as string | undefined,
+  count: 1,
+  persistAs: 'original' as 'original' | 'webp' | 'jpeg' | 'png'
+});
+
 const attachmentUrls = ref<Record<string, string>>({});
 const generatedImageUrls = ref<Record<string, string>>({});
+
+const { openPreview } = useImagePreview();
+
+async function handlePreviewImage(id: string) {
+  // To support next/prev navigation, we'd ideally pass all images in this chat or message.
+  // For now, let's at least try to fetch metadata for the clicked one.
+  const obj = await storageService.getBinaryObject({ binaryObjectId: id });
+  if (obj) {
+    // If it's a message attachment, we can pass all images in this message for navigation
+    const allImages: BinaryObject[] = (props.message.attachments || [])
+      .filter(a => a.status !== 'missing' && a.mimeType.startsWith('image/'))
+      .map(a => ({ id: a.binaryObjectId, mimeType: a.mimeType, size: a.size, createdAt: a.uploadedAt, name: a.originalName }));
+    
+    // Also include generated images if they exist in this message's content
+    const placeholders = messageRef.value?.querySelectorAll('.naidan-generated-image');
+    if (placeholders) {
+      for (const el of placeholders) {
+        const hid = (el as HTMLElement).dataset.id;
+        if (hid && !allImages.find(i => i.id === hid)) {
+          // Fetch meta if missing
+          const meta = await storageService.getBinaryObject({ binaryObjectId: hid });
+          if (meta) allImages.push(meta);
+        }
+      }
+    }
+
+    openPreview({ 
+      objects: allImages.length > 0 ? allImages : [obj], 
+      initialId: id 
+    });
+  }
+}
 
 async function loadAttachments() {
   if (!props.message.attachments) return;
@@ -120,7 +171,7 @@ async function loadGeneratedImages() {
       const url = generatedImageUrls.value[id];
       if (url) {
         htmlEl.innerHTML = `
-          <img src="${url}" width="${w}" height="${h}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block">
+          <img src="${url}" width="${w}" height="${h}" alt="generated image" class="naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity">
           <button class="naidan-download-gen-image absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 group-hover/gen-img:opacity-100 transition-all z-10" title="Download image">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
           </button>
@@ -157,6 +208,24 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 watch(isEditing, (editing) => {
   if (editing) {
     editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
+    
+    // Initialize image generation settings if it's an image request
+    if (isImageRequestMsg.value) {
+      editImageMode.value = true;
+      const parsed = parseImageRequest(props.message.content);
+      if (parsed) {
+        editImageParams.value = {
+          width: parsed.width ?? 512,
+          height: parsed.height ?? 512,
+          model: parsed.model || undefined,
+          count: parsed.count ?? 1,
+          persistAs: parsed.persistAs ?? 'original'
+        };
+      }
+    } else {
+      editImageMode.value = false;
+    }
+
     nextTick(() => {
       if (textareaRef.value) {
         textareaRef.value.focus();
@@ -183,13 +252,24 @@ const versionInfo = computed(() => {
 
 function handleSaveEdit() {
   if (editContent.value.trim()) {
-    emit('edit', props.message.id, editContent.value);
+    let finalContent = editContent.value.trimEnd();
+    if (editImageMode.value) {
+      const marker = createImageRequestMarker({
+        width: editImageParams.value.width,
+        height: editImageParams.value.height,
+        model: editImageParams.value.model,
+        count: editImageParams.value.count,
+        persistAs: editImageParams.value.persistAs
+      });
+      finalContent = marker + '\n' + finalContent;
+    }
+    emit('edit', props.message.id, finalContent);
   }
   isEditing.value = false;
 }
 
 function handleCancelEdit() {
-  editContent.value = props.message.content.trimEnd();
+  editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
   isEditing.value = false;
 }
 
@@ -403,6 +483,15 @@ onMounted(() => {
       return;
     }
 
+    // Generated image click (preview)
+    const genImg = target.closest('.naidan-clickable-img') as HTMLImageElement;
+    if (genImg) {
+      const block = genImg.closest('.naidan-generated-image') as HTMLElement;
+      const id = block?.dataset.id;
+      if (id) handlePreviewImage(id);
+      return;
+    }
+
     // Mermaid copy button
     const mCopyBtn = target.closest('.mermaid-copy-btn') as HTMLButtonElement;
     if (mCopyBtn && !mCopyBtn.dataset.copied) {
@@ -433,19 +522,32 @@ onMounted(() => {
       const prompt = block?.dataset.prompt || '';
       const url = id ? generatedImageUrls.value[id] : null;
       
-      if (url) {
-        const filename = sanitizeFilename({
-          base: prompt,
-          suffix: '.png',
-          fallback: 'generated-image',
-        });
-        
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+      if (url && id) {
+        try {
+          const obj = await storageService.getBinaryObject({ binaryObjectId: id });
+          let suffix = '.png';
+          if (obj?.name) {
+            const lastDot = obj.name.lastIndexOf('.');
+            if (lastDot !== -1) {
+              suffix = obj.name.slice(lastDot);
+            }
+          }
+
+          const filename = sanitizeFilename({
+            base: prompt,
+            suffix,
+            fallback: 'generated-image',
+          });
+          
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (err) {
+          console.error('Failed to get binary object info for download:', err);
+        }
       }
       return;
     }
@@ -530,9 +632,6 @@ const displayContent = computed(() => {
   // Remove <think> blocks for display
   const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
 
-  // Treat image generation sentinel as empty for display purposes
-  if (isImageGenerationPending(props.message.content)) return '';
-  
   // If we have any content after removing <think>, return it (even if just whitespace)
   // to signal that we are no longer in "initial loading" state.
   if (cleanContent.length > 0) return cleanContent;
@@ -617,14 +716,15 @@ function handleToggleThinking() {
       </div>
     </div>
     
-    <div class="overflow-hidden">
+    <div :class="isEditing ? 'overflow-visible' : 'overflow-hidden'">
       <!-- Attachments -->
       <div v-if="message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
         <div v-for="att in message.attachments" :key="att.id" class="relative group/att">
           <template v-if="att.status !== 'missing' && attachmentUrls[att.id]">
             <img 
               :src="attachmentUrls[att.id]" 
-              class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm"
+              @click="handlePreviewImage(att.binaryObjectId)"
+              class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
             />
             <a 
               :href="attachmentUrls[att.id]" 
@@ -717,21 +817,46 @@ function handleToggleThinking() {
 
       <!-- Content -->
       <div v-if="isEditing" class="mt-1" data-testid="edit-mode">
-        <textarea 
-          ref="textareaRef"
-          v-model="editContent"
-          @keydown.enter.ctrl.prevent="handleSaveEdit"
-          @keydown.enter.meta.prevent="handleSaveEdit"
-          @keydown.esc.prevent="handleCancelEdit"
-          class="w-full border border-gray-200 dark:border-gray-600 rounded-xl p-4 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 h-32 shadow-sm transition-all"
-          data-testid="edit-textarea"
-        ></textarea>
-        <div class="flex justify-end gap-2 mt-2">
-          <button @click="handleCancelEdit" class="px-4 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">Cancel</button>
-          <button @click="handleSaveEdit" class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
-            <span>{{ isUser ? 'Send & Branch' : 'Update & Branch' }}</span>
-            <span class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
-          </button>
+        <div class="border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all overflow-visible">
+          <textarea 
+            ref="textareaRef"
+            v-model="editContent"
+            @keydown.enter.ctrl.prevent="handleSaveEdit"
+            @keydown.enter.meta.prevent="handleSaveEdit"
+            @keydown.esc.prevent="handleCancelEdit"
+            class="w-full p-4 bg-transparent text-gray-800 dark:text-gray-100 text-sm focus:outline-none h-32 resize-none"
+            data-testid="edit-textarea"
+          ></textarea>
+          
+          <div class="flex items-center justify-between px-3 pb-3">
+            <div class="flex items-center gap-1">
+              <ChatToolsMenu 
+                v-if="canGenerateImage"
+                :can-generate-image="canGenerateImage"
+                :is-processing="isProcessing ?? false"
+                :is-image-mode="editImageMode"
+                :selected-width="editImageParams.width"
+                :selected-height="editImageParams.height"
+                :selected-count="editImageParams.count"
+                :selected-persist-as="editImageParams.persistAs"
+                :available-image-models="availableImageModels ?? []"
+                :selected-image-model="editImageParams.model"
+                direction="down"
+                @toggle-image-mode="editImageMode = !editImageMode"
+                @update:resolution="(w, h) => { editImageParams.width = w; editImageParams.height = h; }"
+                @update:count="c => editImageParams.count = c"
+                @update:persist-as="f => editImageParams.persistAs = f"
+                @update:model="m => editImageParams.model = m"
+              />
+            </div>
+            <div class="flex items-center gap-2">
+              <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">Cancel</button>
+              <button @click="handleSaveEdit" class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
+                <span>{{ isUser ? 'Send & Branch' : 'Update & Branch' }}</span>
+                <span class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <div v-else>
@@ -739,10 +864,13 @@ function handleToggleThinking() {
         <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
 
         <!-- AI Image Synthesis Loader (Componentized) -->
-        <ImageConjuringLoader v-else-if="isImageGenerationPending(message.content) && message.role === 'assistant' && !message.error" />
+        <ImageConjuringLoader 
+          v-if="isImageGenerationPending(message.content) && message.role === 'assistant' && !message.error" 
+          v-bind="getImageGenerationProgress(message.content)"
+        />
 
         <!-- Loading State (Initial Wait for regular text) -->
-        <div v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
+        <div v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending(message.content)" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
           <Loader2 class="w-4 h-4 animate-spin" />
           <span class="text-xs font-medium">Waiting for response...</span>
         </div>

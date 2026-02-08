@@ -22,6 +22,23 @@ vi.mock('../composables/useConfirm', () => ({
   })),
 }));
 
+const mockOpenPreview = vi.fn();
+vi.mock('../composables/useImagePreview', () => ({
+  useImagePreview: vi.fn(() => ({
+    openPreview: mockOpenPreview,
+    closePreview: vi.fn(),
+  })),
+}));
+
+const mockDeleteBinaryObject = vi.fn();
+const mockDownloadBinaryObject = vi.fn();
+vi.mock('../composables/useBinaryActions', () => ({
+  useBinaryActions: vi.fn(() => ({
+    deleteBinaryObject: mockDeleteBinaryObject,
+    downloadBinaryObject: mockDownloadBinaryObject,
+  })),
+}));
+
 vi.mock('../composables/useToast', () => ({
   useToast: vi.fn(() => ({
     addToast: vi.fn(),
@@ -168,55 +185,42 @@ describe('BinaryObjectsTab.vue', () => {
   });
 
   it('opens preview modal when a row is clicked', async () => {
-    document.body.innerHTML = '';
     const wrapper = mount(BinaryObjectsTab, { global: { stubs: globalStubs } });
     await flushPromises();
-
-    vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['mock data'], { type: 'image/png' }));
 
     const row = wrapper.find('tbody tr');
     await row.trigger('click');
     
-    await flushPromises();
-    await nextTick();
-    
-    const bodyText = document.body.textContent;
-    expect(bodyText).toContain('Preview');
-    expect(bodyText).toContain('document.pdf');
+    expect(mockOpenPreview).toHaveBeenCalledWith({
+      objects: expect.any(Array),
+      initialId: '2'
+    });
   });
 
   it('handles file download', async () => {
     const wrapper = mount(BinaryObjectsTab, { global: { stubs: globalStubs } });
     await flushPromises();
 
-    const mockBlob = new Blob(['data'], { type: 'application/pdf' });
-    vi.mocked(storageService.getFile).mockResolvedValue(mockBlob);
-
     const row = wrapper.findAll('tbody tr').find(r => r.text().includes('document.pdf'));
     const downloadBtn = row?.find('button[title="Download"]');
     await downloadBtn?.trigger('click');
     
-    await flushPromises();
-    
-    expect(storageService.getFile).toHaveBeenCalledWith('2');
-    expect(URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
+    expect(mockDownloadBinaryObject).toHaveBeenCalledWith(expect.objectContaining({ id: '2' }));
   });
 
   it('deletes an object after confirmation', async () => {
     const wrapper = mount(BinaryObjectsTab, { global: { stubs: globalStubs } });
     await flushPromises();
 
-    mockShowConfirm.mockResolvedValue(true);
-    vi.mocked(storageService.deleteBinaryObject).mockResolvedValue(undefined);
+    mockDeleteBinaryObject.mockResolvedValue(true);
 
     const row = wrapper.findAll('tbody tr').find(r => r.text().includes('image1.png'));
     const deleteBtn = row?.find('button[title="Delete"]');
     await deleteBtn?.trigger('click');
     
-    expect(mockShowConfirm).toHaveBeenCalled();
     await flushPromises();
     
-    expect(storageService.deleteBinaryObject).toHaveBeenCalledWith('1');
+    expect(mockDeleteBinaryObject).toHaveBeenCalledWith('1');
     expect(wrapper.text()).not.toContain('image1.png');
   });
 
@@ -224,7 +228,7 @@ describe('BinaryObjectsTab.vue', () => {
     const wrapper = mount(BinaryObjectsTab, { global: { stubs: globalStubs } });
     await flushPromises();
 
-    mockShowConfirm.mockResolvedValue(false);
+    mockDeleteBinaryObject.mockResolvedValue(false);
 
     const row = wrapper.findAll('tbody tr').find(r => r.text().includes('image1.png'));
     const deleteBtn = row?.find('button[title="Delete"]');
@@ -232,7 +236,6 @@ describe('BinaryObjectsTab.vue', () => {
     
     await flushPromises();
     
-    expect(storageService.deleteBinaryObject).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain('image1.png');
   });
 

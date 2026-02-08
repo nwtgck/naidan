@@ -303,6 +303,10 @@ export class LocalStorageProvider extends IStorageProvider {
     return null;
   }
 
+  async getBinaryObject({ binaryObjectId: _id }: { binaryObjectId: string }): Promise<BinaryObject | null> {
+    return null;
+  }
+
   async hasAttachments(): Promise<boolean> {
     return false;
   }
