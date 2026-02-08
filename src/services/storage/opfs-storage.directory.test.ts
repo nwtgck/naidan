@@ -31,7 +31,9 @@ class MockFileSystemDirectoryHandle {
       if (options?.create) {
         this.entries.set(name, new MockFileSystemDirectoryHandle(name));
       } else {
-        throw new Error(`Directory not found: ${name}`);
+        const err = new Error(`Directory not found: ${name}`);
+        err.name = 'NotFoundError';
+        throw err;
       }
     }
     const entry = this.entries.get(name);
@@ -44,7 +46,9 @@ class MockFileSystemDirectoryHandle {
       if (options?.create) {
         this.entries.set(name, new MockFileSystemFileHandle(name));
       } else {
-        throw new Error(`File not found: ${name}`);
+        const err = new Error(`File not found: ${name}`);
+        err.name = 'NotFoundError';
+        throw err;
       }
     }
     const entry = this.entries.get(name);

@@ -2,6 +2,7 @@
 import { ref, watch, nextTick, onMounted, computed, defineAsyncComponent } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
+import { useChatDraft } from '../composables/useChatDraft';
 import { useSettings } from '../composables/useSettings';
 import { useLayout } from '../composables/useLayout';
 import MessageItem from './MessageItem.vue';
@@ -22,6 +23,7 @@ import type { Attachment } from '../models/types';
 
 
 const chatStore = useChat();
+const { getDraft, saveDraft, clearDraft } = useChatDraft();
 const {
   currentChat,
   streaming,
@@ -163,8 +165,10 @@ async function processFiles(files: File[]) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
     
+    const attachmentId = crypto.randomUUID();
     const attachment: Attachment = {
-      id: crypto.randomUUID(),
+      id: attachmentId,
+      binaryObjectId: crypto.randomUUID(),
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
@@ -412,6 +416,7 @@ async function handleGenerateImage() {
   
   const prompt = input.value;
   const currentAttachments = [...attachments.value];
+  const sendingChatId = currentChat.value.id;
   const { width, height } = currentResolution.value;
   const success = await chatStore.sendImageRequest({ 
     prompt, 
@@ -420,8 +425,11 @@ async function handleGenerateImage() {
     attachments: currentAttachments
   });
   if (success) {
-    input.value = '';
-    attachments.value = [];
+    if (currentChat.value?.id === sendingChatId) {
+      input.value = '';
+      attachments.value = [];
+    }
+    clearDraft(sendingChatId);
     nextTick(adjustTextareaHeight);
   }
 }
@@ -436,6 +444,7 @@ async function handleSend() {
 
   const text = input.value;
   const currentAttachments = [...attachments.value];
+  const sendingChatId = currentChat.value?.id;
   
   if (isMaximized.value && textareaRef.value) {
     const startHeight = textareaRef.value.getBoundingClientRect().height;
@@ -456,8 +465,11 @@ async function handleSend() {
   const success = await chatStore.sendMessage(text, undefined, currentAttachments);
   
   if (success) {
-    input.value = '';
-    attachments.value = [];
+    if (currentChat.value?.id === sendingChatId) {
+      input.value = '';
+      attachments.value = [];
+    }
+    clearDraft(sendingChatId);
     
     nextTick(() => { // Ensure textarea is cleared before adjusting height
       adjustTextareaHeight();
@@ -531,7 +543,20 @@ watch(isMaximized, () => {
 
 watch(
   () => currentChat.value?.id,
-  () => {
+  (newId, oldId) => {
+    // Save previous draft
+    saveDraft(oldId, { 
+      input: input.value, 
+      attachments: attachments.value,
+      attachmentUrls: attachmentUrls.value
+    });
+
+    // Load new draft
+    const draft = getDraft(newId);
+    input.value = draft.input;
+    attachments.value = draft.attachments;
+    attachmentUrls.value = draft.attachmentUrls;
+
     if (currentChat.value) {
       isMaximized.value = false;
       fetchModels();
@@ -542,6 +567,7 @@ watch(
       });
     }
   },
+  { immediate: true }
 );
 
 onMounted(async () => {
@@ -582,8 +608,17 @@ onMounted(async () => {
 import { onUnmounted } from 'vue';
 onUnmounted(() => {
   window.removeEventListener('resize', adjustTextareaHeight);
-  // Revoke all created URLs
-  Object.values(attachmentUrls.value).forEach(url => URL.revokeObjectURL(url));
+  
+  // Save final state
+  saveDraft(currentChat.value?.id, {
+    input: input.value,
+    attachments: attachments.value,
+    attachmentUrls: attachmentUrls.value
+  });
+
+  // Revoke all created URLs across all drafts to prevent leaks
+  const { revokeAll } = useChatDraft();
+  revokeAll();
 });
 </script>
 

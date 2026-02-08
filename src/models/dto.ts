@@ -95,14 +95,44 @@ export type HierarchyDto = z.infer<typeof HierarchySchemaDto>;
 
 export const AttachmentStatusSchemaDto = z.enum(['persisted', 'memory', 'missing']);
 
-export const AttachmentSchemaDto = z.object({
+export const BinaryObjectSchemaDto = z.object({
+  id: z.string().uuid(),
+  mimeType: z.string(),
+  size: z.number(),
+  createdAt: z.number(),
+  name: z.string().optional(),
+});
+export type BinaryObjectDto = z.infer<typeof BinaryObjectSchemaDto>;
+
+/**
+ * Shard Index
+ * Stores metadata for all binary objects within a specific shard.
+ */
+export const BinaryShardIndexSchemaDto = z.object({
+  objects: z.record(z.string().uuid(), BinaryObjectSchemaDto),
+});
+export type BinaryShardIndexDto = z.infer<typeof BinaryShardIndexSchemaDto>;
+
+export const AttachmentSchemaDtoV1 = z.object({
   id: z.string().uuid(),
   originalName: z.string(),
   mimeType: z.string(),
   size: z.number(),
   uploadedAt: z.number(),
-  status: z.enum(['persisted', 'memory', 'missing']),
+  status: AttachmentStatusSchemaDto,
 });
+
+export const AttachmentSchemaDtoV2 = z.object({
+  id: z.string().uuid(),
+  binaryObjectId: z.string().uuid(),
+  name: z.string(),
+  status: AttachmentStatusSchemaDto,
+});
+
+export const AttachmentSchemaDto = z.union([
+  AttachmentSchemaDtoV2,
+  AttachmentSchemaDtoV1,
+]);
 export type AttachmentDto = z.infer<typeof AttachmentSchemaDto>;
 
 export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() => z.object({
@@ -227,12 +257,23 @@ export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
 export type MigrationChunkDto = 
   | { type: 'chat'; data: ChatDto }
   | { 
-      type: 'attachment'; 
-      chatId: string; 
-      attachmentId: string; 
-      originalName: string; 
+      type: 'binary_object'; 
+      id: string; // The binaryObjectId
+      name: string; 
       mimeType: string;
       size: number;
-      uploadedAt: number;
+      createdAt: number;
       blob: Blob 
     };
+
+/**
+ * Migration State
+ * Tracks completed data migrations to ensure they only run once.
+ */
+export const MigrationStateSchemaDto = z.object({
+  completedMigrations: z.array(z.object({
+    name: z.string(),
+    completedAt: z.number(),
+  })),
+});
+export type MigrationStateDto = z.infer<typeof MigrationStateSchemaDto>;

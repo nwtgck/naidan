@@ -1,14 +1,17 @@
 import { ref } from 'vue';
 import { OllamaProvider } from '../services/llm';
+import { storageService } from '../services/storage';
 import { 
   getImageGenerationModels, 
   SENTINEL_IMAGE_PENDING, 
   SENTINEL_IMAGE_PROCESSED,
-  createImageRequestMarker
+  createImageRequestMarker,
+  IMAGE_BLOCK_LANG,
+  type GeneratedImageBlock
 } from '../utils/image-generation';
-import { naturalSort } from '../utils/string';
+import { naturalSort, sanitizeFilename } from '../utils/string';
 import type { Chat, ChatContent, Attachment } from '../models/types';
-import { findNodeInBranch, fileToDataUrl } from '../utils/chat-tree';
+import { findNodeInBranch } from '../utils/chat-tree';
 
 // Shared state across all instances to maintain consistency
 const imageModeMap = ref<Record<string, boolean>>({});
@@ -162,22 +165,39 @@ export function useImageGeneration() {
       });
       if (!blob) throw new Error('Failed to generate image');
 
-      const url = await (async () => {
-        switch (storageType) {
-        case 'opfs':
-          return await fileToDataUrl(blob);
-        case 'local':
-          return URL.createObjectURL(blob);
-        default: {
-          const _ex: never = storageType;
-          throw new Error(`Unhandled storage type: ${_ex}`);
-        }
-        }
-      })();
-
       const displayWidth = width * 0.8;
       const displayHeight = height * 0.8;
-      assistantNode.content = `${SENTINEL_IMAGE_PROCESSED}<img src="${url}" width="${displayWidth}" height="${displayHeight}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
+
+      switch (storageType) {
+      case 'opfs': {
+        const binaryObjectId = crypto.randomUUID();
+        const fileName = sanitizeFilename({
+          base: prompt,
+          suffix: '.png',
+          fallback: `generated-${Date.now()}`
+        });
+        await storageService.saveFile(blob, binaryObjectId, fileName);
+        
+        const block: GeneratedImageBlock = { 
+          binaryObjectId, 
+          displayWidth, 
+          displayHeight,
+          prompt
+        };
+        
+        assistantNode.content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(block, null, 2)}\n\`\`\``;
+        break;
+      }
+      case 'local': {
+        const url = URL.createObjectURL(blob);
+        assistantNode.content = `${SENTINEL_IMAGE_PROCESSED}<img src="${url}" width="${displayWidth}" height="${displayHeight}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
+        break;
+      }
+      default: {
+        const _ex: never = storageType;
+        throw new Error(`Unhandled storage type: ${_ex}`);
+      }
+      }
     } catch (e) {
       assistantNode.error = (e as Error).message;
       assistantNode.content = 'Failed to generate image.';

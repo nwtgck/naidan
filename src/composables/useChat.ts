@@ -798,7 +798,7 @@ export function useChat() {
                 blob = att.blob || null;
                 break;
               case 'persisted':
-                blob = await storageService.getFile(att.id, att.originalName);
+                blob = await storageService.getFile(att.binaryObjectId);
                 break;
               case 'missing':
                 blob = null;
@@ -847,7 +847,7 @@ export function useChat() {
               blob = att.blob;
               break;
             case 'persisted':
-              blob = await storageService.getFile(att.id, att.originalName);
+              blob = await storageService.getFile(att.binaryObjectId);
               break;
             case 'missing':
               blob = null;
@@ -998,8 +998,8 @@ export function useChat() {
         case 'memory':
           if (canPersist) {
             try {
-              await storageService.saveFile(att.blob, att.id, att.originalName);
-              processedAttachments.push({ id: att.id, originalName: att.originalName, mimeType: att.mimeType, size: att.size, uploadedAt: att.uploadedAt, status: 'persisted', });
+              await storageService.saveFile(att.blob, att.binaryObjectId, att.originalName);
+              processedAttachments.push({ ...att, status: 'persisted' });
             } catch (e) {
               processedAttachments.push(att); 
             }
@@ -1330,7 +1330,7 @@ export function useChat() {
           case 'memory':
             if (canPersist) {
               try {
-                await storageService.saveFile(att.blob, att.id, att.originalName);
+                await storageService.saveFile(att.blob, att.binaryObjectId, att.originalName);
                 msg.attachments[i] = { ...att, status: 'persisted' };
               } catch (e) {
                 console.error('Failed to persist attachment during manipulation:', e);

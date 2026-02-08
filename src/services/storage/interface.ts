@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot } from '../../models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '../../models/types';
 import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '../../models/dto';
 
 export type { ChatSummary };
@@ -108,7 +108,18 @@ export abstract class IStorageProvider {
   abstract clearAll(): Promise<void>;
 
   // --- File Storage ---
-  abstract saveFile(blob: Blob, attachmentId: string, originalName: string): Promise<void>;
-  abstract getFile(attachmentId: string, originalName: string): Promise<Blob | null>;
+  /**
+   * @deprecated Use the named arguments version instead.
+   */
+  abstract saveFile(blob: Blob, binaryObjectId: string, name: string, mimeType?: string, size?: number): Promise<void>;
+  abstract saveFile(params: {
+    blob: Blob;
+    binaryObjectId: string;
+    name: string;
+    mimeType: string | undefined;
+  }): Promise<void>;
+  abstract getFile(binaryObjectId: string): Promise<Blob | null>;
   abstract hasAttachments(): Promise<boolean>;
+  abstract listBinaryObjects(): AsyncIterable<BinaryObject>;
+  abstract deleteBinaryObject(binaryObjectId: string): Promise<void>;
 }

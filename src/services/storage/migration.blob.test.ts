@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { storageService } from './index';
 
+// Polyfill Blob.arrayBuffer if missing in test environment
+if (!Blob.prototype.arrayBuffer) {
+  Blob.prototype.arrayBuffer = async function() {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.readAsArrayBuffer(this);
+    });
+  };
+}
+
 describe('Storage Migration - Blob rescue via switchProvider', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -10,8 +21,14 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     const entries = new Map();
     const mockRoot = {
       getDirectoryHandle: vi.fn().mockImplementation(async (name, opts) => {
-        if (!entries.has(name) && opts?.create) {
-          entries.set(name, createMockDir(name));
+        if (!entries.has(name)) {
+          if (opts?.create) {
+            entries.set(name, createMockDir(name));
+          } else {
+            const err = new Error(`Directory not found: ${name}`);
+            err.name = 'NotFoundError';
+            throw err;
+          }
         }
         return entries.get(name);
       }),
@@ -50,7 +67,15 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
         kind: 'directory',
         name,
         getDirectoryHandle: vi.fn().mockImplementation(async (n, _opts) => {
-          if (!subEntries.has(n) && _opts?.create) subEntries.set(n, createMockDir(n));
+          if (!subEntries.has(n)) {
+            if (_opts?.create) {
+              subEntries.set(n, createMockDir(n));
+            } else {
+              const err = new Error(`Directory not found: ${n}`);
+              err.name = 'NotFoundError';
+              throw err;
+            }
+          }
           return subEntries.get(n);
         }),
         getFileHandle: vi.fn().mockImplementation(async (n, _opts) => {
@@ -97,6 +122,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
           timestamp: Date.now(),
           attachments: [{
             id: '550e8400-e29b-41d4-a716-446655440002',
+            binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
             originalName: 'test.png',
             mimeType: 'image/png',
             size: 100,

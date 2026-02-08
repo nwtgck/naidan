@@ -11,6 +11,7 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "preserve",
+    "lib": ["esnext", "dom", "dom.iterable", "dom.asynciterable"],
 
     /* Strict Type-Checking Options */
     "strict": true,

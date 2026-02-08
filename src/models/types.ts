@@ -41,7 +41,8 @@ export interface ChatMessage {
 }
 
 export interface AttachmentBase {
-  id: string;           // UUID (directory name)
+  id: string;           // Attachment ID
+  binaryObjectId: string; // Pointer to the immutable Binary Object
   originalName: string;
   mimeType: string;
   size: number;
@@ -162,6 +163,14 @@ export type HierarchyNode = HierarchyChatNode | HierarchyChatGroupNode;
 
 export interface Hierarchy {
   items: HierarchyNode[];
+}
+
+export interface BinaryObject {
+  id: string;
+  mimeType: string;
+  size: number;
+  createdAt: number;
+  name?: string;
 }
 
 /**

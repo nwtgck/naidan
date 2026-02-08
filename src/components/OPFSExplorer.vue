@@ -56,15 +56,26 @@ async function loadDirectory(handle: FileSystemDirectoryHandle) {
   try {
     error.value = null;
     const newEntries: OPFSEntry[] = [];
-    // @ts-expect-error: values() is not in the standard TS lib for FileSystemDirectoryHandle yet
     for await (const entry of handle.values()) {
       let size: number | undefined;
       let lastModified: number | undefined;
-      if (entry.kind === 'file') {
+      
+      const kind = entry.kind;
+      switch (kind) {
+      case 'file': {
         const file = await (entry as FileSystemFileHandle).getFile();
         size = file.size;
         lastModified = file.lastModified;
+        break;
       }
+      case 'directory':
+        break;
+      default: {
+        const _ex: never = kind;
+        throw new Error(`Unhandled entry kind: ${_ex}`);
+      }
+      }
+
       newEntries.push({
         name: entry.name,
         kind: entry.kind,
@@ -327,7 +338,7 @@ function close() {
               <p class="text-sm font-bold text-gray-600 dark:text-gray-400 mb-1">Binary File</p>
               <p class="text-[10px] uppercase tracking-widest opacity-50 font-bold">Preview not available for this file type</p>
               <div class="mt-6 px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl">
-                <span class="text-[10px] font-bold font-mono">Size: {{ formatSize(selectedFile.size) }} ({{ selectedFile.size.toLocaleString() }} bytes)</span>
+                <span class="text-[10px] font-bold font-mono">Size: {{ formatSize(selectedFile.size) }} ({{ selectedFile.size }} bytes)</span>
               </div>
             </div>
           </div>

@@ -34,10 +34,14 @@ class MockFileSystemDirectoryHandle {
       if (options?.create) {
         this.entries.set(name, new MockFileSystemDirectoryHandle(name));
       } else {
-        throw new Error('Directory not found');
+        const err = new Error(`Directory not found: ${name}`);
+        err.name = 'NotFoundError';
+        throw err;
       }
     }
-    return this.entries.get(name);
+    const entry = this.entries.get(name);
+    if (entry?.kind !== 'directory') throw new Error(`Not a directory: ${name}`);
+    return entry;
   }
 
   async getFileHandle(name: string, options?: { create?: boolean }) {
@@ -45,10 +49,14 @@ class MockFileSystemDirectoryHandle {
       if (options?.create) {
         this.entries.set(name, new MockFileSystemFileHandle(name));
       } else {
-        return undefined; // Real API behavior
+        const err = new Error(`File not found: ${name}`);
+        err.name = 'NotFoundError';
+        throw err;
       }
     }
-    return this.entries.get(name);
+    const entry = this.entries.get(name);
+    if (entry?.kind !== 'file') throw new Error(`Not a file: ${name}`);
+    return entry;
   }
 
   async removeEntry(name: string, _options?: { recursive?: boolean }) {

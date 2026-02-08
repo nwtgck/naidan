@@ -3,7 +3,7 @@
     <div
       v-if="_props.show"
       data-testid="custom-dialog-overlay"
-      class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px] focus:outline-none"
+      class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px] focus:outline-none"
       @keydown.esc="cancel"
       @click="setActiveFocusArea('dialog')"
       @focusin="setActiveFocusArea('dialog')"

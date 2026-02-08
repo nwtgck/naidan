@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, afterAll } from 'vitest';
+import { describe, it, expect, vi, afterAll, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { ref, isRef, reactive } from 'vue';
 import { asyncComponentTracker } from '../utils/async-component-test-utils';
+import { useChatDraft } from '../composables/useChatDraft';
 
 vi.mock('vue', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue')>();
@@ -93,6 +94,11 @@ vi.mock('../services/storage', () => ({
 }));
 
 describe('ChatArea - Attachment UI', () => {
+  beforeEach(() => {
+    const { clearAllDrafts } = useChatDraft();
+    clearAllDrafts();
+  });
+
   afterAll(async () => {
     await asyncComponentTracker.wait();
   });
