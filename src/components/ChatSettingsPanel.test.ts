@@ -56,7 +56,11 @@ describe('ChatSettingsPanel.vue', () => {
     Loader2: true,
     Settings2: true,
     AlertCircle: true,
-    TransformersJsUpsell: true,
+    TransformersJsUpsell: {
+      name: 'TransformersJsUpsell',
+      template: '<div data-testid="upsell-stub"></div>',
+      props: ['show']
+    },
     Check: { name: 'Check', template: '<span class="check-stub" />' },
     ModelSelector: {
       name: 'ModelSelector',
@@ -147,12 +151,18 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   it('shows upsell component when effective type is transformers_js', async () => {
-    mockSettings.value.endpointType = 'transformers_js';
+    mockSettings.value.endpointType = 'openai';
     const wrapper = mount(ChatSettingsPanel, { 
       props: { show: true },
       global: { stubs: globalStubs } 
     });
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    mockSettings.value.endpointType = 'transformers_js';
     await nextTick();
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     const upsell = wrapper.findComponent({ name: 'TransformersJsUpsell' });
     expect(upsell.props('show')).toBe(true);

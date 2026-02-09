@@ -1,19 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterAll, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, reactive, nextTick } from 'vue';
 import App from './App.vue';
 import type { Chat } from './models/types';
-import { asyncComponentTracker } from './utils/async-component-test-utils';
-
-vi.mock('vue', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('vue')>();
-  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('./utils/async-component-test-utils');
-  return wrapVueWithAsyncTracking(actual);
-});
-
+import { useRouter, useRoute } from 'vue-router';
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm';
-import { useRouter, useRoute } from 'vue-router';
 
 // Define mock refs in module scope so they can be shared
 const mockCreateNewChat = vi.fn();
@@ -92,9 +84,7 @@ vi.mock('./components/ToastContainer.vue', () => ({
 // Instead we stub them in the mount options.
 
 describe('App', () => {
-  afterAll(async () => {
-    await asyncComponentTracker.wait();
-  });
+  
 
   const mockInit = vi.fn();
   const currentRoute = reactive({ path: '/', query: {} as any });

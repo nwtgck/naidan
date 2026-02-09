@@ -374,10 +374,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         global: { stubs: globalStubs },
       });
       await flushPromises();
+      await vi.dynamicImportSettled();
 
       // Trigger the "Reset All Application Data" button to open a dialog
       mockShowConfirm.mockResolvedValueOnce(true); // Simulate confirmation
       await wrapper.findAll('nav button').find(b => b.text().includes('Developer'))?.trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
+
       await wrapper.find('[data-testid="setting-reset-data-button"]').trigger('click');
       await flushPromises();
 
@@ -395,6 +399,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   it('renders initial settings correctly in the Connection tab', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
+    await vi.dynamicImportSettled();
 
     expect(wrapper.text()).toContain('Endpoint Configuration');
     const urlInput = wrapper.find('[data-testid="setting-url-input"]');
@@ -404,23 +409,32 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   it('navigates between Connection, Profiles, Storage, and Developer tabs', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
+    await vi.dynamicImportSettled();
 
     const navButtons = wrapper.findAll('nav button');
     
     // Profiles
     await navButtons.find(b => b.text().includes('Provider Profiles'))?.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     expect(wrapper.text()).toContain('Save and switch');
 
     // Storage
     await navButtons.find(b => b.text().includes('Storage'))?.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     expect(wrapper.text()).toContain('Storage Management');
 
     // Developer
     await navButtons.find(b => b.text().includes('Developer'))?.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     expect(wrapper.text()).toContain('Developer Tools');
 
     // About
     await navButtons.find(b => b.text().includes('About'))?.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     expect(wrapper.text()).toContain('About Naidan');
     expect(wrapper.text()).toContain('Version');
     expect(wrapper.text()).toContain('Open Source Licenses');
@@ -720,8 +734,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   it('triggers data reset after confirmation', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
+    await vi.dynamicImportSettled();
 
     await wrapper.findAll('nav button').find(b => b.text().includes('Developer'))?.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     mockShowConfirm.mockResolvedValueOnce(true);
 
@@ -942,8 +959,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
+      await vi.dynamicImportSettled();
 
       await wrapper.findAll('nav button').find(b => b.text().includes('Provider Profiles'))?.trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
       
       await wrapper.find('[data-testid="provider-profile-rename-button"]').trigger('click');
       

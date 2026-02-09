@@ -17,14 +17,20 @@ import {
   Github, ExternalLink, Download, BrainCircuit,
   File
 } from 'lucide-vue-next';
-import RecipeImportTab from './RecipeImportTab.vue';
-import ProviderProfilesTab from './ProviderProfilesTab.vue';
-import TransformersJsManager from './TransformersJsManager.vue';
-import StorageTab from './StorageTab.vue';
-import BinaryObjectsTab from './BinaryObjectsTab.vue';
-import DeveloperTab from './DeveloperTab.vue';
-import AboutTab from './AboutTab.vue';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+
+// Lazily load tabs that are not visible by default, but prefetch them when idle.
+const RecipeImportTab = defineAsyncComponentAndLoadOnMounted(() => import('./RecipeImportTab.vue'));
+const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted(() => import('./ProviderProfilesTab.vue'));
+const TransformersJsManager = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsManager.vue'));
+const StorageTab = defineAsyncComponentAndLoadOnMounted(() => import('./StorageTab.vue'));
+const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectsTab.vue'));
+const DeveloperTab = defineAsyncComponentAndLoadOnMounted(() => import('./DeveloperTab.vue'));
+const AboutTab = defineAsyncComponentAndLoadOnMounted(() => import('./AboutTab.vue'));
+
+// IMPORTANT: ConnectionTab is the default tab, so we import it synchronously to ensure it's ready immediately when the modal opens.
 import ConnectionTab from './ConnectionTab.vue';
+
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
 import { useLayout } from '../composables/useLayout';
 import { naturalSort } from '../utils/string';

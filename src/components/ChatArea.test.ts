@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach, type Mock, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from 'vitest';
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick, ref, reactive } from 'vue';
@@ -117,13 +117,7 @@ vi.mock('mermaid', () => ({
   },
 }));
 
-import { asyncComponentTracker } from '../utils/async-component-test-utils';
 
-vi.mock('vue', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('vue')>();
-  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
-  return wrapVueWithAsyncTracking(actual);
-});
 
 interface ChatAreaExposed {
   scrollToBottom: () => void;
@@ -167,10 +161,6 @@ function resetMocks() {
 }
 
 describe('ChatArea UI States', () => {
-  afterAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
@@ -416,11 +406,6 @@ describe('ChatArea UI States', () => {
 
 describe('ChatArea Scrolling Logic', () => {
   let scrollTopSetterSpy: Mock;
-
-  beforeAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
@@ -556,10 +541,6 @@ describe('ChatArea Scrolling Logic', () => {
 });
 
 describe('ChatArea Focus', () => {
-  beforeAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
@@ -606,10 +587,6 @@ describe('ChatArea Focus', () => {
 });
 
 describe('ChatArea Export Functionality', () => {
-  beforeAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   // Mock browser APIs for file download
   const mockCreateObjectURL = vi.fn((blob: Blob | MediaSource) => {
     // Mock Blob content access for testing
@@ -813,10 +790,6 @@ describe('ChatArea Export Functionality', () => {
 });
 
 describe('ChatArea Textarea Sizing', () => {
-  beforeAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   const mockWindowInnerHeight = 1000; // Mock viewport height for 80vh calculation
   let originalGetComputedStyle: any;
 
@@ -1314,10 +1287,6 @@ describe('ChatArea Textarea Sizing', () => {
 });
 
 describe('ChatArea Welcome Screen & Suggestions', () => {
-  beforeAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
@@ -1378,10 +1347,6 @@ describe('ChatArea Welcome Screen & Suggestions', () => {
 });
 
 describe('ChatArea Model Selection', () => {
-  beforeAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   beforeEach(() => {
     resetMocks();
     mockAvailableModels.value = ['model-1', 'model-2'];

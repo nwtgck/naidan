@@ -8,10 +8,18 @@ import {
   MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus,
   ChefHat
 } from 'lucide-vue-next';
-import LmParametersEditor from './LmParametersEditor.vue';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+
+// IMPORTANT: ModelSelector is used for immediate model override feedback and should not flicker.
 import ModelSelector from './ModelSelector.vue';
-import RecipeExportModal from './RecipeExportModal.vue';
-import TransformersJsUpsell from './TransformersJsUpsell.vue';
+
+// Lazily load heavier or secondary settings components, but prefetch them when idle.
+const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./LmParametersEditor.vue'));
+// Lazily load modals that are only shown on-demand
+const RecipeExportModal = defineAsyncComponentAndLoadOnMounted(() => import('./RecipeExportModal.vue'));
+// Lazily load upsell UI
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
+
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { ChatGroup } from '../models/types';
 import { naturalSort } from '../utils/string';

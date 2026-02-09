@@ -1,15 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { ref, nextTick } from 'vue';
 import { Image, Send } from 'lucide-vue-next';
-import { asyncComponentTracker } from '../utils/async-component-test-utils';
 
-vi.mock('vue', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('vue')>();
-  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
-  return wrapVueWithAsyncTracking(actual);
-});
 
 // Mock useChat singleton
 const mockIsImageMode = ref(false);
@@ -64,10 +58,6 @@ vi.mock('vue-router', () => ({
 }));
 
 describe('ChatArea Image Generation Integration', () => {
-  afterAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsImageMode.value = false;
@@ -77,6 +67,8 @@ describe('ChatArea Image Generation Integration', () => {
     mockIsImageMode.value = true;
 
     const wrapper = mount(ChatArea);
+    await flushPromises();
+    await vi.dynamicImportSettled();
     await nextTick();
     
     // Check if Image icon exists instead of Send icon
@@ -87,6 +79,9 @@ describe('ChatArea Image Generation Integration', () => {
     mockIsImageMode.value = true;
     
     const wrapper = mount(ChatArea);
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
     const textarea = wrapper.find('textarea');
     await textarea.setValue('a majestic mountain');
     
@@ -107,6 +102,9 @@ describe('ChatArea Image Generation Integration', () => {
     mockIsImageMode.value = true;
     
     const wrapper = mount(ChatArea);
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
     const vm = wrapper.vm as any;
     
     const mockFile = new File(['test'], 'test.png', { type: 'image/png' });
@@ -135,10 +133,14 @@ describe('ChatArea Image Generation Integration', () => {
 
   it('can toggle image mode from the tools menu', async () => {
     const wrapper = mount(ChatArea);
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     // Open menu
     const toolsButton = wrapper.find('[data-testid="chat-tools-button"]');
     await toolsButton.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     // Click toggle image mode
     const toggleButton = wrapper.find('[data-testid="toggle-image-mode-button"]');
@@ -152,6 +154,8 @@ describe('ChatArea Image Generation Integration', () => {
     // Start in image mode
     mockIsImageMode.value = true;
     const wrapper = mount(ChatArea);
+    await flushPromises();
+    await vi.dynamicImportSettled();
     await nextTick();
     expect(wrapper.findComponent(Image).exists()).toBe(true);
 
@@ -168,6 +172,9 @@ describe('ChatArea Image Generation Integration', () => {
     mockChatStore.getCount.mockReturnValue(3); // User requested 3 images
     
     const wrapper = mount(ChatArea);
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
     const textarea = wrapper.find('textarea');
     await textarea.setValue('a futuristic city');
     
