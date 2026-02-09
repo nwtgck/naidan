@@ -1,21 +1,32 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, computed, defineAsyncComponent } from 'vue';
+import { ref, watch, nextTick, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useChatDraft } from '../composables/useChatDraft';
 import { useSettings } from '../composables/useSettings';
 import { useLayout } from '../composables/useLayout';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+
+// IMPORTANT: MessageItem is the core of the chat experience. We import it synchronously 
+// to ensure the chat history displays immediately and smoothly without individual components popping in.
 import MessageItem from './MessageItem.vue';
+// IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
+// IMPORTANT: ModelSelector is an essential part of the input area.
 import ModelSelector from './ModelSelector.vue';
+// IMPORTANT: ChatToolsMenu is an essential part of the input area.
 import ChatToolsMenu from './ChatToolsMenu.vue';
-import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
+
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
 import { naturalSort } from '../utils/string';
 import { useImagePreview } from '../composables/useImagePreview';
 import { useBinaryActions } from '../composables/useBinaryActions';
 
-const ChatSettingsPanel = defineAsyncComponent(() => import('./ChatSettingsPanel.vue'));
-const HistoryManipulationModal = defineAsyncComponent(() => import('./HistoryManipulationModal.vue'));
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted(() => import('./HistoryManipulationModal.vue'));
 import { 
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, GitFork, RefreshCw,

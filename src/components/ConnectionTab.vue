@@ -9,10 +9,18 @@ import {
   CheckCircle2, BookmarkPlus,
   Check, Activity, MessageSquareQuote, Plus
 } from 'lucide-vue-next';
-import LmParametersEditor from './LmParametersEditor.vue';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+
+// IMPORTANT: ModelSelector is a core part of the connection setup UI and should not flicker.
 import ModelSelector from './ModelSelector.vue';
-import ProviderProfilePreview from './ProviderProfilePreview.vue';
-import TransformersJsUpsell from './TransformersJsUpsell.vue';
+
+// Lazily load heavier or secondary settings components, but prefetch them when idle.
+const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./LmParametersEditor.vue'));
+// Lazily load previews that are only shown during specific actions
+const ProviderProfilePreview = defineAsyncComponentAndLoadOnMounted(() => import('./ProviderProfilePreview.vue'));
+// Lazily load upsell UI
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
+
 import { useConfirm } from '../composables/useConfirm';
 import { usePrompt } from '../composables/usePrompt';
 import { ENDPOINT_PRESETS } from '../models/constants';

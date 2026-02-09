@@ -8,7 +8,9 @@ import {
   Trash2, RefreshCw, LayoutGrid, List
 } from 'lucide-vue-next';
 import { Semaphore } from '../utils/concurrency';
-import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+// Lazily load the preview modal since it's only shown after user interaction, but prefetch it when idle.
+const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
 import { useBinaryActions } from '../composables/useBinaryActions';
 

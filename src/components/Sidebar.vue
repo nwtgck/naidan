@@ -5,8 +5,11 @@ import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
+// IMPORTANT: Logo is part of the initial sidebar layout and should not flicker.
 import Logo from './Logo.vue';
+// IMPORTANT: ThemeToggle is part of the initial sidebar layout and should not flicker.
 import ThemeToggle from './ThemeToggle.vue';
+// IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
