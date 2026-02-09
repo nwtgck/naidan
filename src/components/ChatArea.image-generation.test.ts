@@ -1,15 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { ref, nextTick } from 'vue';
 import { Image, Send } from 'lucide-vue-next';
-import { asyncComponentTracker } from '../utils/async-component-test-utils';
 
-vi.mock('vue', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('vue')>();
-  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
-  return wrapVueWithAsyncTracking(actual);
-});
 
 // Mock useChat singleton
 const mockIsImageMode = ref(false);
@@ -64,10 +58,6 @@ vi.mock('vue-router', () => ({
 }));
 
 describe('ChatArea Image Generation Integration', () => {
-  afterAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsImageMode.value = false;

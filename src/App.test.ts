@@ -84,11 +84,7 @@ vi.mock('./components/ToastContainer.vue', () => ({
 // Instead we stub them in the mount options.
 
 describe('App', () => {
-  /*
-  afterAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-  */
+  
 
   const mockInit = vi.fn();
   const currentRoute = reactive({ path: '/', query: {} as any });
