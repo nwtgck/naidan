@@ -47,10 +47,14 @@ export class OPFSStorageProvider extends IStorageProvider {
   readonly canPersistBinary = true;
 
   async init(): Promise<void> {
+    await this.ensureRoot();
+    await this.runMigrations();
+  }
+
+  private async ensureRoot(): Promise<void> {
     if (!this.root) {
       const opfsRoot = await navigator.storage.getDirectory();
       this.root = await opfsRoot.getDirectoryHandle(this.STORAGE_DIR, { create: true });
-      await this.runMigrations();
     }
   }
 
@@ -197,7 +201,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   private async getDir(name: string, parent: FileSystemDirectoryHandle = this.root!): Promise<FileSystemDirectoryHandle> {
-    await this.init();
+    await this.ensureRoot();
     return await parent.getDirectoryHandle(name, { create: true });
   }
 
@@ -353,7 +357,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   // --- Hierarchy Management ---
 
   async loadHierarchy(): Promise<HierarchyDto | null> {
-    await this.init();
+    await this.ensureRoot();
     try {
       const fileHandle = await this.root!.getFileHandle('hierarchy.json');
       const file = await fileHandle.getFile();
@@ -365,7 +369,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async saveHierarchy(hierarchy: HierarchyDto): Promise<void> {
-    await this.init();
+    await this.ensureRoot();
     const fileHandle = await this.root!.getFileHandle('hierarchy.json', { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(hierarchy));
@@ -621,7 +625,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async *listBinaryObjects(): AsyncIterable<BinaryObject> {
-    await this.init();
+    await this.ensureRoot();
     try {
       const baseDir = await this.getBinaryObjectsDir();
       for await (const shardEntry of baseDir.values()) {
@@ -648,7 +652,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async deleteBinaryObject(binaryObjectId: string): Promise<void> {
-    await this.init();
+    await this.ensureRoot();
     const shard = this.getBinaryObjectShardPath(binaryObjectId);
     const dir = await this.getShardDir(shard);
     const fileName = `${binaryObjectId}.bin`;
@@ -669,7 +673,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async saveSettings(settings: Settings): Promise<void> {
-    await this.init();
+    await this.ensureRoot();
     const dto = settingsToDto(settings);
     const validated = SettingsSchemaDto.parse(dto);
     const fileHandle = await this.root!.getFileHandle('settings.json', { create: true }) as FileSystemFileHandleWithWritable;
@@ -679,7 +683,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async loadSettings(): Promise<Settings | null> {
-    await this.init();
+    await this.ensureRoot();
     try {
       const fileHandle = await this.root!.getFileHandle('settings.json');
       const file = await fileHandle.getFile();
@@ -690,7 +694,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async clearAll(): Promise<void> {
-    await this.init();
+    await this.ensureRoot();
     for await (const key of this.root!.keys()) {
       await this.root!.removeEntry(key, { recursive: true });
     }
@@ -699,7 +703,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   // --- Migration Implementation ---
 
   async dump(): Promise<StorageSnapshot> {
-    await this.init();
+    await this.ensureRoot();
     const [settings, hierarchy, rawMetas, rawGroups] = await Promise.all([
       this.loadSettings(),
       this.loadHierarchy(),
@@ -777,7 +781,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async restore(snapshot: StorageSnapshot): Promise<void> {
     const { structure, contentStream } = snapshot;
-    await this.init();
+    await this.ensureRoot();
 
     // 1. Restore Structural Metadata
     if (structure.settings) await this.saveSettings(structure.settings);
