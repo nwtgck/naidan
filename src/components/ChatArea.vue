@@ -31,7 +31,8 @@ import {
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight, Hammer, Image
+  Folder, FolderInput, ChevronRight, Hammer, Image,
+  ChevronDown, ChevronUp
 } from 'lucide-vue-next';
 import type { Attachment } from '../models/types';
 
@@ -64,6 +65,8 @@ const {
 } = chatStore;
 const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
 const { activeFocusArea, setActiveFocusArea } = useLayout();
+
+const isSubmerged = ref(false);
 
 const isImageMode = computed({
   get: () => currentChat.value ? _isImageMode({ chatId: currentChat.value.id }) : false,
@@ -345,6 +348,9 @@ function toggleMaximized() {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         isMaximized.value = !isMaximized.value;
+        if (isMaximized.value) {
+          isSubmerged.value = false;
+        }
       });
     });
     
@@ -352,6 +358,13 @@ function toggleMaximized() {
     setTimeout(() => {
       isAnimatingHeight.value = false;
     }, 400); // Slightly longer than 300ms transition
+  }
+}
+
+function toggleSubmerged() {
+  isSubmerged.value = !isSubmerged.value;
+  if (isSubmerged.value) {
+    isMaximized.value = false;
   }
 }
 
@@ -404,9 +417,16 @@ function focusInput() {
     throw new Error(`Unhandled focus area: ${_ex}`);
   }
   }
-  nextTick(() => {
-    textareaRef.value?.focus();
-  });
+  
+  if (isSubmerged.value) {
+    isSubmerged.value = false;
+  }
+  
+  if (document.activeElement !== textareaRef.value) {
+    nextTick(() => {
+      textareaRef.value?.focus();
+    });
+  }
 }
 
 function scrollToBottom() {
@@ -605,7 +625,9 @@ watch(
       fetchModels();
       nextTick(() => {
         scrollToBottom();
-        focusInput();
+        if (!isSubmerged.value) {
+          focusInput();
+        }
         adjustTextareaHeight();
       });
     }
@@ -877,8 +899,9 @@ onUnmounted(() => {
       <div 
         ref="container" 
         data-testid="scroll-container" 
-        class="absolute inset-0 overflow-y-auto overscroll-contain"
-        style="overflow-anchor: none; padding-bottom: 300px;"
+        class="absolute inset-0 overflow-y-auto overscroll-contain transition-[padding-bottom] duration-500"
+        style="overflow-anchor: none;"
+        :style="{ paddingBottom: isSubmerged ? '60px' : '300px' }"
       >
         <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
           Select or create a chat to start
@@ -949,14 +972,20 @@ onUnmounted(() => {
     <!-- Input Layer (Overlay) -->
     <div 
       v-if="currentChat"
-      class="absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-transparent pointer-events-none z-30"
+      class="absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out"
+      :class="isSubmerged ? 'translate-y-[calc(100%-44px)] sm:translate-y-[calc(100%-52px)]' : 'translate-y-0'"
     >
       <!-- Glass Zone behind the input card (Full width blur) -->
-      <div class="absolute inset-0 -z-10 glass-zone-mask"></div>
+      <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': isSubmerged }"></div>
 
       <div 
         class="max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all duration-300 flex flex-col"
-        :class="isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl'"
+        :class="[
+          isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl',
+          isSubmerged ? 'cursor-pointer' : ''
+        ]"
+        @mouseenter="isSubmerged = false"
+        @click="isSubmerged ? isSubmerged = false : null"
       >
         
         <!-- Attachment Previews -->
@@ -986,24 +1015,36 @@ onUnmounted(() => {
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
-          class="w-full text-base pl-5 pr-12 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[60px] transition-colors"
+          class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[60px] transition-colors"
           :class="{ 'animate-height': isAnimatingHeight }"
           data-testid="chat-input"
         ></textarea>
 
-        <!-- Maximize/Minimize Button inside input area -->
-        <button
-          v-if="isOverLimit || isMaximized"
-          @click="toggleMaximized"
-          class="absolute right-4 top-4 p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors z-20 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm shadow-sm border border-gray-100 dark:border-gray-700"
-          :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
-          data-testid="maximize-button"
-        >
-          <Minimize2 v-if="isMaximized" class="w-4 h-4" />
-          <Maximize2 v-else class="w-4 h-4" />
-        </button>
+        <!-- Control Buttons inside input area -->
+        <div class="absolute right-4 top-4 flex items-center gap-1 z-20">
+          <button
+            @click.stop="toggleSubmerged"
+            class="p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
+            :title="isSubmerged ? 'Show Input' : 'Hide Input'"
+            data-testid="submerge-button"
+          >
+            <ChevronUp v-if="isSubmerged" class="w-4 h-4" />
+            <ChevronDown v-else class="w-4 h-4" />
+          </button>
 
-        <div class="flex items-center justify-between px-4 pb-4">
+          <button
+            v-if="isOverLimit || isMaximized"
+            @click.stop="toggleMaximized"
+            class="p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
+            :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
+            data-testid="maximize-button"
+          >
+            <Minimize2 v-if="isMaximized" class="w-4 h-4" />
+            <Maximize2 v-else class="w-4 h-4" />
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between px-4 pb-4" :class="{ 'pointer-events-none invisible': isSubmerged }">
           <div class="flex items-center gap-2">
             <div class="w-[100px] sm:w-[180px]">
               <ModelSelector 
