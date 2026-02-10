@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { Info, ShieldCheck, Loader2 } from 'lucide-vue-next';
+import { Info, ShieldCheck, Loader2, Github, Download, ExternalLink } from 'lucide-vue-next';
 import Logo from './Logo.vue';
 
 interface OssLicense {
@@ -54,6 +54,41 @@ onMounted(() => {
         <p class="text-sm font-medium text-gray-500 dark:text-gray-400 max-w-md leading-relaxed">
           A privacy-focused LLM interface for local use, designed to run directly from a portable directory.
         </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <a 
+          href="https://github.com/nwtgck/naidan" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          class="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-3xl hover:bg-gray-50 dark:hover:bg-gray-750 transition-all group no-underline shadow-sm"
+        >
+          <div class="p-3 bg-gray-50 dark:bg-gray-900 rounded-2xl text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
+            <Github class="w-6 h-6" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
+              GitHub Repository
+              <ExternalLink class="w-3 h-3 opacity-50" />
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">View source code & contribute</div>
+          </div>
+        </a>
+
+        <a 
+          v-if="!isStandalone"
+          href="./naidan-standalone.zip" 
+          download="naidan-standalone.zip"
+          class="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-3xl transition-all group no-underline"
+        >
+          <div class="p-3 bg-green-100 dark:bg-green-800/50 rounded-2xl text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">
+            <Download class="w-6 h-6" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-bold text-green-800 dark:text-green-300">Standalone App</div>
+            <div class="text-xs text-green-600/70 dark:text-green-400/60 font-medium">Runs locally via file://</div>
+          </div>
+        </a>
       </div>
     </section>
 

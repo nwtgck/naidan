@@ -1,5 +1,12 @@
-import type { Reporter, UserConsoleLog } from 'vitest/reporters'
+import type { Reporter } from 'vitest/reporters'
 import type { TestCase, Vitest } from 'vitest/node'
+
+interface LogAny {
+  type: string
+  content: string
+}
+
+type UserConsoleLog = LogAny;
 
 interface VitestError {
   message: string

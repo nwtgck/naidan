@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '../services/storage';
-import { reactive, triggerRef } from 'vue';
+import { reactive } from 'vue';
 import type { SidebarItem, Hierarchy } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 

@@ -7,6 +7,7 @@ import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
 import { useOPFSExplorer } from './composables/useOPFSExplorer';
+import { useTheme } from './composables/useTheme';
 import Sidebar from './components/Sidebar.vue';
 // IMPORTANT: OnboardingModal is imported synchronously to ensure a smooth first-time user experience.
 import OnboardingModal from './components/OnboardingModal.vue';
@@ -46,6 +47,9 @@ const closeSettings = () => {
 };
 
 const { isOPFSOpen } = useOPFSExplorer();
+
+// Initialize theme application logic
+useTheme();
 
 // Initialize useConfirm
 const { 
@@ -157,11 +161,13 @@ onKeyStroke(['o', 'O'], async (e) => {
       <Sidebar />
     </div>
     
-    <main class="flex-1 relative flex flex-col min-w-0 pb-10 bg-transparent">
+    <main class="flex-1 relative flex flex-col min-w-0 bg-transparent">
       <!-- Use a key based on route to help Vue identify when to remount or transition -->
-      <router-view v-slot="{ Component }">
-        <component :is="Component" />
-      </router-view>
+      <div class="flex-1 relative min-h-0">
+        <router-view v-slot="{ Component }">
+          <component :is="Component" />
+        </router-view>
+      </div>
       <DebugPanel />
     </main>
 

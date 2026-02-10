@@ -14,7 +14,7 @@ import {
   Database, Settings2, BookmarkPlus,
   Cpu, Info,
   ChefHat,
-  Github, ExternalLink, Download, BrainCircuit,
+  Download, BrainCircuit,
   File
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
@@ -30,6 +30,7 @@ const AboutTab = defineAsyncComponentAndLoadOnMounted(() => import('./AboutTab.v
 
 // IMPORTANT: ConnectionTab is the default tab, so we import it synchronously to ensure it's ready immediately when the modal opens.
 import ConnectionTab from './ConnectionTab.vue';
+import ThemeToggle from './ThemeToggle.vue';
 
 import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
 import { useLayout } from '../composables/useLayout';
@@ -329,42 +330,22 @@ watch(() => props.isOpen, async (open) => {
             </button>
           </nav>
 
-          <!-- GitHub & Download Footer -->
-          <div class="p-3 md:p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto flex flex-row md:flex-col gap-2">
-            <a 
-              href="https://github.com/nwtgck/naidan" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              class="flex-1 flex items-center gap-2 md:gap-3 px-3 py-2 md:px-4 md:py-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all group no-underline shadow-sm"
-            >
-              <Github class="w-4 h-4 text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors shrink-0" />
-              <div class="flex-1 min-w-0 text-left">
-                <div class="text-[10px] md:text-[11px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                  <span class="truncate">GitHub</span>
-                  <span class="hidden md:inline">Repository</span>
-                  <span class="hidden md:inline text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400">External</span>
-                </div>
-                <div class="hidden md:block text-[10px] text-gray-500/70 dark:text-gray-400/60 font-medium">View source code</div>
-              </div>
-              <ExternalLink class="hidden md:block w-3 h-3 text-gray-400 opacity-50" />
-            </a>
+          <!-- Settings Footer -->
+          <div class="p-3 md:p-4 border-t border-gray-100 dark:border-gray-800/50 mt-auto flex items-center gap-3">
+            <div class="w-28 shrink-0">
+              <ThemeToggle />
+            </div>
 
             <a 
               v-if="isHostedMode"
               href="./naidan-standalone.zip" 
               download="naidan-standalone.zip"
-              class="flex-1 flex items-center gap-2 md:gap-3 px-3 py-2 md:px-4 md:py-3 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
+              class="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
               data-testid="sidebar-download-button"
             >
-              <div class="p-1 md:p-2 bg-green-100 dark:bg-green-800/50 rounded-lg text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0">
-                <Download class="w-3.5 h-3.5 md:w-4 md:h-4" />
-              </div>
-              <div class="flex-1 min-w-0 text-left">
-                <div class="text-[10px] md:text-xs font-bold text-green-800 dark:text-green-300">
-                  <span class="truncate">Offline</span>
-                  <span class="hidden md:inline"> Standalone</span>
-                </div>
-                <div class="hidden md:block text-[10px] text-green-600/70 dark:text-green-400/60 font-medium truncate">Runs locally via file://</div>
+              <Download class="w-4 h-4 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0" />
+              <div class="text-[10px] md:text-xs font-bold text-green-800 dark:text-green-300 truncate">
+                Standalone
               </div>
             </a>
           </div>

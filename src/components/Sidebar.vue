@@ -8,10 +8,9 @@ import { useSettings } from '../composables/useSettings';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 // IMPORTANT: Logo is part of the initial sidebar layout and should not flicker.
 import Logo from './Logo.vue';
-// IMPORTANT: ThemeToggle is part of the initial sidebar layout and should not flicker.
-import ThemeToggle from './ThemeToggle.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import SidebarDebugControls from './SidebarDebugControls.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
   Trash2, Settings as SettingsIcon, 
@@ -874,13 +873,13 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
           class="flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm"
           :class="isSidebarOpen ? 'flex-1 py-3 px-2' : 'w-8 h-8'"
           title="Settings"
+          data-testid="sidebar-settings-button"
         >
           <SettingsIcon class="w-4 h-4 shrink-0" />
           <span v-if="isSidebarOpen">Settings</span>
         </button>
-        <div v-if="isSidebarOpen" class="w-32 flex-shrink-0 animate-in fade-in duration-300">
-          <ThemeToggle />
-        </div>
+        
+        <SidebarDebugControls :is-sidebar-open="isSidebarOpen" />
       </div>
     </div>
   </div>
