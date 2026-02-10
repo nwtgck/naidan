@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
+import ChatGroupActions from './ChatGroupActions.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '../models/types';
@@ -129,6 +130,7 @@ describe('Sidebar Logic Stability', () => {
     'lucide-vue-next': true,
     'Logo': true,
     'ThemeToggle': true,
+    'ChatGroupActions': ChatGroupActions,
     'ModelSelector': {
       name: 'ModelSelector',
       template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear">{{ modelValue }}<div v-if="loading" class="animate-spin-mock"></div></div>',
@@ -485,6 +487,7 @@ describe('Sidebar Logic Stability', () => {
       await nextTick();
 
       // Find delete button and click
+      await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
       await deleteBtn.trigger('click');
 
@@ -506,6 +509,7 @@ describe('Sidebar Logic Stability', () => {
       vm.syncLocalItems();
       await nextTick();
 
+      await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
       await deleteBtn.trigger('click');
 
@@ -526,6 +530,7 @@ describe('Sidebar Logic Stability', () => {
       vm.syncLocalItems();
       await nextTick();
 
+      await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
       await deleteBtn.trigger('click');
 
@@ -548,6 +553,7 @@ describe('Sidebar Logic Stability', () => {
       vm.syncLocalItems();
       await nextTick();
 
+      await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
       
       // Wait for promise resolution
@@ -572,6 +578,7 @@ describe('Sidebar Logic Stability', () => {
       vm.syncLocalItems();
       await nextTick();
 
+      await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
       
       await nextTick();
