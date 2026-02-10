@@ -187,6 +187,10 @@ export function useImageGeneration() {
       // Ensure the assistant node uses the actual model ID for metadata
       assistantNode.modelId = imageModel;
       triggerChatRef({ chatId });
+      await updateChatContent({ 
+        chatId: mutableChat.id, 
+        updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }) 
+      });
     
       const blocks: GeneratedImageBlock[] = [];
     
@@ -277,14 +281,19 @@ export function useImageGeneration() {
         }
             
         triggerChatRef({ chatId });
+        await updateChatContent({ 
+          chatId: mutableChat.id, 
+          updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }) 
+        });
       }    
-      // Finalize: replace PENDING with PROCESSED (if not aborted)
-      if (!signal?.aborted) {
-        assistantNode.content = assistantNode.content.replace(SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED);
-      }    
+      // Finalize: replace PENDING with PROCESSED
+      // Even if aborted, we want to stop the loader.
+      assistantNode.content = assistantNode.content.replace(SENTINEL_IMAGE_PENDING, signal?.aborted ? '' : SENTINEL_IMAGE_PROCESSED);
     } catch (e) {
       assistantNode.error = (e as Error).message;
-      if (assistantNode.content === SENTINEL_IMAGE_PENDING) {
+      // Also ensure sentinel is removed on error
+      assistantNode.content = assistantNode.content.replace(SENTINEL_IMAGE_PENDING, '');
+      if (assistantNode.content.trim() === '') {
         assistantNode.content = 'Failed to generate image.';
       }
     } finally {

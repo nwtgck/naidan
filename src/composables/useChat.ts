@@ -924,6 +924,7 @@ export function useChat() {
 
       if ((e as Error).name === 'AbortError') {
         assistantNode.content += '\n\n[Generation Aborted]';
+        await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
       } else {
         assistantNode.error = (e as Error).message;
         await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
@@ -1083,6 +1084,10 @@ export function useChat() {
     const chatId = toRaw(_currentChat.value).id;
     if (isProcessing(chatId)) {
       abortChat(chatId);
+      // Wait for the task to actually stop and decTask to be called
+      while (isProcessing(chatId)) {
+        await new Promise(r => setTimeout(r, 10));
+      }
     }
 
     const chat = getLiveChat(_currentChat.value);
@@ -1263,6 +1268,10 @@ export function useChat() {
     const chatId = toRaw(_currentChat.value).id;
     if (isProcessing(chatId)) {
       abortChat(chatId);
+      // Wait for the task to actually stop and decTask to be called
+      while (isProcessing(chatId)) {
+        await new Promise(r => setTimeout(r, 10));
+      }
     }
 
     const chat = getLiveChat(_currentChat.value);
@@ -1620,16 +1629,22 @@ export function useChat() {
     liveChatRegistry.clear(); 
   };
 
+  const clearActiveTaskCounts = () => {
+    activeTaskCounts.clear();
+  };
+
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
     __testOnly: {
       liveChatRegistry,
       activeGenerations,
+      activeTaskCounts,
       clearLiveChatRegistry,
+      clearActiveTaskCounts,
       __testOnlySetCurrentChat,
       __testOnlySetCurrentChatGroup,
     }

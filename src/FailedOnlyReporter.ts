@@ -1,4 +1,4 @@
-import type { Reporter } from 'vitest/reporters'
+import type { Reporter, UserConsoleLog } from 'vitest/reporters'
 import type { TestCase, Vitest } from 'vitest/node'
 
 interface VitestError {
@@ -26,9 +26,14 @@ export default class FailedOnlyReporter implements Reporter {
   private failed = 0
   private vitest!: Vitest
   private headerPrinted = false
+  private logs: UserConsoleLog[] = []
 
   onInit(vitest: Vitest) {
     this.vitest = vitest
+  }
+
+  onUserConsoleLog(log: UserConsoleLog) {
+    this.logs.push(log)
   }
 
   async onTestCaseResult(testCase: TestCase) {
@@ -52,11 +57,23 @@ export default class FailedOnlyReporter implements Reporter {
       const name = `${filename} > ${testCase.fullName}`
       const errors = (result.errors || []) as unknown as VitestError[]
 
+      // Filter logs for this specific test case if possible, 
+      // but Vitest doesn't easily map logs to test cases in this hook.
+      // We'll show all logs accumulated so far and then clear them.
+      if (this.logs.length > 0) {
+        this.vitest.logger.log(`\n  --- Logs for ${name} ---`)
+        for (const log of this.logs) {
+          this.vitest.logger.log(`  [${log.type}] ${log.content}`)
+        }
+        this.logs = []
+      }
+
       await this.printFailure({ name, errors })
       break
     }
     case 'passed': {
       this.passed++
+      this.logs = [] // Clear logs for passed tests to keep it clean
       break
     }
     case 'skipped':
