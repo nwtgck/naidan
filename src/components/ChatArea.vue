@@ -27,6 +27,8 @@ import { useBinaryActions } from '../composables/useBinaryActions';
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted(() => import('./HistoryManipulationModal.vue'));
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted(() => import('./ChatDebugInspector.vue'));
 import { 
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, GitFork, RefreshCw,
@@ -938,35 +940,14 @@ onUnmounted(() => {
       </div>
 
       <!-- Chat State Inspector (Debug Mode) -->
-      <div 
-        v-if="currentChat?.debugEnabled" 
-        class="absolute right-0 top-0 bottom-0 w-96 border-l dark:border-gray-800 bg-gray-50 dark:bg-gray-900 overflow-y-auto p-4 font-mono text-[10px] animate-in slide-in-from-right duration-300 shadow-xl z-20"
+      <ChatDebugInspector
+        v-if="currentChat?.debugEnabled"
+        :show="currentChat.debugEnabled"
+        :chat="currentChat"
+        :active-messages="activeMessages"
+        @close="chatStore.toggleDebug"
         data-testid="chat-inspector"
-      >
-        <div class="flex items-center justify-between mb-4 pb-2 border-b dark:border-gray-800">
-          <div class="flex items-center gap-2 text-indigo-500 uppercase font-bold tracking-widest">
-            <Bug class="w-3.5 h-3.5" />
-            <span>Chat Inspector</span>
-          </div>
-          <button @click="chatStore.toggleDebug" class="text-gray-400 hover:text-white">
-            <Square class="w-3.5 h-3.5" />
-          </button>
-        </div>
-        <div class="space-y-4">
-          <section>
-            <h3 class="text-gray-500 mb-1 font-bold">Metadata</h3>
-            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ JSON.stringify({ id: currentChat.id, title: currentChat.title, currentLeafId: currentChat.currentLeafId }, null, 2) }}</pre>
-          </section>
-          <section>
-            <h3 class="text-gray-500 mb-1 font-bold">Active Branch Path</h3>
-            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ activeMessages.map(m => `[${m.role.slice(0,1).toUpperCase()}] ${m.id.slice(0,8)}...`).join(' -> ') }}</pre>
-          </section>
-          <section>
-            <h3 class="text-gray-500 mb-1 font-bold">Full Tree Structure</h3>
-            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ JSON.stringify(currentChat.root.items, null, 2) }}</pre>
-          </section>
-        </div>
-      </div>
+      />
     </div>
 
     <!-- Input Layer (Overlay) -->

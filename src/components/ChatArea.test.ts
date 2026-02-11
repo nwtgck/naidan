@@ -275,12 +275,20 @@ describe('ChatArea UI States', () => {
   it('should show the chat inspector when debug mode is enabled', async () => {
     if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = true;
     wrapper = mount(ChatArea, {
-      global: { plugins: [router] },
+      global: { 
+        plugins: [router],
+        stubs: {
+          ChatDebugInspector: {
+            template: '<div data-testid="chat-inspector">Chat Inspector</div>'
+          }
+        }
+      },
     });
+    await flushPromises();
     
     const inspector = wrapper.find('[data-testid="chat-inspector"]');
     expect(inspector.exists()).toBe(true);
-    expect(inspector.text()).toContain('Metadata');
+    expect(inspector.text()).toContain('Chat Inspector');
   });
 
   it('should show the regenerate title button and call generateChatTitle when clicked', async () => {
