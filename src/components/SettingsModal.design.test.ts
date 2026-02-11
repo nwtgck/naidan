@@ -1,6 +1,6 @@
 import { ref, reactive } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '../composables/useSettings';
@@ -82,15 +82,19 @@ describe('SettingsModal Design Specifications', () => {
     });
   });
 
-  it('uses a layered sidebar with bg-gray-50/50 for contrast', () => {
+  it('uses a layered sidebar with bg-gray-50/50 for contrast', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
+    await vi.dynamicImportSettled();
     const aside = wrapper.find('aside');
     expect(aside.classes()).toContain('bg-gray-50/50');
     expect(aside.classes()).toContain('border-gray-100');
   });
 
-  it('uses rounded-3xl for the main modal container to give a modern feel', () => {
+  it('uses rounded-3xl for the main modal container to give a modern feel', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
+    await vi.dynamicImportSettled();
     const modalContainer = wrapper.find('.rounded-3xl');
     expect(modalContainer.exists()).toBe(true);
   });
@@ -108,9 +112,14 @@ describe('SettingsModal Design Specifications', () => {
     });
     
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
     // Switch to profiles tab
     const profilesTab = wrapper.find('[data-testid="tab-profiles"]');
     await profilesTab?.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     // Check capitalization in badge
     const badge = wrapper.find('[data-testid="provider-type-badge"]');
@@ -119,22 +128,28 @@ describe('SettingsModal Design Specifications', () => {
     expect(badge.classes()).toContain('uppercase');
   });
 
-  it('uses blue-600 shadow for the save button to indicate primary action', () => {
+  it('uses blue-600 shadow for the save button to indicate primary action', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
+    await vi.dynamicImportSettled();
     const saveBtn = wrapper.find('[data-testid="setting-save-button"]');
     expect(saveBtn.classes()).toContain('bg-blue-600');
     expect(saveBtn.classes()).toContain('shadow-blue-500/30');
   });
 
-  it('displays the critical "only for localhost" notice in the Connection tab', () => {
+  it('displays the critical "only for localhost" notice in the Connection tab', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    await flushPromises();
+    await vi.dynamicImportSettled();
     // By default, it opens on the Connection tab.
     expect(wrapper.text()).toContain('Connection check is automatically performed only for localhost URLs.');
   });
 
   describe('Tab Switching Visual Stability (Flash Prevention)', () => {
-    it('uses transition-colors on tab buttons to prevent shadow/border interpolation flash', () => {
+    it('uses transition-colors on tab buttons to prevent shadow/border interpolation flash', async () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      await flushPromises();
+      await vi.dynamicImportSettled();
       const tabButtons = wrapper.findAll('nav button');
       
       tabButtons.forEach(button => {
@@ -143,8 +158,10 @@ describe('SettingsModal Design Specifications', () => {
       });
     });
 
-    it('maintains a constant border class to prevent layout shift or border-flicker', () => {
+    it('maintains a constant border class to prevent layout shift or border-flicker', async () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      await flushPromises();
+      await vi.dynamicImportSettled();
       const tabButtons = wrapper.findAll('nav button');
       
       tabButtons.forEach(button => {
@@ -154,20 +171,26 @@ describe('SettingsModal Design Specifications', () => {
 
     it('uses border-transparent for inactive tabs to ensure smooth activation', async () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      await flushPromises();
+      await vi.dynamicImportSettled();
       // Initially, 'connection' is active. Check other tabs.
       const profilesTab = wrapper.findAll('nav button')[1];
       expect(profilesTab?.classes()).toContain('border-transparent');
       
       // When activated, it should get a visible border but not lose the 'border' class
       await profilesTab?.trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
       expect(profilesTab?.classes()).toContain('border-gray-100');
       expect(profilesTab?.classes()).not.toContain('border-transparent');
     });
   });
 
   describe('Responsive and Scrolling (Regression)', () => {
-    it('applies min-h-0 to flex children to ensure scrolling works on small screens', () => {
+    it('applies min-h-0 to flex children to ensure scrolling works on small screens', async () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      await flushPromises();
+      await vi.dynamicImportSettled();
       
       // Main content area
       const main = wrapper.find('main');
@@ -186,8 +209,10 @@ describe('SettingsModal Design Specifications', () => {
       expect(nav.classes()).toContain('min-h-0');
     });
 
-    it('uses shrink-0 for the settings header to prevent height collapse', () => {
+    it('uses shrink-0 for the settings header to prevent height collapse', async () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      await flushPromises();
+      await vi.dynamicImportSettled();
       // Use a more resilient selector that doesn't depend on the specific padding class
       const header = wrapper.find('aside > div:first-child');
       expect(header.classes()).toContain('shrink-0');

@@ -1,16 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, reactive, nextTick } from 'vue';
 import ChatArea from './ChatArea.vue';
 import ModelSelector from './ModelSelector.vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { asyncComponentTracker } from '../utils/async-component-test-utils';
 
-vi.mock('vue', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('vue')>();
-  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
-  return wrapVueWithAsyncTracking(actual);
-});
 
 // --- Mocks ---
 
@@ -73,10 +67,6 @@ const router = createRouter({
 });
 
 describe('ChatArea Group Inheritance UI', () => {
-  afterAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockCurrentChat.value = {

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 
 describe('ChatToolsMenu', () => {
@@ -25,6 +25,9 @@ describe('ChatToolsMenu', () => {
     const button = wrapper.find('[data-testid="chat-tools-button"]');
     
     await button.trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    
     expect(wrapper.text()).toContain('Experimental Tools');
     
     await button.trigger('click');
@@ -34,6 +37,8 @@ describe('ChatToolsMenu', () => {
   it('emits toggle-image-mode when clicking the image mode button', async () => {
     const wrapper = mount(ChatToolsMenu, { props: defaultProps });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     const toggleButton = wrapper.find('[data-testid="toggle-image-mode-button"]');
     await toggleButton.trigger('click');
@@ -46,6 +51,8 @@ describe('ChatToolsMenu', () => {
       props: { ...defaultProps, isImageMode: true } 
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     expect(wrapper.text()).toContain('Image Model');
     expect(wrapper.text()).toContain('Resolution');
@@ -67,6 +74,8 @@ describe('ChatToolsMenu', () => {
       props: { ...defaultProps, isImageMode: true } 
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     const res256 = wrapper.findAll('button').find(b => b.text() === '256x256');
     await res256?.trigger('click');
@@ -74,11 +83,33 @@ describe('ChatToolsMenu', () => {
     expect(wrapper.emitted('update:resolution')).toEqual([[256, 256]]);
   });
 
+  it('emits update:resolution when a custom resolution is entered', async () => {
+    const wrapper = mount(ChatToolsMenu, { 
+      props: { ...defaultProps, isImageMode: true } 
+    });
+    await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    
+    const widthInput = wrapper.find('input[placeholder="Width"]');
+    const heightInput = wrapper.find('input[placeholder="Height"]');
+    
+    await widthInput.setValue(800);
+    expect(wrapper.emitted('update:resolution')).toContainEqual([800, 512]);
+    
+    await wrapper.setProps({ selectedWidth: 800 });
+    
+    await heightInput.setValue(600);
+    expect(wrapper.emitted('update:resolution')).toContainEqual([800, 600]);
+  });
+
   it('emits update:count when a count is selected', async () => {
     const wrapper = mount(ChatToolsMenu, { 
       props: { ...defaultProps, isImageMode: true } 
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     const count2 = wrapper.findAll('button').find(b => b.text() === '2');
     await count2?.trigger('click');
@@ -91,8 +122,10 @@ describe('ChatToolsMenu', () => {
       props: { ...defaultProps, isImageMode: true } 
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
-    const input = wrapper.find('input[type="number"]');
+    const input = wrapper.find('input[placeholder="Qty"]');
     await input.setValue(10);
     
     expect(wrapper.emitted('update:count')).toEqual([[10]]);
@@ -103,6 +136,8 @@ describe('ChatToolsMenu', () => {
       props: { ...defaultProps, isImageMode: true } 
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     const webpBtn = wrapper.findAll('button').find(b => b.text() === 'WebP');
     await webpBtn?.trigger('click');
@@ -115,6 +150,8 @@ describe('ChatToolsMenu', () => {
       props: { ...defaultProps, canGenerateImage: false } 
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     expect(wrapper.text()).toContain('No tools available for this provider');
   });

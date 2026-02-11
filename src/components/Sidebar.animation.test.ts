@@ -94,6 +94,7 @@ vi.mock('lucide-vue-next', () => {
     Maximize2: mockIcon,
     Minimize2: mockIcon,
     Monitor: mockIcon,
+    HardDrive: mockIcon,
   };
 });
 
@@ -104,9 +105,11 @@ const mockSidebarItems = ref<any[]>([]);
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),
+    isDebugOpen: ref(false),
     activeFocusArea: ref('sidebar'),
     setActiveFocusArea: vi.fn(),
     toggleSidebar: vi.fn(),
+    toggleDebug: vi.fn(),
   }),
 }));
 

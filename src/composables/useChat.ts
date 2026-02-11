@@ -517,15 +517,29 @@ export function useChat() {
     }
   };
 
-  const openChat = async (id: string): Promise<Chat | null> => {
+  const openChat = async (id: string, leafId?: string): Promise<Chat | null> => {
     if (liveChatRegistry.has(id)) { 
       const chat = liveChatRegistry.get(id)!;
+      if (leafId && leafId !== chat.currentLeafId) {
+        const node = findNodeInBranch(chat.root.items, leafId);
+        if (node) {
+          chat.currentLeafId = leafId;
+          storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
+        }
+      }
       _currentChatGroup.value = null;
       _currentChat.value = chat;
       return chat;
     }
     const loaded = await storageService.loadChat(id);
     if (loaded) {
+      if (leafId && leafId !== loaded.currentLeafId) {
+        const node = findNodeInBranch(loaded.root.items, leafId);
+        if (node) {
+          loaded.currentLeafId = leafId;
+          storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
+        }
+      }
       const reactiveChat = reactive(loaded);
       registerLiveInstance(reactiveChat);
       _currentChatGroup.value = null;
@@ -924,6 +938,7 @@ export function useChat() {
 
       if ((e as Error).name === 'AbortError') {
         assistantNode.content += '\n\n[Generation Aborted]';
+        await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
       } else {
         assistantNode.error = (e as Error).message;
         await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
@@ -1083,6 +1098,10 @@ export function useChat() {
     const chatId = toRaw(_currentChat.value).id;
     if (isProcessing(chatId)) {
       abortChat(chatId);
+      // Wait for the task to actually stop and decTask to be called
+      while (isProcessing(chatId)) {
+        await new Promise(r => setTimeout(r, 10));
+      }
     }
 
     const chat = getLiveChat(_currentChat.value);
@@ -1263,6 +1282,10 @@ export function useChat() {
     const chatId = toRaw(_currentChat.value).id;
     if (isProcessing(chatId)) {
       abortChat(chatId);
+      // Wait for the task to actually stop and decTask to be called
+      while (isProcessing(chatId)) {
+        await new Promise(r => setTimeout(r, 10));
+      }
     }
 
     const chat = getLiveChat(_currentChat.value);
@@ -1500,6 +1523,36 @@ export function useChat() {
     });
   };
 
+  const duplicateChatGroup = async (groupId: string) => {
+    const originalGroup = chatGroups.value.find(g => g.id === groupId);
+    if (!originalGroup) return;
+
+    const newId = crypto.randomUUID();
+    const newName = `Copy of ${originalGroup.name}`;
+    const newGroup: ChatGroup = {
+      ...toRaw(originalGroup),
+      id: newId,
+      name: newName,
+      items: [], // Do not duplicate chats
+      updatedAt: Date.now(),
+      isCollapsed: false,
+    };
+
+    await storageService.updateChatGroup(newId, () => newGroup);
+    await storageService.updateHierarchy((curr) => {
+      const originalIndex = curr.items.findIndex(i => i.type === 'chat_group' && i.id === groupId);
+      const newNode: HierarchyNode = { type: 'chat_group', id: newId, chat_ids: [] };
+      if (originalIndex !== -1) {
+        curr.items.splice(originalIndex + 1, 0, newNode);
+      } else {
+        curr.items.unshift(newNode);
+      }
+      return curr;
+    });
+    await loadData();
+    return newId;
+  };
+
   const renameChatGroup = async (groupId: string, newName: string) => {
     if (_currentChatGroup.value?.id === groupId) {
       _currentChatGroup.value.name = newName; _currentChatGroup.value.updatedAt = Date.now();
@@ -1590,16 +1643,22 @@ export function useChat() {
     liveChatRegistry.clear(); 
   };
 
+  const clearActiveTaskCounts = () => {
+    activeTaskCounts.clear();
+  };
+
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, sendImageRequest, createChatGroup, deleteChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
     __testOnly: {
       liveChatRegistry,
       activeGenerations,
+      activeTaskCounts,
       clearLiveChatRegistry,
+      clearActiveTaskCounts,
       __testOnlySetCurrentChat,
       __testOnlySetCurrentChatGroup,
     }

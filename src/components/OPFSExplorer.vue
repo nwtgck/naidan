@@ -2,8 +2,10 @@
 import { ref, watch } from 'vue';
 import { 
   Folder, FileText, Trash2, ChevronLeft, X, 
-  ChevronRight, HardDrive, AlertCircle, Braces
+  ChevronRight, HardDrive, AlertCircle, Braces,
+  AlertTriangle
 } from 'lucide-vue-next';
+import { useConfirm } from '../composables/useConfirm';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -187,7 +189,19 @@ function toggleFormat() {
   }
 }
 
+const { showConfirm } = useConfirm();
+
 async function deleteEntry(entry: OPFSEntry) {
+  const confirmed = await showConfirm({
+    title: 'Delete Entry',
+    message: `Are you sure you want to delete "${entry.name}"? Deleting data from OPFS might cause corruption or data loss if not handled carefully.`,
+    confirmButtonText: 'Delete Anyway',
+    confirmButtonVariant: 'danger',
+    icon: AlertTriangle,
+  });
+
+  if (!confirmed) return;
+
   try {
     await currentHandle.value!.removeEntry(entry.name, { recursive: true });
     await loadDirectory(currentHandle.value!);

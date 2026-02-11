@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { Settings2 } from 'lucide-vue-next';
-import ImageGenerationSettings from './ImageGenerationSettings.vue';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+
+// Lazily load image generation settings as it's only visible when the tools menu is opened, but prefetch it when idle.
+const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
 
 const props = withDefaults(defineProps<{
   canGenerateImage: boolean;

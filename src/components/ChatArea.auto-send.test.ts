@@ -1,15 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick, ref, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { asyncComponentTracker } from '../utils/async-component-test-utils';
 
-vi.mock('vue', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('vue')>();
-  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
-  return wrapVueWithAsyncTracking(actual);
-});
 
 // Mock router
 const router = createRouter({
@@ -97,10 +91,6 @@ vi.mock('mermaid', () => ({
 }));
 
 describe('ChatArea Auto-send', () => {
-  afterAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockCurrentChat.value = {

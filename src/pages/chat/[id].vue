@@ -6,7 +6,8 @@ import ChatArea from '../../components/ChatArea.vue';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);
-const { openChat } = useChat();
+const chatStore = useChat();
+const { openChat } = chatStore;
 
 const chatId = computed(() => {
   const params = currentRoute.value?.params;
@@ -17,10 +18,12 @@ const chatId = computed(() => {
   return undefined;
 });
 
+const leafId = computed(() => currentRoute.value?.query?.leaf?.toString());
+
 async function syncChat() {
   const id = chatId.value;
   if (id) {
-    await openChat(id);
+    await openChat(id, leafId.value);
   }
 }
 
@@ -31,7 +34,7 @@ function handleAutoSent() {
 }
 
 onMounted(syncChat);
-watch(chatId, syncChat);
+watch([chatId, leafId], syncChat);
 </script>
 
 <template>

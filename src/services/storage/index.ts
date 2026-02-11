@@ -39,28 +39,30 @@ export class StorageService {
   }
 
   async init(type: 'local' | 'opfs') {
-    const isOPFSSupported = await checkOPFSSupport();
-    let targetType: 'local' | 'opfs' = type;
+    await this.synchronizer.withLock(async () => {
+      const isOPFSSupported = await checkOPFSSupport();
+      let targetType: 'local' | 'opfs' = type;
 
-    if (targetType === 'opfs' && !isOPFSSupported) {
-      targetType = 'local';
-    }
+      if (targetType === 'opfs' && !isOPFSSupported) {
+        targetType = 'local';
+      }
 
-    this.currentType = targetType;
+      this.currentType = targetType;
 
-    switch (this.currentType) {
-    case 'opfs':
-      this.provider = new OPFSStorageProvider();
-      break;
-    case 'local':
-      this.provider = new LocalStorageProvider();
-      break;
-    default: {
-      const _exhaustiveCheck: never = this.currentType;
-      throw new Error(`Unhandled currentType: ${_exhaustiveCheck}`);
-    }
-    }
-    await this.provider.init();
+      switch (this.currentType) {
+      case 'opfs':
+        this.provider = new OPFSStorageProvider();
+        break;
+      case 'local':
+        this.provider = new LocalStorageProvider();
+        break;
+      default: {
+        const _exhaustiveCheck: never = this.currentType;
+        throw new Error(`Unhandled currentType: ${_exhaustiveCheck}`);
+      }
+      }
+      await this.provider.init();
+    }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('init') });
   }
 
   getCurrentType(): 'local' | 'opfs' {

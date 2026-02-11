@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_RESPONSE_PREFIX } from '../utils/image-generation';
 
@@ -12,7 +12,7 @@ describe('MessageItem Image Generation Progress', () => {
     replies: { items: [] }
   });
 
-  it('shows progress when response marker is present in assistant message', () => {
+  it('shows progress when response marker is present in assistant message', async () => {
     const responseMarker = `${SENTINEL_IMAGE_RESPONSE_PREFIX} {"count":3} -->`;
     const content = responseMarker + SENTINEL_IMAGE_PENDING;
     const message = createMessage(content);
@@ -20,6 +20,9 @@ describe('MessageItem Image Generation Progress', () => {
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false }
     });
+    
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     const loader = wrapper.findComponent({ name: 'ImageConjuringLoader' });
     expect(loader.exists()).toBe(true);
@@ -29,7 +32,7 @@ describe('MessageItem Image Generation Progress', () => {
     expect(loader.text()).toContain('Generating images (1 / 3)');
   });
 
-  it('shows incremented progress after some images are generated (local mode)', () => {
+  it('shows incremented progress after some images are generated (local mode)', async () => {
     const responseMarker = `${SENTINEL_IMAGE_RESPONSE_PREFIX} {"count":3} -->`;
     // Simulate one image already generated (local mode uses <img> tags)
     const content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n<img src="blob:1">';
@@ -39,13 +42,16 @@ describe('MessageItem Image Generation Progress', () => {
       props: { message, isCurrentChatStreaming: false }
     });
     
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    
     const loader = wrapper.findComponent({ name: 'ImageConjuringLoader' });
     expect(loader.props('totalCount')).toBe(3);
     expect(loader.props('remainingCount')).toBe(2); // 3 - 1 = 2 remaining
     expect(loader.text()).toContain('Generating images (2 / 3)');
   });
 
-  it('shows incremented progress after some images are generated (OPFS mode)', () => {
+  it('shows incremented progress after some images are generated (OPFS mode)', async () => {
     const responseMarker = `${SENTINEL_IMAGE_RESPONSE_PREFIX} {"count":4} -->`;
     // Simulate two images already generated (OPFS mode uses markdown code blocks)
     const block = '```naidan_experimental_image\n{"binaryObjectId":"4dbb8a9f-d41f-4d18-b145-73ffcbf1661a", "displayWidth": 100, "displayHeight": 100, "prompt": "test"}\n```';
@@ -55,6 +61,9 @@ describe('MessageItem Image Generation Progress', () => {
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false }
     });
+    
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     const loader = wrapper.findComponent({ name: 'ImageConjuringLoader' });
     expect(loader.props('totalCount')).toBe(4);

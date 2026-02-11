@@ -1,28 +1,42 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, computed, defineAsyncComponent } from 'vue';
+import { ref, watch, nextTick, onMounted, computed, toRaw } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useChatDraft } from '../composables/useChatDraft';
 import { useSettings } from '../composables/useSettings';
 import { useLayout } from '../composables/useLayout';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+
+// IMPORTANT: MessageItem is the core of the chat experience. We import it synchronously 
+// to ensure the chat history displays immediately and smoothly without individual components popping in.
 import MessageItem from './MessageItem.vue';
+// IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
+// IMPORTANT: ModelSelector is an essential part of the input area.
 import ModelSelector from './ModelSelector.vue';
+// IMPORTANT: ChatToolsMenu is an essential part of the input area.
 import ChatToolsMenu from './ChatToolsMenu.vue';
-import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
+
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
 import { naturalSort } from '../utils/string';
 import { useImagePreview } from '../composables/useImagePreview';
 import { useBinaryActions } from '../composables/useBinaryActions';
 
-const ChatSettingsPanel = defineAsyncComponent(() => import('./ChatSettingsPanel.vue'));
-const HistoryManipulationModal = defineAsyncComponent(() => import('./HistoryManipulationModal.vue'));
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted(() => import('./HistoryManipulationModal.vue'));
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted(() => import('./ChatDebugInspector.vue'));
 import { 
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight, Hammer, Image
+  Folder, FolderInput, ChevronRight, Hammer, Image,
+  ChevronDown, ChevronUp
 } from 'lucide-vue-next';
-import type { Attachment } from '../models/types';
+import type { Attachment, Chat } from '../models/types';
 
 
 const chatStore = useChat();
@@ -53,6 +67,8 @@ const {
 } = chatStore;
 const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
 const { activeFocusArea, setActiveFocusArea } = useLayout();
+
+const isSubmerged = ref(false);
 
 const isImageMode = computed({
   get: () => currentChat.value ? _isImageMode({ chatId: currentChat.value.id }) : false,
@@ -334,6 +350,9 @@ function toggleMaximized() {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         isMaximized.value = !isMaximized.value;
+        if (isMaximized.value) {
+          isSubmerged.value = false;
+        }
       });
     });
     
@@ -341,6 +360,13 @@ function toggleMaximized() {
     setTimeout(() => {
       isAnimatingHeight.value = false;
     }, 400); // Slightly longer than 300ms transition
+  }
+}
+
+function toggleSubmerged() {
+  isSubmerged.value = !isSubmerged.value;
+  if (isSubmerged.value) {
+    isMaximized.value = false;
   }
 }
 
@@ -393,9 +419,16 @@ function focusInput() {
     throw new Error(`Unhandled focus area: ${_ex}`);
   }
   }
-  nextTick(() => {
-    textareaRef.value?.focus();
-  });
+  
+  if (isSubmerged.value) {
+    isSubmerged.value = false;
+  }
+  
+  if (document.activeElement !== textareaRef.value) {
+    nextTick(() => {
+      textareaRef.value?.focus();
+    });
+  }
 }
 
 function scrollToBottom() {
@@ -563,6 +596,40 @@ watch(
   { deep: true },
 );
 
+import { findDeepestLeaf } from '../utils/chat-tree';
+
+watch(
+  () => currentChat.value?.currentLeafId,
+  (newLeafId) => {
+    if (!newLeafId || !currentChat.value) return;
+    
+    const currentLeafInUrl = router.currentRoute.value.query.leaf;
+    if (newLeafId !== currentLeafInUrl) {
+      const query = { ...router.currentRoute.value.query };
+      
+      // If we are at the deepest leaf, we don't need the leaf param in URL
+      // Use toRaw and cast to Chat to avoid deep-readonly type issues with findDeepestLeaf
+      const rawChat = toRaw(currentChat.value) as Chat | null;
+      if (rawChat && rawChat.root.items.length > 0) {
+        const deepestLeaf = findDeepestLeaf(rawChat.root.items[rawChat.root.items.length - 1]!);
+        if (newLeafId === deepestLeaf.id) {
+          delete query.leaf;
+        } else {
+          query.leaf = newLeafId;
+        }
+      } else if (newLeafId) {
+        query.leaf = newLeafId;
+      }
+
+      // If we are just loading the chat or there's no leaf in URL, use replace to avoid polluting history
+      const method = !currentLeafInUrl ? 'replace' : 'push';
+      router[method]({
+        query
+      });
+    }
+  }
+);
+
 watch(input, () => {
   adjustTextareaHeight();
 }, { flush: 'post' }); // Ensure DOM is updated before recalculating
@@ -594,7 +661,9 @@ watch(
       fetchModels();
       nextTick(() => {
         scrollToBottom();
-        focusInput();
+        if (!isSubmerged.value) {
+          focusInput();
+        }
         adjustTextareaHeight();
       });
     }
@@ -866,8 +935,9 @@ onUnmounted(() => {
       <div 
         ref="container" 
         data-testid="scroll-container" 
-        class="absolute inset-0 overflow-y-auto overscroll-contain"
-        style="overflow-anchor: none; padding-bottom: 300px;"
+        class="absolute inset-0 overflow-y-auto overscroll-contain transition-[padding-bottom] duration-500"
+        style="overflow-anchor: none;"
+        :style="{ paddingBottom: isSubmerged ? '60px' : '300px' }"
       >
         <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
           Select or create a chat to start
@@ -904,48 +974,33 @@ onUnmounted(() => {
       </div>
 
       <!-- Chat State Inspector (Debug Mode) -->
-      <div 
-        v-if="currentChat?.debugEnabled" 
-        class="absolute right-0 top-0 bottom-0 w-96 border-l dark:border-gray-800 bg-gray-50 dark:bg-gray-900 overflow-y-auto p-4 font-mono text-[10px] animate-in slide-in-from-right duration-300 shadow-xl z-20"
+      <ChatDebugInspector
+        v-if="currentChat?.debugEnabled"
+        :show="currentChat.debugEnabled"
+        :chat="currentChat"
+        :active-messages="activeMessages"
+        @close="chatStore.toggleDebug"
         data-testid="chat-inspector"
-      >
-        <div class="flex items-center justify-between mb-4 pb-2 border-b dark:border-gray-800">
-          <div class="flex items-center gap-2 text-indigo-500 uppercase font-bold tracking-widest">
-            <Bug class="w-3.5 h-3.5" />
-            <span>Chat Inspector</span>
-          </div>
-          <button @click="chatStore.toggleDebug" class="text-gray-400 hover:text-white">
-            <Square class="w-3.5 h-3.5" />
-          </button>
-        </div>
-        <div class="space-y-4">
-          <section>
-            <h3 class="text-gray-500 mb-1 font-bold">Metadata</h3>
-            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ JSON.stringify({ id: currentChat.id, title: currentChat.title, currentLeafId: currentChat.currentLeafId }, null, 2) }}</pre>
-          </section>
-          <section>
-            <h3 class="text-gray-500 mb-1 font-bold">Active Branch Path</h3>
-            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ activeMessages.map(m => `[${m.role.slice(0,1).toUpperCase()}] ${m.id.slice(0,8)}...`).join(' -> ') }}</pre>
-          </section>
-          <section>
-            <h3 class="text-gray-500 mb-1 font-bold">Full Tree Structure</h3>
-            <pre class="bg-black/10 dark:bg-black/30 p-2 rounded border dark:border-gray-800">{{ JSON.stringify(currentChat.root.items, null, 2) }}</pre>
-          </section>
-        </div>
-      </div>
+      />
     </div>
 
     <!-- Input Layer (Overlay) -->
     <div 
       v-if="currentChat"
-      class="absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-transparent pointer-events-none z-30"
+      class="absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out"
+      :class="isSubmerged ? 'translate-y-[calc(100%-44px)] sm:translate-y-[calc(100%-52px)]' : 'translate-y-0'"
     >
       <!-- Glass Zone behind the input card (Full width blur) -->
-      <div class="absolute inset-0 -z-10 glass-zone-mask"></div>
+      <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': isSubmerged }"></div>
 
       <div 
         class="max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all duration-300 flex flex-col"
-        :class="isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl'"
+        :class="[
+          isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl',
+          isSubmerged ? 'cursor-pointer' : ''
+        ]"
+        @mouseenter="isSubmerged = false"
+        @click="isSubmerged ? isSubmerged = false : null"
       >
         
         <!-- Attachment Previews -->
@@ -975,24 +1030,36 @@ onUnmounted(() => {
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
-          class="w-full text-base pl-5 pr-12 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[60px] transition-colors"
+          class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[60px] transition-colors"
           :class="{ 'animate-height': isAnimatingHeight }"
           data-testid="chat-input"
         ></textarea>
 
-        <!-- Maximize/Minimize Button inside input area -->
-        <button
-          v-if="isOverLimit || isMaximized"
-          @click="toggleMaximized"
-          class="absolute right-4 top-4 p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors z-20 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm shadow-sm border border-gray-100 dark:border-gray-700"
-          :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
-          data-testid="maximize-button"
-        >
-          <Minimize2 v-if="isMaximized" class="w-4 h-4" />
-          <Maximize2 v-else class="w-4 h-4" />
-        </button>
+        <!-- Control Buttons inside input area -->
+        <div class="absolute right-4 top-4 flex items-center gap-1 z-20">
+          <button
+            @click.stop="toggleSubmerged"
+            class="p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
+            :title="isSubmerged ? 'Show Input' : 'Hide Input'"
+            data-testid="submerge-button"
+          >
+            <ChevronUp v-if="isSubmerged" class="w-4 h-4" />
+            <ChevronDown v-else class="w-4 h-4" />
+          </button>
 
-        <div class="flex items-center justify-between px-4 pb-4">
+          <button
+            v-if="isOverLimit || isMaximized"
+            @click.stop="toggleMaximized"
+            class="p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
+            :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
+            data-testid="maximize-button"
+          >
+            <Minimize2 v-if="isMaximized" class="w-4 h-4" />
+            <Maximize2 v-else class="w-4 h-4" />
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between px-4 pb-4" :class="{ 'pointer-events-none invisible': isSubmerged }">
           <div class="flex items-center gap-2">
             <div class="w-[100px] sm:w-[180px]">
               <ModelSelector 

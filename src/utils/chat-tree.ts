@@ -28,13 +28,14 @@ export function findParentInBranch(items: MessageNode[], childId: string): Messa
   return null;
 }
 
-export function getChatBranch(chat: Chat): MessageNode[] {
+export function getChatBranch(chat: Chat | Readonly<Chat>): MessageNode[] {
   if (chat.root.items.length === 0) return [];
   const path: MessageNode[] = [];
   const targetId = chat.currentLeafId;
-  let curr: MessageNode | null = (chat.root.items as MessageNode[]).find(item => 
+  const items = chat.root.items as MessageNode[];
+  let curr: MessageNode | null = items.find(item => 
     toRaw(item).id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
-  ) || (chat.root.items[chat.root.items.length - 1] as MessageNode) || null;
+  ) || (items[items.length - 1] as MessageNode) || null;
 
   while (curr) {
     path.push(curr);
@@ -47,8 +48,8 @@ export function getChatBranch(chat: Chat): MessageNode[] {
   return path;
 }
 
-export function findDeepestLeaf(node: MessageNode): MessageNode {
-  if (node.replies.items.length === 0) return node;
+export function findDeepestLeaf(node: MessageNode | Readonly<MessageNode>): MessageNode {
+  if (node.replies.items.length === 0) return node as MessageNode;
   return findDeepestLeaf(node.replies.items[node.replies.items.length - 1]!);
 }
 

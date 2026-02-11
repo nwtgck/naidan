@@ -11,7 +11,10 @@ import {
   Database, HardDrive, Info, Trash2
 } from 'lucide-vue-next';
 import { useConfirm } from '../composables/useConfirm';
-import ImportExportModal from './ImportExportModal.vue';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+
+// Lazily load the import/export modal as it is a heavy secondary action, but prefetch it when idle.
+const ImportExportModal = defineAsyncComponentAndLoadOnMounted(() => import('./ImportExportModal.vue'));
 
 const props = defineProps<{
   storageType: 'local' | 'opfs';

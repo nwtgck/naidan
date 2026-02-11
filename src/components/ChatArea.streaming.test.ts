@@ -1,16 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '../composables/useChat';
-import { asyncComponentTracker } from '../utils/async-component-test-utils';
 
-vi.mock('vue', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('vue')>();
-  const { wrapVueWithAsyncTracking } = await vi.importActual<any>('../utils/async-component-test-utils');
-  return wrapVueWithAsyncTracking(actual);
-});
 
 // --- Mocks ---
 
@@ -80,11 +74,6 @@ vi.mock('../services/storage', () => ({
 
 describe('ChatArea Streaming DOM Test', () => {
   const chatStore = useChat();
-
-  afterAll(async () => {
-    await asyncComponentTracker.wait();
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
     chats.clear();

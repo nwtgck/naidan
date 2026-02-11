@@ -7,9 +7,16 @@ import {
   X, Settings2, 
   MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus
 } from 'lucide-vue-next';
-import LmParametersEditor from './LmParametersEditor.vue';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+
+// IMPORTANT: ModelSelector is used for immediate model override feedback and should not flicker.
 import ModelSelector from './ModelSelector.vue';
-import TransformersJsUpsell from './TransformersJsUpsell.vue';
+
+// Lazily load heavier or secondary settings components, but prefetch them when idle.
+const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./LmParametersEditor.vue'));
+// Lazily load upsell UI
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
+
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { Chat } from '../models/types';
 import { naturalSort } from '../utils/string';

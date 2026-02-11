@@ -3,8 +3,8 @@
 *   **Zod**: Must be used for all data persistence and API communication to ensure safe serialization. All API responses MUST be validated to protect the application from unreliable external data structures. Persisted data must maintain backward compatibility.
 *   **Strong Typing**: Prefer strict static typing to catch errors at build-time. Avoid `any`.
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
-*   **Verification**: Run `npm run build`, `npm run lint:fix` and `npm run test -- --run` before committing to ensure quality and prevent regressions. Use `|& tail -n 20` or similar to suppress excessive verbosity and save context tokens while still confirming completion and capturing potential errors.
-*   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test -- <paths...> --run`.
+*   **Verification**: Run `npm run build`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions.
+*   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test:only-failed -- <paths...>`.
 
 # Function Signatures & Named Arguments
 
@@ -102,7 +102,7 @@ const widget: Widget = {
 ```
 
 ---
-*   **Non-interactive Tests**: Always use the `--run` flag (e.g., `npm run test -- --run`) when executing tests as an agent or in CI to ensure the process exits after completion and does not hang in watch mode.
+*   **Non-interactive Tests**: Prefer `npm run test:only-failed` when executing tests as an agent or in CI to ensure the process exits after completion, does not hang in watch mode, and minimizes output noise.
 *   **Testing**: Actively use `data-testid` attributes for selecting elements in tests. This decouples tests from implementation details (CSS classes, tag names) and makes them more resilient to styling changes.
 *   **Preserve Tests**: Never delete tests during refactoring. Adapt them to the new UI structure (e.g., test events/props instead of direct DOM interaction) to maintain functional coverage.
 *   **File Modification**: If you are using the `write_file` tool, then first use the `read_file` tool to retrieve the current content of the file. Always respect the existing code structure, comments, and conventions.

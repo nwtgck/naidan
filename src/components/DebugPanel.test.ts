@@ -17,11 +17,11 @@ describe('DebugPanel', () => {
   const mockClearEvents = vi.fn();
   const mockAddErrorEvent = vi.fn();
   const mockAddInfoEvent = vi.fn();
-  const isSidebarOpen = ref(true);
+  const isDebugOpen = ref(false);
 
   beforeEach(() => {
     vi.clearAllMocks();
-    isSidebarOpen.value = true;
+    isDebugOpen.value = false;
     (useGlobalEvents as unknown as Mock).mockReturnValue({
       events: [],
       eventCount: 0,
@@ -31,39 +31,50 @@ describe('DebugPanel', () => {
       addInfoEvent: mockAddInfoEvent,
     });
     (useLayout as unknown as Mock).mockReturnValue({
-      isSidebarOpen,
+      isDebugOpen,
+      toggleDebug: vi.fn(() => {
+        isDebugOpen.value = !isDebugOpen.value; 
+      }),
     });
   });
 
-  it('adjusts position based on isSidebarOpen (Regression Test)', async () => {
+  it('is collapsed when isDebugOpen is false', () => {
     const wrapper = mount(DebugPanel);
-    
-    // When sidebar is open (default)
-    expect(wrapper.classes()).toContain('left-64');
-    expect(wrapper.classes()).not.toContain('left-10');
+    expect(wrapper.classes()).toContain('h-0');
+    expect(wrapper.classes()).toContain('overflow-hidden');
+  });
 
-    // When sidebar is collapsed
-    isSidebarOpen.value = false;
+  it('is expanded when isDebugOpen is true', async () => {
+    isDebugOpen.value = true;
+    const wrapper = mount(DebugPanel);
     await wrapper.vm.$nextTick();
-    expect(wrapper.classes()).toContain('left-10');
-    expect(wrapper.classes()).not.toContain('left-64');
-  });
-
-  it('is collapsed by default', () => {
-    const wrapper = mount(DebugPanel);
-    expect(wrapper.classes()).toContain('h-10');
-    expect(wrapper.find('[data-testid="debug-content-area"]').exists()).toBe(false);
-  });
-
-  it('toggles when clicked', async () => {
-    const wrapper = mount(DebugPanel);
-    const toggle = wrapper.find('[data-testid="debug-panel-toggle"]');
-    await toggle.trigger('click');
-    expect(wrapper.classes()).toContain('h-64');
+    expect(wrapper.classes()).toContain('h-72');
+    expect(wrapper.classes()).toContain('overflow-visible');
+    expect(wrapper.classes()).toContain('z-50');
     expect(wrapper.find('[data-testid="debug-content-area"]').exists()).toBe(true);
   });
 
+  it('opens development tools menu when ... button is clicked', async () => {
+    isDebugOpen.value = true;
+    const wrapper = mount(DebugPanel);
+    await wrapper.vm.$nextTick();
+
+    const menuButton = wrapper.find('[data-testid="debug-menu-button"]');
+    expect(menuButton.exists()).toBe(true);
+    
+    expect(wrapper.find('[data-testid="debug-menu-dropdown"]').exists()).toBe(false);
+
+    // Using mousedown as the component uses @mousedown.stop
+    await menuButton.trigger('mousedown');
+    expect(wrapper.find('[data-testid="debug-menu-dropdown"]').exists()).toBe(true);
+
+    expect(wrapper.find('[data-testid="trigger-test-info"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="trigger-test-error"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="open-opfs-explorer"]').exists()).toBe(true);
+  });
+
   it('shows error badge when errorCount > 0', () => {
+    isDebugOpen.value = true;
     (useGlobalEvents as unknown as Mock).mockReturnValue({
       events: [],
       eventCount: 1,
@@ -78,6 +89,7 @@ describe('DebugPanel', () => {
   });
 
   it('calls clearEvents when clear button is clicked', async () => {
+    isDebugOpen.value = true;
     (useGlobalEvents as unknown as Mock).mockReturnValue({
       events: [{ id: '1', type: 'info', timestamp: Date.now(), source: 'test', message: 'test' }],
       eventCount: 1,
@@ -87,25 +99,27 @@ describe('DebugPanel', () => {
       addInfoEvent: mockAddInfoEvent,
     });
     const wrapper = mount(DebugPanel);
-    await wrapper.find('[data-testid="debug-panel-toggle"]').trigger('click');
     await wrapper.find('[data-testid="debug-clear-button"]').trigger('click');
     expect(mockClearEvents).toHaveBeenCalled();
   });
 
   it('triggers test events from menu', async () => {
+    isDebugOpen.value = true;
     const wrapper = mount(DebugPanel);
-    await wrapper.find('[data-testid="debug-panel-toggle"]').trigger('click');
-    await wrapper.find('[data-testid="debug-menu-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
+    
+    await wrapper.find('[data-testid="debug-menu-button"]').trigger('mousedown');
     
     await wrapper.find('[data-testid="trigger-test-info"]').trigger('click');
     expect(mockAddInfoEvent).toHaveBeenCalled();
 
-    await wrapper.find('[data-testid="debug-menu-button"]').trigger('click');
+    await wrapper.find('[data-testid="debug-menu-button"]').trigger('mousedown');
     await wrapper.find('[data-testid="trigger-test-error"]').trigger('click');
     expect(mockAddErrorEvent).toHaveBeenCalled();
   });
 
   it('renders error object details correctly', async () => {
+    isDebugOpen.value = true;
     const error = new Error('Test error message');
     error.stack = 'test stack trace';
     
@@ -126,8 +140,6 @@ describe('DebugPanel', () => {
     });
 
     const wrapper = mount(DebugPanel);
-    await wrapper.find('[data-testid="debug-panel-toggle"]').trigger('click');
-    
     const pre = wrapper.find('pre');
     expect(pre.text()).toContain('"name": "Error"');
     expect(pre.text()).toContain('"message": "Test error message"');
@@ -135,6 +147,7 @@ describe('DebugPanel', () => {
   });
 
   it('handles circular references in details gracefully', async () => {
+    isDebugOpen.value = true;
     const circular: Record<string, unknown> = { a: 1 };
     circular.self = circular;
 
@@ -155,19 +168,17 @@ describe('DebugPanel', () => {
     });
 
     const wrapper = mount(DebugPanel);
-    await wrapper.find('[data-testid="debug-panel-toggle"]').trigger('click');
-    
     expect(wrapper.find('pre').text()).toBe('[Unserializable Details]');
   });
 
   it('closes menu when clicking outside', async () => {
+    isDebugOpen.value = true;
     const wrapper = mount(DebugPanel, { attachTo: document.body });
-    await wrapper.find('[data-testid="debug-panel-toggle"]').trigger('click');
-    await wrapper.find('[data-testid="debug-menu-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
     
+    await wrapper.find('[data-testid="debug-menu-button"]').trigger('mousedown');
     expect(wrapper.find('[data-testid="debug-menu-dropdown"]').exists()).toBe(true);
 
-    // Simulate click outside
     document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     await wrapper.vm.$nextTick();
 

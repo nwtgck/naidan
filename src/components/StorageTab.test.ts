@@ -207,6 +207,8 @@ describe('StorageTab.vue Tests', () => {
                 
       const storageTab = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('storage'));
       await storageTab?.trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
       await wait();
                 
       mockShowConfirm.mockResolvedValue(true); 
@@ -238,6 +240,8 @@ describe('StorageTab.vue Tests', () => {
       await wait();
 
       await wrapper.find('[data-testid="tab-storage"]').trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
       await nextTick();
 
       mockShowConfirm.mockResolvedValueOnce(false); // Cancel migration warning
@@ -262,7 +266,10 @@ describe('StorageTab.vue Tests', () => {
         global: globalMocks
       });
       await flushPromises();
+      await vi.dynamicImportSettled();
       await wrapper.find('[data-testid="tab-storage"]').trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
       await nextTick();
       
       const opfsBtn = wrapper.find('[data-testid="storage-opfs"]');
@@ -285,10 +292,12 @@ describe('StorageTab.vue Tests', () => {
         global: globalMocks
       });
       await flushPromises();
+      await vi.dynamicImportSettled();
       
       // Navigate to Storage tab
       await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await flushPromises();
+      await vi.dynamicImportSettled();
       await nextTick();
 
       // Should show "Best Effort" badge initially (after persisted check)
@@ -315,6 +324,7 @@ describe('StorageTab.vue Tests', () => {
         global: globalMocks
       });
       await flushPromises();
+      await vi.dynamicImportSettled();
     
       const localBtn = wrapper.find('[data-testid="storage-local"]');
       const opfsBtn = wrapper.find('[data-testid="storage-opfs"]');
@@ -330,6 +340,7 @@ describe('StorageTab.vue Tests', () => {
         global: globalMocks
       });
       await flushPromises();
+      await vi.dynamicImportSettled();
     
       await wrapper.find('[data-testid="storage-opfs"]').trigger('click');
       await flushPromises();
@@ -347,6 +358,7 @@ describe('StorageTab.vue Tests', () => {
         global: globalMocks
       });
       await flushPromises();
+      await vi.dynamicImportSettled();
     
       await wrapper.find('[data-testid="setting-clear-history-button"]').trigger('click');
       await flushPromises();
@@ -369,10 +381,13 @@ describe('StorageTab.vue Tests', () => {
         global: globalMocks
       });
       await flushPromises();
+      await vi.dynamicImportSettled();
     
       const tabs = wrapper.findAll('button');
       const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
       if (storageTab) await storageTab.trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
     
       const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
       expect(opfsOption.classes()).toContain('cursor-not-allowed');
@@ -391,10 +406,13 @@ describe('StorageTab.vue Tests', () => {
         global: globalMocks
       });
       await flushPromises();
+      await vi.dynamicImportSettled();
     
       const tabs = wrapper.findAll('button');
       const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
       if (storageTab) await storageTab.trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
     
       const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
       expect(opfsOption.classes()).toContain('cursor-not-allowed');
@@ -421,9 +439,12 @@ describe('StorageTab.vue Tests', () => {
         global: globalMocks
       });
       await flushPromises();
+      await vi.dynamicImportSettled();
       
       const storageTab = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('storage'));
       await storageTab?.trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
       await wait();
     
       const opfsOption = wrapper.get('[data-testid="storage-opfs"]');

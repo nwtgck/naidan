@@ -39,6 +39,13 @@ class MockFileSystemDirectoryHandle {
 
 const mockOpfsRoot = new MockFileSystemDirectoryHandle('');
 
+const mockShowConfirm = vi.fn().mockResolvedValue(true);
+vi.mock('../composables/useConfirm', () => ({
+  useConfirm: () => ({
+    showConfirm: mockShowConfirm,
+  }),
+}));
+
 describe('OPFSExplorer.vue', () => {
   const globalStubs = {
     Folder: true,
@@ -173,6 +180,7 @@ describe('OPFSExplorer.vue', () => {
 
   it('deletes an entry', async () => {
     mockOpfsRoot.entries.set('delete-me.txt', new MockFileSystemFileHandle('delete-me.txt', 0));
+    mockShowConfirm.mockResolvedValueOnce(true);
 
     const wrapper = mount(OPFSExplorer, {
       props: { modelValue: true },
@@ -186,8 +194,32 @@ describe('OPFSExplorer.vue', () => {
     await wrapper.find('button[class*="hover:text-red-600"]').trigger('click');
     await flushPromises();
 
+    expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Delete Entry',
+      confirmButtonVariant: 'danger'
+    }));
     expect(wrapper.text()).not.toContain('delete-me.txt');
     expect(mockOpfsRoot.entries.has('delete-me.txt')).toBe(false);
+  });
+
+  it('does not delete an entry if cancelled', async () => {
+    mockOpfsRoot.entries.set('keep-me.txt', new MockFileSystemFileHandle('keep-me.txt', 0));
+    mockShowConfirm.mockResolvedValueOnce(false);
+
+    const wrapper = mount(OPFSExplorer, {
+      props: { modelValue: true },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('keep-me.txt');
+
+    // Click delete button
+    await wrapper.find('button[class*="hover:text-red-600"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('keep-me.txt');
+    expect(mockOpfsRoot.entries.has('keep-me.txt')).toBe(true);
   });
 
   it('goes back up in the directory tree', async () => {

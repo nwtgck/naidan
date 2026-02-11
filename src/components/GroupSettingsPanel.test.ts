@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import GroupSettingsPanel from './GroupSettingsPanel.vue';
-import { ref, nextTick, reactive } from 'vue';
+import { ref, nextTick, reactive, toRef } from 'vue';
 import type { ChatGroup } from '../models/types';
 
 const mockGroup = reactive<ChatGroup>({
@@ -16,12 +16,12 @@ const mockGroup = reactive<ChatGroup>({
   lmParameters: {},
 });
 
-const mockSettings = {
+const mockSettings = reactive({
   endpointType: 'openai',
   endpointUrl: 'http://global-url',
   defaultModelId: 'global-model',
   providerProfiles: [],
-};
+});
 
 const mockUpdateChatGroupMetadata = vi.fn().mockImplementation((id, updates) => {
   if (mockGroup.id === id) {
@@ -41,14 +41,18 @@ vi.mock('../composables/useChat', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref(mockSettings),
+    settings: toRef(mockSettings),
   }),
 }));
 
 const globalStubs = {
   'lucide-vue-next': true,
   'LmParametersEditor': true,
-  'TransformersJsUpsell': true,
+  'TransformersJsUpsell': {
+    name: 'TransformersJsUpsell',
+    template: '<div data-testid="upsell-stub"></div>',
+    props: ['show']
+  },
   'ModelSelector': {
     name: 'ModelSelector',
     template: '<div data-testid="model-selector-mock"><button data-testid="refresh-btn" @click="$emit(\'refresh\')">Refresh</button></div>',
@@ -148,9 +152,16 @@ describe('GroupSettingsPanel.vue', () => {
   });
 
   it('shows upsell component when effective type is transformers_js', async () => {
-    mockSettings.endpointType = 'transformers_js';
+    mockSettings.endpointType = 'openai'; // Start with openai
     const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    // Switch to transformers_js
+    mockSettings.endpointType = 'transformers_js';
     await nextTick();
+    await flushPromises();
+    await vi.dynamicImportSettled();
     
     const upsell = wrapper.findComponent({ name: 'TransformersJsUpsell' });
     expect(upsell.props('show')).toBe(true);

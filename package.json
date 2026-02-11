@@ -1,7 +1,7 @@
 {
   "name": "naidan",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,8 @@
     "build:hosted": "vite build --mode hosted --logLevel warn",
     "preview": "vite preview",
     "test": "vitest",
+    "test:only-failed": "vitest --reporter=./src/FailedOnlyReporter.ts --run",
+    "typecheck": "vue-tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix"
   },

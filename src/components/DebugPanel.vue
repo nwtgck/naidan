@@ -4,14 +4,13 @@ import { useGlobalEvents, type GlobalEvent } from '../composables/useGlobalEvent
 import { useOPFSExplorer } from '../composables/useOPFSExplorer';
 import { useLayout } from '../composables/useLayout';
 import { 
-  Terminal, ChevronUp, ChevronDown, Trash2, AlertCircle, X, Skull, 
+  Terminal, Trash2, AlertCircle, X, Skull, 
   Info, AlertTriangle, Bug, MoreVertical, HardDrive,
 } from 'lucide-vue-next';
 
 const { events, eventCount, errorCount, clearEvents, addErrorEvent, addInfoEvent } = useGlobalEvents();
 const { openOPFS } = useOPFSExplorer();
-const { isSidebarOpen } = useLayout();
-const isOpen = ref(false);
+const { isDebugOpen, toggleDebug } = useLayout();
 const isMenuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
 
@@ -37,16 +36,6 @@ function triggerTestInfo() {
     },
   });
   isMenuOpen.value = false;
-}
-
-
-
-function toggle() {
-  isOpen.value = !isOpen.value;
-}
-
-function toggleMenu() {
-  isMenuOpen.value = !isMenuOpen.value;
 }
 
 function formatTime(ts: number) {
@@ -103,18 +92,17 @@ onUnmounted(() => {
 
 <template>
   <div 
-    class="fixed bottom-0 right-0 z-50 border-t border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md transition-all duration-300 shadow-2xl"
-    :class="[isOpen ? 'h-64' : 'h-10', isSidebarOpen ? 'left-64' : 'left-10']"
+    class="shrink-0 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300 ease-in-out relative"
+    :class="isDebugOpen ? 'h-72 overflow-visible z-50' : 'h-0 overflow-hidden z-0'"
+    data-testid="debug-panel"
   >
-    <!-- Toggle Bar -->
+    <!-- Toolbar -->
     <div 
-      @click="toggle"
-      class="flex items-center justify-between px-4 h-10 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors border-b border-gray-100 dark:border-gray-800/50"
-      data-testid="debug-panel-toggle"
+      class="flex items-center justify-between px-4 h-10 border-b border-gray-100 dark:border-gray-800/50 bg-gray-50/80 dark:bg-black/40 backdrop-blur-sm sticky top-0 z-10"
     >
       <div class="flex items-center gap-2">
         <Terminal class="w-4 h-4 text-blue-600 dark:text-blue-400" />
-        <span class="text-[10px] font-bold text-gray-400 dark:text-gray-500 tracking-widest uppercase">Events</span>
+        <span class="text-[10px] font-bold text-gray-400 dark:text-gray-500 tracking-widest uppercase">System Events</span>
         
         <div 
           v-if="errorCount > 0"
@@ -125,75 +113,82 @@ onUnmounted(() => {
           {{ errorCount }} Errors
         </div>
 
-        <!-- Total Badge (Only show when open) -->
         <span
           class="text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-lg"
           data-testid="debug-total-badge"
         >
           Total: {{ eventCount }}
-        </span>      </div>
+        </span>
+      </div>
 
       <div class="flex items-center gap-2 relative" ref="menuRef">
-        <template v-if="isOpen">
-          <button 
-            v-if="eventCount > 0"
-            @click.stop="clearEvents"
-            class="p-1.5 hover:text-red-600 dark:hover:text-red-400 text-gray-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-            title="Clear Logs"
-            data-testid="debug-clear-button"
-          >
-            <Trash2 class="w-4 h-4" />
-          </button>
+        <button 
+          v-if="eventCount > 0"
+          @click.stop="clearEvents"
+          class="p-1.5 hover:text-red-600 dark:hover:text-red-400 text-gray-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+          title="Clear Logs"
+          data-testid="debug-clear-button"
+        >
+          <Trash2 class="w-4 h-4" />
+        </button>
 
-          <!-- More Menu Toggle -->
-          <button 
-            @click.stop="toggleMenu"
-            class="p-1.5 hover:text-blue-600 dark:hover:text-white text-gray-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-            title="Development Tools"
-            data-testid="debug-menu-button"
-          >
-            <MoreVertical class="w-4 h-4" />
-          </button>
+        <!-- More Menu Toggle -->
+        <button 
+          @mousedown.stop="isMenuOpen = !isMenuOpen"
+          class="p-1.5 hover:text-blue-600 dark:hover:text-white text-gray-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+          title="Development Tools"
+          data-testid="debug-menu-button"
+          :class="{ 'text-blue-600 dark:text-white bg-gray-100 dark:bg-gray-700': isMenuOpen }"
+        >
+          <MoreVertical class="w-4 h-4" />
+        </button>
 
-          <!-- Dropdown Menu -->
-          <div 
-            v-if="isMenuOpen"
-            class="absolute right-0 bottom-full mb-2 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden py-1 z-[60]"
-            data-testid="debug-menu-dropdown"
+        <!-- Dropdown Menu -->
+        <div 
+          v-if="isMenuOpen"
+          @click.stop
+          class="absolute right-0 bottom-full mb-2 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden py-1 z-[60]"
+          data-testid="debug-menu-dropdown"
+        >
+          <button 
+            @click.stop="triggerTestInfo"
+            class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            data-testid="trigger-test-info"
           >
-            <button 
-              @click.stop="triggerTestInfo"
-              class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              data-testid="trigger-test-info"
-            >
-              <Info class="w-3.5 h-3.5" />
-              <span>Trigger Test Info</span>
-            </button>
-            <button 
-              @click.stop="triggerTestError"
-              class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              data-testid="trigger-test-error"
-            >
-              <Skull class="w-3.5 h-3.5" />
-              <span>Trigger Test Error</span>
-            </button>
-            <div class="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
-            <button 
-              @click.stop="openOPFS"
-              class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              data-testid="open-opfs-explorer"
-            >
-              <HardDrive class="w-3.5 h-3.5" />
-              <span>Explore OPFS</span>
-            </button>
-          </div>
-        </template>
-        <component :is="isOpen ? ChevronDown : ChevronUp" class="w-4 h-4 text-gray-400" />
+            <Info class="w-3.5 h-3.5" />
+            <span>Trigger Test Info</span>
+          </button>
+          <button 
+            @click.stop="triggerTestError"
+            class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            data-testid="trigger-test-error"
+          >
+            <Skull class="w-3.5 h-3.5" />
+            <span>Trigger Test Error</span>
+          </button>
+          <div class="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
+          <button 
+            @click.stop="openOPFS"
+            class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            data-testid="open-opfs-explorer"
+          >
+            <HardDrive class="w-3.5 h-3.5" />
+            <span>Explore OPFS</span>
+          </button>
+        </div>
+
+        <button 
+          @click="toggleDebug"
+          class="p-1.5 hover:text-gray-600 dark:hover:text-white text-gray-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 ml-1"
+          title="Close Panel"
+        >
+          <X class="w-4 h-4" />
+        </button>
       </div>
     </div>
 
     <!-- Content Area -->
-    <div v-if="isOpen" class="h-54 overflow-y-auto bg-gray-50/50 dark:bg-black/30 font-mono p-3 space-y-1.5" data-testid="debug-content-area">
+    <div class="h-[calc(100%-40px)] overflow-y-auto bg-gray-50/30 dark:bg-black/40 font-mono p-3 space-y-1.5" data-testid="debug-content-area">
       <div v-if="eventCount === 0" class="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
         <X class="w-8 h-8 opacity-20" />
         <p class="text-xs font-bold uppercase tracking-widest">No events recorded</p>

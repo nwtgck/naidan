@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
+import ChatGroupActions from './ChatGroupActions.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '../models/types';
 
-// --- Mocks Data ---
-// We define these in a way that vi.mock can access them safely.
-// Note: Vitest hoists vi.mock, so we use variables that are either 
-// hoisted or defined inside the factory.
+// --- Shared Mock State ---
+// Using mock prefix to satisfy Vitest hoisting requirements
+const mockIsSidebarOpen = ref(true);
+const mockErrorCount = ref(0);
+const mockEventCount = ref(0);
+const mockToggleDebug = vi.fn();
+const mockOpenOPFS = vi.fn();
+const mockUpdateGlobalModel = vi.fn();
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -27,16 +32,34 @@ const mockRenameChatGroup = vi.fn();
 const mockDeleteChatGroup = vi.fn();
 const mockSaveSettings = vi.fn();
 
-const mockUpdateGlobalModel = vi.fn();
-
 // --- Vitest Mocks ---
 
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
-    isSidebarOpen: ref(true),
+    isSidebarOpen: mockIsSidebarOpen,
+    isDebugOpen: ref(false),
     activeFocusArea: ref('chat'),
     setActiveFocusArea: vi.fn(),
     toggleSidebar: vi.fn(),
+    toggleDebug: mockToggleDebug,
+  }),
+}));
+
+vi.mock('../composables/useOPFSExplorer', () => ({
+  useOPFSExplorer: () => ({
+    openOPFS: mockOpenOPFS,
+  }),
+}));
+
+vi.mock('../composables/useGlobalEvents', () => ({
+  useGlobalEvents: () => ({
+    events: ref([]),
+    eventCount: mockEventCount,
+    errorCount: mockErrorCount,
+    addEvent: vi.fn(),
+    addErrorEvent: vi.fn(),
+    addInfoEvent: vi.fn(),
+    clearEvents: vi.fn(),
   }),
 }));
 
@@ -92,18 +115,6 @@ vi.mock('../composables/useTheme', () => ({
   }),
 }));
 
-vi.mock('../composables/useGlobalEvents', () => ({
-  useGlobalEvents: () => ({
-    events: ref([]),
-    eventCount: ref(0),
-    errorCount: ref(0),
-    addEvent: vi.fn(),
-    addErrorEvent: vi.fn(),
-    addInfoEvent: vi.fn(),
-    clearEvents: vi.fn(),
-  }),
-}));
-
 // Mock draggable component
 vi.mock('vuedraggable', () => ({
   default: {
@@ -129,6 +140,7 @@ describe('Sidebar Logic Stability', () => {
     'lucide-vue-next': true,
     'Logo': true,
     'ThemeToggle': true,
+    'ChatGroupActions': ChatGroupActions,
     'ModelSelector': {
       name: 'ModelSelector',
       template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear">{{ modelValue }}<div v-if="loading" class="animate-spin-mock"></div></div>',
@@ -153,6 +165,8 @@ describe('Sidebar Logic Stability', () => {
     mockSettings.endpointUrl = 'http://localhost:11434';
     mockSettings.defaultModelId = 'llama3';
     mockAvailableModels.value = ['llama3', 'mistral', 'phi3'];
+    mockIsSidebarOpen.value = true;
+    mockErrorCount.value = 0;
     vi.clearAllMocks();
   });
 
@@ -431,15 +445,9 @@ describe('Sidebar Logic Stability', () => {
       },
     });
 
-    // Sidebar is open by default in Sidebar.vue (actually it depends on useLayout)
-    // In our test, useLayout is not mocked, so it uses the real one.
-    // Let's ensure it's open.
     const newChatButton = wrapper.find('[data-testid="new-chat-button"]');
     expect(newChatButton.exists()).toBe(true);
     
-    // The shortcut text is platform dependent. 
-    // In the test environment, we can check for either Ctrl+Shift+O or ⌘⇧O 
-    // depending on what navigator.platform returns.
     const text = newChatButton.text();
     expect(text).toContain('New Chat');
     expect(text).toMatch(/(Ctrl\+Shift\+O|⌘⇧O)/);
@@ -470,7 +478,6 @@ describe('Sidebar Logic Stability', () => {
 
   describe('Group Deletion Confirmation', () => {
     it('should prompt for confirmation when deleting a group with chats', async () => {
-      // Setup group with items
       const groupWithChats: ChatGroup = { 
         id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0,
         items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }] 
@@ -484,7 +491,7 @@ describe('Sidebar Logic Stability', () => {
       vm.syncLocalItems();
       await nextTick();
 
-      // Find delete button and click
+      await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
       await deleteBtn.trigger('click');
 
@@ -492,7 +499,6 @@ describe('Sidebar Logic Stability', () => {
     });
 
     it('should prompt for confirmation when deleting an empty group with custom settings', async () => {
-      // Setup group with custom settings but no items
       const groupWithSettings: ChatGroup = { 
         id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [],
         systemPrompt: { content: 'sys', behavior: 'append' }
@@ -506,6 +512,7 @@ describe('Sidebar Logic Stability', () => {
       vm.syncLocalItems();
       await nextTick();
 
+      await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
       await deleteBtn.trigger('click');
 
@@ -513,7 +520,6 @@ describe('Sidebar Logic Stability', () => {
     });
 
     it('should delete IMMEDIATELY without confirmation for an empty group with no settings', async () => {
-      // Setup vanilla group
       const emptyGroup: ChatGroup = { 
         id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] 
       };
@@ -526,6 +532,7 @@ describe('Sidebar Logic Stability', () => {
       vm.syncLocalItems();
       await nextTick();
 
+      await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       const deleteBtn = wrapper.find('[data-testid="delete-group-button"]');
       await deleteBtn.trigger('click');
 
@@ -539,7 +546,7 @@ describe('Sidebar Logic Stability', () => {
         items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }]
       };
       mockChatGroups.value = [group];
-      mockShowConfirm.mockResolvedValue(true); // User accepts
+      mockShowConfirm.mockResolvedValue(true);
 
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
@@ -548,9 +555,9 @@ describe('Sidebar Logic Stability', () => {
       vm.syncLocalItems();
       await nextTick();
 
+      await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
       
-      // Wait for promise resolution
       await nextTick();
       await nextTick();
 
@@ -563,7 +570,7 @@ describe('Sidebar Logic Stability', () => {
         items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }]
       };
       mockChatGroups.value = [group];
-      mockShowConfirm.mockResolvedValue(false); // User cancels
+      mockShowConfirm.mockResolvedValue(false);
 
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
@@ -572,12 +579,52 @@ describe('Sidebar Logic Stability', () => {
       vm.syncLocalItems();
       await nextTick();
 
+      await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
       
       await nextTick();
       await nextTick();
 
       expect(mockDeleteChatGroup).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Debug and Footer Actions', () => {
+    it('shows error badge in the sidebar when errors exist', async () => {
+      mockErrorCount.value = 5;
+      
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      const badge = wrapper.find('[data-testid="sidebar-error-badge"]');
+      expect(badge.exists()).toBe(true);
+      expect(badge.text()).toBe('5');
+    });
+
+    it('toggles debug panel when the debug button is clicked', async () => {
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      const debugBtn = wrapper.find('[data-testid="sidebar-debug-button"]');
+      await debugBtn.trigger('click');
+
+      expect(mockToggleDebug).toHaveBeenCalled();
+    });
+
+    it('opens OPFS explorer when the OPFS button is clicked', async () => {
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      const opfsBtn = wrapper.find('[data-testid="sidebar-opfs-button"]');
+      await opfsBtn.trigger('click');
+
+      expect(mockOpenOPFS).toHaveBeenCalled();
     });
   });
 });

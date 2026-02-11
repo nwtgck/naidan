@@ -31,8 +31,11 @@ import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Ch
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
+// IMPORTANT: SpeechControl is used in every message and should be immediately available.
 import SpeechControl from './SpeechControl.vue';
+// IMPORTANT: ImageConjuringLoader is essential for showing image generation progress immediately.
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
+// IMPORTANT: ChatToolsMenu is part of the editing UI and should be immediately available.
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { useImagePreview } from '../composables/useImagePreview';
 import { 

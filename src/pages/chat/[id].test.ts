@@ -45,7 +45,7 @@ describe('ChatPage', () => {
     };
     
     mount(ChatPage);
-    expect(mockOpenChat).toHaveBeenCalledWith('chat-123');
+    expect(mockOpenChat).toHaveBeenCalledWith('chat-123', undefined);
   });
 
   it('watches route.params.id and calls openChat', async () => {
@@ -55,13 +55,30 @@ describe('ChatPage', () => {
     };
     
     mount(ChatPage);
-    expect(mockOpenChat).toHaveBeenCalledWith('chat-123');
+    expect(mockOpenChat).toHaveBeenCalledWith('chat-123', undefined);
     
     mockRouter.currentRoute.value = {
       params: { id: 'chat-456' },
       query: {},
     };
     await nextTick();
-    expect(mockOpenChat).toHaveBeenCalledWith('chat-456');
+    expect(mockOpenChat).toHaveBeenCalledWith('chat-456', undefined);
+  });
+
+  it('watches leaf query parameter and calls openChat', async () => {
+    mockRouter.currentRoute.value = {
+      params: { id: 'chat-123' },
+      query: { leaf: 'leaf-1' },
+    };
+    
+    mount(ChatPage);
+    expect(mockOpenChat).toHaveBeenCalledWith('chat-123', 'leaf-1');
+    
+    mockRouter.currentRoute.value = {
+      params: { id: 'chat-123' },
+      query: { leaf: 'leaf-2' },
+    };
+    await nextTick();
+    expect(mockOpenChat).toHaveBeenCalledWith('chat-123', 'leaf-2');
   });
 });

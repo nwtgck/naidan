@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
+import { onMounted, ref, watch, nextTick, computed, toRaw, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+// IMPORTANT: Logo is part of the initial sidebar layout and should not flicker.
 import Logo from './Logo.vue';
-import ThemeToggle from './ThemeToggle.vue';
+// IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import SidebarDebugControls from './SidebarDebugControls.vue';
 import type { ChatGroup, SidebarItem } from '../models/types';
 import { 
   Trash2, Settings as SettingsIcon, 
@@ -15,6 +18,8 @@ import {
   ChevronDown, ChevronUp, ChevronRight, Check, X,
   Bot, PanelLeft, SquarePen, Loader2, MoreHorizontal,
 } from 'lucide-vue-next';
+
+const ChatGroupActions = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupActions.vue'));
 import { useLayout } from '../composables/useLayout';
 import { useConfirm } from '../composables/useConfirm';
 import { naturalSort } from '../utils/string';
@@ -51,6 +56,8 @@ const editingChatGroupName = ref('');
 const skipLeaveAnimation = ref(false);
 const lastNavigatedId = ref<string | null>(null);
 
+const activeActionGroupId = ref<string | null>(null);
+
 const COMPACT_THRESHOLD = 5;
 const expandedGroupIds = ref<Set<string>>(new Set());
 const collapsingGroupIds = ref<Set<string>>(new Set());
@@ -81,8 +88,20 @@ const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navig
 const newChatShortcutText = isMac ? '⌘⇧O' : 'Ctrl+Shift+O';
 const appVersion = __APP_VERSION__;
 
+function handleClickOutside(event: MouseEvent) {
+  const target = event.target as HTMLElement;
+  if (activeActionGroupId.value && !target.closest('.group-action-container')) {
+    activeActionGroupId.value = null;
+  }
+}
+
 onMounted(() => {
   syncLocalItems();
+  document.addEventListener('mousedown', handleClickOutside);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('mousedown', handleClickOutside);
 });
 
 function syncLocalItems() {
@@ -688,9 +707,16 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                     <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
                   </div>
                       
-                  <div class="flex items-center opacity-0 group-hover/folder:opacity-100 transition-opacity">
-                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup(element.chatGroup)" class="p-1 hover:text-blue-600 dark:hover:text-white"><Pencil class="w-3 h-3" /></button>
-                    <button @click.stop="handleDeleteChatGroup(element.chatGroup)" class="p-1 hover:text-red-500" data-testid="delete-group-button"><Trash2 class="w-3 h-3" /></button>
+                  <div class="flex items-center group-action-container" :class="activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity'">
+                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup(element.chatGroup)" class="p-1 hover:text-blue-600 dark:hover:text-white" title="Rename Group"><Pencil class="w-3 h-3" /></button>
+                    
+                    <ChatGroupActions
+                      :chat-group="element.chatGroup"
+                      :is-open="activeActionGroupId === element.chatGroup.id"
+                      @toggle="activeActionGroupId = activeActionGroupId === element.chatGroup.id ? null : element.chatGroup.id"
+                      @duplicate="() => { chatStore.duplicateChatGroup(element.chatGroup.id); activeActionGroupId = null; }"
+                      @delete="() => { handleDeleteChatGroup(element.chatGroup); activeActionGroupId = null; }"
+                    />
                   </div>
                 </div>
 
@@ -847,13 +873,13 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
           class="flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm"
           :class="isSidebarOpen ? 'flex-1 py-3 px-2' : 'w-8 h-8'"
           title="Settings"
+          data-testid="sidebar-settings-button"
         >
           <SettingsIcon class="w-4 h-4 shrink-0" />
           <span v-if="isSidebarOpen">Settings</span>
         </button>
-        <div v-if="isSidebarOpen" class="w-32 flex-shrink-0 animate-in fade-in duration-300">
-          <ThemeToggle />
-        </div>
+        
+        <SidebarDebugControls :is-sidebar-open="isSidebarOpen" />
       </div>
     </div>
   </div>

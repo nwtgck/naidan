@@ -46,6 +46,22 @@ function handleCountInput(event: Event) {
   }
 }
 
+function handleWidthInput(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const val = parseInt(target.value);
+  if (!isNaN(val) && val > 0) {
+    emit('update:resolution', val, props.selectedHeight);
+  }
+}
+
+function handleHeightInput(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const val = parseInt(target.value);
+  if (!isNaN(val) && val > 0) {
+    emit('update:resolution', props.selectedWidth, val);
+  }
+}
+
 function handleModelUpdate(modelId: string) {
   emit('update:model', modelId);
 }
@@ -86,18 +102,39 @@ function handleModelUpdate(modelId: string) {
       <!-- Resolution Selector -->
       <div class="px-3 py-2">
         <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Resolution</div>
-        <div class="flex gap-1.5">
-          <button 
-            v-for="res in resolutions" 
-            :key="`${res.width}x${res.height}`"
-            @click="emit('update:resolution', res.width, res.height)"
-            class="flex-1 px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap"
-            :class="selectedWidth === res.width && selectedHeight === res.height 
-              ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
-              : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
-          >
-            {{ res.width }}x{{ res.height }}
-          </button>
+        <div class="flex flex-col gap-2">
+          <div class="flex gap-1.5">
+            <button 
+              v-for="res in resolutions" 
+              :key="`${res.width}x${res.height}`"
+              @click="emit('update:resolution', res.width, res.height)"
+              class="flex-1 px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap"
+              :class="selectedWidth === res.width && selectedHeight === res.height 
+                ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
+                : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
+            >
+              {{ res.width }}x{{ res.height }}
+            </button>
+          </div>
+          <div class="flex gap-1.5 items-center">
+            <input 
+              type="number" 
+              min="1"
+              :value="selectedWidth"
+              @input="handleWidthInput"
+              class="flex-1 min-w-0 px-1 py-1 text-[10px] font-mono text-center border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              placeholder="Width"
+            />
+            <span class="text-[10px] text-gray-400">×</span>
+            <input 
+              type="number" 
+              min="1"
+              :value="selectedHeight"
+              @input="handleHeightInput"
+              class="flex-1 min-w-0 px-1 py-1 text-[10px] font-mono text-center border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              placeholder="Height"
+            />
+          </div>
         </div>
       </div>
 

@@ -1,92 +1,25 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import SettingsModal from './SettingsModal.vue';
-
-// Mocking dependencies
-vi.mock('../composables/useSettings', () => ({
-  useSettings: () => ({
-    settings: { value: { endpointType: 'openai', providerProfiles: [] } },
-    save: vi.fn(),
-    availableModels: { value: [] },
-    isFetchingModels: { value: false },
-    fetchModels: vi.fn().mockResolvedValue([]),
-  }),
-}));
-
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    deleteAllChats: vi.fn(),
-  }),
-}));
-
-vi.mock('../composables/useSampleChat', () => ({
-  useSampleChat: () => ({
-    createSampleChat: vi.fn(),
-  }),
-}));
-
-vi.mock('../composables/useToast', () => ({
-  useToast: () => ({
-    addToast: vi.fn(),
-  }),
-}));
-
-vi.mock('../composables/useConfirm', () => ({
-  useConfirm: () => ({
-    showConfirm: vi.fn(),
-  }),
-}));
-
-vi.mock('../composables/usePrompt', () => ({
-  usePrompt: () => ({
-    showPrompt: vi.fn(),
-  }),
-}));
-
-vi.mock('vue-router', () => ({
-  useRouter: () => ({
-    push: vi.fn(),
-  }),
-  useRoute: () => ({
-    path: '/',
-    params: {},
-    query: {},
-  }),
-}));
+import AboutTab from './AboutTab.vue';
 
 // Global constant mock
-(global as any).__BUILD_MODE_IS_HOSTED__ = true;
+(global as any).__BUILD_MODE_IS_STANDALONE__ = false;
+(global as any).__APP_VERSION__ = '0.5.1-test';
 
-describe('SettingsModal GitHub Link', () => {
-  it('should contain GitHub link with External badge in the footer', async () => {
-    const wrapper = mount(SettingsModal, {
-      props: {
-        isOpen: true,
-      },
+describe('AboutTab GitHub Link', () => {
+  it('should contain GitHub link with correct structure', async () => {
+    const wrapper = mount(AboutTab, {
       global: {
         stubs: {
           'router-link': true,
-          'router-view': true,
-          'LmParametersEditor': true,
-          'Transition': {
-            template: '<slot />'
-          },
+          'Logo': true,
           // Icons
           Github: true,
           ExternalLink: true,
-          AlertTriangle: true,
-          X: true,
-          Settings2: true,
-          Globe: true,
-          BookmarkPlus: true,
-          Database: true,
-          Cpu: true,
-          Download: true,
-          Save: true,
-          HardDrive: true,
           Info: true,
-          Trash2: true,
-          FlaskConical: true,
+          ShieldCheck: true,
+          Download: true,
+          Loader2: true,
         }
       }
     });
@@ -94,11 +27,10 @@ describe('SettingsModal GitHub Link', () => {
     const githubLink = wrapper.find('a[href*="github.com/nwtgck/naidan"]');
     expect(githubLink.exists()).toBe(true);
     
-    // Check for the "External" badge text
-    expect(githubLink.text()).toContain('External');
+    // Check for "GitHub Repository" text
+    expect(githubLink.text()).toContain('GitHub Repository');
     
-    // Check for the "GitHub" and "Repository" titles
-    expect(githubLink.text()).toContain('GitHub');
-    expect(githubLink.text()).toContain('Repository');
+    // Check for the description text
+    expect(githubLink.text()).toContain('View source code & contribute');
   });
 });
