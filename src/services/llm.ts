@@ -565,11 +565,16 @@ export class OllamaProvider implements LLMProvider {
         throw new Error('Could not find image data in Ollama response. Check console for response structure.');
       }
 
-      b64Data = b64Data.replace(/^data:image\/[a-z]+;base64,/, '');
-
-      const dataUrl = `data:image/png;base64,${b64Data}`;
-      const blobResponse = await fetch(dataUrl, { signal });
-      return await blobResponse.blob();
+      // Avoid fetching data URLs due to Content Security Policy restrictions.
+      // Convert base64 string to Blob (browser-compatible)
+      const byteCharacters = atob(b64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'image/png' });
+      return blob;
     }
 
     // OpenAI compatible endpoint on Ollama: often at /v1/images/generations
@@ -633,9 +638,15 @@ export class OllamaProvider implements LLMProvider {
     }
     const b64Data = first.b64_json;
     
-    // Convert base64 to Blob using fetch
-    const dataUrl = `data:image/png;base64,${b64Data}`;
-    const blobResponse = await fetch(dataUrl, { signal });
-    return await blobResponse.blob();
+    // Avoid fetching data URLs due to Content Security Policy restrictions.
+    // Convert base64 string to Blob (browser-compatible)
+    const byteCharacters = atob(b64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'image/png' });
+    return blob;
   }
 }
