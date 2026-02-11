@@ -23,7 +23,25 @@ vi.mock('lucide-vue-next', () => ({
   Image: { template: '<span>Image</span>' },
   File: { template: '<span>File</span>' },
   Cpu: { template: '<span>Cpu</span>' },
-  Fingerprint: { template: '<span>Fingerprint</span>' }
+  Fingerprint: { template: '<span>Fingerprint</span>' },
+  Eye: { template: '<span>Eye</span>' },
+  EyeOff: { template: '<span>EyeOff</span>' },
+  CornerUpRight: { template: '<span>CornerUpRight</span>' },
+  ZoomIn: { template: '<span>ZoomIn</span>' },
+  ZoomOut: { template: '<span>ZoomOut</span>' },
+  RefreshCw: { template: '<span>RefreshCw</span>' },
+  Calendar: { template: '<span>Calendar</span>' },
+  Info: { template: '<span>Info</span>' },
+  Download: { template: '<span>Download</span>' },
+  Trash2: { template: '<span>Trash2</span>' }
+}));
+
+const mockPush = vi.fn();
+vi.mock('vue-router', () => ({
+  useRouter: () => ({
+    push: mockPush,
+    currentRoute: { value: { query: {} } }
+  })
 }));
 
 vi.mock('../services/storage', () => ({
@@ -292,5 +310,109 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
     expect(wrapper.findComponent(Network).exists()).toBe(true);
     expect(wrapper.findAllComponents(ChatDebugTreeNode).length).toBe(0);
+  });
+
+  it('Scenario 13: JSON Content Escaping (Technical Comments Visibility)', async () => {
+    const chat = createMockChat([
+      createNode('A', 'user', 'Check this <!-- technical_comment -->')
+    ]);
+    const wrapper = mountInspector(chat);
+    
+    await wrapper.findAll('button').find(b => b.text().includes('Full JSON'))?.trigger('click');
+    await nextTick();
+
+    const pre = wrapper.find('pre');
+    // It should be escaped so it's visible as text in v-html
+    expect(pre.html()).toContain('&lt;!-- technical_comment --&gt;');
+  });
+
+  it('Scenario 14: Technical Comments remain visible when Highlighting is OFF', async () => {
+    const chat = createMockChat([
+      createNode('A', 'user', 'Check this <!-- technical_comment -->')
+    ]);
+    const wrapper = mountInspector(chat);
+    
+    // Switch to Full JSON
+    await wrapper.findAll('button').find(b => b.text().includes('Full JSON'))?.trigger('click');
+    await nextTick();
+
+    // Turn OFF highlighting
+    const toggleBtn = wrapper.find('button[title="Toggle Highlighting"]');
+    await toggleBtn.trigger('click');
+    await nextTick();
+
+    const pre = wrapper.find('pre');
+    // It should STILL be escaped even if highlighting is off
+    expect(pre.html()).toContain('&lt;!-- technical_comment --&gt;');
+  });
+
+  it('Scenario 15: Image Preview navigation is restricted to the selected path in Tree mode', async () => {
+    // Branch A -> B (with image 1)
+    // Branch A -> C (with image 2)
+    const img1 = { 
+      id: 'att-1', 
+      binaryObjectId: 'obj-1', 
+      mimeType: 'image/png', 
+      status: 'persisted' as const,
+      originalName: 'img1.png',
+      size: 1024,
+      uploadedAt: Date.now()
+    };
+    const img2 = { 
+      id: 'att-2', 
+      binaryObjectId: 'obj-2', 
+      mimeType: 'image/png', 
+      status: 'persisted' as const,
+      originalName: 'img2.png',
+      size: 1024,
+      uploadedAt: Date.now()
+    };
+
+    const nodeB = createNode('B', 'assistant', 'B content', []);
+    nodeB.attachments = [img1];
+    
+    const nodeC = createNode('C', 'assistant', 'C content', []);
+    nodeC.attachments = [img2];
+
+    const chat = createMockChat([
+      createNode('A', 'user', 'A', [nodeB, nodeC])
+    ]);
+    
+    // Mock storageService.getBinaryObject to return valid objects
+    const { storageService } = await import('../services/storage');
+    vi.mocked(storageService.getBinaryObject).mockImplementation(async ({ binaryObjectId }) => {
+      if (binaryObjectId === 'obj-1') return { id: 'obj-1', mimeType: 'image/png', name: 'img1.png' } as any;
+      if (binaryObjectId === 'obj-2') return { id: 'obj-2', mimeType: 'image/png', name: 'img2.png' } as any;
+      return null;
+    });
+
+    const wrapper = mountInspector(chat);
+    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await nextTick();
+
+    // Directly trigger select-node on the inspector instance to update selectedNode
+    await (wrapper.vm as any).handleSelectNode(nodeB);
+    await nextTick();
+
+    // Now find the node B in the detail panel to trigger preview
+    const detailPanel = wrapper.find('.flex-1.overflow-y-auto.p-8');
+    const treeNodes = detailPanel.findAllComponents(ChatDebugTreeNode);
+    const nodeBDetail = treeNodes.find((n: any) => n.props().node.id === 'B');
+    
+    // Trigger preview
+    await nodeBDetail?.vm.$emit('preview-attachment', 'obj-1');
+    await nextTick();
+    await nextTick(); 
+    await nextTick(); // More ticks for async storage and state propagation
+
+    // Check preview objects
+    const modal = wrapper.findComponent({ name: 'BinaryObjectPreviewModal' });
+    expect(modal.exists()).toBe(true);
+    const objects = modal.props('objects');
+    
+    // Should ONLY contain obj-1 (from A -> B path), NOT obj-2 (which is in branch C)
+    const ids = objects.map((o: any) => o.id);
+    expect(ids).toContain('obj-1');
+    expect(ids).not.toContain('obj-2');
   });
 });
