@@ -85,6 +85,14 @@ jobs:
           name: full-dist-build
           path: dist
 
+      - name: Create _headers
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          cat << EOF > dist/hosted/_headers
+          /naidan-standalone.zip
+            Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"
+          EOF
+
       - name: Publish to Cloudflare Pages
         id: cloudflare_pages_deploy
         uses: cloudflare/pages-action@1
@@ -128,11 +136,15 @@ jobs:
           name: full-dist-build
           path: dist
 
-      - name: Create CSP headers for local-only
+      - name: Create _headers for local-only
         run: |
-          cat << 'EOF' > dist/hosted/_headers
+          VERSION=$(node -p "require('./package.json').version")
+          cat << EOF > dist/hosted/_headers
           /*
             Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'; form-action 'none';
+
+          /naidan-standalone.zip
+            Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"
           EOF
 
       - name: Publish to Cloudflare Pages (Local API Only)
