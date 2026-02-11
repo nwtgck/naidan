@@ -83,6 +83,26 @@ describe('ChatToolsMenu', () => {
     expect(wrapper.emitted('update:resolution')).toEqual([[256, 256]]);
   });
 
+  it('emits update:resolution when a custom resolution is entered', async () => {
+    const wrapper = mount(ChatToolsMenu, { 
+      props: { ...defaultProps, isImageMode: true } 
+    });
+    await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    
+    const widthInput = wrapper.find('input[placeholder="Width"]');
+    const heightInput = wrapper.find('input[placeholder="Height"]');
+    
+    await widthInput.setValue(800);
+    expect(wrapper.emitted('update:resolution')).toContainEqual([800, 512]);
+    
+    await wrapper.setProps({ selectedWidth: 800 });
+    
+    await heightInput.setValue(600);
+    expect(wrapper.emitted('update:resolution')).toContainEqual([800, 600]);
+  });
+
   it('emits update:count when a count is selected', async () => {
     const wrapper = mount(ChatToolsMenu, { 
       props: { ...defaultProps, isImageMode: true } 
@@ -105,7 +125,7 @@ describe('ChatToolsMenu', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
     
-    const input = wrapper.find('input[type="number"]');
+    const input = wrapper.find('input[placeholder="Qty"]');
     await input.setValue(10);
     
     expect(wrapper.emitted('update:count')).toEqual([[10]]);
