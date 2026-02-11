@@ -1,10 +1,32 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Bug, X, MessageSquare, Network, FileCode, Highlighter, ZapOff, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { Bug, X, MessageSquare, Network, FileCode, Highlighter, ZapOff, ChevronLeft, ChevronRight, Eye, EyeOff, CornerUpRight } from 'lucide-vue-next';
+import createDOMPurify from 'dompurify';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
 import { storageService } from '../services/storage';
+import { useRouter } from 'vue-router';
+import { useGlobalEvents } from '../composables/useGlobalEvents';
 import type { BinaryObject, MessageNode } from '../models/types';
+
+const DOMPurify = (() => {
+  const t = typeof window;
+  switch (t) {
+  case 'undefined': return createDOMPurify();
+  case 'object':
+  case 'boolean':
+  case 'string':
+  case 'number':
+  case 'function':
+  case 'symbol':
+  case 'bigint':
+    return createDOMPurify(window);
+  default: {
+    const _ex: never = t;
+    return _ex;
+  }
+  }
+})();
 
 const props = defineProps<{
   show: boolean;
@@ -17,8 +39,11 @@ const emit = defineEmits<{
   (e: 'close'): void;
 }>();
 
+const router = useRouter();
+const { addErrorEvent } = useGlobalEvents();
 const mode = ref<'active' | 'tree' | 'raw'>('active');
 const isHighlightEnabled = ref(true);
+const isContentCollapsed = ref(false);
 const selectedNode = ref<Readonly<MessageNode> | null>(null);
 const isTreeMapCollapsed = ref(false);
 
@@ -26,6 +51,11 @@ const activeIds = computed(() => new Set(props.activeMessages.map(m => m.id)));
 
 function handleSelectNode(node: Readonly<MessageNode>) {
   selectedNode.value = node;
+}
+
+function handleOpenLeaf(leafId: string) {
+  router.push({ query: { ...router.currentRoute.value.query, leaf: leafId } });
+  emit('close');
 }
 
 // Calculate the path from root to the selected node
@@ -59,10 +89,79 @@ const previewObjects = ref<BinaryObject[]>([]);
 const previewInitialId = ref<string | null>(null);
 
 async function handlePreviewAttachment(binaryObjectId: string) {
-  const obj = await storageService.getBinaryObject({ binaryObjectId });
-  if (obj) {
-    previewObjects.value = [obj];
-    previewInitialId.value = obj.id;
+  const allImageIds = new Set<string>();
+  
+  // Determine which nodes to scan based on the current mode
+  const nodesToScan = (() => {
+    const m = mode.value;
+    switch (m) {
+    case 'tree': return selectedPath.value;
+    case 'active': return props.activeMessages;
+    case 'raw': return []; 
+    default: {
+      const _ex: never = m;
+      return _ex;
+    }
+    }
+  })();
+
+  // Helper to extract IDs from a node
+  const extractIds = (node: MessageNode) => {
+    // From attachments
+    if (node.attachments) {
+      for (const att of node.attachments) {
+        if (att.mimeType?.startsWith('image/')) {
+          allImageIds.add(att.binaryObjectId);
+        }
+      }
+    }
+    // From content (naidan_experimental_image)
+    if (node.content) {
+      const regex = /```naidan_experimental_image\n([\s\S]*?)\n```/g;
+      let match;
+      while ((match = regex.exec(node.content)) !== null) {
+        const jsonStr = match[1];
+        if (!jsonStr) continue;
+        try {
+          const parsed = JSON.parse(jsonStr);
+          if (parsed.binaryObjectId) {
+            allImageIds.add(parsed.binaryObjectId);
+          }
+        } catch (e) {
+          console.error('Failed to parse image block in ChatDebugInspector:', e);
+          addErrorEvent({
+            source: 'ChatDebugInspector:handlePreviewAttachment',
+            message: 'Failed to parse image metadata during preview collection.',
+            details: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+    }
+  };
+
+  // Traverse the relevant nodes
+  for (const node of nodesToScan) {
+    extractIds(node);
+  }
+
+  // Ensure the clicked one is in the set
+  allImageIds.add(binaryObjectId);
+
+  // Fetch metadata for all found images
+  const objects: BinaryObject[] = [];
+  for (const id of allImageIds) {
+    const obj = await storageService.getBinaryObject({ binaryObjectId: id });
+    if (obj && obj.mimeType.startsWith('image/')) {
+      objects.push(obj);
+    }
+  }
+
+  // Sort by creation date if available, otherwise keep order
+  objects.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+  if (objects.length > 0) {
+    previewObjects.value = objects;
+    previewInitialId.value = binaryObjectId;
   }
 }
 
@@ -72,21 +171,36 @@ function handleClose() {
 
 // Simple highlighter for the raw JSON view
 const highlightJson = (json: string) => {
-  if (!isHighlightEnabled.value) return json;
-  return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, (match) => {
-    let cls = 'text-blue-500 dark:text-blue-400'; // number
-    if (/^"/.test(match)) {
-      if (/:$/.test(match)) {
-        cls = 'text-red-500 dark:text-red-400 font-bold'; // key
-      } else {
-        cls = 'text-green-600 dark:text-green-400'; // string
+  // 1. First, encode everything as plain text by escaping HTML special chars
+  const escaped = json
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+    
+  let html = escaped;
+  if (isHighlightEnabled.value) {
+    // 2. Add spans for highlighting. Input is already escaped.
+    html = escaped.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, (match) => {
+      let cls = 'text-blue-500 dark:text-blue-400'; // number
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          cls = 'text-red-500 dark:text-red-400 font-bold'; // key
+        } else {
+          cls = 'text-green-600 dark:text-green-400'; // string
+        }
+      } else if (/true|false/.test(match)) {
+        cls = 'text-orange-500';
+      } else if (/null/.test(match)) {
+        cls = 'text-magenta-500';
       }
-    } else if (/true|false/.test(match)) {
-      cls = 'text-orange-500';
-    } else if (/null/.test(match)) {
-      cls = 'text-magenta-500';
-    }
-    return `<span class="${cls}">${match}</span>`;
+      return `<span class="${cls}">${match}</span>`;
+    });
+  }
+
+  // 3. Sanitize to guarantee no malicious tags or attributes
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['span'],
+    ALLOWED_ATTR: ['class']
   });
 };
 
@@ -98,7 +212,7 @@ const rawJsonOutput = computed(() => {
     return '';
   case 'raw': {
     const json = JSON.stringify(props.chat, null, 2);
-    return isHighlightEnabled.value ? highlightJson(json) : json;
+    return highlightJson(json);
   }
   default: {
     const _ex: never = m;
@@ -156,6 +270,16 @@ const rawJsonOutput = computed(() => {
               <component :is="isHighlightEnabled ? Highlighter : ZapOff" class="w-4 h-4" />
             </button>
 
+            <!-- Content Collapse Toggle -->
+            <button 
+              @click="isContentCollapsed = !isContentCollapsed"
+              class="p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
+              :class="isContentCollapsed ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400'"
+              title="Toggle Content Collapse"
+            >
+              <component :is="isContentCollapsed ? EyeOff : Eye" class="w-4 h-4" />
+            </button>
+
             <div class="w-px h-6 bg-gray-200 dark:bg-white/10 mx-1"></div>
 
             <button @click="handleClose" class="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-90">
@@ -175,6 +299,7 @@ const rawJsonOutput = computed(() => {
               :node="{ ...m, replies: { items: [] } }"
               :active-ids="activeIds"
               :highlight="isHighlightEnabled"
+              :is-content-collapsed="isContentCollapsed"
               :is-last="true"
               mode="active"
               @preview-attachment="handlePreviewAttachment"
@@ -204,6 +329,7 @@ const rawJsonOutput = computed(() => {
                   :node="node" 
                   :active-ids="activeIds"
                   :highlight="isHighlightEnabled"
+                  :is-content-collapsed="isContentCollapsed"
                   :is-last="index === chat.root.items.length - 1"
                   :is-root="chat.root.items.length <= 1"
                   mode="compact"
@@ -219,8 +345,15 @@ const rawJsonOutput = computed(() => {
             <!-- Right: Detail Panel -->
             <div class="flex-1 overflow-y-auto p-8 thin-scrollbar">
               <div v-if="selectedPath.length > 0" class="space-y-4">
-                <div v-if="selectedPath.length > 1" class="mb-8 border-b border-gray-100 dark:border-white/5 pb-4">
+                <div v-if="selectedPath.length > 1" class="mb-8 border-b border-gray-100 dark:border-white/5 pb-4 flex justify-between items-end">
                   <span class="text-[9px] font-black uppercase tracking-widest text-gray-400">Context Path</span>
+                  <button 
+                    @click="handleOpenLeaf(selectedNode!.id)"
+                    class="flex items-center gap-2 px-3 py-1.5 bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+                  >
+                    <CornerUpRight class="w-3 h-3" />
+                    <span>Open at this leaf</span>
+                  </button>
                 </div>
                 <ChatDebugTreeNode 
                   v-for="m in selectedPath"
@@ -228,6 +361,7 @@ const rawJsonOutput = computed(() => {
                   :node="{ ...m, replies: { items: [] } }"
                   :active-ids="activeIds"
                   :highlight="isHighlightEnabled"
+                  :is-content-collapsed="isContentCollapsed"
                   :is-root="true"
                   mode="active"
                   @preview-attachment="handlePreviewAttachment"
