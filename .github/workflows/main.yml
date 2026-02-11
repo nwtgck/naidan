@@ -8,7 +8,7 @@ on:
       - 'v*'
 
 jobs:
-  build_and_test:
+  lint_and_test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,38 +31,54 @@ jobs:
         if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         run: npm run test
 
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        id: npm_install
+        run: npm ci
+
+      - name: Ensure licenses.json exists
+        run: |
+          mkdir -p src/assets
+          echo '[{"name": "dummy-package-for-tests", "version": "0.0.0", "license": "DUMMY-LICENSE", "licenseText": "This is a placeholder for CI tests."}]' > src/assets/licenses.json
+
       - name: Run build
-        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         run: npm run build
 
       - name: Set up Go
-        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         uses: actions/setup-go@v5
         with:
           go-version-file: naidan-server/go.mod
 
       - name: Verify naidan-server build
-        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         run: |
           cd naidan-server
           go run build.go
 
       - name: Upload full dist build artifact
-        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: full-dist-build
           path: dist/
 
       - name: Upload naidan-server binary artifact
-        if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: naidan-server-binary
           path: naidan-server/naidan-server
 
   publish_to_cloudflare:
-    needs: build_and_test
+    needs: build
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -119,7 +135,7 @@ jobs:
             });
 
   publish_to_cloudflare_local_only:
-    needs: build_and_test
+    needs: build
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
@@ -173,7 +189,7 @@ jobs:
             });
 
   release_to_github:
-    needs: build_and_test
+    needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
