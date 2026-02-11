@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, computed } from 'vue';
+import { ref, watch, nextTick, onMounted, computed, toRaw } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 import { useChatDraft } from '../composables/useChatDraft';
@@ -36,7 +36,7 @@ import {
   Folder, FolderInput, ChevronRight, Hammer, Image,
   ChevronDown, ChevronUp
 } from 'lucide-vue-next';
-import type { Attachment } from '../models/types';
+import type { Attachment, Chat } from '../models/types';
 
 
 const chatStore = useChat();
@@ -594,6 +594,40 @@ watch(
     }
   },
   { deep: true },
+);
+
+import { findDeepestLeaf } from '../utils/chat-tree';
+
+watch(
+  () => currentChat.value?.currentLeafId,
+  (newLeafId) => {
+    if (!newLeafId || !currentChat.value) return;
+    
+    const currentLeafInUrl = router.currentRoute.value.query.leaf;
+    if (newLeafId !== currentLeafInUrl) {
+      const query = { ...router.currentRoute.value.query };
+      
+      // If we are at the deepest leaf, we don't need the leaf param in URL
+      // Use toRaw and cast to Chat to avoid deep-readonly type issues with findDeepestLeaf
+      const rawChat = toRaw(currentChat.value) as Chat | null;
+      if (rawChat && rawChat.root.items.length > 0) {
+        const deepestLeaf = findDeepestLeaf(rawChat.root.items[rawChat.root.items.length - 1]!);
+        if (newLeafId === deepestLeaf.id) {
+          delete query.leaf;
+        } else {
+          query.leaf = newLeafId;
+        }
+      } else if (newLeafId) {
+        query.leaf = newLeafId;
+      }
+
+      // If we are just loading the chat or there's no leaf in URL, use replace to avoid polluting history
+      const method = !currentLeafInUrl ? 'replace' : 'push';
+      router[method]({
+        query
+      });
+    }
+  }
 );
 
 watch(input, () => {

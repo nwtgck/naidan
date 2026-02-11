@@ -517,15 +517,29 @@ export function useChat() {
     }
   };
 
-  const openChat = async (id: string): Promise<Chat | null> => {
+  const openChat = async (id: string, leafId?: string): Promise<Chat | null> => {
     if (liveChatRegistry.has(id)) { 
       const chat = liveChatRegistry.get(id)!;
+      if (leafId && leafId !== chat.currentLeafId) {
+        const node = findNodeInBranch(chat.root.items, leafId);
+        if (node) {
+          chat.currentLeafId = leafId;
+          storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
+        }
+      }
       _currentChatGroup.value = null;
       _currentChat.value = chat;
       return chat;
     }
     const loaded = await storageService.loadChat(id);
     if (loaded) {
+      if (leafId && leafId !== loaded.currentLeafId) {
+        const node = findNodeInBranch(loaded.root.items, leafId);
+        if (node) {
+          loaded.currentLeafId = leafId;
+          storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
+        }
+      }
       const reactiveChat = reactive(loaded);
       registerLiveInstance(reactiveChat);
       _currentChatGroup.value = null;
