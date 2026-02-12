@@ -1,3 +1,4 @@
+import { generateId } from '../../utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { Chat } from '../../models/types';
@@ -92,13 +93,13 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
   });
 
   it('should split chat into meta index and content file on save', async () => {
-    const chatId = crypto.randomUUID();
+    const chatId = generateId();
     const mockChat: Chat = {
       id: chatId,
       title: 'Large Chat',
       root: { 
         items: [{
-          id: crypto.randomUUID(),
+          id: generateId(),
           role: 'user',
           content: 'Huge Content'.repeat(100),
           timestamp: Date.now(),
@@ -133,11 +134,11 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
   });
 
   it('should reassemble meta and content correctly on load', async () => {
-    const chatId = crypto.randomUUID();
+    const chatId = generateId();
     const mockChat: Chat = {
       id: chatId,
       title: 'Join Test',
-      root: { items: [{ id: crypto.randomUUID(), role: 'user', content: 'Hello', timestamp: 1, replies: { items: [] } }] },
+      root: { items: [{ id: generateId(), role: 'user', content: 'Hello', timestamp: 1, replies: { items: [] } }] },
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: true,
@@ -154,7 +155,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
   });
 
   it('should delete both meta entry and content file', async () => {
-    const chatId = crypto.randomUUID();
+    const chatId = generateId();
     const mockChat: Chat = {
       id: chatId,
       title: 'Delete Me',

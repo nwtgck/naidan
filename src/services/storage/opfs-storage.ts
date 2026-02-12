@@ -1,3 +1,4 @@
+import { generateId } from '../../utils/id';
 import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '../../models/types';
 import { 
   type ChatMetaDto,
@@ -107,7 +108,7 @@ export class OPFSStorageProvider extends IStorageProvider {
             switch (fileKind) {
             case 'file': {
               const blob = await (fileEntry as FileSystemFileHandle).getFile();
-              const newBinaryObjectId = crypto.randomUUID();
+              const newBinaryObjectId = generateId();
               
               // Save to new location with NEW ID
               await this.saveFile(blob, newBinaryObjectId, fileEntry.name);

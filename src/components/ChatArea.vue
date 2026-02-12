@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { generateId } from '../utils/id';
 import { ref, watch, nextTick, onMounted, computed, toRaw } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
@@ -210,10 +211,10 @@ async function processFiles(files: File[]) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
     
-    const attachmentId = crypto.randomUUID();
+    const attachmentId = generateId();
     const attachment: Attachment = {
       id: attachmentId,
-      binaryObjectId: crypto.randomUUID(),
+      binaryObjectId: generateId(),
       originalName: file.name,
       mimeType: file.type,
       size: file.size,

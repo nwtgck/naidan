@@ -1,3 +1,4 @@
+import { generateId } from '../utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
@@ -7,7 +8,7 @@ import { nextTick } from 'vue';
 
 describe('MessageItem Rendering', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role,
     content,
     timestamp: Date.now(),
@@ -340,7 +341,7 @@ describe('MessageItem Rendering', () => {
 
 describe('MessageItem Keyboard Shortcuts', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'user'): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role,
     content,
     timestamp: Date.now(),
@@ -400,7 +401,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
 
 describe('MessageItem Attachment Rendering', () => {
   const createMessageWithAttachments = (attachments: any[]): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role: 'user',
     content: 'Message with images',
     timestamp: Date.now(),
@@ -503,7 +504,7 @@ describe('MessageItem Attachment Rendering', () => {
 
 describe('MessageItem States', () => {
   const createAssistantMessage = (content: string, error?: string): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role: 'assistant',
     content,
     error,
@@ -573,7 +574,7 @@ describe('MessageItem States', () => {
 
 describe('MessageItem Edit Labels', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role,
     content: 'Some content',
     timestamp: Date.now(),
@@ -639,7 +640,7 @@ describe('MessageItem Edit Labels', () => {
 
 describe('MessageItem Action Visibility', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role,
     content: 'Some content',
     timestamp: Date.now(),

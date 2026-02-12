@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { generateId } from '../utils/id';
 import { ref, watch, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '../composables/useSettings';
@@ -192,7 +193,7 @@ function handleAnalyzeRecipes() {
     const match = matchRecipeModels(recipe.models, availableModels.value);
 
     newAnalyzed.push({
-      id: crypto.randomUUID(),
+      id: generateId(),
       recipe,
       selected: true,
       matchedModelId: match.modelId,

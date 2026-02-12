@@ -1,3 +1,4 @@
+import { generateId } from '../utils/id';
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
@@ -7,7 +8,7 @@ import path from 'path';
 
 describe('MessageItem Design (Dynamic Thinking Border)', () => {
   const createMessage = (content: string): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role: 'assistant',
     content,
     timestamp: Date.now(),

@@ -1,3 +1,4 @@
+import { generateId } from '../utils/id';
 import { ref } from 'vue';
 import { OllamaProvider } from '../services/llm';
 import { storageService } from '../services/storage';
@@ -232,7 +233,7 @@ export function useImageGeneration() {
     
         switch (storageType) {
         case 'opfs': {
-          const binaryObjectId = crypto.randomUUID();
+          const binaryObjectId = generateId();
           const fileName = sanitizeFilename({
             base: prompt,
             suffix: extension,

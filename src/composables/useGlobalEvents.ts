@@ -1,3 +1,4 @@
+import { generateId } from '../utils/id';
 import { ref, computed } from 'vue';
 
 export type EventType = 'info' | 'warn' | 'error' | 'debug';
@@ -26,7 +27,7 @@ const events = ref<GlobalEvent[]>([]);
 export function useGlobalEvents() {
   const addEvent = (params: { type: EventType; source: string; message: string; details?: ErrorDetailValue }) => {
     events.value.push({
-      id: crypto.randomUUID(),
+      id: generateId(),
       timestamp: Date.now(),
       ...params,
     });

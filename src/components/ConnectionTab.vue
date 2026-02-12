@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { generateId } from '../utils/id';
 import { ref, watch, computed, h } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import { useToast } from '../composables/useToast';
@@ -157,7 +158,7 @@ async function handleCreateProviderProfile() {
   if (!name) return;
 
   const newProviderProfile: ProviderProfile = {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name,
     endpointType: form.value.endpointType,
     endpointUrl: form.value.endpointUrl,

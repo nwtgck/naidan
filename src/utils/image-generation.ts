@@ -14,7 +14,7 @@ export const SENTINEL_IMAGE_PROCESSED = '<!-- naidan_experimental_image_generati
 export const IMAGE_BLOCK_LANG = 'naidan_experimental_image';
 
 export const GeneratedImageBlockSchema = z.object({
-  binaryObjectId: z.string().uuid(),
+  binaryObjectId: z.string(),
   displayWidth: z.number(),
   displayHeight: z.number(),
   prompt: z.string().optional(),
