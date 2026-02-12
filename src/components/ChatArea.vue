@@ -438,7 +438,10 @@ function scrollToBottom() {
 }
 
 // Expose for testing
-defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight, attachments, input });
+defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight, attachments, input,
+  __testOnly: {
+  // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }, });
 
 async function fetchModels() {
   if (currentChat.value) {

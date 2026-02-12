@@ -36,6 +36,13 @@ const suggestions = [
   { label: 'Brainstorm', text: 'Give me 5 creative ideas for a weekend project involving home automation.' },
   { label: 'Summarize', text: 'Summarize the key differences between various local LLM architectures.' },
 ];
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>

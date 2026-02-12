@@ -701,6 +701,13 @@ function handleToggleThinking() {
   if (typeof window !== 'undefined' && window.getSelection()?.toString()) return;
   showThinking.value = !showThinking.value;
 }
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>

@@ -21,6 +21,13 @@ async function syncGroup() {
 
 onMounted(syncGroup);
 watch(() => (route.params as unknown as RouteParams).id, syncGroup);
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>

@@ -10,6 +10,13 @@ async function handleAction(id: string, onAction?: () => void | Promise<void>) {
   }
   removeToast(id, 'action');
 }
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>
