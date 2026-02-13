@@ -26,6 +26,20 @@ const { availableModels: settingsModels, isFetchingModels: isInternalFetching, f
 const availableModels = computed(() => props.models ?? settingsModels.value);
 const isFetchingModels = computed(() => props.loading || (isInternalFetching?.value ?? false));
 
+const displayModelName = computed(() => props.modelValue || props.placeholder || 'Select a model');
+
+const modelNameParts = computed(() => {
+  const name = displayModelName.value;
+  const lastSlashIndex = name.lastIndexOf('/');
+  if (lastSlashIndex === -1) {
+    return { prefix: '', suffix: name };
+  }
+  return {
+    prefix: name.slice(0, lastSlashIndex + 1),
+    suffix: name.slice(lastSlashIndex + 1)
+  };
+});
+
 const filteredModels = computed(() => {
   if (!searchQuery.value) return availableModels.value;
   const query = searchQuery.value.toLowerCase();
@@ -245,8 +259,17 @@ defineExpose({
       :class="{ 'ring-4 ring-blue-500/10 border-blue-500/50': isOpen }"
       data-testid="model-selector-trigger"
     >
-      <div class="flex items-center gap-2 truncate">
-        <span class="truncate">{{ modelValue || placeholder || 'Select a model' }}</span>
+      <div class="flex items-center min-w-0 flex-1 overflow-hidden">
+        <span 
+          v-if="modelNameParts.prefix" 
+          class="font-normal whitespace-nowrap overflow-hidden min-w-0" 
+          style="direction: rtl; text-align: left; text-overflow: ellipsis; flex: 0 1000 auto;"
+        >
+          <bdi style="direction: ltr; unicode-bidi: isolate;">{{ modelNameParts.prefix }}</bdi>
+        </span>
+        <span class="truncate min-w-0 flex-1 text-left" style="flex: 1 1 auto;">
+          {{ modelNameParts.suffix }}
+        </span>
       </div>
       <div class="flex items-center gap-1.5 shrink-0 ml-1">
         <Loader2 v-if="isFetchingModels" class="w-3 h-3 animate-spin text-gray-400" />
