@@ -397,6 +397,27 @@ describe('MessageItem Keyboard Shortcuts', () => {
     expect(wrapper.emitted('edit')).toBeTruthy();
     expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Meta content']);
   });
+
+  it('clears all content when Clear button is clicked', async () => {
+    const message = createMessage('Original content');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Enter edit mode
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    const textarea = wrapper.find('[data-testid="edit-textarea"]');
+    await textarea.setValue('Some text to clear');
+    
+    // Clear button should exist since textarea has content
+    const clearBtn = wrapper.find('[data-testid="clear-edit-content"]');
+    expect(clearBtn.exists()).toBe(true);
+    
+    await clearBtn.trigger('click');
+    await nextTick();
+    
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('');
+    // Clear button should be hidden when content is empty
+    expect(wrapper.find('[data-testid="clear-edit-content"]').exists()).toBe(false);
+  });
 });
 
 describe('MessageItem Attachment Rendering', () => {

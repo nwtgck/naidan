@@ -27,7 +27,7 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject } from '../models/types';
-import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2 } from 'lucide-vue-next';
+import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2, XCircle } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
@@ -274,6 +274,13 @@ function handleSaveEdit() {
 function handleCancelEdit() {
   editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
   isEditing.value = false;
+}
+
+function handleClearContent() {
+  editContent.value = '';
+  nextTick(() => {
+    textareaRef.value?.focus();
+  });
 }
 
 async function handleCopy() {
@@ -852,6 +859,16 @@ defineExpose({
               </button>
             </div>
             <div class="flex items-center gap-2">
+              <button 
+                v-if="editContent"
+                @click="handleClearContent" 
+                class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                title="Clear all text"
+                data-testid="clear-edit-content"
+              >
+                <XCircle class="w-3.5 h-3.5" />
+                <span>Clear</span>
+              </button>
               <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">Cancel</button>
               <button @click="handleSaveEdit" class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
                 <span>{{ isUser ? 'Send & Branch' : 'Update & Branch' }}</span>
