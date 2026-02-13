@@ -682,3 +682,37 @@ describe('MessageItem Action Visibility', () => {
     expect(container?.className).not.toContain('group-hover:opacity-100');
   });
 });
+
+describe('MessageItem Touch Support', () => {
+  it('applies touch-visible class to attachment download buttons', async () => {
+    const message: MessageNode = {
+      id: generateId(),
+      role: 'user',
+      content: 'Message with images',
+      timestamp: Date.now(),
+      attachments: [{
+        id: 'att-1',
+        binaryObjectId: 'binary-id-1',
+        status: 'memory',
+        blob: new Blob([''], { type: 'image/png' }),
+        originalName: 'mem.png',
+        mimeType: 'image/png',
+        size: 10,
+        uploadedAt: Date.now()
+      }],
+      replies: { items: [] },
+    };
+
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn().mockReturnValue('mock-url'),
+      revokeObjectURL: vi.fn(),
+    });
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+    await nextTick();
+
+    const downloadBtn = wrapper.find('[data-testid="download-attachment"]');
+    expect(downloadBtn.classes()).toContain('touch-visible');
+  });
+});

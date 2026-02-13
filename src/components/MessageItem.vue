@@ -175,7 +175,7 @@ async function loadGeneratedImages() {
       if (url) {
         htmlEl.innerHTML = `
           <img src="${url}" width="${w}" height="${h}" alt="generated image" class="naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity">
-          <button class="naidan-download-gen-image absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 group-hover/gen-img:opacity-100 transition-all z-10" title="Download image">
+          <button class="naidan-download-gen-image absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all z-10" title="Download image">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
           </button>
         `;
@@ -746,7 +746,7 @@ defineExpose({
             <a 
               :href="attachmentUrls[att.id]" 
               :download="att.originalName"
-              class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 group-hover/att:opacity-100 transition-all z-10"
+              class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-all z-10"
               title="Download image"
               data-testid="download-attachment"
             >

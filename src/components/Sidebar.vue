@@ -725,7 +725,7 @@ defineExpose({
                     <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
                   </div>
                       
-                  <div class="flex items-center group-action-container" :class="activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity'">
+                  <div class="flex items-center group-action-container touch-visible" :class="activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity'">
                     <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup(element.chatGroup)" class="p-1 hover:text-blue-600 dark:hover:text-white" title="Rename Group"><Pencil class="w-3 h-3" /></button>
                     
                     <ChatGroupActions
@@ -799,7 +799,7 @@ defineExpose({
                             </div>
                             <div class="flex items-center gap-1">
                               <Loader2 v-if="isProcessing(nestedItem.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
-                              <div v-if="editingId !== nestedItem.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                              <div v-if="editingId !== nestedItem.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
                                 <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
                                 <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
                               </div>
@@ -856,7 +856,7 @@ defineExpose({
                 </div>
                 <div class="flex items-center gap-1">
                   <Loader2 v-if="isProcessing(element.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
-                  <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                  <div v-if="editingId !== element.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
                     <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
                     <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
                   </div>

@@ -1024,7 +1024,7 @@ onUnmounted(() => {
             />
             <button 
               @click="removeAttachment(att.id)"
-              class="absolute -top-2 -right-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm opacity-0 group-hover/att:opacity-100 transition-opacity"
+              class="absolute -top-2 -right-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-opacity"
             >
               <X class="w-3 h-3" />
             </button>

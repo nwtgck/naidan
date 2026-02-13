@@ -1209,6 +1209,28 @@ describe('ChatArea Textarea Sizing', () => {
     expect((wrapper.vm as any).isMaximized).toBe(false);
   });
 
+  it('should have touch-visible class on attachment remove buttons', async () => {
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    // Manually add an attachment
+    (wrapper.vm as any).attachments = [{
+      id: 'att-1',
+      status: 'memory',
+      blob: new Blob([''], { type: 'image/png' }),
+      originalName: 'mem.png',
+      mimeType: 'image/png',
+      size: 10,
+      uploadedAt: Date.now()
+    }];
+    
+    await nextTick();
+    
+    const removeBtn = wrapper.find('.group\\/att button');
+    expect(removeBtn.classes()).toContain('touch-visible');
+  });
+
   it('should handle large text paste by showing the maximize button immediately', async () => {
     wrapper = mount(ChatArea, {
       attachTo: document.getElementById('app')!,
