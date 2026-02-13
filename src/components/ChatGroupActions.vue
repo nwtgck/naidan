@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { MoreHorizontal, Copy, Trash2 } from 'lucide-vue-next';
+import { MoreHorizontal, Copy, Trash2, Search } from 'lucide-vue-next';
 import type { ChatGroup } from '../models/types';
 
 defineProps<{
@@ -11,6 +11,7 @@ defineEmits<{
   (e: 'toggle'): void;
   (e: 'duplicate'): void;
   (e: 'delete'): void;
+  (e: 'search'): void;
 }>();
 
 
@@ -38,6 +39,15 @@ defineExpose({
         v-if="isOpen" 
         class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden"
       >
+        <button 
+          @click.stop="$emit('search')" 
+          class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-50 dark:border-gray-700/50"
+          title="Search in Group" 
+          data-testid="search-in-group-button"
+        >
+          <Search class="w-3.5 h-3.5" />
+          <span>Search in Group</span>
+        </button>
         <button 
           @click.stop="$emit('duplicate')" 
           class="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"

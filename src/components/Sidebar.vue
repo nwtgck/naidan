@@ -17,11 +17,13 @@ import {
   Pencil, Folder, FolderPlus, 
   ChevronDown, ChevronUp, ChevronRight, Check, X,
   Bot, PanelLeft, SquarePen, Loader2, MoreHorizontal,
+  Search,
 } from 'lucide-vue-next';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupActions.vue'));
 import { useLayout } from '../composables/useLayout';
 import { useConfirm } from '../composables/useConfirm';
+import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { naturalSort } from '../utils/string';
 
 const chatStore = useChat();
@@ -607,6 +609,15 @@ defineExpose({
           </template>
         </button>
         <button 
+          @click="useGlobalSearch().openSearch()"
+          class="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
+          :class="isSidebarOpen ? 'p-3' : 'w-8 h-8 flex items-center justify-center p-0'"
+          title="Search (Cmd+K)"
+          data-testid="search-button"
+        >
+          <Search class="w-4 h-4" />
+        </button>
+        <button 
           v-if="isSidebarOpen"
           @click="isCreatingChatGroup = true"
           class="p-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
@@ -723,6 +734,7 @@ defineExpose({
                       @toggle="activeActionGroupId = activeActionGroupId === element.chatGroup.id ? null : element.chatGroup.id"
                       @duplicate="() => { chatStore.duplicateChatGroup(element.chatGroup.id); activeActionGroupId = null; }"
                       @delete="() => { handleDeleteChatGroup(element.chatGroup); activeActionGroupId = null; }"
+                      @search="() => { useGlobalSearch().openSearch({ groupIds: [element.chatGroup.id] }); activeActionGroupId = null; }"
                     />
                   </div>
                 </div>

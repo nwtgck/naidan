@@ -14,9 +14,11 @@ import OnboardingModal from './components/OnboardingModal.vue';
 import ToastContainer from './components/ToastContainer.vue';
 import { useLayout } from './composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from './utils/vue';
+import { useGlobalSearch } from './composables/useGlobalSearch';
 
 // Lazily load components that are not visible on initial mount, but prefetch them when idle.
 const SettingsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/SettingsModal.vue'));
+const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/GlobalSearchModal.vue'));
 const DebugPanel = defineAsyncComponentAndLoadOnMounted(() => import('./components/DebugPanel.vue'));
 const CustomDialog = defineAsyncComponentAndLoadOnMounted(() => import('./components/CustomDialog.vue'));
 const OPFSExplorer = defineAsyncComponentAndLoadOnMounted(() => import('./components/OPFSExplorer.vue'));
@@ -135,8 +137,9 @@ watch(
 );
 
 // ChatGPT-style shortcut for New Chat: Ctrl+Shift+O (Cmd+Shift+O on Mac)
-onKeyStroke(['o', 'O'], async (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+onKeyStroke(['o', 'O', 'k', 'K'], async (e) => {
+  // New Chat
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'o' || e.key === 'O')) {
     e.preventDefault();
     const { setActiveFocusArea } = useLayout();
     setActiveFocusArea('chat');
@@ -148,6 +151,18 @@ onKeyStroke(['o', 'O'], async (e) => {
     if (chatStore.currentChat.value) {
       router.push(`/chat/${chatStore.currentChat.value.id}`);
     }
+  }
+  
+  // Search (Cmd+K)
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
+    // Detect macOS: simple check for platform or assuming metaKey is typically Command on Mac
+    const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+    
+    // On Mac, only trigger if Meta (Command) is pressed. Ctrl+K should be ignored (Emacs binding).
+    if (isMac && !e.metaKey) return;
+    
+    e.preventDefault();
+    useGlobalSearch().toggleSearch();
   }
 });
 
@@ -184,6 +199,7 @@ defineExpose({
     />
 
     <OnboardingModal />
+    <GlobalSearchModal />
 
     <ToastContainer />
 

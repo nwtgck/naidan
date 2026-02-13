@@ -6,9 +6,10 @@ import { useLayout } from '../composables/useLayout';
 import { 
   Settings2, 
   MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus,
-  ChefHat
+  ChefHat, Search
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { useGlobalSearch } from '../composables/useGlobalSearch';
 
 // IMPORTANT: ModelSelector is used for immediate model override feedback and should not flicker.
 import ModelSelector from './ModelSelector.vue';
@@ -278,13 +279,22 @@ defineExpose({
               <p class="text-[11px] text-blue-600/70 dark:text-blue-400/70 font-medium">Export this group's configuration as a reusable Recipe.</p>
             </div>
           </div>
-          <button 
-            @click="handleCreateRecipe"
-            class="shrink-0 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95"
-          >
-            <ChefHat class="w-4 h-4" />
-            Create Recipe
-          </button>
+          <div class="flex items-center gap-2 shrink-0">
+            <button 
+              @click="useGlobalSearch().openSearch({ groupIds: [currentChatGroup.id] })"
+              class="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 text-xs font-bold rounded-xl shadow-sm transition-all active:scale-95"
+            >
+              <Search class="w-4 h-4" />
+              Search in Group
+            </button>
+            <button 
+              @click="handleCreateRecipe"
+              class="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+            >
+              <ChefHat class="w-4 h-4" />
+              Create Recipe
+            </button>
+          </div>
         </div>
 
         <div class="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-200/50 dark:border-gray-800 pb-8 gap-6">

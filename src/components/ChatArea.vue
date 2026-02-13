@@ -35,9 +35,10 @@ import {
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
   Folder, FolderInput, ChevronRight, Hammer, Image,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Search
 } from 'lucide-vue-next';
 import type { Attachment, Chat } from '../models/types';
+import { useGlobalSearch } from '../composables/useGlobalSearch';
 
 
 const chatStore = useChat();
@@ -906,6 +907,13 @@ onUnmounted(() => {
             class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-top-right"
             @mouseleave="showMoreMenu = false"
           >
+            <button 
+              @click="() => { if(currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); showMoreMenu = false; }"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
+            >
+              <Search class="w-4 h-4" />
+              <span>Search in Chat</span>
+            </button>
             <button 
               @click="chatStore.toggleDebug(); showMoreMenu = false"
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
