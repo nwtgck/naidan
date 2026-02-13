@@ -20,7 +20,7 @@ describe('ImageGenerationSettings', () => {
     const wrapper = mount(ImageGenerationSettings, { props: defaultProps });
     
     const resButtons = wrapper.findAll('button').filter(b => b.classes().includes('font-mono') && b.text().includes('x'));
-    expect(resButtons.length).toBe(8);
+    expect(resButtons.length).toBe(6);
     
     // Check for some specific labels
     expect(wrapper.text()).toContain('720p');

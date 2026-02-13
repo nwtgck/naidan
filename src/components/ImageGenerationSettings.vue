@@ -32,8 +32,6 @@ const resolutions = [
   { width: 512, height: 512, label: '1:1' },
   { width: 1024, height: 1024, label: '1:1' },
   { width: 256, height: 144, label: '144p' },
-  { width: 424, height: 240, label: '240p' },
-  { width: 640, height: 360, label: '360p' },
   { width: 1280, height: 720, label: '720p' },
   { width: 640, height: 480, label: '4:3' },
 ];

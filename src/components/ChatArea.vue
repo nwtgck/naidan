@@ -949,7 +949,7 @@ onUnmounted(() => {
         data-testid="scroll-container" 
         class="absolute inset-0 overflow-y-auto overscroll-contain transition-[padding-bottom] duration-500"
         style="overflow-anchor: none;"
-        :style="{ paddingBottom: isSubmerged ? '60px' : '300px' }"
+        :style="{ paddingBottom: isSubmerged ? '48px' : '300px' }"
       >
         <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
           Select or create a chat to start
@@ -999,8 +999,8 @@ onUnmounted(() => {
     <!-- Input Layer (Overlay) -->
     <div 
       v-if="currentChat"
-      class="absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out"
-      :class="isSubmerged ? 'translate-y-[calc(100%-44px)] sm:translate-y-[calc(100%-52px)]' : 'translate-y-0'"
+      class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out"
+      :class="isSubmerged ? 'translate-y-[calc(100%-32px)] sm:translate-y-[calc(100%-40px)]' : 'translate-y-0'"
     >
       <!-- Glass Zone behind the input card (Full width blur) -->
       <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': isSubmerged }"></div>
@@ -1042,7 +1042,7 @@ onUnmounted(() => {
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
-          class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[60px] transition-colors"
+          class="w-full text-base pl-5 pr-20 pt-4 pb-0 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[48px] transition-colors"
           :class="{ 'animate-height': isAnimatingHeight }"
           data-testid="chat-input"
         ></textarea>
@@ -1071,7 +1071,7 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <div class="flex items-center justify-between px-4 pb-4" :class="{ 'pointer-events-none invisible': isSubmerged }">
+        <div class="flex items-center justify-between px-4 pb-2" :class="{ 'pointer-events-none invisible': isSubmerged }">
           <div class="flex items-center gap-2">
             <div class="w-[100px] sm:w-[180px]">
               <ModelSelector 
