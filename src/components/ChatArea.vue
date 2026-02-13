@@ -46,22 +46,15 @@ const {
   getSortedImageModels,
 } = chatStore;
 
-/* [[AVAILABLE_MODELS_RECEIVE_START]] */
 const availableImageModels = computed(() => {
   return getSortedImageModels({ availableModels: availableModels.value });
 });
-/* [[AVAILABLE_MODELS_RECEIVE_END]] */
-/* [[SORTED_MODELS_START]] *//* [[SORTED_MODELS_END]] */
-const { setActiveFocusArea } = useLayout();
 
+const { setActiveFocusArea } = useLayout();
 const isSubmerged = ref(false);
-/* [[ANIMATING_HEIGHT_RECEIVE_START]] */
 const isAnimatingHeight = ref(false);
-/* [[ANIMATING_HEIGHT_RECEIVE_END]] */
-/* [[DRAG_LOGIC_RECEIVE_START]] */
-/* [[PROCESS_FILES_RECEIVE_START]] *//* [[PROCESS_FILES_RECEIVE_END]] */
 const isDragging = ref(false);
-/* [[DRAG_FUNCTIONS_START]] */
+
 function handleDragOver(event: DragEvent) {
   event.preventDefault();
   isDragging.value = true;
@@ -88,13 +81,8 @@ async function handleDrop(event: DragEvent) {
     await chatInputRef.value?.processFiles(Array.from(event.dataTransfer.files));
   }
 }
-/* [[DRAG_FUNCTIONS_END]] */
-/* [[DRAG_LOGIC_RECEIVE_END]] */
-/* [[CONTAINER_RECEIVE_START]] */
-const container = ref<HTMLElement | null>(null);
-/* [[CONTAINER_RECEIVE_END]] */
 
-/* [[INPUT_SUPPORT_LOGIC_START]] *//* [[INPUT_SUPPORT_LOGIC_END]] */
+const container = ref<HTMLElement | null>(null);
 
 useSettings();
 const router = useRouter();
@@ -107,21 +95,12 @@ const emit = defineEmits<{
   (e: 'auto-sent'): void
 }>();
 
-/* [[INPUT_LOGIC_START]] */
-/* [[INPUT_DATA_START]] *//* [[INPUT_DATA_END]] */
-
-/* [[FORMAT_LABEL_START]] *//* [[FORMAT_LABEL_END]] */
-
 const isCurrentChatStreaming = computed(() => {
   return currentChat.value ? isProcessing(currentChat.value.id) : false;
 });
 
-/* [[DISPLAY_STATE_START]] *//* [[DISPLAY_STATE_END]] */
-
-
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
-/* [[VIEW_LOGIC_MARKER]] */
 const showChatSettings = ref(false);
 const showHistoryModal = ref(false);
 const showMoreMenu = ref(false);
@@ -132,7 +111,6 @@ async function handleMoveToGroup(groupId: string | null) {
   await chatStore.moveChatToGroup(currentChat.value.id, groupId);
   showMoveMenu.value = false;
 }
-/* [[FORMAT_LABEL_RECEIVE_START]] *//* [[FORMAT_LABEL_RECEIVE_END]] */
 
 function exportChat() {
   if (!currentChat.value || !activeMessages.value) return;
@@ -166,11 +144,6 @@ function exportChat() {
   URL.revokeObjectURL(link.href);
 }
 
-/* [[MSG_LOGIC_MARKER]] */
-
-/* [[FOCUS_LOGIC_START]] *//* [[FOCUS_LOGIC_END]] */
-
-
 function scrollToBottom(force = true) {
   if (container.value) {
     const { scrollTop, scrollHeight, clientHeight } = container.value;
@@ -184,10 +157,9 @@ function scrollToBottom(force = true) {
 // Expose for testing
 defineExpose({ scrollToBottom, container,
   __testOnly: {
-  // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }, });
-
-/* [[FETCH_MOVE_START]] *//* [[FETCH_MOVE_END]] */
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  },
+});
 
 const canGenerateImage = computed(() => {
   const type = resolvedSettings.value?.endpointType;
@@ -212,9 +184,6 @@ const canGenerateImage = computed(() => {
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
 
-/* [[TOGGLE_MOVE_START]] *//* [[TOGGLE_MOVE_END]] */
-
-/* [[MSG_LOGIC_MARKER_START]] */
 async function handleEdit(messageId: string, newContent: string) {
   await chatStore.editMessage(messageId, newContent);
 }
@@ -265,7 +234,6 @@ watch(
   },
   { deep: true },
 );
-/* [[MSG_LOGIC_MARKER_END]] */
 
 </script>
 
@@ -578,8 +546,4 @@ watch(
   opacity: 0;
   transform: scale(0.95) translateY(-10px);
 }
-
-/* Simplified animations */
-/* [[INPUT_STYLE_START]] *//* [[INPUT_STYLE_END]] */
-
 </style>

@@ -64,7 +64,6 @@ const isAnimatingHeight = computed({
   set: (val) => emit('update:isAnimatingHeight', val)
 });
 
-/* [[FORMAT_LABEL_RECEIVE_START]] */
 function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
   if (!value) return 'Default';
   switch (source) {
@@ -81,13 +80,11 @@ function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 
   }  
   }
 }
-/* [[FORMAT_LABEL_RECEIVE_END]] */
 
 function scrollToBottom() {
   emit('scroll-to-bottom');
 }
 
-/* [[INPUT_SUPPORT_RECEIVE_START]] */
 const isImageMode = computed({
   get: () => currentChat.value ? _isImageMode({ chatId: currentChat.value.id }) : false,
   set: () => {
@@ -127,8 +124,6 @@ function updatePersistAs(format: 'original' | 'webp' | 'jpeg' | 'png') {
   }
 }
 
-/* [[AVAILABLE_MODELS_START]] *//* [[AVAILABLE_MODELS_END]] */
-
 const selectedImageModel = computed(() => {
   return currentChat.value ? getSelectedImageModel({ chatId: currentChat.value.id, availableModels: availableModels.value }) : undefined;
 });
@@ -138,36 +133,27 @@ function handleUpdateImageModel(modelId: string) {
     setImageModel({ chatId: currentChat.value.id, modelId });
   }
 }
-/* [[INPUT_SUPPORT_RECEIVE_END]] */
-/* [[FETCH_LOGIC_RECEIVE_START]] */
+
 async function fetchModels() {
   if (currentChat.value) {
     await chatStore.fetchAvailableModels(currentChat.value.id);
   }
 }
-/* [[FETCH_LOGIC_RECEIVE_END]] */
-/* [[TOGGLE_LOGIC_RECEIVE_START]] */
+
 function toggleImageMode() {
   isImageMode.value = !isImageMode.value;
 }
-/* [[TOGGLE_LOGIC_RECEIVE_END]] */
 
-/* [[HELPERS_RECEIVE_START]] *//* [[HELPERS_RECEIVE_END]] */
-/* [[HELPERS_EXTRA_RECEIVE_START]] */
 const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
-/* [[HELPERS_EXTRA_RECEIVE_END]] */
 
 const input = ref('');
-/* [[CONTAINER_REF_START]] *//* [[CONTAINER_REF_END]] */
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isMaximized = ref(false); // New state for maximize button
 const isOverLimit = ref(false); // New state to show maximize button only when content is long
-/* [[ANIMATING_HEIGHT_START]] *//* [[ANIMATING_HEIGHT_END]] */
 
 const attachments = ref<Attachment[]>([]);
 const attachmentUrls = ref<Record<string, string>>({});
-/* [[IS_DRAGGING_START]] *//* [[IS_DRAGGING_END]] */
 
 watch(attachments, (newAtts) => {
   // Revoke URLs for removed attachments
@@ -192,14 +178,10 @@ watch(attachments, (newAtts) => {
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
-/* [[VIEW_LOGIC_START]] *//* [[VIEW_LOGIC_END]] */
-
-
 function triggerFileInput() {
   fileInputRef.value?.click();
 }
 
-/* [[PROCESS_FILES_START]] */
 async function processFiles(files: File[]) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
@@ -219,7 +201,6 @@ async function processFiles(files: File[]) {
   }
   nextTick(adjustTextareaHeight);
 }
-/* [[PROCESS_FILES_END]] */
 
 async function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement;
@@ -248,8 +229,6 @@ async function handlePaste(event: ClipboardEvent) {
     await processFiles(files);
   }
 }
-
-/* [[DRAG_LOGIC_START]] *//* [[DRAG_LOGIC_END]] */
 
 function removeAttachment(id: string) {
   attachments.value = attachments.value.filter(a => a.id !== id);
@@ -408,9 +387,6 @@ async function handleSend() {
 
   focusInput();
 }
-
-/* [[MSG_LOGIC_START]] *//* [[MSG_LOGIC_END]] */
-
 
 import { findDeepestLeaf } from '../utils/chat-tree';
 
@@ -573,7 +549,6 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 </script>
 
 <template>
-  <!-- [[TEMPLATE_BEFORE]] -->
   <div 
     v-if="currentChat"
     class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out"
@@ -717,7 +692,6 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       </div>
     </div>
   </div>
-<!-- [[TEMPLATE_AFTER]] -->
 </template>
 
 <style scoped>
