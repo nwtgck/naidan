@@ -57,7 +57,7 @@ export type SystemPromptDto = z.infer<typeof SystemPromptSchemaDto>;
 // --- Grouping ---
 
 export const ChatGroupSchemaDto = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   name: z.string(),
   updatedAt: z.number(),
   isCollapsed: z.boolean().default(false),
@@ -73,13 +73,13 @@ export type ChatGroupDto = z.infer<typeof ChatGroupSchemaDto>;
 
 export const HierarchyChatNodeSchemaDto = z.object({
   type: z.literal('chat'),
-  id: z.string().uuid(),
+  id: z.string(),
 });
 
 export const HierarchyChatGroupNodeSchemaDto = z.object({
   type: z.literal('chat_group'),
-  id: z.string().uuid(),
-  chat_ids: z.array(z.string().uuid()),
+  id: z.string(),
+  chat_ids: z.array(z.string()),
 });
 
 export const HierarchySchemaDto = z.object({
@@ -96,7 +96,7 @@ export type HierarchyDto = z.infer<typeof HierarchySchemaDto>;
 export const AttachmentStatusSchemaDto = z.enum(['persisted', 'memory', 'missing']);
 
 export const BinaryObjectSchemaDto = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   mimeType: z.string(),
   size: z.number(),
   createdAt: z.number(),
@@ -109,12 +109,12 @@ export type BinaryObjectDto = z.infer<typeof BinaryObjectSchemaDto>;
  * Stores metadata for all binary objects within a specific shard.
  */
 export const BinaryShardIndexSchemaDto = z.object({
-  objects: z.record(z.string().uuid(), BinaryObjectSchemaDto),
+  objects: z.record(z.string(), BinaryObjectSchemaDto),
 });
 export type BinaryShardIndexDto = z.infer<typeof BinaryShardIndexSchemaDto>;
 
 export const AttachmentSchemaDtoV1 = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   originalName: z.string(),
   mimeType: z.string(),
   size: z.number(),
@@ -123,8 +123,8 @@ export const AttachmentSchemaDtoV1 = z.object({
 });
 
 export const AttachmentSchemaDtoV2 = z.object({
-  id: z.string().uuid(),
-  binaryObjectId: z.string().uuid(),
+  id: z.string(),
+  binaryObjectId: z.string(),
   name: z.string(),
   status: AttachmentStatusSchemaDto,
 });
@@ -136,7 +136,7 @@ export const AttachmentSchemaDto = z.union([
 export type AttachmentDto = z.infer<typeof AttachmentSchemaDto>;
 
 export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() => z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   role: RoleSchemaDto,
   content: z.string(),
   attachments: z.array(AttachmentSchemaDto).optional(),
@@ -168,17 +168,17 @@ export type MessageNodeDto = {
  * Contains all attributes except the heavy message tree.
  */
 export const ChatMetaSchemaDto = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   title: z.string().nullable(),
-  currentLeafId: z.string().uuid().optional(),
+  currentLeafId: z.string().optional(),
   updatedAt: z.number(),
   createdAt: z.number(),
   debugEnabled: z.boolean().optional().default(false),
   
   endpoint: EndpointSchemaDto.optional(),
   modelId: z.string().optional(),
-  originChatId: z.string().uuid().optional(),
-  originMessageId: z.string().uuid().optional(),
+  originChatId: z.string().optional(),
+  originMessageId: z.string().optional(),
 
   systemPrompt: SystemPromptSchemaDto.optional(),
   lmParameters: LmParametersSchemaDto.optional(),
@@ -202,7 +202,7 @@ export type ChatMetaIndexDto = z.infer<typeof ChatMetaIndexSchemaDto>;
  */
 export const ChatContentSchemaDto = z.object({
   root: MessageBranchSchemaDto,
-  currentLeafId: z.string().uuid().optional(),
+  currentLeafId: z.string().optional(),
 });
 
 export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
@@ -213,7 +213,7 @@ export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
  */
 export const ChatSchemaDto = ChatMetaSchemaDto.extend({
   root: MessageBranchSchemaDto.optional(),
-  currentLeafId: z.string().uuid().optional(),
+  currentLeafId: z.string().optional(),
   
   // Legacy support field
   messages: z.array(z.unknown()).optional(),
@@ -224,7 +224,7 @@ export type ChatDto = z.infer<typeof ChatSchemaDto>;
 // --- Provider Profiles ---
 
 export const ProviderProfileSchemaDto = z.object({
-  id: z.string().uuid(),
+  id: z.string(),
   name: z.string(),
   endpoint: EndpointSchemaDto,
   defaultModelId: z.string().optional(),

@@ -14,6 +14,10 @@ const UUID_M1 = '018d476a-7b3a-73fd-8000-000000000005';
 const UUID_M2 = '018d476a-7b3a-73fd-8000-000000000006';
 const NEW_UUID = '018d476a-7b3a-73fd-8000-ffffffffffff';
 
+vi.mock('../../utils/id', () => ({
+  generateId: vi.fn(() => NEW_UUID)
+}));
+
 vi.stubGlobal('crypto', {
   randomUUID: vi.fn(() => NEW_UUID)
 });

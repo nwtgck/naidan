@@ -1,3 +1,4 @@
+import { generateId } from '../utils/id';
 import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } from 'vue';
 import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt } from '../models/types';
 import { storageService } from '../services/storage';
@@ -483,7 +484,7 @@ export function useChat() {
     if (creatingChat.value) return null;
     _currentChatGroup.value = null;
     creatingChat.value = true;
-    const chatId = crypto.randomUUID();
+    const chatId = generateId();
     try {
       const chatObj: Chat = reactive({
         id: chatId, title: null, groupId: groupId ?? null, root: { items: [] },
@@ -1060,13 +1061,13 @@ export function useChat() {
         finalContent = createImageRequestMarker({ ...res, model: imageModel, count, persistAs }) + content;
       }
 
-      const userMsg: MessageNode = { id: crypto.randomUUID(), role: 'user', content: finalContent, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
+      const userMsg: MessageNode = { id: generateId(), role: 'user', content: finalContent, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
       
       const assistantContent = isImgMode 
         ? createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING
         : '';
 
-      const assistantMsg: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: assistantContent, timestamp: Date.now(), modelId: imageModel || resolvedModel, replies: { items: [] }, };
+      const assistantMsg: MessageNode = { id: generateId(), role: 'assistant', content: assistantContent, timestamp: Date.now(), modelId: imageModel || resolvedModel, replies: { items: [] }, };
       userMsg.replies.items.push(assistantMsg);
 
       if (!chat.root) chat.root = { items: [] };
@@ -1112,7 +1113,7 @@ export function useChat() {
       if (!failedNode || failedNode.role !== 'assistant') return;
       const parent = findParentInBranch(chat.root.items, failedMessageId);
       if (!parent || parent.role !== 'user') return;
-      const newAssistantMsg: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: '', timestamp: Date.now(), modelId: failedNode.modelId, replies: { items: [] }, };
+      const newAssistantMsg: MessageNode = { id: generateId(), role: 'assistant', content: '', timestamp: Date.now(), modelId: failedNode.modelId, replies: { items: [] }, };
       parent.replies.items.push(newAssistantMsg);
       chat.currentLeafId = newAssistantMsg.id;
       if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
@@ -1244,7 +1245,7 @@ export function useChat() {
     const forkPath = path.slice(0, idx + 1);
     const clonedNodes: MessageNode[] = forkPath.map(n => ({ id: n.id, role: n.role, content: n.content, attachments: n.attachments, timestamp: n.timestamp, thinking: n.thinking, error: n.error, modelId: n.modelId, replies: { items: [] }, }));
     for (let i = 0; i < clonedNodes.length - 1; i++) clonedNodes[i]!.replies.items.push(clonedNodes[i+1]!);
-    const newChatId = crypto.randomUUID();
+    const newChatId = generateId();
     try {
       const newChatObj: Chat = reactive({
         ...toRaw(mutableChat), 
@@ -1292,7 +1293,7 @@ export function useChat() {
     const node = findNodeInBranch(chat.root.items, messageId); if (!node) return;
     switch (node.role) {
     case 'assistant': {
-      const correctedNode: MessageNode = { id: crypto.randomUUID(), role: 'assistant', content: newContent, attachments: node.attachments, timestamp: Date.now(), modelId: node.modelId, replies: { items: [] }, };
+      const correctedNode: MessageNode = { id: generateId(), role: 'assistant', content: newContent, attachments: node.attachments, timestamp: Date.now(), modelId: node.modelId, replies: { items: [] }, };
       const parent = findParentInBranch(chat.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);
       else chat.root.items.push(correctedNode);
@@ -1447,7 +1448,7 @@ export function useChat() {
   };
 
   const createChatGroup = async (name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
-    const id = crypto.randomUUID();
+    const id = generateId();
     const newGroup: ChatGroup = { 
       id, 
       name, 
@@ -1527,7 +1528,7 @@ export function useChat() {
     const originalGroup = chatGroups.value.find(g => g.id === groupId);
     if (!originalGroup) return;
 
-    const newId = crypto.randomUUID();
+    const newId = generateId();
     const newName = `Copy of ${originalGroup.name}`;
     const newGroup: ChatGroup = {
       ...toRaw(originalGroup),

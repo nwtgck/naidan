@@ -485,4 +485,54 @@ describe('ModelSelector.vue', () => {
       wrapper.unmount();
     });
   });
+
+  describe('Smart Truncation Logic', () => {
+    it('splits model name with slash into prefix and suffix', () => {
+      const wrapper = mount(ModelSelector, {
+        props: { modelValue: 'huggingface/user/model-name' },
+      });
+
+      const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+      const prefixSpan = trigger.find('span[style*="direction: rtl"]');
+      const suffixSpan = trigger.find('.truncate.flex-1');
+
+      expect(prefixSpan.text()).toBe('huggingface/user/');
+      expect(suffixSpan.text()).toBe('model-name');
+    });
+
+    it('handles model names without a slash correctly', () => {
+      const wrapper = mount(ModelSelector, {
+        props: { modelValue: 'gpt-4o' },
+      });
+
+      const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
+      const prefixSpan = trigger.find('span[style*="direction: rtl"]');
+      const suffixSpan = trigger.find('.truncate.flex-1');
+
+      expect(prefixSpan.exists()).toBe(false);
+      expect(suffixSpan.text()).toBe('gpt-4o');
+    });
+
+    it('applies correct layout styles for prioritization', () => {
+      const wrapper = mount(ModelSelector, {
+        props: { modelValue: 'org/model' },
+      });
+
+      const prefixSpan = wrapper.find('span[style*="direction: rtl"]');
+      const suffixSpan = wrapper.find('.truncate.flex-1');
+
+      // Prefix should have high shrink to prioritize model name
+      expect(prefixSpan.attributes('style')).toContain('flex: 0 1000 auto');
+      // Suffix should have flex: 1 1 auto
+      expect(suffixSpan.attributes('style')).toContain('flex: 1 1 auto');
+    });
+
+    it('shows placeholder when no model value is provided', () => {
+      const wrapper = mount(ModelSelector, {
+        props: { modelValue: '', placeholder: 'Custom Placeholder' },
+      });
+
+      expect(wrapper.text()).toContain('Custom Placeholder');
+    });
+  });
 });

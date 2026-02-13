@@ -6,9 +6,10 @@ import { useLayout } from '../composables/useLayout';
 import { 
   Settings2, 
   MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus,
-  ChefHat
+  ChefHat, Search
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { useGlobalSearch } from '../composables/useGlobalSearch';
 
 // IMPORTANT: ModelSelector is used for immediate model override feedback and should not flicker.
 import ModelSelector from './ModelSelector.vue';
@@ -75,6 +76,20 @@ onMounted(() => {
 
 // Sync if currentChatGroup changes while open (e.g. from another tab or property update)
 watch(currentChatGroup, syncLocalWithCurrent, { deep: true });
+
+const hasActiveOverrides = computed(() => {
+  const s = localSettings.value;
+  const hasEndpoint = !!s.endpoint && (
+    s.endpoint.type === 'transformers_js' || 
+    !!s.endpoint.url || 
+    (s.endpoint.httpHeaders && s.endpoint.httpHeaders.length > 0)
+  );
+  const hasModel = !!s.modelId;
+  const hasPrompt = !!s.systemPrompt;
+  const hasParams = !!s.lmParameters && Object.keys(s.lmParameters).length > 0;
+  
+  return hasEndpoint || hasModel || hasPrompt || hasParams;
+});
 
 async function saveChanges() {
   if (currentChatGroup.value) {
@@ -179,26 +194,26 @@ async function updateSystemPromptContent(content: string) {
 }
 */
 
-async function updateSystemPromptBehavior(behavior: 'override' | 'append', isClear = false) {
-  if (isClear) {
-    localSettings.value.systemPrompt = { behavior: 'override', content: null };
-  } else if (!localSettings.value.systemPrompt) {
-    localSettings.value.systemPrompt = { content: '', behavior };
-  } else {
-    // When switching away from Clear to Override/Append, ensure content is at least an empty string
-    const content = localSettings.value.systemPrompt.content ?? '';
-    switch (behavior) {
-    case 'override':
-      localSettings.value.systemPrompt = { behavior: 'override', content };
-      break;
-    case 'append':
-      localSettings.value.systemPrompt = { behavior: 'append', content };
-      break;
-    default: {
-      const _ex: never = behavior;
-      throw new Error(`Unhandled behavior: ${_ex}`);
+async function updateSystemPromptBehavior(behavior: 'override' | 'append' | 'inherit', isClear = false) {
+  switch (behavior) {
+  case 'inherit':
+    localSettings.value.systemPrompt = undefined;
+    break;
+  case 'override':
+  case 'append':
+    if (isClear) {
+      localSettings.value.systemPrompt = { behavior: 'override', content: null };
+    } else if (!localSettings.value.systemPrompt) {
+      localSettings.value.systemPrompt = { content: '', behavior };
+    } else {
+      const content = localSettings.value.systemPrompt.content ?? '';
+      localSettings.value.systemPrompt = { behavior, content };
     }
-    }
+    break;
+  default: {
+    const _ex: never = behavior;
+    throw new Error(`Unhandled behavior: ${_ex}`);
+  }
   }
   await saveChanges();
 }
@@ -212,6 +227,13 @@ async function restoreDefaults() {
   };
   await saveChanges();
 }
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>
@@ -238,7 +260,7 @@ async function restoreDefaults() {
       
       <div class="flex items-center gap-2">
         <div 
-          v-if="localSettings.endpoint || localSettings.modelId || localSettings.systemPrompt || (localSettings.lmParameters && Object.keys(localSettings.lmParameters).length > 0)"
+          v-if="hasActiveOverrides"
           class="flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-full"
         >
           <div class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
@@ -259,28 +281,37 @@ async function restoreDefaults() {
 
     <!-- Content -->
     <div class="flex-1 overflow-y-auto overscroll-contain">
-      <div class="max-w-4xl mx-auto p-6 sm:p-8 space-y-10">
-        <!-- Recipe Export Action -->
-        <div class="bg-blue-50/30 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-900/20 p-6 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm">
-          <div class="flex items-center gap-4">
-            <div class="p-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-blue-100 dark:border-blue-900/20">
-              <ChefHat class="w-6 h-6 text-blue-600" />
+      <div class="max-w-4xl mx-auto p-6 sm:p-8 space-y-8">
+        <!-- Quick Actions Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <button 
+            @click="useGlobalSearch().openSearch({ groupIds: [currentChatGroup.id] })"
+            class="flex items-center gap-4 w-full bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 rounded-2xl px-5 py-3 text-left hover:border-blue-300 dark:hover:border-blue-700 transition-all shadow-sm group"
+          >
+            <div class="p-2 bg-gray-50 dark:bg-gray-800 rounded-xl group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-colors">
+              <Search class="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
             </div>
-            <div>
-              <h3 class="text-sm font-bold text-blue-900 dark:text-blue-300">Share these settings</h3>
-              <p class="text-[11px] text-blue-600/70 dark:text-blue-400/70 font-medium">Export this group's configuration as a reusable Recipe.</p>
+            <div class="flex flex-col min-w-0">
+              <span class="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-none mb-1">Search Group</span>
+              <span class="text-[11px] font-medium text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors truncate">Search messages...</span>
             </div>
-          </div>
+          </button>
+
           <button 
             @click="handleCreateRecipe"
-            class="shrink-0 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+            class="flex items-center gap-4 w-full bg-blue-50/30 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl px-5 py-3 text-left hover:border-blue-400 dark:hover:border-blue-700 transition-all shadow-sm group"
           >
-            <ChefHat class="w-4 h-4" />
-            Create Recipe
+            <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm group-hover:shadow-md transition-all">
+              <ChefHat class="w-5 h-5 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
+            </div>
+            <div class="flex flex-col">
+              <span class="text-[9px] font-bold text-blue-900/50 dark:text-blue-400/50 uppercase tracking-widest leading-none mb-1">Share settings</span>
+              <span class="text-[11px] font-bold text-blue-600 dark:text-blue-400">Create Recipe</span>
+            </div>
           </button>
         </div>
 
-        <div class="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-200/50 dark:border-gray-800 pb-8 gap-6">
+        <div class="flex flex-col md:flex-row md:items-end justify-between border-b border-gray-200/50 dark:border-gray-800 pb-6 gap-6">
           <div class="flex flex-col md:flex-row gap-8 flex-1">
             <!-- Quick Switcher -->
             <div v-if="settings.providerProfiles && settings.providerProfiles.length > 0" class="w-full md:max-w-[240px] space-y-2">
@@ -464,6 +495,13 @@ async function restoreDefaults() {
                 
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                   <button 
+                    @click="updateSystemPromptBehavior('inherit')"
+                    class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
+                    :class="!localSettings.systemPrompt ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                  >
+                    Inherit
+                  </button>
+                  <button 
                     @click="updateSystemPromptBehavior('override', true)"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
@@ -486,8 +524,18 @@ async function restoreDefaults() {
                   </button>
                 </div>
               </div>
+              <div v-if="!localSettings.systemPrompt" class="w-full bg-gray-50/50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-4 text-left">
+                <p class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Inherited Instructions</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500 italic whitespace-pre-wrap line-clamp-6">
+                  {{ settings.systemPrompt || 'No global instructions defined.' }}
+                </p>
+              </div>
+              <div v-else-if="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null" class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center">
+                <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Global Prompt Cleared</p>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This group will not use any system instructions.</p>
+              </div>
               <textarea 
-                v-if="!(localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null)"
+                v-else
                 :value="localSettings.systemPrompt?.content || ''"
                 @input="e => { 
                   const val = (e.target as HTMLTextAreaElement).value;
@@ -503,13 +551,6 @@ async function restoreDefaults() {
                 :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
                 data-testid="group-setting-system-prompt-textarea"
               ></textarea>
-              <div 
-                v-else
-                class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center"
-              >
-                <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Global Prompt Cleared</p>
-                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This group will not use any system instructions.</p>
-              </div>
             </div>
 
             <div class="space-y-4">

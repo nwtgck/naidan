@@ -473,6 +473,8 @@ describe('StorageTab.vue Tests', () => {
         onboardingDraft: { value: null } as any,
         availableModels: { value: [] } as any,
         isFetchingModels: { value: false } as any,
+        searchPreviewEnabled: { value: true } as any,
+        searchContextSize: { value: 2 } as any,
         init: vi.fn(),
         fetchModels: vi.fn().mockResolvedValue([]),
         updateGlobalModel: vi.fn(),
@@ -482,6 +484,8 @@ describe('StorageTab.vue Tests', () => {
         setIsOnboardingDismissed: vi.fn(),
         setOnboardingDraft: vi.fn(),
         setHeavyContentAlertDismissed: vi.fn(),
+        setSearchPreviewEnabled: vi.fn(),
+        setSearchContextSize: vi.fn(),
         __testOnly: {
           __testOnlyReset: vi.fn(),
           __testOnlySetSettings: vi.fn(),

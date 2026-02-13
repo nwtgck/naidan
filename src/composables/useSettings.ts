@@ -20,6 +20,8 @@ const _isOnboardingDismissed = ref(false);
 const _onboardingDraft = ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>(null);
 const availableModels = ref<string[]>([]);
 const isFetchingModels = ref(false);
+const _searchPreviewEnabled = ref(true);
+const _searchContextSize = ref(2);
 
 let initPromise: Promise<void> | null = null;
 
@@ -279,6 +281,14 @@ export function useSettings() {
     storageService.updateSettings((curr) => ({ ...(curr || _settings.value), heavyContentAlertDismissed: dismissed }));
   }
 
+  function setSearchPreviewEnabled(enabled: boolean) {
+    _searchPreviewEnabled.value = enabled;
+  }
+
+  function setSearchContextSize(size: number) {
+    _searchContextSize.value = size;
+  }
+
   function __testOnlySetSettings(newSettings: Settings) {
     _settings.value = JSON.parse(JSON.stringify(newSettings));
   }
@@ -304,6 +314,8 @@ export function useSettings() {
     onboardingDraft: readonly(_onboardingDraft),
     availableModels: readonly(availableModels),
     isFetchingModels: readonly(isFetchingModels),
+    searchPreviewEnabled: readonly(_searchPreviewEnabled),
+    searchContextSize: readonly(_searchContextSize),
     init,
     save,
     fetchModels,
@@ -315,6 +327,8 @@ export function useSettings() {
     setIsOnboardingDismissed,
     setOnboardingDraft,
     setHeavyContentAlertDismissed,
+    setSearchPreviewEnabled,
+    setSearchContextSize,
     __testOnly: {
       __testOnlyReset,
       __testOnlySetSettings,

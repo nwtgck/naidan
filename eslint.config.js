@@ -5,6 +5,7 @@ import globals from 'globals';
 import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-init.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import requireTestOnlyExport from './eslint-local-rules/require-test-only-export.js';
+import requireDefineExposeTestOnly from './eslint-local-rules/require-define-expose-test-only.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -149,6 +150,7 @@ export default tseslint.config(
   ensureFileProtocolInit,
   forceSwitchForUnion,
   requireTestOnlyExport,
+  requireDefineExposeTestOnly,
   {
     files: ['**/*.test.ts'],
     languageOptions: {

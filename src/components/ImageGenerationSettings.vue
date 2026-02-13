@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { Image, Loader2, Check } from 'lucide-vue-next';
+import { Image, Loader2, Check, ArrowLeftRight } from 'lucide-vue-next';
 import ModelSelector from './ModelSelector.vue';
+
+defineOptions({
+  name: 'ImageGenerationSettings'
+});
 
 const props = defineProps<{
   canGenerateImage: boolean;
@@ -24,12 +28,15 @@ const emit = defineEmits<{
 }>();
 
 const resolutions = [
-  { width: 256, height: 256 },
-  { width: 512, height: 512 },
-  { width: 1024, height: 1024 },
+  { width: 256, height: 256, label: '1:1' },
+  { width: 512, height: 512, label: '1:1' },
+  { width: 1024, height: 1024, label: '1:1' },
+  { width: 256, height: 144, label: '144p' },
+  { width: 1280, height: 720, label: '720p' },
+  { width: 640, height: 480, label: '4:3' },
 ];
 
-const counts = [1, 2, 3, 4];
+const counts = [1, 5, 10, 50];
 
 const saveFormats = [
   { label: 'Original', value: 'original' },
@@ -65,6 +72,17 @@ function handleHeightInput(event: Event) {
 function handleModelUpdate(modelId: string) {
   emit('update:model', modelId);
 }
+
+function swapResolution() {
+  emit('update:resolution', props.selectedHeight, props.selectedWidth);
+}
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>
@@ -103,17 +121,18 @@ function handleModelUpdate(modelId: string) {
       <div class="px-3 py-2">
         <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Resolution</div>
         <div class="flex flex-col gap-2">
-          <div class="flex gap-1.5">
+          <div class="flex flex-wrap gap-1.5">
             <button 
               v-for="res in resolutions" 
               :key="`${res.width}x${res.height}`"
               @click="emit('update:resolution', res.width, res.height)"
-              class="flex-1 px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap"
+              class="flex-1 min-w-[50px] px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap flex flex-col items-center justify-center"
               :class="selectedWidth === res.width && selectedHeight === res.height 
                 ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
                 : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
             >
-              {{ res.width }}x{{ res.height }}
+              <span class="opacity-70 text-[8px] leading-tight">{{ res.label }}</span>
+              <span>{{ res.width }}x{{ res.height }}</span>
             </button>
           </div>
           <div class="flex gap-1.5 items-center">
@@ -125,7 +144,13 @@ function handleModelUpdate(modelId: string) {
               class="flex-1 min-w-0 px-1 py-1 text-[10px] font-mono text-center border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               placeholder="Width"
             />
-            <span class="text-[10px] text-gray-400">×</span>
+            <button 
+              @click="swapResolution"
+              class="p-1 text-gray-400 hover:text-blue-500 transition-colors"
+              title="Swap Width and Height"
+            >
+              <ArrowLeftRight class="w-3 h-3" />
+            </button>
             <input 
               type="number" 
               min="1"

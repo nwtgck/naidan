@@ -143,8 +143,8 @@ describe('ChatArea Image Generation Integration', () => {
     await vi.dynamicImportSettled();
     
     // Click toggle image mode
-    const toggleButton = wrapper.find('[data-testid="toggle-image-mode-button"]');
-    await toggleButton.trigger('click');
+    const toggleButton = document.body.querySelector('[data-testid="toggle-image-mode-button"]') as HTMLElement;
+    toggleButton.click();
     
     expect(mockChatStore.toggleImageMode).toHaveBeenCalled();
     expect(mockIsImageMode.value).toBe(true);

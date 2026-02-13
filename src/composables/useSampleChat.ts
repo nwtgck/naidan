@@ -1,3 +1,4 @@
+import { generateId } from '../utils/id';
 import type { Chat, MessageNode } from '../models/types';
 import { storageService } from '../services/storage';
 import sampleContent from '../assets/sample-showcase.md?raw';
@@ -10,7 +11,7 @@ export function useSampleChat() {
   const createSampleChat = async () => {
     const now = Date.now();
     const m2: MessageNode = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       role: 'assistant',
       content: sampleContent,
       timestamp: now,
@@ -19,7 +20,7 @@ export function useSampleChat() {
     processThinking(m2);
 
     const m3: MessageNode = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       role: 'assistant',
       content: 'This is an alternative response. You can switch between different versions of assistant replies using the arrows!',
       timestamp: now + 1000,
@@ -27,7 +28,7 @@ export function useSampleChat() {
     };
 
     const m1: MessageNode = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       role: 'user',
       content: 'Show me your tree-based branching and rendering capabilities!',
       timestamp: now - 5000,
@@ -35,7 +36,7 @@ export function useSampleChat() {
     };
 
     const sampleChatObj: Chat = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       title: '🚀 Sample: Tree Showcase',
       root: { items: [m1] },
       currentLeafId: m2.id,

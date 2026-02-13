@@ -174,7 +174,7 @@ describe('ChatArea Peek Mode Specifications', () => {
     // Submerge
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
     await nextTick();
-    expect((scrollContainer.element as HTMLElement).style.paddingBottom).toBe('60px');
+    expect((scrollContainer.element as HTMLElement).style.paddingBottom).toBe('48px');
   });
 
   it('resets maximized state when submerging', async () => {

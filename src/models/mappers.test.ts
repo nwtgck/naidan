@@ -1,3 +1,4 @@
+import { generateId } from '../utils/id';
 import { describe, it, expect } from 'vitest';
 import { chatToDomain, buildSidebarItemsFromHierarchy } from './mappers';
 import type { ChatMeta, ChatGroup, Hierarchy } from './types';
@@ -33,10 +34,10 @@ describe('Sidebar assembly', () => {
 
 describe('Legacy Migration (Flat to Tree)', () => {
   it('should migrate linear messages to a recursive tree structure', () => {
-    const legacyId1 = crypto.randomUUID();
-    const legacyId2 = crypto.randomUUID();
+    const legacyId1 = generateId();
+    const legacyId2 = generateId();
     const legacyChat: any = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       title: 'Legacy',
       messages: [
         { id: legacyId1, role: 'user', content: 'Hi', timestamp: 1 },

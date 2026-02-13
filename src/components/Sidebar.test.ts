@@ -627,4 +627,24 @@ describe('Sidebar Logic Stability', () => {
       expect(mockOpenOPFS).toHaveBeenCalled();
     });
   });
+
+  describe('Touch Support', () => {
+    it('applies touch-visible class to action containers for non-hover environments', async () => {
+      mockChatGroups.value = [{ id: 'g1', name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
+      mockChats.value = [{ id: 'c1', title: 'Chat', updatedAt: 0 }];
+      
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      const vm = wrapper.vm as unknown as SidebarComponent;
+      vm.syncLocalItems();
+      await nextTick();
+
+      // Check group actions
+      expect(wrapper.find('.group-action-container').classes()).toContain('touch-visible');
+      
+      // Check top-level chat actions
+      expect(wrapper.find('.sidebar-chat-item .touch-visible').exists()).toBe(true);
+    });
+  });
 });

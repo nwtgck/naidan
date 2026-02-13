@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, type CSSProperties } from 'vue';
 import { Settings2 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { useElementBounding, useWindowSize } from '@vueuse/core';
 
 // Lazily load image generation settings as it's only visible when the tools menu is opened, but prefetch it when idle.
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
@@ -31,18 +32,67 @@ const emit = defineEmits<{
 
 const showMenu = ref(false);
 const containerRef = ref<HTMLElement | null>(null);
+const dropdownRef = ref<HTMLElement | null>(null);
+
+const { width: windowWidth, height: windowHeight } = useWindowSize();
+const triggerBounding = useElementBounding(containerRef);
+
+const floatingStyle = computed((): CSSProperties => {
+  if (!showMenu.value || !containerRef.value) return {};
+
+  const rect = triggerBounding;
+  const margin = 8;
+  const menuWidth = 256; // Matching w-64
+  
+  // Horizontal alignment: try to align left with the button, but push left if it goes off-screen
+  let left = rect.left.value;
+  if (left + menuWidth > windowWidth.value - 16) {
+    left = windowWidth.value - menuWidth - 16;
+  }
+  if (left < 16) left = 16;
+
+  const verticalStyle = (() => {
+    switch (props.direction) {
+    case 'up':
+      return {
+        bottom: `${windowHeight.value - rect.top.value + margin}px`,
+        top: 'auto',
+      };
+    case 'down':
+      return {
+        top: `${rect.bottom.value + margin}px`,
+        bottom: 'auto',
+      };
+    default: {
+      const _ex: never = props.direction;
+      throw new Error(`Unhandled direction: ${_ex}`);
+    }
+    }
+  })();
+
+  return {
+    position: 'fixed',
+    ...verticalStyle,
+    left: `${left}px`,
+    width: `${menuWidth}px`,
+    maxHeight: `${windowHeight.value - 32}px`,
+    overflowY: 'auto',
+    zIndex: 9999,
+  };
+});
 
 function handleClickOutside(event: MouseEvent) {
-  const target = event.target as HTMLElement;
+  const target = event.target as Node;
   if (!showMenu.value) return;
 
-  // 1. Check if the click is inside the main container
+  // 1. Check if the click is inside the trigger button
   if (containerRef.value?.contains(target)) return;
   
-  // 2. Check if the click is on a teleported dropdown (like ModelSelector)
-  // We check if the clicked element or any of its parents are the ModelSelector dropdown.
-  // ModelSelector dropdowns have position: fixed and z-index: 9999.
-  let current: HTMLElement | null = target;
+  // 2. Check if the click is inside the dropdown itself
+  if (dropdownRef.value?.contains(target)) return;
+
+  // 3. Check if the click is on a teleported dropdown (like ModelSelector inside this menu)
+  let current: HTMLElement | null = target as HTMLElement;
   while (current && current !== document.body) {
     if (current instanceof HTMLElement) {
       const style = window.getComputedStyle(current);
@@ -53,7 +103,7 @@ function handleClickOutside(event: MouseEvent) {
     current = current.parentElement;
   }
 
-  // 3. Otherwise, it's a true outside click
+  // 4. Otherwise, it's a true outside click
   showMenu.value = false;
 }
 
@@ -63,6 +113,30 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleClickOutside);
+});
+
+// Close on window width resize to prevent floating detached dropdown
+watch(windowWidth, () => {
+  if (showMenu.value) showMenu.value = false;
+});
+
+const enterTransform = computed(() => {
+  switch (props.direction) {
+  case 'up':
+    return 'scale(0.95) translateY(10px)';
+  case 'down':
+    return 'scale(0.95) translateY(-10px)';
+  default: {
+    const _ex: never = props.direction;
+    return `scale(0.95) translateY(${_ex})`;
+  }
+  }
+});
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
 });
 </script>
 
@@ -81,29 +155,48 @@ onUnmounted(() => {
       <Settings2 class="w-5 h-5" />
     </button>
 
-    <Transition name="dropdown">
-      <div 
-        v-if="showMenu" 
-        class="absolute left-0 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden"
-        :class="[
-          direction === 'up' ? 'bottom-full mb-2 origin-bottom-left' : 'top-full mt-2 origin-top-left'
-        ]"
-      >
-        <ImageGenerationSettings 
-          v-bind="props"
-          show-header
-          @toggle-image-mode="emit('toggle-image-mode')"
-          @update:resolution="(w, h) => emit('update:resolution', w, h)"
-          @update:count="c => emit('update:count', c)"
-          @update:persist-as="f => emit('update:persist-as', f)"
-          @update:model="m => emit('update:model', m)"
-        />
-      </div>
-    </Transition>
+    <Teleport to="body">
+      <Transition name="dropdown">
+        <div 
+          v-if="showMenu" 
+          ref="dropdownRef"
+          class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl py-1.5 overflow-hidden custom-scrollbar"
+          :style="floatingStyle"
+          :class="[
+            direction === 'up' ? 'origin-bottom' : 'origin-top'
+          ]"
+          data-testid="chat-tools-dropdown"
+        >
+          <ImageGenerationSettings 
+            v-bind="props"
+            show-header
+            @toggle-image-mode="emit('toggle-image-mode')"
+            @update:resolution="(w, h) => emit('update:resolution', w, h)"
+            @update:count="c => emit('update:count', c)"
+            @update:persist-as="f => emit('update:persist-as', f)"
+            @update:model="m => emit('update:model', m)"
+          />
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
+}
+
 .dropdown-enter-active,
 .dropdown-leave-active {
   transition: all 0.2s ease;
@@ -112,6 +205,6 @@ onUnmounted(() => {
 .dropdown-enter-from,
 .dropdown-leave-to {
   opacity: 0;
-  transform: scale(0.95) translateY(10px);
+  transform: v-bind(enterTransform);
 }
 </style>

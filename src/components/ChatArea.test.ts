@@ -260,6 +260,37 @@ describe('ChatArea UI States', () => {
     expect(mockAbortChat).toHaveBeenCalled();
   });
 
+  it('should call abortChat when the abort button in MessageItem is clicked', async () => {
+    mockStreaming.value = true;
+    const assistantMsgId = 'msg-2';
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.currentLeafId = assistantMsgId;
+      mockActiveGenerations.set(mockCurrentChat.value.id, { controller: new AbortController(), chat: mockCurrentChat.value });
+    }
+    mockActiveMessages.value = [
+      { id: 'msg-1', role: 'user', content: 'hello', timestamp: 0, replies: { items: [] } },
+      { id: assistantMsgId, role: 'assistant', content: 'generating...', timestamp: 0, replies: { items: [] } }
+    ];
+    
+    wrapper = mount(ChatArea, {
+      global: { 
+        plugins: [router],
+        stubs: {
+          // We need MessageItem to NOT be stubbed or to emit the event if stubbed
+          MessageItem: false 
+        }
+      },
+    });
+    
+    await nextTick();
+    
+    const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
+    expect(abortBtn.exists()).toBe(true);
+    
+    await abortBtn.trigger('click');
+    expect(mockAbortChat).toHaveBeenCalled();
+  });
+
   it('should show the send button with shortcut text when not streaming', async () => {
     mockStreaming.value = false;
     wrapper = mount(ChatArea, {
@@ -1207,6 +1238,28 @@ describe('ChatArea Textarea Sizing', () => {
     await nextTick();
 
     expect((wrapper.vm as any).isMaximized).toBe(false);
+  });
+
+  it('should have touch-visible class on attachment remove buttons', async () => {
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+    
+    // Manually add an attachment
+    (wrapper.vm as any).attachments = [{
+      id: 'att-1',
+      status: 'memory',
+      blob: new Blob([''], { type: 'image/png' }),
+      originalName: 'mem.png',
+      mimeType: 'image/png',
+      size: 10,
+      uploadedAt: Date.now()
+    }];
+    
+    await nextTick();
+    
+    const removeBtn = wrapper.find('.group\\/att button');
+    expect(removeBtn.classes()).toContain('touch-visible');
   });
 
   it('should handle large text paste by showing the maximize button immediately', async () => {

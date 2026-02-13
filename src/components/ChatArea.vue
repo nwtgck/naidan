@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { generateId } from '../utils/id';
 import { ref, watch, nextTick, onMounted, computed, toRaw } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
@@ -34,9 +35,10 @@ import {
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
   Folder, FolderInput, ChevronRight, Hammer, Image,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Search
 } from 'lucide-vue-next';
 import type { Attachment, Chat } from '../models/types';
+import { useGlobalSearch } from '../composables/useGlobalSearch';
 
 
 const chatStore = useChat();
@@ -210,10 +212,10 @@ async function processFiles(files: File[]) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
     
-    const attachmentId = crypto.randomUUID();
+    const attachmentId = generateId();
     const attachment: Attachment = {
       id: attachmentId,
-      binaryObjectId: crypto.randomUUID(),
+      binaryObjectId: generateId(),
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
@@ -438,7 +440,10 @@ function scrollToBottom() {
 }
 
 // Expose for testing
-defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight, attachments, input });
+defineExpose({ scrollToBottom, container, handleSend, isMaximized, adjustTextareaHeight, attachments, input,
+  __testOnly: {
+  // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }, });
 
 async function fetchModels() {
   if (currentChat.value) {
@@ -903,6 +908,13 @@ onUnmounted(() => {
             @mouseleave="showMoreMenu = false"
           >
             <button 
+              @click="() => { if(currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); showMoreMenu = false; }"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
+            >
+              <Search class="w-4 h-4" />
+              <span>Search in Chat</span>
+            </button>
+            <button 
               @click="chatStore.toggleDebug(); showMoreMenu = false"
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
               :class="currentChat?.debugEnabled 
@@ -937,7 +949,7 @@ onUnmounted(() => {
         data-testid="scroll-container" 
         class="absolute inset-0 overflow-y-auto overscroll-contain transition-[padding-bottom] duration-500"
         style="overflow-anchor: none;"
-        :style="{ paddingBottom: isSubmerged ? '60px' : '300px' }"
+        :style="{ paddingBottom: isSubmerged ? '48px' : '300px' }"
       >
         <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
           Select or create a chat to start
@@ -951,11 +963,13 @@ onUnmounted(() => {
               :siblings="chatStore.getSiblings(msg.id)"
               :can-generate-image="canGenerateImage && hasImageModel"
               :is-processing="isCurrentChatStreaming"
+              :is-generating="isCurrentChatStreaming && msg.id === currentChat?.currentLeafId"
               :available-image-models="availableImageModels"
               @fork="handleFork"
               @edit="handleEdit"
               @switch-version="handleSwitchVersion"
               @regenerate="handleRegenerate"
+              @abort="chatStore.abortChat()"
             />
           </div>
           <WelcomeScreen 
@@ -987,8 +1001,8 @@ onUnmounted(() => {
     <!-- Input Layer (Overlay) -->
     <div 
       v-if="currentChat"
-      class="absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out"
-      :class="isSubmerged ? 'translate-y-[calc(100%-44px)] sm:translate-y-[calc(100%-52px)]' : 'translate-y-0'"
+      class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out"
+      :class="isSubmerged ? 'translate-y-[calc(100%-32px)] sm:translate-y-[calc(100%-40px)]' : 'translate-y-0'"
     >
       <!-- Glass Zone behind the input card (Full width blur) -->
       <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': isSubmerged }"></div>
@@ -1012,7 +1026,7 @@ onUnmounted(() => {
             />
             <button 
               @click="removeAttachment(att.id)"
-              class="absolute -top-2 -right-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm opacity-0 group-hover/att:opacity-100 transition-opacity"
+              class="absolute -top-2 -right-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-opacity"
             >
               <X class="w-3 h-3" />
             </button>
@@ -1030,7 +1044,7 @@ onUnmounted(() => {
           @keydown.enter.meta.prevent="handleSend"
           @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
           placeholder="Type a message..."
-          class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[60px] transition-colors"
+          class="w-full text-base pl-5 pr-20 pt-4 pb-0 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[48px] transition-colors"
           :class="{ 'animate-height': isAnimatingHeight }"
           data-testid="chat-input"
         ></textarea>
@@ -1059,7 +1073,7 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <div class="flex items-center justify-between px-4 pb-4" :class="{ 'pointer-events-none invisible': isSubmerged }">
+        <div class="flex items-center justify-between px-4 pb-2" :class="{ 'pointer-events-none invisible': isSubmerged }">
           <div class="flex items-center gap-2">
             <div class="w-[100px] sm:w-[180px]">
               <ModelSelector 

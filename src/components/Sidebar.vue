@@ -17,11 +17,13 @@ import {
   Pencil, Folder, FolderPlus, 
   ChevronDown, ChevronUp, ChevronRight, Check, X,
   Bot, PanelLeft, SquarePen, Loader2, MoreHorizontal,
+  Search,
 } from 'lucide-vue-next';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupActions.vue'));
 import { useLayout } from '../composables/useLayout';
 import { useConfirm } from '../composables/useConfirm';
+import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { naturalSort } from '../utils/string';
 
 const chatStore = useChat();
@@ -556,7 +558,14 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
       }
     }
   }
-});</script>
+});
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
+</script>
 
 <template>
   <div class="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 select-none transition-colors">
@@ -598,6 +607,15 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
             <span class="whitespace-nowrap overflow-hidden">New Chat</span>
             <span class="text-[9px] opacity-60 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
           </template>
+        </button>
+        <button 
+          @click="useGlobalSearch().openSearch()"
+          class="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
+          :class="isSidebarOpen ? 'p-3' : 'w-8 h-8 flex items-center justify-center p-0'"
+          title="Search (Cmd+K)"
+          data-testid="search-button"
+        >
+          <Search class="w-4 h-4" />
         </button>
         <button 
           v-if="isSidebarOpen"
@@ -707,7 +725,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                     <span v-else class="truncate text-sm font-bold tracking-tight">{{ element.chatGroup.name }}</span>
                   </div>
                       
-                  <div class="flex items-center group-action-container" :class="activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity'">
+                  <div class="flex items-center group-action-container touch-visible" :class="activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity'">
                     <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup(element.chatGroup)" class="p-1 hover:text-blue-600 dark:hover:text-white" title="Rename Group"><Pencil class="w-3 h-3" /></button>
                     
                     <ChatGroupActions
@@ -716,6 +734,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                       @toggle="activeActionGroupId = activeActionGroupId === element.chatGroup.id ? null : element.chatGroup.id"
                       @duplicate="() => { chatStore.duplicateChatGroup(element.chatGroup.id); activeActionGroupId = null; }"
                       @delete="() => { handleDeleteChatGroup(element.chatGroup); activeActionGroupId = null; }"
+                      @search="() => { useGlobalSearch().openSearch({ groupIds: [element.chatGroup.id] }); activeActionGroupId = null; }"
                     />
                   </div>
                 </div>
@@ -780,7 +799,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                             </div>
                             <div class="flex items-center gap-1">
                               <Loader2 v-if="isProcessing(nestedItem.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
-                              <div v-if="editingId !== nestedItem.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                              <div v-if="editingId !== nestedItem.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
                                 <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
                                 <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
                               </div>
@@ -837,7 +856,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
                 </div>
                 <div class="flex items-center gap-1">
                   <Loader2 v-if="isProcessing(element.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
-                  <div v-if="editingId !== element.chat.id" class="flex items-center opacity-0 group-hover/chat:opacity-100 transition-opacity">
+                  <div v-if="editingId !== element.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
                     <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><Pencil class="w-3 h-3" /></button>
                     <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2 class="w-3 h-3" /></button>
                   </div>

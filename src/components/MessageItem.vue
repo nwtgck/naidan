@@ -27,7 +27,7 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject } from '../models/types';
-import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send } from 'lucide-vue-next';
+import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2, XCircle, Square } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
@@ -35,8 +35,8 @@ import { sanitizeFilename } from '../utils/string';
 import SpeechControl from './SpeechControl.vue';
 // IMPORTANT: ImageConjuringLoader is essential for showing image generation progress immediately.
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
-// IMPORTANT: ChatToolsMenu is part of the editing UI and should be immediately available.
-import ChatToolsMenu from './ChatToolsMenu.vue';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
 import { 
   isImageGenerationPending, 
@@ -55,6 +55,7 @@ const props = defineProps<{
   siblings?: MessageNode[];
   canGenerateImage?: boolean;
   isProcessing?: boolean;
+  isGenerating?: boolean;
   availableImageModels?: string[];
 }>();
 
@@ -63,6 +64,7 @@ const emit = defineEmits<{
   (e: 'edit', messageId: string, newContent: string): void;
   (e: 'switch-version', messageId: string): void;
   (e: 'regenerate', messageId: string): void;
+  (e: 'abort'): void;
 }>();
 
 const isEditing = ref(false);
@@ -175,7 +177,7 @@ async function loadGeneratedImages() {
       if (url) {
         htmlEl.innerHTML = `
           <img src="${url}" width="${w}" height="${h}" alt="generated image" class="naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity">
-          <button class="naidan-download-gen-image absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 group-hover/gen-img:opacity-100 transition-all z-10" title="Download image">
+          <button class="naidan-download-gen-image absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all z-10" title="Download image">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
           </button>
         `;
@@ -274,6 +276,13 @@ function handleSaveEdit() {
 function handleCancelEdit() {
   editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
   isEditing.value = false;
+}
+
+function handleClearContent() {
+  editContent.value = '';
+  nextTick(() => {
+    textareaRef.value?.focus();
+  });
 }
 
 async function handleCopy() {
@@ -701,6 +710,13 @@ function handleToggleThinking() {
   if (typeof window !== 'undefined' && window.getSelection()?.toString()) return;
   showThinking.value = !showThinking.value;
 }
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>
@@ -714,7 +730,18 @@ function handleToggleThinking() {
         <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
         <template v-else>
           <span>{{ message.modelId || 'Assistant' }}</span>
-          <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" />
+          <div class="flex items-center gap-1">
+            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" />
+            <button 
+              v-if="isGenerating"
+              @click="emit('abort')"
+              class="p-1 rounded-lg text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Stop generation"
+              data-testid="message-abort-button"
+            >
+              <Square class="w-3 h-3" />
+            </button>
+          </div>
         </template>
       </div>
     </div>
@@ -732,7 +759,7 @@ function handleToggleThinking() {
             <a 
               :href="attachmentUrls[att.id]" 
               :download="att.originalName"
-              class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 group-hover/att:opacity-100 transition-all z-10"
+              class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-all z-10"
               title="Download image"
               data-testid="download-attachment"
             >
@@ -833,32 +860,55 @@ function handleToggleThinking() {
           
           <div class="flex items-center justify-between px-3 pb-3">
             <div class="flex items-center gap-1">
-              <ChatToolsMenu 
+              <button 
                 v-if="canGenerateImage"
-                :can-generate-image="canGenerateImage"
-                :is-processing="isProcessing ?? false"
-                :is-image-mode="editImageMode"
-                :selected-width="editImageParams.width"
-                :selected-height="editImageParams.height"
-                :selected-count="editImageParams.count"
-                :selected-persist-as="editImageParams.persistAs"
-                :available-image-models="availableImageModels ?? []"
-                :selected-image-model="editImageParams.model"
-                direction="down"
-                @toggle-image-mode="editImageMode = !editImageMode"
-                @update:resolution="(w, h) => { editImageParams.width = w; editImageParams.height = h; }"
-                @update:count="c => editImageParams.count = c"
-                @update:persist-as="f => editImageParams.persistAs = f"
-                @update:model="m => editImageParams.model = m"
-              />
+                @click="editImageMode = !editImageMode"
+                class="p-2 rounded-xl transition-colors"
+                :class="editImageMode ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'"
+                title="Tools"
+                data-testid="toggle-edit-image-mode"
+              >
+                <Settings2 class="w-5 h-5" />
+              </button>
             </div>
             <div class="flex items-center gap-2">
+              <button 
+                v-if="editContent"
+                @click="handleClearContent" 
+                class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                title="Clear all text"
+                data-testid="clear-edit-content"
+              >
+                <XCircle class="w-3.5 h-3.5" />
+                <span>Clear</span>
+              </button>
               <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">Cancel</button>
               <button @click="handleSaveEdit" class="px-4 py-1.5 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-500/30" data-testid="save-edit">
                 <span>{{ isUser ? 'Send & Branch' : 'Update & Branch' }}</span>
                 <span class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
               </button>
             </div>
+          </div>
+
+          <!-- Inline Experimental Tools (if active) -->
+          <div v-if="editImageMode" class="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 py-1" data-testid="embedded-experimental-tools">
+            <ImageGenerationSettings
+              :can-generate-image="canGenerateImage ?? false"
+              :is-processing="isProcessing ?? false"
+              :is-image-mode="editImageMode"
+              :selected-width="editImageParams.width"
+              :selected-height="editImageParams.height"
+              :selected-count="editImageParams.count"
+              :selected-persist-as="editImageParams.persistAs"
+              :available-image-models="availableImageModels ?? []"
+              :selected-image-model="editImageParams.model"
+              :show-header="true"
+              @toggle-image-mode="editImageMode = !editImageMode"
+              @update:resolution="(w, h) => { editImageParams.width = w; editImageParams.height = h; }"
+              @update:count="c => editImageParams.count = c"
+              @update:persist-as="f => editImageParams.persistAs = f"
+              @update:model="m => editImageParams.model = m"
+            />
           </div>
         </div>
       </div>

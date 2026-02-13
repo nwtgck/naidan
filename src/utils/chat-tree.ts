@@ -1,3 +1,4 @@
+import { generateId } from './id';
 import { toRaw } from 'vue';
 import type { MessageNode, SidebarItem, Chat } from '../models/types';
 
@@ -82,7 +83,7 @@ export interface HistoryItem {
 
 export function createBranchFromMessages(messages: HistoryItem[]): MessageNode[] {
   const nodes: MessageNode[] = messages.map(m => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role: m.role,
     content: m.content,
     timestamp: Date.now(),

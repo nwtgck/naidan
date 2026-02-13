@@ -1,3 +1,4 @@
+import { generateId } from '../../utils/id';
 import JSZip from 'jszip';
 import type { 
   ExportOptions, 
@@ -454,7 +455,7 @@ export class ImportExportService {
         finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
         break;
       case 'append': {
-        const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: crypto.randomUUID() }));
+        const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: generateId() }));
         finalSettings.providerProfiles = [...finalSettings.providerProfiles, ...appended];
         break;
       }
@@ -584,7 +585,7 @@ export class ImportExportService {
           const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
           if (result.success) {
             const dto = result.data;
-            const newId = crypto.randomUUID();
+            const newId = generateId();
             groupIdMap.set(dto.id, newId);
             dto.id = newId;
             if (config.data.chatGroupNamePrefix) dto.name = `${config.data.chatGroupNamePrefix}${dto.name}`;
@@ -605,7 +606,7 @@ export class ImportExportService {
           if (res.success) {
             const dto = res.data;
             const originalId = dto.id;
-            const newId = crypto.randomUUID();
+            const newId = generateId();
             chatIdMap.set(originalId, newId);
             dto.id = newId;
             if (config.data.chatTitlePrefix && dto.title) dto.title = `${config.data.chatTitlePrefix}${dto.title}`;
@@ -671,18 +672,18 @@ export class ImportExportService {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
             const dto: ChatDto = { ...meta, ...content };
             const process = (node: MessageNodeDto) => {
-              node.id = crypto.randomUUID();
+              node.id = generateId();
               if (node.attachments) {
                 node.attachments.forEach(a => {
                   // remap attachment ID (the reference)
                   const originalAttId = a.id;
-                  a.id = crypto.randomUUID();
+                  a.id = generateId();
 
                   // Resolve binaryObjectId from V1 or V2
                   const oldBinaryId = ('binaryObjectId' in a) ? a.binaryObjectId : originalAttId;
                   
                   if (!binaryRemapMap.has(oldBinaryId)) {
-                    binaryRemapMap.set(oldBinaryId, crypto.randomUUID());
+                    binaryRemapMap.set(oldBinaryId, generateId());
                   }
                   
                   const newBinaryId = binaryRemapMap.get(oldBinaryId)!;

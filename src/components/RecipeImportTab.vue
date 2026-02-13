@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { generateId } from '../utils/id';
 import { ref, watch } from 'vue';
 import { 
   ChefHat, Save, AlertTriangle
@@ -71,7 +72,7 @@ function handleAnalyzeRecipes() {
     const match = matchRecipeModels(recipe.models, props.availableModels);
 
     newAnalyzed.push({
-      id: crypto.randomUUID(),
+      id: generateId(),
       recipe,
       selected: true,
       matchedModelId: match.modelId,
@@ -106,6 +107,13 @@ function handleImportRecipes() {
   analyzedRecipes.value = [];
   recipeJsonInput.value = '';
 }
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>

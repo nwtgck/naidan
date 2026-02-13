@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { generateId } from '../utils/id';
 import { ref, computed, watch } from 'vue';
 import { 
   X, ChefHat, Copy, Check, Plus, Trash2, Info, Globe, AlertCircle, MessageSquareQuote
@@ -28,7 +29,7 @@ const recipeForm = ref({
 
 function initForm() {
   const modelPatterns = props.initialModelId 
-    ? generateDefaultModelPatterns(props.initialModelId).map(p => ({ id: crypto.randomUUID(), pattern: p, caseSensitive: false }))
+    ? generateDefaultModelPatterns(props.initialModelId).map(p => ({ id: generateId(), pattern: p, caseSensitive: false }))
     : [];
 
   recipeForm.value = {
@@ -70,7 +71,7 @@ const exportedRecipeJson = computed(() => {
 });
 
 function addModelPattern() {
-  recipeForm.value.models.push({ id: crypto.randomUUID(), pattern: '', caseSensitive: false });
+  recipeForm.value.models.push({ id: generateId(), pattern: '', caseSensitive: false });
 }
 
 function removeModelPattern(id: string) {
@@ -99,6 +100,13 @@ async function copyToClipboard() {
     }, 2000);
   }
 }
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>

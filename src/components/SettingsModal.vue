@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { generateId } from '../utils/id';
 import { ref, watch, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '../composables/useSettings';
@@ -192,7 +193,7 @@ function handleAnalyzeRecipes() {
     const match = matchRecipeModels(recipe.models, availableModels.value);
 
     newAnalyzed.push({
-      id: crypto.randomUUID(),
+      id: generateId(),
       recipe,
       selected: true,
       matchedModelId: match.modelId,
@@ -229,6 +230,13 @@ watch(() => props.isOpen, async (open) => {
   }
 });
 
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>

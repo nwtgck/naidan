@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('../../utils/id', () => ({
+  generateId: vi.fn(() => Math.random().toString(36).substring(2))
+}));
 import { OPFSStorageProvider } from './opfs-storage';
 
 // --- Exhaustive Mocks for OPFS ---
@@ -336,12 +340,12 @@ describe('OPFSStorageProvider - Migration Logic', () => {
 
     const binDir = await naidanDir.getDirectoryHandle('binary-objects');
     let binaryCount = 0;
-    for (let i = 0; i < 256; i++) {
-      const shard = i.toString(16).padStart(2, '0');
-      try {
-        const sDir = await binDir.getDirectoryHandle(shard);
-        for await (const entry of sDir.values()) if (entry.name.endsWith('.bin')) binaryCount++;
-      } catch { /* shard not created */ }
+    for await (const shardDir of binDir.values()) {
+      if (shardDir instanceof MockFileSystemDirectoryHandle) {
+        for await (const entry of shardDir.values()) {
+          if (entry.name.endsWith('.bin')) binaryCount++;
+        }
+      }
     }
     expect(binaryCount).toBe(2);
   });

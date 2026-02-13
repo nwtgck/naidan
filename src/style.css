@@ -32,6 +32,14 @@
 .mermaid-block:hover .mermaid-ui-overlay {
   @apply opacity-100;
 }
+
+@media (hover: none) {
+  .touch-visible,
+  .mermaid-ui-overlay {
+    opacity: 1 !important;
+  }
+}
+
 .mermaid-tabs {
   @apply flex p-0.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-md shadow-sm;
 }

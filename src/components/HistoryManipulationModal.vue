@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { generateId } from '../utils/id';
 import { ref, watch, onUnmounted, computed } from 'vue';
 import draggable from 'vuedraggable';
 import { 
@@ -53,7 +54,7 @@ watch(() => props.isOpen, async (open) => {
 
     // Deep copy current branch to editable state with localIds
     editableMessages.value = activeMessages.value.map(m => ({
-      localId: crypto.randomUUID(),
+      localId: generateId(),
       role: m.role,
       content: m.content,
       modelId: m.modelId,
@@ -131,7 +132,7 @@ function predictNextRole(index: number): 'user' | 'assistant' {
 function addMessage(index: number) {
   const role = predictNextRole(index);
   editableMessages.value.splice(index + 1, 0, {
-    localId: crypto.randomUUID(),
+    localId: generateId(),
     role,
     content: ''
   });
@@ -147,7 +148,7 @@ function duplicateMessage(index: number) {
   
   editableMessages.value.splice(index + 1, 0, {
     ...msg,
-    localId: crypto.randomUUID(),
+    localId: generateId(),
     attachments: msg.attachments ? [...msg.attachments] : undefined
   });
 }
@@ -166,10 +167,10 @@ async function handleFileSelect(event: Event, index: number) {
   for (const file of Array.from(target.files)) {
     if (!file.type.startsWith('image/')) continue;
     
-    const attachmentId = crypto.randomUUID();
+    const attachmentId = generateId();
     const attachment: Attachment = {
       id: attachmentId,
-      binaryObjectId: crypto.randomUUID(),
+      binaryObjectId: generateId(),
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
@@ -201,10 +202,10 @@ async function handlePaste(event: ClipboardEvent, index: number) {
     if (!msg.attachments) msg.attachments = [];
 
     for (const file of files) {
-      const attachmentId = crypto.randomUUID();
+      const attachmentId = generateId();
       const attachment: Attachment = {
         id: attachmentId,
-        binaryObjectId: crypto.randomUUID(),
+        binaryObjectId: generateId(),
         originalName: file.name,
         mimeType: file.type,
         size: file.size,
@@ -275,6 +276,13 @@ function handleCancel() {
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>

@@ -554,6 +554,12 @@ describe('ChatSettingsPanel.vue', () => {
         global: { stubs: globalStubs } 
       });
       await nextTick();
+      
+      // First click Override to show the textarea
+      const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
+      await overrideBtn?.trigger('click');
+      await nextTick();
+      
       const textarea = wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]');
       
       await textarea.setValue('Custom prompt');
@@ -574,6 +580,33 @@ describe('ChatSettingsPanel.vue', () => {
       
       const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
       expect(status.text()).toBe('Appending');
+    });
+
+    it('shows "Inherit" behavior and clears override when clicking Inherit button', async () => {
+      // Set an initial override
+      mockCurrentChat.value.systemPrompt = { content: 'Old prompt', behavior: 'override' };
+      const wrapper = mount(ChatSettingsPanel, { 
+        props: { show: true },
+        global: { stubs: globalStubs } 
+      });
+      await nextTick();
+      
+      // Ensure textarea exists initially
+      expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+      // Click Inherit
+      const inheritBtn = wrapper.findAll('button').find(b => b.text() === 'Inherit');
+      await inheritBtn?.trigger('click');
+      await nextTick();
+      
+      // Verify updateChatSettings was called with undefined
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+        systemPrompt: undefined
+      }));
+      
+      // Verify UI state: textarea should be gone, and inherited notice shown
+      expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(false);
+      expect(wrapper.text()).toContain('Inherited Instructions');
     });
 
     it('shows "Inherited" for parameters when not overridden', async () => {

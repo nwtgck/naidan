@@ -246,7 +246,7 @@ describe('ChatArea Design Specifications', () => {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     // The Input Layer (Overlay)
-    const inputLayer = wrapper.find('.absolute.bottom-0.left-0.right-0.p-4');
+    const inputLayer = wrapper.find('.absolute.bottom-0.left-0.right-0.p-2');
     expect(inputLayer.exists()).toBe(true);
     expect(inputLayer.classes()).toContain('z-30');
     expect(inputLayer.classes()).toContain('bg-transparent');

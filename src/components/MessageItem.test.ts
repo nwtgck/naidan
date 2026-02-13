@@ -1,3 +1,4 @@
+import { generateId } from '../utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
@@ -7,7 +8,7 @@ import { nextTick } from 'vue';
 
 describe('MessageItem Rendering', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role,
     content,
     timestamp: Date.now(),
@@ -340,7 +341,7 @@ describe('MessageItem Rendering', () => {
 
 describe('MessageItem Keyboard Shortcuts', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'user'): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role,
     content,
     timestamp: Date.now(),
@@ -396,11 +397,32 @@ describe('MessageItem Keyboard Shortcuts', () => {
     expect(wrapper.emitted('edit')).toBeTruthy();
     expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Meta content']);
   });
+
+  it('clears all content when Clear button is clicked', async () => {
+    const message = createMessage('Original content');
+    const wrapper = mount(MessageItem, { props: { message } });
+    
+    // Enter edit mode
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    const textarea = wrapper.find('[data-testid="edit-textarea"]');
+    await textarea.setValue('Some text to clear');
+    
+    // Clear button should exist since textarea has content
+    const clearBtn = wrapper.find('[data-testid="clear-edit-content"]');
+    expect(clearBtn.exists()).toBe(true);
+    
+    await clearBtn.trigger('click');
+    await nextTick();
+    
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('');
+    // Clear button should be hidden when content is empty
+    expect(wrapper.find('[data-testid="clear-edit-content"]').exists()).toBe(false);
+  });
 });
 
 describe('MessageItem Attachment Rendering', () => {
   const createMessageWithAttachments = (attachments: any[]): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role: 'user',
     content: 'Message with images',
     timestamp: Date.now(),
@@ -503,7 +525,7 @@ describe('MessageItem Attachment Rendering', () => {
 
 describe('MessageItem States', () => {
   const createAssistantMessage = (content: string, error?: string): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role: 'assistant',
     content,
     error,
@@ -573,7 +595,7 @@ describe('MessageItem States', () => {
 
 describe('MessageItem Edit Labels', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role,
     content: 'Some content',
     timestamp: Date.now(),
@@ -639,7 +661,7 @@ describe('MessageItem Edit Labels', () => {
 
 describe('MessageItem Action Visibility', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     role,
     content: 'Some content',
     timestamp: Date.now(),
@@ -658,5 +680,87 @@ describe('MessageItem Action Visibility', () => {
     
     expect(container?.className).not.toContain('opacity-0');
     expect(container?.className).not.toContain('group-hover:opacity-100');
+  });
+});
+
+describe('MessageItem Touch Support', () => {
+  it('applies touch-visible class to attachment download buttons', async () => {
+    const message: MessageNode = {
+      id: generateId(),
+      role: 'user',
+      content: 'Message with images',
+      timestamp: Date.now(),
+      attachments: [{
+        id: 'att-1',
+        binaryObjectId: 'binary-id-1',
+        status: 'memory',
+        blob: new Blob([''], { type: 'image/png' }),
+        originalName: 'mem.png',
+        mimeType: 'image/png',
+        size: 10,
+        uploadedAt: Date.now()
+      }],
+      replies: { items: [] },
+    };
+
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn().mockReturnValue('mock-url'),
+      revokeObjectURL: vi.fn(),
+    });
+
+    const wrapper = mount(MessageItem, { props: { message } });
+    await nextTick();
+    await nextTick();
+
+    const downloadBtn = wrapper.find('[data-testid="download-attachment"]');
+    expect(downloadBtn.classes()).toContain('touch-visible');
+  });
+});
+
+describe('MessageItem Abort Button', () => {
+  const createAssistantMessage = (content: string): MessageNode => ({
+    id: generateId(),
+    role: 'assistant',
+    content,
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  it('renders the abort button when isGenerating is true', () => {
+    const message = createAssistantMessage('Generation in progress...');
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
+    
+    const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
+    expect(abortBtn.exists()).toBe(true);
+    expect(abortBtn.attributes('title')).toBe('Stop generation');
+  });
+
+  it('does not render the abort button when isGenerating is false', () => {
+    const message = createAssistantMessage('Generation finished');
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: false } });
+    
+    const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
+    expect(abortBtn.exists()).toBe(false);
+  });
+
+  it('emits abort event when abort button is clicked', async () => {
+    const message = createAssistantMessage('Generation in progress...');
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
+    
+    const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
+    await abortBtn.trigger('click');
+    
+    expect(wrapper.emitted('abort')).toBeTruthy();
+  });
+  
+  it('has the correct subtle styling for the abort button', () => {
+    const message = createAssistantMessage('Generation in progress...');
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
+    
+    const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
+    const cls = abortBtn.classes();
+    expect(cls).toContain('text-gray-400');
+    expect(cls).toContain('hover:text-red-500');
+    expect(cls).not.toContain('animate-pulse');
   });
 });

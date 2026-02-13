@@ -64,6 +64,13 @@ function reset() {
 
 const isOverridden = (key: keyof LmParameters) => params.value[key] !== undefined;
 
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>
