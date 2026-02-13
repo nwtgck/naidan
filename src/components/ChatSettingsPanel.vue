@@ -35,6 +35,7 @@ const {
   fetchingModels,
   availableModels,
   resolvedSettings,
+  inheritedSettings,
 } = chatStore;
 const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
 const { settings } = useSettings();
@@ -190,26 +191,26 @@ async function updateSystemPromptContent(content: string) {
 }
 */
 
-async function updateSystemPromptBehavior(behavior: 'override' | 'append', isClear = false) {
-  if (isClear) {
-    localSettings.value.systemPrompt = { behavior: 'override', content: null };
-  } else if (!localSettings.value.systemPrompt) {
-    localSettings.value.systemPrompt = { content: '', behavior };
-  } else {
-    // When switching away from Clear to Override/Append, ensure content is at least an empty string
-    const content = localSettings.value.systemPrompt.content ?? '';
-    switch (behavior) {
-    case 'override':
-      localSettings.value.systemPrompt = { behavior: 'override', content };
-      break;
-    case 'append':
-      localSettings.value.systemPrompt = { behavior: 'append', content };
-      break;
-    default: {
-      const _ex: never = behavior;
-      throw new Error(`Unhandled behavior: ${_ex}`);
+async function updateSystemPromptBehavior(behavior: 'override' | 'append' | 'inherit', isClear = false) {
+  switch (behavior) {
+  case 'inherit':
+    localSettings.value.systemPrompt = undefined;
+    break;
+  case 'override':
+  case 'append':
+    if (isClear) {
+      localSettings.value.systemPrompt = { behavior: 'override', content: null };
+    } else if (!localSettings.value.systemPrompt) {
+      localSettings.value.systemPrompt = { content: '', behavior };
+    } else {
+      const content = localSettings.value.systemPrompt.content ?? '';
+      localSettings.value.systemPrompt = { behavior, content };
     }
-    }
+    break;
+  default: {
+    const _ex: never = behavior;
+    throw new Error(`Unhandled behavior: ${_ex}`);
+  }
   }
   await saveChanges();
 }
@@ -433,6 +434,13 @@ defineExpose({
                 
                   <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                     <button 
+                      @click="updateSystemPromptBehavior('inherit')"
+                      class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
+                      :class="!localSettings.systemPrompt ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                    >
+                      Inherit
+                    </button>
+                    <button 
                       @click="updateSystemPromptBehavior('override', true)"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
@@ -455,8 +463,18 @@ defineExpose({
                     </button>
                   </div>
                 </div>
+                <div v-if="!localSettings.systemPrompt" class="w-full bg-gray-50/50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-4 text-left">
+                  <p class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Inherited Instructions</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500 italic whitespace-pre-wrap line-clamp-6">
+                    {{ inheritedSettings?.systemPromptMessages?.join('\n\n') || 'No instructions inherited.' }}
+                  </p>
+                </div>
+                <div v-else-if="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null" class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center">
+                  <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Parent Prompt Cleared</p>
+                  <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This chat will not use any system instructions.</p>
+                </div>
                 <textarea 
-                  v-if="!(localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null)"
+                  v-else
                   :value="localSettings.systemPrompt?.content || ''"
                   @input="e => { 
                     const val = (e.target as HTMLTextAreaElement).value;
@@ -472,13 +490,6 @@ defineExpose({
                   :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
                   data-testid="chat-setting-system-prompt-textarea"
                 ></textarea>
-                <div 
-                  v-else
-                  class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center"
-                >
-                  <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Parent Prompt Cleared</p>
-                  <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This chat will not use any system instructions.</p>
-                </div>
               </div>
 
               <div class="space-y-4">

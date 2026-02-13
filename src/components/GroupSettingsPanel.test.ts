@@ -61,10 +61,17 @@ const globalStubs = {
 };
 
 const mockSetActiveFocusArea = vi.fn();
+const mockOpenSearch = vi.fn();
 
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     setActiveFocusArea: mockSetActiveFocusArea,
+  }),
+}));
+
+vi.mock('../composables/useGlobalSearch', () => ({
+  useGlobalSearch: () => ({
+    openSearch: mockOpenSearch,
   }),
 }));
 
@@ -113,6 +120,23 @@ describe('GroupSettingsPanel.vue', () => {
     mockGroup.modelId = 'some-model';
     await nextTick();
     expect(wrapper.text()).toContain('Active Overrides');
+  });
+
+  it('hides the "Active Overrides" badge when endpoint URL is cleared', async () => {
+    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+    
+    // Set an endpoint with URL
+    mockGroup.endpoint = { type: 'openai', url: 'http://example.com' };
+    await nextTick();
+    expect(wrapper.text()).toContain('Active Overrides');
+
+    // Clear the URL but keep the endpoint object (simulating manual clearing of the input)
+    mockGroup.endpoint.url = '';
+    await nextTick();
+    
+    // The badge should disappear because the override is no longer "meaningful" (empty URL)
+    expect(wrapper.text()).not.toContain('Active Overrides');
   });
 
   it('toggles endpoint customization via select', async () => {
@@ -187,6 +211,28 @@ describe('GroupSettingsPanel.vue', () => {
     }));
   });
 
+  it('clears system prompt override when clicking Inherit button', async () => {
+    mockGroup.systemPrompt = { content: 'group prompt', behavior: 'override' };
+    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    // Ensure textarea exists initially
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
+
+    // Click Inherit
+    const inheritBtn = wrapper.findAll('button').find(b => b.text() === 'Inherit');
+    await inheritBtn?.trigger('click');
+    await nextTick();
+
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+      systemPrompt: undefined
+    }));
+
+    // Verify UI state
+    expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('Inherited Instructions');
+  });
+
   it('displays correct resolution status for system prompt', async () => {
     const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
@@ -205,6 +251,12 @@ describe('GroupSettingsPanel.vue', () => {
 
   it('calls updateChatGroupMetadata when settings change', async () => {
     const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    // First click Override to show the textarea
+    const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
+    await overrideBtn?.trigger('click');
+    await nextTick();
     
     // Set system prompt via textarea
     const textarea = wrapper.find('[data-testid="group-setting-system-prompt-textarea"]');
@@ -276,5 +328,15 @@ describe('GroupSettingsPanel.vue', () => {
     mockSetActiveFocusArea.mockClear();
     await wrapper.trigger('focusin');
     expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-group-settings');
+  });
+
+  it('triggers global search when clicking search button', async () => {
+    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const searchBtn = wrapper.findAll('button').find(b => b.text().includes('Search Group'));
+    await searchBtn?.trigger('click');
+
+    expect(mockOpenSearch).toHaveBeenCalledWith({ groupIds: [mockGroup.id] });
   });
 });
