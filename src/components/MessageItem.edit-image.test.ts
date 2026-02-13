@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import MessageItem from './MessageItem.vue';
 import { createImageRequestMarker, SENTINEL_IMAGE_REQUEST_PREFIX } from '../utils/image-generation';
@@ -36,6 +36,14 @@ describe('MessageItem Edit Image Generation', () => {
     replies: { items: [] }
   });
 
+  const stubs = {
+    ImageGenerationSettings: {
+      name: 'ImageGenerationSettings',
+      template: '<div data-testid="mock-image-settings"></div>',
+      props: ['canGenerateImage', 'isProcessing', 'isImageMode', 'selectedWidth', 'selectedHeight', 'selectedCount', 'selectedPersistAs', 'availableImageModels', 'selectedImageModel', 'showHeader'],
+    }
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -57,24 +65,27 @@ describe('MessageItem Edit Image Generation', () => {
         message, 
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1', 'x/other-model:v1']
-      }
+      },
+      global: { stubs }
     });
 
     // Enter edit mode
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     await nextTick();
+    await flushPromises();
 
     expect(wrapper.find('[data-testid="edit-mode"]').exists()).toBe(true);
     
-    // Check if ChatToolsMenu received correct props
-    const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
-    expect(toolsMenu.exists()).toBe(true);
-    expect(toolsMenu.props('isImageMode')).toBe(true);
-    expect(toolsMenu.props('selectedWidth')).toBe(1024);
-    expect(toolsMenu.props('selectedCount')).toBe(3);
-    expect(toolsMenu.props('selectedPersistAs')).toBe('webp');
-    expect(toolsMenu.props('selectedImageModel')).toBe('x/z-image-turbo:v1');
-    expect(toolsMenu.props('direction')).toBe('down');
+    const settings = wrapper.findComponent({ name: 'ImageGenerationSettings' });
+    expect(settings.exists()).toBe(true);
+    expect(settings.props('isImageMode')).toBe(true);
+    expect(settings.props('selectedWidth')).toBe(1024);
+    expect(settings.props('selectedCount')).toBe(3);
+    expect(settings.props('selectedPersistAs')).toBe('webp');
+    expect(settings.props('selectedImageModel')).toBe('x/z-image-turbo:v1');
+
+    // Panel should be embedded in the edit mode container
+    expect(wrapper.find('[data-testid="embedded-experimental-tools"]').exists()).toBe(true);
 
     // Textarea should contain only the prompt, without markers
     const textarea = wrapper.find('textarea');
@@ -92,18 +103,20 @@ describe('MessageItem Edit Image Generation', () => {
         message, 
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1']
-      }
+      },
+      global: { stubs }
     });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     await nextTick();
+    await flushPromises();
 
-    const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
+    const settings = wrapper.findComponent({ name: 'ImageGenerationSettings' });
     
     // Simulate changing resolution and count via emits
-    await toolsMenu.vm.$emit('update:resolution', 256, 256);
-    await toolsMenu.vm.$emit('update:count', 4);
-    await toolsMenu.vm.$emit('update:persist-as', 'png');
+    await settings.vm.$emit('update:resolution', 256, 256);
+    await settings.vm.$emit('update:count', 4);
+    await settings.vm.$emit('update:persist-as', 'png');
 
     // Save changes
     await wrapper.find('[data-testid="save-edit"]').trigger('click');
@@ -129,17 +142,22 @@ describe('MessageItem Edit Image Generation', () => {
         message, 
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1']
-      }
+      },
+      global: { stubs }
     });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     await nextTick();
 
-    const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
-    expect(toolsMenu.props('isImageMode')).toBe(false);
-
+    const toggleButton = wrapper.find('[data-testid="toggle-edit-image-mode"]');
+    
     // Toggle image mode on
-    await toolsMenu.vm.$emit('toggle-image-mode');
+    await toggleButton.trigger('click');
+    await nextTick();
+    await flushPromises();
+
+    const settings = wrapper.findComponent({ name: 'ImageGenerationSettings' });
+    expect(settings.exists()).toBe(true);
     
     await wrapper.find('[data-testid="save-edit"]').trigger('click');
 
@@ -159,17 +177,22 @@ describe('MessageItem Edit Image Generation', () => {
         message, 
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1']
-      }
+      },
+      global: { stubs }
     });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     await nextTick();
 
-    const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
-    expect(toolsMenu.props('isImageMode')).toBe(true);
-
+    const toggleButton = wrapper.find('[data-testid="toggle-edit-image-mode"]');
+    
     // Toggle image mode off
-    await toolsMenu.vm.$emit('toggle-image-mode');
+    await toggleButton.trigger('click');
+    await nextTick();
+    await flushPromises();
+
+    const settings = wrapper.findComponent({ name: 'ImageGenerationSettings' });
+    expect(settings.exists()).toBe(false);
     
     await wrapper.find('[data-testid="save-edit"]').trigger('click');
 
@@ -177,6 +200,34 @@ describe('MessageItem Edit Image Generation', () => {
     const [_, newContent] = emitted![0] as [string, string];
     expect(newContent).not.toContain(SENTINEL_IMAGE_REQUEST_PREFIX);
     expect(newContent).toBe('I want to be text only');
+  });
+
+  it('toggles the embedded experimental tools panel when the tool button is clicked', async () => {
+    const message = createMessage('Some text');
+    const wrapper = mount(MessageItem, {
+      props: { message, canGenerateImage: true },
+      global: { stubs }
+    });
+
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    await nextTick();
+    
+    const toggleButton = wrapper.find('[data-testid="toggle-edit-image-mode"]');
+    
+    // Initially hidden
+    expect(wrapper.find('[data-testid="embedded-experimental-tools"]').exists()).toBe(false);
+    
+    // Toggle ON
+    await toggleButton.trigger('click');
+    await nextTick();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="embedded-experimental-tools"]').exists()).toBe(true);
+    
+    // Toggle OFF
+    await toggleButton.trigger('click');
+    await nextTick();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="embedded-experimental-tools"]').exists()).toBe(false);
   });
 
   it('maintains intentional leading whitespace for regular messages', async () => {

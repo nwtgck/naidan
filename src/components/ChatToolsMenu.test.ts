@@ -59,11 +59,11 @@ describe('ChatToolsMenu', () => {
     expect(wrapper.text()).toContain('Number of Images');
     expect(wrapper.text()).toContain('Save Format');
     
-    const resButtons = wrapper.findAll('button').filter(b => /^\d+x\d+$/.test(b.text()));
-    expect(resButtons.length).toBe(3); // 256x256, 512x512, 1024x1024
+    const resButtons = wrapper.findAll('button').filter(b => b.classes().includes('font-mono') && b.text().includes('x'));
+    expect(resButtons.length).toBe(8);
 
-    const countButtons = wrapper.findAll('button').filter(b => /^[1-4]$/.test(b.text()));
-    expect(countButtons.length).toBe(4); // 1, 2, 3, 4
+    const countButtons = wrapper.findAll('button').filter(b => /^(1|5|10|50)$/.test(b.text()));
+    expect(countButtons.length).toBe(4); // 1, 5, 10, 50
 
     const formatButtons = wrapper.findAll('button').filter(b => ['Original', 'WebP', 'JPEG', 'PNG'].includes(b.text()));
     expect(formatButtons.length).toBe(4);
@@ -77,7 +77,7 @@ describe('ChatToolsMenu', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
     
-    const res256 = wrapper.findAll('button').find(b => b.text() === '256x256');
+    const res256 = wrapper.findAll('button').find(b => b.text().includes('256x256'));
     await res256?.trigger('click');
     
     expect(wrapper.emitted('update:resolution')).toEqual([[256, 256]]);
@@ -111,10 +111,10 @@ describe('ChatToolsMenu', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
     
-    const count2 = wrapper.findAll('button').find(b => b.text() === '2');
-    await count2?.trigger('click');
+    const count5 = wrapper.findAll('button').find(b => b.text() === '5');
+    await count5?.trigger('click');
     
-    expect(wrapper.emitted('update:count')).toEqual([[2]]);
+    expect(wrapper.emitted('update:count')).toEqual([[5]]);
   });
 
   it('emits update:count when a custom count is entered', async () => {

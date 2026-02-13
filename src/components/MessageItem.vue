@@ -27,7 +27,7 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject } from '../models/types';
-import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send } from 'lucide-vue-next';
+import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2 } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
@@ -35,8 +35,8 @@ import { sanitizeFilename } from '../utils/string';
 import SpeechControl from './SpeechControl.vue';
 // IMPORTANT: ImageConjuringLoader is essential for showing image generation progress immediately.
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
-// IMPORTANT: ChatToolsMenu is part of the editing UI and should be immediately available.
-import ChatToolsMenu from './ChatToolsMenu.vue';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
 import { 
   isImageGenerationPending, 
@@ -840,24 +840,16 @@ defineExpose({
           
           <div class="flex items-center justify-between px-3 pb-3">
             <div class="flex items-center gap-1">
-              <ChatToolsMenu 
+              <button 
                 v-if="canGenerateImage"
-                :can-generate-image="canGenerateImage"
-                :is-processing="isProcessing ?? false"
-                :is-image-mode="editImageMode"
-                :selected-width="editImageParams.width"
-                :selected-height="editImageParams.height"
-                :selected-count="editImageParams.count"
-                :selected-persist-as="editImageParams.persistAs"
-                :available-image-models="availableImageModels ?? []"
-                :selected-image-model="editImageParams.model"
-                direction="down"
-                @toggle-image-mode="editImageMode = !editImageMode"
-                @update:resolution="(w, h) => { editImageParams.width = w; editImageParams.height = h; }"
-                @update:count="c => editImageParams.count = c"
-                @update:persist-as="f => editImageParams.persistAs = f"
-                @update:model="m => editImageParams.model = m"
-              />
+                @click="editImageMode = !editImageMode"
+                class="p-2 rounded-xl transition-colors"
+                :class="editImageMode ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'"
+                title="Tools"
+                data-testid="toggle-edit-image-mode"
+              >
+                <Settings2 class="w-5 h-5" />
+              </button>
             </div>
             <div class="flex items-center gap-2">
               <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">Cancel</button>
@@ -866,6 +858,27 @@ defineExpose({
                 <span class="opacity-60 text-[9px] border border-white/20 px-1 rounded font-medium">{{ sendShortcutText }}</span>
               </button>
             </div>
+          </div>
+
+          <!-- Inline Experimental Tools (if active) -->
+          <div v-if="editImageMode" class="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 py-1" data-testid="embedded-experimental-tools">
+            <ImageGenerationSettings
+              :can-generate-image="canGenerateImage ?? false"
+              :is-processing="isProcessing ?? false"
+              :is-image-mode="editImageMode"
+              :selected-width="editImageParams.width"
+              :selected-height="editImageParams.height"
+              :selected-count="editImageParams.count"
+              :selected-persist-as="editImageParams.persistAs"
+              :available-image-models="availableImageModels ?? []"
+              :selected-image-model="editImageParams.model"
+              :show-header="true"
+              @toggle-image-mode="editImageMode = !editImageMode"
+              @update:resolution="(w, h) => { editImageParams.width = w; editImageParams.height = h; }"
+              @update:count="c => editImageParams.count = c"
+              @update:persist-as="f => editImageParams.persistAs = f"
+              @update:model="m => editImageParams.model = m"
+            />
           </div>
         </div>
       </div>
