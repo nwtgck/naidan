@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
+import ChatInput from './ChatInput.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
@@ -128,7 +129,8 @@ describe('ChatArea Design Specifications', () => {
     
     // Simulate maximization
     (wrapper.vm as any).isMaximized = true;
-    await (wrapper.vm as any).adjustTextareaHeight();
+    const chatInput = wrapper.findComponent(ChatInput);
+    await (chatInput.vm as any).adjustTextareaHeight();
     
     const textarea = wrapper.find('[data-testid="chat-input"]');
     const height = parseFloat((textarea.element as HTMLElement).style.height);
@@ -170,7 +172,8 @@ describe('ChatArea Design Specifications', () => {
     expect(textarea.classes()).not.toContain('animate-height');
 
     // Toggle maximized
-    await (wrapper.vm as any).toggleMaximized();
+    const chatInput = wrapper.findComponent(ChatInput);
+    await (chatInput.vm as any).toggleMaximized();
     await flushPromises();
     
     // Should have animation class

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
+import ChatInput from './ChatInput.vue';
 import { nextTick, ref } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '../composables/useChatDraft';
@@ -253,7 +254,8 @@ describe('ChatArea Draft Maintenance', () => {
     }));
 
     await textarea.setValue('Message for Chat 1');
-    const sendPromise = (wrapper.vm as any).handleSend(); // Start sending
+    const chatInput = wrapper.findComponent(ChatInput);
+    const sendPromise = (chatInput.vm as any).handleSend(); // Start sending
 
     // 2. Switch to Chat 2 while sending is in progress
     mockCurrentChat.value = {

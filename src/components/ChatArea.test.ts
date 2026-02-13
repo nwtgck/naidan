@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from 'vitest';
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
+import ChatInput from './ChatInput.vue';
 import { nextTick, ref, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '../composables/useChatDraft';
@@ -601,9 +602,12 @@ describe('ChatArea Focus', () => {
     
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
     
+    // Find ChatInput component to access handleSend
+    const chatInput = wrapper.findComponent(ChatInput);
+    
     // Manually trigger the send logic to verify focus behavior
     // We already tested UI states separately
-    await (wrapper.vm as unknown as ChatAreaExposed).handleSend();
+    await (chatInput.vm as any).handleSend();
     
     // Wait for focusInput nextTick
     await nextTick();
@@ -891,7 +895,8 @@ describe('ChatArea Textarea Sizing', () => {
     // Mock initial dimensions (single line)
     mockTextareaDimensions(textarea, 24); // scrollHeight for 1 line of text
     // Manually trigger adjustTextareaHeight after mocking dimensions for initial state
-    (wrapper.vm as any).adjustTextareaHeight();
+    const chatInput = wrapper.findComponent(ChatInput);
+    (chatInput.vm as any).adjustTextareaHeight();
     await nextTick();
 
     const expectedHeight = 50; // 1 line (24) + padding (24) + border (2) = 50
@@ -1166,7 +1171,8 @@ describe('ChatArea Textarea Sizing', () => {
     // Type some content to make it expand
     (wrapper.vm as any).input = 'Some content to expand textarea\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6';
     mockTextareaDimensions(textarea, 24 * 6 + 26); // Mock full 6 lines
-    (wrapper.vm as any).adjustTextareaHeight();
+    const chatInput = wrapper.findComponent(ChatInput);
+    (chatInput.vm as any).adjustTextareaHeight();
     await nextTick();
     const expandedHeight = parseFloat(textarea.style.height);
     expect(expandedHeight).toBeCloseTo(170);
