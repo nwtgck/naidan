@@ -963,11 +963,13 @@ onUnmounted(() => {
               :siblings="chatStore.getSiblings(msg.id)"
               :can-generate-image="canGenerateImage && hasImageModel"
               :is-processing="isCurrentChatStreaming"
+              :is-generating="isCurrentChatStreaming && msg.id === currentChat?.currentLeafId"
               :available-image-models="availableImageModels"
               @fork="handleFork"
               @edit="handleEdit"
               @switch-version="handleSwitchVersion"
               @regenerate="handleRegenerate"
+              @abort="chatStore.abortChat()"
             />
           </div>
           <WelcomeScreen 

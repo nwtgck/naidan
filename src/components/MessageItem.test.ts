@@ -716,3 +716,51 @@ describe('MessageItem Touch Support', () => {
     expect(downloadBtn.classes()).toContain('touch-visible');
   });
 });
+
+describe('MessageItem Abort Button', () => {
+  const createAssistantMessage = (content: string): MessageNode => ({
+    id: generateId(),
+    role: 'assistant',
+    content,
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  it('renders the abort button when isGenerating is true', () => {
+    const message = createAssistantMessage('Generation in progress...');
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
+    
+    const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
+    expect(abortBtn.exists()).toBe(true);
+    expect(abortBtn.attributes('title')).toBe('Stop generation');
+  });
+
+  it('does not render the abort button when isGenerating is false', () => {
+    const message = createAssistantMessage('Generation finished');
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: false } });
+    
+    const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
+    expect(abortBtn.exists()).toBe(false);
+  });
+
+  it('emits abort event when abort button is clicked', async () => {
+    const message = createAssistantMessage('Generation in progress...');
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
+    
+    const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
+    await abortBtn.trigger('click');
+    
+    expect(wrapper.emitted('abort')).toBeTruthy();
+  });
+  
+  it('has the correct subtle styling for the abort button', () => {
+    const message = createAssistantMessage('Generation in progress...');
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
+    
+    const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
+    const cls = abortBtn.classes();
+    expect(cls).toContain('text-gray-400');
+    expect(cls).toContain('hover:text-red-500');
+    expect(cls).not.toContain('animate-pulse');
+  });
+});

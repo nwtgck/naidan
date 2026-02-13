@@ -27,7 +27,7 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css'; 
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject } from '../models/types';
-import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2, XCircle } from 'lucide-vue-next';
+import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2, XCircle, Square } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
@@ -55,6 +55,7 @@ const props = defineProps<{
   siblings?: MessageNode[];
   canGenerateImage?: boolean;
   isProcessing?: boolean;
+  isGenerating?: boolean;
   availableImageModels?: string[];
 }>();
 
@@ -63,6 +64,7 @@ const emit = defineEmits<{
   (e: 'edit', messageId: string, newContent: string): void;
   (e: 'switch-version', messageId: string): void;
   (e: 'regenerate', messageId: string): void;
+  (e: 'abort'): void;
 }>();
 
 const isEditing = ref(false);
@@ -728,7 +730,18 @@ defineExpose({
         <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
         <template v-else>
           <span>{{ message.modelId || 'Assistant' }}</span>
-          <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" />
+          <div class="flex items-center gap-1">
+            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" />
+            <button 
+              v-if="isGenerating"
+              @click="emit('abort')"
+              class="p-1 rounded-lg text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Stop generation"
+              data-testid="message-abort-button"
+            >
+              <Square class="w-3 h-3" />
+            </button>
+          </div>
         </template>
       </div>
     </div>
