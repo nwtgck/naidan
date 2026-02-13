@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
+import ChatInput from './ChatInput.vue';
 import { ref, isRef, reactive } from 'vue';
 import { useChatDraft } from '../composables/useChatDraft';
 
@@ -86,7 +87,7 @@ vi.mock('../composables/useToast', () => ({
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
-    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    subscribeToChanges: vi.fn().mockReturnValue(() => { }),
     canPersistBinary: true,
     saveFile: vi.fn().mockResolvedValue(undefined),
     notify: vi.fn(),
@@ -117,10 +118,11 @@ describe('ChatArea - Attachment UI', () => {
       }
     });
 
-    // Directly set the internal attachments ref (now exposed via defineExpose)
-    const attachments = (wrapper.vm as any).attachments;
+    // Directly set the internal attachments ref
+    const chatInput = wrapper.findComponent(ChatInput);
+    const attachments = (chatInput.vm as any).attachments;
     expect(attachments).toBeDefined();
-    
+
     const testFile = new File(['hello'], 'hello.png', { type: 'image/png' });
     global.URL.createObjectURL = vi.fn().mockReturnValue('mock-url');
 
@@ -159,9 +161,10 @@ describe('ChatArea - Attachment UI', () => {
       }
     });
 
-    const attachments = (wrapper.vm as any).attachments;
+    const chatInput = wrapper.findComponent(ChatInput);
+    const attachments = (chatInput.vm as any).attachments;
     const testFile = new File(['hello'], 'hello.png', { type: 'image/png' });
-    
+
     const attachment = {
       id: 'att-1',
       originalName: 'hello.png',
@@ -179,14 +182,14 @@ describe('ChatArea - Attachment UI', () => {
     }
 
     // Ensure input or attachments exist to pass the guard
-    (wrapper.vm as any).input = 'hello';
+    (chatInput.vm as any).input = 'hello';
     mockStreaming.value = false;
     mockCurrentChat.value = { id: 'chat-1', title: 'T', root: { items: [] } } as any;
 
     // Trigger send
-    await (wrapper.vm as any).handleSend();
+    await (chatInput.vm as any).handleSend();
 
-    expect((wrapper.vm as any).attachments.length).toBe(0);
+    expect((chatInput.vm as any).attachments.length).toBe(0);
   });
 
   it('should remove attachment when remove button is clicked', async () => {
@@ -200,7 +203,8 @@ describe('ChatArea - Attachment UI', () => {
       }
     });
 
-    const attachments = (wrapper.vm as any).attachments;
+    const chatInput = wrapper.findComponent(ChatInput);
+    const attachments = (chatInput.vm as any).attachments;
     const attachment = {
       id: 'att-1',
       originalName: 'hello.png',
@@ -220,10 +224,10 @@ describe('ChatArea - Attachment UI', () => {
     await wrapper.vm.$nextTick();
 
     // Call removeAttachment
-    (wrapper.vm as any).removeAttachment('att-1');
+    (chatInput.vm as any).removeAttachment('att-1');
     await wrapper.vm.$nextTick();
 
-    expect((wrapper.vm as any).attachments.length).toBe(0);
+    expect((chatInput.vm as any).attachments.length).toBe(0);
   });
 
   it('should handle image drop', async () => {
@@ -246,10 +250,11 @@ describe('ChatArea - Attachment UI', () => {
     };
 
     await wrapper.trigger('drop', dropEvent);
-    
+
     // Check if attachment was added
-    expect((wrapper.vm as any).attachments.length).toBe(1);
-    expect((wrapper.vm as any).attachments[0].originalName).toBe('hello.png');
+    const chatInput = wrapper.findComponent(ChatInput);
+    expect((chatInput.vm as any).attachments.length).toBe(1);
+    expect((chatInput.vm as any).attachments[0].originalName).toBe('hello.png');
   });
 
   it('should show drag overlay when dragging over', async () => {
@@ -294,7 +299,7 @@ describe('ChatArea - Attachment UI', () => {
 
     const textarea = wrapper.find('[data-testid="chat-input"]');
     const testFile = new File(['hello'], 'pasted.png', { type: 'image/png' });
-    
+
     // Create a mock ClipboardEvent
     const pasteEvent = {
       clipboardData: {
@@ -308,9 +313,10 @@ describe('ChatArea - Attachment UI', () => {
     };
 
     await textarea.trigger('paste', pasteEvent);
-    
+
     // Check if attachment was added
-    expect((wrapper.vm as any).attachments.length).toBe(1);
-    expect((wrapper.vm as any).attachments[0].originalName).toBe('pasted.png');
+    const chatInput = wrapper.findComponent(ChatInput);
+    expect((chatInput.vm as any).attachments.length).toBe(1);
+    expect((chatInput.vm as any).attachments[0].originalName).toBe('pasted.png');
   });
 });

@@ -43,7 +43,7 @@ const props = defineProps<{
   isStreaming: boolean;
   canGenerateImage: boolean;
   hasImageModel: boolean;
-  availableImageModels: unknown[];
+  availableImageModels: string[];
   isAnimatingHeight: boolean;
 }>();
 

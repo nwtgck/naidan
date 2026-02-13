@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
+import ChatInput from './ChatInput.vue';
 import { ref, nextTick } from 'vue';
 import { Image, Send } from 'lucide-vue-next';
 
@@ -19,10 +20,10 @@ const mockChatStore = {
   isProcessing: vi.fn(() => false),
   isImageMode: vi.fn(() => mockIsImageMode.value),
   toggleImageMode: vi.fn(() => {
-    mockIsImageMode.value = !mockIsImageMode.value; 
+    mockIsImageMode.value = !mockIsImageMode.value;
   }),
-  getResolution: vi.fn(() => ({ width: 512, height: 512 })), 
-  getCount: vi.fn(() => 1), 
+  getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+  getCount: vi.fn(() => 1),
   updateCount: vi.fn(),
   getPersistAs: vi.fn(() => 'original'),
   updatePersistAs: vi.fn(),
@@ -70,24 +71,24 @@ describe('ChatArea Image Generation Integration', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
     await nextTick();
-    
+
     // Check if Image icon exists instead of Send icon
     expect(wrapper.findComponent(Image).exists()).toBe(true);
   });
 
   it('calls sendImageRequest when sending a message in image mode', async () => {
     mockIsImageMode.value = true;
-    
+
     const wrapper = mount(ChatArea);
     await flushPromises();
     await vi.dynamicImportSettled();
 
     const textarea = wrapper.find('textarea');
     await textarea.setValue('a majestic mountain');
-    
+
     const sendButton = wrapper.find('button.bg-blue-600'); // Send button
     await sendButton.trigger('click');
-    
+
     expect(mockChatStore.sendImageRequest).toHaveBeenCalledWith({
       prompt: 'a majestic mountain',
       width: 512,
@@ -100,23 +101,24 @@ describe('ChatArea Image Generation Integration', () => {
 
   it('calls sendImageRequest with attachments when images are attached', async () => {
     mockIsImageMode.value = true;
-    
+
     const wrapper = mount(ChatArea);
     await flushPromises();
     await vi.dynamicImportSettled();
 
-    const vm = wrapper.vm as any;
-    
+    const chatInput = wrapper.findComponent(ChatInput);
+    const chatInputVm = chatInput.vm as any;
+
     const mockFile = new File(['test'], 'test.png', { type: 'image/png' });
     const mockAttachment = { id: 'att-1', originalName: 'test.png', mimeType: 'image/png', status: 'memory', blob: mockFile };
-    
-    vm.attachments = [mockAttachment];
-    vm.input = 'remix this';
+
+    chatInputVm.attachments = [mockAttachment];
+    chatInputVm.input = 'remix this';
     await nextTick();
-    
+
     const sendButton = wrapper.find('[data-testid="send-button"]');
     await sendButton.trigger('click');
-    
+
     expect(mockChatStore.sendImageRequest).toHaveBeenCalledWith({
       prompt: 'remix this',
       width: 512,
@@ -125,27 +127,27 @@ describe('ChatArea Image Generation Integration', () => {
       persistAs: 'original',
       attachments: expect.arrayContaining([expect.objectContaining({ id: 'att-1' })])
     });
-    
+
     // Check if attachments are cleared after success
     await nextTick();
-    expect(vm.attachments).toHaveLength(0);
+    expect(chatInputVm.attachments).toHaveLength(0);
   });
 
   it('can toggle image mode from the tools menu', async () => {
     const wrapper = mount(ChatArea);
     await flushPromises();
     await vi.dynamicImportSettled();
-    
+
     // Open menu
     const toolsButton = wrapper.find('[data-testid="chat-tools-button"]');
     await toolsButton.trigger('click');
     await flushPromises();
     await vi.dynamicImportSettled();
-    
+
     // Click toggle image mode
     const toggleButton = document.body.querySelector('[data-testid="toggle-image-mode-button"]') as HTMLElement;
     toggleButton.click();
-    
+
     expect(mockChatStore.toggleImageMode).toHaveBeenCalled();
     expect(mockIsImageMode.value).toBe(true);
   });
@@ -162,7 +164,7 @@ describe('ChatArea Image Generation Integration', () => {
     // Toggle off
     mockIsImageMode.value = false;
     await nextTick();
-    
+
     expect(wrapper.findComponent(Image).exists()).toBe(false);
     expect(wrapper.findComponent(Send).exists()).toBe(true);
   });
@@ -170,17 +172,17 @@ describe('ChatArea Image Generation Integration', () => {
   it('passes the requested image count to sendImageRequest', async () => {
     mockIsImageMode.value = true;
     mockChatStore.getCount.mockReturnValue(3); // User requested 3 images
-    
+
     const wrapper = mount(ChatArea);
     await flushPromises();
     await vi.dynamicImportSettled();
 
     const textarea = wrapper.find('textarea');
     await textarea.setValue('a futuristic city');
-    
+
     const sendButton = wrapper.find('[data-testid="send-button"]');
     await sendButton.trigger('click');
-    
+
     expect(mockChatStore.sendImageRequest).toHaveBeenCalledWith(expect.objectContaining({
       prompt: 'a futuristic city',
       count: 3,

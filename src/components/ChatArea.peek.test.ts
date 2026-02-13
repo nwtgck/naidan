@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
+import ChatInput from './ChatInput.vue';
 import { ref, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '../models/types';
@@ -15,7 +16,7 @@ vi.mock('../composables/useLayout', () => ({
     isSidebarOpen: ref(true),
     activeFocusArea: mockActiveFocusArea,
     setActiveFocusArea: vi.fn((area) => {
-      mockActiveFocusArea.value = area; 
+      mockActiveFocusArea.value = area;
     }),
     toggleSidebar: vi.fn(),
   }),
@@ -39,8 +40,8 @@ vi.mock('../composables/useChat', () => ({
     updateChatModel: vi.fn(),
     isImageMode: vi.fn(() => false),
     toggleImageMode: vi.fn(),
-    getResolution: vi.fn(() => ({ width: 512, height: 512 })), 
-    getCount: vi.fn(() => 1), 
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    getCount: vi.fn(() => 1),
     updateCount: vi.fn(),
     getPersistAs: vi.fn(() => 'original'),
     updatePersistAs: vi.fn(),
@@ -79,11 +80,11 @@ describe('ChatArea Peek Mode Specifications', () => {
 
   beforeEach(async () => {
     mockCurrentChat.value = {
-      id: '1', 
-      title: 'Test Chat', 
+      id: '1',
+      title: 'Test Chat',
       root: { items: [] } as { items: MessageNode[] },
       currentLeafId: undefined,
-      debugEnabled: false, 
+      debugEnabled: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -105,7 +106,7 @@ describe('ChatArea Peek Mode Specifications', () => {
     await nextTick();
 
     const button = wrapper.get('[data-testid="submerge-button"]');
-    
+
     // Initially not submerged
     expect(wrapper.vm.isSubmerged).toBe(false);
 
@@ -130,7 +131,7 @@ describe('ChatArea Peek Mode Specifications', () => {
     // Find the input container (the one with the border and rounded-2xl)
     const inputContainer = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
     await inputContainer.trigger('mouseenter');
-    
+
     expect(wrapper.vm.isSubmerged).toBe(false);
   });
 
@@ -145,14 +146,14 @@ describe('ChatArea Peek Mode Specifications', () => {
     expect(wrapper.vm.isSubmerged).toBe(true);
 
     // Switch to chat 2
-    mockCurrentChat.value = { 
-      id: '2', 
-      title: 'Chat 2', 
-      root: { items: [] }, 
-      createdAt: Date.now(), 
-      updatedAt: Date.now() 
+    mockCurrentChat.value = {
+      id: '2',
+      title: 'Chat 2',
+      root: { items: [] },
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     } as any;
-    
+
     await nextTick();
     await nextTick();
 
@@ -167,7 +168,7 @@ describe('ChatArea Peek Mode Specifications', () => {
     await nextTick();
 
     const scrollContainer = wrapper.get('[data-testid="scroll-container"]');
-    
+
     // Default padding
     expect((scrollContainer.element as HTMLElement).style.paddingBottom).toBe('300px');
 
@@ -184,12 +185,13 @@ describe('ChatArea Peek Mode Specifications', () => {
     await nextTick();
 
     // Manually set maximized
-    wrapper.vm.isMaximized = true;
+    const chatInput = wrapper.findComponent(ChatInput);
+    (chatInput.vm as any).isMaximized = true;
     await nextTick();
 
     // Submerge
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
     expect(wrapper.vm.isSubmerged).toBe(true);
-    expect(wrapper.vm.isMaximized).toBe(false);
+    expect((chatInput.vm as any).isMaximized).toBe(false);
   });
 });
