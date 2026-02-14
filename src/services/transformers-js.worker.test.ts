@@ -13,7 +13,7 @@ vi.mock('@huggingface/transformers', () => ({
     reset = vi.fn();
     interrupt = vi.fn();
   },
-  StoppingCriteriaList: class extends Array {},
+  StoppingCriteriaList: class extends Array { },
   env: {
     backends: {
       onnx: {
@@ -95,7 +95,7 @@ describe('transformers-js.worker', () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
-    
+
     mockRoot = createMockDir();
     vi.stubGlobal('navigator', {
       storage: {
@@ -108,7 +108,7 @@ describe('transformers-js.worker', () => {
   it('should initialize with custom OPFS cache', async () => {
     const { env } = await import('@huggingface/transformers');
     await import('./transformers-js.worker');
-    
+
     expect(env.useCustomCache).toBe(true);
     expect(env.customCache).toBeDefined();
     expect(env.customCache).toHaveProperty('match');
@@ -168,7 +168,7 @@ describe('transformers-js.worker', () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
     await import('./transformers-js.worker');
-    
+
     // Get the object that was passed to Comlink.expose
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
@@ -176,15 +176,15 @@ describe('transformers-js.worker', () => {
       .mockRejectedValueOnce(new Error('WebGPU q4f16 error'))
       .mockRejectedValueOnce(new Error('WebGPU q4 error'))
       .mockRejectedValueOnce(new Error('WebGPU default error'))
-      .mockResolvedValueOnce({ 
+      .mockResolvedValueOnce({
         dispose: vi.fn(),
         device: 'wasm'
       });
-    
+
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
-    const result = await workerObj.loadModel('org/repo', () => {});
-    
+    const result = await workerObj.loadModel('org/repo', () => { });
+
     expect(result.device).toBe('wasm');
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(4);
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenLastCalledWith('org/repo', expect.objectContaining({
@@ -209,7 +209,7 @@ describe('transformers-js.worker', () => {
     ];
 
     for (const { input, expected } of testCases) {
-      await workerObj.downloadModel(input, () => {});
+      await workerObj.downloadModel(input, () => { });
       expect(AutoTokenizer.from_pretrained).toHaveBeenCalledWith(expected, expect.anything());
     }
   });
@@ -260,10 +260,17 @@ describe('transformers-js.worker', () => {
       await import('./transformers-js.worker');
       const interceptedFetch = self.fetch;
 
-      originalFetchMock.mockResolvedValue(new Response('<!DOCTYPE html>...', {
-        status: 200,
-        headers: { 'content-type': 'text/html' }
-      }));
+      originalFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+        const urlString = input.toString();
+        // Simulate missing .gz file to force fallback to original
+        if (urlString.endsWith('.gz')) {
+          return new Response('Not Found', { status: 404 });
+        }
+        return new Response('<!DOCTYPE html>...', {
+          status: 200,
+          headers: { 'content-type': 'text/html' }
+        });
+      });
 
       const modelFiles = [
         'https://hf.co/model/config.json',
@@ -300,9 +307,9 @@ describe('transformers-js.worker', () => {
       await import('./transformers-js.worker');
       const interceptedFetch = self.fetch;
 
-      const mockRes = new Response('<html>ok</html>', { 
-        status: 200, 
-        headers: { 'content-type': 'text/html' } 
+      const mockRes = new Response('<html>ok</html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' }
       });
       originalFetchMock.mockResolvedValue(mockRes);
 

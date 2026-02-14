@@ -5,6 +5,9 @@ import vue from '@vitejs/plugin-vue'
 import VueDevTools from 'vite-plugin-vue-devtools'
 import fs from 'node:fs'
 import path from 'node:path'
+import { createGzip } from 'node:zlib'
+import { pipeline } from 'node:stream'
+import { promisify } from 'node:util'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
@@ -34,6 +37,51 @@ interface LicenseDependency {
   license: string
   licenseText: string
 }
+
+/**
+ * Plugin to manually Gzip WASM files in the output directory and delete originals.
+ * Replacing vite-plugin-compression per user request.
+ */
+const manualGzipWasmPlugin = (outDir: string) => ({
+  name: 'manual-gzip-wasm-plugin',
+  async closeBundle() {
+    console.log('  \u231B Compressing WASM files to .gz...');
+    const distDir = path.resolve(__dirname, outDir);
+
+    if (!fs.existsSync(distDir)) return;
+
+    const processDirectory = async (dir: string) => {
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await processDirectory(fullPath);
+        } else if (entry.isFile() && entry.name.endsWith('.wasm')) {
+          const gzPath = `${fullPath}.gz`;
+          console.log(`  \u21A9 Compressing: ${entry.name}`);
+
+          const source = fs.createReadStream(fullPath);
+          const destination = fs.createWriteStream(gzPath);
+          const gzip = createGzip({ level: 9 });
+
+          try {
+            await promisify(pipeline)(source, gzip, destination);
+            // Verify source exists before unlink (sanity check)
+            if (fs.existsSync(fullPath)) {
+              await fs.promises.unlink(fullPath);
+              console.log(`  \u2713 Compressed and deleted original: ${entry.name}`);
+            }
+          } catch (err) {
+            console.error(`  \u26A0 Failed to compress ${entry.name}:`, err);
+          }
+        }
+      }
+    };
+
+    await processDirectory(distDir);
+    console.log('  \u2713 WASM compression complete.');
+  }
+});
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -118,6 +166,7 @@ export default defineConfig(({ mode }) => {
           ].filter((x): x is Exclude<typeof x, false | null | undefined> => !!x) as unknown as never,
         },
       }),
+      !isStandalone && manualGzipWasmPlugin(outDir),
       // Standalone: Inline scripts for file:// support, then Zip the result
       isStandalone && iifeInlinePlugin(outDir),
       isStandalone && zipPackagerPlugin(outDir),

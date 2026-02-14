@@ -67,7 +67,36 @@ self.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     return new Response(null, { status: 404, statusText: 'Not Found (Local Only)' });
   }
 
-  // 2. Perform actual fetch
+  // 2. Perform actual fetch (with .wasm.gz fallback for Cloudflare Pages 26MB limit)
+  if (urlString.endsWith('.wasm')) {
+    try {
+      // Try fetching the .gz version first
+      const gzUrl = `${urlString}.gz`;
+      console.debug(`[transformers-worker] Attempting to fetch gzipped WASM: ${gzUrl}`);
+      const gzResponse = await originalFetch(gzUrl, init);
+
+      if (gzResponse.ok) {
+        console.debug(`[transformers-worker] Successfully fetched gzipped WASM: ${gzUrl}`);
+        const ds = new DecompressionStream('gzip');
+        const decompressedStream = gzResponse.body?.pipeThrough(ds);
+
+        // Create new headers, stripping Content-Length/Encoding as they change
+        const headers = new Headers(gzResponse.headers);
+        headers.set('Content-Type', 'application/wasm');
+        headers.delete('Content-Length');
+        headers.delete('Content-Encoding');
+
+        return new Response(decompressedStream, {
+          status: 200,
+          statusText: 'OK',
+          headers
+        });
+      }
+    } catch (e) {
+      console.warn(`[transformers-worker] Failed to fetch gzipped WASM, falling back to original:`, e);
+    }
+  }
+
   const response = await originalFetch(input, init);
   
   // 3. Handle SPA 404 Fallback (Server returning HTML for JSON/Binary)
@@ -446,7 +475,7 @@ const transformersJsWorker: ITransformersJsWorker = {
 
           if (!delta) return;
 
-          switch (delta.type){
+          switch (delta.type) {
           case 'content': {
             const msg = parser.messages[delta.messageIndex];
             const channel = msg?.channel || '';
@@ -460,7 +489,7 @@ const transformersJsWorker: ITransformersJsWorker = {
               }
               currentChannel = channel;
             }
-            onChunk(delta.textDelta); 
+            onChunk(delta.textDelta);
             break;
           }
           case 'done':
