@@ -36,6 +36,7 @@ vi.mock('../services/transformers-js', () => ({
   transformersJsService: {
     getState: vi.fn(),
     subscribe: vi.fn(),
+    subscribeModelList: vi.fn().mockReturnValue(() => {}),
     listCachedModels: vi.fn(),
     loadModel: vi.fn(),
     unloadModel: vi.fn(),
@@ -215,8 +216,8 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('automatically loads the most recently modified model when switching to Transformers.js tab', async () => {
     (transformersJsService.listCachedModels as any).mockResolvedValue([
-      { id: 'old-model', lastModified: 1000 },
-      { id: 'new-model', lastModified: 2000 },
+      { id: 'old-model', lastModified: 1000, isComplete: true },
+      { id: 'new-model', lastModified: 2000, isComplete: true },
     ]);
 
     const wrapper = mountModal();

@@ -41,7 +41,8 @@ export class TransformersJsProvider implements LLMProvider {
   async listModels(_params: { signal?: AbortSignal }): Promise<string[]> {
     try {
       const models = await transformersJsService.listCachedModels();
-      return models.map(m => m.id);
+      // Only return complete models to the general selector to ensure they are ready for use
+      return models.filter(m => m.isComplete).map(m => m.id);
     } catch (err) {
       console.warn('Failed to list local models for provider:', err);
       return [];

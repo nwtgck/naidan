@@ -218,8 +218,8 @@ export const transformersJsService = {
     notify();
   },
 
-  async listCachedModels(): Promise<Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number }>> {
-    const results: Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number }> = [];
+  async listCachedModels(): Promise<Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number; isComplete: boolean }>> {
+    const results: Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number; isComplete: boolean }> = [];
     try {
       const root = await navigator.storage.getDirectory();
       let modelsDir: FileSystemDirectoryHandle;
@@ -306,9 +306,7 @@ export const transformersJsService = {
           switch (h.kind) {
           case 'directory': {
             const stats = await getDirStats(h as FileSystemDirectoryHandle);
-            if (stats.isComplete) {
-              results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
-            }
+            results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
             break;
           }
           case 'file':
@@ -329,10 +327,8 @@ export const transformersJsService = {
           switch (h.kind) {
           case 'directory': {
             const stats = await getDirStats(h as FileSystemDirectoryHandle);
-            if (stats.isComplete) {
-              // We still label it as 'user/' to the rest of the app
-              results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
-            }
+            // We still label it as 'user/' to the rest of the app
+            results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
             break;
           }
           case 'file':
@@ -357,9 +353,7 @@ export const transformersJsService = {
               switch (rh.kind) {
               case 'directory': {
                 const stats = await getDirStats(rh as FileSystemDirectoryHandle);
-                if (stats.isComplete) {
-                  results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
-                }
+                results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
                 break;
               }
               case 'file':
@@ -491,7 +485,7 @@ export const transformersJsService = {
       const cached = await this.listCachedModels();
       const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
       const isLocal = modelId.startsWith('user/');
-      isLoadingFromCache = isLocal || cached.some(m => m.id === modelId || m.id === hfId);
+      isLoadingFromCache = isLocal || cached.some(m => (m.id === modelId || m.id === hfId) && m.isComplete);
 
       // 2. Now set loading state
       loadingStatus = 'loading';
@@ -523,6 +517,7 @@ export const transformersJsService = {
       activeModelId = modelId;
       loadingStatus = 'ready';
       notify();
+      notifyModelListChange();
     } catch (e) {
       console.error('[transformersJsService] Failed to load model:', modelId, e);
       const errorMsg = e instanceof Error ? e.message : String(e);
@@ -556,17 +551,9 @@ export const transformersJsService = {
     }
 
     try {
-      if (!remote) throw new Error('Worker not initialized');      // 1. Cleanup: If directory exists but is not complete, delete it first
-      const cached = await this.listCachedModels();
-      const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
-      const isActuallyComplete = cached.some(m => m.id === modelId || m.id === hfId);
-
-      if (!isActuallyComplete) {
-        // Try to delete if any partial directory exists
-        try {
-          await this.deleteModel(modelId);
-        } catch { /* ignore if doesn't exist */ }
-      }
+      if (!remote) throw new Error('Worker not initialized');
+      // No longer deleting partial models to allow resume support.
+      // Transformers.js handles missing files gracefully.
 
       loadingStatus = 'loading';
       loadingProgress = 0;
