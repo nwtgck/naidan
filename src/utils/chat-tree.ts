@@ -34,14 +34,14 @@ export function getChatBranch(chat: Chat | Readonly<Chat>): MessageNode[] {
   const path: MessageNode[] = [];
   const targetId = chat.currentLeafId;
   const items = chat.root.items as MessageNode[];
-  let curr: MessageNode | null = items.find(item => 
+  let curr: MessageNode | null = items.find(item =>
     toRaw(item).id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
   ) || (items[items.length - 1] as MessageNode) || null;
 
   while (curr) {
     path.push(curr);
     if (toRaw(curr).id === targetId) break;
-    const next: MessageNode | undefined = curr.replies.items.find(item => 
+    const next: MessageNode | undefined = curr.replies.items.find(item =>
       toRaw(item).id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
     ) || curr.replies.items[curr.replies.items.length - 1];
     curr = next || null;

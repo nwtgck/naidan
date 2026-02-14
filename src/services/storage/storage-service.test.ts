@@ -28,13 +28,13 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
 // Mock the modules
 vi.mock('./local-storage', () => ({
   LocalStorageProvider: vi.fn().mockImplementation(function() {
-    return mockLocalProvider; 
+    return mockLocalProvider;
   }),
 }));
 
 vi.mock('./opfs-storage', () => ({
   OPFSStorageProvider: vi.fn().mockImplementation(function() {
-    return mockOpfsProvider; 
+    return mockOpfsProvider;
   }),
 }));
 
@@ -75,21 +75,21 @@ describe('StorageService Initialization Defaults', () => {
 
   it('should use opfs when requested and supported', async () => {
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
-    
+
     await storageService.init('opfs');
     expect(storageService.getCurrentType()).toBe('opfs');
   });
 
   it('should use local when requested even if opfs is supported', async () => {
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
-    
+
     await storageService.init('local');
     expect(storageService.getCurrentType()).toBe('local');
   });
 
   it('should fallback to "local" if "opfs" was requested but is no longer supported', async () => {
     (navigator.storage.getDirectory as any).mockRejectedValue(new Error('No OPFS'));
-    
+
     await storageService.init('opfs');
     expect(storageService.getCurrentType()).toBe('local');
   });
@@ -108,7 +108,7 @@ describe('StorageService Migration', () => {
     vi.stubGlobal('navigator', {
       storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) },
     });
-    
+
     // Force reset the singleton state and inject our mock
     const service = storageService as unknown as { currentType: string; provider: unknown };
     service.currentType = 'local';
@@ -144,13 +144,13 @@ describe('StorageService Migration', () => {
 
     // Act & Assert
     await expect(storageService.switchProvider('opfs')).rejects.toThrow(error);
-    
+
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
       source: 'StorageService:switchProvider',
       message: 'An error occurred during a storage operation.',
       details: error,
     }));
-    
+
     // Should stay as 'local' because migration failed
     expect(storageService.getCurrentType()).toBe('local');
   });

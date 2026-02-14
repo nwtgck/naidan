@@ -48,18 +48,18 @@ defineExpose({
 <template>
   <div class="absolute inset-0 flex flex-col items-center justify-center p-6 sm:p-12 text-center pointer-events-none">
     <div class="w-full max-w-4xl flex flex-col items-center space-y-8 sm:space-y-12 translate-y-[-25%] sm:translate-y-[-30%] animate-in fade-in zoom-in duration-1000">
-      
+
       <!-- Security Status Section -->
       <div class="flex flex-col items-center space-y-4 sm:space-y-6 pointer-events-auto">
         <div class="relative group">
           <!-- Subtle Glow Effect -->
           <div class="absolute inset-0 bg-emerald-500/20 dark:bg-emerald-500/10 blur-2xl rounded-full scale-150 group-hover:scale-110 transition-transform duration-1000"></div>
-          
+
           <div class="relative p-4 sm:p-5 rounded-[2rem] bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/20 shadow-sm">
             <ShieldCheck class="w-8 h-8 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
           </div>
         </div>
-        
+
         <div class="space-y-3 sm:space-y-4">
           <div class="space-y-1 sm:space-y-2">
             <h2 class="text-xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-tight">
@@ -72,8 +72,8 @@ defineExpose({
 
           <!-- Standalone Build Link (Only in Hosted Mode) -->
           <div v-if="isHosted" class="flex justify-center pt-1">
-            <a 
-              href="./naidan-standalone.zip" 
+            <a
+              href="./naidan-standalone.zip"
               download="naidan-standalone.zip"
               class="group/btn flex items-center gap-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-500/30 hover:shadow-md transition-all duration-300"
               title="Download standalone portable version"
@@ -87,13 +87,13 @@ defineExpose({
       </div>
 
       <!-- Minimal Discovery Links -->
-      <div 
+      <div
         data-testid="suggestions-container"
         class="pt-4 sm:pt-8 flex flex-wrap justify-center gap-x-6 sm:gap-x-8 gap-y-2 sm:gap-y-3 transition-all duration-700 pointer-events-auto"
         :class="hasInput ? 'opacity-0 pointer-events-none translate-y-2' : 'opacity-40 hover:opacity-100 translate-y-0'"
       >
-        <button 
-          v-for="s in suggestions" 
+        <button
+          v-for="s in suggestions"
           :key="s.label"
           @click="$emit('select-suggestion', s.text)"
           class="text-[10px] sm:text-xs font-semibold text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"

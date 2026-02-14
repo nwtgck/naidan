@@ -39,7 +39,7 @@ describe('MessageItem Thinking Border (New Implementation)', () => {
     // or the old 'thinking-border' class when in active thinking mode.
     expect(container.classes()).not.toContain('border');
     expect(container.classes()).not.toContain('thinking-border');
-    
+
     // Instead, it should explicitly allow overflow for the glow effect
     expect(container.classes()).toContain('overflow-visible');
   });
@@ -48,10 +48,10 @@ describe('MessageItem Thinking Border (New Implementation)', () => {
     // Simulate completed thinking state
     const message = createMessage('Final response', 'Completed thought process');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // The dedicated border element should NOT exist
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(false);
-    
+
     // The parent SHOULD have the standard border
     const container = wrapper.find('[data-testid="toggle-thinking"]');
     expect(container.classes()).toContain('border');

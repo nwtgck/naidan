@@ -127,10 +127,10 @@ describe('CustomDialog.vue', () => {
 
   it('sets active focus area to dialog on click or focusin', async () => {
     const overlay = wrapper.find('[data-testid="custom-dialog-overlay"]');
-    
+
     await overlay.trigger('click');
     expect(mockSetActiveFocusArea).toHaveBeenCalledWith('dialog');
-    
+
     mockSetActiveFocusArea.mockClear();
     await overlay.trigger('focusin');
     expect(mockSetActiveFocusArea).toHaveBeenCalledWith('dialog');

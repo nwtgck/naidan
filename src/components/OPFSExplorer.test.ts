@@ -6,8 +6,8 @@ import OPFSExplorer from './OPFSExplorer.vue';
 class MockFileSystemFileHandle {
   kind = 'file' as const;
   constructor(
-    public name: string, 
-    public size: number = 0, 
+    public name: string,
+    public size: number = 0,
     private content: string = '',
     public lastModified: number = Date.now()
   ) {}
@@ -23,7 +23,7 @@ class MockFileSystemFileHandle {
 class MockFileSystemDirectoryHandle {
   kind = 'directory' as const;
   public entries = new Map<string, MockFileSystemDirectoryHandle | MockFileSystemFileHandle>();
-  
+
   constructor(public name: string) {}
 
   async *values() {
@@ -235,7 +235,7 @@ describe('OPFSExplorer.vue', () => {
     // Go into subdir
     await wrapper.find('[data-testid="opfs-entry"]').trigger('click');
     await flushPromises();
-    
+
     // Breadcrumb should contain subdir as current
     expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('subdir');
 
@@ -309,7 +309,7 @@ describe('OPFSExplorer.vue', () => {
     // Enter level1
     await wrapper.find('[data-testid="opfs-entry"]').trigger('click');
     await flushPromises();
-    
+
     // Enter level2
     await wrapper.find('[data-testid="opfs-entry"]').trigger('click');
     await flushPromises();
@@ -325,7 +325,7 @@ describe('OPFSExplorer.vue', () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('level1');
     expect(wrapper.findAll('[data-testid="breadcrumb-item"]')).toHaveLength(1);
-    
+
     await wrapper.find('[data-testid="opfs-back-button"]').trigger('click');
     await flushPromises();
     expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('root');
@@ -380,7 +380,7 @@ describe('OPFSExplorer.vue', () => {
     // Enter sub
     await wrapper.findAll('[data-testid="opfs-entry"]').find(e => e.text().includes('sub'))?.trigger('click');
     await flushPromises();
-    
+
     // Selection should be cleared
     expect(wrapper.text()).toContain('Select a file to view');
     expect(wrapper.find('pre').exists()).toBe(false);

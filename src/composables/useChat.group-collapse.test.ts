@@ -40,7 +40,7 @@ describe('useChat Group Collapse', () => {
     mockRootItems.length = 0;
     rootItems.value = [];
     __testOnlySetCurrentChatGroup(null);
-    
+
     vi.mocked(storageService.updateChatGroup).mockResolvedValue(undefined);
   });
 
@@ -64,7 +64,7 @@ describe('useChat Group Collapse', () => {
 
     // Assert: Persisted to storage
     expect(storageService.updateChatGroup).toHaveBeenCalledWith('g1', expect.any(Function));
-    
+
     // Test the updater function passed to storageService
     const calls = vi.mocked(storageService.updateChatGroup).mock.calls;
     expect(calls[0]).toBeDefined();
@@ -95,7 +95,7 @@ describe('useChat Group Collapse', () => {
   it('should allow toggling a group that is NOT the current group', async () => {
     const group1: ChatGroup = { id: 'g1', name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 };
     const group2: ChatGroup = { id: 'g2', name: 'Group 2', isCollapsed: false, items: [], updatedAt: 0 };
-    
+
     mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 });
     mockRootItems.push({ id: 'chat_group:g2', type: 'chat_group', chatGroup: group2 });
 
@@ -120,7 +120,7 @@ describe('useChat Group Collapse', () => {
   it('should still update storage and currentChatGroup even if group is not in rootItems', async () => {
     const group: ChatGroup = reactive({ id: 'g1', name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 });
     // Don't add to mockRootItems
-    
+
     __testOnlySetCurrentChatGroup(group);
 
     // Act

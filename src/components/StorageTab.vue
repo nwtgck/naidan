@@ -6,8 +6,8 @@ import { useChat } from '../composables/useChat';
 import { storageService } from '../services/storage';
 import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import { computedAsync } from '@vueuse/core';
-import { 
-  ShieldCheck, CheckCircle2, FileArchive, 
+import {
+  ShieldCheck, CheckCircle2, FileArchive,
   Database, HardDrive, Info, Trash2
 } from 'lucide-vue-next';
 import { useConfirm } from '../composables/useConfirm';
@@ -85,7 +85,7 @@ async function handleStorageChange(targetType: 'local' | 'opfs') {
   if (targetType === props.storageType) return;
 
   const currentProviderType = storageService.getCurrentType();
-  
+
   // Check for potential data loss when switching FROM opfs TO local
   if (currentProviderType === 'opfs' && targetType === 'local') {
     const hasFiles = await storageService.hasAttachments();
@@ -165,7 +165,7 @@ defineExpose({
         <ShieldCheck class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Durability</h2>
       </div>
-    
+
       <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
         <div class="space-y-1">
           <h4 class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
@@ -178,7 +178,7 @@ defineExpose({
             Enable persistent storage to prevent the browser from automatically deleting your chat history and settings during storage pressure.
           </p>
         </div>
-        <button 
+        <button
           v-if="storagePersistenceStatus !== 'persisted'"
           @click="handleEnablePersistence"
           class="shrink-0 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95"
@@ -199,7 +199,7 @@ defineExpose({
         <FileArchive class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Backup & Restore</h2>
       </div>
-    
+
       <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
         <div class="space-y-1">
           <h4 class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
@@ -210,7 +210,7 @@ defineExpose({
             Backup your entire chat history and settings to a ZIP file, or restore from a previous export.
           </p>
         </div>
-        <button 
+        <button
           @click="showImportExportModal = true"
           class="shrink-0 flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
           data-testid="setting-import-export-button"
@@ -226,11 +226,11 @@ defineExpose({
         <Database class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Storage Management</h2>
       </div>
-    
+
       <div class="space-y-6">
         <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Active Storage Provider</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <button 
+          <button
             @click="handleStorageChange('opfs')"
             type="button"
             :disabled="!isOPFSSupported"
@@ -253,7 +253,7 @@ defineExpose({
               <div class="text-xs font-medium text-gray-500 leading-relaxed">Save locally in the browser's high-capacity file system. Optimized for large data and attachments.</div>
             </div>
           </button>
-          <button 
+          <button
             @click="handleStorageChange('local')"
             type="button"
             class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
@@ -271,7 +271,7 @@ defineExpose({
             </div>
           </button>
         </div>
-      
+
         <div class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
           <Info class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
           <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, chat groups, and settings to the new location. This process will start automatically after you confirm the switch.</p>
@@ -284,7 +284,7 @@ defineExpose({
         <Trash2 class="w-5 h-5 text-red-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Cleanup</h2>
       </div>
-    
+
       <div class="p-6 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-4">
         <div>
           <h4 class="font-bold text-red-800 dark:text-red-400 text-sm">Clear Conversation History</h4>
@@ -292,7 +292,7 @@ defineExpose({
             This will permanently delete all your chats and chat groups. Your settings and provider profiles will be preserved.
           </p>
         </div>
-        <button 
+        <button
           @click="handleDeleteAllHistory"
           class="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
           data-testid="setting-clear-history-button"
@@ -303,9 +303,9 @@ defineExpose({
       </div>
     </section>
 
-    <ImportExportModal 
-      :is-open="showImportExportModal" 
-      @close="showImportExportModal = false" 
+    <ImportExportModal
+      :is-open="showImportExportModal"
+      @close="showImportExportModal = false"
     />
   </div>
 </template>

@@ -43,7 +43,7 @@ const floatingStyle = computed((): CSSProperties => {
   const rect = triggerBounding;
   const margin = 8;
   const menuWidth = 256; // Matching w-64
-  
+
   // Horizontal alignment: try to align left with the button, but push left if it goes off-screen
   let left = rect.left.value;
   if (left + menuWidth > windowWidth.value - 16) {
@@ -87,7 +87,7 @@ function handleClickOutside(event: MouseEvent) {
 
   // 1. Check if the click is inside the trigger button
   if (containerRef.value?.contains(target)) return;
-  
+
   // 2. Check if the click is inside the dropdown itself
   if (dropdownRef.value?.contains(target)) return;
 
@@ -142,7 +142,7 @@ defineExpose({
 
 <template>
   <div class="relative" ref="containerRef">
-    <button 
+    <button
       @click="showMenu = !showMenu"
       class="p-2 rounded-xl transition-colors"
       :class="[
@@ -157,8 +157,8 @@ defineExpose({
 
     <Teleport to="body">
       <Transition name="dropdown">
-        <div 
-          v-if="showMenu" 
+        <div
+          v-if="showMenu"
           ref="dropdownRef"
           class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl py-1.5 overflow-hidden custom-scrollbar"
           :style="floatingStyle"
@@ -167,7 +167,7 @@ defineExpose({
           ]"
           data-testid="chat-tools-dropdown"
         >
-          <ImageGenerationSettings 
+          <ImageGenerationSettings
             v-bind="props"
             show-header
             @toggle-image-mode="emit('toggle-image-mode')"

@@ -109,7 +109,7 @@ describe('Sidebar Selection State', () => {
     // 1. Select a chat
     mockCurrentChat.value = mockChats.value[0];
     await nextTick();
-    
+
     let chatItem = wrapper.find('[data-testid="sidebar-chat-item-c1"]');
     expect(chatItem.classes()).toContain('bg-blue-50');
 
@@ -122,6 +122,6 @@ describe('Sidebar Selection State', () => {
 
     // THE BUG: Both are currently selected
     chatItem = wrapper.find('[data-testid="sidebar-chat-item-c1"]');
-    expect(chatItem.classes()).not.toContain('bg-blue-50'); 
+    expect(chatItem.classes()).not.toContain('bg-blue-50');
   });
 });

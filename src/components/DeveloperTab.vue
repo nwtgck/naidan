@@ -39,12 +39,12 @@ defineExpose({
         <Cpu class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Developer Tools</h2>
       </div>
-    
+
       <div class="space-y-8">
         <div class="space-y-4">
           <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">Debug & Testing</h3>
           <div class="flex flex-col sm:flex-row gap-4">
-            <button 
+            <button
               @click="createSampleChat"
               class="flex-1 flex items-center justify-center gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95"
               data-testid="setting-create-sample-button"
@@ -70,7 +70,7 @@ defineExpose({
                 </p>
               </div>
             </div>
-            <button 
+            <button
               @click="handleResetData"
               class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
               data-testid="setting-reset-data-button"

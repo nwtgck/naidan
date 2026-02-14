@@ -16,7 +16,7 @@ class MockFileSystemFileHandle {
   createWritable() {
     return Promise.resolve({
       write: (data: string) => {
-        this.content = data; Promise.resolve(); 
+        this.content = data; Promise.resolve();
       },
       close: () => Promise.resolve(),
     });
@@ -26,7 +26,7 @@ class MockFileSystemFileHandle {
 class MockFileSystemDirectoryHandle {
   kind = 'directory' as const;
   private entries = new Map<string, MockFileSystemDirectoryHandle | MockFileSystemFileHandle>();
-  
+
   constructor(public name: string) {}
 
   async getDirectoryHandle(name: string, options?: { create?: boolean }) {
@@ -176,7 +176,7 @@ describe('Storage Migration (Round-Trip)', () => {
     expect(chatGroups).toHaveLength(1);
     expect(chatGroups[0]?.id).toBe(mockChatGroup.id);
     expect(chatGroups[0]?.name).toBe(mockChatGroup.name);
-    
+
     // Check Chat
     const loadedChat = await provider.loadChat(mockChat.id);
     expect(loadedChat).toEqual(mockChat);
@@ -199,7 +199,7 @@ describe('Storage Migration (Round-Trip)', () => {
     it('should pass dump-restore round trip', async () => {
       // Clear mock OPFS
       // @ts-expect-error: Accessing private property for testing
-      mockRoot.entries.clear(); 
+      mockRoot.entries.clear();
       const provider = new OPFSStorageProvider();
       await runRoundTripTest(provider);
     });

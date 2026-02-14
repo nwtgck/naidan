@@ -117,7 +117,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       type: 'chat',
       chat: { id: `c${i}`, title: `Chat ${i}`, updatedAt: 0, groupId: 'g1' }
     }));
-    
+
     mockChatGroups.value = [{
       id: 'g1',
       name: 'Big Group',
@@ -129,14 +129,14 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     // @ts-expect-error - internal method
     wrapper.vm.syncLocalItems();
     await nextTick();
 
     const chatItems = wrapper.findAll('.sidebar-chat-item');
     expect(chatItems).toHaveLength(5);
-    
+
     const showMoreBtn = wrapper.find('[data-testid="show-more-button"]');
     expect(showMoreBtn.exists()).toBe(true);
     expect(showMoreBtn.text()).toContain('Show 2 more');
@@ -148,7 +148,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       type: 'chat',
       chat: { id: `c${i}`, title: `Chat ${i}`, updatedAt: 0, groupId: 'g1' }
     }));
-    
+
     mockChatGroups.value = [{
       id: 'g1',
       name: 'Big Group',
@@ -160,7 +160,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     // @ts-expect-error - internal method
     wrapper.vm.syncLocalItems();
     await nextTick();
@@ -178,7 +178,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       type: 'chat',
       chat: { id: `c${i}`, title: `Chat ${i}`, updatedAt: 0, groupId: 'g1' }
     }));
-    
+
     mockChatGroups.value = [{
       id: 'g1',
       name: 'Big Group',
@@ -190,7 +190,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     // @ts-expect-error - internal method
     wrapper.vm.syncLocalItems();
     await nextTick();
@@ -206,12 +206,12 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     // Emit the update (simulating SortableJS change)
     await (groupDraggable as any).vm.$emit('update:modelValue', reversedSubList);
-    
+
     // Verify the full list in sidebarItemsLocal
     // @ts-expect-error - accessing reactive state
     const localItems = wrapper.vm.sidebarItemsLocal;
     const group = localItems.find((i: any) => i.id === 'g1').chatGroup;
-    
+
     // The first 5 should be reversed, the remaining 5 (5-9) should remain intact
     expect(group.items.slice(0, 5).map((i: any) => i.id)).toEqual(reversedSubList.map(i => i.id));
     expect(group.items.slice(5).map((i: any) => i.id)).toEqual(groupItems.slice(5).map(i => i.id));
@@ -224,7 +224,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       type: 'chat',
       chat: { id: `c${i}`, title: `Chat ${i}`, updatedAt: 0, groupId: 'g1' }
     }));
-    
+
     const group = {
       id: 'g1',
       name: 'Big Group',
@@ -237,7 +237,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     // @ts-expect-error - internal method
     wrapper.vm.syncLocalItems();
     await nextTick();
@@ -266,7 +266,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       type: 'chat',
       chat: { id: `c${i}`, title: `Chat ${i}`, updatedAt: 0, groupId: 'g1' }
     }));
-    
+
     mockChatGroups.value = [{
       id: 'g1',
       name: 'Big Group',
@@ -278,7 +278,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     // @ts-expect-error - internal method
     wrapper.vm.syncLocalItems();
     await nextTick();
@@ -295,13 +295,13 @@ describe('Sidebar Compact View & DND Integrity', () => {
     // Trigger ArrowRight
     const event = new KeyboardEvent('keydown', { key: 'ArrowRight' });
     window.dispatchEvent(event);
-    
+
     await nextTick(); // wait for toggle
     await nextTick(); // wait for nextTick in onKeyStroke
 
     // Should be expanded
     expect(wrapper.findAll('.sidebar-chat-item')).toHaveLength(7);
-    
+
     // Should have navigated to 6th item (c5)
     expect(mockOpenChat).toHaveBeenCalledWith('c5');
   });
@@ -312,7 +312,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
       type: 'chat',
       chat: { id: 'c0', title: 'Chat 0', updatedAt: 0, groupId: 'g1' }
     }];
-    
+
     mockChatGroups.value = [{
       id: 'g1',
       name: 'Group 1',
@@ -320,25 +320,25 @@ describe('Sidebar Compact View & DND Integrity', () => {
       updatedAt: 0,
       items: groupItems
     }];
-    
+
     // Set current chat to c0
     mockCurrentChat.value = { id: 'c0', groupId: 'g1' };
 
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     // @ts-expect-error - internal method
     wrapper.vm.syncLocalItems();
     await nextTick();
-    
+
     // @ts-expect-error - internal method
     wrapper.vm.setActiveFocusArea('sidebar');
 
     // Trigger ArrowLeft
     const event = new KeyboardEvent('keydown', { key: 'ArrowLeft' });
     window.dispatchEvent(event);
-    
+
     await nextTick();
 
     expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');

@@ -29,7 +29,7 @@ export function useChatSearch() {
   const search = async ({ searchQuery, options = { scope: 'all' } }: { searchQuery: string, options?: { scope: SearchScope, chatGroupIds?: string[], chatId?: string } }) => {
     const trimmedQuery = searchQuery.trim();
     query.value = trimmedQuery;
-    
+
     if (!trimmedQuery) {
       results.value = [];
       isSearching.value = false;
@@ -37,9 +37,9 @@ export function useChatSearch() {
     }
 
     isSearching.value = true;
-    // Do not clear results immediately if you want to keep showing old ones while typing, 
+    // Do not clear results immediately if you want to keep showing old ones while typing,
     // but here we clear to show we are searching anew.
-    results.value = []; 
+    results.value = [];
 
     try {
       const keywords = trimmedQuery.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
@@ -112,12 +112,12 @@ export function useChatSearch() {
 
         // ABORT CHECK: If query changed while we were waiting, stop.
         if (query.value !== trimmedQuery) {
-          return; 
+          return;
         }
 
         try {
           // Load full content
-          // TODO: If storageService.loadChatContent becomes the bottleneck, 
+          // TODO: If storageService.loadChatContent becomes the bottleneck,
           // we might need to optimize it or accept the cost.
           const content = await storageService.loadChatContent(chat.id);
           if (content) {
@@ -127,11 +127,11 @@ export function useChatSearch() {
             switch (scope) {
             case 'current_thread': {
               // Reconstruct the Chat object structure expected by getChatBranch
-              // We cast to Chat because getChatBranch only depends on root and currentLeafId, 
+              // We cast to Chat because getChatBranch only depends on root and currentLeafId,
               // but requires the full type.
               const fullChat = { ...chat, ...content } as unknown as import('../models/types').Chat;
               const branch = getChatBranch(fullChat);
-              
+
               matches = searchLinearBranch({
                 branch,
                 query: trimmedQuery,
@@ -147,9 +147,9 @@ export function useChatSearch() {
               const activeNodes = getChatBranch(fullChat);
               const activeBranchIds = new Set(activeNodes.map(n => n.id));
 
-              matches = searchChatTree({ 
-                root: content.root, 
-                query: trimmedQuery, 
+              matches = searchChatTree({
+                root: content.root,
+                query: trimmedQuery,
                 chatId: chat.id,
                 activeBranchIds
               });

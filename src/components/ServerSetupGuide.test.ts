@@ -23,7 +23,7 @@ describe('ServerSetupGuide.vue', () => {
     // Step 1: Download
     expect(wrapper.find('a[href="https://ollama.com/download/windows"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('External');
-    
+
     // Step 2: Run command
     expect(wrapper.text()).toContain('ollama serve');
     expect(wrapper.text()).toContain('ollama run gemma3n:e2b');
@@ -33,10 +33,10 @@ describe('ServerSetupGuide.vue', () => {
   it('shows CORS-friendly command when running on file:// protocol', async () => {
     vi.stubGlobal('location', { protocol: 'file:' });
     const wrapper = mount(ServerSetupGuide);
-    
+
     // Windows file://
     expect(wrapper.text()).toContain('$env:OLLAMA_ORIGINS="*"; ollama serve');
-    
+
     // Mac file://
     const macBtn = wrapper.findAll('button').find(b => b.text().toLowerCase() === 'mac');
     await macBtn?.trigger('click');
@@ -47,7 +47,7 @@ describe('ServerSetupGuide.vue', () => {
     const wrapper = mount(ServerSetupGuide);
     const macBtn = wrapper.findAll('button').find(b => b.text().toLowerCase() === 'mac');
     await macBtn?.trigger('click');
-    
+
     expect(wrapper.text()).toContain('brew install ollama');
     expect(wrapper.text()).toContain('ollama run gemma3n:e2b');
   });
@@ -56,7 +56,7 @@ describe('ServerSetupGuide.vue', () => {
     const wrapper = mount(ServerSetupGuide);
     const linuxBtn = wrapper.findAll('button').find(b => b.text().toLowerCase() === 'linux');
     await linuxBtn?.trigger('click');
-    
+
     expect(wrapper.text()).toContain('curl -fsSL https://ollama.com/install.sh | sh');
     expect(wrapper.text()).toContain('ollama run gemma3n:e2b');
   });
@@ -65,7 +65,7 @@ describe('ServerSetupGuide.vue', () => {
     const wrapper = mount(ServerSetupGuide);
     const llamaBtn = wrapper.findAll('button').find(b => b.text() === 'llama-server');
     await llamaBtn?.trigger('click');
-    
+
     expect(wrapper.text()).toContain('Releases');
     expect(wrapper.text()).toContain('./llama-server -hf ggml-org/gemma-3n-E2B-it-GGUF');
     expect(wrapper.text()).not.toContain('-fa');

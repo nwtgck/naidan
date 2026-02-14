@@ -5,7 +5,7 @@ import { useSettings } from '../composables/useSettings';
 import { useToast } from '../composables/useToast';
 import type { ProviderProfile, Settings } from '../models/types';
 import { capitalize, naturalSort } from '../utils/string';
-import { 
+import {
   Loader2, Trash2, Globe, Bot, Type, Save,
   CheckCircle2, BookmarkPlus,
   Check, Activity, MessageSquareQuote, Plus
@@ -76,7 +76,7 @@ async function fetchModels() {
   if (!form.value.endpointUrl && form.value.endpointType !== 'transformers_js') {
     return;
   }
-  
+
   error.value = null;
   try {
     const url = form.value.endpointUrl || '';
@@ -154,7 +154,7 @@ async function handleCreateProviderProfile() {
     confirmButtonText: 'Create',
     bodyComponent: h(ProviderProfilePreview, { form: form.value })
   });
-  
+
   if (!name) return;
 
   const newProviderProfile: ProviderProfile = {
@@ -226,12 +226,12 @@ defineExpose({
     <div class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
       <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
         <div class="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-400">
-                  
+
           <!-- Quick Switcher (If profiles exist) -->
           <div v-if="form.providerProfiles && form.providerProfiles.length > 0" class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 p-5 rounded-2xl space-y-3 shadow-sm">
             <label class="block text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest ml-1">Quick Profile Switcher</label>
             <div class="flex gap-2">
-              <select 
+              <select
                 v-model="selectedProviderProfileId"
                 @change="handleQuickProviderProfileChange"
                 class="flex-1 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
@@ -249,11 +249,11 @@ defineExpose({
               <Globe class="w-5 h-5 text-blue-500" />
               <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Endpoint Configuration</h2>
             </div>
-                      
+
             <div class="grid grid-cols-1 gap-8">
               <div class="space-y-2">
                 <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">API Provider</label>
-                <select 
+                <select
                   v-model="form.endpointType"
                   class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                   style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
@@ -272,8 +272,8 @@ defineExpose({
                 <div class="flex items-center justify-between ml-1">
                   <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Endpoint URL</label>
                   <div class="flex flex-wrap gap-1.5">
-                    <button 
-                      v-for="preset in ENDPOINT_PRESETS" 
+                    <button
+                      v-for="preset in ENDPOINT_PRESETS"
                       :key="preset.name"
                       @click="applyPreset(preset)"
                       type="button"
@@ -286,19 +286,19 @@ defineExpose({
                   </div>
                 </div>
                 <div class="flex gap-2">
-                  <input 
+                  <input
                     v-model="form.endpointUrl"
                     type="text"
                     class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3.5 text-sm font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                     placeholder="http://localhost:11434"
                     data-testid="setting-url-input"
                   />
-                  <button 
+                  <button
                     @click="fetchModels"
                     class="px-6 py-2 rounded-xl transition-all flex items-center justify-center gap-2 min-w-[180px] disabled:opacity-70 shadow-sm"
                     :class="[
-                      connectionSuccess 
-                        ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800' 
+                      connectionSuccess
+                        ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-800'
                         : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'
                     ]"
                     title="Check Connection"
@@ -328,7 +328,7 @@ defineExpose({
               <div class="space-y-4">
                 <div class="flex items-center justify-between ml-1">
                   <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest">Custom HTTP Headers</label>
-                  <button 
+                  <button
                     @click="addHeader"
                     type="button"
                     class="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
@@ -339,24 +339,24 @@ defineExpose({
                 </div>
 
                 <div v-if="form.endpointHttpHeaders && form.endpointHttpHeaders.length > 0" class="space-y-2">
-                  <div 
-                    v-for="(header, index) in form.endpointHttpHeaders" 
+                  <div
+                    v-for="(header, index) in form.endpointHttpHeaders"
                     :key="index"
                     class="flex gap-2 animate-in fade-in slide-in-from-left-1 duration-200"
                   >
-                    <input 
+                    <input
                       v-model="header[0]"
                       type="text"
                       class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                       placeholder="Header Name (e.g. X-API-Key)"
                     />
-                    <input 
+                    <input
                       v-model="header[1]"
                       type="text"
                       class="flex-1 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                       placeholder="Value"
                     />
-                    <button 
+                    <button
                       @click="removeHeader(index)"
                       class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                     >
@@ -378,7 +378,7 @@ defineExpose({
             <div class="space-y-8">
               <div class="space-y-2">
                 <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Default Model</label>
-                <ModelSelector 
+                <ModelSelector
                   v-model="form.defaultModelId"
                   :models="sortedModels"
                   :loading="isFetchingModels"
@@ -401,19 +401,19 @@ defineExpose({
                     <span class="text-sm font-bold text-gray-700 dark:text-gray-300">Auto-Title Generation</span>
                   </div>
                   <label class="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      v-model="form.autoTitleEnabled" 
+                    <input
+                      type="checkbox"
+                      v-model="form.autoTitleEnabled"
                       class="sr-only peer"
                       data-testid="setting-auto-title-checkbox"
                     >
                     <div class="w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:start-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                   </label>
                 </div>
-                          
+
                 <div class="space-y-2 opacity-50 transition-all duration-300" :class="{ 'opacity-100': form.autoTitleEnabled }">
                   <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Title Generation Model</label>
-                  <ModelSelector 
+                  <ModelSelector
                     v-model="form.titleModelId"
                     :models="sortedModels"
                     :loading="isFetchingModels"
@@ -439,7 +439,7 @@ defineExpose({
               <!-- System Prompt -->
               <div class="space-y-2">
                 <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Global System Prompt</label>
-                <textarea 
+                <textarea
                   v-model="form.systemPrompt"
                   rows="4"
                   class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
@@ -461,7 +461,7 @@ defineExpose({
 
     <!-- Footer Actions -->
     <div class="p-4 md:p-8 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row justify-end gap-3 md:gap-4 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm shrink-0">
-      <button 
+      <button
         @click="handleCreateProviderProfile"
         class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-6 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-all shadow-sm active:scale-95"
         data-testid="setting-save-provider-profile-button"
@@ -470,7 +470,7 @@ defineExpose({
         <span>Save as New Profile</span>
       </button>
 
-      <button 
+      <button
         @click="handleSave"
         :disabled="!hasUnsavedChanges"
         class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-bold rounded-xl md:rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-95"

@@ -40,10 +40,10 @@ vi.mock('./useSettings', () => ({
     isOnboardingDismissed: mockIsOnboardingDismissed,
     onboardingDraft: mockOnboardingDraft,
     setOnboardingDraft: (val: any) => {
-      mockOnboardingDraft.value = val; 
+      mockOnboardingDraft.value = val;
     },
     setIsOnboardingDismissed: (val: boolean) => {
-      mockIsOnboardingDismissed.value = val; 
+      mockIsOnboardingDismissed.value = val;
     },
   }),
 }));
@@ -113,7 +113,7 @@ describe('useChat Onboarding Trigger', () => {
     }) as any);
 
     await sendMessage('Hello');
-     
+
     // It should have stopped and triggered onboarding instead of sending
     expect(mockIsOnboardingDismissed.value).toBe(false);
     // If it had used gpt-3.5-turbo, currentChat.value.root.items would have 1 item

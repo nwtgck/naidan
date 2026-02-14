@@ -101,7 +101,7 @@ describe('useChat Group Overrides Resolution', () => {
 
     // Verify the LLM was called with resolved settings
     // Resolved System Prompt: ["Group Prompt", "Chat Prompt"]
-    
+
     expect(mockLlmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
@@ -200,7 +200,7 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('clears currentChatGroup when opening a chat or creating a new one', async () => {
     chatStore.__testOnly.__testOnlySetCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
-    
+
     vi.mocked(storageService.loadChat).mockResolvedValue({ id: 'c1', title: 'C1' } as any);
     await chatStore.openChat('c1');
     expect(chatStore.currentChatGroup.value).toBeNull();
@@ -354,10 +354,10 @@ describe('useChat Group Overrides Resolution', () => {
     // 2. Move chat to group
     chat.groupId = 'g1';
     await nextTick();
-    
+
     await chatStore.sendMessage('Hi again', null, [], chat);
     await vi.waitUntil(() => !chatStore.streaming.value);
-    
+
     expect(mockLlmChat).toHaveBeenLastCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),

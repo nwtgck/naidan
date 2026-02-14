@@ -25,7 +25,7 @@ export function useTheme() {
       }
       }
     })();
-    
+
     if (isDark) {
       document.documentElement.classList.add('dark');
       // Set color-scheme for browser UI elements like scrollbars

@@ -31,9 +31,9 @@ describe('useChatSearch Composable', () => {
     vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
     vi.mocked(chatSearchUtils.searchChatTree).mockReturnValue([]);
 
-    await search({ 
-      searchQuery: 'test', 
-      options: { scope: 'all', chatGroupIds: ['group1'] } 
+    await search({
+      searchQuery: 'test',
+      options: { scope: 'all', chatGroupIds: ['group1'] }
     });
 
     // Should only process chats in group1 (chat1 and chat3)
@@ -52,9 +52,9 @@ describe('useChatSearch Composable', () => {
     ];
     vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
 
-    await search({ 
-      searchQuery: 'test', 
-      options: { scope: 'all', chatId: 'chat2' } 
+    await search({
+      searchQuery: 'test',
+      options: { scope: 'all', chatId: 'chat2' }
     });
 
     expect(storageService.loadChatContent).toHaveBeenCalledWith('chat2');
@@ -68,9 +68,9 @@ describe('useChatSearch Composable', () => {
     ];
     vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
 
-    await search({ 
-      searchQuery: 'hello test', 
-      options: { scope: 'title_only' } 
+    await search({
+      searchQuery: 'hello test',
+      options: { scope: 'title_only' }
     });
 
     expect(results.value).toHaveLength(1);

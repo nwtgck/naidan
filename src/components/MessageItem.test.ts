@@ -18,7 +18,7 @@ describe('MessageItem Rendering', () => {
   it('renders basic markdown correctly', () => {
     const message = createMessage('**bold text** and [link](https://example.com)');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const html = wrapper.html();
     expect(html).toContain('<strong>bold text</strong>');
     expect(html).toContain('<a href="https://example.com"');
@@ -27,7 +27,7 @@ describe('MessageItem Rendering', () => {
   it('applies syntax highlighting to code blocks', () => {
     const message = createMessage('```python\nprint("hello")\n```');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const html = wrapper.html();
     // highlight.js should wrap the code in spans with hljs classes
     expect(html).toContain('language-python');
@@ -37,7 +37,7 @@ describe('MessageItem Rendering', () => {
   it('sanitizes dangerous HTML', () => {
     const message = createMessage('Dangerous <script>alert("xss")</script><img src=x onerror=alert(1)>');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const html = wrapper.html();
     expect(html).not.toContain('<script>');
     expect(html).not.toContain('onerror');
@@ -54,7 +54,7 @@ describe('MessageItem Rendering', () => {
       replies: { items: [] },
     };
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     expect(wrapper.text()).toContain(modelId);
     expect(wrapper.text()).not.toContain(modelId.toUpperCase());
     // Ensure "You" is not shown
@@ -64,7 +64,7 @@ describe('MessageItem Rendering', () => {
   it('displays "You" for user messages with correct styling', () => {
     const message = createMessage('Hello', 'user');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const youSpan = wrapper.find('.uppercase.tracking-widest');
     expect(youSpan.exists()).toBe(true);
     expect(youSpan.text()).toBe('You');
@@ -73,10 +73,10 @@ describe('MessageItem Rendering', () => {
   it('correctly separates and displays thinking blocks', async () => {
     const message = createMessage('<think>Internal thought</think>Actual response');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Check if thinking process button exists
     expect(wrapper.text()).toContain('Thought Process');
-    
+
     // Check if the content part only shows the actual response
     const contentArea = wrapper.find('[data-testid="message-content"]');
     expect(contentArea.text()).toBe('Actual response');
@@ -86,7 +86,7 @@ describe('MessageItem Rendering', () => {
   it('detects active thinking state (isThinkingNow)', () => {
     const message = createMessage('<think>Ongoing thought...');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Should show "Thinking..." instead of "Show Thought Process"
     expect(wrapper.text()).toContain('Thinking...');
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(true);
@@ -95,7 +95,7 @@ describe('MessageItem Rendering', () => {
   it('handles multiple thinking blocks and case-insensitivity', async () => {
     const message = createMessage('<THINK>Thought 1</THINK>Response 1<think>Thought 2</think>Response 2');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // displayContent should be cleaned
     const contentArea = wrapper.find('[data-testid="message-content"]');
     expect(contentArea.text()).toContain('Response 1');
@@ -106,7 +106,7 @@ describe('MessageItem Rendering', () => {
     // Toggle it to see the content
     const toggle = wrapper.find('[data-testid="toggle-thinking"]');
     await toggle.trigger('click');
-    
+
     const thinkingArea = wrapper.find('[data-testid="thinking-content"]');
     expect(thinkingArea.text()).toContain('Thought 1');
     expect(thinkingArea.text()).toContain('Thought 2');
@@ -117,7 +117,7 @@ describe('MessageItem Rendering', () => {
     // Content is empty, but <think> is present
     const message = createMessage('<think>Thinking only');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="thinking-block"]').exists()).toBe(true);
   });
@@ -125,7 +125,7 @@ describe('MessageItem Rendering', () => {
   it('copies message content to clipboard', async () => {
     const message = createMessage('Copy me');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Mock clipboard
     const writeText = vi.fn().mockImplementation(() => Promise.resolve());
     Object.defineProperty(navigator, 'clipboard', {
@@ -137,10 +137,10 @@ describe('MessageItem Rendering', () => {
     await copyButton.trigger('click');
 
     expect(writeText).toHaveBeenCalledWith('Copy me');
-    
+
     // Wait for Vue to update the DOM
     await nextTick();
-    
+
     // Icon should change to checkmark
     expect(wrapper.findComponent(Check).exists()).toBe(true);
   });
@@ -148,7 +148,7 @@ describe('MessageItem Rendering', () => {
   it('toggles mermaid display modes', async () => {
     const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Mode should be preview by default
     expect(wrapper.find('.mermaid-raw').attributes('style')).toContain('display: none');
     expect(wrapper.find('.mermaid').attributes('style')).not.toContain('display: none');
@@ -168,7 +168,7 @@ describe('MessageItem Rendering', () => {
 
     const finalRaw = wrapper.find('.mermaid-raw').attributes('style') || '';
     const finalDiagram = wrapper.find('.mermaid').attributes('style') || '';
-    
+
     expect(finalRaw).not.toContain('display: none');
     expect(finalDiagram).not.toContain('display: none');
   });
@@ -179,7 +179,7 @@ describe('MessageItem Rendering', () => {
       const wrapper = mount(MessageItem, { props: { message } });
       await nextTick();
       await nextTick();
-      
+
       const html = wrapper.html();
       expect(html).toContain('mermaid-block relative group/mermaid');
       expect(html).toContain('mermaid-ui-overlay');
@@ -191,7 +191,7 @@ describe('MessageItem Rendering', () => {
       const wrapper = mount(MessageItem, { props: { message } });
       await nextTick();
       await nextTick();
-      
+
       const tabs = wrapper.findAll('.mermaid-tab');
       expect(tabs.length).toBe(3);
       expect(tabs[0]!.text()).toContain('Preview');
@@ -241,7 +241,7 @@ describe('MessageItem Rendering', () => {
 
       const copyBtn = wrapper.find('.mermaid-copy-btn');
       expect(copyBtn.exists()).toBe(true);
-      
+
       const cls = copyBtn.classes();
       expect(cls).toContain('bg-white/90');
       expect(cls).toContain('dark:bg-gray-800/90');
@@ -262,7 +262,7 @@ describe('MessageItem Rendering', () => {
       // Check for wrapper structure
       expect(html).toContain('code-block-wrapper');
       expect(html).toContain('group/code');
-      
+
       // Check for header toolbar
       expect(html).toContain('code-copy-btn');
       expect(html).toContain('javascript'); // Language label
@@ -286,7 +286,7 @@ describe('MessageItem Rendering', () => {
     it('handles copy button click and visual feedback', async () => {
       // Use fake timers BEFORE the action
       vi.useFakeTimers();
-      
+
       const message = createMessage('```typescript\nconst x: number = 42;\n```');
       const wrapper = mount(MessageItem, {
         props: { message },
@@ -305,7 +305,7 @@ describe('MessageItem Rendering', () => {
 
       // Trigger click
       await copyBtn.trigger('click');
-      
+
       // The click handler is async, so we need to wait for the promise to resolve
       // but since it's an event listener, we just need a tick.
       await nextTick();
@@ -313,13 +313,13 @@ describe('MessageItem Rendering', () => {
       // Verify clipboard call
       expect(writeText).toHaveBeenCalledWith('const x: number = 42;');
       expect(btnEl.innerHTML).toContain('Copied');
-      
+
       // Advance timers and wait for Vue to update the DOM
       vi.advanceTimersByTime(2100);
       await nextTick();
-      
+
       expect(btnEl.innerHTML).toContain('Copy');
-      
+
       vi.useRealTimers();
       wrapper.unmount();
     });
@@ -328,7 +328,7 @@ describe('MessageItem Rendering', () => {
       const message = createMessage('```js\nconsole.log(1);\n```');
       const wrapper = mount(MessageItem, { props: { message } });
       const copyBtn = wrapper.find('.code-copy-btn');
-      
+
       expect(copyBtn.classes()).toContain('flex');
       expect(copyBtn.classes()).toContain('items-center');
       expect(copyBtn.classes()).toContain('gap-1.5');
@@ -351,17 +351,17 @@ describe('MessageItem Keyboard Shortcuts', () => {
   it('cancels editing on Escape key', async () => {
     const message = createMessage('Original content');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Enter edit mode
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     expect(wrapper.find('[data-testid="edit-mode"]').exists()).toBe(true);
-    
+
     const textarea = wrapper.find('[data-testid="edit-textarea"]');
     await textarea.setValue('Changed content');
-    
+
     // Trigger Escape
     await textarea.trigger('keydown.esc');
-    
+
     expect(wrapper.find('[data-testid="edit-mode"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="message-content"]').text()).toBe('Original content');
   });
@@ -369,14 +369,14 @@ describe('MessageItem Keyboard Shortcuts', () => {
   it('saves and branches on Ctrl+Enter', async () => {
     const message = createMessage('Original content');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     const textarea = wrapper.find('[data-testid="edit-textarea"]');
     await textarea.setValue('New branch content');
-    
+
     // Trigger Ctrl+Enter
     await textarea.trigger('keydown.enter', { ctrlKey: true });
-    
+
     // Should emit 'edit' event
     expect(wrapper.emitted('edit')).toBeTruthy();
     expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'New branch content']);
@@ -386,14 +386,14 @@ describe('MessageItem Keyboard Shortcuts', () => {
   it('saves and branches on Cmd+Enter', async () => {
     const message = createMessage('Original content');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     const textarea = wrapper.find('[data-testid="edit-textarea"]');
     await textarea.setValue('Meta content');
-    
+
     // Trigger Cmd+Enter (metaKey)
     await textarea.trigger('keydown.enter', { metaKey: true });
-    
+
     expect(wrapper.emitted('edit')).toBeTruthy();
     expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Meta content']);
   });
@@ -401,19 +401,19 @@ describe('MessageItem Keyboard Shortcuts', () => {
   it('clears all content when Clear button is clicked', async () => {
     const message = createMessage('Original content');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Enter edit mode
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     const textarea = wrapper.find('[data-testid="edit-textarea"]');
     await textarea.setValue('Some text to clear');
-    
+
     // Clear button should exist since textarea has content
     const clearBtn = wrapper.find('[data-testid="clear-edit-content"]');
     expect(clearBtn.exists()).toBe(true);
-    
+
     await clearBtn.trigger('click');
     await nextTick();
-    
+
     expect((textarea.element as HTMLTextAreaElement).value).toBe('');
     // Clear button should be hidden when content is empty
     expect(wrapper.find('[data-testid="clear-edit-content"]').exists()).toBe(false);
@@ -536,7 +536,7 @@ describe('MessageItem States', () => {
   it('displays loading indicator when waiting for response', () => {
     const message = createAssistantMessage('');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('Waiting for response...');
     expect(wrapper.find('[data-testid="message-content"]').exists()).toBe(false);
@@ -545,7 +545,7 @@ describe('MessageItem States', () => {
   it('does NOT display loading indicator when content exists', () => {
     const message = createAssistantMessage('Hello');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="message-content"]').exists()).toBe(true);
   });
@@ -553,7 +553,7 @@ describe('MessageItem States', () => {
   it('displays error message when generation failed', () => {
     const message = createAssistantMessage('', 'Network Error');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const errorEl = wrapper.find('[data-testid="error-message"]');
     expect(errorEl.exists()).toBe(true);
     expect(errorEl.text()).toContain('Generation Failed');
@@ -564,9 +564,9 @@ describe('MessageItem States', () => {
   it('displays partial content AND error message', () => {
     const message = createAssistantMessage('Partial content', 'Stream Error');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     expect(wrapper.find('[data-testid="message-content"]').text()).toBe('Partial content');
-    
+
     const errorEl = wrapper.find('[data-testid="error-message"]');
     expect(errorEl.exists()).toBe(true);
     expect(errorEl.text()).toContain('Stream Error');
@@ -575,9 +575,9 @@ describe('MessageItem States', () => {
   it('emits regenerate event when button clicked', async () => {
     const message = createAssistantMessage('', 'Error');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     await wrapper.find('[data-testid="retry-button"]').trigger('click');
-    
+
     expect(wrapper.emitted('regenerate')).toBeTruthy();
     expect(wrapper.emitted('regenerate')?.[0]).toEqual([message.id]);
   });
@@ -585,9 +585,9 @@ describe('MessageItem States', () => {
   it('emits regenerate event when action bar button clicked', async () => {
     const message = createAssistantMessage('Existing content');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     await wrapper.find('[data-testid="regenerate-button"]').trigger('click');
-    
+
     expect(wrapper.emitted('regenerate')).toBeTruthy();
     expect(wrapper.emitted('regenerate')?.[0]).toEqual([message.id]);
   });
@@ -605,10 +605,10 @@ describe('MessageItem Edit Labels', () => {
   it('shows "Send & Branch" when editing a user message', async () => {
     const message = createMessage('user');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Enter edit mode
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
-    
+
     const saveBtn = wrapper.find('[data-testid="save-edit"]');
     expect(saveBtn.text()).toContain('Send & Branch');
   });
@@ -616,10 +616,10 @@ describe('MessageItem Edit Labels', () => {
   it('shows "Update & Branch" when editing an assistant message', async () => {
     const message = createMessage('assistant');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Enter edit mode
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
-    
+
     const saveBtn = wrapper.find('[data-testid="save-edit"]');
     expect(saveBtn.text()).toContain('Update & Branch');
   });
@@ -627,12 +627,12 @@ describe('MessageItem Edit Labels', () => {
   it('allows "Send & Branch" even if content is NOT edited', async () => {
     const message = createMessage('user');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
-    
+
     // Trigger Save without changing setValue
     await wrapper.find('[data-testid="save-edit"]').trigger('click');
-    
+
     expect(wrapper.emitted('edit')).toBeTruthy();
     expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Some content']);
   });
@@ -640,13 +640,13 @@ describe('MessageItem Edit Labels', () => {
   it('shows "Resend" button for user messages and emits edit event', async () => {
     const message = createMessage('user');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const resendBtn = wrapper.find('[data-testid="resend-button"]');
     expect(resendBtn.exists()).toBe(true);
     expect(resendBtn.attributes('title')).toBe('Resend message');
-    
+
     await resendBtn.trigger('click');
-    
+
     expect(wrapper.emitted('edit')).toBeTruthy();
     expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Some content']);
   });
@@ -654,7 +654,7 @@ describe('MessageItem Edit Labels', () => {
   it('does NOT show "Resend" button for assistant messages', () => {
     const message = createMessage('assistant');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     expect(wrapper.find('[data-testid="resend-button"]').exists()).toBe(false);
   });
 });
@@ -671,13 +671,13 @@ describe('MessageItem Action Visibility', () => {
   it('ensures message actions are always visible (no hover-only opacity classes)', () => {
     const message = createMessage('assistant');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Find the container of message actions. It's the sibling of version paging or an empty div.
     // In our template it's: <div class="flex items-center gap-1">
     // We can find it by looking for one of the buttons inside it.
     const copyButton = wrapper.find('[data-testid="copy-message-button"]');
     const container = copyButton.element.parentElement;
-    
+
     expect(container?.className).not.toContain('opacity-0');
     expect(container?.className).not.toContain('group-hover:opacity-100');
   });
@@ -729,7 +729,7 @@ describe('MessageItem Abort Button', () => {
   it('renders the abort button when isGenerating is true', () => {
     const message = createAssistantMessage('Generation in progress...');
     const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
-    
+
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     expect(abortBtn.exists()).toBe(true);
     expect(abortBtn.attributes('title')).toBe('Stop generation');
@@ -738,7 +738,7 @@ describe('MessageItem Abort Button', () => {
   it('does not render the abort button when isGenerating is false', () => {
     const message = createAssistantMessage('Generation finished');
     const wrapper = mount(MessageItem, { props: { message, isGenerating: false } });
-    
+
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     expect(abortBtn.exists()).toBe(false);
   });
@@ -746,17 +746,17 @@ describe('MessageItem Abort Button', () => {
   it('emits abort event when abort button is clicked', async () => {
     const message = createAssistantMessage('Generation in progress...');
     const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
-    
+
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     await abortBtn.trigger('click');
-    
+
     expect(wrapper.emitted('abort')).toBeTruthy();
   });
-  
+
   it('has the correct subtle styling for the abort button', () => {
     const message = createAssistantMessage('Generation in progress...');
     const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
-    
+
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     const cls = abortBtn.classes();
     expect(cls).toContain('text-gray-400');

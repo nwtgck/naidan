@@ -39,13 +39,13 @@ let remote: Comlink.Remote<ITransformersJsWorker> | null = null;
 
 /**
  * Initializes or re-initializes the Web Worker.
- * 
+ *
  * WHY RESTART?
  * Transformers.js (ONNX Runtime) runs in WebAssembly. When a fatal error occurs
  * (like an Out-of-Memory or an incompatible kernel operation), the Wasm runtime
  * calls abort(). This puts the Wasm instance into a permanently "broken" state
  * that cannot be recovered from within the same execution context.
- * Re-creating the Worker is the only way to provide a clean slate and a 
+ * Re-creating the Worker is the only way to provide a clean slate and a
  * fresh Wasm instance without requiring the user to reload the entire page.
  */
 function initWorker() {
@@ -68,8 +68,8 @@ initWorker();
  * Checks if an error message indicates a fatal state that requires a worker restart.
  */
 function isFatalError(msg: string): boolean {
-  return msg.includes('Aborted()') || 
-         msg.includes('[WebGPU] Kernel') || 
+  return msg.includes('Aborted()') ||
+         msg.includes('[WebGPU] Kernel') ||
          msg.includes('protobuf parsing failed');
 }
 
@@ -191,7 +191,7 @@ export const transformersJsService = {
           }
         }
       } catch (e) { /* ignore */ }
-      
+
       try {
         const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
         for await (const [orgName, orgHandle] of hfDir.entries()) {
@@ -227,7 +227,7 @@ export const transformersJsService = {
           }
           }
         }
-      } catch (e) { /* ignore */ }    
+      } catch (e) { /* ignore */ }
     } catch (err) {
       console.warn('Failed to list cached models:', err);
     }
@@ -239,22 +239,22 @@ export const transformersJsService = {
     const modelsDir = await root.getDirectoryHandle('models', { create: true });
     const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
     const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
-    
+
     const parts = fileName.split('/').filter(p => !!p);
     let currentDir = modelDir;
     for (let i = 0; i < parts.length - 1; i++) {
       currentDir = await currentDir.getDirectoryHandle(parts[i]!, { create: true });
     }
-    
+
     const lastPart = parts[parts.length - 1]!;
     const fileHandle = await currentDir.getFileHandle(lastPart, { create: true });
-    
+
     if (!('createWritable' in fileHandle)) {
       throw new Error('FileSystemFileHandle.createWritable is not supported');
     }
 
     const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
-    
+
     if (data instanceof ReadableStream) {
       await data.pipeTo(writable);
     } else {
@@ -270,7 +270,7 @@ export const transformersJsService = {
   async deleteModel(modelId: string) {
     const root = await navigator.storage.getDirectory();
     const modelsDir = await root.getDirectoryHandle('models', { create: true });
-    
+
     if (modelId.startsWith('user/')) {
       const name = modelId.substring(5);
       try {
@@ -293,11 +293,11 @@ export const transformersJsService = {
         if (org && repo) {
           const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
           await orgDir.removeEntry(repo, { recursive: true });
-          
+
           // Clean up empty org directory
           let hasMore = false;
           for await (const _ of orgDir.entries()) {
-            hasMore = true; break; 
+            hasMore = true; break;
           }
           if (!hasMore) await hfDir.removeEntry(org);
         } else if (org) {
@@ -319,7 +319,7 @@ export const transformersJsService = {
 
   async loadModel(modelId: string) {
     if (activeModelId === modelId && loadingStatus === 'ready') return;
-    
+
     switch (loadingStatus) {
     case 'loading':
       throw new Error('Another model is currently loading');
@@ -332,7 +332,7 @@ export const transformersJsService = {
       throw new Error(`Unhandled loading status: ${_ex}`);
     }
     }
-    
+
     try {
       if (!remote) throw new Error('Worker not initialized');      // 1. Check cache FIRST before changing status to avoid UI flicker
       const cached = await this.listCachedModels();
@@ -366,7 +366,7 @@ export const transformersJsService = {
     } catch (e) {
       console.error('[transformersJsService] Failed to load model:', modelId, e);
       const errorMsg = e instanceof Error ? e.message : String(e);
-      
+
       // If the error is fatal, the worker is likely dead/poisoned and needs to be restarted
       if (isFatalError(errorMsg)) {
         console.warn(`[transformersJsService] Fatal error detected. Re-initializing worker...`);
@@ -394,7 +394,7 @@ export const transformersJsService = {
       throw new Error(`Unhandled loading status: ${_ex}`);
     }
     }
-  
+
     try {
       if (!remote) throw new Error('Worker not initialized');      // 1. Cleanup: If directory exists but is not complete, delete it first
       const cached = await this.listCachedModels();
@@ -424,7 +424,7 @@ export const transformersJsService = {
 
       await remote.downloadModel(modelId, progress_callback);
 
-      loadingStatus = 'idle'; 
+      loadingStatus = 'idle';
       loadingProgress = 0;
       notify();
       notifyModelListChange();
@@ -482,7 +482,7 @@ export const transformersJsService = {
    * Generates text through the worker.
    */
   async generateText(
-    messages: ChatMessage[], 
+    messages: ChatMessage[],
     onChunk: (chunk: string) => void,
     params?: LmParameters,
     signal?: AbortSignal
@@ -499,9 +499,9 @@ export const transformersJsService = {
       throw new Error(`Unhandled loading status: ${_ex}`);
     }
     }
-    
+
     if (!remote) throw new Error('Worker not initialized');
-    
+
     if (signal) {
       signal.addEventListener('abort', () => {
         this.interrupt().catch(console.error);
@@ -510,8 +510,8 @@ export const transformersJsService = {
 
     try {
       await remote.generateText(
-        messages, 
-        Comlink.proxy(onChunk), 
+        messages,
+        Comlink.proxy(onChunk),
         params
       );
     } catch (e) {

@@ -5,7 +5,7 @@ export type JsonParseResult =
 /**
  * Parses a string containing one or more concatenated JSON objects.
  * Example: `{"a":1}{"b":2}` -> `[{success: true, data: {"a":1}, ...}, {success: true, data: {"b":2}, ...}]`
- * 
+ *
  * This parser handles newlines and tracks brace depth to identify potential JSON objects.
  */
 export function parseConcatenatedJson(input: string): JsonParseResult[] {

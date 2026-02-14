@@ -20,7 +20,7 @@ describe('WelcomeScreen.vue', () => {
     const wrapper = mount(WelcomeScreen);
     const buttons = wrapper.findAll('button');
     await buttons[0]!.trigger('click');
-    
+
     expect(wrapper.emitted('select-suggestion')).toBeTruthy();
     expect(wrapper.emitted('select-suggestion')![0]![0]).toContain('Write a short story');
   });
@@ -64,11 +64,11 @@ describe('WelcomeScreen.vue', () => {
   it('is responsive (has small screen utility classes)', () => {
     const wrapper = mount(WelcomeScreen);
     const contentBox = wrapper.find('.w-full.max-w-4xl');
-    
+
     // Check for responsive translate-y
     expect(contentBox.classes()).toContain('translate-y-[-25%]');
     expect(contentBox.classes()).toContain('sm:translate-y-[-30%]');
-    
+
     // Check for responsive spacing
     expect(contentBox.classes()).toContain('space-y-8');
     expect(contentBox.classes()).toContain('sm:space-y-12');

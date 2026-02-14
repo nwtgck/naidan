@@ -7,7 +7,7 @@ class MockFileSystemFileHandle {
   kind = 'file' as const;
   constructor(public name: string, private blob: Blob = new Blob()) {}
   async getFile() {
-    return this.blob; 
+    return this.blob;
   }
   createWritable() {
     return Promise.resolve({
@@ -29,7 +29,7 @@ class MockFileSystemDirectoryHandle {
     if (!this.entries.has(name)) {
       if (options?.create) this.entries.set(name, new MockFileSystemDirectoryHandle(name));
       else {
-        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err; 
+        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err;
       }
     }
     const entry = this.entries.get(name);
@@ -40,7 +40,7 @@ class MockFileSystemDirectoryHandle {
     if (!this.entries.has(name)) {
       if (options?.create) this.entries.set(name, new MockFileSystemFileHandle(name));
       else {
-        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err; 
+        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err;
       }
     }
     const entry = this.entries.get(name);
@@ -48,13 +48,13 @@ class MockFileSystemDirectoryHandle {
     return entry as MockFileSystemFileHandle;
   }
   async removeEntry(name: string, _options?: { recursive?: boolean }) {
-    this.entries.delete(name); 
+    this.entries.delete(name);
   }
   async *values() {
-    for (const entry of this.entries.values()) yield entry; 
+    for (const entry of this.entries.values()) yield entry;
   }
   async *keys() {
-    for (const key of this.entries.keys()) yield key; 
+    for (const key of this.entries.keys()) yield key;
   }
 }
 
@@ -93,7 +93,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     await provider.init();
     const id = '550e8400-e29b-41d4-a716-4466554400a1'; // Shard 'a1'
     const blob = new Blob(['HELLO'], { type: 'image/png' });
-    
+
     await provider.saveFile({
       blob,
       binaryObjectId: id,
@@ -104,7 +104,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage');
     const binDir = await naidanDir.getDirectoryHandle('binary-objects');
     const shardDir = await binDir.getDirectoryHandle('a1');
-    
+
     // 1. Verify file content
     const file = await shardDir.getFileHandle(`${id}.bin`);
     expect((await file.getFile()).size).toBe(5);
@@ -127,7 +127,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     await provider.init();
     const id = '550e8400-e29b-41d4-a716-4466554400b2'; // Shard 'b2'
     const blob = new Blob(['DATA'], { type: 'text/plain' });
-    
+
     // Manually setup file WITHOUT marker
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage', { create: true });
     const binDir = await naidanDir.getDirectoryHandle('binary-objects', { create: true });
@@ -143,7 +143,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
 
     // Now add the marker
     await shardDir.getFileHandle(`.${id}.bin.complete`, { create: true });
-    
+
     const resultAfterMarker = await provider.getFile(id);
     expect(resultAfterMarker).not.toBeNull();
     expect(await resultAfterMarker!.text()).toBe('DATA');
@@ -153,7 +153,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     await provider.init();
     const id1 = '00000000-0000-4000-a000-0000000000a1';
     const id2 = '00000000-0000-4000-a000-0000000000a2';
-    
+
     await provider.saveFile({
       blob: new Blob(['1'], { type: 'image/png' }),
       binaryObjectId: id1,

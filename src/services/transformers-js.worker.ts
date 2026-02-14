@@ -1,8 +1,8 @@
 import * as Comlink from 'comlink';
-import { 
-  AutoTokenizer, 
-  AutoModelForCausalLM, 
-  TextStreamer, 
+import {
+  AutoTokenizer,
+  AutoModelForCausalLM,
+  TextStreamer,
   InterruptableStoppingCriteria,
   StoppingCriteriaList,
   env,
@@ -98,19 +98,19 @@ self.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   }
 
   const response = await originalFetch(input, init);
-  
+
   // 3. Handle SPA 404 Fallback (Server returning HTML for JSON/Binary)
   // This helps when transformers.js checks for local existence of remote models via relative paths.
   if (response.status === 200) {
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('text/html')) {
       // If we are requesting a JSON/Binary file but got HTML, it's a 404 fallback
-      if (urlString.includes('/models/') || 
-          urlString.endsWith('.json') || 
-          urlString.endsWith('.onnx') || 
+      if (urlString.includes('/models/') ||
+          urlString.endsWith('.json') ||
+          urlString.endsWith('.onnx') ||
           urlString.endsWith('.bin') ||
           urlString.endsWith('.wasm')) {
-            
+
         // Double check it's not actually an HTML file we wanted
         if (!urlString.endsWith('.html')) {
           console.warn(`[transformers-worker] Intercepted HTML response for ${urlString}. Treating as 404.`);
@@ -141,9 +141,9 @@ function urlToPath(url: string): string | null {
   try {
     const parsed = new URL(url);
     const pathParts = parsed.pathname.split('/').filter(p => !!p);
-    
-    const isLocalOrigin = parsed.origin === self.location.origin || 
-                          parsed.hostname === 'localhost' || 
+
+    const isLocalOrigin = parsed.origin === self.location.origin ||
+                          parsed.hostname === 'localhost' ||
                           parsed.hostname === '127.0.0.1';
 
     if (isLocalOrigin) {
@@ -162,7 +162,7 @@ function urlToPath(url: string): string | null {
           throw new Error(`Unhandled path part: ${_ex}`);
         }
         }        if (pathParts[startIndex] === 'user' || pathParts[startIndex] === 'local') startIndex++;
-        
+
         const cleanParts = pathParts.slice(startIndex);
         const resolved = `models/user/${cleanParts.join('/')}`;
         console.log(`[urlToPath] Local matched: ${url} -> ${resolved}`);
@@ -324,9 +324,9 @@ const transformersJsWorker: ITransformersJsWorker = {
     const isLocal = cleanModelId.startsWith('user/');
 
     // 1. Download Tokenizer
-    await AutoTokenizer.from_pretrained(cleanModelId, { 
-      progress_callback: progressCallback, 
-      local_files_only: isLocal 
+    await AutoTokenizer.from_pretrained(cleanModelId, {
+      progress_callback: progressCallback,
+      local_files_only: isLocal
     });
 
     // 2. Download Model weights (using same dtype to ensure correct files are cached)
@@ -396,20 +396,20 @@ const transformersJsWorker: ITransformersJsWorker = {
 
       // 2. Load Tokenizer
       console.log('[transformersJsWorker] Loading tokenizer...');
-      tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, { 
-        progress_callback: progressCallback, 
-        local_files_only: isLocal 
+      tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, {
+        progress_callback: progressCallback,
+        local_files_only: isLocal
       });
       console.log('[transformersJsWorker] Tokenizer loaded.');
 
-      return { 
+      return {
         device: (model as unknown as ModelInternals)?.device || 'wasm'
       };
     } catch (err) {
-      const errorMsg = typeof err === 'number' 
+      const errorMsg = typeof err === 'number'
         ? `Low-level engine error (code ${err}). This usually means memory allocation failed or the model format is incompatible.`
         : (err instanceof Error ? err.message : String(err));
-      
+
       console.error('[transformersJsWorker] Detailed load error:', err, errorMsg);
       throw new Error(errorMsg);
     }
@@ -436,7 +436,7 @@ const transformersJsWorker: ITransformersJsWorker = {
   },
 
   async generateText(
-    messages: ChatMessage[], 
+    messages: ChatMessage[],
     onChunk: (chunk: string) => void,
     params?: LmParameters
   ): Promise<void> {
@@ -446,7 +446,7 @@ const transformersJsWorker: ITransformersJsWorker = {
 
     const formattedMessages = messages.map(m => ({
       role: m.role,
-      content: typeof m.content === 'string' ? m.content : '' 
+      content: typeof m.content === 'string' ? m.content : ''
     }));
 
     const inputs = tokenizer.apply_chat_template(formattedMessages, {

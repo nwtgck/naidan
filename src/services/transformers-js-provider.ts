@@ -11,7 +11,7 @@ export class TransformersJsProvider implements LLMProvider {
     signal?: AbortSignal;
   }): Promise<void> {
     const { messages, model, onChunk, parameters, signal } = params;
-    
+
     // Auto-load if needed
     const state = transformersJsService.getState();
     if (state.activeModelId !== model || state.status !== 'ready') {
@@ -30,7 +30,7 @@ export class TransformersJsProvider implements LLMProvider {
         throw new Error(`Unhandled status: ${_ex}`);
       }
       }
-      
+
       console.log(`[TransformersJsProvider] Auto-loading model: ${model}`);
       await transformersJsService.loadModel(model);
     }

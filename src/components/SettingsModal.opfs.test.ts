@@ -36,7 +36,7 @@ vi.mock('../composables/usePrompt', () => ({
   usePrompt: () => ({ showPrompt: vi.fn() }),
 }));
 vi.mock('../services/storage', () => ({
-  storageService: { 
+  storageService: {
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     clearAll: vi.fn(),
@@ -58,7 +58,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
       Logo: true, ImportExportModal: true, ChefHat: true, Download: true,
       Github: true, ExternalLink: true, Plus: true, Info: true,
       FileArchive: true, HardDrive: true, MessageSquareQuote: true,
-      TransformersJsManager: true, 
+      TransformersJsManager: true,
       // Do not stub tabs that are tested
       RecipeImportTab: true, DeveloperTab: true, AboutTab: true,
     },
@@ -95,43 +95,43 @@ describe('SettingsModal OPFS and Error Handling', () => {
   }
 
   it('should disable OPFS option if navigator.storage is undefined', async () => {
-    vi.stubGlobal('navigator', {}); 
+    vi.stubGlobal('navigator', {});
     vi.stubGlobal('isSecureContext', true);
-    
+
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
       global: globalMocks
     });
     await flushPromises();
-    
+
     const tabs = wrapper.findAll('button');
     const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
     if (storageTab) await storageTab.trigger('click');
     await wait();
-    
+
     const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
     expect(opfsOption.text()).toContain('Unsupported');
   });
 
   it('should disable OPFS option if not in secure context', async () => {
-    vi.stubGlobal('navigator', { 
-      storage: { 
-        getDirectory: vi.fn().mockRejectedValue(new Error('Security Error')) 
-      } 
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockRejectedValue(new Error('Security Error'))
+      }
     });
-    
+
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
       global: globalMocks
     });
     await flushPromises();
-    
+
     const tabs = wrapper.findAll('button');
     const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
     if (storageTab) await storageTab.trigger('click');
     await wait();
-    
+
     const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
     expect(opfsOption.text()).toContain('Unsupported');
@@ -147,18 +147,18 @@ describe('SettingsModal OPFS and Error Handling', () => {
     };
     vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) } });
     vi.stubGlobal('isSecureContext', true);
-    
+
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
       global: globalMocks
     });
     await flushPromises();
-    
+
     const tabs = wrapper.findAll('button');
     const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
     if (storageTab) await storageTab.trigger('click');
     await wait();
-    
+
     const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
     expect(opfsOption.classes()).not.toContain('cursor-not-allowed');
     expect(opfsOption.text()).not.toContain('Unsupported');
@@ -227,7 +227,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
     const saveButton = wrapper.find('[data-testid="setting-save-button"]');
     await saveButton.trigger('click');
-    
+
     expect(mockSave).toHaveBeenCalled();
     expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
       title: 'Save Failed',

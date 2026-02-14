@@ -11,7 +11,7 @@ export function naturalSort(arr: readonly string[]): string[] {
  * Sanitizes a string for use as a filename.
  * Replaces invalid characters, normalizes whitespace, and truncates to 255 bytes
  * (UTF-8) including the suffix and an ellipsis if truncated.
- * 
+ *
  * If the resulting base is empty after sanitization, the provided fallback is used.
  */
 export function sanitizeFilename({ base, suffix, fallback }: {
@@ -32,7 +32,7 @@ export function sanitizeFilename({ base, suffix, fallback }: {
   const ext = suffix;
   const ellipsis = '...';
   const MAX_BYTES = 255;
-  
+
   const encoder = new TextEncoder();
   const getByteLength = (s: string) => encoder.encode(s).length;
 
@@ -43,7 +43,7 @@ export function sanitizeFilename({ base, suffix, fallback }: {
 
   // Truncate base to account for suffix and ellipsis
   const availableBytesForBase = MAX_BYTES - getByteLength(ellipsis) - getByteLength(ext);
-  
+
   if (availableBytesForBase <= 0) {
     // No room for base + ellipsis. Truncate from the total combined string.
     const chars = Array.from(fullPath);

@@ -33,12 +33,12 @@ import { webSpeechService } from './web-speech';
 describe('WebSpeechService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Force set the private synth if it was initialized as null
     if (!(webSpeechService as any).synth) {
       (webSpeechService as any).synth = mockSynth;
     }
-    
+
     // Reset service state
     webSpeechService.stop();
   });
@@ -51,7 +51,7 @@ describe('WebSpeechService', () => {
     it('removes think blocks and markdown', () => {
       const text = '<think>internal</think> Hello **world**! ```code```';
       webSpeechService.speak({ text, messageId: '1' });
-      
+
       const calls = mockSynth.speak.mock.calls;
       const utterance = (calls[0] as any[])?.[0] as MockUtterance | undefined;
       expect(utterance?.text).toBe('Hello world! [Code block]');
@@ -60,7 +60,7 @@ describe('WebSpeechService', () => {
     it('replaces colons with periods for pauses', () => {
       const text = 'Answer: Hello';
       webSpeechService.speak({ text, messageId: '1' });
-      
+
       const calls = mockSynth.speak.mock.calls;
       const utterance = (calls[0] as any[])?.[0] as MockUtterance | undefined;
       expect(utterance?.text).toBe('Answer. Hello');
@@ -72,7 +72,7 @@ Line 2
 
 Line 3`;
       webSpeechService.speak({ text, messageId: '1' });
-      
+
       const calls = mockSynth.speak.mock.calls;
       const utterance = (calls[0] as any[])?.[0] as MockUtterance | undefined;
       expect(utterance?.text).toBe('Line 1, Line 2. Line 3');
@@ -107,7 +107,7 @@ Line 3`;
       webSpeechService.speak({ text: 'Hello', messageId: '1' });
       const calls = mockSynth.speak.mock.calls;
       const utterance = (calls[0] as any[])?.[0] as MockUtterance | undefined;
-      
+
       utterance?.onstart?.();
       expect(webSpeechService.state.status).toBe('playing');
       expect(webSpeechService.state.activeMessageId).toBe('1');
@@ -117,7 +117,7 @@ Line 3`;
       webSpeechService.speak({ text: 'Hello', messageId: '1' });
       const calls = mockSynth.speak.mock.calls;
       const utterance = (calls[0] as any[])?.[0] as MockUtterance | undefined;
-      
+
       utterance?.onstart?.();
       utterance?.onend?.();
       expect(webSpeechService.state.status).toBe('inactive');
@@ -129,11 +129,11 @@ Line 3`;
       const calls = mockSynth.speak.mock.calls;
       const utterance = (calls[0] as any[])?.[0] as MockUtterance | undefined;
       utterance?.onstart?.();
-      
+
       webSpeechService.pause();
       expect(mockSynth.pause).toHaveBeenCalled();
       expect(webSpeechService.state.status).toBe('paused');
-      
+
       webSpeechService.speak({ text: 'Hello', messageId: '1' });
       expect(mockSynth.resume).toHaveBeenCalled();
       expect(webSpeechService.state.status).toBe('playing');
@@ -142,11 +142,11 @@ Line 3`;
     it('stops current when starting a new message', () => {
       webSpeechService.speak({ text: 'Message 1', messageId: '1' });
       expect(mockSynth.speak).toHaveBeenCalledTimes(1);
-      
+
       webSpeechService.speak({ text: 'Message 2', messageId: '2' });
       expect(mockSynth.cancel).toHaveBeenCalled();
       expect(mockSynth.speak).toHaveBeenCalledTimes(2);
-      
+
       const calls = mockSynth.speak.mock.calls;
       const utterance2 = (calls[1] as any[])?.[0] as MockUtterance | undefined;
       utterance2?.onstart?.();

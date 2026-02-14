@@ -27,7 +27,7 @@ describe('DTO Backward Compatibility', () => {
 
     // 1. Validate DTO parsing (Zod should handle defaults/optionals)
     const dto = ChatSchemaDto.parse(v1LegacyData);
-    
+
     // 2. Map to Domain
     const domain = chatToDomain(dto);
 
@@ -35,7 +35,7 @@ describe('DTO Backward Compatibility', () => {
     expect(domain.id).toBe(v1LegacyData.id);
     expect(domain.debugEnabled).toBe(false); // Default should be applied
     expect(domain.endpointType).toBeUndefined(); // Should be optional
-    
+
     // In new tree structure, we check root.items
     expect(domain.root.items[0]?.id).toBe(v1LegacyData.messages[0]?.id);
     expect(domain.root.items[0]?.role).toBe('user');

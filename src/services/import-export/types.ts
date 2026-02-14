@@ -44,7 +44,7 @@ export interface PreviewChatGroup {
   _order: number;
 }
 
-export type ImportPreviewItem = 
+export type ImportPreviewItem =
   | { type: 'chat', data: PreviewChat }
   | { type: 'chat_group', data: PreviewChatGroup };
 

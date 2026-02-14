@@ -10,7 +10,7 @@ class MockFileSystemFileHandle {
   kind = 'file' as const;
   constructor(public name: string, private blob: Blob = new Blob()) {}
   async getFile() {
-    return this.blob; 
+    return this.blob;
   }
   createWritable() {
     return Promise.resolve({
@@ -39,7 +39,7 @@ class MockFileSystemDirectoryHandle {
       if (options?.create) this.entries.set(name, new MockFileSystemDirectoryHandle(name));
 
       else {
-        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err; 
+        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err;
       }
 
     }
@@ -59,7 +59,7 @@ class MockFileSystemDirectoryHandle {
       if (options?.create) this.entries.set(name, new MockFileSystemFileHandle(name));
 
       else {
-        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err; 
+        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err;
       }
 
     }
@@ -73,11 +73,11 @@ class MockFileSystemDirectoryHandle {
   }
 
   async removeEntry(name: string, _options?: { recursive?: boolean }) {
-    this.entries.delete(name); 
+    this.entries.delete(name);
   }
 
   async *values() {
-    for (const entry of this.entries.values()) yield entry; 
+    for (const entry of this.entries.values()) yield entry;
   }
 
 }
@@ -140,12 +140,12 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const metaDir = await naidanDir.getDirectoryHandle('chat-metas', { create: true });
     const metaFile = await metaDir.getFileHandle(`${chatId}.json`, { create: true });
     const mw = await (metaFile as any).createWritable();
-    await mw.write(JSON.stringify({ 
-      id: chatId, 
-      title: 'T', 
-      createdAt: Date.now(), 
-      updatedAt: Date.now(), 
-      debugEnabled: false 
+    await mw.write(JSON.stringify({
+      id: chatId,
+      title: 'T',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false
     }));
     await mw.close();
   };
@@ -164,7 +164,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     expect(att.binaryObjectId).toBeDefined();
     expect(att.binaryObjectId).not.toBe(VALID_UUID_1);
     expect(att.status).toBe('persisted');
-    
+
     const blob = await provider.getFile(att.binaryObjectId);
     expect(blob).not.toBeNull();
     expect(await blob!.text()).toBe('DATA');
@@ -185,7 +185,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
   it('should initialize successfully on a fresh installation with no data', async () => {
     const provider = new OPFSStorageProvider();
     await provider.init();
-    
+
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage');
     const stateFile = await naidanDir.getFileHandle('migration-state.json');
     expect(stateFile).toBeDefined();
@@ -204,7 +204,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
   it('should map shared legacy attachments across different chats to the same binary object', async () => {
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage', { create: true });
     await setupLegacyFile(naidanDir, VALID_UUID_1, 'shared.png', 'SHARED_DATA');
-    
+
     await setupLegacyChat(naidanDir, CHAT_ID_1, [{ id: VALID_UUID_1, originalName: 'shared.png', status: 'persisted', mimeType: 'image/png', size: 11, uploadedAt: 0 }]);
     await setupLegacyChat(naidanDir, CHAT_ID_2, [{ id: VALID_UUID_1, originalName: 'shared.png', status: 'persisted', mimeType: 'image/png', size: 11, uploadedAt: 0 }]);
 
@@ -213,11 +213,11 @@ describe('OPFSStorageProvider - Migration Logic', () => {
 
     const chatA = await provider.loadChat(CHAT_ID_1);
     const chatB = await provider.loadChat(CHAT_ID_2);
-    
+
     const bIdA = chatA!.root.items[0]!.attachments![0]!.binaryObjectId;
     const bIdB = chatB!.root.items[0]!.attachments![0]!.binaryObjectId;
-    
-    expect(bIdA).toBe(bIdB); 
+
+    expect(bIdA).toBe(bIdB);
   });
 
   it('should mark attachments as missing if their physical files are absent from legacy storage', async () => {
@@ -238,7 +238,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage', { create: true });
     await setupLegacyFile(naidanDir, VALID_UUID_1, 'img.png', 'DATA');
     await setupLegacyChat(naidanDir, CHAT_ID_1, [{ id: VALID_UUID_1, originalName: 'img.png', status: 'persisted', mimeType: 'image/png', size: 4, uploadedAt: 0 }]);
-    
+
     const contentDir = await naidanDir.getDirectoryHandle('chat-contents', { create: true });
     const broken = await contentDir.getFileHandle('broken.json', { create: true });
     const w = await (broken as any).createWritable();
@@ -246,7 +246,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     await w.close();
 
     const provider = new OPFSStorageProvider();
-    await provider.init(); 
+    await provider.init();
 
     const chat = await provider.loadChat(CHAT_ID_1);
     expect(chat!.root.items[0]!.attachments![0]!.binaryObjectId).toBeDefined();
@@ -259,7 +259,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
 
     const provider = new OPFSStorageProvider();
     await provider.init();
-    
+
     const chat1 = await provider.loadChat(CHAT_ID_1);
     const bId = chat1!.root.items[0]!.attachments![0]!.binaryObjectId;
 
@@ -323,13 +323,13 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage', { create: true });
     const legacyDir = await naidanDir.getDirectoryHandle('uploaded-files', { create: true });
     const attDir = await legacyDir.getDirectoryHandle(VALID_UUID_1, { create: true });
-    
+
     // Multiple files in one folder (anomaly case)
     const f1 = await attDir.getFileHandle('file1.png', { create: true });
     const w1 = await (f1 as any).createWritable();
     await w1.write('DATA1');
     await w1.close();
-    
+
     const f2 = await attDir.getFileHandle('file2.png', { create: true });
     const w2 = await (f2 as any).createWritable();
     await w2.write('DATA2');

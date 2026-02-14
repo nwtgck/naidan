@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { generateId } from '../utils/id';
 import { ref, watch } from 'vue';
-import { 
+import {
   ChefHat, Save, AlertTriangle
 } from 'lucide-vue-next';
 import { parseConcatenatedJson } from '../utils/json-stream-parser';
@@ -35,7 +35,7 @@ const recipeAnalysisError = ref<string | null>(null);
 function getSortedModels(matchedModelId?: string) {
   const models = naturalSort(props.availableModels || []);
   if (!matchedModelId) return models;
-  
+
   const index = models.indexOf(matchedModelId);
   if (index > -1) {
     models.splice(index, 1);
@@ -123,14 +123,14 @@ defineExpose({
         <ChefHat class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Recipes</h2>
       </div>
-    
+
       <p class="text-sm font-medium text-gray-500">
         Import predefined chat group settings (prompts, parameters, and model rules) from JSON.
       </p>
 
       <div class="space-y-4">
         <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Paste Recipe JSON (Concatenated JSON objects supported)</label>
-        <textarea 
+        <textarea
           v-model="recipeJsonInput"
           rows="8"
           class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-xs font-mono text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
@@ -146,7 +146,7 @@ defineExpose({
 }'
           data-testid="recipe-json-input"
         ></textarea>
-        
+
         <div v-if="recipeAnalysisError" class="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-xl animate-in fade-in slide-in-from-top-1 duration-200">
           <p class="text-xs text-red-600 dark:text-red-400 font-bold flex items-center gap-2">
             <AlertTriangle class="w-4 h-4" />
@@ -159,7 +159,7 @@ defineExpose({
       <div v-if="analyzedRecipes.length > 0" class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800 animate-in fade-in slide-in-from-top-2 duration-300">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-bold text-gray-400 uppercase tracking-widest ml-1">Detected Recipes ({{ analyzedRecipes.length }})</h3>
-          <button 
+          <button
             @click="handleImportRecipes"
             class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-2xl shadow-lg shadow-green-500/30 transition-all active:scale-95 flex items-center gap-2"
             data-testid="recipe-import-button"
@@ -170,20 +170,20 @@ defineExpose({
         </div>
 
         <div class="grid grid-cols-1 gap-4">
-          <div 
-            v-for="item in analyzedRecipes" 
+          <div
+            v-for="item in analyzedRecipes"
             :key="item.id"
             class="p-5 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-3xl flex items-start gap-4 transition-all hover:border-blue-500/30"
           >
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               v-model="item.selected"
               class="mt-1 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
             >
             <div class="flex-1 min-w-0 space-y-3">
               <div class="flex flex-col gap-1.5">
                 <label class="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">Chat Group Name</label>
-                <input 
+                <input
                   v-model="item.newName"
                   class="bg-transparent border-b border-gray-100 dark:border-gray-700 hover:border-blue-500 focus:border-blue-500 focus:outline-none text-base font-bold text-gray-800 dark:text-white transition-all w-full pb-1"
                   placeholder="Chat Group Name"
@@ -194,7 +194,7 @@ defineExpose({
               <div class="space-y-2">
                 <label class="text-[9px] font-bold text-gray-400 uppercase tracking-widest ml-0.5">Model Selection</label>
                 <div class="flex flex-col gap-2">
-                  <ModelSelector 
+                  <ModelSelector
                     v-model="item.matchedModelId"
                     :models="getSortedModels(item.matchedModelId)"
                     placeholder="Use Default Model"

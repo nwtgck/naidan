@@ -38,8 +38,8 @@ describe('useBinaryActions', () => {
 
   it('deletes object after confirmation', async () => {
     const { deleteBinaryObject } = useBinaryActions();
-    vi.mocked(storageService.getBinaryObject).mockResolvedValue({ 
-      id: 'bin-1', name: 'test.png', mimeType: 'image/png', size: 100, createdAt: 1000 
+    vi.mocked(storageService.getBinaryObject).mockResolvedValue({
+      id: 'bin-1', name: 'test.png', mimeType: 'image/png', size: 100, createdAt: 1000
     });
     mockShowConfirm.mockResolvedValue(true);
 
@@ -82,7 +82,7 @@ describe('useBinaryActions', () => {
     expect(URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
     expect(mockAnchor.download).toBe('test.png');
     expect(mockAnchor.click).toHaveBeenCalled();
-    
+
     spy.mockRestore();
   });
 });

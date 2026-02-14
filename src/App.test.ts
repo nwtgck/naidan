@@ -84,7 +84,7 @@ vi.mock('./components/ToastContainer.vue', () => ({
 // Instead we stub them in the mount options.
 
 describe('App', () => {
-  
+
 
   const mockInit = vi.fn();
   const currentRoute = reactive({ path: '/', query: {} as any });
@@ -187,7 +187,7 @@ describe('App', () => {
 
     // Simulate clearing history
     mockChats.value = [];
-    
+
     await nextTick();
     await nextTick();
     await nextTick();
@@ -213,7 +213,7 @@ describe('App', () => {
 
     // Navigate to root
     currentRoute.path = '/';
-    
+
     await nextTick();
     await nextTick();
     await nextTick();
@@ -451,12 +451,12 @@ describe('App', () => {
   it('opens SettingsModal when route query settings is present', async () => {
     const wrapper = mountApp();
     await flushPromises();
-    
+
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(false);
-    
+
     currentRoute.query = { settings: 'connection' };
     await nextTick();
-    
+
     expect(wrapper.find('[data-testid="settings-modal"]').exists()).toBe(true);
   });
 
@@ -470,7 +470,7 @@ describe('App', () => {
 
     const wrapper = mountApp();
     await flushPromises();
-    
+
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
   });
 
@@ -485,7 +485,7 @@ describe('App', () => {
 
     const wrapper = mountApp();
     await flushPromises();
-    
+
     // Initially shown
     expect(wrapper.find('[data-testid="onboarding-modal"]').exists()).toBe(true);
 
@@ -504,7 +504,7 @@ describe('App', () => {
     mockCreateNewChat.mockImplementation(async () => {
       mockCurrentChat.value = { id: 'new-chat-id' } as unknown as Chat;
     });
-    
+
     mountApp();
     await flushPromises();
 
@@ -532,7 +532,7 @@ describe('App', () => {
     mockCreateNewChat.mockImplementation(async () => {
       mockCurrentChat.value = { id: 'mac-chat-id' } as unknown as Chat;
     });
-    
+
     mountApp();
     await flushPromises();
 

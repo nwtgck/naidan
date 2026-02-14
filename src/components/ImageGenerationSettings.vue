@@ -90,8 +90,8 @@ defineExpose({
     <div v-if="showHeader" class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
       Experimental Tools
     </div>
-    
-    <button 
+
+    <button
       v-if="canGenerateImage"
       @click="emit('toggle-image-mode')"
       class="w-full flex items-center gap-3 px-3 py-2 text-sm text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -108,7 +108,7 @@ defineExpose({
       <!-- Model Selector -->
       <div v-if="availableImageModels.length > 0" class="px-3 py-2 border-b dark:border-gray-700">
         <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Image Model</div>
-        <ModelSelector 
+        <ModelSelector
           :model-value="selectedImageModel"
           @update:model-value="val => val && handleModelUpdate(val)"
           :models="availableImageModels"
@@ -122,13 +122,13 @@ defineExpose({
         <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Resolution</div>
         <div class="flex flex-col gap-2">
           <div class="flex flex-wrap gap-1.5">
-            <button 
-              v-for="res in resolutions" 
+            <button
+              v-for="res in resolutions"
               :key="`${res.width}x${res.height}`"
               @click="emit('update:resolution', res.width, res.height)"
               class="flex-1 min-w-[50px] px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap flex flex-col items-center justify-center"
-              :class="selectedWidth === res.width && selectedHeight === res.height 
-                ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
+              :class="selectedWidth === res.width && selectedHeight === res.height
+                ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
                 : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
             >
               <span class="opacity-70 text-[8px] leading-tight">{{ res.label }}</span>
@@ -136,23 +136,23 @@ defineExpose({
             </button>
           </div>
           <div class="flex gap-1.5 items-center">
-            <input 
-              type="number" 
+            <input
+              type="number"
               min="1"
               :value="selectedWidth"
               @input="handleWidthInput"
               class="flex-1 min-w-0 px-1 py-1 text-[10px] font-mono text-center border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               placeholder="Width"
             />
-            <button 
+            <button
               @click="swapResolution"
               class="p-1 text-gray-400 hover:text-blue-500 transition-colors"
               title="Swap Width and Height"
             >
               <ArrowLeftRight class="w-3 h-3" />
             </button>
-            <input 
-              type="number" 
+            <input
+              type="number"
               min="1"
               :value="selectedHeight"
               @input="handleHeightInput"
@@ -168,20 +168,20 @@ defineExpose({
         <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Number of Images</div>
         <div class="flex gap-1.5 items-center">
           <div class="flex flex-1 gap-1">
-            <button 
-              v-for="count in counts" 
+            <button
+              v-for="count in counts"
               :key="count"
               @click="emit('update:count', count)"
               class="flex-1 px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap"
-              :class="selectedCount === count 
-                ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
+              :class="selectedCount === count
+                ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
                 : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
             >
               {{ count }}
             </button>
           </div>
-          <input 
-            type="number" 
+          <input
+            type="number"
             min="1"
             :value="selectedCount"
             @input="handleCountInput"
@@ -195,13 +195,13 @@ defineExpose({
       <div class="px-3 py-2 border-t dark:border-gray-700">
         <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Save Format</div>
         <div class="flex flex-wrap gap-1.5">
-          <button 
-            v-for="format in saveFormats" 
+          <button
+            v-for="format in saveFormats"
             :key="format.value"
             @click="emit('update:persist-as', format.value)"
             class="flex-1 px-1 py-1 text-[10px] font-mono border rounded-md transition-all whitespace-nowrap"
-            :class="selectedPersistAs === format.value 
-              ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
+            :class="selectedPersistAs === format.value
+              ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
               : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
           >
             {{ format.label }}

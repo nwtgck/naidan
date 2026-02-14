@@ -93,9 +93,9 @@ describe('Sidebar IME handling', () => {
     // Open creation input
     await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
     const input = wrapper.find('[data-testid="chat-group-name-input"]');
-    
+
     await input.setValue('Japanese Name');
-    
+
     // Simulate Enter keyup while composing (IME confirming candidate)
     await input.trigger('keydown', {
       key: 'Enter',
@@ -109,23 +109,23 @@ describe('Sidebar IME handling', () => {
   it('should NOT rename chat group on enter if IME is composing', async () => {
     const group: ChatGroup = { id: 'g1', name: 'Old Group', isCollapsed: false, updatedAt: 0, items: [] };
     mockChatGroups.value = [group];
-    
+
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     // @ts-expect-error - access internal sync
     wrapper.vm.syncLocalItems();
     await wrapper.vm.$nextTick();
 
     // Start editing
     await wrapper.find('button[class*="hover:text-blue-600"]').trigger('click'); // Pencil button for group
-    
+
     const input = wrapper.find('[data-testid="chat-group-rename-input"]');
     expect(input.exists()).toBe(true);
 
     await input.setValue('New Group Name');
-    
+
     // Simulate Enter keydown while composing
     await input.trigger('keydown', {
       key: 'Enter',
@@ -139,23 +139,23 @@ describe('Sidebar IME handling', () => {
   it('should NOT rename chat on enter if IME is composing', async () => {
     const chat: ChatSummary = { id: 'c1', title: 'Old Chat', updatedAt: 0 };
     mockChats.value = [chat];
-    
+
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     // @ts-expect-error - access internal sync
     wrapper.vm.syncLocalItems();
     await wrapper.vm.$nextTick();
 
     // Start editing
     await wrapper.find('button[class*="hover:text-blue-600"]').trigger('click'); // Pencil button for chat
-    
+
     const input = wrapper.find('[data-testid="chat-rename-input"]');
     expect(input.exists()).toBe(true);
 
     await input.setValue('New Chat Title');
-    
+
     // Simulate Enter keyup while composing
     await input.trigger('keydown', {
       key: 'Enter',

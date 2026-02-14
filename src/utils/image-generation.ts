@@ -1,7 +1,7 @@
 /**
  * Image Generation Utilities
- * 
- * Handles technical comments (sentinels) and model discovery for the 
+ *
+ * Handles technical comments (sentinels) and model discovery for the
  * experimental image generation feature.
  */
 import { z } from 'zod';
@@ -155,9 +155,9 @@ export function getImageGenerationProgress(content: string): { totalCount: numbe
   if (!response) return { totalCount: undefined, remainingCount: undefined };
 
   const totalCount = response.count ?? 1;
-  
+
   // Count already generated images in both OPFS (Markdown block) and local (img tag) modes
-  const processedCount = 
+  const processedCount =
     (content.match(new RegExp('```' + IMAGE_BLOCK_LANG, 'g')) || []).length +
     (content.match(/<img/g) || []).length;
 

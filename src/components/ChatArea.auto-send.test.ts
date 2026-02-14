@@ -56,8 +56,8 @@ vi.mock('../composables/useChat', () => ({
     isProcessing: vi.fn((_id: string) => mockStreaming.value),
     isImageMode: vi.fn(() => false),
     toggleImageMode: vi.fn(),
-    getResolution: vi.fn(() => ({ width: 512, height: 512 })), 
-    getCount: vi.fn(() => 1), 
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    getCount: vi.fn(() => 1),
     updateCount: vi.fn(),
     getPersistAs: vi.fn(() => 'original'),
     updatePersistAs: vi.fn(),
@@ -66,7 +66,7 @@ vi.mock('../composables/useChat', () => ({
     getSelectedImageModel: vi.fn(),
     getSortedImageModels: vi.fn(() => []),
     imageModeMap: ref({}),
-    imageResolutionMap: ref({}), 
+    imageResolutionMap: ref({}),
     imageCountMap: ref({}),
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
@@ -94,11 +94,11 @@ describe('ChatArea Auto-send', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCurrentChat.value = {
-      id: '1', 
-      title: 'Test Chat', 
+      id: '1',
+      title: 'Test Chat',
       root: { items: [] },
       currentLeafId: undefined,
-      debugEnabled: false, 
+      debugEnabled: false,
       originChatId: undefined,
       modelId: undefined,
       createdAt: Date.now(),
@@ -113,7 +113,7 @@ describe('ChatArea Auto-send', () => {
 
   it('should wait for currentChat to be available before auto-sending', async () => {
     mockCurrentChat.value = null;
-    
+
     const wrapper = mount(ChatArea, {
       props: {
         autoSendPrompt: 'hello'
@@ -125,11 +125,11 @@ describe('ChatArea Auto-send', () => {
 
     // Now set currentChat
     mockCurrentChat.value = {
-      id: '1', 
-      title: 'Test Chat', 
+      id: '1',
+      title: 'Test Chat',
       root: { items: [] },
       currentLeafId: undefined,
-      debugEnabled: false, 
+      debugEnabled: false,
       originChatId: undefined,
       modelId: undefined,
       createdAt: Date.now(),
@@ -146,7 +146,7 @@ describe('ChatArea Auto-send', () => {
 
   it('should not clear input if sendMessage fails', async () => {
     mockSendMessage.mockResolvedValue(false);
-    
+
     const wrapper = mount(ChatArea, {
       props: {
         autoSendPrompt: 'hello'
@@ -167,7 +167,7 @@ describe('ChatArea Auto-send', () => {
   it('should NOT return early in handleSend if only fetching models', async () => {
     // Simulate fetching models
     mockIsTaskRunningValue.value = true;
-    
+
     mount(ChatArea, {
       props: {
         autoSendPrompt: 'hello'

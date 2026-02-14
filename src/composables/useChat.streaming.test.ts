@@ -21,16 +21,16 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-const mockSettings = { 
-  value: { 
-    endpointType: 'openai', 
-    endpointUrl: 'http://localhost', 
-    storageType: 'local', 
-    autoTitleEnabled: false, 
+const mockSettings = {
+  value: {
+    endpointType: 'openai',
+    endpointUrl: 'http://localhost',
+    storageType: 'local',
+    autoTitleEnabled: false,
     defaultModelId: 'gpt-4',
     lmParameters: {},
     providerProfiles: [],
-  } 
+  }
 };
 
 vi.mock('./useSettings', () => ({
@@ -76,7 +76,7 @@ describe('useChat Streaming State Logic', () => {
   it('should correctly set streaming state when generation starts and ends', async () => {
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chat = currentChat.value!;
-    
+
     let resolveGen: () => void;
     const p = new Promise<void>(r => resolveGen = r);
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
@@ -103,7 +103,7 @@ describe('useChat Streaming State Logic', () => {
   it('should clear streaming state when aborted', async () => {
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chat = currentChat.value!;
-    
+
     let resolveGen: () => void;
     const p = new Promise<void>(r => resolveGen = r);
     mockLlmChat.mockImplementationOnce(async (params: { signal?: AbortSignal }) => {
@@ -119,8 +119,8 @@ describe('useChat Streaming State Logic', () => {
 
     abortChat();
     resolveGen!();
-    
-    // sendMessage itself might not throw because it backgrounds generation, 
+
+    // sendMessage itself might not throw because it backgrounds generation,
     // but we wait for streaming to clear.
     await sendPromise;
     await vi.waitUntil(() => !streaming.value, { timeout: 5000 });

@@ -70,7 +70,7 @@ describe('OnboardingModal Design Specifications', () => {
   it('complies with the project-wide close button design pattern', () => {
     const wrapper = mount(OnboardingModal);
     const closeBtn = wrapper.find('[data-testid="onboarding-close-x"]');
-    
+
     expect(closeBtn.classes()).toContain('rounded-xl');
     expect(closeBtn.classes()).toContain('hover:bg-gray-50');
     expect(closeBtn.classes()).toContain('transition-colors');

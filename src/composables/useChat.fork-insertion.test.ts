@@ -24,17 +24,17 @@ vi.mock('../services/storage', () => ({
         })
       };
       const updated = await updater(currentH as any);
-      
+
       // We don't really need to map back to rootItems here because forkChat calls loadData()
-      // which calls getSidebarStructure(). 
+      // which calls getSidebarStructure().
       // So we just need to make getSidebarStructure return the updated structure.
       vi.mocked(storageService.getSidebarStructure).mockImplementation(async () => {
         return updated.items.map((node: any) => {
           if (node.type === 'chat') {
             return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: node.id === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } };
           }
-          return { 
-            id: `chat_group:${node.id}`, type: 'chat_group', 
+          return {
+            id: `chat_group:${node.id}`, type: 'chat_group',
             chatGroup: { id: node.id, name: 'G1', isCollapsed: false, updatedAt: 0, items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: cid === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } })) }
           };
         }) as any;
@@ -63,19 +63,19 @@ describe('useChat Fork Insertion Logic', () => {
 
   it('should insert fork at the top of the chat block when not in a chat group', async () => {
     const chat = useChat();
-    
+
     chat.rootItems.value = [
       { id: 'chat_group:1', type: 'chat_group', chatGroup: { id: 'g1', name: 'G1', items: [], isCollapsed: false, updatedAt: 0 } } as SidebarItem,
       { id: 'chat:a', type: 'chat', chat: { id: 'a', title: 'A', updatedAt: 0, groupId: null } } as SidebarItem,
     ];
-    
-    (storageService.loadChat as any).mockResolvedValue({ 
+
+    (storageService.loadChat as any).mockResolvedValue({
       id: 'a', title: 'A', root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1'
     });
 
-    chat.__testOnly.__testOnlySetCurrentChat({ 
+    chat.__testOnly.__testOnlySetCurrentChat({
       id: 'a', title: 'A', root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1'
@@ -95,7 +95,7 @@ describe('useChat Fork Insertion Logic', () => {
     } else {
       throw new Error('Expected chat item at index 1');
     }
-    
+
     const item2 = chat.rootItems.value[2];
     if (item2?.type === 'chat') {
       expect(item2.chat.id).toBe('a');
@@ -106,30 +106,30 @@ describe('useChat Fork Insertion Logic', () => {
 
   it('should insert fork at the top of the chat group when parent is in a chat group', async () => {
     const chat = useChat();
-    
+
     chat.rootItems.value = [
-      { 
-        id: 'chat_group:1', 
-        type: 'chat_group', 
-        chatGroup: { 
-          id: 'g1', 
-          name: 'G1', 
-          items: [{ id: 'chat:a', type: 'chat', chat: { id: 'a', title: 'A', updatedAt: 0, groupId: 'g1' } } as SidebarItem], 
-          isCollapsed: false, 
-          updatedAt: 0 
-        } 
+      {
+        id: 'chat_group:1',
+        type: 'chat_group',
+        chatGroup: {
+          id: 'g1',
+          name: 'G1',
+          items: [{ id: 'chat:a', type: 'chat', chat: { id: 'a', title: 'A', updatedAt: 0, groupId: 'g1' } } as SidebarItem],
+          isCollapsed: false,
+          updatedAt: 0
+        }
       } as SidebarItem,
     ];
-    
-    (storageService.loadChat as any).mockResolvedValue({ 
+
+    (storageService.loadChat as any).mockResolvedValue({
       id: 'a', title: 'A', groupId: 'g1',
       root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1'
     });
 
-    chat.__testOnly.__testOnlySetCurrentChat({ 
-      id: 'a', title: 'A', groupId: 'g1', 
+    chat.__testOnly.__testOnlySetCurrentChat({
+      id: 'a', title: 'A', groupId: 'g1',
       root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1'
@@ -150,7 +150,7 @@ describe('useChat Fork Insertion Logic', () => {
       } else {
         throw new Error('Expected chat item at chat group index 0');
       }
-      
+
       const secondChat = groupItem.chatGroup.items[1];
       if (secondChat?.type === 'chat') {
         expect(secondChat.chat.id).toBe('a');

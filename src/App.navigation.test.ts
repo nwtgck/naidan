@@ -148,10 +148,10 @@ describe('App Navigation & Regression Tests', () => {
     });
 
     await flushPromises();
-    
+
     // Initial mount at /
     expect(mountSpy).toHaveBeenCalledTimes(1);
-    
+
     // Navigate to a chat
     mockCurrentChat.value = { id: 'chat-1' } as Chat;
     await router.push('/chat/chat-1');

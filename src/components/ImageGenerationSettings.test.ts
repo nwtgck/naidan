@@ -18,10 +18,10 @@ describe('ImageGenerationSettings', () => {
 
   it('renders all resolution presets with labels', () => {
     const wrapper = mount(ImageGenerationSettings, { props: defaultProps });
-    
+
     const resButtons = wrapper.findAll('button').filter(b => b.classes().includes('font-mono') && b.text().includes('x'));
     expect(resButtons.length).toBe(6);
-    
+
     // Check for some specific labels
     expect(wrapper.text()).toContain('720p');
     expect(wrapper.text()).toContain('144p');
@@ -35,13 +35,13 @@ describe('ImageGenerationSettings', () => {
   });
 
   it('swaps width and height when swap button is clicked', async () => {
-    const wrapper = mount(ImageGenerationSettings, { 
-      props: { ...defaultProps, selectedWidth: 1280, selectedHeight: 720 } 
+    const wrapper = mount(ImageGenerationSettings, {
+      props: { ...defaultProps, selectedWidth: 1280, selectedHeight: 720 }
     });
-    
+
     const swapButton = wrapper.find('button[title="Swap Width and Height"]');
     await swapButton.trigger('click');
-    
+
     const emitted = wrapper.emitted('update:resolution');
     expect(emitted).toBeTruthy();
     expect(emitted![0]).toEqual([720, 1280]);
@@ -51,7 +51,7 @@ describe('ImageGenerationSettings', () => {
     const wrapper = mount(ImageGenerationSettings, { props: defaultProps });
     const res720p = wrapper.findAll('button').find(b => b.text().includes('1280x720'));
     await res720p?.trigger('click');
-    
+
     expect(wrapper.emitted('update:resolution')).toContainEqual([1280, 720]);
   });
 });

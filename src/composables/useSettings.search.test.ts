@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useSettings } from './useSettings';
 
 describe('useSettings - Search Volatile State', () => {
-  const { 
-    searchPreviewEnabled, 
-    searchContextSize, 
-    setSearchPreviewEnabled, 
-    setSearchContextSize 
+  const {
+    searchPreviewEnabled,
+    searchContextSize,
+    setSearchPreviewEnabled,
+    setSearchContextSize
   } = useSettings();
 
   beforeEach(() => {

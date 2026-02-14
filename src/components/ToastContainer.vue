@@ -22,14 +22,14 @@ defineExpose({
 <template>
   <div class="fixed bottom-6 right-6 z-[250] flex flex-col gap-3 pointer-events-none">
     <TransitionGroup name="toast">
-      <div 
-        v-for="toast in toasts" 
+      <div
+        v-for="toast in toasts"
         :key="toast.id"
         class="pointer-events-auto flex items-center gap-4 bg-gray-900 dark:bg-gray-800 text-white px-4 py-3 rounded-lg shadow-2xl border border-gray-700 min-w-[300px] max-w-md"
       >
         <span class="text-sm flex-1">{{ toast.message }}</span>
-        
-        <button 
+
+        <button
           v-if="toast.actionLabel"
           @click="handleAction(toast.id, toast.onAction)"
           class="text-indigo-400 hover:text-indigo-300 text-xs font-bold uppercase tracking-wider px-2 py-1"
@@ -37,7 +37,7 @@ defineExpose({
           {{ toast.actionLabel }}
         </button>
 
-        <button 
+        <button
           @click="removeToast(toast.id, 'dismiss')"
           class="text-gray-500 hover:text-gray-300 transition-colors"
         >

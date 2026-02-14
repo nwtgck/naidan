@@ -102,15 +102,15 @@ describe('SettingsModal Design Specifications', () => {
   it('uses capitalized labels for Provider Profiles (with uppercase class)', async () => {
     // Inject a profile to check the badge
     (useSettings as unknown as Mock).mockReturnValue({
-      settings: ref({ 
-        providerProfiles: [{ id: '1', name: 'Profile-1', endpointType: 'ollama', endpointUrl: '...' }], 
+      settings: ref({
+        providerProfiles: [{ id: '1', name: 'Profile-1', endpointType: 'ollama', endpointUrl: '...' }],
       }),
       availableModels: ref([]),
       isFetchingModels: ref(false),
       save: vi.fn(),
       fetchModels: vi.fn().mockResolvedValue([]),
     });
-    
+
     const wrapper = mount(SettingsModal, { props: { isOpen: true } });
     await flushPromises();
     await vi.dynamicImportSettled();
@@ -120,7 +120,7 @@ describe('SettingsModal Design Specifications', () => {
     await profilesTab?.trigger('click');
     await flushPromises();
     await vi.dynamicImportSettled();
-    
+
     // Check capitalization in badge
     const badge = wrapper.find('[data-testid="provider-type-badge"]');
     expect(badge.exists()).toBe(true);
@@ -151,7 +151,7 @@ describe('SettingsModal Design Specifications', () => {
       await flushPromises();
       await vi.dynamicImportSettled();
       const tabButtons = wrapper.findAll('nav button');
-      
+
       tabButtons.forEach(button => {
         expect(button.classes()).toContain('transition-colors');
         expect(button.classes()).not.toContain('transition-all');
@@ -163,7 +163,7 @@ describe('SettingsModal Design Specifications', () => {
       await flushPromises();
       await vi.dynamicImportSettled();
       const tabButtons = wrapper.findAll('nav button');
-      
+
       tabButtons.forEach(button => {
         expect(button.classes()).toContain('border');
       });
@@ -176,7 +176,7 @@ describe('SettingsModal Design Specifications', () => {
       // Initially, 'connection' is active. Check other tabs.
       const profilesTab = wrapper.findAll('nav button')[1];
       expect(profilesTab?.classes()).toContain('border-transparent');
-      
+
       // When activated, it should get a visible border but not lose the 'border' class
       await profilesTab?.trigger('click');
       await flushPromises();
@@ -191,7 +191,7 @@ describe('SettingsModal Design Specifications', () => {
       const wrapper = mount(SettingsModal, { props: { isOpen: true } });
       await flushPromises();
       await vi.dynamicImportSettled();
-      
+
       // Main content area
       const main = wrapper.find('main');
       expect(main.classes()).toContain('min-h-0');

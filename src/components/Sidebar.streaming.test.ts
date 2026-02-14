@@ -94,7 +94,7 @@ describe('Sidebar Streaming Indicators', () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     // Manually trigger sync because watch/onMounted might be tricky in this test setup
     const vm = wrapper.vm as any;
     vm.sidebarItemsLocal = [

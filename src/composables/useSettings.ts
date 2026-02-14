@@ -9,8 +9,8 @@ import { transformersJsService } from '../services/transformers-js';
 import { StorageTypeSchemaDto } from '../models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
 
-const _settings = ref<Settings>({ 
-  ...DEFAULT_SETTINGS, 
+const _settings = ref<Settings>({
+  ...DEFAULT_SETTINGS,
   storageType: 'local',
   endpointType: 'openai'
 } as Settings);
@@ -83,7 +83,7 @@ export function useSettings() {
           }
           }
         })();
-        
+
         const validatedType = StorageTypeSchemaDto.safeParse(rawSavedType);
         let bootstrapType: 'local' | 'opfs' | null = validatedType.success ? validatedType.data : null;
 
@@ -101,7 +101,7 @@ export function useSettings() {
           // First run or cleared state: detect best available storage
           const isSupported = await checkOPFSSupport();
           bootstrapType = isSupported ? 'opfs' : 'local';
-          
+
           if ((() => {
             const t = typeof localStorage;
             switch (t) {
@@ -178,7 +178,7 @@ export function useSettings() {
         throw new Error(`Unsupported endpoint type: ${_ex}`);
       }
       }
-      
+
       const models = await provider.listModels({});
       availableModels.value = models;
       return models;
@@ -199,15 +199,15 @@ export function useSettings() {
   async function save(patch: Partial<Settings>) {
     const oldUrl = _settings.value.endpointUrl;
     const oldType = _settings.value.endpointType;
-    
+
     // Update local reactive state
     _settings.value = { ..._settings.value, ...patch };
-    
+
     // If storage type is changed, handle provider switching/migration
     if (patch.storageType && patch.storageType !== storageService.getCurrentType()) {
       await storageService.switchProvider(patch.storageType);
     }
-    
+
     // Persist as a patch to ensure we don't overwrite concurrent changes to other fields
     await storageService.updateSettings((curr) => {
       const base = curr || _settings.value;
@@ -243,8 +243,8 @@ export function useSettings() {
     _settings.value.endpointUrl = options.url;
     _settings.value.endpointHttpHeaders = options.headers;
 
-    await storageService.updateSettings((curr) => ({ 
-      ...(curr || _settings.value), 
+    await storageService.updateSettings((curr) => ({
+      ...(curr || _settings.value),
       endpointType: options.type,
       endpointUrl: options.url,
       endpointHttpHeaders: options.headers
@@ -262,7 +262,7 @@ export function useSettings() {
 
   async function updateStorageType(type: StorageType) {
     if (_settings.value.storageType === type) return;
-    
+
     _settings.value.storageType = type;
     await storageService.switchProvider(type);
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), storageType: type }));
@@ -297,8 +297,8 @@ export function useSettings() {
     _initialized.value = false;
     _isOnboardingDismissed.value = false;
     _onboardingDraft.value = null;
-    _settings.value = { 
-      ...DEFAULT_SETTINGS, 
+    _settings.value = {
+      ...DEFAULT_SETTINGS,
       storageType: 'local',
       endpointType: 'openai'
     } as Settings;

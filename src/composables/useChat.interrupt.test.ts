@@ -90,10 +90,10 @@ describe('useChat Interruption', () => {
 
     const sendSuccess = await sendMessage('Hello');
     expect(sendSuccess).toBe(true);
-    
+
     // Wait for it to start streaming
     await vi.waitUntil(() => streaming.value);
-    
+
     const userMsg = chat.root.items[0];
     const firstAssistantMsgId = userMsg.replies.items[0].id;
 
@@ -109,7 +109,7 @@ describe('useChat Interruption', () => {
 
     // Expect a second assistant message to be created
     expect(userMsg.replies.items).toHaveLength(2);
-    
+
     // Wait for second generation to finish
     await vi.waitUntil(() => !streaming.value);
 
@@ -146,7 +146,7 @@ describe('useChat Interruption', () => {
 
     await sendMessage('Hello');
     await vi.waitUntil(() => streaming.value);
-    
+
     const userMsg = chat.root.items[0];
 
     // 2. Call editMessage (resend) while first one is still running
@@ -164,7 +164,7 @@ describe('useChat Interruption', () => {
 
     // Initial 'Hello' and new 'Hello Again'
     expect(chat.root.items).toHaveLength(2);
-    
+
     const secondAssistantMsg = chat.root.items[1].replies.items[0];
     expect(secondAssistantMsg.content).toBe('Edited Response');
   });

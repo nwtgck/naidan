@@ -50,7 +50,7 @@ describe('useChat Advanced Settings Resolution', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    
+
     // Default Global Settings
     __testOnlySetSettings({
       endpointType: 'openai',
@@ -68,10 +68,10 @@ describe('useChat Advanced Settings Resolution', () => {
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'profile-gpt', 'chat-gpt']);
     mockOllamaModels.mockResolvedValue(['llama3']);
-    
+
     mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Resp'));
     mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Resp'));
-    
+
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await openChat(chat!.id);
   });
@@ -140,8 +140,8 @@ describe('useChat Advanced Settings Resolution', () => {
       __testOnlySetSettings({
         ...JSON.parse(JSON.stringify(settings.value)),
         lmParameters: {
-          temperature: 0.1, 
-          topP: 0.9,        
+          temperature: 0.1,
+          topP: 0.9,
           maxCompletionTokens: 100, // Will be overridden by chat
         },
         // Profile should be ignored at runtime
@@ -167,7 +167,7 @@ describe('useChat Advanced Settings Resolution', () => {
       await sendMessage('Hi');
       const callParams = mockOpenAIChat.mock.calls[0]![0];
       const params = callParams.parameters;
-      
+
       expect(params).toEqual({
         temperature: 0.1,         // From Global (Profile 0.5 ignored)
         topP: 0.9,                // From Global

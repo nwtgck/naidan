@@ -59,7 +59,7 @@ describe('MessageItem Image Generation', () => {
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false }
     });
-    
+
     expect(wrapper.findComponent({ name: 'ImageConjuringLoader' }).exists()).toBe(true);
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
   });
@@ -68,11 +68,11 @@ describe('MessageItem Image Generation', () => {
     const imageUrl = 'blob:test';
     const content = `${SENTINEL_IMAGE_PROCESSED}<img src="${imageUrl}" alt="generated image">`;
     const message = createMessage(content);
-    
+
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false }
     });
-    
+
     const img = wrapper.find('img');
     expect(img.exists()).toBe(true);
     expect(img.attributes('src')).toBe(imageUrl);
@@ -133,7 +133,7 @@ describe('MessageItem Image Generation', () => {
     // Should fallback to showing raw code/JSON
     expect(wrapper.find('.naidan-generated-image').exists()).toBe(false);
     expect(wrapper.find('pre code').exists()).toBe(true);
-    
+
     // Should notify error
     expect(addErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
       message: 'Failed to parse generated image metadata.'
@@ -155,7 +155,7 @@ describe('MessageItem Image Generation', () => {
     // Should fallback
     expect(wrapper.find('.naidan-generated-image').exists()).toBe(false);
     expect(wrapper.find('pre code').exists()).toBe(true);
-    
+
     // Should notify error
     expect(addErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
       message: 'Failed to validate generated image metadata.'
@@ -186,7 +186,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data']));
-    
+
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false }
     });
@@ -204,7 +204,7 @@ describe('MessageItem Image Generation', () => {
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false }
     });
-    
+
     // SpeechControl should be hidden or not rendered
     expect(wrapper.findComponent({ name: 'SpeechControl' }).exists()).toBe(false);
   });
@@ -215,7 +215,7 @@ describe('MessageItem Image Generation', () => {
     const wrapper = mount(MessageItem, {
       props: { message, isCurrentChatStreaming: false }
     });
-    
+
     const speechControl = wrapper.findComponent({ name: 'SpeechControl' });
     expect(speechControl.exists()).toBe(false);
   });

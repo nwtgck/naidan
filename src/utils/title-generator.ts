@@ -81,10 +81,10 @@ export function detectLanguage({ content, fallbackLanguage = 'en' }: { content: 
     const code = fallbackLanguage.split('-')[0]?.toLowerCase();
     // Check if the code is in our supported list
     const supported: Set<string | undefined> = new Set([
-      'en', 'zh', 'hi', 'es', 'fr', 'ar', 'bn', 'pt', 'ru', 'ur', 
+      'en', 'zh', 'hi', 'es', 'fr', 'ar', 'bn', 'pt', 'ru', 'ur',
       'id', 'de', 'ja', 'ko', 'it', 'vi', 'tr', 'th'
     ]);
-    
+
     if (code && supported.has(code)) {
       return code as SupportedLanguage;
     }

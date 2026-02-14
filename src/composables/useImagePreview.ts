@@ -14,7 +14,7 @@ const PREVIEW_KEY: InjectionKey<{
 
 /**
  * Image Preview Composable
- * 
+ *
  * Can be used either as a singleton or as a scoped instance via provide/inject.
  */
 export function useImagePreview(scoped = false) {
@@ -23,10 +23,10 @@ export function useImagePreview(scoped = false) {
     const api = {
       state,
       openPreview: (payload: PreviewState) => {
-        state.value = payload; 
+        state.value = payload;
       },
       closePreview: () => {
-        state.value = null; 
+        state.value = null;
       },
     };
     provide(PREVIEW_KEY, api);
@@ -41,10 +41,10 @@ export function useImagePreview(scoped = false) {
   return {
     state,
     openPreview: (payload: PreviewState) => {
-      state.value = payload; 
+      state.value = payload;
     },
     closePreview: () => {
-      state.value = null; 
+      state.value = null;
     },
     __testOnly: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.

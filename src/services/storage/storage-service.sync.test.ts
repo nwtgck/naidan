@@ -58,7 +58,7 @@ const mockProvider = {
 vi.mock('./local-storage', () => ({
   LocalStorageProvider: class {
     constructor() {
-      return mockProvider; 
+      return mockProvider;
     }
   },
 }));
@@ -66,7 +66,7 @@ vi.mock('./local-storage', () => ({
 vi.mock('./opfs-storage', () => ({
   OPFSStorageProvider: class {
     constructor() {
-      return mockProvider; 
+      return mockProvider;
     }
   },
 }));
@@ -76,7 +76,7 @@ describe('StorageService Synchronization Wrapper', () => {
 
   beforeEach(async () => {
     vi.resetAllMocks();
-    
+
     // Restore default mock implementations after reset
     mockWithLock.mockImplementation((fn, _options) => fn());
     mockProvider.saveChatMeta.mockResolvedValue(undefined);
@@ -174,24 +174,24 @@ describe('StorageService Synchronization Wrapper', () => {
 
   it('should trigger info events via callbacks from withLock', async () => {
     const meta = { id: 'c1' } as any;
-    
+
     // Extract the callbacks passed to withLock
     await service.updateChatMeta('c1', () => meta);
     const options = mockWithLock.mock.calls[0]?.[1];
-    
+
     options.onLockWait();
     expect(mockAddInfoEvent).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('busy') }));
-    
+
     options.onTaskSlow();
     expect(mockAddInfoEvent).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('longer than expected') }));
-    
+
     options.onFinalize();
     expect(mockAddInfoEvent).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('completed') }));
   });
 
   it('should notify migration after switchProvider with custom lock options', async () => {
     mockProvider.dump.mockImplementation(async function* () {});
-    
+
     await service.switchProvider('opfs');
 
     expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({

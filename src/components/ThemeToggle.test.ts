@@ -22,11 +22,11 @@ describe('ThemeToggle.vue', () => {
     });
 
     const wrapper = mount(ThemeToggle);
-    
+
     // Check if all buttons are present
     const buttons = wrapper.findAll('button');
     expect(buttons).toHaveLength(3);
-    
+
     // Check titles
     expect(buttons[0]!.attributes('title')).toBe('Light Mode');
     expect(buttons[1]!.attributes('title')).toBe('Dark Mode');
@@ -83,11 +83,11 @@ describe('ThemeToggle.vue', () => {
 
     // Light button should be inactive
     expect(buttons[0]!.classes()).toContain('text-gray-400');
-    
+
     // Dark button should be active
     expect(buttons[1]!.classes()).toContain('text-blue-600');
     expect(buttons[1]!.classes()).toContain('dark:text-blue-400');
-    
+
     // System button should be inactive
     expect(buttons[2]!.classes()).toContain('text-gray-400');
   });
@@ -100,11 +100,11 @@ describe('ThemeToggle.vue', () => {
 
     const wrapper = mount(ThemeToggle);
     const container = wrapper.find('.relative.flex');
-    
+
     // Check for non-transparent background classes
     expect(container.classes()).toContain('bg-gray-200');
     expect(container.classes()).toContain('dark:bg-black');
-    
+
     // Ensure no alpha/opacity classes are present in background
     const hasAlpha = container.classes().some(c => c.includes('/') && c.startsWith('bg-'));
     expect(hasAlpha).toBe(false);

@@ -148,7 +148,7 @@ describe('Sidebar Animation Logic', () => {
     vi.useFakeTimers();
     (useRouter as Mock).mockReturnValue({ push: vi.fn() });
     (useRoute as Mock).mockReturnValue({ path: '/', query: {}, params: {} });
-    
+
     const items = [
       { id: 'c1', title: 'Chat 1' },
       { id: 'c2', title: 'Chat 2' },
@@ -210,7 +210,7 @@ describe('Sidebar Animation Logic', () => {
     // Advance time to 401ms (after transition)
     vi.advanceTimersByTime(201);
     await nextTick();
-    
+
     // Now it should be back to 5
     expect(wrapper.findAll('.sidebar-chat-item')).toHaveLength(5);
   });

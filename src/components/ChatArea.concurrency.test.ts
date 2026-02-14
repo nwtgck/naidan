@@ -36,8 +36,8 @@ vi.mock('../composables/useChat', () => ({
     abortChat: vi.fn(),
     isImageMode: vi.fn(() => false),
     toggleImageMode: vi.fn(),
-    getResolution: vi.fn(() => ({ width: 512, height: 512 })), 
-    getCount: vi.fn(() => 1), 
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    getCount: vi.fn(() => 1),
     updateCount: vi.fn(),
     getPersistAs: vi.fn(() => 'original'),
     updatePersistAs: vi.fn(),
@@ -46,7 +46,7 @@ vi.mock('../composables/useChat', () => ({
     getSelectedImageModel: vi.fn(),
     getSortedImageModels: vi.fn(() => []),
     imageModeMap: ref({}),
-    imageResolutionMap: ref({}), 
+    imageResolutionMap: ref({}),
     imageCountMap: ref({}),
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
@@ -138,8 +138,8 @@ describe('ChatArea Concurrency Button State', () => {
       availableModels: ref([]),
       isImageMode: vi.fn(() => false),
       toggleImageMode: vi.fn(),
-      getResolution: vi.fn(() => ({ width: 512, height: 512 })), 
-      getCount: vi.fn(() => 1), 
+      getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+      getCount: vi.fn(() => 1),
       updateCount: vi.fn(),
       getPersistAs: vi.fn(() => 'original'),
       updatePersistAs: vi.fn(),
@@ -148,7 +148,7 @@ describe('ChatArea Concurrency Button State', () => {
       getSelectedImageModel: vi.fn(),
       getSortedImageModels: vi.fn(() => []),
       imageModeMap: ref({}),
-      imageResolutionMap: ref({}), 
+      imageResolutionMap: ref({}),
       imageCountMap: ref({}),
       imagePersistAsMap: ref({}),
       imageModelOverrideMap: ref({}),
@@ -170,12 +170,12 @@ describe('ChatArea Concurrency Button State', () => {
 
     const textarea = wrapper.find('[data-testid="chat-input"]');
     await textarea.setValue('Hello from Chat B');
-    
+
     const sendButton = wrapper.find('[data-testid="send-button"]');
     expect(sendButton.exists()).toBe(true);
-    
+
     await sendButton.trigger('click');
-    
+
     // Expectation that will fail if bug exists
     expect(mockSendMessage).toHaveBeenCalledWith('Hello from Chat B', undefined, []);
   });

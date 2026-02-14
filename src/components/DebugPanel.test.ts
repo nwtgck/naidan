@@ -33,7 +33,7 @@ describe('DebugPanel', () => {
     (useLayout as unknown as Mock).mockReturnValue({
       isDebugOpen,
       toggleDebug: vi.fn(() => {
-        isDebugOpen.value = !isDebugOpen.value; 
+        isDebugOpen.value = !isDebugOpen.value;
       }),
     });
   });
@@ -61,7 +61,7 @@ describe('DebugPanel', () => {
 
     const menuButton = wrapper.find('[data-testid="debug-menu-button"]');
     expect(menuButton.exists()).toBe(true);
-    
+
     expect(wrapper.find('[data-testid="debug-menu-dropdown"]').exists()).toBe(false);
 
     // Using mousedown as the component uses @mousedown.stop
@@ -107,9 +107,9 @@ describe('DebugPanel', () => {
     isDebugOpen.value = true;
     const wrapper = mount(DebugPanel);
     await wrapper.vm.$nextTick();
-    
+
     await wrapper.find('[data-testid="debug-menu-button"]').trigger('mousedown');
-    
+
     await wrapper.find('[data-testid="trigger-test-info"]').trigger('click');
     expect(mockAddInfoEvent).toHaveBeenCalled();
 
@@ -122,13 +122,13 @@ describe('DebugPanel', () => {
     isDebugOpen.value = true;
     const error = new Error('Test error message');
     error.stack = 'test stack trace';
-    
+
     (useGlobalEvents as unknown as Mock).mockReturnValue({
-      events: [{ 
-        id: '1', 
-        type: 'error', 
-        timestamp: Date.now(), 
-        source: 'test', 
+      events: [{
+        id: '1',
+        type: 'error',
+        timestamp: Date.now(),
+        source: 'test',
         message: 'Something failed',
         details: error,
       }],
@@ -152,11 +152,11 @@ describe('DebugPanel', () => {
     circular.self = circular;
 
     (useGlobalEvents as unknown as Mock).mockReturnValue({
-      events: [{ 
-        id: '1', 
-        type: 'error', 
-        timestamp: Date.now(), 
-        source: 'test', 
+      events: [{
+        id: '1',
+        type: 'error',
+        timestamp: Date.now(),
+        source: 'test',
         message: 'Circular',
         details: circular,
       }],
@@ -175,7 +175,7 @@ describe('DebugPanel', () => {
     isDebugOpen.value = true;
     const wrapper = mount(DebugPanel, { attachTo: document.body });
     await wrapper.vm.$nextTick();
-    
+
     await wrapper.find('[data-testid="debug-menu-button"]').trigger('mousedown');
     expect(wrapper.find('[data-testid="debug-menu-dropdown"]').exists()).toBe(true);
 

@@ -18,7 +18,7 @@ const globalDraft = reactive<ChatDraft>({
 export function useChatDraft() {
   const getDraft = (chatId: string | undefined): ChatDraft => {
     if (!chatId) return globalDraft;
-    
+
     if (!drafts.has(chatId)) {
       drafts.set(chatId, { input: '', attachments: [], attachmentUrls: {} });
     }
@@ -35,7 +35,7 @@ export function useChatDraft() {
   const clearDraft = (chatId: string | undefined) => {
     const d = chatId ? drafts.get(chatId) : globalDraft;
     if (d) {
-      // Note: We don't revoke here because the URLs might still be in use by the UI 
+      // Note: We don't revoke here because the URLs might still be in use by the UI
       // during the transition or if clearDraft is called just before unmount.
       // But typically clearDraft is called after successful send, so revocation is safe.
       Object.values(d.attachmentUrls).forEach(url => URL.revokeObjectURL(url));

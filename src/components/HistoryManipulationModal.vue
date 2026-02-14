@@ -2,8 +2,8 @@
 import { generateId } from '../utils/id';
 import { ref, watch, onUnmounted, computed } from 'vue';
 import draggable from 'vuedraggable';
-import { 
-  X, Save, Plus, Trash2, 
+import {
+  X, Save, Plus, Trash2,
   User, Bot, Hammer, Cpu,
   Paperclip, Image as ImageIcon, History,
   Copy, GripVertical, MessageSquareQuote, Info
@@ -44,7 +44,7 @@ function setFileInputRef(el: unknown, index: number) {
 watch(() => props.isOpen, async (open) => {
   if (open && currentChat.value) {
     setActiveFocusArea('dialog');
-    
+
     // Clear old URLs
     Object.values(attachmentUrls.value).forEach(URL.revokeObjectURL);
     attachmentUrls.value = {};
@@ -99,7 +99,7 @@ onUnmounted(() => {
 
 function predictNextRole(index: number): 'user' | 'assistant' {
   if (editableMessages.value.length === 0) return 'user';
-  
+
   if (index >= 0 && index < editableMessages.value.length) {
     const prevRole = editableMessages.value[index]!.role;
     switch (prevRole) {
@@ -112,7 +112,7 @@ function predictNextRole(index: number): 'user' | 'assistant' {
     }
     }
   }
-  
+
   if (index === -1 && editableMessages.value.length > 0) {
     const nextRole = editableMessages.value[0]!.role;
     switch (nextRole) {
@@ -145,7 +145,7 @@ function removeMessage(index: number) {
 function duplicateMessage(index: number) {
   const msg = editableMessages.value[index];
   if (!msg) return;
-  
+
   editableMessages.value.splice(index + 1, 0, {
     ...msg,
     localId: generateId(),
@@ -166,7 +166,7 @@ async function handleFileSelect(event: Event, index: number) {
 
   for (const file of Array.from(target.files)) {
     if (!file.type.startsWith('image/')) continue;
-    
+
     const attachmentId = generateId();
     const attachment: Attachment = {
       id: attachmentId,
@@ -289,7 +289,7 @@ defineExpose({
   <Transition name="modal">
     <div v-if="isOpen" class="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 md:p-6" @click.self="handleCancel">
       <div class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col border border-gray-100 dark:border-gray-800 modal-content-zoom overflow-hidden">
-        
+
         <!-- Header -->
         <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900 z-10">
           <div class="flex items-center gap-4">
@@ -307,7 +307,7 @@ defineExpose({
         </div>
 
         <div class="flex-1 overflow-y-auto flex flex-col overscroll-contain bg-gray-50/30 dark:bg-black/10">
-          
+
           <!-- Banner -->
           <div class="px-6 pt-6">
             <div class="flex items-center gap-3 px-4 py-3 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100/50 dark:border-blue-900/20 rounded-2xl">
@@ -326,10 +326,10 @@ defineExpose({
                   <MessageSquareQuote class="w-3.5 h-3.5" />
                   Chat System Prompt
                 </label>
-              
+
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-                  <button 
-                    v-for="b in (['inherit', 'clear', 'override', 'append'] as const)" 
+                  <button
+                    v-for="b in (['inherit', 'clear', 'override', 'append'] as const)"
                     :key="b"
                     @click="systemPromptBehavior = b"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
@@ -341,13 +341,13 @@ defineExpose({
               </div>
 
               <div v-if="systemPromptBehavior === 'override' || systemPromptBehavior === 'append'" class="animate-in fade-in slide-in-from-top-1 duration-200">
-                <textarea 
+                <textarea
                   v-model="localSystemPrompt!.content"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none min-h-[120px]"
                   placeholder="Enter system prompt content..."
                 ></textarea>
               </div>
-              
+
               <div v-else-if="systemPromptBehavior === 'clear'" class="w-full bg-gray-50 dark:bg-gray-800/50 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center animate-in fade-in slide-in-from-top-1 duration-200">
                 <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Parent Prompt Cleared</p>
                 <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This chat will not use any system instructions.</p>
@@ -384,9 +384,9 @@ defineExpose({
                 Add First Message
               </button>
             </div>
-          
-            <draggable 
-              v-model="editableMessages" 
+
+            <draggable
+              v-model="editableMessages"
               item-key="localId"
               handle=".handle"
               tag="div"
@@ -409,8 +409,8 @@ defineExpose({
                       <div class="handle p-1.5 text-gray-300 dark:text-gray-700 cursor-grab active:cursor-grabbing hover:text-blue-500 transition-colors bg-white dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800 shadow-sm">
                         <GripVertical class="w-3.5 h-3.5" />
                       </div>
-                      
-                      <button 
+
+                      <button
                         @click="msg.role = msg.role === 'user' ? 'assistant' : 'user'"
                         class="w-10 h-10 flex items-center justify-center rounded-xl transition-all shadow-sm border"
                         :class="{
@@ -430,15 +430,15 @@ defineExpose({
                       <!-- Attachments -->
                       <div v-if="msg.attachments && msg.attachments.length > 0" class="flex flex-wrap gap-2.5 px-5 pt-5 bg-gray-50/30 dark:bg-gray-800/20">
                         <div v-for="att in msg.attachments" :key="att.id" class="relative group/att pb-5">
-                          <img 
+                          <img
                             v-if="att.mimeType.startsWith('image/')"
-                            :src="attachmentUrls[att.id]" 
+                            :src="attachmentUrls[att.id]"
                             class="w-20 h-20 object-cover rounded-xl border-2 border-white dark:border-gray-800 shadow-sm"
                           />
                           <div v-else class="w-20 h-20 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                             <ImageIcon class="w-8 h-8 text-gray-400" />
                           </div>
-                          <button 
+                          <button
                             @click="removeAttachment(index, att.id)"
                             class="absolute -top-2 -right-2 p-1.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-lg opacity-0 group-hover/att:opacity-100 transition-opacity"
                           >
@@ -447,27 +447,27 @@ defineExpose({
                         </div>
                       </div>
 
-                      <textarea 
+                      <textarea
                         v-model="msg.content"
                         @paste="handlePaste($event, index)"
                         class="w-full bg-transparent p-4 text-[14px] text-gray-800 dark:text-gray-100 focus:outline-none resize-none min-h-[100px] font-medium leading-relaxed"
                         placeholder="Type message content..."
                       ></textarea>
-                
+
                       <!-- Card Toolbar -->
                       <div class="px-4 py-1.5 bg-gray-50/50 dark:bg-gray-800/30 flex items-center justify-between border-t border-gray-50 dark:border-gray-800">
                         <div class="flex gap-4 text-[9px] font-bold font-mono text-gray-400/80 tracking-tight">
                           <span v-if="msg.modelId" class="flex items-center gap-1"><Cpu class="w-3 h-3" /> {{ msg.modelId }}</span>
                           <span v-if="msg.thinking" class="flex items-center gap-1"><History class="w-3 h-3" /> Thoughts</span>
                         </div>
-                  
+
                         <div class="flex items-center gap-2">
-                          <input 
+                          <input
                             :ref="el => setFileInputRef(el, index)"
-                            type="file" accept="image/*" multiple class="hidden" 
+                            type="file" accept="image/*" multiple class="hidden"
                             @change="handleFileSelect($event, index)"
                           />
-                          <button 
+                          <button
                             @click="triggerFileInput(index)"
                             class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-gray-800 transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-700 shadow-sm"
                             title="Attach media"
@@ -491,7 +491,7 @@ defineExpose({
                       </button>
                     </div>
                   </div>
-            
+
                   <!-- Connector Line -->
                   <div v-if="index < editableMessages.length - 1" class="absolute left-[24.5px] top-[60px] bottom-[-32px] w-[2px] bg-gradient-to-b from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-800 dark:to-gray-700 -z-10 opacity-40"></div>
                 </div>
@@ -499,8 +499,8 @@ defineExpose({
             </draggable>
 
             <div v-if="editableMessages.length > 0" class="flex justify-center pt-4 pb-8">
-              <button 
-                @click="addMessage(editableMessages.length - 1)" 
+              <button
+                @click="addMessage(editableMessages.length - 1)"
                 class="flex items-center gap-2 px-6 py-2.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-all shadow-sm font-bold text-xs uppercase tracking-widest active:scale-95"
               >
                 <Plus class="w-4 h-4" />
@@ -515,8 +515,8 @@ defineExpose({
           <button @click="handleCancel" class="px-6 py-2.5 text-[11px] font-bold text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors uppercase tracking-[0.15em]">
             Discard
           </button>
-          <button 
-            @click="handleSave" 
+          <button
+            @click="handleSave"
             :disabled="editableMessages.length === 0"
             class="flex items-center gap-2.5 px-10 py-3.5 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-500/25 font-bold text-[11px] uppercase tracking-[0.15em] active:scale-95"
           >

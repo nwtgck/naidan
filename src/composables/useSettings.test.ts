@@ -67,10 +67,10 @@ describe('useSettings Initialization and Bootstrap', () => {
 
   it('should determine, persist and pass opfs to StorageService if bootstrap key is missing (new user)', async () => {
     localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
-    
+
     const { init } = useSettings();
     await init();
-    
+
     expect(mocks.init).toHaveBeenCalledWith('opfs');
     expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('opfs');
   });
@@ -78,13 +78,13 @@ describe('useSettings Initialization and Bootstrap', () => {
   it('should sync settings.value.storageType with detected bootstrapType during init', async () => {
     localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
     localStorage.clear();
-    
+
     const { init, settings } = useSettings();
     // Before init it is local
     expect(settings.value.storageType).toBe('local');
-    
+
     await init();
-    
+
     // After init, it should have been updated to 'opfs' (from detection)
     expect(settings.value.storageType).toBe('opfs');
   });
@@ -92,10 +92,10 @@ describe('useSettings Initialization and Bootstrap', () => {
   it('should preserve detected storageType when saving settings (onboarding simulation)', async () => {
     localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
     localStorage.clear();
-    
+
     const { init, save, settings } = useSettings();
     await init(); // This detects 'opfs' and sets settings.value.storageType = 'opfs'
-    
+
     // Simulate finishing onboarding: save new URL/Type but don't explicitly mention storageType
     // (spread of settings.value should include the detected 'opfs')
     await save({
@@ -103,7 +103,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       endpointUrl: 'http://new-endpoint',
       endpointType: 'ollama'
     });
-    
+
     expect(settings.value.storageType).toBe('opfs');
     expect(mocks.updateSettings).toHaveBeenCalled();
     // Verify the result of the updater (which we know in this test)
@@ -118,10 +118,10 @@ describe('useSettings Initialization and Bootstrap', () => {
   it('should report error and fallback if invalid storage type is in localStorage', async () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'invalid-type');
-    
+
     const { init } = useSettings();
     await init();
-    
+
     expect(consoleSpy).toHaveBeenCalled();
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
       source: 'SettingsService',
@@ -129,7 +129,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     }));
     // Should fallback to detection (opfs in this mock environment)
     expect(mocks.init).toHaveBeenCalledWith('opfs');
-    
+
     consoleSpy.mockRestore();
   });
 
@@ -183,28 +183,28 @@ describe('useSettings Initialization and Bootstrap', () => {
     const storageInitPromise = new Promise<void>((resolve) => {
       resolveStorageInit = resolve;
     });
-        
+
     // Make storageService.init hang until we manually resolve it
     mocks.init.mockReturnValue(storageInitPromise);
-    
+
     const { init, initialized } = useSettings();
-        
+
     // Trigger multiple calls in parallel
     const p1 = init();
     const p2 = init();
     const p3 = init();
-    
+
     // Wait for microtasks (like checkOPFSSupport) to settle
     await flushPromises();
 
     // Verify storageService.init was only called once despite multiple calls to init()
     expect(mocks.init).toHaveBeenCalledTimes(1);
-    
+
     // Resolve the first call
     resolveStorageInit!();
-        
+
     await Promise.all([p1, p2, p3]);
-        
+
     expect(initialized.value).toBe(true);
   });
 

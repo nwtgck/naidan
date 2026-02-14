@@ -39,10 +39,10 @@ function handleRestartSpeech() {
 // Watch for content updates during streaming
 watch(() => props.content, (newContent) => {
   if (isPlaying.value) {
-    webSpeechService.speak({ 
-      text: newContent, 
-      messageId: props.messageId, 
-      isFinal: false 
+    webSpeechService.speak({
+      text: newContent,
+      messageId: props.messageId,
+      isFinal: false
     });
   }
 });
@@ -58,13 +58,13 @@ defineExpose({
 <template>
   <div v-if="isSupported && !isHidden" class="flex items-center" :class="{ 'gap-1': isSpeechActive && showFullControls }">
     <!-- Flat Toggle Button (Shown when inactive OR when full controls are not requested) -->
-    <button 
+    <button
       v-if="!isSpeechActive || !showFullControls"
       @click.stop="handleToggleSpeech"
       class="rounded-lg transition-colors p-1"
       :class="[
         isSpeechActive
-          ? 'text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20' 
+          ? 'text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20'
           : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-800/50'
       ]"
       :title="isPaused ? 'Resume reading' : (isPlaying ? 'Pause reading' : 'Read aloud')"
@@ -75,12 +75,12 @@ defineExpose({
     </button>
 
     <!-- Expanded Control Panel (Only when active AND full controls are requested) -->
-    <div 
-      v-else 
+    <div
+      v-else
       class="flex items-center gap-0.5 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg border border-blue-100/50 dark:border-blue-800/30 p-0.5 animate-in fade-in zoom-in-95 duration-200"
       @click.stop
     >
-      <button 
+      <button
         @click="handleRestartSpeech"
         class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-md transition-colors"
         title="Restart from beginning"
@@ -88,7 +88,7 @@ defineExpose({
       >
         <RotateCcw class="w-3 h-3" />
       </button>
-      <button 
+      <button
         @click="handleStopSpeech"
         class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-red-500 dark:hover:text-red-400 rounded-md transition-colors"
         title="Stop reading"
@@ -96,7 +96,7 @@ defineExpose({
       >
         <Square class="w-3 h-3" />
       </button>
-      <button 
+      <button
         @click="handleToggleSpeech"
         class="p-1.5 rounded-md transition-colors text-blue-600 dark:text-blue-400 hover:bg-blue-100/50 dark:hover:bg-blue-800/50"
         :title="isPaused ? 'Resume reading' : 'Pause reading'"

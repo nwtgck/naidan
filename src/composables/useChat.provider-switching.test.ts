@@ -55,7 +55,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Reset Settings
     __testOnlySetSettings({
       endpointType: 'openai',
@@ -68,10 +68,10 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
 
     mockOpenAIModels.mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']);
     mockOllamaModels.mockResolvedValue(['llama3', 'mistral']);
-    
+
     mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Response'));
     mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Response'));
-    
+
     __testOnlySetCurrentChat(null);
   });
 

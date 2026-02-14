@@ -1,6 +1,6 @@
 import { generateId } from '../../utils/id';
 import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '../../models/types';
-import { 
+import {
   type ChatMetaDto,
   type ChatGroupDto,
   type HierarchyDto,
@@ -11,7 +11,7 @@ import {
   HierarchySchemaDto,
   ChatContentSchemaDto,
 } from '../../models/dto';
-import { 
+import {
   chatToDomain,
   chatToDto,
   chatGroupToDomain,
@@ -27,7 +27,7 @@ import {
   binaryObjectToDomain,
 } from '../../models/mappers';import { IStorageProvider } from './interface';
 
-import { 
+import {
   type MigrationStateDto,
   type BinaryShardIndexDto,
   MigrationStateSchemaDto,
@@ -97,7 +97,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
       // 1. Migrate Files and Create Mapping (attachmentId -> binaryObjectId)
       const idMap = new Map<string, string>();
-      
+
       for await (const attachmentDirEntry of legacyDir.values()) {
         const entryKind = attachmentDirEntry.kind;
         switch (entryKind) {
@@ -109,7 +109,7 @@ export class OPFSStorageProvider extends IStorageProvider {
             case 'file': {
               const blob = await (fileEntry as FileSystemFileHandle).getFile();
               const newBinaryObjectId = generateId();
-              
+
               // Save to new location with NEW ID
               await this.saveFile(blob, newBinaryObjectId, fileEntry.name);
               idMap.set(attachmentId, newBinaryObjectId);
@@ -144,7 +144,7 @@ export class OPFSStorageProvider extends IStorageProvider {
             try {
               const file = await (entry as FileSystemFileHandle).getFile();
               const content = JSON.parse(await file.text());
-              
+
               let modified = false;
               const processNodes = (nodes: unknown[]) => {
                 for (const node of nodes) {
@@ -249,7 +249,7 @@ export class OPFSStorageProvider extends IStorageProvider {
           for (let i = 0; i < node.attachments.length; i++) {
             const att = node.attachments[i];
             if (!att) continue;
-            
+
             const status = att.status;
             switch (status) {
             case 'persisted': {
@@ -323,7 +323,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
       return dtos;
     } catch {
-      return []; 
+      return [];
     }
   }
 
@@ -351,7 +351,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
       return dtos;
     } catch {
-      return []; 
+      return [];
     }
   }
 
@@ -363,9 +363,9 @@ export class OPFSStorageProvider extends IStorageProvider {
       const fileHandle = await this.root!.getFileHandle('hierarchy.json');
       const file = await fileHandle.getFile();
       return HierarchySchemaDto.parse(JSON.parse(await file.text()));
-    } catch { 
+    } catch {
       // If file doesn't exist or is invalid, return empty hierarchy
-      return { items: [] }; 
+      return { items: [] };
     }
   }
 
@@ -403,13 +403,13 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       const metaDir = await this.getDir('chat-metas');
       const contentDir = await this.getDir('chat-contents');
-      
+
       const metaFile = await (await metaDir.getFileHandle(`${id}.json`)).getFile();
       const contentFile = await (await contentDir.getFileHandle(`${id}.json`)).getFile();
-      
+
       const meta = ChatMetaSchemaDto.parse(JSON.parse(await metaFile.text()));
       const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
-      
+
       const chat = chatToDomain({ ...meta, ...content });
 
       // Resolve groupId from hierarchy
@@ -424,7 +424,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
       return chat;
     } catch {
-      return null; 
+      return null;
     }
   }
 
@@ -443,7 +443,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
       return meta;
     } catch {
-      return null; 
+      return null;
     }
   }
 
@@ -459,7 +459,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
       return content;
     } catch {
-      return null; 
+      return null;
     }
   }
 
@@ -487,7 +487,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       const dir = await this.getDir('chat-groups');
       const file = await (await dir.getFileHandle(`${id}.json`)).getFile();
       const groupDto = ChatGroupSchemaDto.parse(JSON.parse(await file.text()));
-      
+
       const [hierarchy, allMetas] = await Promise.all([
         this.loadHierarchy(),
         this.listChatMetasRaw()
@@ -497,7 +497,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       const h = hierarchy || { items: [] };
       return chatGroupToDomain(groupDto, h, chatMetas);
     } catch {
-      return null; 
+      return null;
     }
   }
 
@@ -583,7 +583,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       return await fileHandle.getFile();
     } catch (e) {
       console.error('Failed to get file from OPFS storage:', e);
-      return null; 
+      return null;
     }
   }
 
@@ -621,7 +621,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
       return false;
     } catch {
-      return false; 
+      return false;
     }
   }
 
@@ -690,7 +690,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       const file = await fileHandle.getFile();
       return settingsToDomain(SettingsSchemaDto.parse(JSON.parse(await file.text())));
     } catch {
-      return null; 
+      return null;
     }
   }
 
@@ -804,13 +804,13 @@ export class OPFSStorageProvider extends IStorageProvider {
         await this.saveChatMeta(domainChat);
         break;
       }
-      case 'binary_object': 
+      case 'binary_object':
         await this.saveFile({
           blob: chunk.blob,
           binaryObjectId: chunk.id,
           name: chunk.name,
           mimeType: chunk.mimeType
-        }); 
+        });
         break;
       default: {
         const _ex: never = type;

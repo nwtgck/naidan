@@ -60,7 +60,7 @@ vi.mock('../services/llm', () => ({
   },
   OllamaProvider: class {
     async listModels() {
-      return []; 
+      return [];
     }
   },
 }));
@@ -77,7 +77,7 @@ describe('useChat Registry Lifecycle', () => {
     const chatStore = useChat();
     const { createNewChat, sendMessage, fetchAvailableModels, currentChat, openChat, unregisterLiveInstance, __testOnly } = chatStore;
     const { activeGenerations, liveChatRegistry, __testOnlySetCurrentChat } = __testOnly;
-    
+
     // Ensure we start clean
     activeGenerations.clear();
     liveChatRegistry.clear();
@@ -91,38 +91,38 @@ describe('useChat Registry Lifecycle', () => {
     let resolveModels: (v: string[]) => void;
     const modelPromise = new Promise<string[]>(r => resolveModels = r);
     mockListModels.mockReturnValue(modelPromise);
-    
+
     const fetchTask = fetchAvailableModels(chat as any);
-    
+
     // Wait for the registry to populate via fetchAvailableModels (using busy check)
     await vi.waitUntil(() => toRaw(chatStore.getLiveChat(chat as any)) === toRaw(chat), { timeout: 1000 });
-    
+
     // 2. Start sendMessage (which also awaits fetchAvailableModels)
     let resolveChat: () => void;
     const chatPromise = new Promise<void>(r => resolveChat = r);
     mockLlmChat.mockReturnValue(chatPromise);
-    
+
     const sendTask = sendMessage('Hello');
-    
+
     // 3. Resolve model fetch
     resolveModels!(['m1']);
     await fetchTask;
-    
+
     // Give sendMessage time to reach generateResponse
     await vi.waitUntil(() => activeGenerations.has(chatId!), { timeout: 1000 });
-    
+
     // 4. Resolve generation
     resolveChat!();
-    
+
     // Title gen also uses mockLlmChat, make it resolve immediately
     mockLlmChat.mockResolvedValue(undefined);
-    
+
     await sendTask;
-    
+
     // Wait for everything to settle
     await flushPromises();
     await nextTick();
-    
+
     // VERIFY: It should NOT be in registry anymore if tasks are done and it's not current
     __testOnlySetCurrentChat(null);
     unregisterLiveInstance(chatId!);
@@ -132,23 +132,23 @@ describe('useChat Registry Lifecycle', () => {
     mockLoadChat.mockClear();
     await openChat(chatId!);
     expect(mockLoadChat).toHaveBeenCalledWith(chatId!);
-    expect(currentChat.value).not.toBe(chat); 
+    expect(currentChat.value).not.toBe(chat);
   });
 
   it('should not leak newly created chats in liveChatRegistry after creation is complete', async () => {
     const { createNewChat, currentChat, openChat, unregisterLiveInstance, __testOnly } = useChat();
     const { liveChatRegistry, __testOnlySetCurrentChat } = __testOnly;
     liveChatRegistry.clear();
-    
+
     const chatObj = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chatObj?.id;
     await openChat(chatId!);
     const chat = currentChat.value!;
-    
+
     // Switch away to ensure it's not kept alive by currentChat
     __testOnlySetCurrentChat(null);
     unregisterLiveInstance(chatId!);
-    
+
     // VERIFY: It should NOT be in registry anymore
     expect(liveChatRegistry.has(chatId!)).toBe(false);
 
@@ -156,7 +156,7 @@ describe('useChat Registry Lifecycle', () => {
     // If NOT leaked, it will call storageService.loadChat
     mockLoadChat.mockClear();
     await openChat(chatId!);
-    
+
     // THIS IS EXPECTED TO FAIL IF THERE IS A LEAK
     expect(mockLoadChat).toHaveBeenCalledWith(chatId!);
     expect(currentChat.value).not.toBe(chat);

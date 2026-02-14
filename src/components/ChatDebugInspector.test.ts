@@ -109,10 +109,10 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
     const nodeB = treeNodes.find(n => n.props().node.id === 'B');
     const nodeC = treeNodes.find(n => n.props().node.id === 'C');
-    
+
     expect(nodeB?.props().hasLinearParent).toBe(true);
     expect(nodeC?.props().hasLinearParent).toBe(true);
-    expect(nodeB?.find('.h-px').exists()).toBe(false); 
+    expect(nodeB?.find('.h-px').exists()).toBe(false);
   });
 
   it('Scenario 2: Root Branching ([A, B])', async () => {
@@ -178,7 +178,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
     const detailPanel = wrapper.find('.flex-1.overflow-y-auto.p-8');
     const detailNodes = detailPanel.findAllComponents(ChatDebugTreeNode);
-    
+
     expect(detailNodes.length).toBe(3);
     expect(detailNodes[0].props().node.id).toBe('A');
     expect(detailNodes[1].props().node.id).toBe('B');
@@ -203,18 +203,18 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   it('Scenario 6: JSON Highlighting Toggle', async () => {
     const chat = createMockChat([createNode('A', 'user', 'A')]);
     const wrapper = mountInspector(chat);
-    
+
     await wrapper.findAll('button').find(b => b.text().includes('Full JSON'))?.trigger('click');
     await nextTick();
 
     const pre = wrapper.find('pre');
-    expect(pre.html()).toContain('class="text-red-500'); 
+    expect(pre.html()).toContain('class="text-red-500');
 
     const toggleBtn = wrapper.find('button[title="Toggle Highlighting"]');
     await toggleBtn.trigger('click');
     await nextTick();
 
-    expect(pre.html()).not.toContain('class="text-red-500'); 
+    expect(pre.html()).not.toContain('class="text-red-500');
   });
 
   it('Scenario 7: Mode Transitions', async () => {
@@ -238,7 +238,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const node = createNode('A', 'assistant', 'Response');
     const nodeWithModel = { ...node, modelId: 'gpt-4o' };
     const activeMessages = [nodeWithModel];
-    
+
     const chat = createMockChat(activeMessages);
     const wrapper = mountInspector(chat, activeMessages);
 
@@ -250,31 +250,31 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('Scenario 9: Attachment Event Handling', async () => {
     const node = createNode('A', 'user', 'A');
-    const nodeWithAtt = { ...node, attachments: [{ 
-      id: 'att-1', 
-      binaryObjectId: 'obj-1', 
-      originalName: 'test.png', 
-      mimeType: 'image/png', 
-      size: 100, 
+    const nodeWithAtt = { ...node, attachments: [{
+      id: 'att-1',
+      binaryObjectId: 'obj-1',
+      originalName: 'test.png',
+      mimeType: 'image/png',
+      size: 100,
       uploadedAt: Date.now(),
       status: 'persisted' as const
     }] };
     const activeMessages = [nodeWithAtt];
-    
+
     const chat = createMockChat(activeMessages);
     const wrapper = mountInspector(chat, activeMessages);
 
     const treeNode = wrapper.findComponent(ChatDebugTreeNode);
     expect(treeNode.exists()).toBe(true);
-    
+
     await treeNode.vm.$emit('preview-attachment', 'obj-1');
     expect(wrapper.exists()).toBe(true);
   });
 
   it('Scenario 10: Thinking and Error Display', async () => {
     const node = createNode('A', 'assistant', 'Final Content');
-    const nodeWithDetails = { 
-      ...node, 
+    const nodeWithDetails = {
+      ...node,
       thinking: 'Analyzing the request...',
       error: 'Simulated API Timeout'
     };
@@ -317,7 +317,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       createNode('A', 'user', 'Check this <!-- technical_comment -->')
     ]);
     const wrapper = mountInspector(chat);
-    
+
     await wrapper.findAll('button').find(b => b.text().includes('Full JSON'))?.trigger('click');
     await nextTick();
 
@@ -331,7 +331,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       createNode('A', 'user', 'Check this <!-- technical_comment -->')
     ]);
     const wrapper = mountInspector(chat);
-    
+
     // Switch to Full JSON
     await wrapper.findAll('button').find(b => b.text().includes('Full JSON'))?.trigger('click');
     await nextTick();
@@ -349,19 +349,19 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   it('Scenario 15: Image Preview navigation is restricted to the selected path in Tree mode', async () => {
     // Branch A -> B (with image 1)
     // Branch A -> C (with image 2)
-    const img1 = { 
-      id: 'att-1', 
-      binaryObjectId: 'obj-1', 
-      mimeType: 'image/png', 
+    const img1 = {
+      id: 'att-1',
+      binaryObjectId: 'obj-1',
+      mimeType: 'image/png',
       status: 'persisted' as const,
       originalName: 'img1.png',
       size: 1024,
       uploadedAt: Date.now()
     };
-    const img2 = { 
-      id: 'att-2', 
-      binaryObjectId: 'obj-2', 
-      mimeType: 'image/png', 
+    const img2 = {
+      id: 'att-2',
+      binaryObjectId: 'obj-2',
+      mimeType: 'image/png',
       status: 'persisted' as const,
       originalName: 'img2.png',
       size: 1024,
@@ -370,14 +370,14 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
     const nodeB = createNode('B', 'assistant', 'B content', []);
     nodeB.attachments = [img1];
-    
+
     const nodeC = createNode('C', 'assistant', 'C content', []);
     nodeC.attachments = [img2];
 
     const chat = createMockChat([
       createNode('A', 'user', 'A', [nodeB, nodeC])
     ]);
-    
+
     // Mock storageService.getBinaryObject to return valid objects
     const { storageService } = await import('../services/storage');
     vi.mocked(storageService.getBinaryObject).mockImplementation(async ({ binaryObjectId }) => {
@@ -398,18 +398,18 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const detailPanel = wrapper.find('.flex-1.overflow-y-auto.p-8');
     const treeNodes = detailPanel.findAllComponents(ChatDebugTreeNode);
     const nodeBDetail = treeNodes.find((n: any) => n.props().node.id === 'B');
-    
+
     // Trigger preview
     await nodeBDetail?.vm.$emit('preview-attachment', 'obj-1');
     await nextTick();
-    await nextTick(); 
+    await nextTick();
     await nextTick(); // More ticks for async storage and state propagation
 
     // Check preview objects
     const modal = wrapper.findComponent({ name: 'BinaryObjectPreviewModal' });
     expect(modal.exists()).toBe(true);
     const objects = modal.props('objects');
-    
+
     // Should ONLY contain obj-1 (from A -> B path), NOT obj-2 (which is in branch C)
     const ids = objects.map((o: any) => o.id);
     expect(ids).toContain('obj-1');

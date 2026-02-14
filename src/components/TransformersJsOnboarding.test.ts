@@ -97,10 +97,10 @@ describe('Transformers.js Onboarding Integration', () => {
       isFetchingModels: ref(false),
       fetchModels: vi.fn(),
       setIsOnboardingDismissed: (val: boolean) => {
-        mockIsOnboardingDismissed.value = val; 
+        mockIsOnboardingDismissed.value = val;
       },
       setOnboardingDraft: (val: any) => {
-        mockOnboardingDraft.value = val; 
+        mockOnboardingDraft.value = val;
       },
     });
 
@@ -147,7 +147,7 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('hides right column and expands left column when Transformers.js is selected', async () => {
     const wrapper = mountModal();
-    
+
     // Switch to Transformers.js
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
     await tfBtn?.trigger('click');
@@ -155,7 +155,7 @@ describe('Transformers.js Onboarding Integration', () => {
 
     // Right column (guide) should be hidden
     expect(wrapper.find('div[class*="lg:w-[38%]"]').exists()).toBe(false);
-    
+
     // Left column should be full width
     const leftCol = wrapper.find('div[class*="p-6 md:p-10"]');
     expect(leftCol.classes()).toContain('w-full');
@@ -163,7 +163,7 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('renders Experimental badge and Transformers.js Manager in the integrated view', async () => {
     const wrapper = mountModal();
-    
+
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
     await tfBtn?.trigger('click');
     await nextTick();
@@ -175,7 +175,7 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('disables "Get Started" button when no model is active in Transformers.js mode', async () => {
     const wrapper = mountModal();
-    
+
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
     await tfBtn?.trigger('click');
     await nextTick();
@@ -193,7 +193,7 @@ describe('Transformers.js Onboarding Integration', () => {
     });
 
     const wrapper = mountModal();
-    
+
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
     await tfBtn?.trigger('click');
     await flushPromises();
@@ -219,7 +219,7 @@ describe('Transformers.js Onboarding Integration', () => {
     ]);
 
     const wrapper = mountModal();
-    
+
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
     await tfBtn?.trigger('click');
     await flushPromises();
@@ -230,7 +230,7 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('updates selectedModel when TransformersJsManager emits model-loaded', async () => {
     const wrapper = mountModal();
-    
+
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
     await tfBtn?.trigger('click');
     await nextTick();
@@ -245,7 +245,7 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('saves correct settings when "Get Started" is clicked in Transformers.js mode', async () => {
     const wrapper = mountModal();
-    
+
     // Switch to TF.js
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
     await tfBtn?.trigger('click');
@@ -270,26 +270,26 @@ describe('Transformers.js Onboarding Integration', () => {
   it('automatically loads model after successful download in TransformersJsManager (Integrated flow)', async () => {
     // This test uses the real component but mocks the service
     const wrapper = mount(OnboardingModal);
-    
+
     const tfBtn = wrapper.findAll('button').find(b => b.text().includes('Transformers.js'));
     await tfBtn?.trigger('click');
     await flushPromises();
 
     const manager = wrapper.getComponent(TransformersJsManager);
-    
+
     // Simulate typing a model ID
     const input = manager.find('input[placeholder*="Enter Hugging Face model ID"]');
     await input.setValue('new-download-model');
-    
+
     // Click download button
     const downloadBtn = manager.findAll('button').find(b => b.text().includes('Download Model'));
     await downloadBtn?.trigger('click');
 
     expect(transformersJsService.downloadModel).toHaveBeenCalledWith('new-download-model');
-    
+
     // Wait for download to finish
     await flushPromises();
-    
+
     // Should have automatically called loadModel (logic is inside TransformersJsManager)
     expect(transformersJsService.loadModel).toHaveBeenCalledWith('new-download-model');
   });

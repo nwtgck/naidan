@@ -18,7 +18,7 @@ describe('OllamaProvider Image Generation', () => {
       })
     };
     (fetch as any).mockResolvedValueOnce(mockResponse);
-    
+
     // Mock for the subsequent fetch that converts data URL to blob
     (fetch as any).mockResolvedValueOnce({
       blob: () => Promise.resolve(new Blob(['dummy'], { type: 'image/png' }))
@@ -66,7 +66,7 @@ describe('OllamaProvider Image Generation', () => {
       })
     };
     (fetch as any).mockResolvedValueOnce(mockResponse);
-    
+
     // Mock for the subsequent fetch that converts data URL to blob
     (fetch as any).mockResolvedValueOnce({
       blob: () => Promise.resolve(new Blob(['dummy'], { type: 'image/png' }))
@@ -122,7 +122,7 @@ describe('OllamaProvider Image Generation', () => {
     const controller = new AbortController();
     const mockError = new Error('The user aborted a request.');
     mockError.name = 'AbortError';
-    
+
     (fetch as any).mockRejectedValueOnce(mockError);
 
     const provider = new OllamaProvider(config);

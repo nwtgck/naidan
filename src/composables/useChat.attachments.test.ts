@@ -71,7 +71,7 @@ vi.mock('../services/storage', () => ({
     getFile: vi.fn().mockResolvedValue(new Blob(['data'])),
     switchProvider: vi.fn().mockResolvedValue(undefined),
     notify: vi.fn(),
-    canPersistBinary: false, 
+    canPersistBinary: false,
     getCurrentType: vi.fn().mockReturnValue('local'),
   }
 }));
@@ -118,12 +118,12 @@ describe('useChat - Attachment & Migration Logic', () => {
       endpointType: 'openai',
       providerProfiles: []
     });
-    (useSettings as any).mockReturnValue({ 
+    (useSettings as any).mockReturnValue({
       settings,
       isOnboardingDismissed: ref(true),
       onboardingDraft: ref({}),
       setHeavyContentAlertDismissed: (val: boolean) => {
-        settings.value.heavyContentAlertDismissed = val; 
+        settings.value.heavyContentAlertDismissed = val;
       },
       setOnboardingDraft: vi.fn(),
       setIsOnboardingDismissed: vi.fn(),
@@ -160,7 +160,7 @@ describe('useChat - Attachment & Migration Logic', () => {
   it('should persist attachments immediately when using OPFS', async () => {
     settings.value.storageType = 'opfs';
     (storageService as any).canPersistBinary = true;
-    
+
     const { sendMessage, createNewChat, openChat } = chatStore;
     const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatObj = await openChat(newChat!.id);
@@ -225,7 +225,7 @@ describe('useChat - Attachment & Migration Logic', () => {
     // 2. Prepare for OPFS
     settings.value.storageType = 'opfs';
     (storageService as any).canPersistBinary = true;
-    
+
     // Mock switchProvider to simulate rescue and status update
     (storageService.switchProvider as any).mockImplementation(async () => {
       const msg = chatObj.root.items[0];
@@ -257,7 +257,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       '550e8400-e29b-41d4-a716-446655440002',
       'to-migrate.png'
     );
-    
+
     const chat = await storageService.loadChat('rescue-chat');
     const finalMsg = chat!.root.items[0];
     expect(finalMsg?.attachments).toBeDefined();

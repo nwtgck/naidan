@@ -1,10 +1,10 @@
 /**
  * Mappers
  */
-import type { 
-  RoleDto, 
+import type {
+  RoleDto,
   MessageNodeDto,
-  ChatDto, 
+  ChatDto,
   ChatMetaDto,
   ChatGroupDto,
   SettingsDto,
@@ -15,11 +15,11 @@ import type {
   ChatContentDto,
   BinaryObjectDto,
 } from './dto';
-import type { 
-  Role, 
-  MessageNode, 
+import type {
+  Role,
+  MessageNode,
   MessageBranch,
-  Chat, 
+  Chat,
   ChatGroup,
   ChatSummary,
   SidebarItem,
@@ -120,24 +120,24 @@ export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
  * Resolves nested items using the hierarchy and provided chat metadata.
  */
 export const chatGroupToDomain = (
-  dto: ChatGroupDto, 
-  hierarchy: Hierarchy, 
+  dto: ChatGroupDto,
+  hierarchy: Hierarchy,
   chatMetas: ChatMeta[]
 ): ChatGroup => {
   const node = hierarchy.items.find(
     i => i.type === 'chat_group' && i.id === dto.id
   ) as HierarchyChatGroupNode | undefined;
-  
+
   const chatIds = node?.chat_ids || [];
-  
+
   const items: SidebarItem[] = chatIds.map(cid => {
     const meta = chatMetas.find(m => m.id === cid);
     return {
       id: `chat:${cid}`,
       type: 'chat',
-      chat: { 
-        id: cid, 
-        title: meta?.title || null, 
+      chat: {
+        id: cid,
+        title: meta?.title || null,
         updatedAt: meta?.updatedAt || 0,
         groupId: dto.id
       }
@@ -326,7 +326,7 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
 
 export const chatToDomain = (dto: ChatDto): Chat => {
   let root: MessageBranch = { items: [] };
-  
+
   if (dto.root && dto.root.items && dto.root.items.length > 0) {
     root = { items: (dto.root.items as MessageNodeDto[]).map(messageNodeToDomain) };
   } else if (dto.messages && dto.messages.length > 0) {
@@ -337,10 +337,10 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     root = { items: [messageNodeToDomain(dto.root as MessageNodeDto)] };
   }
 
-  const { 
-    id, title, currentLeafId, createdAt, updatedAt, 
-    debugEnabled, endpoint, modelId, originChatId, originMessageId, 
-    systemPrompt, lmParameters 
+  const {
+    id, title, currentLeafId, createdAt, updatedAt,
+    debugEnabled, endpoint, modelId, originChatId, originMessageId,
+    systemPrompt, lmParameters
   } = dto;
 
   const endpointInfo = endpoint ? (() => {
@@ -417,10 +417,10 @@ export const chatContentToDomain = (dto: ChatContentDto): ChatContent => ({
 });
 
 export const chatToDto = (domain: Chat): ChatDto => {
-  const { 
-    id, title, root, currentLeafId, createdAt, updatedAt, 
-    debugEnabled, endpointType, endpointUrl, endpointHttpHeaders, 
-    modelId, originChatId, originMessageId, systemPrompt, lmParameters 
+  const {
+    id, title, root, currentLeafId, createdAt, updatedAt,
+    debugEnabled, endpointType, endpointUrl, endpointHttpHeaders,
+    modelId, originChatId, originMessageId, systemPrompt, lmParameters
   } = domain;
 
   return {
@@ -461,24 +461,24 @@ export const buildSidebarItemsFromHierarchy = (
     case 'chat': {
       const meta = metaMap.get(node.id);
       if (!meta) return null;
-      return { 
-        id: `chat:${node.id}`, 
-        type: 'chat', 
-        chat: { ...chatMetaToSummary(meta), groupId: null } 
+      return {
+        id: `chat:${node.id}`,
+        type: 'chat',
+        chat: { ...chatMetaToSummary(meta), groupId: null }
       };
     }
     case 'chat_group': {
       const groupMeta = groupMap.get(node.id);
       if (!groupMeta) return null;
-        
+
       const nestedItems: SidebarItem[] = node.chat_ids
         .map(cid => {
           const m = metaMap.get(cid);
           if (!m) return null;
-          return { 
-            id: `chat:${cid}`, 
-            type: 'chat' as const, 
-            chat: { ...chatMetaToSummary(m), groupId: groupMeta.id } 
+          return {
+            id: `chat:${cid}`,
+            type: 'chat' as const,
+            chat: { ...chatMetaToSummary(m), groupId: groupMeta.id }
           } as SidebarItem;
         })
         .filter((i): i is SidebarItem => i !== null);
@@ -503,7 +503,7 @@ export const buildSidebarItemsFromHierarchy = (
 
 export const settingsToDomain = (dto: SettingsDto): Settings => {
   const { endpoint, providerProfiles, storageType, ...rest } = dto;
-  
+
   const endpointInfo = (() => {
     switch (endpoint.type) {
     case 'openai':
@@ -562,9 +562,9 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
 };
 
 export const settingsToDto = (domain: Settings): SettingsDto => {
-  const { 
-    endpointType, endpointUrl, endpointHttpHeaders, 
-    storageType, providerProfiles, ...rest 
+  const {
+    endpointType, endpointUrl, endpointHttpHeaders,
+    storageType, providerProfiles, ...rest
   } = domain;
 
   return {
@@ -576,11 +576,11 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
     }),
     storageType: storageType as StorageTypeDto,
     providerProfiles: (providerProfiles || []).map(p => {
-      const { 
-        endpointType: pType, endpointUrl: pUrl, endpointHttpHeaders: pHeaders, 
-        ...pRest 
+      const {
+        endpointType: pType, endpointUrl: pUrl, endpointHttpHeaders: pHeaders,
+        ...pRest
       } = p;
-      
+
       return {
         ...pRest,
         endpoint: endpointToDto({

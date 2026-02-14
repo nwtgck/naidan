@@ -63,7 +63,7 @@ const selectedPath = computed(() => {
   if (!selectedNode.value) return [];
   const path: MessageNode[] = [];
   const targetId = selectedNode.value.id;
-  
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const findPath = (items: ReadonlyArray<any>, currentPath: MessageNode[]): boolean => {
     for (const item of items) {
@@ -90,14 +90,14 @@ const previewInitialId = ref<string | null>(null);
 
 async function handlePreviewAttachment(binaryObjectId: string) {
   const allImageIds = new Set<string>();
-  
+
   // Determine which nodes to scan based on the current mode
   const nodesToScan = (() => {
     const m = mode.value;
     switch (m) {
     case 'tree': return selectedPath.value;
     case 'active': return props.activeMessages;
-    case 'raw': return []; 
+    case 'raw': return [];
     default: {
       const _ex: never = m;
       return _ex;
@@ -176,7 +176,7 @@ const highlightJson = (json: string) => {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-    
+
   let html = escaped;
   if (isHighlightEnabled.value) {
     // 2. Add spans for highlighting. Input is already escaped.
@@ -255,7 +255,7 @@ defineExpose({
           <div class="flex items-center gap-4">
             <!-- Mode Switcher -->
             <div class="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 shadow-inner">
-              <button 
+              <button
                 v-for="m in ([{id: 'active', icon: MessageSquare, label: 'Active'}, {id: 'tree', icon: Network, label: 'Tree'}, {id: 'raw', icon: FileCode, label: 'Full JSON'}] as const)"
                 :key="m.id"
                 @click="mode = m.id"
@@ -268,7 +268,7 @@ defineExpose({
             </div>
 
             <!-- Global Highlighting Toggle -->
-            <button 
+            <button
               @click="isHighlightEnabled = !isHighlightEnabled"
               class="p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
               :class="isHighlightEnabled ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400'"
@@ -278,7 +278,7 @@ defineExpose({
             </button>
 
             <!-- Content Collapse Toggle -->
-            <button 
+            <button
               @click="isContentCollapsed = !isContentCollapsed"
               class="p-2 rounded-xl border transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
               :class="isContentCollapsed ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400'"
@@ -297,11 +297,11 @@ defineExpose({
 
         <!-- Content Area (Lazy) -->
         <div class="flex-1 overflow-hidden bg-white dark:bg-gray-950 flex">
-          
+
           <!-- Tab 1: Active Thread (Direct List) -->
           <div v-if="mode === 'active'" class="flex-1 overflow-y-auto p-6 space-y-2 max-w-4xl mx-auto thin-scrollbar">
-            <ChatDebugTreeNode 
-              v-for="m in activeMessages" 
+            <ChatDebugTreeNode
+              v-for="m in activeMessages"
               :key="m.id"
               :node="{ ...m, replies: { items: [] } }"
               :active-ids="activeIds"
@@ -316,12 +316,12 @@ defineExpose({
           <!-- Tab 2: Tree Structure (Split View) -->
           <div v-else-if="mode === 'tree'" class="flex-1 flex overflow-hidden">
             <!-- Left: Visual Map -->
-            <div 
+            <div
               class="relative overflow-y-auto border-r border-gray-100 dark:border-white/5 thin-scrollbar bg-gray-50/10 dark:bg-white/[0.005] transition-all duration-300 ease-in-out"
               :class="isTreeMapCollapsed ? 'w-12 p-2 overflow-x-hidden' : 'w-[45%] p-8'"
             >
               <!-- Collapse Toggle -->
-              <button 
+              <button
                 @click="isTreeMapCollapsed = !isTreeMapCollapsed"
                 class="absolute right-2 top-2 p-1.5 rounded-lg text-gray-400 hover:text-indigo-500 hover:bg-white dark:hover:bg-gray-800 transition-all z-20"
                 :title="isTreeMapCollapsed ? 'Expand Tree' : 'Collapse Tree'"
@@ -330,10 +330,10 @@ defineExpose({
               </button>
 
               <div v-if="!isTreeMapCollapsed && chat?.root?.items" class="relative" :class="chat.root.items.length > 1 ? 'ml-6' : ''">
-                <ChatDebugTreeNode 
-                  v-for="(node, index) in chat.root.items" 
-                  :key="node.id" 
-                  :node="node" 
+                <ChatDebugTreeNode
+                  v-for="(node, index) in chat.root.items"
+                  :key="node.id"
+                  :node="node"
                   :active-ids="activeIds"
                   :highlight="isHighlightEnabled"
                   :is-content-collapsed="isContentCollapsed"
@@ -354,7 +354,7 @@ defineExpose({
               <div v-if="selectedPath.length > 0" class="space-y-4">
                 <div v-if="selectedPath.length > 1" class="mb-8 border-b border-gray-100 dark:border-white/5 pb-4 flex justify-between items-end">
                   <span class="text-[9px] font-black uppercase tracking-widest text-gray-400">Context Path</span>
-                  <button 
+                  <button
                     @click="handleOpenLeaf(selectedNode!.id)"
                     class="flex items-center gap-2 px-3 py-1.5 bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
                   >
@@ -362,7 +362,7 @@ defineExpose({
                     <span>Open at this leaf</span>
                   </button>
                 </div>
-                <ChatDebugTreeNode 
+                <ChatDebugTreeNode
                   v-for="m in selectedPath"
                   :key="m.id"
                   :node="{ ...m, replies: { items: [] } }"
@@ -383,7 +383,7 @@ defineExpose({
 
           <!-- Tab 3: Full JSON -->
           <div v-else-if="mode === 'raw'" class="flex-1 p-6 overflow-hidden">
-            <pre 
+            <pre
               class="bg-gray-50/50 dark:bg-black/40 p-6 rounded-2xl border border-gray-100 dark:border-white/5 text-[11px] overflow-auto h-full text-gray-700 dark:text-gray-300 leading-relaxed font-mono thin-scrollbar"
               v-html="rawJsonOutput"
             ></pre>

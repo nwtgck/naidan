@@ -24,7 +24,7 @@ describe('MessageItem Speech Controls', () => {
   it('renders speech buttons if supported', () => {
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Header and footer toggle buttons
     const toggles = wrapper.findAll('[data-testid="speech-toggle-mini"]');
     expect(toggles.length).toBe(2);
@@ -34,7 +34,7 @@ describe('MessageItem Speech Controls', () => {
     vi.spyOn(webSpeechService, 'isSupported').mockReturnValue(false);
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     expect(wrapper.find('[data-testid="speech-toggle-mini"]').exists()).toBe(false);
   });
 
@@ -42,25 +42,25 @@ describe('MessageItem Speech Controls', () => {
     const speakSpy = vi.spyOn(webSpeechService, 'speak');
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Click header toggle
     await wrapper.findAll('[data-testid="speech-toggle-mini"]')[0]!.trigger('click');
-    
+
     expect(speakSpy).toHaveBeenCalledWith({ text: 'Hello', messageId: message.id });
   });
 
   it('shows control group when speech is active in footer', async () => {
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Simulate active state
     webSpeechService.state.activeMessageId = message.id;
     webSpeechService.state.status = 'playing';
     await nextTick();
-    
+
     // Header remains mini
     expect(wrapper.findAll('[data-testid="speech-toggle-mini"]').length).toBe(1);
-    
+
     // Footer shows full panel
     expect(wrapper.find('[data-testid="speech-toggle-button"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="speech-stop-button"]').exists()).toBe(true);
@@ -72,20 +72,20 @@ describe('MessageItem Speech Controls', () => {
     const speakSpy = vi.spyOn(webSpeechService, 'speak');
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Start playing
     webSpeechService.state.activeMessageId = message.id;
     webSpeechService.state.status = 'playing';
     await nextTick();
-    
+
     // Click pause on full panel
     await wrapper.find('[data-testid="speech-toggle-button"]').trigger('click');
     expect(pauseSpy).toHaveBeenCalled();
-    
+
     // Simulate paused state
     webSpeechService.state.status = 'paused';
     await nextTick();
-    
+
     // Click resume on full panel
     await wrapper.find('[data-testid="speech-toggle-button"]').trigger('click');
     expect(speakSpy).toHaveBeenCalledWith({ text: 'Hello', messageId: message.id });
@@ -95,12 +95,12 @@ describe('MessageItem Speech Controls', () => {
     const stopSpy = vi.spyOn(webSpeechService, 'stop');
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Simulate active state
     webSpeechService.state.activeMessageId = message.id;
     webSpeechService.state.status = 'playing';
     await nextTick();
-    
+
     await wrapper.find('[data-testid="speech-stop-button"]').trigger('click');
     expect(stopSpy).toHaveBeenCalled();
   });
@@ -109,12 +109,12 @@ describe('MessageItem Speech Controls', () => {
     const speakSpy = vi.spyOn(webSpeechService, 'speak');
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     // Simulate active state
     webSpeechService.state.activeMessageId = message.id;
     webSpeechService.state.status = 'playing';
     await nextTick();
-    
+
     await wrapper.find('[data-testid="speech-restart-button"]').trigger('click');
     expect(speakSpy).toHaveBeenCalledWith({ text: 'Hello', messageId: message.id });
   });

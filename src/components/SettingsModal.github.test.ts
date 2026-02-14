@@ -26,10 +26,10 @@ describe('AboutTab GitHub Link', () => {
 
     const githubLink = wrapper.find('a[href*="github.com/nwtgck/naidan"]');
     expect(githubLink.exists()).toBe(true);
-    
+
     // Check for "GitHub Repository" text
     expect(githubLink.text()).toContain('GitHub Repository');
-    
+
     // Check for the description text
     expect(githubLink.text()).toContain('View source code & contribute');
   });

@@ -41,7 +41,7 @@ describe('useChat Persistence Timing', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
-    
+
     persistMock = vi.fn().mockResolvedValue(true);
     persistedMock = vi.fn().mockResolvedValue(false);
 
@@ -70,14 +70,14 @@ describe('useChat Persistence Timing', () => {
     const { useChat } = await import('./useChat');
     const chatStore = useChat();
     const { sendMessage, createNewChat } = chatStore;
-    
+
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    
+
     // First message (User -> Assistant)
     await sendMessage('Hello');
     // Wait for background generation to finish, which triggers storage.persist
     await vi.waitUntil(() => !chatStore.streaming.value);
-    
+
     expect(persistMock).toHaveBeenCalledTimes(1);
   });
 
@@ -85,14 +85,14 @@ describe('useChat Persistence Timing', () => {
     const { useChat } = await import('./useChat');
     const chatStore = useChat();
     const { sendMessage, createNewChat } = chatStore;
-    
+
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    
+
     // First message
     await sendMessage('Message 1');
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(persistMock).toHaveBeenCalledTimes(1);
-    
+
     // Second message
     await sendMessage('Message 2');
     await vi.waitUntil(() => !chatStore.streaming.value);
@@ -103,13 +103,13 @@ describe('useChat Persistence Timing', () => {
     const { useChat } = await import('./useChat');
     const chatStore = useChat();
     const { sendMessage, createNewChat } = chatStore;
-    
+
     // Chat 1
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await sendMessage('Chat 1 Message 1');
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(persistMock).toHaveBeenCalledTimes(1);
-    
+
     // Chat 2
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await sendMessage('Chat 2 Message 1');

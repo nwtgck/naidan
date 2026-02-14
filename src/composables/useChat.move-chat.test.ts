@@ -26,13 +26,13 @@ vi.mock('../services/storage', () => ({
       // Map back to sidebar structure for the test to see the changes after loadChats()
       const newSidebar = updated.items.map((node: any) => {
         if (node.type === 'chat') return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0 } };
-        return { 
-          id: `chat_group:${node.id}`, 
-          type: 'chat_group', 
-          chatGroup: { 
+        return {
+          id: `chat_group:${node.id}`,
+          type: 'chat_group',
+          chatGroup: {
             id: node.id, name: 'Group', isCollapsed: false, updatedAt: 0,
             items: node.chat_ids.map((cid: string) => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0 } }))
-          } 
+          }
         };
       });
       mockGetSidebarStructure.mockResolvedValue(newSidebar);
@@ -78,26 +78,26 @@ describe('useChat moveChatToGroup', () => {
       updatedAt: 0,
       isCollapsed: false,
     };
-    
+
     const sidebarItems: SidebarItem[] = [
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group },
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } }
     ];
-    
+
     mockGetSidebarStructure.mockResolvedValue(sidebarItems);
     await chatStore.loadChats();
-    
+
     // Move chat c1 to group g1
     await chatStore.moveChatToGroup('c1', 'g1');
-    
+
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
     expect(g1Item?.type).toBe('chat_group');
     const g1Items = (g1Item as any).chatGroup.items;
-    
+
     expect(g1Items).toHaveLength(2);
-    expect(g1Items[0]?.chat.id).toBe('c1'); 
-    
+    expect(g1Items[0]?.chat.id).toBe('c1');
+
     expect(rootItems.find(i => i.id === 'chat:c1')).toBeUndefined();
   });
 
@@ -120,19 +120,19 @@ describe('useChat moveChatToGroup', () => {
       updatedAt: 0,
       isCollapsed: false,
     };
-    
+
     mockGetSidebarStructure.mockResolvedValue([
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 },
       { id: 'chat_group:g2', type: 'chat_group', chatGroup: group2 },
     ]);
     await chatStore.loadChats();
-    
+
     await chatStore.moveChatToGroup('c1', 'g2');
-    
+
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
     const g2Item = rootItems.find(i => i.id === 'chat_group:g2');
-    
+
     expect((g1Item as any).chatGroup.items).toHaveLength(0);
     expect((g2Item as any).chatGroup.items).toHaveLength(2);
     expect((g2Item as any).chatGroup.items[0]?.chat.id).toBe('c1');
@@ -148,19 +148,19 @@ describe('useChat moveChatToGroup', () => {
       updatedAt: 0,
       isCollapsed: false,
     };
-    
+
     mockGetSidebarStructure.mockResolvedValue([
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 },
       { id: 'chat:top', type: 'chat', chat: { id: 'top', title: 'Top Chat', updatedAt: 0 } }
     ]);
     await chatStore.loadChats();
-    
+
     await chatStore.moveChatToGroup('c1', null);
-    
+
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
     expect((g1Item as any).chatGroup.items).toHaveLength(0);
-    
+
     const c1AtTop = rootItems.find(i => i.id === 'chat:c1');
     expect(c1AtTop).toBeDefined();
     // Should be inserted at the beginning of the individual chats section (index 1)
@@ -175,9 +175,9 @@ describe('useChat moveChatToGroup', () => {
     };
     mockGetSidebarStructure.mockResolvedValue([{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 }]);
     await chatStore.loadChats();
-    
+
     await chatStore.moveChatToGroup('c1', null);
-    
+
     const rootItems = chatStore.rootItems.value;
     expect(rootItems).toHaveLength(2);
     expect(rootItems[1]?.id).toBe('chat:c1'); // Appended since no other chats exist
@@ -188,15 +188,15 @@ describe('useChat moveChatToGroup', () => {
       id: 'c1', title: 'C1', groupId: null, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false
     }) as any;
     __testOnlySetCurrentChat(chat);
-    
+
     mockGetSidebarStructure.mockResolvedValue([
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: { id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false } }
     ]);
     await chatStore.loadChats();
-    
+
     await chatStore.moveChatToGroup('c1', 'g1');
-    
+
     expect(chat.groupId).toBe('g1');
     expect(chatStore.currentChat.value?.groupId).toBe('g1');
   });

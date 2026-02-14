@@ -37,7 +37,7 @@ vi.mock('../services/llm', () => {
   class MockOpenAI {
     chat = vi.fn().mockImplementation(async (params: { onChunk: (c: string) => void }) => {
       onChunkCallback = params.onChunk;
-      return new Promise<void>(() => {}); 
+      return new Promise<void>(() => {});
     });
     listModels = vi.fn().mockResolvedValue([]);
   }
@@ -61,7 +61,7 @@ describe('useChat Reactivity', () => {
 
     // Start sending
     void chatStore.sendMessage('Hello');
-    
+
     // Wait for activeGenerations to have the chat (signals generation started)
     await vi.waitUntil(() => chatStore.__testOnly.activeGenerations.has(chat.id), { timeout: 2000 });
 

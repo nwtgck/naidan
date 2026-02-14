@@ -66,7 +66,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
   async function createTab() {
     vi.resetModules();
-    
+
     vi.mock('../services/storage', () => ({
       storageService: {
         init: vi.fn(),
@@ -83,15 +83,15 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
             }
             if (node.type === 'chat_group') {
               const group = s.groups.get(node.id);
-              return { 
-                id: `chat_group:${node.id}`, type: 'chat_group', 
-                chatGroup: { 
-                  ...group, 
+              return {
+                id: `chat_group:${node.id}`, type: 'chat_group',
+                chatGroup: {
+                  ...group,
                   items: (node.chat_ids || []).map((cid: string) => {
                     const c = s.chats.get(cid);
                     return { id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: c?.title || null, updatedAt: c?.updatedAt || 0, groupId: node.id } };
                   })
-                } 
+                }
               };
             }
             return node;
@@ -166,7 +166,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     }));
     vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
     vi.mock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
-    
+
     vi.mock('../services/llm', () => {
       return {
         OpenAIProvider: function() {
@@ -189,7 +189,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
           };
         },
         OllamaProvider: function() {
-          return { chat: vi.fn(), listModels: vi.fn() }; 
+          return { chat: vi.fn(), listModels: vi.fn() };
         },
       };
     });
@@ -243,7 +243,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const p = tabA.sendMessage('Hello');
     await vi.advanceTimersByTimeAsync(1000);
     await p;
-    
+
     vi.advanceTimersByTime(600);
     await nextTick();
 
@@ -281,14 +281,14 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
   it('should allow Tab B to see streaming content and abort generation from Tab A', async () => {
     const tabA = await createTab();
     const tabB = await createTab();
-    
+
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
     await tabB.openChat(chat!.id);
-    
+
     // 1. Tab A starts sending a message
     const sendPromise = tabA.sendMessage('Slow msg');
-    
+
     await vi.advanceTimersByTimeAsync(10);
     await nextTick();
 
@@ -297,21 +297,21 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
     // 3. Tab B requests an abort
     tabB.abortChat();
-    
+
     await vi.advanceTimersByTimeAsync(1000);
     await sendPromise;
-    
+
     // 4. Verification: Both stopped
     expect(tabA.streaming.value).toBe(false);
     expect(tabB.streaming.value).toBe(false);
-    
+
     expect(tabA.activeMessages.value[1]?.content).toContain('[Generation Aborted]');
   });
 
   it('should sync generation state for multiple chats across tabs and support remote abort', async () => {
     const tab1 = await createTab();
     const tab2 = await createTab();
-    
+
     // 1. Setup two chats
     const chat1 = await tab1.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     const chat2 = await tab2.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
@@ -319,7 +319,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
     // 2. Both tabs open both chats (in reality they see them in sidebar)
     // We'll verify sidebar state via isTaskRunning
-    
+
     // 3. Start generation for chat1 in tab1
     const p1 = tab1.sendMessage('Msg 1');
     await vi.advanceTimersByTimeAsync(10);

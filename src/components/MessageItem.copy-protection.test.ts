@@ -29,15 +29,15 @@ describe('MessageItem Copy Protection', () => {
   it('toggles thinking block when no text is selected', async () => {
     const message = createMessage('Final response', 'Thought process');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const toggle = wrapper.find('[data-testid="toggle-thinking"]');
-    
+
     // Initial state: showThinking is false (default)
     expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(false);
-    
+
     await toggle.trigger('click');
     expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(true);
-    
+
     await toggle.trigger('click');
     expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(false);
   });
@@ -45,21 +45,21 @@ describe('MessageItem Copy Protection', () => {
   it('does NOT toggle thinking block when text is selected (prevents accidental closing on copy)', async () => {
     const message = createMessage('Final response', 'Thought process');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const toggle = wrapper.find('[data-testid="toggle-thinking"]');
-    
+
     // Expand first
     await toggle.trigger('click');
     expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(true);
-    
+
     // Simulate text selection
     window.getSelection = vi.fn().mockReturnValue({
       toString: () => 'some selected text',
     });
-    
+
     // Try to click (e.g. at the end of a drag-to-select)
     await toggle.trigger('click');
-    
+
     // Verification: It should STILL BE OPEN
     expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(true);
   });

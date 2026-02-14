@@ -20,7 +20,7 @@ describe('FailedOnlyReporter', () => {
     } as any
 
     const mockTestCaseFail = {
-      result: () => ({ 
+      result: () => ({
         state: 'failed',
         errors: [{ message: 'Assertion Error', expected: 2, actual: 1, showDiff: true }]
       }),

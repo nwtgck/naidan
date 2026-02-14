@@ -112,20 +112,20 @@ export class StorageSynchronizer {
   /**
    * Executes a function with an exclusive lock.
    * Uses navigator.locks (Web Locks API).
-   * 
+   *
    * This version does not force a failure but monitors the time taken.
    * It provides callbacks to notify if lock acquisition or task execution is taking too long.
    */
   async withLock<T>(
-    fn: () => Promise<T>, 
-    { 
+    fn: () => Promise<T>,
+    {
       lockKey,
-      notifyLockWaitAfterMs = 3000, 
+      notifyLockWaitAfterMs = 3000,
       notifyTaskSlowAfterMs = 5000,
       onLockWait,
       onTaskSlow,
       onFinalize
-    }: { 
+    }: {
       lockKey: string;
       notifyLockWaitAfterMs?: number;
       notifyTaskSlowAfterMs?: number;

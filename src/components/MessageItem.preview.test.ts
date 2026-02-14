@@ -75,7 +75,7 @@ describe('MessageItem.vue Preview Integration', () => {
 
     const img = wrapper.find('img');
     expect(img.exists()).toBe(true);
-    
+
     await img.trigger('click');
     await flushPromises();
 

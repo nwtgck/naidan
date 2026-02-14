@@ -16,7 +16,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
-    
+
     // Mock navigator.storage with full directory handle simulation
     const entries = new Map();
     const mockRoot = {
@@ -37,10 +37,10 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       }),
       removeEntry: vi.fn().mockResolvedValue(undefined),
       keys: async function* () {
-        for (const k of entries.keys()) yield k; 
+        for (const k of entries.keys()) yield k;
       },
       values: async function* () {
-        for (const v of entries.values()) yield v; 
+        for (const v of entries.values()) yield v;
       },
     };
 
@@ -51,7 +51,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
         name,
         createWritable: vi.fn().mockResolvedValue({
           write: vi.fn().mockImplementation(async (data) => {
-            content = data; 
+            content = data;
           }),
           close: vi.fn().mockResolvedValue(undefined),
         }),
@@ -84,10 +84,10 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
         }),
         removeEntry: vi.fn().mockResolvedValue(undefined),
         keys: async function* () {
-          for (const k of subEntries.keys()) yield k; 
+          for (const k of subEntries.keys()) yield k;
         },
         values: async function* () {
-          for (const v of subEntries.values()) yield v; 
+          for (const v of subEntries.values()) yield v;
         },
       };
     }
@@ -109,7 +109,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       storageType: 'local',
       providerProfiles: []
     }));
-    
+
     const mockBlob = new Blob(['binary-content'], { type: 'image/png' });
     const chat = {
       id: '550e8400-e29b-41d4-a716-446655440000',
@@ -138,7 +138,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       updatedAt: Date.now(),
       debugEnabled: false
     };
-    
+
     await storageService.updateChatContent(chat.id, () => ({
       root: chat.root,
       currentLeafId: undefined
@@ -149,7 +149,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       return curr;
     });
     await storageService.switchProvider('opfs');
-    
+
     const loadedChat = await storageService.loadChat('550e8400-e29b-41d4-a716-446655440000');
     expect(loadedChat).toBeDefined();
     const firstNode = loadedChat!.root.items[0]!;

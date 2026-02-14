@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { 
-  getImageGenerationModels, 
-  createImageRequestMarker, 
-  isImageRequest, 
-  parseImageRequest, 
+import {
+  getImageGenerationModels,
+  createImageRequestMarker,
+  isImageRequest,
+  parseImageRequest,
   stripNaidanSentinels,
   isImageGenerationPending,
   isImageGenerationProcessed,

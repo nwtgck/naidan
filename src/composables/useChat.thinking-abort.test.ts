@@ -71,7 +71,7 @@ describe('useChat Thinking Abort', () => {
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void, signal: AbortSignal }) => {
       const { onChunk, signal } = params;
       onChunk('<think>I am thinking...');
-      
+
       // Wait for abort
       return new Promise((_resolve, reject) => {
         signal.addEventListener('abort', () => {
@@ -83,10 +83,10 @@ describe('useChat Thinking Abort', () => {
     });
 
     await sendMessage('Hello');
-    
+
     // Wait for it to start streaming
     await vi.waitUntil(() => streaming.value);
-    
+
     const userMsg = chat.root.items[0];
     const assistantMsg = userMsg.replies.items[0];
     expect(assistantMsg.content).toBe('<think>I am thinking...');

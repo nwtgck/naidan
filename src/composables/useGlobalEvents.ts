@@ -3,13 +3,13 @@ import { ref, computed } from 'vue';
 
 export type EventType = 'info' | 'warn' | 'error' | 'debug';
 
-export type ErrorDetailValue = 
-  | string 
-  | number 
-  | boolean 
-  | null 
-  | undefined 
-  | Error 
+export type ErrorDetailValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | Error
   | Record<string, unknown>
   | unknown[];
 

@@ -84,7 +84,7 @@ describe('Sidebar Glitch Reproduction', () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     // Manually trigger sync
     const vm = wrapper.vm as any;
     vm.sidebarItemsLocal = [

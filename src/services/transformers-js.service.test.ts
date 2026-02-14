@@ -68,7 +68,7 @@ describe('transformersJsService', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    
+
     // Default navigator mock
     vi.stubGlobal('navigator', {
       storage: {
@@ -161,7 +161,7 @@ describe('transformersJsService', () => {
     (Comlink.wrap as any).mockReturnValue(mockRemote);
 
     const { transformersJsService } = await import('./transformers-js');
-    
+
     // Subscribe to track status changes
     const statuses: string[] = [];
     transformersJsService.subscribe((status) => {
@@ -186,10 +186,10 @@ describe('transformersJsService', () => {
     (Comlink.wrap as any).mockReturnValue(mockRemote);
 
     const { transformersJsService } = await import('./transformers-js');
-    
+
     // Start first load
     const firstLoad = transformersJsService.loadModel('model-1');
-    
+
     // Wait for the status to become 'loading'
     // In our implementation, it becomes 'loading' after listCachedModels()
     // We give it a tiny bit of time
@@ -197,7 +197,7 @@ describe('transformersJsService', () => {
 
     // Attempt second load immediately
     await expect(transformersJsService.loadModel('model-2')).rejects.toThrow('Another model is currently loading');
-    
+
     await firstLoad;
   });
 
@@ -214,7 +214,7 @@ describe('transformersJsService', () => {
 
     const controller = new AbortController();
     const genPromise = transformersJsService.generateText([], () => {}, {}, controller.signal);
-    
+
     controller.abort();
     await genPromise;
 
@@ -232,7 +232,7 @@ describe('transformersJsService', () => {
 
     const { transformersJsService } = await import('./transformers-js');
     const data = new ArrayBuffer(10);
-    
+
     await transformersJsService.importFile('my-model', 'onnx/model.onnx', data);
 
     // Verify directory structure was created through the root mock
@@ -240,7 +240,7 @@ describe('transformersJsService', () => {
     const user = await models.getDirectoryHandle('user');
     const model = await user.getDirectoryHandle('my-model');
     const onnx = await model.getDirectoryHandle('onnx');
-    
+
     expect(onnx.getFileHandle).toHaveBeenCalledWith('model.onnx', { create: true });
   });
 
@@ -251,7 +251,7 @@ describe('transformersJsService', () => {
     (Comlink.wrap as any).mockReturnValue(mockRemote);
 
     const { transformersJsService } = await import('./transformers-js');
-    
+
     await expect(transformersJsService.loadModel('bad-model')).rejects.toThrow('Failed to load');
     expect(transformersJsService.getState().status).toBe('error');
     expect(transformersJsService.getState().error).toBe('Failed to load');

@@ -17,8 +17,8 @@ HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
 }) as any;
 
 HTMLCanvasElement.prototype.toBlob = function(
-  callback: (blob: Blob | null) => void, 
-  mimeType?: string, 
+  callback: (blob: Blob | null) => void,
+  mimeType?: string,
   quality?: any
 ) {
   mockToBlob(mimeType, quality);
@@ -29,9 +29,9 @@ describe('image-processing utility', () => {
   it('re-encodes an image to the specified format with high quality', async () => {
     const inputBlob = new Blob(['original'], { type: 'image/png' });
     const outputFormat = 'webp';
-    
+
     const result = await reencodeImage({ blob: inputBlob, format: outputFormat });
-    
+
     expect(result.type).toBe('image/webp');
     expect(mockToBlob).toHaveBeenCalledWith('image/webp', 1.0);
     expect(mockDrawImage).toHaveBeenCalled();
@@ -40,7 +40,7 @@ describe('image-processing utility', () => {
   it('handles JPEG format correctly', async () => {
     const inputBlob = new Blob(['original'], { type: 'image/png' });
     const result = await reencodeImage({ blob: inputBlob, format: 'jpeg' });
-    
+
     expect(result.type).toBe('image/jpeg');
     expect(mockToBlob).toHaveBeenCalledWith('image/jpeg', 1.0);
   });
@@ -48,7 +48,7 @@ describe('image-processing utility', () => {
   it('handles PNG format correctly (re-encoding even if same)', async () => {
     const inputBlob = new Blob(['original'], { type: 'image/png' });
     const result = await reencodeImage({ blob: inputBlob, format: 'png' });
-    
+
     expect(result.type).toBe('image/png');
     expect(mockToBlob).toHaveBeenCalledWith('image/png', 1.0);
   });

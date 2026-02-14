@@ -70,11 +70,11 @@ describe('useChat System Prompt Clear Policy', () => {
     }));
 
     // 2. Chat-level Clear (behavior: override, content: null)
-    await updateChatSettings(id, { 
-      systemPrompt: { behavior: 'override', content: null } 
+    await updateChatSettings(id, {
+      systemPrompt: { behavior: 'override', content: null }
     });
     await sendMessage('Hello again');
-    
+
     // Check that system prompt is NOT present
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
@@ -87,11 +87,11 @@ describe('useChat System Prompt Clear Policy', () => {
     await openChat(id);
 
     // Chat-level override with empty string
-    await updateChatSettings(id, { 
-      systemPrompt: { behavior: 'override', content: '' } 
+    await updateChatSettings(id, {
+      systemPrompt: { behavior: 'override', content: '' }
     });
     await sendMessage('Empty string override');
-    
+
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
     expect(systemMessages.length).toBe(0);
@@ -108,12 +108,12 @@ describe('useChat System Prompt Clear Policy', () => {
       systemPrompt: { behavior: 'override', content: null }
     }) as any;
     chatStore.rootItems.value = [{ id: 'chat_group:g-clear', type: 'chat_group', chatGroup: group }];
-    
+
     await updateChatGroupOverride(id, 'g-clear');
     await nextTick();
 
     await sendMessage('In group');
-    
+
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
     expect(systemMessages.length).toBe(0);
@@ -132,12 +132,12 @@ describe('useChat System Prompt Clear Policy', () => {
     await updateChatGroupOverride(id, 'g-clear');
 
     // Chat overrides with its own prompt
-    await updateChatSettings(id, { 
-      systemPrompt: { behavior: 'override', content: 'Chat Specific Prompt' } 
+    await updateChatSettings(id, {
+      systemPrompt: { behavior: 'override', content: 'Chat Specific Prompt' }
     });
 
     await sendMessage('Override');
-    
+
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
     expect(systemMessages[0].content).toBe('Chat Specific Prompt');

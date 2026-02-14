@@ -95,10 +95,10 @@ describe('TransformersJsManager.vue', () => {
     (transformersJsService.subscribe as any).mockImplementation((_cb: any) => {
       return () => {}; // Unsubscribe mock
     });
-    
+
     // Default mock implementation
     vi.mocked(opfsDetection.checkOPFSSupport).mockResolvedValue(true);
-    
+
     // Define global constant
     (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
   });
@@ -180,7 +180,7 @@ describe('TransformersJsManager.vue', () => {
 
     expect(wrapper.text()).toContain('Initializing Engine...');
     expect(wrapper.text()).toContain('45%');
-    
+
     const progressBar = wrapper.find('.bg-blue-600');
     expect(progressBar.attributes('style')).toContain('width: 45%');
   });
@@ -189,9 +189,9 @@ describe('TransformersJsManager.vue', () => {
     it('does not show standalone warning in hosted mode', async () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
       const wrapper = mount(TransformersJsManager);
-      
+
       expect(wrapper.text()).not.toContain('In-browser AI (Transformers.js) is not available in the Standalone build');
-      
+
       const mainSection = wrapper.find('.animate-in.fade-in.slide-in-from-bottom-2');
       expect(mainSection.classes()).not.toContain('opacity-40');
     });
@@ -199,16 +199,16 @@ describe('TransformersJsManager.vue', () => {
     it('renders with restrictions and warning in standalone mode', async () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = true;
       const wrapper = mount(TransformersJsManager);
-      
+
       // Standalone warning SHOULD be visible
       expect(wrapper.text()).toContain('In-browser AI (Transformers.js) is not available in the Standalone build');
-      
+
       // Main content area SHOULD be visually disabled
       const mainSection = wrapper.find('.animate-in.fade-in.slide-in-from-bottom-2');
       expect(mainSection.classes()).toContain('opacity-40');
       expect(mainSection.classes()).toContain('pointer-events-none');
       expect(mainSection.classes()).toContain('grayscale');
-      
+
       // GitHub Releases link should be present
       const externalLink = wrapper.find('a[href="https://github.com/nwtgck/naidan/releases"]');
       expect(externalLink.exists()).toBe(true);
@@ -218,7 +218,7 @@ describe('TransformersJsManager.vue', () => {
     it('displays the correct reason for unavailability in standalone mode', async () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = true;
       const wrapper = mount(TransformersJsManager);
-      
+
       expect(wrapper.text()).toContain('due to browser restrictions on Web Workers and WebAssembly');
     });
   });
@@ -227,12 +227,12 @@ describe('TransformersJsManager.vue', () => {
     it('shows warning when OPFS is not supported', async () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
       vi.mocked(opfsDetection.checkOPFSSupport).mockResolvedValue(false);
-      
+
       const wrapper = mount(TransformersJsManager);
       await flushPromises();
-      
+
       expect(wrapper.text()).toContain('the browser does not support or allow access to Origin Private File System (OPFS)');
-      
+
       const mainSection = wrapper.find('.animate-in.fade-in.slide-in-from-bottom-2');
       expect(mainSection.classes()).toContain('opacity-40');
       expect(mainSection.classes()).toContain('pointer-events-none');
@@ -241,12 +241,12 @@ describe('TransformersJsManager.vue', () => {
     it('does not show OPFS warning when supported', async () => {
       (global as any).__BUILD_MODE_IS_STANDALONE__ = false;
       vi.mocked(opfsDetection.checkOPFSSupport).mockResolvedValue(true);
-      
+
       const wrapper = mount(TransformersJsManager);
       await flushPromises();
-      
+
       expect(wrapper.text()).not.toContain('the browser does not support or allow access to Origin Private File System (OPFS)');
-      
+
       const mainSection = wrapper.find('.animate-in.fade-in.slide-in-from-bottom-2');
       expect(mainSection.classes()).not.toContain('opacity-40');
     });

@@ -31,7 +31,7 @@ export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSetti
 
   let systemPrompts: string[] = [];
   if (globalSettings.systemPrompt) systemPrompts.push(globalSettings.systemPrompt);
-  
+
   const groupSystemPrompt = group?.systemPrompt;
   if (groupSystemPrompt) {
     switch (groupSystemPrompt.behavior) {
@@ -64,10 +64,10 @@ export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSetti
     }
   }
 
-  const lmParameters = { 
-    ...(globalSettings.lmParameters || {}), 
-    ...(group?.lmParameters || {}), 
-    ...(chat.lmParameters || {}), 
+  const lmParameters = {
+    ...(globalSettings.lmParameters || {}),
+    ...(group?.lmParameters || {}),
+    ...(chat.lmParameters || {}),
   } as LmParameters;
 
   return {

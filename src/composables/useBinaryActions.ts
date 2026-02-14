@@ -32,7 +32,7 @@ export function useBinaryActions() {
   const downloadBinaryObject = async (obj: { id: string; name?: string }) => {
     const blob = await storageService.getFile(obj.id);
     if (!blob) return;
-    
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

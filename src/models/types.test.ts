@@ -27,7 +27,7 @@ describe('Zod Schemas', () => {
       updatedAt: 123,
       debugEnabled: false,
     };
-    
+
     expect(() => ChatSchemaDto.parse(chat)).not.toThrow();
   });
 });

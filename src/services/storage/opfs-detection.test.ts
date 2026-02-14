@@ -23,7 +23,7 @@ describe('checkOPFSSupport', () => {
       removeEntry: vi.fn().mockResolvedValue(undefined)
     };
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
-    
+
     const result = await checkOPFSSupport();
     expect(result).toBe(true);
     expect(mockDirectoryHandle.getFileHandle).toHaveBeenCalled();
@@ -56,7 +56,7 @@ describe('checkOPFSSupport', () => {
       removeEntry: vi.fn().mockResolvedValue(undefined)
     };
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
-    
+
     const result = await checkOPFSSupport();
     expect(result).toBe(false);
   });
@@ -67,7 +67,7 @@ describe('checkOPFSSupport', () => {
       removeEntry: vi.fn()
     };
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
-    
+
     const result = await checkOPFSSupport();
     expect(result).toBe(false);
   });
@@ -97,10 +97,10 @@ describe('checkOPFSSupport', () => {
       removeEntry: vi.fn().mockResolvedValue(undefined)
     };
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
-    
+
     const result = await checkOPFSSupport();
-    
-    // It should return true because getDirectory() succeeded, 
+
+    // It should return true because getDirectory() succeeded,
     // and it should NOT have accessed isSecureContext.
     expect(result).toBe(true);
     expect(accessed).toBe(false);

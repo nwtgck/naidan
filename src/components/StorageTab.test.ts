@@ -12,10 +12,10 @@ import { useRouter, useRoute } from 'vue-router';
 const mockListModels = vi.fn().mockResolvedValue(['model-1']);
 vi.mock('../services/llm', () => ({
   OpenAIProvider: class {
-    listModels = mockListModels; 
+    listModels = mockListModels;
   },
   OllamaProvider: class {
-    listModels = mockListModels; 
+    listModels = mockListModels;
   },
 }));
 
@@ -137,7 +137,7 @@ describe('StorageTab.vue Tests', () => {
       replace: vi.fn(),
     });
     (useRoute as any).mockReturnValue(currentRoute);
-    
+
     const mockFileHandle = {
       createWritable: vi.fn().mockResolvedValue({}),
     };
@@ -146,7 +146,7 @@ describe('StorageTab.vue Tests', () => {
       removeEntry: vi.fn().mockResolvedValue(undefined),
     };
     vi.stubGlobal('navigator', {
-      storage: { 
+      storage: {
         getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle),
         persist: vi.fn().mockResolvedValue(true),
         persisted: vi.fn().mockResolvedValue(false),
@@ -175,7 +175,7 @@ describe('StorageTab.vue Tests', () => {
   describe('Storage Management & OPFS', () => {
     it('successfully triggers migration when switching to OPFS', async () => {
       vi.mocked(storageService.getCurrentType).mockReturnValue('local');
-                      
+
       const mockFileHandle = { createWritable: vi.fn().mockResolvedValue({}) };
       const mockDirectoryHandle = {
         getFileHandle: vi.fn().mockResolvedValue(mockFileHandle),
@@ -184,45 +184,45 @@ describe('StorageTab.vue Tests', () => {
       vi.stubGlobal('navigator', {
         storage: { getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) }
       });
-                
+
       // Ensure useSettings.save will call switchProvider
       vi.mocked(useSettings).mockReturnValue({
         settings: ref({ ...mockSettings, storageType: 'local' }),
         availableModels: ref([]),
         isFetchingModels: ref(false),
-        save: mockSave, 
+        save: mockSave,
         updateProviderProfiles: vi.fn(),
         fetchModels: vi.fn().mockResolvedValue([]),
       } as any);
-                
-      const wrapper = mount(SettingsModal, { 
-        props: { isOpen: true }, 
+
+      const wrapper = mount(SettingsModal, {
+        props: { isOpen: true },
         global: globalMocks
       });
       await wait();
-                
+
       // Trigger hasChanges by changing URL to enable Save
       await wrapper.find('input[data-testid="setting-url-input"]').setValue('http://example.com');
       await wait();
-                
+
       const storageTab = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('storage'));
       await storageTab?.trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
       await wait();
-                
-      mockShowConfirm.mockResolvedValue(true); 
-                      
+
+      mockShowConfirm.mockResolvedValue(true);
+
       await wrapper.find('[data-testid="storage-opfs"]').trigger('click');
       await flushPromises();
       await wait();
-                
+
       expect(storageService.switchProvider).toHaveBeenCalledWith('opfs');
     });
     it('warns about attachment loss when switching from OPFS to Local', async () => {
       vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
       vi.mocked(storageService.hasAttachments).mockResolvedValue(true);
-      
+
       const settingsAsOpfs = { ...mockSettings, storageType: 'opfs' as const };
       vi.mocked(useSettings).mockReturnValue({
         settings: ref(settingsAsOpfs),
@@ -233,8 +233,8 @@ describe('StorageTab.vue Tests', () => {
         fetchModels: vi.fn().mockResolvedValue([]),
       } as any);
 
-      const wrapper = mount(SettingsModal, { 
-        props: { isOpen: true }, 
+      const wrapper = mount(SettingsModal, {
+        props: { isOpen: true },
         global: globalMocks
       });
       await wait();
@@ -247,7 +247,7 @@ describe('StorageTab.vue Tests', () => {
       mockShowConfirm.mockResolvedValueOnce(false); // Cancel migration warning
       await wrapper.find('[data-testid="storage-local"]').trigger('click');
       await flushPromises();
-      
+
       expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
         title: 'Attachments will be inaccessible'
       }));
@@ -261,8 +261,8 @@ describe('StorageTab.vue Tests', () => {
         }
       });
 
-      const wrapper = mount(SettingsModal, { 
-        props: { isOpen: true }, 
+      const wrapper = mount(SettingsModal, {
+        props: { isOpen: true },
         global: globalMocks
       });
       await flushPromises();
@@ -271,7 +271,7 @@ describe('StorageTab.vue Tests', () => {
       await flushPromises();
       await vi.dynamicImportSettled();
       await nextTick();
-      
+
       const opfsBtn = wrapper.find('[data-testid="storage-opfs"]');
       expect(opfsBtn.attributes('disabled')).toBeDefined();
     });
@@ -287,13 +287,13 @@ describe('StorageTab.vue Tests', () => {
         }
       });
 
-      const wrapper = mount(SettingsModal, { 
-        props: { isOpen: true }, 
+      const wrapper = mount(SettingsModal, {
+        props: { isOpen: true },
         global: globalMocks
       });
       await flushPromises();
       await vi.dynamicImportSettled();
-      
+
       // Navigate to Storage tab
       await wrapper.find('[data-testid="tab-storage"]').trigger('click');
       await flushPromises();
@@ -302,13 +302,13 @@ describe('StorageTab.vue Tests', () => {
 
       // Should show "Best Effort" badge initially (after persisted check)
       expect(wrapper.text()).toContain('Best Effort');
-      
+
       const enableBtn = wrapper.find('[data-testid="setting-enable-persistence-button"]');
       expect(enableBtn.exists()).toBe(true);
-      
+
       await enableBtn.trigger('click');
       await flushPromises();
-      
+
       expect(persistMock).toHaveBeenCalled();
       // After clicking enable and mock resolving to true, it should show "Active" and "Protected"
       expect(wrapper.text()).toContain('Active');
@@ -316,7 +316,7 @@ describe('StorageTab.vue Tests', () => {
       expect(wrapper.find('[data-testid="setting-enable-persistence-button"]').exists()).toBe(false);
     });
   });
-    
+
   describe('Direct StorageTab.vue tests', () => {
     it('renders storage providers and highlights active one', async () => {
       const wrapper = mount(StorageTab, {
@@ -325,14 +325,14 @@ describe('StorageTab.vue Tests', () => {
       });
       await flushPromises();
       await vi.dynamicImportSettled();
-    
+
       const localBtn = wrapper.find('[data-testid="storage-local"]');
       const opfsBtn = wrapper.find('[data-testid="storage-opfs"]');
-    
+
       expect(localBtn.classes()).toContain('border-blue-500');
       expect(opfsBtn.classes()).not.toContain('border-blue-500');
     });
-    
+
     it('emits update:storageType after migration confirmation', async () => {
       mockShowConfirm.mockResolvedValue(true);
       const wrapper = mount(StorageTab, {
@@ -341,16 +341,16 @@ describe('StorageTab.vue Tests', () => {
       });
       await flushPromises();
       await vi.dynamicImportSettled();
-    
+
       await wrapper.find('[data-testid="storage-opfs"]').trigger('click');
       await flushPromises();
-    
+
       expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
         title: 'Confirm Storage Switch'
       }));
       expect(wrapper.emitted('update:storageType')?.[0]).toEqual(['opfs']);
     });
-    
+
     it('triggers clear all history and emits close', async () => {
       mockShowConfirm.mockResolvedValue(true);
       const wrapper = mount(StorageTab, {
@@ -359,10 +359,10 @@ describe('StorageTab.vue Tests', () => {
       });
       await flushPromises();
       await vi.dynamicImportSettled();
-    
+
       await wrapper.find('[data-testid="setting-clear-history-button"]').trigger('click');
       await flushPromises();
-    
+
       expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
         title: 'Clear History'
       }));
@@ -370,50 +370,50 @@ describe('StorageTab.vue Tests', () => {
       expect(mockPush).toHaveBeenCalledWith('/');
     });
   });
-    
+
   describe('SettingsModal OPFS and Error Handling (Moved)', () => {
     it('should disable OPFS option if navigator.storage is undefined', async () => {
-      vi.stubGlobal('navigator', {}); 
+      vi.stubGlobal('navigator', {});
       vi.stubGlobal('isSecureContext', true);
-    
+
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: globalMocks
       });
       await flushPromises();
       await vi.dynamicImportSettled();
-    
+
       const tabs = wrapper.findAll('button');
       const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
       if (storageTab) await storageTab.trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
-    
+
       const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
       expect(opfsOption.classes()).toContain('cursor-not-allowed');
       expect(opfsOption.text()).toContain('Unsupported');
     });
 
     it('should disable OPFS option if not in secure context', async () => {
-      vi.stubGlobal('navigator', { 
-        storage: { 
-          getDirectory: vi.fn().mockRejectedValue(new Error('Security Error')) 
-        } 
+      vi.stubGlobal('navigator', {
+        storage: {
+          getDirectory: vi.fn().mockRejectedValue(new Error('Security Error'))
+        }
       });
-    
+
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: globalMocks
       });
       await flushPromises();
       await vi.dynamicImportSettled();
-    
+
       const tabs = wrapper.findAll('button');
       const storageTab = tabs.find(b => b.text().toLowerCase().includes('storage'));
       if (storageTab) await storageTab.trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
-    
+
       const opfsOption = wrapper.find('[data-testid="storage-opfs"]');
       expect(opfsOption.classes()).toContain('cursor-not-allowed');
       expect(opfsOption.text()).toContain('Unsupported');
@@ -427,26 +427,26 @@ describe('StorageTab.vue Tests', () => {
         getFileHandle: vi.fn().mockResolvedValue(mockFileHandle),
         removeEntry: vi.fn().mockResolvedValue(undefined),
       };
-      vi.stubGlobal('navigator', { 
-        storage: { 
-          getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle) 
-        } 
+      vi.stubGlobal('navigator', {
+        storage: {
+          getDirectory: vi.fn().mockResolvedValue(mockDirectoryHandle)
+        }
       });
       vi.stubGlobal('isSecureContext', true);
-    
+
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: globalMocks
       });
       await flushPromises();
       await vi.dynamicImportSettled();
-      
+
       const storageTab = wrapper.findAll('button').find(b => b.text().toLowerCase().includes('storage'));
       await storageTab?.trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
       await wait();
-    
+
       const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
       expect(opfsOption.classes()).not.toContain('cursor-not-allowed');
       expect(opfsOption.text()).not.toContain('Unsupported');
@@ -504,7 +504,7 @@ describe('StorageTab.vue Tests', () => {
 
       const saveButton = wrapper.find('[data-testid="setting-save-button"]');
       await saveButton.trigger('click');
-    
+
       expect(mockSaveFail).toHaveBeenCalled();
       expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
         title: 'Save Failed',

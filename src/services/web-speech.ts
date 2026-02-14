@@ -1,6 +1,6 @@
 /**
  * Web Speech API Service
- * 
+ *
  * Provides text-to-speech functionality with support for pause/resume
  * and incremental streaming for ongoing message generation.
  */
@@ -17,7 +17,7 @@ class WebSpeechService {
   private synth: SpeechSynthesis | null = typeof window !== 'undefined' ? window.speechSynthesis : null;
   private currentUtterance: SpeechSynthesisUtterance | null = null;
   private readPointer = 0;
-  
+
   public readonly state = reactive<WebSpeechState>({
     status: 'inactive',
     activeMessageId: null,
@@ -124,7 +124,7 @@ class WebSpeechService {
       // We look for . ! ? or newlines followed by space or end of string
       const boundaryRegex = /.*?[.!?。\n]+(?=\s|$)/g;
       const matches = [...pendingText.matchAll(boundaryRegex)];
-      
+
       if (matches.length > 0) {
         const lastMatch = matches[matches.length - 1]!;
         const endOfLastSentence = lastMatch.index! + lastMatch[0].length;
@@ -140,7 +140,7 @@ class WebSpeechService {
 
     const utterance = new SpeechSynthesisUtterance(textToQueue);
     utterance.lang = this.detectLanguage({ text });
-    
+
     utterance.onstart = () => {
       this.updateState({ status: 'playing', messageId });
       this.currentUtterance = utterance;

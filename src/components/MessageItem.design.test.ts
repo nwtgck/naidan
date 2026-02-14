@@ -18,7 +18,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
   it('applies thinking-gradient-border element when thinking is active', () => {
     const message = createMessage('<think>Deep thought...');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const border = wrapper.find('.thinking-gradient-border');
     expect(border.exists()).toBe(true);
   });
@@ -51,9 +51,9 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
   it('expands from button to full width area when clicked', async () => {
     const message = createMessage('<think>Thinking process content</think>Final response');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const container = wrapper.find('[data-testid="toggle-thinking"]');
-    
+
     // Initially it should be a small inline button
     expect(container.classes()).toContain('inline-flex');
     expect(container.classes()).not.toContain('w-full');
@@ -78,7 +78,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
   it('maintains the thinking border during expansion if thinking is active', async () => {
     const message = createMessage('<think>Ongoing thought...');
     const wrapper = mount(MessageItem, { props: { message } });
-    
+
     const container = wrapper.find('[data-testid="toggle-thinking"]');
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(true);
 

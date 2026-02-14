@@ -221,7 +221,7 @@ export default {
     <!-- Visual Guide Lines for Tree/Compact Mode -->
     <template v-if="!isRoot && mode !== 'active' && !hasLinearParent">
       <!-- Vertical line: top to bottom, bridges the margin gap -->
-      <div 
+      <div
         class="absolute left-[-24px] top-0 w-px bg-gray-200 dark:bg-gray-800 transition-colors"
         :class="isLast ? 'h-4' : 'bottom-[-8px]'"
       ></div>
@@ -230,16 +230,16 @@ export default {
     </template>
 
     <!-- 1. Compact View (Visual Map Mode) -->
-    <div 
+    <div
       v-if="mode === 'compact'"
       class="flex items-center gap-2 py-1 px-2 rounded-lg cursor-pointer mb-0.5 w-fit transition-colors"
       :class="isActive ? 'bg-indigo-500/5' : 'hover:bg-gray-100 dark:hover:bg-white/5'"
       @click="emit('select-node', node)"
     >
-      <span 
+      <span
         class="font-black uppercase text-[7px] tracking-widest px-1 py-0.5 rounded-sm shrink-0 border border-gray-200 dark:border-white/10"
         :class="[
-          node.role === 'user' ? 'text-blue-500' : 
+          node.role === 'user' ? 'text-blue-500' :
           node.role === 'assistant' ? 'text-emerald-500' : 'text-gray-400'
         ]"
       >
@@ -251,13 +251,13 @@ export default {
     </div>
 
     <!-- 2. Unified Detailed Block (Active / Detail Mode) -->
-    <div 
+    <div
       v-else
       class="flex flex-col mb-4 bg-white dark:bg-gray-900/40 border border-gray-100 dark:border-white/5 rounded-2xl overflow-hidden transition-all duration-200"
       :class="isActive ? 'opacity-100 ring-1 ring-indigo-500/10' : 'opacity-80'"
     >
       <!-- Integrated Header -->
-      <div 
+      <div
         class="flex items-center justify-between px-4 py-2.5 bg-gray-50/50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/5 cursor-pointer"
         @click="isExpanded = !isExpanded"
       >
@@ -265,14 +265,14 @@ export default {
           <div class="w-3 flex justify-center shrink-0">
             <component :is="isExpanded ? ChevronDown : ChevronRight" class="w-3 h-3 text-gray-400" />
           </div>
-          
+
           <span v-if="isoTimestamp" class="text-[8px] text-gray-400/60 font-mono whitespace-nowrap pr-2 border-r border-gray-200 dark:border-white/10 shrink-0">{{ isoTimestamp }}</span>
 
-          <span 
-            class="font-black uppercase text-[8px] tracking-[0.15em] px-2 py-0.5 rounded-sm shrink-0 border" 
+          <span
+            class="font-black uppercase text-[8px] tracking-[0.15em] px-2 py-0.5 rounded-sm shrink-0 border"
             :class="[
-              node.role === 'user' ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20 text-blue-600' : 
-              node.role === 'assistant' ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200/50 dark:border-emerald-500/20 text-emerald-600' : 
+              node.role === 'user' ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/20 text-blue-600' :
+              node.role === 'assistant' ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200/50 dark:border-emerald-500/20 text-emerald-600' :
               'bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 text-gray-400'
             ]"
           >
@@ -289,7 +289,7 @@ export default {
           <div v-if="node.replies?.items?.length && mode === 'tree'" class="flex items-center gap-1.5 ml-2">
             <span class="text-[8px] font-bold text-gray-300 dark:text-gray-600 uppercase tracking-tighter">{{ node.replies.items.length }} branches</span>
           </div>
-          <button 
+          <button
             @click.stop="isLocallyCollapsed = !isLocallyCollapsed"
             class="p-1 rounded-md text-gray-300 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
             :title="finalIsCollapsed ? 'Show Content' : 'Collapse Content'"
@@ -319,8 +319,8 @@ export default {
 
             <!-- Text Content -->
             <div v-if="node.content" class="text-[12px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all leading-relaxed font-sans max-h-[600px] overflow-y-auto thin-scrollbar pr-2 relative group/content">
-              <button 
-                @click.stop="copyContent" 
+              <button
+                @click.stop="copyContent"
                 data-testid="copy-content-btn"
                 class="absolute right-0 top-0 p-1.5 text-gray-400 hover:text-indigo-500 opacity-0 group-hover/content:opacity-100 transition-opacity bg-white/80 dark:bg-gray-800/80 rounded-md"
               >
@@ -343,13 +343,13 @@ export default {
                   <ImageIcon class="w-3 h-3" />
                   <span>Generated Image Reference</span>
                 </div>
-                <div 
+                <div
                   @click.stop="emit('preview-attachment', img.binaryObjectId)"
                   class="rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center w-fit max-w-full shadow-sm hover:shadow-md transition-shadow"
                 >
-                  <img 
-                    v-if="thumbnailUrls[img.binaryObjectId]" 
-                    :src="thumbnailUrls[img.binaryObjectId]" 
+                  <img
+                    v-if="thumbnailUrls[img.binaryObjectId]"
+                    :src="thumbnailUrls[img.binaryObjectId]"
                     class="max-h-[300px] object-contain block"
                     :style="{ width: img.displayWidth + 'px', maxWidth: '100%' }"
                   />
@@ -364,8 +364,8 @@ export default {
             </div>
 
             <div v-if="node.attachments && node.attachments.length" class="mt-4 flex flex-wrap gap-2">
-              <div 
-                v-for="att in node.attachments" 
+              <div
+                v-for="att in node.attachments"
                 :key="att.id"
                 @click.stop="emit('preview-attachment', att.binaryObjectId)"
                 class="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center group/att"
@@ -385,7 +385,7 @@ export default {
 
         <!-- Integrated JSON -->
         <div class="p-4 bg-gray-50/20 dark:bg-black/10 border-t border-gray-100 dark:border-white/5">
-          <pre 
+          <pre
             class="text-[10px] overflow-x-auto text-gray-500 dark:text-gray-400 leading-tight font-mono max-h-48 thin-scrollbar"
             v-html="jsonOutput"
           ></pre>
@@ -394,15 +394,15 @@ export default {
     </div>
 
     <!-- Recursive Children -->
-    <div 
-      v-if="node.replies?.items?.length && isExpanded && mode === 'tree'" 
+    <div
+      v-if="node.replies?.items?.length && isExpanded && mode === 'tree'"
       class="mt-0 space-y-1"
       :class="isLinear ? 'ml-0' : 'ml-6'"
     >
-      <ChatDebugTreeNode 
-        v-for="(child, index) in node.replies.items" 
-        :key="child.id" 
-        :node="child" 
+      <ChatDebugTreeNode
+        v-for="(child, index) in node.replies.items"
+        :key="child.id"
+        :node="child"
         :active-ids="activeIds"
         :highlight="highlight"
         :is-last="index === node.replies.items.length - 1"
@@ -414,15 +414,15 @@ export default {
     </div>
 
     <!-- Recursive Children (Compact) -->
-    <div 
-      v-if="node.replies?.items?.length && mode === 'compact'" 
+    <div
+      v-if="node.replies?.items?.length && mode === 'compact'"
       class="mt-0"
       :class="isLinear ? 'ml-0' : 'ml-6'"
     >
-      <ChatDebugTreeNode 
-        v-for="(child, index) in node.replies.items" 
-        :key="child.id" 
-        :node="child" 
+      <ChatDebugTreeNode
+        v-for="(child, index) in node.replies.items"
+        :key="child.id"
+        :node="child"
         :active-ids="activeIds"
         :highlight="highlight"
         :is-last="index === node.replies.items.length - 1"
