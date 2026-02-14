@@ -88,7 +88,7 @@ describe('transformersJsService', () => {
       'onnx-community': createMockDir({
         'phi-3': createMockDir({
           'model.onnx': createMockFile(1000, 123456789),
-          '.config.json.complete': createMockFile(0, 123456789)
+          '.model.onnx.complete': createMockFile(0, 123456789)
         })
       })
     });
@@ -96,7 +96,7 @@ describe('transformersJsService', () => {
     const mockUserDir = createMockDir({
       'my-custom-model': createMockDir({
         'weights.onnx': createMockFile(2000, 987654321),
-        '.config.json.complete': createMockFile(0, 987654321)
+        '.weights.onnx.complete': createMockFile(0, 987654321)
       })
     });
 

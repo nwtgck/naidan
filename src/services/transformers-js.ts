@@ -230,26 +230,35 @@ export const transformersJsService = {
       }
 
       // Helper to calculate directory stats and check for marker
-      const getDirStats = async (dir: FileSystemDirectoryHandle): Promise<{ size: number; fileCount: number; lastModified: number; hasConfig: boolean }> => {
+      const getDirStats = async (dir: FileSystemDirectoryHandle): Promise<{ size: number; fileCount: number; lastModified: number; isComplete: boolean }> => {
         let size = 0;
         let fileCount = 0;
         let lastModified = 0;
-        let hasConfig = false;
 
-        const scan = async (d: FileSystemDirectoryHandle) => {
+        const files = new Set<string>();
+        const markers = new Set<string>();
+        let hasWeights = false;
+
+        const scan = async (d: FileSystemDirectoryHandle, path: string = '') => {
           for await (const [name, handle] of d.entries()) {
             const h = handle as FileSystemHandle;
+            const fullPath = path ? `${path}/${name}` : name;
+
             switch (h.kind) {
             case 'file': {
-              const file = await (h as FileSystemFileHandle).getFile();
-              size += file.size;
-              fileCount++;
-              if (file.lastModified > lastModified) lastModified = file.lastModified;
-              if (name === '.config.json.complete') hasConfig = true;
+              if (name.startsWith('.') && name.endsWith('.complete')) {
+                markers.add(fullPath);
+              } else {
+                files.add(fullPath);
+                const file = await (h as FileSystemFileHandle).getFile();
+                size += file.size;
+                fileCount++;
+                if (file.lastModified > lastModified) lastModified = file.lastModified;
+              }
               break;
             }
             case 'directory':
-              await scan(h as FileSystemDirectoryHandle);
+              await scan(h as FileSystemDirectoryHandle, fullPath);
               break;
             default: {
               const _ex: never = h.kind as never;
@@ -259,7 +268,34 @@ export const transformersJsService = {
           }
         };
         await scan(dir);
-        return { size, fileCount, lastModified, hasConfig };
+
+        // A model is considered complete if:
+        // 1. Every file present has a corresponding .complete marker
+        // 2. There is at least one weight file and it is complete
+        let allFilesComplete = true;
+        for (const file of files) {
+          const pathParts = file.split('/');
+          const fileName = pathParts.pop()!;
+          const dirPath = pathParts.join('/');
+          const markerPath = dirPath ? `${dirPath}/.${fileName}.complete` : `.${fileName}.complete`;
+
+          if (!markers.has(markerPath)) {
+            allFilesComplete = false;
+            break;
+          }
+
+          // Weight detection (similar to updateProgress logic)
+          if (/\.(onnx|safetensors|bin|pth|model|data)$/i.test(fileName) || fileName.includes('_data')) {
+            hasWeights = true;
+          }
+        }
+
+        return {
+          size,
+          fileCount,
+          lastModified,
+          isComplete: files.size > 0 && allFilesComplete && hasWeights
+        };
       };
 
       // Try 'user' directory (new)
@@ -270,7 +306,7 @@ export const transformersJsService = {
           switch (h.kind) {
           case 'directory': {
             const stats = await getDirStats(h as FileSystemDirectoryHandle);
-            if (stats.hasConfig) {
+            if (stats.isComplete) {
               results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
             }
             break;
@@ -293,7 +329,7 @@ export const transformersJsService = {
           switch (h.kind) {
           case 'directory': {
             const stats = await getDirStats(h as FileSystemDirectoryHandle);
-            if (stats.hasConfig) {
+            if (stats.isComplete) {
               // We still label it as 'user/' to the rest of the app
               results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
             }
@@ -321,7 +357,7 @@ export const transformersJsService = {
               switch (rh.kind) {
               case 'directory': {
                 const stats = await getDirStats(rh as FileSystemDirectoryHandle);
-                if (stats.hasConfig) {
+                if (stats.isComplete) {
                   results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified });
                 }
                 break;
