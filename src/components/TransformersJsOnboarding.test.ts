@@ -112,16 +112,17 @@ describe('Transformers.js Onboarding Integration', () => {
     (transformersJsService.getState as any).mockReturnValue({
       status: 'idle',
       progress: 0,
-      error: null,
-      activeModelId: null,
+      error: undefined,
+      activeModelId: undefined,
       device: 'wasm',
       isCached: false,
       isLoadingFromCache: false,
+      progressItems: {},
     });
     (transformersJsService.listCachedModels as any).mockResolvedValue([]);
-    (transformersJsService.subscribe as any).mockImplementation((cb: any) => {
+    (transformersJsService.subscribe as any).mockImplementation((listener: any) => {
       // Immediate call for the first state
-      cb('idle', 0, null, false, false);
+      listener('idle', 0, undefined, false, false, {});
       return () => {};
     });
 

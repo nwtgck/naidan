@@ -19,6 +19,9 @@ const emit = defineEmits<{
 
 const status = ref(transformersJsService.getState().status);
 const progress = ref(transformersJsService.getState().progress);
+const progressItems = ref(transformersJsService.getState().progressItems);
+const totalLoadedAmount = ref(transformersJsService.getState().totalLoadedAmount);
+const totalSizeAmount = ref(transformersJsService.getState().totalSizeAmount);
 const error = ref(transformersJsService.getState().error);
 const activeModelId = ref(transformersJsService.getState().activeModelId);
 const device = ref(transformersJsService.getState().device);
@@ -50,6 +53,7 @@ const cachedModels = ref<Array<{ id: string; isLocal: boolean; size: number; fil
 const searchQuery = ref('');
 const listSearchQuery = ref('');
 const isDropdownOpen = ref(false);
+const isDetailsExpanded = ref(true);
 const containerRef = ref<HTMLElement | null>(null);
 const isImporting = ref(false);
 const importProgress = ref(0);
@@ -66,7 +70,7 @@ const formatSize = (bytes: number) => {
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
 };
 
 const formatDate = (timestamp: number) => {
@@ -120,14 +124,18 @@ onMounted(async () => {
   searchQuery.value = '';
   document.addEventListener('mousedown', handleClickOutside);
   await refreshLocalModels();
-  unsubscribe = transformersJsService.subscribe((s, p, e, c, l) => {
+  unsubscribe = transformersJsService.subscribe((s, p, e, c, l, items) => {
     status.value = s;
     progress.value = p;
     error.value = e;
     isCached.value = c;
     isLoadingFromCache.value = l;
-    activeModelId.value = transformersJsService.getState().activeModelId;
-    device.value = transformersJsService.getState().device;
+    progressItems.value = items;
+    const state = transformersJsService.getState();
+    activeModelId.value = state.activeModelId;
+    device.value = state.device;
+    totalLoadedAmount.value = state.totalLoadedAmount;
+    totalSizeAmount.value = state.totalSizeAmount;
   });
 });
 
@@ -424,13 +432,52 @@ defineExpose({
                 <div class="flex items-center justify-between mb-2 px-1">
                   <span class="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-2">
                     <Loader2 class="w-3 h-3 animate-spin" />
-                    Downloading Assets...
+                    Overall Progress
                   </span>
-                  <span class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ progress }}%</span>
+                  <div class="flex flex-col items-end">
+                    <span class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ progress }}%</span>
+                    <span v-if="totalLoadedAmount > 0" class="text-[8px] text-gray-400 font-bold uppercase tabular-nums">
+                      {{ formatSize(totalLoadedAmount) }} / {{ formatSize(totalSizeAmount) }}
+                    </span>
+                  </div>
                 </div>
                 <div class="h-1.5 w-full bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
                   <div class="h-full bg-purple-600 dark:bg-purple-400 transition-all duration-300 ease-out" :style="{ width: progress + '%' }"></div>
                 </div>
+
+                <!-- Detailed File Progress -->
+                <div v-if="progressItems && Object.keys(progressItems).length > 0" class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3 animate-in fade-in duration-500">
+                  <button
+                    @click="isDetailsExpanded = !isDetailsExpanded"
+                    class="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors uppercase tracking-widest mb-3"
+                  >
+                    <ChevronDown class="w-2.5 h-2.5 transition-transform" :class="{ '-rotate-90': !isDetailsExpanded }" />
+                    Asset Details
+                  </button>
+
+                  <div v-if="isDetailsExpanded" class="space-y-3 ml-1 border-l-2 border-gray-50 dark:border-gray-800/50 pl-3">
+                    <template v-for="(info, fileName) in progressItems" :key="fileName">
+                      <div v-if="info.progress !== undefined && info.progress < 100" class="space-y-1.5">
+                        <div class="flex justify-between text-[8px] font-medium tracking-tight">
+                          <div class="flex flex-col min-w-0">
+                            <span class="text-gray-500 truncate" :title="String(fileName)">{{ fileName }}</span>
+                            <span v-if="info.loaded !== undefined" class="text-[7px] text-gray-400 font-bold uppercase tabular-nums">
+                              {{ formatSize(info.loaded) }} / {{ info.total ? formatSize(info.total) : '??' }}
+                            </span>
+                          </div>
+                          <span class="text-purple-500/70 shrink-0 self-start">{{ Math.round(info.progress) }}%</span>
+                        </div>
+                        <div class="h-0.5 w-full bg-gray-100 dark:bg-gray-800/50 rounded-full overflow-hidden">
+                          <div
+                            class="h-full bg-purple-400/40 dark:bg-purple-500/30 transition-all duration-300"
+                            :style="{ width: info.progress + '%' }"
+                          ></div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
                 <p class="text-[10px] text-gray-400 mt-2 ml-1 italic">Models are cached locally in the browser (OPFS) for offline use.</p>
               </template>
             </div>

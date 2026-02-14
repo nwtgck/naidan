@@ -81,18 +81,28 @@ describe('TransformersJsManager.vue', () => {
   const mockState = {
     status: 'idle',
     progress: 0,
-    error: null,
-    activeModelId: null,
+    error: undefined,
+    activeModelId: undefined,
     device: 'wasm',
     isCached: false,
     isLoadingFromCache: false,
+    progressItems: {},
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
     (transformersJsService.getState as any).mockReturnValue({ ...mockState });
     (transformersJsService.listCachedModels as any).mockResolvedValue([]);
-    (transformersJsService.subscribe as any).mockImplementation((_cb: any) => {
+    (transformersJsService.subscribe as any).mockImplementation((listener: any) => {
+      const state = transformersJsService.getState();
+      listener(
+        state.status,
+        state.progress,
+        state.error,
+        state.isCached,
+        state.isLoadingFromCache,
+        state.progressItems
+      );
       return () => {}; // Unsubscribe mock
     });
 
@@ -119,7 +129,7 @@ describe('TransformersJsManager.vue', () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain('hf.co/org/model1');
-    expect(wrapper.text()).toContain('1 KB');
+    expect(wrapper.text()).toContain('1.0 KB');
   });
 
   it('calls loadModel when Load button is clicked', async () => {
