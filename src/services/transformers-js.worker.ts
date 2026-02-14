@@ -1,8 +1,8 @@
 import * as Comlink from 'comlink';
-import { 
-  AutoTokenizer, 
-  AutoModelForCausalLM, 
-  TextStreamer, 
+import {
+  AutoTokenizer,
+  AutoModelForCausalLM,
+  TextStreamer,
   InterruptableStoppingCriteria,
   StoppingCriteriaList,
   env,
@@ -67,21 +67,50 @@ self.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     return new Response(null, { status: 404, statusText: 'Not Found (Local Only)' });
   }
 
-  // 2. Perform actual fetch
+  // 2. Perform actual fetch (with .wasm.gz fallback for Cloudflare Pages 26MB limit)
+  if (urlString.endsWith('.wasm')) {
+    try {
+      // Try fetching the .gz version first
+      const gzUrl = `${urlString}.gz`;
+      console.debug(`[transformers-worker] Attempting to fetch gzipped WASM: ${gzUrl}`);
+      const gzResponse = await originalFetch(gzUrl, init);
+
+      if (gzResponse.ok) {
+        console.debug(`[transformers-worker] Successfully fetched gzipped WASM: ${gzUrl}`);
+        const ds = new DecompressionStream('gzip');
+        const decompressedStream = gzResponse.body?.pipeThrough(ds);
+
+        // Create new headers, stripping Content-Length/Encoding as they change
+        const headers = new Headers(gzResponse.headers);
+        headers.set('Content-Type', 'application/wasm');
+        headers.delete('Content-Length');
+        headers.delete('Content-Encoding');
+
+        return new Response(decompressedStream, {
+          status: 200,
+          statusText: 'OK',
+          headers
+        });
+      }
+    } catch (e) {
+      console.warn(`[transformers-worker] Failed to fetch gzipped WASM, falling back to original:`, e);
+    }
+  }
+
   const response = await originalFetch(input, init);
-  
+
   // 3. Handle SPA 404 Fallback (Server returning HTML for JSON/Binary)
   // This helps when transformers.js checks for local existence of remote models via relative paths.
   if (response.status === 200) {
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('text/html')) {
       // If we are requesting a JSON/Binary file but got HTML, it's a 404 fallback
-      if (urlString.includes('/models/') || 
-          urlString.endsWith('.json') || 
-          urlString.endsWith('.onnx') || 
-          urlString.endsWith('.bin') ||
-          urlString.endsWith('.wasm')) {
-            
+      if (urlString.includes('/models/') ||
+        urlString.endsWith('.json') ||
+        urlString.endsWith('.onnx') ||
+        urlString.endsWith('.bin') ||
+        urlString.endsWith('.wasm')) {
+
         // Double check it's not actually an HTML file we wanted
         if (!urlString.endsWith('.html')) {
           console.warn(`[transformers-worker] Intercepted HTML response for ${urlString}. Treating as 404.`);
@@ -112,28 +141,28 @@ function urlToPath(url: string): string | null {
   try {
     const parsed = new URL(url);
     const pathParts = parsed.pathname.split('/').filter(p => !!p);
-    
-    const isLocalOrigin = parsed.origin === self.location.origin || 
-                          parsed.hostname === 'localhost' || 
-                          parsed.hostname === '127.0.0.1';
+
+    const isLocalOrigin = parsed.origin === self.location.origin ||
+      parsed.hostname === 'localhost' ||
+      parsed.hostname === '127.0.0.1';
 
     if (isLocalOrigin) {
       const first = pathParts[0];
       if (first === 'user' || first === 'local' || first === 'models') {
         let startIndex = 0;
         switch (first) {
-        case 'models':
-          startIndex++;
-          break;
-        case 'user':
-        case 'local':
-          break;
-        default: {
-          const _ex: never = first;
-          throw new Error(`Unhandled path part: ${_ex}`);
-        }
+          case 'models':
+            startIndex++;
+            break;
+          case 'user':
+          case 'local':
+            break;
+          default: {
+            const _ex: never = first;
+            throw new Error(`Unhandled path part: ${_ex}`);
+          }
         }        if (pathParts[startIndex] === 'user' || pathParts[startIndex] === 'local') startIndex++;
-        
+
         const cleanParts = pathParts.slice(startIndex);
         const resolved = `models/user/${cleanParts.join('/')}`;
         console.log(`[urlToPath] Local matched: ${url} -> ${resolved}`);
@@ -152,16 +181,16 @@ function urlToPath(url: string): string | null {
     if (first === 'user' || first === 'local' || first === 'models') {
       let startIndex = 0;
       switch (first) {
-      case 'models':
-        startIndex++;
-        break;
-      case 'user':
-      case 'local':
-        break;
-      default: {
-        const _ex: never = first;
-        throw new Error(`Unhandled path part: ${_ex}`);
-      }
+        case 'models':
+          startIndex++;
+          break;
+        case 'user':
+        case 'local':
+          break;
+        default: {
+          const _ex: never = first;
+          throw new Error(`Unhandled path part: ${_ex}`);
+        }
       }      if (parts[startIndex] === 'user' || parts[startIndex] === 'local') startIndex++;
       const resolved = `models/user/${parts.slice(startIndex).join('/')}`;
       console.log(`[urlToPath] Relative matched: ${url} -> ${resolved}`);
@@ -295,9 +324,9 @@ const transformersJsWorker: ITransformersJsWorker = {
     const isLocal = cleanModelId.startsWith('user/');
 
     // 1. Download Tokenizer
-    await AutoTokenizer.from_pretrained(cleanModelId, { 
-      progress_callback: progressCallback, 
-      local_files_only: isLocal 
+    await AutoTokenizer.from_pretrained(cleanModelId, {
+      progress_callback: progressCallback,
+      local_files_only: isLocal
     });
 
     // 2. Download Model weights (using same dtype to ensure correct files are cached)
@@ -367,20 +396,20 @@ const transformersJsWorker: ITransformersJsWorker = {
 
       // 2. Load Tokenizer
       console.log('[transformersJsWorker] Loading tokenizer...');
-      tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, { 
-        progress_callback: progressCallback, 
-        local_files_only: isLocal 
+      tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, {
+        progress_callback: progressCallback,
+        local_files_only: isLocal
       });
       console.log('[transformersJsWorker] Tokenizer loaded.');
 
-      return { 
+      return {
         device: (model as unknown as ModelInternals)?.device || 'wasm'
       };
     } catch (err) {
-      const errorMsg = typeof err === 'number' 
+      const errorMsg = typeof err === 'number'
         ? `Low-level engine error (code ${err}). This usually means memory allocation failed or the model format is incompatible.`
         : (err instanceof Error ? err.message : String(err));
-      
+
       console.error('[transformersJsWorker] Detailed load error:', err, errorMsg);
       throw new Error(errorMsg);
     }
@@ -407,7 +436,7 @@ const transformersJsWorker: ITransformersJsWorker = {
   },
 
   async generateText(
-    messages: ChatMessage[], 
+    messages: ChatMessage[],
     onChunk: (chunk: string) => void,
     params?: LmParameters
   ): Promise<void> {
@@ -417,7 +446,7 @@ const transformersJsWorker: ITransformersJsWorker = {
 
     const formattedMessages = messages.map(m => ({
       role: m.role,
-      content: typeof m.content === 'string' ? m.content : '' 
+      content: typeof m.content === 'string' ? m.content : ''
     }));
 
     const inputs = tokenizer.apply_chat_template(formattedMessages, {
@@ -446,36 +475,36 @@ const transformersJsWorker: ITransformersJsWorker = {
 
           if (!delta) return;
 
-          switch (delta.type){
-          case 'content': {
-            const msg = parser.messages[delta.messageIndex];
-            const channel = msg?.channel || '';
-            // Handle channel switching
-            if (channel !== currentChannel) {
+          switch (delta.type) {
+            case 'content': {
+              const msg = parser.messages[delta.messageIndex];
+              const channel = msg?.channel || '';
+              // Handle channel switching
+              if (channel !== currentChannel) {
+                if (currentChannel === 'analysis') {
+                  onChunk('</think>');
+                }
+                if (channel === 'analysis') {
+                  onChunk('<think>');
+                }
+                currentChannel = channel;
+              }
+              onChunk(delta.textDelta);
+              break;
+            }
+            case 'done':
               if (currentChannel === 'analysis') {
                 onChunk('</think>');
+                currentChannel = '';
               }
-              if (channel === 'analysis') {
-                onChunk('<think>');
-              }
-              currentChannel = channel;
-            }
-            onChunk(delta.textDelta); 
-            break;
-          }
-          case 'done':
-            if (currentChannel === 'analysis') {
-              onChunk('</think>');
-              currentChannel = '';
-            }
-            break;
+              break;
 
-          case 'new_message':
-            break;
-          default: {
-            const _ex: never = delta;
-            throw new Error(`Unhandled path part: ${_ex}`);
-          }
+            case 'new_message':
+              break;
+            default: {
+              const _ex: never = delta;
+              throw new Error(`Unhandled path part: ${_ex}`);
+            }
           }
         } else {
           // Standard passthrough

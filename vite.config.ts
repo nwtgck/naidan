@@ -5,11 +5,17 @@ import vue from '@vitejs/plugin-vue'
 import VueDevTools from 'vite-plugin-vue-devtools'
 import fs from 'node:fs'
 import path from 'node:path'
+import { createGzip } from 'node:zlib'
+import { pipeline } from 'node:stream'
+import { promisify } from 'node:util'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
 import license from 'rollup-plugin-license'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
+
+const pipe = promisify(pipeline)
+
 
 // Ensure src/assets/licenses.json exists even in a fresh clone (it's gitignored)
 // This prevents Vite from failing during import analysis in tests.
@@ -20,11 +26,11 @@ if (!fs.existsSync(licensesPath)) {
     fs.mkdirSync(assetsDir, { recursive: true })
   }
   // Create a dummy file because it's gitignored but needed for Vite import analysis in tests
-  fs.writeFileSync(licensesPath, JSON.stringify([{ 
-    name: "dummy-package-for-tests", 
-    version: "0.0.0", 
-    license: "DUMMY-LICENSE", 
-    licenseText: "This is a placeholder for CI tests." 
+  fs.writeFileSync(licensesPath, JSON.stringify([{
+    name: "dummy-package-for-tests",
+    version: "0.0.0",
+    license: "DUMMY-LICENSE",
+    licenseText: "This is a placeholder for CI tests."
   }]))
 }
 
@@ -34,6 +40,51 @@ interface LicenseDependency {
   license: string
   licenseText: string
 }
+
+/**
+ * Plugin to manually Gzip WASM files in the output directory and delete originals.
+ * Replacing vite-plugin-compression per user request.
+ */
+const manualGzipWasmPlugin = (outDir: string) => ({
+  name: 'manual-gzip-wasm-plugin',
+  async closeBundle() {
+    console.log('  \u231B Compressing WASM files to .gz...');
+    const distDir = path.resolve(__dirname, outDir);
+
+    if (!fs.existsSync(distDir)) return;
+
+    const processDirectory = async (dir: string) => {
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await processDirectory(fullPath);
+        } else if (entry.isFile() && entry.name.endsWith('.wasm')) {
+          const gzPath = `${fullPath}.gz`;
+          console.log(`  \u21A9 Compressing: ${entry.name}`);
+
+          const source = fs.createReadStream(fullPath);
+          const destination = fs.createWriteStream(gzPath);
+          const gzip = createGzip({ level: 9 });
+
+          try {
+            await pipe(source, gzip, destination);
+            // Verify source exists before unlink (sanity check)
+            if (fs.existsSync(fullPath)) {
+              await fs.promises.unlink(fullPath);
+              console.log(`  \u2713 Compressed and deleted original: ${entry.name}`);
+            }
+          } catch (err) {
+            console.error(`  \u26A0 Failed to compress ${entry.name}:`, err);
+          }
+        }
+      }
+    };
+
+    await processDirectory(distDir);
+    console.log('  \u2713 WASM compression complete.');
+  }
+});
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -118,6 +169,7 @@ export default defineConfig(({ mode }) => {
           ].filter((x): x is Exclude<typeof x, false | null | undefined> => !!x) as unknown as never,
         },
       }),
+      !isStandalone && manualGzipWasmPlugin(outDir),
       // Standalone: Inline scripts for file:// support, then Zip the result
       isStandalone && iifeInlinePlugin(outDir),
       isStandalone && zipPackagerPlugin(outDir),
@@ -176,7 +228,7 @@ const zipPackagerPlugin = (outDir: string) => ({
     console.log('  \u231B Creating standalone zip package...')
     const distDir = path.resolve(__dirname, outDir)
     const zipPath = path.resolve(__dirname, 'dist/naidan-standalone.zip')
-    
+
     if (!fs.existsSync(distDir)) return
 
     const zip = new JSZip()
@@ -191,7 +243,7 @@ const zipPackagerPlugin = (outDir: string) => ({
       compression: 'DEFLATE',
       compressionOptions: { level: 9 }
     })
-    
+
     // Ensure parent dir exists (it should, but just in case)
     const zipDir = path.dirname(zipPath)
     if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true })
@@ -246,7 +298,7 @@ const iifeInlinePlugin = (outDir: string) => ({
       if (src && src.includes('assets/index-')) {
         const relativePath = src.startsWith('./') ? src.slice(2) : src
         const scriptPath = path.join(distDir, relativePath)
-        
+
         if (fs.existsSync(scriptPath)) {
           const scriptContent = fs.readFileSync(scriptPath, 'utf8')
           const newScript = document.createElement('script')
@@ -259,6 +311,6 @@ const iifeInlinePlugin = (outDir: string) => ({
     }
 
     fs.writeFileSync(htmlPath, dom.serialize())
-    console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility.`) 
+    console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility.`)
   },
 })
