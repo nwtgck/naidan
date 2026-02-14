@@ -84,9 +84,10 @@ watch(selectedType, async (newType) => {
   switch (newType) {
   case 'transformers_js': {
     const cached = await transformersJsService.listCachedModels();
-    if (cached.length > 0 && !transformersJsService.getState().activeModelId) {
-      // Load the most recently modified model
-      const sorted = [...cached].sort((a, b) => b.lastModified - a.lastModified);
+    const completeModels = cached.filter(m => m.isComplete);
+    if (completeModels.length > 0 && !transformersJsService.getState().activeModelId) {
+      // Load the most recently modified model among complete ones
+      const sorted = [...completeModels].sort((a, b) => b.lastModified - a.lastModified);
       const target = sorted[0]?.id;
       if (target) {
         try {

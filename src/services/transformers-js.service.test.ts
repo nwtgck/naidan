@@ -119,20 +119,22 @@ describe('transformersJsService', () => {
     expect(models).toContainEqual(expect.objectContaining({
       id: 'hf.co/onnx-community/phi-3',
       isLocal: false,
-      size: 1000
+      size: 1000,
+      isComplete: true
     }));
     expect(models).toContainEqual(expect.objectContaining({
       id: 'user/my-custom-model',
       isLocal: true,
-      size: 2000
+      size: 2000,
+      isComplete: true
     }));
   });
 
-  it('should ignore models without completion marker', async () => {
+  it('should include models even without completion marker but as incomplete', async () => {
     const mockLocalDir = createMockDir({
       'incomplete-model': createMockDir({
         'weights.onnx': createMockFile(2000, 987654321)
-        // missing .config.json.complete
+        // missing .weights.onnx.complete
       })
     });
 
@@ -148,7 +150,10 @@ describe('transformersJsService', () => {
 
     const { transformersJsService } = await import('./transformers-js');
     const models = await transformersJsService.listCachedModels();
-    expect(models).toEqual([]);
+    expect(models).toContainEqual(expect.objectContaining({
+      id: 'user/incomplete-model',
+      isComplete: false
+    }));
   });
 
   it('should transition state correctly during loadModel', async () => {

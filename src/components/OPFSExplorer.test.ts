@@ -385,4 +385,82 @@ describe('OPFSExplorer.vue', () => {
     expect(wrapper.text()).toContain('Select a file to view');
     expect(wrapper.find('pre').exists()).toBe(false);
   });
+
+  it('jumps to a directory when clicking a breadcrumb item', async () => {
+    const level1 = new MockFileSystemDirectoryHandle('level1');
+    const level2 = new MockFileSystemDirectoryHandle('level2');
+    level1.entries.set('level2', level2);
+    mockOpfsRoot.entries.set('level1', level1);
+
+    const wrapper = mount(OPFSExplorer, {
+      props: { modelValue: true },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+
+    // Enter level1 -> level2
+    await wrapper.find('[data-testid="opfs-entry"]').trigger('click'); // level1
+    await flushPromises();
+    await wrapper.find('[data-testid="opfs-entry"]').trigger('click'); // level2
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('level2');
+    expect(wrapper.findAll('[data-testid="breadcrumb-item"]')).toHaveLength(2); // root, level1
+
+    // Click 'level1' breadcrumb
+    await wrapper.findAll('[data-testid="breadcrumb-item"]')[1]?.trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="breadcrumb-current"]').text()).toBe('level1');
+    expect(wrapper.findAll('[data-testid="breadcrumb-item"]')).toHaveLength(1); // root
+  });
+
+  it('refreshes the current directory when clicking refresh button', async () => {
+    const wrapper = mount(OPFSExplorer, {
+      props: { modelValue: true },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain('new_file.txt');
+
+    // Manually add a file to the mock root
+    mockOpfsRoot.entries.set('new_file.txt', new MockFileSystemFileHandle('new_file.txt'));
+
+    // Click refresh
+    await wrapper.find('[data-testid="opfs-refresh-button"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('new_file.txt');
+  });
+
+  it('toggles preview pane visibility', async () => {
+    mockOpfsRoot.entries.set('test.txt', new MockFileSystemFileHandle('test.txt', 5, 'hello'));
+
+    const wrapper = mount(OPFSExplorer, {
+      props: { modelValue: true },
+      global: { stubs: globalStubs },
+    });
+    await flushPromises();
+
+    // Initially preview is enabled
+    await wrapper.find('[data-testid="opfs-entry"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('pre').exists()).toBe(true);
+    expect(wrapper.find('.w-72').exists()).toBe(true); // Sidebar has fixed width
+
+    // Click toggle preview (disable)
+    await wrapper.find('[data-testid="opfs-preview-toggle"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('pre').exists()).toBe(false);
+    expect(wrapper.find('.flex-1').exists()).toBe(true); // Sidebar should now be flex-1
+    expect(wrapper.find('div[class*="w-72"]').exists()).toBe(false);
+
+    // Click toggle preview (enable)
+    await wrapper.find('[data-testid="opfs-preview-toggle"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('pre').exists()).toBe(true);
+  });
 });

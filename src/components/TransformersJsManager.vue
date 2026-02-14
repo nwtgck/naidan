@@ -49,7 +49,7 @@ const defaultModels = [
   'onnx-community/gpt-oss-20b-ONNX',
 ];
 
-const cachedModels = ref<Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number }>>([]);
+const cachedModels = ref<Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number; isComplete: boolean }>>([]);
 const searchQuery = ref('');
 const listSearchQuery = ref('');
 const isDropdownOpen = ref(false);
@@ -60,6 +60,7 @@ const importProgress = ref(0);
 const lastDownloadError = ref<string | null>(null);
 
 let unsubscribe: (() => void) | null = null;
+let unsubscribeList: (() => void) | null = null;
 
 const refreshLocalModels = async () => {
   cachedModels.value = await transformersJsService.listCachedModels();
@@ -137,11 +138,15 @@ onMounted(async () => {
     totalLoadedAmount.value = state.totalLoadedAmount;
     totalSizeAmount.value = state.totalSizeAmount;
   });
+  unsubscribeList = transformersJsService.subscribeModelList(() => {
+    refreshLocalModels();
+  });
 });
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleClickOutside);
   if (unsubscribe) unsubscribe();
+  if (unsubscribeList) unsubscribeList();
 });
 
 const loadModel = async (modelId: string) => {
@@ -631,12 +636,15 @@ defineExpose({
                   </div>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
+                  <span v-if="!model.isComplete" class="px-2 py-0.5 rounded-lg text-[8px] font-bold uppercase bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300 border border-amber-200 dark:border-amber-800 mr-1">
+                    Incomplete
+                  </span>
                   <button
                     @click="loadModel(model.id)"
                     :disabled="status === 'loading' || activeModelId === model.id"
                     class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-[10px] font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-all disabled:opacity-50"
                   >
-                    {{ activeModelId === model.id ? 'Active' : 'Load' }}
+                    {{ activeModelId === model.id ? 'Active' : (model.isComplete ? 'Load' : 'Resume') }}
                   </button>
                   <button
                     @click="deleteModel(model.id)"

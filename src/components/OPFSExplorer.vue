@@ -3,7 +3,7 @@ import { ref, watch } from 'vue';
 import {
   Folder, FileText, Trash2, ChevronLeft, X,
   ChevronRight, HardDrive, AlertCircle, Braces,
-  AlertTriangle
+  AlertTriangle, RefreshCw, Eye, EyeOff
 } from 'lucide-vue-next';
 import { useConfirm } from '../composables/useConfirm';
 
@@ -52,6 +52,7 @@ const selectedFile = ref<{ name: string; size: number; isText: boolean; lastModi
 const fileContent = ref<string>('');
 const rawFileContent = ref<string>('');
 const isFormatted = ref(false);
+const isPreviewDisabled = ref(false);
 const error = ref<string | null>(null);
 
 async function loadDirectory(handle: FileSystemDirectoryHandle) {
@@ -117,7 +118,16 @@ async function navigateTo(entry: OPFSEntry) {
     await loadDirectory(entry.handle as FileSystemDirectoryHandle);
     break;
   case 'file':
-    await viewFile(entry);
+    if (!isPreviewDisabled.value) {
+      await viewFile(entry);
+    } else {
+      selectedFile.value = {
+        name: entry.name,
+        size: entry.size || 0,
+        isText: isTextFile(entry.name),
+        lastModified: entry.lastModified
+      };
+    }
     break;
   default: {
     const _ex: never = entry.kind;
@@ -130,6 +140,20 @@ async function goUp() {
   const parent = pathStack.value.pop();
   if (parent) {
     await loadDirectory(parent);
+  }
+}
+
+async function jumpToBreadcrumb(index: number) {
+  const target = pathStack.value[index];
+  if (target) {
+    pathStack.value = pathStack.value.slice(0, index);
+    await loadDirectory(target);
+  }
+}
+
+async function refresh() {
+  if (currentHandle.value) {
+    await loadDirectory(currentHandle.value);
   }
 }
 
@@ -254,30 +278,62 @@ defineExpose({
       </div>
 
       <!-- Toolbar / Breadcrumbs -->
-      <div class="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
-        <button
-          @click="goUp"
-          :disabled="pathStack.length === 0"
-          class="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 disabled:opacity-30 transition-colors"
-          data-testid="opfs-back-button"
-        >
-          <ChevronLeft class="w-4 h-4" />
-        </button>
-        <div class="flex items-center text-[11px] text-gray-500 dark:text-gray-400 truncate" data-testid="opfs-breadcrumbs">
-          <template v-for="(h, i) in pathStack" :key="i">
-            <span class="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded" data-testid="breadcrumb-item">{{ h.name || 'root' }}</span>
-            <ChevronRight class="w-3 h-3 mx-1 opacity-50" />
-          </template>
-          <template v-if="currentHandle">
-            <span class="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded font-bold" data-testid="breadcrumb-current">{{ currentHandle.name || 'root' }}</span>
-          </template>
+      <div class="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+        <div class="flex items-center gap-2 overflow-hidden">
+          <button
+            @click="goUp"
+            :disabled="pathStack.length === 0"
+            class="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 disabled:opacity-30 transition-colors shrink-0"
+            data-testid="opfs-back-button"
+            title="Go Up"
+          >
+            <ChevronLeft class="w-4 h-4" />
+          </button>
+          <div class="flex items-center text-[11px] text-gray-500 dark:text-gray-400 truncate" data-testid="opfs-breadcrumbs">
+            <template v-for="(h, i) in pathStack" :key="i">
+              <button
+                @click="jumpToBreadcrumb(i)"
+                class="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                data-testid="breadcrumb-item"
+              >
+                {{ h.name || 'root' }}
+              </button>
+              <ChevronRight class="w-3 h-3 mx-1 opacity-50" />
+            </template>
+            <template v-if="currentHandle">
+              <span class="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded font-bold shrink-0" data-testid="breadcrumb-current">{{ currentHandle.name || 'root' }}</span>
+            </template>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1 shrink-0 ml-2">
+          <button
+            @click="refresh"
+            class="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500 transition-colors"
+            title="Refresh"
+            data-testid="opfs-refresh-button"
+          >
+            <RefreshCw class="w-4 h-4" />
+          </button>
+          <button
+            @click="isPreviewDisabled = !isPreviewDisabled"
+            class="p-1.5 rounded-lg transition-colors"
+            :class="isPreviewDisabled ? 'text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-800' : 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'"
+            :title="isPreviewDisabled ? 'Enable Preview' : 'Disable Preview'"
+            data-testid="opfs-preview-toggle"
+          >
+            <component :is="isPreviewDisabled ? EyeOff : Eye" class="w-4 h-4" />
+          </button>
         </div>
       </div>
 
       <!-- Main Content -->
       <div class="flex-1 flex overflow-hidden">
         <!-- Explorer Sidebar -->
-        <div class="w-72 border-r border-gray-100 dark:border-gray-800 overflow-y-auto bg-gray-50/30 dark:bg-black/20 flex-shrink-0 overscroll-contain">
+        <div
+          class="border-r border-gray-100 dark:border-gray-800 overflow-y-auto bg-gray-50/30 dark:bg-black/20 flex-shrink-0 overscroll-contain transition-all"
+          :class="isPreviewDisabled ? 'flex-1' : 'w-72 md:w-80'"
+        >
           <div v-if="error" class="p-4 m-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-xl flex gap-3 text-red-600 dark:text-red-400">
             <AlertCircle class="w-4 h-4 shrink-0" />
             <p class="text-xs font-bold">{{ error }}</p>
@@ -322,7 +378,7 @@ defineExpose({
         </div>
 
         <!-- File Viewer -->
-        <div class="flex-1 overflow-hidden flex flex-col bg-white dark:bg-gray-900 min-w-0">
+        <div v-if="!isPreviewDisabled" class="flex-1 overflow-hidden flex flex-col bg-white dark:bg-gray-900 min-w-0">
           <div v-if="selectedFile" class="flex-1 flex flex-col overflow-hidden">
             <div class="px-4 py-2 bg-gray-50 dark:bg-gray-800/30 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between flex-shrink-0">
               <div class="flex items-center gap-3">

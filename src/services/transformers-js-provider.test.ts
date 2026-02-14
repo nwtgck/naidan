@@ -71,16 +71,16 @@ describe('TransformersJsProvider', () => {
     })).rejects.toThrow('Engine is busy');
   });
 
-  it('should list available models from cache', async () => {
+  it('should list available models from cache (only complete ones)', async () => {
     mockService.listCachedModels.mockResolvedValue([
-      { id: 'model-1' },
-      { id: 'model-2' }
+      { id: 'model-1', isComplete: true },
+      { id: 'model-2', isComplete: false }
     ]);
 
     const { TransformersJsProvider } = await import('./transformers-js-provider');
     const provider = new TransformersJsProvider();
 
     const models = await provider.listModels({});
-    expect(models).toEqual(['model-1', 'model-2']);
+    expect(models).toEqual(['model-1']);
   });
 });
