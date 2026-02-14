@@ -1,7 +1,8 @@
-import { ref } from 'vue';
+import { ref, nextTick } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
+import ChatInput from './ChatInput.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
@@ -28,17 +29,17 @@ describe('ChatArea Design Specifications', () => {
       fetchingModels: ref(false),
       fetchAvailableModels: vi.fn(),
       saveChat: vi.fn(),
-      resolvedSettings: ref({ 
-        modelId: 'gemma3n:e2b', 
-        sources: { modelId: 'chat' } 
+      resolvedSettings: ref({
+        modelId: 'gemma3n:e2b',
+        sources: { modelId: 'chat' }
       }),
       isTaskRunning: vi.fn().mockReturnValue(false),
       isProcessing: vi.fn().mockReturnValue(false),
       abortChat: vi.fn(),
       isImageMode: vi.fn(() => false),
       toggleImageMode: vi.fn(),
-      getResolution: vi.fn(() => ({ width: 512, height: 512 })), 
-      getCount: vi.fn(() => 1), 
+      getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+      getCount: vi.fn(() => 1),
       updateCount: vi.fn(),
       getPersistAs: vi.fn(() => 'original'),
       updatePersistAs: vi.fn(),
@@ -47,7 +48,7 @@ describe('ChatArea Design Specifications', () => {
       getSelectedImageModel: vi.fn(),
       getSortedImageModels: vi.fn(() => []),
       imageModeMap: ref({}),
-      imageResolutionMap: ref({}), 
+      imageResolutionMap: ref({}),
       imageCountMap: ref({}),
       imagePersistAsMap: ref({}),
       imageModelOverrideMap: ref({}),
@@ -79,21 +80,23 @@ describe('ChatArea Design Specifications', () => {
     const wrapper = mount(ChatArea, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
-    
+
     // Initially spacer should not exist
+    await nextTick();
     expect(wrapper.find('[data-testid="maximized-spacer"]').exists()).toBe(false);
 
     // Toggle maximized
-    (wrapper.vm as any).isMaximized = true;
+    (wrapper.findComponent(ChatInput).vm as any).isMaximized = true;
     await flushPromises();
-    
+
     expect(wrapper.find('[data-testid="maximized-spacer"]').exists()).toBe(true);
   });
 
-  it('preserves the case of the Model ID (no forced uppercase)', () => {
+  it('preserves the case of the Model ID (no forced uppercase)', async () => {
     const wrapper = mount(ChatArea, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
+    await nextTick();
     const modelTrigger = wrapper.find('[data-testid="model-trigger"]');
     expect(modelTrigger.text()).toContain('gemma3n:e2b');
     expect(modelTrigger.text()).not.toContain('GEMMA3N');
@@ -121,20 +124,22 @@ describe('ChatArea Design Specifications', () => {
     // Mock window.innerHeight
     const originalInnerHeight = window.innerHeight;
     Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 1000 });
-    
+
     const wrapper = mount(ChatArea, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
-    
+    await nextTick();
+
     // Simulate maximization
-    (wrapper.vm as any).isMaximized = true;
-    await (wrapper.vm as any).adjustTextareaHeight();
-    
+    (wrapper.findComponent(ChatInput).vm as any).isMaximized = true;
+    const chatInput = wrapper.findComponent(ChatInput);
+    await (chatInput.vm as any).adjustTextareaHeight();
+
     const textarea = wrapper.find('[data-testid="chat-input"]');
     const height = parseFloat((textarea.element as HTMLElement).style.height);
-    
+
     // 70% of 1000 is 700.
-    expect(height).toBeLessThan(1000 * 0.8); 
+    expect(height).toBeLessThan(1000 * 0.8);
     expect(height).toBeGreaterThan(100);
 
     window.innerHeight = originalInnerHeight;
@@ -144,16 +149,16 @@ describe('ChatArea Design Specifications', () => {
     const wrapper = mount(ChatArea, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
-    
+
     const inputContainer = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
     expect(inputContainer.classes()).toContain('flex-col');
-    
+
     const textarea = inputContainer.find('[data-testid="chat-input"]');
     const buttonRow = inputContainer.find('.flex.items-center.justify-between');
-    
+
     expect(textarea.exists()).toBe(true);
     expect(buttonRow.exists()).toBe(true);
-    
+
     // Verify vertical order in DOM: textarea should come before buttonRow
     const html = inputContainer.html();
     expect(html.indexOf('data-testid="chat-input"')).toBeLessThan(html.indexOf('justify-between'));
@@ -163,16 +168,17 @@ describe('ChatArea Design Specifications', () => {
     const wrapper = mount(ChatArea, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
-    
+
     const textarea = wrapper.find('[data-testid="chat-input"]');
-    
+
     // Initially should not have animation class
     expect(textarea.classes()).not.toContain('animate-height');
 
     // Toggle maximized
-    await (wrapper.vm as any).toggleMaximized();
+    const chatInput = wrapper.findComponent(ChatInput);
+    await (chatInput.vm as any).toggleMaximized();
     await flushPromises();
-    
+
     // Should have animation class
     expect(textarea.classes()).toContain('animate-height');
 
@@ -194,21 +200,21 @@ describe('ChatArea Design Specifications', () => {
 
   it('displays the critical "only for localhost" notice in ChatSettingsPanel', async () => {
     const wrapper = mount(ChatArea, {
-      global: { 
-        stubs: { 
-          Logo: true, 
-          MessageItem: true, 
+      global: {
+        stubs: {
+          Logo: true,
+          MessageItem: true,
           WelcomeScreen: true,
           ChatSettingsPanel: ChatSettingsPanel,
-        }, 
+        },
       },
     });
-    
+
     // Toggle settings panel
     const settingsBtn = wrapper.find('[data-testid="model-trigger"]');
     await settingsBtn?.trigger('click');
     await flushPromises();
-    
+
     // Check if the panel text contains the important wording
     expect(wrapper.text()).toContain('only for localhost');
   });

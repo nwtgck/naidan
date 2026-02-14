@@ -8,11 +8,13 @@ import {
   env,
   type PreTrainedModel,
   type PreTrainedTokenizer,
-  type ModelOutput,
   type Tensor
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters } from '../models/types';
 import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker } from './transformers-js.types';
+import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '../utils/gpt-oss-harmony';
+
+type ModelOutput = Record<string, unknown>;
 
 /**
  * Interface to extend FileSystemFileHandle with the non-standard createWritable method.
@@ -65,7 +67,36 @@ self.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     return new Response(null, { status: 404, statusText: 'Not Found (Local Only)' });
   }
 
-  // 2. Perform actual fetch
+  // 2. Perform actual fetch (with .wasm.gz fallback for Cloudflare Pages 26MB limit)
+  if (urlString.endsWith('.wasm')) {
+    try {
+      // Try fetching the .gz version first
+      const gzUrl = `${urlString}.gz`;
+      console.debug(`[transformers-worker] Attempting to fetch gzipped WASM: ${gzUrl}`);
+      const gzResponse = await originalFetch(gzUrl, init);
+
+      if (gzResponse.ok) {
+        console.debug(`[transformers-worker] Successfully fetched gzipped WASM: ${gzUrl}`);
+        const ds = new DecompressionStream('gzip');
+        const decompressedStream = gzResponse.body?.pipeThrough(ds);
+
+        // Create new headers, stripping Content-Length/Encoding as they change
+        const headers = new Headers(gzResponse.headers);
+        headers.set('Content-Type', 'application/wasm');
+        headers.delete('Content-Length');
+        headers.delete('Content-Encoding');
+
+        return new Response(decompressedStream, {
+          status: 200,
+          statusText: 'OK',
+          headers
+        });
+      }
+    } catch (e) {
+      console.warn(`[transformers-worker] Failed to fetch gzipped WASM, falling back to original:`, e);
+    }
+  }
+
   const response = await originalFetch(input, init);
   
   // 3. Handle SPA 404 Fallback (Server returning HTML for JSON/Binary)
@@ -198,7 +229,7 @@ const opfsCache = {
 
       const fileHandle = await currentDir.getFileHandle(fileName);
       const file = await fileHandle.getFile();
-      
+
       if (file.size === 0) {
         await currentDir.removeEntry(fileName);
         await currentDir.removeEntry(markerName);
@@ -280,6 +311,7 @@ if (env.backends.onnx.wasm) {
 let model: PreTrainedModel | null = null;
 let tokenizer: PreTrainedTokenizer | null = null;
 let pastKeyValues: unknown = null;
+let activeModelId: string | null = null;
 const stoppingCriteria = new InterruptableStoppingCriteria();
 
 const transformersJsWorker: ITransformersJsWorker = {
@@ -311,8 +343,9 @@ const transformersJsWorker: ITransformersJsWorker = {
 
   async loadModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult> {
     console.log('[transformersJsWorker] Starting loadModel:', modelId);
-    
+
     await this.unloadModel();
+    activeModelId = modelId;
 
     let cleanModelId = modelId;
     if (cleanModelId.startsWith('hf.co/')) cleanModelId = cleanModelId.substring(6);
@@ -389,6 +422,7 @@ const transformersJsWorker: ITransformersJsWorker = {
     }
     tokenizer = null;
     pastKeyValues = null;
+    activeModelId = null;
     stoppingCriteria.reset();
   },
 
@@ -420,10 +454,63 @@ const transformersJsWorker: ITransformersJsWorker = {
       return_dict: true,
     }) as Record<string, unknown>;
 
+    const isGptOss = activeModelId?.toLowerCase().includes('gpt-oss') ?? false;
+    console.log(`[transformersJsWorker] generateText: activeModelId='${activeModelId}', isGptOss=${isGptOss}`);
+
+    let parser: GptOssHarmonyStreamParser | null = null;
+    let currentChannel = '';
+
+    if (isGptOss) {
+      parser = new GptOssHarmonyStreamParser();
+    }
+
     const streamer = new TextStreamer(tokenizer, {
       skip_prompt: true,
-      skip_special_tokens: true,
-      callback_function: onChunk,
+      skip_special_tokens: !isGptOss, // Only skip if NOT using parser, so we catch <|channel|> etc.
+      callback_function: (output: string) => {
+        if (isGptOss && parser) {
+          // Simple heuristic: if we see raw tokens that look like Harmony protocol, try parsing
+          // Otherwise pass through. But since we need stateful parsing, we always push to parser.
+          const delta = parser.push(output);
+
+          if (!delta) return;
+
+          switch (delta.type) {
+          case 'content': {
+            const msg = parser.messages[delta.messageIndex];
+            const channel = msg?.channel || '';
+            // Handle channel switching
+            if (channel !== currentChannel) {
+              if (currentChannel === 'analysis') {
+                onChunk('</think>');
+              }
+              if (channel === 'analysis') {
+                onChunk('<think>');
+              }
+              currentChannel = channel;
+            }
+            onChunk(delta.textDelta);
+            break;
+          }
+          case 'done':
+            if (currentChannel === 'analysis') {
+              onChunk('</think>');
+              currentChannel = '';
+            }
+            break;
+
+          case 'new_message':
+            break;
+          default: {
+            const _ex: never = delta;
+            throw new Error(`Unhandled path part: ${_ex}`);
+          }
+          }
+        } else {
+          // Standard passthrough
+          onChunk(output);
+        }
+      },
     });
 
     const maxNewTokens = params?.maxCompletionTokens || 1024;
@@ -445,6 +532,11 @@ const transformersJsWorker: ITransformersJsWorker = {
         stopping_criteria,
         return_dict_in_generate: true,
       });
+
+      // Ensure we close any open tags at the end
+      if (currentChannel === 'analysis') {
+        onChunk('</think>');
+      }
 
       pastKeyValues = (result as GenerationResult).past_key_values;
     } catch (err) {
