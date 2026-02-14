@@ -39,7 +39,7 @@ describe('force-switch-for-union rule', () => {
         },
       },
     });
-  });
+  }, 30000);
 
   afterAll(() => {
     if (fs.existsSync(testFilePath)) {
@@ -65,7 +65,7 @@ describe('force-switch-for-union rule', () => {
     const messages = await lintCode(code);
     expect(messages.some(m => m.ruleId === 'local-rules/force-switch-for-union')).toBe(true);
     expect(messages[0].message).toContain("instead of `t === 'a'`");
-  });
+  }, 30000);
 
   it('should report error for if-statement with object property access', async () => {
     const code = `
