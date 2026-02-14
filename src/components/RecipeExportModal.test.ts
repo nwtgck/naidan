@@ -46,7 +46,7 @@ describe('RecipeExportModal.vue', () => {
     });
     (wrapper.vm as any).initForm();
     await nextTick();
-    
+
     let inputs = wrapper.findAll('input.font-mono');
     const initialCount = inputs.length;
     expect(initialCount).toBeGreaterThan(0);
@@ -55,14 +55,14 @@ describe('RecipeExportModal.vue', () => {
     expect(addButton?.exists()).toBe(true);
     await addButton?.trigger('click');
     await nextTick();
-    
+
     inputs = wrapper.findAll('input.font-mono');
     expect(inputs.length).toBe(initialCount + 1);
 
     const deleteButton = wrapper.findAll('button').find(b => b.find('svg.lucide-trash2').exists() || b.html().includes('lucide-trash2'));
     await deleteButton?.trigger('click');
     await nextTick();
-    
+
     inputs = wrapper.findAll('input.font-mono');
     expect(inputs.length).toBe(initialCount);
   });
@@ -76,7 +76,7 @@ describe('RecipeExportModal.vue', () => {
 
     const nameInput = wrapper.find('input[type="text"]');
     await nameInput.setValue('Updated Recipe Name');
-    
+
     const preview = wrapper.find('pre');
     expect(preview.text()).toContain('"name": "Updated Recipe Name"');
     expect(preview.text()).toContain('"temperature": 0.7');
@@ -90,7 +90,7 @@ describe('RecipeExportModal.vue', () => {
     await nextTick();
 
     const caseToggle = wrapper.find('button[title="Toggle Case Sensitivity"]');
-    
+
     // Default is case-insensitive (has 'i' flag in JSON)
     expect(wrapper.find('pre').text()).toContain(`"flags": [
         "i"
@@ -98,7 +98,7 @@ describe('RecipeExportModal.vue', () => {
 
     await caseToggle.trigger('click');
     await nextTick();
-    
+
     // Now case-sensitive (empty flags array)
     expect(wrapper.find('pre').text()).toContain('"flags": []');
   });
@@ -113,7 +113,7 @@ describe('RecipeExportModal.vue', () => {
     const regexInput = wrapper.find('input.font-mono');
     await regexInput.setValue('['); // Invalid regex
     await nextTick();
-    
+
     expect(wrapper.text()).toContain('Invalid Regular Expression');
     expect(wrapper.find('.border-red-300').exists()).toBe(true);
   });

@@ -2,9 +2,9 @@ import { generateId } from '../utils/id';
 import { ref } from 'vue';
 import { OllamaProvider } from '../services/llm';
 import { storageService } from '../services/storage';
-import { 
-  getImageGenerationModels, 
-  SENTINEL_IMAGE_PENDING, 
+import {
+  getImageGenerationModels,
+  SENTINEL_IMAGE_PENDING,
   SENTINEL_IMAGE_PROCESSED,
   createImageRequestMarker,
   createImageResponseMarker,
@@ -26,7 +26,7 @@ const imagePersistAsMap = ref<Record<string, ImageRequestParams['persistAs']>>({
 
 export function useImageGeneration() {
   const isImageMode = ({ chatId }: { chatId: string }) => !!imageModeMap.value[chatId];
-  
+
   const toggleImageMode = ({ chatId }: { chatId: string }) => {
     imageModeMap.value[chatId] = !imageModeMap.value[chatId];
   };
@@ -35,10 +35,10 @@ export function useImageGeneration() {
     return imageResolutionMap.value[chatId] || { width: 512, height: 512 };
   };
 
-  const updateResolution = ({ chatId, width, height }: { 
-    chatId: string, 
-    width: number, 
-    height: number 
+  const updateResolution = ({ chatId, width, height }: {
+    chatId: string,
+    width: number,
+    height: number
   }) => {
     imageResolutionMap.value[chatId] = { width, height };
   };
@@ -47,9 +47,9 @@ export function useImageGeneration() {
     return imageCountMap.value[chatId] || 1;
   };
 
-  const updateCount = ({ chatId, count }: { 
-    chatId: string, 
-    count: number 
+  const updateCount = ({ chatId, count }: {
+    chatId: string,
+    count: number
   }) => {
     imageCountMap.value[chatId] = count;
   };
@@ -58,16 +58,16 @@ export function useImageGeneration() {
     return imagePersistAsMap.value[chatId] || 'original';
   };
 
-  const updatePersistAs = ({ chatId, format }: { 
-    chatId: string, 
-    format: ImageRequestParams['persistAs'] 
+  const updatePersistAs = ({ chatId, format }: {
+    chatId: string,
+    format: ImageRequestParams['persistAs']
   }) => {
     imagePersistAsMap.value[chatId] = format;
   };
 
-  const setImageModel = ({ chatId, modelId }: { 
-    chatId: string, 
-    modelId: string | undefined 
+  const setImageModel = ({ chatId, modelId }: {
+    chatId: string,
+    modelId: string | undefined
   }) => {
     if (modelId === undefined) {
       delete imageModelOverrideMap.value[chatId];
@@ -76,9 +76,9 @@ export function useImageGeneration() {
     }
   };
 
-  const getSelectedImageModel = ({ chatId, availableModels }: { 
-    chatId: string, 
-    availableModels: string[] 
+  const getSelectedImageModel = ({ chatId, availableModels }: {
+    chatId: string,
+    availableModels: string[]
   }) => {
     const allImageModels = getImageGenerationModels(availableModels);
     const overridden = imageModelOverrideMap.value[chatId];
@@ -88,8 +88,8 @@ export function useImageGeneration() {
     return allImageModels[0] || undefined;
   };
 
-  const getSortedImageModels = ({ availableModels }: { 
-    availableModels: string[] 
+  const getSortedImageModels = ({ availableModels }: {
+    availableModels: string[]
   }) => {
     return naturalSort(getImageGenerationModels(availableModels));
   };
@@ -104,26 +104,26 @@ export function useImageGeneration() {
     endpointHttpHeaders: [string, string][] | undefined,
     signal: AbortSignal | undefined
   }) => {
-    const provider = new OllamaProvider({ 
-      endpoint: endpointUrl, 
-      headers: endpointHttpHeaders 
+    const provider = new OllamaProvider({
+      endpoint: endpointUrl,
+      headers: endpointHttpHeaders
     });
-    
-    return await provider.generateImage({ 
-      prompt, 
-      model, 
-      width, 
-      height, 
+
+    return await provider.generateImage({
+      prompt,
+      model,
+      width,
+      height,
       images,
       signal
     });
   };
 
-  const handleImageGeneration = async ({ 
-    chatId, 
-    assistantId, 
-    prompt, 
-    width, 
+  const handleImageGeneration = async ({
+    chatId,
+    assistantId,
+    prompt,
+    width,
     height,
     count,
     persistAs: requestedPersistAs,
@@ -184,25 +184,25 @@ export function useImageGeneration() {
       const persistAs = requestedPersistAs || getPersistAs({ chatId });
       const responseMarker = createImageResponseMarker({ count: imageCount });
       assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING;
-          
+
       // Ensure the assistant node uses the actual model ID for metadata
       assistantNode.modelId = imageModel;
       triggerChatRef({ chatId });
-      await updateChatContent({ 
-        chatId: mutableChat.id, 
-        updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }) 
+      await updateChatContent({
+        chatId: mutableChat.id,
+        updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
       });
-    
+
       const blocks: GeneratedImageBlock[] = [];
-    
+
       for (let i = 0; i < imageCount; i++) {
         if (signal?.aborted) break;
-    
-        const blob = await performBase64Generation({ 
-          prompt, 
-          model: imageModel, 
-          width, 
-          height, 
+
+        const blob = await performBase64Generation({
+          prompt,
+          model: imageModel,
+          width,
+          height,
           images,
           endpointUrl,
           endpointHttpHeaders,
@@ -220,17 +220,17 @@ export function useImageGeneration() {
           } catch (e) {
             const { useGlobalEvents } = await import('../composables/useGlobalEvents');
             const { addErrorEvent } = useGlobalEvents();
-            addErrorEvent({ 
-              source: 'useImageGeneration:handleImageGeneration', 
+            addErrorEvent({
+              source: 'useImageGeneration:handleImageGeneration',
               message: `Failed to re-encode image to ${persistAs}, falling back to original`,
               details: e instanceof Error ? e : String(e)
             });
           }
         }
-    
+
         const displayWidth = width * 0.8;
         const displayHeight = height * 0.8;
-    
+
         switch (storageType) {
         case 'opfs': {
           const binaryObjectId = generateId();
@@ -240,10 +240,10 @@ export function useImageGeneration() {
             fallback: `generated-${Date.now()}-${i}`
           });
           await storageService.saveFile(finalBlob, binaryObjectId, fileName);
-                
-          blocks.push({ 
-            binaryObjectId, 
-            displayWidth, 
+
+          blocks.push({
+            binaryObjectId,
+            displayWidth,
             displayHeight,
             prompt
           });
@@ -252,7 +252,7 @@ export function useImageGeneration() {
         case 'local': {
           const url = URL.createObjectURL(finalBlob);
           const blockHtml = `<img src="${url}" width="${displayWidth}" height="${displayHeight}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
-                
+
           if (i === 0) {
             assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + blockHtml;
           } else {
@@ -265,7 +265,7 @@ export function useImageGeneration() {
           throw new Error(`Unhandled storage type: ${_ex}`);
         }
         }
-            
+
         switch (storageType) {
         case 'opfs': {
           const blocksContent = blocks.map(b => `\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(b, null, 2)}\n\`\`\``).join('\n\n');
@@ -280,13 +280,13 @@ export function useImageGeneration() {
           throw new Error(`Unhandled storage type: ${_ex}`);
         }
         }
-            
+
         triggerChatRef({ chatId });
-        await updateChatContent({ 
-          chatId: mutableChat.id, 
-          updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }) 
+        await updateChatContent({
+          chatId: mutableChat.id,
+          updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
         });
-      }    
+      }
       // Finalize: replace PENDING with PROCESSED
       // Even if aborted, we want to stop the loader.
       assistantNode.content = assistantNode.content.replace(SENTINEL_IMAGE_PENDING, signal?.aborted ? '' : SENTINEL_IMAGE_PROCESSED);
@@ -299,25 +299,25 @@ export function useImageGeneration() {
       }
     } finally {
       decTask({ chatId, type: 'process' });
-      await updateChatContent({ 
-        chatId: mutableChat.id, 
-        updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }) 
+      await updateChatContent({
+        chatId: mutableChat.id,
+        updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
       });
       triggerChatRef({ chatId });
     }
   };
 
 
-  const sendImageRequest = async ({ 
-    prompt, 
-    width, 
-    height, 
+  const sendImageRequest = async ({
+    prompt,
+    width,
+    height,
     count,
     persistAs,
-    chatId, 
+    chatId,
     attachments,
     availableModels,
-    sendMessage 
+    sendMessage
   }: {
     prompt: string,
     width: number,
@@ -334,7 +334,7 @@ export function useImageGeneration() {
     const prevCount = imageCountMap.value[chatId];
     const prevPersistAs = imagePersistAsMap.value[chatId];
     const model = getSelectedImageModel({ chatId, availableModels });
-    
+
     imageModeMap.value[chatId] = true;
     imageResolutionMap.value[chatId] = { width, height };
     imageCountMap.value[chatId] = count;
@@ -342,7 +342,7 @@ export function useImageGeneration() {
 
     try {
       // If we have a specific model, we can pre-create the marker to embed it
-      const content = model 
+      const content = model
         ? createImageRequestMarker({ width, height, model, count, persistAs }) + prompt
         : prompt;
       return await sendMessage({ content, parentId: undefined, attachments });

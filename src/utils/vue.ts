@@ -8,7 +8,7 @@ export type AsyncComponentLoader<T = Component> = () => Promise<AsyncComponentRe
 /**
  * Defines an async component and automatically starts fetching its resources
  * when the parent component is mounted and the browser is idle.
- * 
+ *
  * Note: Must be called within <script setup> or setup() as it uses onMounted.
  */
 export function defineAsyncComponentAndLoadOnMounted<T extends Component = {

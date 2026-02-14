@@ -11,12 +11,12 @@ import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } fro
 
 /**
  * StorageService
- * 
+ *
  * Orchestrates atomic storage operations across multiple tabs using Web Locks.
- * 
+ *
  * FUTURE DIRECTION:
- * We are moving away from positional save methods (e.g. saveChat with index) 
- * towards a decoupled "Load-and-Update" pattern. 
+ * We are moving away from positional save methods (e.g. saveChat with index)
+ * towards a decoupled "Load-and-Update" pattern.
  * Use `updateHierarchy` for structural changes.
  */
 export class StorageService {
@@ -300,7 +300,7 @@ export class StorageService {
       await this.synchronizer.withLock(async () => {
         await this.getProvider().deleteBinaryObject(binaryObjectId);
       }, { lockKey: LOCK_METADATA, ...this.getLockOptions('deleteBinaryObject') });
-      // Notify binary objects changed if we had a specific event, 
+      // Notify binary objects changed if we had a specific event,
       // but 'chat_content' or similar might be enough, or just generic.
       // For now, let's just notify 'chat_content' as it's most related to attachments.
       this.synchronizer.notify('chat_content');
@@ -327,7 +327,7 @@ export class StorageService {
         }
 
         await newProvider.init();
-          
+
         const oldType = this.currentType;
         this.provider = newProvider;
         this.currentType = type;
@@ -341,7 +341,7 @@ export class StorageService {
               if (newProvider.canPersistBinary) {
                 const chat = await oldProvider.loadChat(chunk.data.id);
                 if (!chat) {
-                  yield chunk; continue; 
+                  yield chunk; continue;
                 }
 
                 const rescued: MigrationChunkDto[] = [];
@@ -407,7 +407,7 @@ export class StorageService {
           this.currentType = oldType;
           throw e;
         }
-          
+
         if ((() => {
           const t = typeof localStorage;
           switch (t) {

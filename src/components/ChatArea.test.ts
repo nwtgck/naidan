@@ -207,7 +207,7 @@ describe('ChatArea UI States', () => {
     const sendBtn = wrapper.find('[data-testid="send-button"]');
     const shortcutText = sendBtn.text();
 
-    // Check for "Enter" with capital E and lowercase nter, 
+    // Check for "Enter" with capital E and lowercase nter,
     // ensuring "uppercase" class isn't transforming it.
     expect(shortcutText).toContain('Enter');
     expect(shortcutText).not.toContain('ENTER');

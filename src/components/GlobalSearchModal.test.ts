@@ -96,10 +96,10 @@ describe('GlobalSearchModal Component', () => {
     const wrapper = mount(GlobalSearchModal);
     const input = wrapper.get('[data-testid="search-input"]');
     await input.setValue('test');
-    
+
     // Wait for debounce (300ms + buffer)
     await new Promise(resolve => setTimeout(resolve, 400));
-    
+
     expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
       searchQuery: 'test'
     }));
@@ -107,14 +107,14 @@ describe('GlobalSearchModal Component', () => {
 
   it('should toggle group filter when clicking in dropdown', async () => {
     const wrapper = mount(GlobalSearchModal);
-    
+
     // Open group selector
     await wrapper.get('[data-testid="group-filter-button"]').trigger('click');
-    
+
     // Find and click the group button in the dropdown
     const groupButton = wrapper.get('[data-testid="group-filter-item-g1"]');
     await groupButton.trigger('click');
-    
+
     expect(mockChatGroupIds.value).toContain('g1');
   });
 
@@ -134,17 +134,17 @@ describe('GlobalSearchModal Component', () => {
   it('should re-trigger search when opening with a filter if query is present', async () => {
     mockQuery.value = 'stale query';
     mockIsSearchOpen.value = false;
-    
+
     // Simulate opening with a chatId
     mockChatId.value = 'c1';
     mockIsSearchOpen.value = true;
-    
+
     mount(GlobalSearchModal);
-    
+
     // Wait for watch(isSearchOpen) nextTick and performSearch
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 0));
-    
+
     expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
       searchQuery: 'stale query',
       options: expect.objectContaining({ chatId: 'c1' })
@@ -157,20 +157,20 @@ describe('GlobalSearchModal Component', () => {
       { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [] },
       { chatId: 'chat2', title: 'Chat 2', updatedAt: 2, contentMatches: [] },
     ] as any;
-    
+
     const wrapper = mount(GlobalSearchModal);
     await nextTick();
-    
+
     // Initial selection should be index 0
     expect((wrapper.vm as any).selectedIndex).toBe(0);
-    
+
     // ArrowDown to select index 1
     await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowDown' });
     expect((wrapper.vm as any).selectedIndex).toBe(1);
-    
+
     // Enter to select the item
     await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'Enter' });
-    
+
     expect(mockOpenChat).toHaveBeenCalledWith('chat2');
     expect(mockCloseSearch).toHaveBeenCalled();
   });
@@ -180,12 +180,12 @@ describe('GlobalSearchModal Component', () => {
     mockResults.value = [
       { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [] },
     ] as any;
-    
+
     const wrapper = mount(GlobalSearchModal);
     await nextTick();
-    
+
     await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
-    
+
     expect(mockOpenChat).toHaveBeenCalledWith('chat1');
     expect(mockCloseSearch).toHaveBeenCalled();
   });

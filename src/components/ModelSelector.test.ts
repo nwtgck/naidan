@@ -97,7 +97,7 @@ describe('ModelSelector.vue', () => {
 
     const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
     await trigger.trigger('click');
-    
+
     const input = document.body.querySelector('input[placeholder="Filter models..."]') as HTMLInputElement;
     expect(document.activeElement).toBe(input);
 
@@ -112,7 +112,7 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    
+
     const input = document.body.querySelector('input[placeholder="Filter models..."]') as HTMLInputElement;
     input.value = 'model-b';
     input.dispatchEvent(new Event('input'));
@@ -122,7 +122,7 @@ describe('ModelSelector.vue', () => {
     expect(listItems.some(i => i.textContent?.includes('model-a'))).toBe(false);
     expect(listItems.some(i => i.textContent?.includes('model-b'))).toBe(true);
     expect(listItems.some(i => i.textContent?.includes('model-c'))).toBe(false);
-    
+
     wrapper.unmount();
   });
 
@@ -134,16 +134,16 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    
+
     const options = Array.from(document.body.querySelectorAll('.custom-scrollbar button'))
       .filter(b => b.textContent?.includes('model-c'));
-    
+
     (options[0] as HTMLElement).click();
     await nextTick();
 
     expect(wrapper.emitted('update:modelValue')).toBeTruthy();
     expect(wrapper.emitted('update:modelValue')![0]).toEqual(['model-c']);
-    
+
     wrapper.unmount();
   });
 
@@ -157,7 +157,7 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    
+
     const clearBtn = document.body.querySelector('[data-testid="model-selector-clear"]') as HTMLElement;
     expect(clearBtn.textContent).toContain('Global Default');
     clearBtn.click();
@@ -165,7 +165,7 @@ describe('ModelSelector.vue', () => {
 
     expect(wrapper.emitted('update:modelValue')).toBeTruthy();
     expect(wrapper.emitted('update:modelValue')![0]).toEqual([undefined]);
-    
+
     wrapper.unmount();
   });
 
@@ -179,7 +179,7 @@ describe('ModelSelector.vue', () => {
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
     expect(document.body.querySelector('[data-testid="model-selector-clear"]')).toBeFalsy();
-    
+
     wrapper.unmount();
   });
 
@@ -191,15 +191,15 @@ describe('ModelSelector.vue', () => {
     });
 
     await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-    
+
     const refreshBtn = Array.from(document.body.querySelectorAll('button'))
       .find(b => b.getAttribute('title') === 'Refresh model list');
-    
+
     (refreshBtn as HTMLElement).click();
     await nextTick();
 
     expect(fetchModels).toHaveBeenCalled();
-    
+
     wrapper.unmount();
   });
 
@@ -226,7 +226,7 @@ describe('ModelSelector.vue', () => {
 
       expect(dropdown.style.position).toBe('fixed');
       expect(dropdown.style.zIndex).toBe('9999');
-      
+
       wrapper.unmount();
     });
 
@@ -240,7 +240,7 @@ describe('ModelSelector.vue', () => {
 
       expect(modelSpan).toBeTruthy();
       expect(modelSpan?.classList.contains('whitespace-normal')).toBe(true);
-      
+
       wrapper.unmount();
     });
   });
@@ -260,7 +260,7 @@ describe('ModelSelector.vue', () => {
     const displayedOrder = spans.map(span => span.textContent);
 
     expect(displayedOrder).toEqual(customModels);
-    
+
     wrapper.unmount();
   });
 
@@ -268,7 +268,7 @@ describe('ModelSelector.vue', () => {
     it('opens downward by default when space is available', async () => {
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      
+
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
       expect(dropdown.classList.contains('slide-in-from-top-2')).toBe(true);
       expect(dropdown.style.top).not.toBe('auto');
@@ -283,7 +283,7 @@ describe('ModelSelector.vue', () => {
 
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      
+
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
       expect(dropdown.classList.contains('slide-in-from-bottom-2')).toBe(true);
       expect(dropdown.style.bottom).not.toBe('auto');
@@ -298,11 +298,11 @@ describe('ModelSelector.vue', () => {
 
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      
+
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
       const leftValue = parseFloat(dropdown.style.left);
       const dropdownWidth = parseFloat(dropdown.style.width);
-      
+
       expect(leftValue).toBeLessThan(900);
       expect(leftValue + dropdownWidth).toBeLessThanOrEqual(mockWindowSize.width.value - 16);
       wrapper.unmount();
@@ -322,20 +322,20 @@ describe('ModelSelector.vue', () => {
       mockWindowSize.width.value = 800;
       await nextTick();
       expect(document.body.querySelector('.animate-in')).toBeFalsy();
-      
+
       wrapper.unmount();
     });
 
     it('identifies clicks inside the teleported dropdown as "inside"', async () => {
       const addSpy = vi.spyOn(document, 'addEventListener');
-      const wrapper = mount(ModelSelector, { 
+      const wrapper = mount(ModelSelector, {
         props: { modelValue: 'model-a' },
         attachTo: document.body
       });
-      
+
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
-      
+
       // Find the mousedown listener
       const mousedownCall = addSpy.mock.calls.find(call => call[0] === 'mousedown');
       const handler = mousedownCall![1] as any;
@@ -344,32 +344,32 @@ describe('ModelSelector.vue', () => {
       handler({ target: dropdown.querySelector('input') });
       await nextTick();
       expect(document.body.querySelector('.animate-in')).toBeTruthy();
-      
+
       // 2. Click outside
       handler({ target: document.body });
       await nextTick();
       expect(document.body.querySelector('.animate-in')).toBeFalsy();
-      
+
       wrapper.unmount();
       addSpy.mockRestore();
     });
 
     it('uses a wider preferred width for long model names', async () => {
-      mockBounding.width.value = 150; 
+      mockBounding.width.value = 150;
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      
+
       const dropdown = document.body.querySelector('.animate-in') as HTMLElement;
       expect(parseFloat(dropdown.style.width)).toBe(480);
       wrapper.unmount();
     });
 
     it('remains open when search input is focused and triggers height change (keyboard regression)', async () => {
-      const wrapper = mount(ModelSelector, { 
+      const wrapper = mount(ModelSelector, {
         props: { modelValue: 'model-a' },
-        attachTo: document.body 
+        attachTo: document.body
       });
-      
+
       // 1. Open dropdown
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
       expect(document.body.querySelector('.animate-in')).toBeTruthy();
@@ -384,7 +384,7 @@ describe('ModelSelector.vue', () => {
 
       // Dropdown should REMAIN OPEN
       expect(document.body.querySelector('.animate-in')).toBeTruthy();
-      
+
       wrapper.unmount();
     });
   });
@@ -393,23 +393,23 @@ describe('ModelSelector.vue', () => {
     it('opens the dropdown when ArrowDown is pressed on the trigger', async () => {
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-      
+
       await trigger.trigger('keydown', { key: 'ArrowDown' });
       expect(document.body.querySelector('.animate-in')).toBeTruthy();
       wrapper.unmount();
     });
 
     it('navigates through models with Arrow keys and wraps around', async () => {
-      const wrapper = mount(ModelSelector, { 
-        props: { 
+      const wrapper = mount(ModelSelector, {
+        props: {
           modelValue: 'model-a',
           allowClear: true // index 0: Inherit, index 1: model-a, index 2: model-b, index 3: model-c
-        } 
+        }
       });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      
+
       const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
-      
+
       // Initial state: model-a is selected, so index 1 should be highlighted
       const getHighlighted = () => {
         const listButtons = Array.from(document.body.querySelectorAll('.custom-scrollbar button'));
@@ -433,7 +433,7 @@ describe('ModelSelector.vue', () => {
       // Move up to model-c (index 3)
       await trigger.trigger('keydown', { key: 'ArrowUp' });
       expect(getHighlighted()).toBe(3);
-      
+
       wrapper.unmount();
     });
 
@@ -465,13 +465,13 @@ describe('ModelSelector.vue', () => {
     it('resets highlighted index when search query changes', async () => {
       const wrapper = mount(ModelSelector, { props: { modelValue: 'model-a' } });
       await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
-      
+
       const trigger = wrapper.get('[data-testid="model-selector-trigger"]');
       const input = document.body.querySelector('input') as HTMLInputElement;
 
       // Move highlight to second item
       await trigger.trigger('keydown', { key: 'ArrowDown' });
-      
+
       // Update search
       input.value = 'model';
       input.dispatchEvent(new Event('input'));
@@ -481,7 +481,7 @@ describe('ModelSelector.vue', () => {
       const highlighted = Array.from(document.body.querySelectorAll('.custom-scrollbar button'))
         .findIndex(b => b.classList.contains('bg-gray-100'));
       expect(highlighted).toBe(0);
-      
+
       wrapper.unmount();
     });
   });

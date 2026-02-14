@@ -45,7 +45,7 @@ defineExpose({
 </script>
 
 <template>
-  <ChatArea 
+  <ChatArea
     v-if="chatId"
     :auto-send-prompt="currentRoute?.query?.q?.toString()"
     @auto-sent="handleAutoSent"

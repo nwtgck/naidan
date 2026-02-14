@@ -39,7 +39,7 @@ describe('ChatSettingsPanel Error Handling', () => {
   it('should reset error state when endpoint URL changes', async () => {
     // Mock a failed fetch to set an error
     mockFetchAvailableModels.mockResolvedValue([]); // No models found triggers error in component logic
-    
+
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
       global: {
@@ -53,17 +53,17 @@ describe('ChatSettingsPanel Error Handling', () => {
     // Act: Set URL to localhost via input to trigger auto-fetch
     const input = wrapper.find('input[data-testid="chat-setting-url-input"]');
     await input.setValue('http://localhost:11434');
-    
+
     // Wait for debounce/watch/fetchModels
     await nextTick();
-    await new Promise(resolve => setTimeout(resolve, 0)); 
-    
+    await new Promise(resolve => setTimeout(resolve, 0));
+
     // Verify error is shown
     expect(wrapper.text()).toContain('No models found');
 
     // Now change URL again
     await input.setValue('http://new-url');
-    
+
     // Error should be cleared immediately on @input or via watch
     expect(wrapper.text()).not.toContain('No models found');
   });

@@ -15,21 +15,21 @@ export interface ContentMatch {
 /**
  * Recursively searches for text within a message tree, including all branches.
  * Returns all matches found.
- * 
+ *
  * @param params.root The root branch to search
  * @param params.query The search query (can be multiple words)
  * @param params.chatId The ID of the chat being searched
  * @param params.activeBranchIds Set of message IDs that are in the active thread (optional)
  */
-export function searchChatTree({ root, query, chatId, activeBranchIds }: { 
-  root: MessageBranch; 
-  query: string; 
+export function searchChatTree({ root, query, chatId, activeBranchIds }: {
+  root: MessageBranch;
+  query: string;
   chatId: string;
   activeBranchIds?: Set<string>;
 }): ContentMatch[] {
   const matches: ContentMatch[] = [];
   const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
-  
+
   if (keywords.length === 0) return [];
 
   function traverse(items: MessageNode[]) {
@@ -38,11 +38,11 @@ export function searchChatTree({ root, query, chatId, activeBranchIds }: {
       if (node.content) {
         const lowerContent = node.content.toLowerCase();
         const allMatch = keywords.every(k => lowerContent.includes(k));
-        
+
         if (allMatch) {
           // Find the deepest leaf from this node to ensure it appears in the active path
           const leafNode = findDeepestLeaf(node);
-          
+
           matches.push({
             chatId,
             messageId: node.id,
@@ -55,7 +55,7 @@ export function searchChatTree({ root, query, chatId, activeBranchIds }: {
           });
         }
       }
-      
+
       // Recurse into replies
       if (node.replies && node.replies.items.length > 0) {
         traverse(node.replies.items);
@@ -81,11 +81,11 @@ function getExcerpt({ content, keywords }: { content: string; keywords: string[]
 
   const start = Math.max(0, index - 30);
   const end = Math.min(content.length, index + firstKeyword.length + 50);
-  
+
   let text = content.slice(start, end);
   if (start > 0) text = '...' + text;
   if (end < content.length) text = text + '...';
-  
+
   return text;
 }
 
@@ -101,14 +101,14 @@ export function searchLinearBranch({ branch, query, chatId, targetLeafId }: {
 }): ContentMatch[] {
   const matches: ContentMatch[] = [];
   const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
-  
+
   if (keywords.length === 0) return [];
 
   for (const node of branch) {
     if (node.content) {
       const lowerContent = node.content.toLowerCase();
       const allMatch = keywords.every(k => lowerContent.includes(k));
-      
+
       if (allMatch) {
         matches.push({
           chatId,
@@ -118,7 +118,7 @@ export function searchLinearBranch({ branch, query, chatId, targetLeafId }: {
           role: node.role,
           targetLeafId: targetLeafId || node.id,
           timestamp: node.timestamp,
-          isCurrentThread: true 
+          isCurrentThread: true
         });
       }
     }

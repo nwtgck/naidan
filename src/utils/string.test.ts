@@ -50,7 +50,7 @@ describe('sanitizeFilename', () => {
       suffix: '.png',
       fallback: 'fallback'
     });
-    
+
     const byteLength = new TextEncoder().encode(result).length;
     expect(byteLength).toBeLessThanOrEqual(255);
     expect(result.endsWith('....png')).toBe(true);
@@ -60,17 +60,17 @@ describe('sanitizeFilename', () => {
     // 𩸽 (U+29E3D) is 4 bytes in UTF-8.
     const suffix = '.png'; // 4 bytes
     // Max for base = 255 - 4 (suffix) - 3 (ellipsis) = 248 bytes.
-    
-    // Create a base that is 248 bytes (exactly the limit for base when ellipsis is needed), 
+
+    // Create a base that is 248 bytes (exactly the limit for base when ellipsis is needed),
     // then add a 4-byte char. Total = 248 + 4 + 4 = 256 bytes (> 255).
     const base = 'a'.repeat(248) + '𩸽';
-    
+
     const result = sanitizeFilename({
       base,
       suffix,
       fallback: 'fb'
     });
-    
+
     expect(result).toBe('a'.repeat(248) + '....png');
     expect(new TextEncoder().encode(result).length).toBe(248 + 3 + 4);
   });

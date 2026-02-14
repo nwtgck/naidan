@@ -3,11 +3,11 @@ import { computed, ref, watch } from 'vue';
 import type { LmParameters } from '../models/types';
 import { RotateCcw, X } from 'lucide-vue-next';
 
-const props = defineProps<{ 
+const props = defineProps<{
   modelValue?: LmParameters;
 }>();
 
-const emit = defineEmits<{ 
+const emit = defineEmits<{
   (e: 'update:modelValue', value: LmParameters): void;
 }>();
 
@@ -82,7 +82,7 @@ defineExpose({
           Empty fields use provider defaults
         </span>
       </div>
-      <button 
+      <button
         v-if="Object.keys(params).length > 0"
         @click="reset"
         class="text-[10px] font-bold text-gray-400 hover:text-blue-500 flex items-center gap-1 transition-colors"
@@ -101,7 +101,7 @@ defineExpose({
             <span v-if="isOverridden('temperature')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
           <div class="flex items-center gap-2">
-            <input 
+            <input
               type="number" step="0.1" min="0" max="2"
               :value="params.temperature"
               @input="e => updateParam('temperature', (e.target as HTMLInputElement).valueAsNumber)"
@@ -111,7 +111,7 @@ defineExpose({
             <button v-if="isOverridden('temperature')" @click="updateParam('temperature', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><X class="w-3 h-3"/></button>
           </div>
         </div>
-        <input 
+        <input
           type="range" min="0" max="2" step="0.01"
           :value="params.temperature ?? 1"
           @input="e => updateParam('temperature', parseFloat((e.target as HTMLInputElement).value))"
@@ -127,7 +127,7 @@ defineExpose({
             <span v-if="isOverridden('topP')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
           <div class="flex items-center gap-2">
-            <input 
+            <input
               type="number" step="0.01" min="0" max="1"
               :value="params.topP"
               @input="e => updateParam('topP', (e.target as HTMLInputElement).valueAsNumber)"
@@ -137,7 +137,7 @@ defineExpose({
             <button v-if="isOverridden('topP')" @click="updateParam('topP', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><X class="w-3 h-3"/></button>
           </div>
         </div>
-        <input 
+        <input
           type="range" min="0" max="1" step="0.01"
           :value="params.topP ?? 1"
           @input="e => updateParam('topP', parseFloat((e.target as HTMLInputElement).value))"
@@ -153,7 +153,7 @@ defineExpose({
             <span v-if="isOverridden('maxCompletionTokens')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
           <div class="flex items-center gap-2">
-            <input 
+            <input
               type="number" min="1"
               :value="params.maxCompletionTokens"
               @input="e => updateParam('maxCompletionTokens', (e.target as HTMLInputElement).valueAsNumber)"
@@ -173,7 +173,7 @@ defineExpose({
             <span v-if="isOverridden('presencePenalty')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
           <div class="flex items-center gap-2">
-            <input 
+            <input
               type="number" step="0.1" min="-2" max="2"
               :value="params.presencePenalty"
               @input="e => updateParam('presencePenalty', (e.target as HTMLInputElement).valueAsNumber)"
@@ -183,7 +183,7 @@ defineExpose({
             <button v-if="isOverridden('presencePenalty')" @click="updateParam('presencePenalty', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><X class="w-3 h-3"/></button>
           </div>
         </div>
-        <input 
+        <input
           type="range" min="-2" max="2" step="0.01"
           :value="params.presencePenalty ?? 0"
           @input="e => updateParam('presencePenalty', parseFloat((e.target as HTMLInputElement).value))"
@@ -202,7 +202,7 @@ defineExpose({
             <X class="w-3 h-3"/> Reset to Default
           </button>
         </div>
-        <textarea 
+        <textarea
           :value="stopSequencesRaw"
           @input="e => handleStopInput((e.target as HTMLTextAreaElement).value)"
           rows="2"

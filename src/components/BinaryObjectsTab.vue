@@ -2,9 +2,9 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { storageService } from '../services/storage';
 import type { BinaryObject } from '../models/types';
-import { 
-  File, Search, ArrowUp, ArrowDown, Download, 
-  Eye, HardDrive, 
+import {
+  File, Search, ArrowUp, ArrowDown, Download,
+  Eye, HardDrive,
   Trash2, RefreshCw, LayoutGrid, List
 } from 'lucide-vue-next';
 import { Semaphore } from '../utils/concurrency';
@@ -65,15 +65,15 @@ const filteredObjects = computed(() => {
 
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase();
-    result = result.filter(f => 
-      (f.name || 'unnamed').toLowerCase().includes(q) || 
+    result = result.filter(f =>
+      (f.name || 'unnamed').toLowerCase().includes(q) ||
       f.id.toLowerCase().includes(q) ||
       f.mimeType.toLowerCase().includes(q)
     );
   }
 
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-  
+
   result.sort((a, b) => {
     let cmp = 0;
     switch (sortBy.value) {
@@ -99,7 +99,7 @@ const filteredObjects = computed(() => {
         const _ex: never = sortOrder.value;
         console.error('Unhandled sort order:', _ex);
         return cmp;
-      }      
+      }
       }
     })();
     return cmpResult;
@@ -220,9 +220,9 @@ const createThumbnailUrl = (blob: Blob, size: number = 120): Promise<string> => 
       canvas.width = width;
       canvas.height = height;
       ctx.drawImage(img, 0, 0, width, height);
-      
+
       URL.revokeObjectURL(url);
-      
+
       // Use toBlob + createObjectURL: significantly faster and more memory efficient than toDataURL
       canvas.toBlob((thumbnailBlob) => {
         if (thumbnailBlob) {
@@ -251,7 +251,7 @@ const loadThumbnail = async (obj: BinaryObject) => {
       if (blob) {
         // requestIdleCallback (with fallback) to avoid blocking the main thread during scroll
         const scheduleWork = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
-        
+
         const thumbUrl = await new Promise<string>((resolve, reject) => {
           scheduleWork(async () => {
             try {
@@ -261,7 +261,7 @@ const loadThumbnail = async (obj: BinaryObject) => {
             }
           });
         });
-        
+
         if (!thumbnails.value[obj.id]) {
           thumbnails.value[obj.id] = thumbUrl;
           thumbnailCount.value++;
@@ -279,7 +279,7 @@ const loadThumbnail = async (obj: BinaryObject) => {
 let cleanupTimeout: number | null = null;
 const performThumbnailCleanup = () => {
   if (thumbnailCount.value <= 300) return;
-  
+
   const idsToDelete: string[] = [];
   for (const id in thumbnails.value) {
     if (!visibleIds.has(id)) {
@@ -391,7 +391,7 @@ defineExpose({
           <div>
             <div class="flex items-center gap-2">
               <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Binary Objects</h2>
-              <span 
+              <span
                 data-testid="binary-objects-count"
                 class="px-2 py-0.5 text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-full"
               >
@@ -401,19 +401,19 @@ defineExpose({
             <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Manage and browse persisted files</p>
           </div>
         </div>
-        
+
         <div class="flex items-center gap-2">
           <div class="bg-gray-100 dark:bg-gray-800 rounded-xl p-1 flex">
-            <button 
-              @click="viewMode = 'grid'" 
+            <button
+              @click="viewMode = 'grid'"
               class="p-1.5 rounded-lg transition-all"
               :class="viewMode === 'grid' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400 hover:text-gray-600'"
               data-testid="view-mode-grid"
             >
               <LayoutGrid class="w-4 h-4" />
             </button>
-            <button 
-              @click="viewMode = 'table'" 
+            <button
+              @click="viewMode = 'table'"
               class="p-1.5 rounded-lg transition-all"
               :class="viewMode === 'table' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400 hover:text-gray-600'"
               data-testid="view-mode-table"
@@ -421,8 +421,8 @@ defineExpose({
               <List class="w-4 h-4" />
             </button>
           </div>
-          <button 
-            @click="fetchObjects" 
+          <button
+            @click="fetchObjects"
             class="p-2 text-gray-400 hover:text-blue-500 transition-colors"
             :class="{ 'animate-spin': isLoading }"
             data-testid="refresh-objects"
@@ -436,9 +436,9 @@ defineExpose({
       <div class="flex gap-4">
         <div class="relative flex-1 group">
           <Search class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
-          <input 
+          <input
             v-model="searchQuery"
-            type="text" 
+            type="text"
             placeholder="Search by name, ID, or type..."
             class="w-full pl-10 pr-4 py-2.5 bg-gray-50/50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all dark:text-gray-200"
             data-testid="binary-search-input"
@@ -491,8 +491,8 @@ defineExpose({
             <tr v-else-if="filteredObjects.length === 0">
               <td colspan="4" class="px-6 py-12 text-center opacity-40 italic text-sm">No objects found</td>
             </tr>
-            <tr 
-              v-for="obj in renderedObjects" 
+            <tr
+              v-for="obj in renderedObjects"
               :key="obj.id"
               :ref="el => registerObserver(el as HTMLElement, obj.id)"
               @click="handlePreview(obj)"
@@ -502,10 +502,10 @@ defineExpose({
               <td class="px-6 py-3">
                 <div class="flex items-center gap-3 min-w-0">
                   <div class="w-10 h-10 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg shrink-0 overflow-hidden border border-gray-100 dark:border-gray-700">
-                    <img 
-                      v-if="thumbnails[obj.id]" 
-                      :src="thumbnails[obj.id]" 
-                      class="w-full h-full object-cover" 
+                    <img
+                      v-if="thumbnails[obj.id]"
+                      :src="thumbnails[obj.id]"
+                      class="w-full h-full object-cover"
                       :data-testid="`binary-thumbnail-${obj.id}`"
                     />
                     <div v-else class="flex items-center justify-center w-full h-full">
@@ -527,17 +527,17 @@ defineExpose({
               </td>
               <td class="px-6 py-3 text-right">
                 <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    @click.stop="handleDownload(obj)" 
-                    class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors" 
+                  <button
+                    @click.stop="handleDownload(obj)"
+                    class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
                     title="Download"
                     :data-testid="`download-button-${obj.id}`"
                   >
                     <Download class="w-4 h-4" />
                   </button>
-                  <button 
-                    @click.stop="handleDelete(obj)" 
-                    class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors" 
+                  <button
+                    @click.stop="handleDelete(obj)"
+                    class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
                     title="Delete"
                     :data-testid="`delete-button-${obj.id}`"
                   >
@@ -554,9 +554,9 @@ defineExpose({
       <div v-else class="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <div v-if="isLoading && objects.length === 0" class="col-span-full py-20 text-center opacity-40 italic text-sm">Loading objects...</div>
         <div v-else-if="filteredObjects.length === 0" class="col-span-full py-20 text-center opacity-40 italic text-sm">No objects found</div>
-        
-        <div 
-          v-for="obj in renderedObjects" 
+
+        <div
+          v-for="obj in renderedObjects"
           :key="obj.id"
           :ref="el => registerObserver(el as HTMLElement, obj.id)"
           @click="handlePreview(obj)"
@@ -565,10 +565,10 @@ defineExpose({
         >
           <!-- Thumbnail -->
           <div class="absolute inset-0 flex items-center justify-center p-4">
-            <img 
-              v-if="thumbnails[obj.id]" 
-              :src="thumbnails[obj.id]" 
-              class="w-full h-full object-contain transition-transform group-hover:scale-110" 
+            <img
+              v-if="thumbnails[obj.id]"
+              :src="thumbnails[obj.id]"
+              class="w-full h-full object-contain transition-transform group-hover:scale-110"
               :data-testid="`binary-thumbnail-${obj.id}`"
             />
             <div v-else class="flex flex-col items-center gap-2 opacity-40">
@@ -585,14 +585,14 @@ defineExpose({
           </div>
         </div>
       </div>
-      
+
       <!-- Infinite scroll sentinel -->
-      <div 
-        ref="loadMoreSentinel" 
+      <div
+        ref="loadMoreSentinel"
         class="h-12 w-full flex items-center justify-center border-t border-gray-50 dark:border-gray-800"
       >
-        <button 
-          v-if="displayLimit < filteredObjects.length" 
+        <button
+          v-if="displayLimit < filteredObjects.length"
           @click="loadMore"
           class="text-[10px] font-bold text-gray-400 hover:text-blue-500 transition-colors py-2 px-4 rounded-full hover:bg-gray-50 dark:hover:bg-white/5"
           data-testid="load-more-button"

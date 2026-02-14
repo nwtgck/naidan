@@ -243,8 +243,8 @@ async function handleConnect() {
 }
 
 async function handleClose() {
-  setOnboardingDraft({ 
-    url: customUrl.value, 
+  setOnboardingDraft({
+    url: customUrl.value,
     type: selectedType.value,
     headers: customHeaders.value,
     models: availableModels.value,
@@ -256,7 +256,7 @@ async function handleClose() {
 async function handleFinish() {
   const url = getNormalizedUrl();
   const type = selectedType.value;
-  
+
   if (!url && !isTransformersJs.value) {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
     return;
@@ -293,8 +293,8 @@ defineExpose({
     <div v-if="show" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4">
       <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl md:h-[640px] max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative modal-content-zoom">
         <!-- Close Button (Top Right) -->
-      
-        <button 
+
+        <button
           @click="handleClose"
           class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
           data-testid="onboarding-close-x"
@@ -337,17 +337,17 @@ defineExpose({
                       <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Run models locally in your browser using Transformers.js. No server required.</p>
                     </div>
                     <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit shrink-0">
-                      <button 
+                      <button
                         @click="selectedType = 'openai'; availableModels = []"
                         class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap text-gray-400"
                       >OpenAI-compatible</button>
-                                    
-                      <button 
+
+                      <button
                         @click="selectedType = 'ollama'; availableModels = []"
                         class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors text-gray-400"
                       >Ollama</button>
 
-                      <button 
+                      <button
                         class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400"
                       >Transformers.js</button>
                     </div>
@@ -376,7 +376,7 @@ defineExpose({
 
                 <!-- Step 1: Configuration -->
 
-      
+
                 <div>
                   <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-2 ml-1">Quick Presets</label>
                   <div class="flex flex-wrap gap-1.5">
@@ -395,19 +395,19 @@ defineExpose({
                   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Endpoint Configuration</label>
                     <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
-                      <button 
+                      <button
                         @click="selectedType = 'openai'"
                         class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
                         :class="selectedType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                       >OpenAI-compatible</button>
-                                    
-                      <button 
+
+                      <button
                         @click="selectedType = 'ollama'"
                         class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors"
                         :class="selectedType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                       >Ollama</button>
 
-                      <button 
+                      <button
                         @click="selectedType = 'transformers_js'"
                         class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1"
                         :class="isTransformersJs ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600'"
@@ -416,7 +416,7 @@ defineExpose({
                         Transformers.js
                       </button>
                     </div>
-                  
+
                   </div>
                   <input
                     v-if="!isTransformersJs"
@@ -431,7 +431,7 @@ defineExpose({
                   <div class="space-y-3" v-if="!isTransformersJs">
                     <div class="flex items-center justify-between ml-1">
                       <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
-                      <button 
+                      <button
                         @click="addHeader"
                         type="button"
                         class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
@@ -442,24 +442,24 @@ defineExpose({
                     </div>
 
                     <div v-if="customHeaders.length > 0" class="space-y-2 max-h-[120px] overflow-y-auto no-scrollbar">
-                      <div 
-                        v-for="(header, index) in customHeaders" 
+                      <div
+                        v-for="(header, index) in customHeaders"
                         :key="index"
                         class="flex gap-2 animate-in fade-in slide-in-from-left-1 duration-200"
                       >
-                        <input 
+                        <input
                           v-model="header[0]"
                           type="text"
                           class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
                           placeholder="Name"
                         />
-                        <input 
+                        <input
                           v-model="header[1]"
                           type="text"
                           class="flex-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-[10px] md:text-[11px] font-bold text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all dark:text-white shadow-sm"
                           placeholder="Value"
                         />
-                        <button 
+                        <button
                           @click="removeHeader(index)"
                           class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                         >
@@ -499,7 +499,7 @@ defineExpose({
                       <span>Cancel</span>
                     </button>
                   </div>
-                
+
                   <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
                     <Settings class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
                     You can change these settings later in the settings menu.

@@ -17,7 +17,7 @@ export interface ModelLoadResult {
   device: string;
 }
 
-// We define the interface here so that the service can use it 
+// We define the interface here so that the service can use it
 // without importing the entire worker file.
 export interface ITransformersJsWorker {
   downloadModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<void>;
@@ -26,7 +26,7 @@ export interface ITransformersJsWorker {
   interrupt(): Promise<void>;
   resetCache(): Promise<void>;
   generateText(
-    messages: ChatMessage[], 
+    messages: ChatMessage[],
     onChunk: (chunk: string) => void,
     params?: LmParameters
   ): Promise<void>;

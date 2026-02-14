@@ -5,8 +5,8 @@ import type { Chat, Hierarchy } from '../models/types';
 
 /**
  * Multi-Tab Scenario Tests
- * 
- * These tests focus on discovering and preventing bugs related to cross-tab 
+ *
+ * These tests focus on discovering and preventing bugs related to cross-tab
  * concurrency and Read-Modify-Write race conditions.
  */
 
@@ -79,10 +79,10 @@ vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
 vi.mock('../services/llm', () => ({
   OpenAIProvider: function() {
-    return { chat: vi.fn().mockImplementation((_m, _mo, _u, onChunk) => onChunk('OK')), listModels: vi.fn().mockResolvedValue(['gpt-4']) }; 
+    return { chat: vi.fn().mockImplementation((_m, _mo, _u, onChunk) => onChunk('OK')), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
   },
   OllamaProvider: function() {
-    return { chat: vi.fn(), listModels: vi.fn() }; 
+    return { chat: vi.fn(), listModels: vi.fn() };
   },
 }));
 
@@ -94,9 +94,9 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
   });
 
   /**
-   * BUG PROOF: This test demonstrates that two tabs editing the same chat 
+   * BUG PROOF: This test demonstrates that two tabs editing the same chat
    * will result in data loss because useChat uses a local Read-Modify-Write cycle.
-   * 
+   *
    * Fixed by implementing storageService.updateChatContent(id, (current) => ...)
    * and using it in regenerateMessage, editMessage, and sendMessage.
    */
@@ -105,11 +105,11 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     const chatStoreB = useChat();
 
     // Setup Chat 1 with one user message and one assistant message
-    const chat1: Chat = { 
-      id: 'c1', title: 'C1', 
-      root: { items: [{ 
+    const chat1: Chat = {
+      id: 'c1', title: 'C1',
+      root: { items: [{
         id: 'm1', role: 'user', content: 'Hi', timestamp: 0,
-        replies: { items: [{ id: 'm2', role: 'assistant', content: 'Hello', replies: { items: [] }, timestamp: 0 }] } 
+        replies: { items: [{ id: 'm2', role: 'assistant', content: 'Hello', replies: { items: [] }, timestamp: 0 }] }
       }] },
       createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: 'm2'
     };
@@ -120,19 +120,19 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     await chatStoreB.openChat('c1');
 
     // 1. Tab A adds a branch (Branch A). It modifies its local currentChat and calls updateChatContent.
-    await chatStoreA.regenerateMessage('m2'); 
+    await chatStoreA.regenerateMessage('m2');
     await vi.waitUntil(() => !chatStoreA.streaming.value);
     const chatAfterA = mocks.mockChatStorage.get('c1');
     expect(chatAfterA.root.items[0].replies.items).toHaveLength(2);
     const branchAId = chatAfterA.root.items[0].replies.items[1].id;
 
-    // 2. Tab B adds a branch (Branch B). 
+    // 2. Tab B adds a branch (Branch B).
     await chatStoreB.regenerateMessage('m2');
     await vi.waitUntil(() => !chatStoreB.streaming.value);
 
     // 3. Verification: Branch A is lost.
     const finalChat = mocks.mockChatStorage.get('c1');
-    
+
     // If fixed, this should be 3 (original m2 + Tab A's branch + Tab B's branch).
     expect(finalChat.root.items[0].replies.items).toHaveLength(3);
     expect(finalChat.root.items[0].replies.items.map((i: any) => i.id)).toContain(branchAId);
@@ -142,8 +142,8 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     const chatStoreA = useChat();
     const chatStoreB = useChat();
 
-    const chat1: Chat = { 
-      id: 'c1', title: 'Original Title', 
+    const chat1: Chat = {
+      id: 'c1', title: 'Original Title',
       root: { items: [{ id: 'm1', role: 'user', content: 'Hi', replies: { items: [] }, timestamp: 0 }] },
       createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: 'm1'
     };

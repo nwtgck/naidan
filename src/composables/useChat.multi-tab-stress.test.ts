@@ -5,7 +5,7 @@ import type { Chat, Hierarchy } from '../models/types';
 
 /**
  * Multi-Tab Stress & Glitch Tests
- * 
+ *
  * Focus: High-frequency updates (streaming) and their impact on other tabs.
  */
 
@@ -52,10 +52,10 @@ vi.mock('../services/storage', () => ({
       const currentFull = mocks.mockChatStorage.get(id) || null;
       const currentContent = currentFull ? { root: currentFull.root, currentLeafId: currentFull.currentLeafId } : null;
       const updatedContent = await updater(currentContent);
-      
+
       const updatedFull = currentFull ? { ...currentFull, ...updatedContent } : { id, ...updatedContent };
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updatedFull)));
-      
+
       if (mocks.mockNotify) mocks.mockNotify({ type: 'chat_content', id });
       return Promise.resolve();
     }),
@@ -84,10 +84,10 @@ vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 const mockLlmChat = vi.fn();
 vi.mock('../services/llm', () => ({
   OpenAIProvider: function() {
-    return { chat: (...args: any[]) => mockLlmChat(...args), listModels: vi.fn().mockResolvedValue(['gpt-4']) }; 
+    return { chat: (...args: any[]) => mockLlmChat(...args), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
   },
   OllamaProvider: function() {
-    return { chat: vi.fn(), listModels: vi.fn() }; 
+    return { chat: vi.fn(), listModels: vi.fn() };
   },
 }));
 
@@ -106,8 +106,8 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
   it('Stress: Tab A streaming chunks should not cause Tab B to reload Chat 100 times', async () => {
     const chatStoreB = useChat();
 
-    const chat1: Chat = { 
-      id: 'c1', title: 'C1', 
+    const chat1: Chat = {
+      id: 'c1', title: 'C1',
       root: { items: [{ id: 'm1', role: 'user', content: 'Hi', replies: { items: [{ id: 'a1', role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, timestamp: 0 }] },
       createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: 'a1'
     };
@@ -119,14 +119,14 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
     for (let i = 0; i < 50; i++) {
       const now = i * 100;
       vi.setSystemTime(now);
-      if (i % 5 === 0 || i === 49) { 
+      if (i % 5 === 0 || i === 49) {
         await storageService.updateChatContent('c1', () => ({ root: chat1.root, currentLeafId: chat1.currentLeafId }));
       }
     }
 
     vi.advanceTimersByTime(1000);
     const totalLoads = vi.mocked(storageService.loadChat).mock.calls.length - initialLoadCount;
-    expect(totalLoads).toBeLessThan(15); 
+    expect(totalLoads).toBeLessThan(15);
   });
 
   it('Reliability: Tab B should not lose selection if storage is temporarily busy/null', async () => {
@@ -157,7 +157,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
     });
 
     const chat: Chat = { id: 'c1', title: 'T', root: { items: [{ id: 'a1', role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
-    
+
     vi.useRealTimers();
 
     const simulateStreaming = async () => {

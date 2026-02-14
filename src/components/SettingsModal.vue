@@ -10,8 +10,8 @@ import { ChatGroupRecipeSchema } from '../models/recipe';
 import type { ChatGroupRecipe } from '../models/recipe';
 import { parseConcatenatedJson } from '../utils/json-stream-parser';
 import { matchRecipeModels } from '../utils/recipe-matcher';
-import { 
-  X, Globe, 
+import {
+  X, Globe,
   Database, Settings2, BookmarkPlus,
   Cpu, Info,
   ChefHat,
@@ -220,7 +220,7 @@ watch(() => props.isOpen, async (open) => {
     setActiveFocusArea('settings');
     form.value = JSON.parse(JSON.stringify(settings.value)) as Settings;
     initialFormState.value = JSON.stringify(pickConnectionFields(form.value));
-    
+
     await nextTick();
     if (connectionTabRef.value) {
       connectionTabRef.value.fetchModels();
@@ -244,7 +244,7 @@ defineExpose({
     <div v-if="isOpen" data-testid="settings-modal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-2 md:p-6">
       <div class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-[95vw] h-[95vh] md:h-[90vh] overflow-hidden flex flex-col md:flex-row border border-gray-100 dark:border-gray-800 relative modal-content-zoom">
         <!-- Persistent Close Button (Top Right) -->
-        <button 
+        <button
           @click="handleCancel"
           class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
           data-testid="setting-close-x"
@@ -264,7 +264,7 @@ defineExpose({
 
           <!-- Navigation -->
           <nav class="flex-1 overflow-x-auto md:overflow-y-auto p-3 md:p-4 flex md:flex-col gap-1.5 no-scrollbar min-h-0 overscroll-contain">
-            <button 
+            <button
               @click="activeTab = 'connection'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'connection' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -273,7 +273,7 @@ defineExpose({
               <Globe class="w-4 h-4" />
               Connection
             </button>
-            <button 
+            <button
               @click="activeTab = 'profiles'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'profiles' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -282,7 +282,7 @@ defineExpose({
               <BookmarkPlus class="w-4 h-4" />
               Provider Profiles
             </button>
-            <button 
+            <button
               @click="activeTab = 'transformers_js'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'transformers_js' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -291,7 +291,7 @@ defineExpose({
               <BrainCircuit class="w-4 h-4" />
               Transformers.js
             </button>
-            <button 
+            <button
               @click="activeTab = 'recipes'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'recipes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -300,7 +300,7 @@ defineExpose({
               <ChefHat class="w-4 h-4" />
               Recipes
             </button>
-            <button 
+            <button
               @click="activeTab = 'storage'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'storage' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -309,7 +309,7 @@ defineExpose({
               <Database class="w-4 h-4" />
               Storage
             </button>
-            <button 
+            <button
               @click="activeTab = 'binary_objects'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'binary_objects' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -318,7 +318,7 @@ defineExpose({
               <File class="w-4 h-4" />
               Files
             </button>
-            <button 
+            <button
               @click="activeTab = 'developer'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'developer' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -327,7 +327,7 @@ defineExpose({
               <Cpu class="w-4 h-4" />
               Developer
             </button>
-            <button 
+            <button
               @click="activeTab = 'about'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'about' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -344,9 +344,9 @@ defineExpose({
               <ThemeToggle />
             </div>
 
-            <a 
+            <a
               v-if="isHostedMode"
-              href="./naidan-standalone.zip" 
+              href="./naidan-standalone.zip"
               download="naidan-standalone.zip"
               class="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
               data-testid="sidebar-download-button"
@@ -361,7 +361,7 @@ defineExpose({
 
         <!-- Main Content Area -->
         <main class="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-gray-900 relative">
-          <ConnectionTab 
+          <ConnectionTab
             v-if="activeTab === 'connection'"
             ref="connectionTabRef"
             v-model="form"
@@ -376,7 +376,7 @@ defineExpose({
             <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
 
               <!-- Provider Profiles Tab -->
-              <ProviderProfilesTab 
+              <ProviderProfilesTab
                 v-if="activeTab === 'profiles'"
                 v-model:profiles="form.providerProfiles"
                 @go-to-connection="activeTab = 'connection'"
@@ -388,7 +388,7 @@ defineExpose({
               </div>
 
               <!-- Recipes Tab -->
-              <RecipeImportTab 
+              <RecipeImportTab
                 v-if="activeTab === 'recipes'"
                 :available-models="availableModels"
                 @import="handleImportRecipes"
@@ -396,7 +396,7 @@ defineExpose({
               />
 
               <!-- Storage Tab -->
-              <StorageTab 
+              <StorageTab
                 v-if="activeTab === 'storage'"
                 v-model:storage-type="form.storageType"
                 @close="emit('close')"
@@ -406,9 +406,9 @@ defineExpose({
               <BinaryObjectsTab v-if="activeTab === 'binary_objects'" />
 
               <!-- Developer Tab -->
-              <DeveloperTab 
-                v-if="activeTab === 'developer'" 
-                :storage-type="form.storageType" 
+              <DeveloperTab
+                v-if="activeTab === 'developer'"
+                :storage-type="form.storageType"
               />
 
               <!-- About Tab -->
@@ -461,13 +461,13 @@ defineExpose({
   to { opacity: 1; }
 }
 @keyframes zoom-in {
-  from { 
-    opacity: 0; 
-    transform: scale(0.9); 
+  from {
+    opacity: 0;
+    transform: scale(0.9);
   }
-  to { 
-    opacity: 1; 
-    transform: scale(1); 
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 @keyframes slide-in-from-bottom {

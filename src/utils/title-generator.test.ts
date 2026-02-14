@@ -38,7 +38,7 @@ describe('title-generator utilities', () => {
     it('handles mixed languages with script priority', () => {
       // English + Japanese
       expect(detectLanguage({ content: 'How to fix this error? このエラーの直し方は？' })).toBe('ja');
-      
+
       // Russian + English
       expect(detectLanguage({ content: 'Explain the concept of "Recursion" in Russian (Пожалуйста, объясните рекурсию)' })).toBe('ru');
 

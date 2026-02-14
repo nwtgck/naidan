@@ -60,16 +60,16 @@ describe('useChat Delete Undo Logic', () => {
   it('should delay storage deletion and abort until toast is closed', async () => {
     const chatId = 'test-chat-id';
     const mockAbort = vi.fn();
-    
+
     // 1. Mock an active generation
-    activeGenerations.set(chatId, { 
-      controller: { abort: mockAbort } as any, 
-      chat: { id: chatId } as any 
+    activeGenerations.set(chatId, {
+      controller: { abort: mockAbort } as any,
+      chat: { id: chatId } as any
     });
 
     // 2. Mock chat data in storage
-    vi.mocked(storageService.loadChat).mockResolvedValue({ 
-      id: chatId, 
+    vi.mocked(storageService.loadChat).mockResolvedValue({
+      id: chatId,
       title: 'Test Chat',
       root: { items: [] }
     } as any);
@@ -79,7 +79,7 @@ describe('useChat Delete Undo Logic', () => {
 
     // VERIFY: Toast was shown and returned truthy ID
     expect(mockAddToast).toHaveBeenCalled();
-    
+
     // VERIFY: Hierarchy is updated, but cleanup (Abort/Delete) is NOT done yet
     expect(vi.mocked(storageService.updateHierarchy)).toHaveBeenCalled();
     expect(mockAbort).not.toHaveBeenCalled();
@@ -98,14 +98,14 @@ describe('useChat Delete Undo Logic', () => {
   it('should NOT execute cleanup if Undo is clicked', async () => {
     const chatId = 'test-chat-id';
     const mockAbort = vi.fn();
-    
-    activeGenerations.set(chatId, { 
-      controller: { abort: mockAbort } as any, 
-      chat: { id: chatId } as any 
+
+    activeGenerations.set(chatId, {
+      controller: { abort: mockAbort } as any,
+      chat: { id: chatId } as any
     });
 
-    vi.mocked(storageService.loadChat).mockResolvedValue({ 
-      id: chatId, 
+    vi.mocked(storageService.loadChat).mockResolvedValue({
+      id: chatId,
       title: 'Test Chat',
       root: { items: [] }
     } as any);

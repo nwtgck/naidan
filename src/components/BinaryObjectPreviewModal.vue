@@ -2,9 +2,9 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { BinaryObject } from '../models/types';
 import { storageService } from '../services/storage';
-import { 
-  X, Download, Trash2, ChevronLeft, ChevronRight, 
-  ZoomIn, ZoomOut, 
+import {
+  X, Download, Trash2, ChevronLeft, ChevronRight,
+  ZoomIn, ZoomOut,
   Copy, Check, File, Eye, RefreshCw, Calendar, Info
 } from 'lucide-vue-next';
 
@@ -61,7 +61,7 @@ const loadPreview = async (obj: BinaryObject) => {
     if (blob && currentObject.value?.id === obj.id) {
       const newUrl = URL.createObjectURL(blob);
       const oldUrl = previewUrl.value;
-      
+
       previewUrl.value = newUrl;
       zoom.value = 1;
       position.value = { x: 0, y: 0 };
@@ -152,7 +152,7 @@ const handleWheel = (e: WheelEvent) => {
   };
 
   zoom.value = clampedZoom;
-  
+
   // If zooming out to 1, reset position
   if (zoom.value <= 1) {
     position.value = { x: 0, y: 0 };
@@ -215,19 +215,19 @@ defineExpose({
 
 <template>
   <Teleport to="body">
-    <div 
+    <div
       class="fixed inset-0 z-[120] flex items-center justify-center bg-black/95 backdrop-blur-md overflow-hidden"
       @click="emit('close')"
       @mousemove="handleMouseMove"
     >
       <!-- Main Content Area -->
-      <div 
+      <div
         v-if="currentObject"
         class="relative w-full h-full flex items-center justify-center"
         @click.stop
       >
         <!-- Image/File Display -->
-        <div 
+        <div
           class="w-full h-full flex items-center justify-center p-0"
           @wheel.prevent="handleWheel"
           @mousedown="startDrag"
@@ -245,16 +245,16 @@ defineExpose({
 
           <transition name="preview-fade" mode="out-in">
             <div v-if="previewUrl" :key="currentObject.id" class="w-full h-full flex items-center justify-center">
-              <div 
+              <div
                 v-if="isImage"
                 class="relative transition-transform duration-75 ease-out select-none flex items-center justify-center"
-                :style="{ 
+                :style="{
                   transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
                   cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'
                 }"
               >
-                <img 
-                  :src="previewUrl" 
+                <img
+                  :src="previewUrl"
                   class="max-w-screen max-h-screen object-contain shadow-2xl"
                   draggable="false"
                 />
@@ -273,24 +273,24 @@ defineExpose({
         </div>
 
         <!-- Navigation Buttons -->
-        <div 
+        <div
           class="absolute inset-y-0 left-0 w-32 flex items-center justify-center transition-opacity duration-300 group/nav"
           :class="isControlsVisible && currentIndex > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'"
         >
-          <button 
-            @click="prev" 
+          <button
+            @click="prev"
             data-testid="preview-prev-btn"
             class="p-6 text-white/20 hover:text-white hover:bg-white/10 rounded-full transition-all group-hover/nav:scale-110 active:scale-95"
           >
             <ChevronLeft class="w-12 h-12" />
           </button>
         </div>
-        <div 
+        <div
           class="absolute inset-y-0 right-0 w-32 flex items-center justify-center transition-opacity duration-300 group/nav"
           :class="isControlsVisible && currentIndex < objects.length - 1 ? 'opacity-100' : 'opacity-0 pointer-events-none'"
         >
-          <button 
-            @click="next" 
+          <button
+            @click="next"
             data-testid="preview-next-btn"
             class="p-6 text-white/20 hover:text-white hover:bg-white/10 rounded-full transition-all group-hover/nav:scale-110 active:scale-95"
           >
@@ -299,7 +299,7 @@ defineExpose({
         </div>
 
         <!-- Top Controls (Header) -->
-        <div 
+        <div
           class="absolute top-0 inset-x-0 p-6 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent transition-transform duration-500 z-20"
           :class="isControlsVisible ? 'translate-y-0' : '-translate-y-full'"
         >
@@ -310,15 +310,15 @@ defineExpose({
             </div>
             <div class="min-w-0 flex flex-col">
               <div class="flex items-center gap-2">
-                <h3 
-                  class="font-bold text-white truncate text-lg leading-tight" 
+                <h3
+                  class="font-bold text-white truncate text-lg leading-tight"
                   :title="currentObject.name"
                   data-testid="preview-filename"
                 >
                   {{ currentObject.name || 'Unnamed' }}
                 </h3>
-                <button 
-                  @click="copyName" 
+                <button
+                  @click="copyName"
                   class="p-1 text-white/30 hover:text-white transition-colors shrink-0"
                   title="Copy Name"
                   data-testid="preview-copy-name-btn"
@@ -363,7 +363,7 @@ defineExpose({
         </div>
 
         <!-- Bottom Status Info -->
-        <div 
+        <div
           class="absolute bottom-0 inset-x-0 p-6 flex items-center justify-center transition-transform duration-500 z-20"
           :class="isControlsVisible ? 'translate-y-0' : 'translate-y-full'"
         >

@@ -64,7 +64,7 @@ export default class FailedOnlyReporter implements Reporter {
       const name = `${filename} > ${testCase.fullName}`
       const errors = (result.errors || []) as unknown as VitestError[]
 
-      // Filter logs for this specific test case if possible, 
+      // Filter logs for this specific test case if possible,
       // but Vitest doesn't easily map logs to test cases in this hook.
       // We'll show all logs accumulated so far and then clear them.
       if (this.logs.length > 0) {

@@ -36,7 +36,7 @@ describe('useChat.duplicateChatGroup', () => {
 
   it('should create a new group with copied settings and modified name', async () => {
     const { duplicateChatGroup, rootItems } = useChat();
-    
+
     // Mock existing groups
     const originalGroup = {
       id: 'g1',
@@ -47,7 +47,7 @@ describe('useChat.duplicateChatGroup', () => {
       modelId: 'gpt-4',
       systemPrompt: { behavior: 'override', content: 'You are a bot' }
     };
-    
+
     // Inject mock data into rootItems (which is internal but exposed via sidebarItems/rootItems in useChat)
     rootItems.value = [{ id: 'g1', type: 'chat_group', chatGroup: originalGroup as any }];
 
@@ -72,7 +72,7 @@ describe('useChat.duplicateChatGroup', () => {
 
   it('should insert the new group into hierarchy after the original', async () => {
     const { duplicateChatGroup, rootItems } = useChat();
-    
+
     const originalGroup = { id: 'g1', name: 'Original', items: [], updatedAt: 123, isCollapsed: false };
     rootItems.value = [{ id: 'g1', type: 'chat_group', chatGroup: originalGroup as any }];
 

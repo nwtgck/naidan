@@ -162,7 +162,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     const mockDirectoryHandle = {
       getFileHandle: vi.fn().mockResolvedValue({
         createWritable: vi.fn().mockResolvedValue({}),
@@ -228,12 +228,12 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
   describe('UI / Design Regression', () => {
     it('positions the close button correctly in the top-right corner', async () => {
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
       await flushPromises();
-      
+
       const closeBtn = wrapper.find('[data-testid="setting-close-x"]');
       expect(closeBtn.classes()).toContain('absolute');
       expect(closeBtn.classes()).toContain('top-4');
@@ -255,7 +255,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         }),
       });
 
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
@@ -265,30 +265,30 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await flushPromises();
 
       const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
-      
+
       // Text should remain visible/present even while loading to prevent width jitter
       expect(checkBtn.text()).toContain('Check Connection');
-      
+
       // Spinner should be present alongside the text container
       expect(checkBtn.findComponent(Loader2).exists()).toBe(true);
-      
+
       // Button should be disabled to prevent double-clicks
       expect(checkBtn.attributes('disabled')).toBeDefined();
     });
 
     it('applies the weakened backdrop blur class to the overlay', async () => {
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
       await flushPromises();
-      
+
       const overlay = wrapper.find('[class*="backdrop-blur-[2px]"]');
       expect(overlay.exists()).toBe(true);
     });
 
     it('reserves space for error messages to prevent layout shift', async () => {
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
@@ -308,7 +308,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     it('shows success feedback when connection check succeeds', async () => {
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
@@ -322,7 +322,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await nextTick();
 
       const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
-      
+
       // Should show success state
       expect(checkBtn.text()).toContain('Connected');
       expect(checkBtn.classes()).toContain('bg-green-50');
@@ -357,19 +357,19 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
 
     it('applies animation classes for entrance effects', async () => {
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
       await flushPromises();
-      
+
       const modalContent = wrapper.find('.modal-content-zoom');
       expect(modalContent.exists()).toBe(true);
     });
 
     it('ensures SettingsModal has correct z-index when dialogs are triggered', async () => {
       // Mount SettingsModal
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
@@ -412,7 +412,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await vi.dynamicImportSettled();
 
     const navButtons = wrapper.findAll('nav button');
-    
+
     // Profiles
     await navButtons.find(b => b.text().includes('Provider Profiles'))?.trigger('click');
     await flushPromises();
@@ -456,7 +456,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(wrapper.text()).toContain('THIRD_PARTY_LICENSES.txt');
     // In standalone mode, the list/loader should not be visible
     expect(wrapper.find('.animate-spin').exists()).toBe(false);
-    
+
     // Cleanup
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', false);
     vi.stubGlobal('__BUILD_MODE_IS_HOSTED__', true);
@@ -473,12 +473,12 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     // Find the AboutTab component
     const aboutTab = wrapper.findComponent(AboutTab);
     expect(aboutTab.exists()).toBe(true);
-    
+
     // Manually set the state to bypass unreliable dynamic import mock
     const vm = aboutTab.vm as any;
     vm.ossLicenses = [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }];
     vm.isLoadingLicenses = false;
-    
+
     await flushPromises();
     await nextTick();
 
@@ -531,7 +531,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   });
 
   it('applies endpoint presets correctly and highlights the active one', async () => {
-    const wrapper = mount(SettingsModal, { 
+    const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
       global: { stubs: globalStubs },
     });
@@ -540,7 +540,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const lmstudioPreset = wrapper.find('[data-testid="endpoint-preset-lm-studio--local-"]');
     const ollamaPreset = wrapper.find('[data-testid="endpoint-preset-ollama--local-"]');
     const llamaPreset = wrapper.find('[data-testid="endpoint-preset-llama-server--local-"]');
-    
+
     expect(lmstudioPreset.exists()).toBe(true);
     expect(ollamaPreset.exists()).toBe(true);
     expect(llamaPreset.exists()).toBe(true);
@@ -572,7 +572,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     mockListModels.mockClear();
 
     const urlInput = wrapper.find('[data-testid="setting-url-input"]');
-    
+
     // Test non-localhost URL (should NOT auto-fetch)
     await urlInput.setValue('https://remote-api.com');
     await flushPromises();
@@ -594,14 +594,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   it('regression: manually fetching models uses the current unsaved URL, not the saved one', async () => {
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
-    
+
     // Initial saved URL is 'http://localhost:1234/v1' (from mockSettings)
     mockListModels.mockClear();
 
     const urlInput = wrapper.find('[data-testid="setting-url-input"]');
     const newUrl = 'http://new-temporary-url:5555/v1';
     await urlInput.setValue(newUrl);
-    
+
     // Trigger manual fetch
     const checkBtn = wrapper.find('[data-testid="setting-check-connection"]');
     await checkBtn.trigger('click');
@@ -683,7 +683,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     const connectionTab = wrapper.findComponent(ConnectionTab);
     const connectionVm = connectionTab.vm as any;
-    
+
     // Simulate some change to enable save button
     connectionVm.form.endpointUrl = 'http://changed';
     await nextTick();
@@ -695,7 +695,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
   it('handles model fetch errors gracefully', async () => {
     mockListModels.mockRejectedValueOnce(new Error('Fetch failed'));
-      
+
     const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
     await flushPromises();
 
@@ -721,7 +721,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       }),
     });
 
-    const wrapper = mount(SettingsModal, { 
+    const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
       global: { stubs: globalStubs },
     });
@@ -739,7 +739,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     await wrapper.findAll('nav button').find(b => b.text().includes('Developer'))?.trigger('click');
     await flushPromises();
     await vi.dynamicImportSettled();
-    
+
     mockShowConfirm.mockResolvedValueOnce(true);
 
     await wrapper.find('[data-testid="setting-reset-data-button"]').trigger('click');
@@ -795,23 +795,23 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   describe('Data Cleanup', () => {
     it('triggers clear all history after confirmation and navigates to root', async () => {
       const mockDeleteAllChats = vi.fn();
-      
+
       (useChat as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
         resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
       });
 
-      const wrapper = mount(SettingsModal, { 
-        props: { isOpen: true }, 
-        global: { 
+      const wrapper = mount(SettingsModal, {
+        props: { isOpen: true },
+        global: {
           stubs: globalStubs,
-        } 
+        }
       });
       await flushPromises();
 
       await wrapper.findAll('nav button').find(b => b.text().includes('Storage'))?.trigger('click');
       await flushPromises();
-      
+
       const clearBtn = wrapper.find('[data-testid="setting-clear-history-button"]');
       expect(clearBtn.text()).toContain('Clear All Conversation History');
 
@@ -835,7 +835,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     it('does not reset onboarding flag when clearing history', async () => {
       // We check this by verifying that useChat's deleteAllChats is called,
-      // and then in our manual verification of the code we've ensured 
+      // and then in our manual verification of the code we've ensured
       // it doesn't touch the flag. From a UI perspective, the flag is in settingsStore.
       const mockDeleteAllChats = vi.fn();
       (useChat as unknown as Mock).mockReturnValue({
@@ -863,11 +863,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('creates a new profile from current settings including titleModelId', async () => {
       // Simulate user entering a profile name
       mockShowPrompt.mockResolvedValueOnce('New Test Profile');
-      
-      const customSettings = { 
-        ...mockSettings, 
+
+      const customSettings = {
+        ...mockSettings,
         titleModelId: 'special-title-model',
-        autoTitleEnabled: true, 
+        autoTitleEnabled: true,
       };
       (useSettings as unknown as Mock).mockReturnValue({
         settings: ref(customSettings),
@@ -898,7 +898,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
           bodyComponent: expect.anything(),
         }),
       );
-      
+
       const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
       expect(vm.form.providerProfiles).toHaveLength(1);
       expect(vm.form.providerProfiles[0]!.name).toBe('New Test Profile');
@@ -907,7 +907,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('allows selecting "None" or "Default" for models and saves it to profile', async () => {
       // Simulate user entering a profile name (or cancelling)
       mockShowPrompt.mockResolvedValueOnce('None Profile');
-      
+
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
       await flushPromises();
 
@@ -929,16 +929,16 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await titleSelect.find('[data-testid="model-selector-trigger"]').trigger('click');
       const titleClearBtn = document.body.querySelector('[data-testid="model-selector-clear"]') as HTMLElement;
       if (titleClearBtn) titleClearBtn.click();
-      
+
       await flushPromises();
 
       // Click Create Profile
       await wrapper.find('[data-testid="setting-save-provider-profile-button"]').trigger('click');
-      
+
       const lastProfile = vm.form.providerProfiles[vm.form.providerProfiles.length - 1];
       expect(lastProfile?.defaultModelId).toBeUndefined();
       expect(lastProfile?.titleModelId).toBeUndefined();
-      
+
       wrapper.unmount();
     });
     it('supports renaming a profile in the UI', async () => {
@@ -964,15 +964,15 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await wrapper.findAll('nav button').find(b => b.text().includes('Provider Profiles'))?.trigger('click');
       await flushPromises();
       await vi.dynamicImportSettled();
-      
+
       await wrapper.find('[data-testid="provider-profile-rename-button"]').trigger('click');
-      
+
       const nameInput = wrapper.find('input[autofocus]');
       expect(nameInput.exists()).toBe(true);
-      
+
       await nameInput.setValue('Renamed Profile');
       await wrapper.find('button .lucide-check').element.parentElement?.click();
-      
+
       const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
       expect(vm.form.providerProfiles[0]!.name).toBe('Renamed Profile');
     });
@@ -986,7 +986,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         defaultModelId: 'model-a',
         titleModelId: 'model-title',
       };
-      
+
       // We need useSettings to return the profile in the initial state so form.value has it
       (useSettings as unknown as Mock).mockReturnValue({
         settings: ref({ ...mockSettings, providerProfiles: [mockProviderProfile] }),
@@ -1017,7 +1017,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(connectionVm.form.defaultModelId).toBe('model-a');
       expect(connectionVm.form.titleModelId).toBe('model-title');
       expect(connectionVm.selectedProviderProfileId).toBe('');
-      
+
       // Should enable the global save button
       const modalVm = wrapper.vm as any;
       expect(modalVm.hasUnsavedConnectionChanges).toBe(true);
@@ -1054,23 +1054,23 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     it('conditionally renders title model badge in the list', async () => {
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
-      
+
       const vm = wrapper.vm as unknown as { form: { providerProfiles: Partial<ProviderProfile>[] } };
       vm.form.providerProfiles = [
         { id: '1', name: 'With Title', endpointType: 'ollama', titleModelId: 't-1' },
         { id: '2', name: 'Without Title', endpointType: 'openai' },
       ];
-      
+
       const navButtons = wrapper.findAll('nav button');
       await navButtons.find(b => b.text().includes('Provider Profiles'))?.trigger('click');
       await flushPromises();
 
       expect(wrapper.text()).toContain('Title: t-1');
-      
+
       const profiles = wrapper.findAll('[data-testid="provider-profile-item"]');
       expect(profiles[0]!.text()).toContain('Title: t-1');
       expect(profiles[1]!.text()).not.toContain('Title:');
@@ -1079,11 +1079,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('deletes a profile immediately and allows undo via toast', async () => {
 
 
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
-      
+
       const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
       const initialProfile = {
         id: 'undo-1',
@@ -1092,17 +1092,17 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         endpointUrl: 'http://localhost:11434',
       };
       vm.form.providerProfiles = [initialProfile];
-      
+
       const navButtons = wrapper.findAll('nav button');
       await navButtons.find(b => b.text().includes('Provider Profiles'))?.trigger('click');
       await flushPromises();
 
       const deleteBtn = wrapper.find('[data-testid="provider-profile-delete-button"]');
       await deleteBtn.trigger('click');
-      
+
       // Should be deleted immediately
       expect(vm.form.providerProfiles).toHaveLength(0);
-      
+
       // Should show undo toast
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
         message: expect.stringContaining('Undo Me'),
@@ -1112,18 +1112,18 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // Trigger undo
       const toastCall = mockAddToast.mock.calls[0]![0];
       toastCall.onAction();
-      
+
       // Should be restored
       expect(vm.form.providerProfiles).toHaveLength(1);
       expect(vm.form.providerProfiles[0]).toEqual(initialProfile);
     });
 
     it('renders provider type badge with capitalization and without uppercase class', async () => {
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs },
       });
-      
+
       const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
       vm.form.providerProfiles = [{
         id: '1',
@@ -1131,7 +1131,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         endpointType: 'ollama' as const,
         endpointUrl: 'http://localhost:11434',
       }];
-      
+
       const navButtons = wrapper.findAll('nav button');
       await navButtons.find(b => b.text().includes('Provider Profiles'))?.trigger('click');
       await flushPromises();
@@ -1171,14 +1171,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       const connectionVm = connectionTab.vm as any;
 
       // 1. Add a header manually in Connection tab
-      await wrapper.find('button').findAll('span').find(s => s.text().includes('Add Header'))?.trigger('click'); 
+      await wrapper.find('button').findAll('span').find(s => s.text().includes('Add Header'))?.trigger('click');
       if (!connectionVm.form.endpointHttpHeaders) {
         connectionVm.addHeader();
       }
       await nextTick();
-      
+
       connectionVm.form.endpointHttpHeaders[0] = ['X-Manual', 'val-manual'];
-      
+
       // 2. Switch to profile with headers
       const select = wrapper.find('[data-testid="setting-quick-provider-profile-select"]');
       await select.setValue('p-headers');
@@ -1187,7 +1187,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       // Verify headers were overwritten by profile
       expect(connectionVm.form.endpointHttpHeaders).toEqual([['X-From-Profile', 'val-1']]);
-      
+
       // 3. Remove header
       const removeBtn = wrapper.findAll('button').find(b => b.findComponent({ name: 'Trash2' }).exists() || b.html().includes('lucide-trash2'));
       await removeBtn?.trigger('click');
@@ -1204,7 +1204,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
       });
 
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs }
       });
@@ -1212,13 +1212,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const recipes = [
         {
-          newName: 'Recipe 1', 
-          matchedModelId: 'm1', 
-          recipe: { systemPrompt: { content: 'p1', behavior: 'override' as const }, lmParameters: { temperature: 0.5 } } as any 
+          newName: 'Recipe 1',
+          matchedModelId: 'm1',
+          recipe: { systemPrompt: { content: 'p1', behavior: 'override' as const }, lmParameters: { temperature: 0.5 } } as any
         },
         {
-          newName: 'Recipe 2', 
-          recipe: { systemPrompt: undefined, lmParameters: undefined } as any 
+          newName: 'Recipe 2',
+          recipe: { systemPrompt: undefined, lmParameters: undefined } as any
         }
       ];
 
@@ -1250,7 +1250,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
       });
 
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
         global: { stubs: globalStubs }
       });
@@ -1267,14 +1267,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
   describe('Focus Management', () => {
     it('sets focus area to settings when opened, and restores to chat when closed', async () => {
-      const wrapper = mount(SettingsModal, { 
+      const wrapper = mount(SettingsModal, {
         props: { isOpen: false },
-        global: { stubs: globalStubs } 
+        global: { stubs: globalStubs }
       });
-      
+
       await wrapper.setProps({ isOpen: true });
       expect(mockSetActiveFocusArea).toHaveBeenCalledWith('settings');
-      
+
       await wrapper.setProps({ isOpen: false });
       expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
     });

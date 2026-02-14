@@ -9,7 +9,7 @@ vi.mock('../composables/useToast', () => ({
 
 describe('ToastContainer', () => {
   const mockRemoveToast = vi.fn();
-  
+
   beforeEach(() => {
     vi.clearAllMocks();
   });

@@ -9,14 +9,14 @@ class MockFileSystemFileHandle {
   constructor(public name: string, private content: string = '') {}
   async getFile() {
     // Return an object that looks like a File/Blob with a text() method
-    return { 
-      text: async () => this.content 
+    return {
+      text: async () => this.content
     };
   }
   async createWritable() {
     return {
       write: async (data: string) => {
-        this.content = data; 
+        this.content = data;
       },
       close: async () => {},
     };
@@ -26,7 +26,7 @@ class MockFileSystemFileHandle {
 class MockFileSystemDirectoryHandle {
   kind = 'directory' as const;
   public entries = new Map<string, MockFileSystemDirectoryHandle | MockFileSystemFileHandle>();
-  
+
   constructor(public name: string) {}
 
   async getDirectoryHandle(name: string, options?: { create?: boolean }) {
@@ -97,7 +97,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     const mockChat: Chat = {
       id: chatId,
       title: 'Large Chat',
-      root: { 
+      root: {
         items: [{
           id: generateId(),
           role: 'user',
@@ -120,7 +120,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     const metaFile = metaDir.entries.get(`${chatId}.json`) as MockFileSystemFileHandle;
     const metaText = await (await metaFile.getFile()).text();
     const metaJson = JSON.parse(metaText);
-    
+
     expect(metaJson.id).toBe(chatId);
     expect(metaJson.root).toBeUndefined(); // Important: Content should be stripped
 
@@ -167,11 +167,11 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
 
     await provider.saveChatContent(mockChat.id, mockChat);
     await provider.saveChatMeta(mockChat);
-    
+
     const storageDir = mockOpfsRoot.entries.get('naidan-storage') as MockFileSystemDirectoryHandle;
     const metaDir = storageDir.entries.get('chat-metas') as MockFileSystemDirectoryHandle;
     const contentsDir = storageDir.entries.get('chat-contents') as MockFileSystemDirectoryHandle;
-    
+
     expect(metaDir.entries.has(`${chatId}.json`)).toBe(true);
     expect(contentsDir.entries.has(`${chatId}.json`)).toBe(true);
 

@@ -6,7 +6,7 @@ import { useSettings } from '../composables/useSettings';
 import { useLayout } from '../composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 
-// IMPORTANT: MessageItem is the core of the chat experience. We import it synchronously 
+// IMPORTANT: MessageItem is the core of the chat experience. We import it synchronously
 // to ensure the chat history displays immediately and smoothly without individual components popping in.
 import MessageItem from './MessageItem.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
@@ -24,7 +24,7 @@ const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./C
 const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted(() => import('./HistoryManipulationModal.vue'));
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted(() => import('./ChatDebugInspector.vue'));
-import { 
+import {
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
   Folder, FolderInput, ChevronRight, Hammer, Search
@@ -76,7 +76,7 @@ function handleDragLeave(event: DragEvent) {
 async function handleDrop(event: DragEvent) {
   event.preventDefault();
   isDragging.value = false;
-  
+
   if (event.dataTransfer?.files) {
     await chatInputRef.value?.processFiles(Array.from(event.dataTransfer.files));
   }
@@ -238,7 +238,7 @@ watch(
 </script>
 
 <template>
-  <div 
+  <div
     class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
@@ -246,7 +246,7 @@ watch(
     @click="setActiveFocusArea('chat')"
   >
     <!-- Drag Overlay -->
-    <div 
+    <div
       v-if="isDragging"
       class="absolute inset-0 z-50 bg-blue-500/10 border-2 border-dashed border-blue-500 pointer-events-none flex items-center justify-center"
       data-testid="drag-overlay"
@@ -263,7 +263,7 @@ watch(
         <div class="flex flex-col overflow-hidden">
           <template v-if="currentChat">
             <div class="flex items-center gap-2">
-              <button 
+              <button
                 v-if="currentChat.originChatId"
                 @click="jumpToOrigin"
                 class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
@@ -273,7 +273,7 @@ watch(
                 <ArrowUp class="w-4 h-4" />
               </button>
               <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
-              <button 
+              <button
                 v-if="activeMessages.length > 0"
                 @click="currentChat && chatStore.generateChatTitle(currentChat.id)"
                 class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50"
@@ -285,18 +285,18 @@ watch(
                 <RefreshCw class="w-3.5 h-3.5" />
               </button>
             </div>
-            
+
             <!-- Model Badge/Trigger -->
-            <button 
+            <button
               @click="showChatSettings = !showChatSettings"
               class="flex items-center gap-1.5 w-fit group"
               title="Chat Settings & Model Override"
               data-testid="model-trigger"
             >
-              <div 
+              <div
                 class="px-2 py-0.5 rounded-full text-[10px] font-bold transition-all flex items-center gap-1.5"
-                :class="showChatSettings 
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+                :class="showChatSettings
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200'"
               >
                 <span class="truncate max-w-[120px] sm:max-w-[200px]">
@@ -304,9 +304,9 @@ watch(
                 </span>
                 <Settings2 class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
               </div>
-              <div 
-                v-if="currentChat.endpointUrl || currentChat.endpointType || currentChat.modelId || currentChat.systemPrompt || (currentChat.lmParameters && Object.keys(currentChat.lmParameters).length > 0)" 
-                class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" 
+              <div
+                v-if="currentChat.endpointUrl || currentChat.endpointType || currentChat.modelId || currentChat.systemPrompt || (currentChat.lmParameters && Object.keys(currentChat.lmParameters).length > 0)"
+                class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"
                 title="Custom overrides active"
                 data-testid="custom-overrides-indicator"
               ></div>
@@ -322,7 +322,7 @@ watch(
         <div v-if="currentChat" class="flex items-center gap-1">
           <!-- Move to Group Dropdown -->
           <div class="relative">
-            <button 
+            <button
               @click="showMoveMenu = !showMoveMenu"
               class="p-2 rounded-xl transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
               :class="showMoveMenu ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'"
@@ -333,8 +333,8 @@ watch(
             </button>
 
             <Transition name="dropdown">
-              <div 
-                v-if="showMoveMenu" 
+              <div
+                v-if="showMoveMenu"
                 class="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden origin-top-right"
                 @mouseleave="showMoveMenu = false"
               >
@@ -342,7 +342,7 @@ watch(
                   Move to Group
                 </div>
                 <div class="max-h-64 overflow-y-auto">
-                  <button 
+                  <button
                     @click="handleMoveToGroup(null)"
                     class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
                     :class="!currentChat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
@@ -354,8 +354,8 @@ watch(
                     <ChevronRight v-if="!currentChat.groupId" class="w-4 h-4" />
                   </button>
 
-                  <button 
-                    v-for="group in chatStore.chatGroups.value" 
+                  <button
+                    v-for="group in chatStore.chatGroups.value"
                     :key="group.id"
                     @click="handleMoveToGroup(group.id)"
                     class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
@@ -372,7 +372,7 @@ watch(
             </Transition>
           </div>
 
-          <button 
+          <button
             v-if="activeMessages.length > 0"
             @click="handleForkLastMessage"
             class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -382,7 +382,7 @@ watch(
             <GitFork class="w-5 h-5" />
           </button>
 
-          <button 
+          <button
             @click="showHistoryModal = true"
             class="p-2 rounded-xl transition-all text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 group/hammer"
             title="Super Edit (Full History Manipulation)"
@@ -391,7 +391,7 @@ watch(
             <Hammer class="w-5 h-5 group-hover/hammer:-rotate-12 transition-all" />
           </button>
 
-          <button 
+          <button
             @click="exportChat"
             class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             title="Export Chat"
@@ -399,7 +399,7 @@ watch(
             <Download class="w-5 h-5" />
           </button>
 
-          <button 
+          <button
             @click="showMoreMenu = !showMoreMenu"
             class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             title="More Actions"
@@ -411,23 +411,23 @@ watch(
 
         <!-- Kebab Menu Dropdown -->
         <Transition name="dropdown">
-          <div 
-            v-if="showMoreMenu" 
+          <div
+            v-if="showMoreMenu"
             class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-top-right"
             @mouseleave="showMoreMenu = false"
           >
-            <button 
+            <button
               @click="() => { if(currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); showMoreMenu = false; }"
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
             >
               <Search class="w-4 h-4" />
               <span>Search in Chat</span>
             </button>
-            <button 
+            <button
               @click="chatStore.toggleDebug(); showMoreMenu = false"
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-              :class="currentChat?.debugEnabled 
-                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
+              :class="currentChat?.debugEnabled
+                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
                 : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
               "
             >
@@ -440,9 +440,9 @@ watch(
     </div>
 
     <!-- Chat Settings Panel -->
-    <ChatSettingsPanel 
-      :show="showChatSettings" 
-      @close="showChatSettings = false" 
+    <ChatSettingsPanel
+      :show="showChatSettings"
+      @close="showChatSettings = false"
     />
 
     <!-- History Manipulation Modal -->
@@ -453,9 +453,9 @@ watch(
 
     <!-- Messages Layer -->
     <div class="flex-1 relative overflow-hidden">
-      <div 
-        ref="container" 
-        data-testid="scroll-container" 
+      <div
+        ref="container"
+        data-testid="scroll-container"
         class="absolute inset-0 overflow-y-auto overscroll-contain transition-[padding-bottom] duration-500"
         style="overflow-anchor: none;"
         :style="{ paddingBottom: isSubmerged ? '48px' : '300px' }"
@@ -465,10 +465,10 @@ watch(
         </div>
         <template v-else>
           <div v-if="activeMessages.length > 0" class="relative p-2">
-            <MessageItem 
-              v-for="msg in activeMessages" 
-              :key="msg.id" 
-              :message="msg" 
+            <MessageItem
+              v-for="msg in activeMessages"
+              :key="msg.id"
+              :message="msg"
               :siblings="chatStore.getSiblings(msg.id)"
               :can-generate-image="canGenerateImage && hasImageModel"
               :is-processing="isCurrentChatStreaming"
@@ -481,15 +481,15 @@ watch(
               @abort="chatStore.abortChat()"
             />
           </div>
-          <WelcomeScreen 
-            v-else 
+          <WelcomeScreen
+            v-else
             :has-input="(chatInputRef?.input || '').trim().length > 0"
-            @select-suggestion="(text) => chatInputRef?.applySuggestion(text)" 
+            @select-suggestion="(text) => chatInputRef?.applySuggestion(text)"
           />
         </template>
-        
+
         <!-- Conditional spacer: only large when maximized or animating to allow scrolling hidden content -->
-        <div 
+        <div
           v-if="chatInputRef?.isMaximized || isAnimatingHeight"
           class="h-[75vh] shrink-0 pointer-events-none"
           data-testid="maximized-spacer"

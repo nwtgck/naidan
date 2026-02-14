@@ -26,10 +26,10 @@ describe('useGlobalSearch Composable', () => {
   it('should toggle search state and reset filters when closing', () => {
     toggleSearch();
     expect(isSearchOpen.value).toBe(true);
-    
+
     // Set some filters manually or via openSearch
     openSearch({ groupIds: ['g1'] });
-    
+
     toggleSearch(); // Should close and reset
     expect(isSearchOpen.value).toBe(false);
     expect(chatGroupIds.value).toEqual([]);

@@ -102,7 +102,7 @@ describe('parseConcatenatedJson', () => {
   });
 
   it('should handle whitespace and random text between objects if they are not braces', () => {
-    // Note: The current parser is brace-depth based. 
+    // Note: The current parser is brace-depth based.
     // If there's text between objects that contains braces, it might fail.
     // But basic whitespace should be fine.
     const input = '  {"a": 1}  \n\n  {"b": 2}  ';

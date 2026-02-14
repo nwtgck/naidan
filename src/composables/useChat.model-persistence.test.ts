@@ -67,7 +67,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRootItems.length = 0;
-    
+
     vi.mocked(storageService.loadChat).mockImplementation((id) => {
       if (id === 'c1') return Promise.resolve({ id: 'c1', title: 'C1', modelId: 'm1', root: { items: [] } } as any);
       return Promise.resolve(null);
@@ -90,7 +90,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
     await sendMessage('Hello with 3.5');
     await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
-    
+
     expect(activeMessages.value).toHaveLength(2);
     expect(activeMessages.value[1]?.role).toBe('assistant');
     expect(activeMessages.value[1]?.modelId).toBe('gpt-3.5-turbo');
@@ -98,17 +98,17 @@ describe('useChat Model ID Persistence & Resolution', () => {
 
     // 3. Change the model for the chat
     await updateChatModel(chatObj.id, 'gpt-4');
-    
+
     // 4. Send second message with new model
     await sendMessage('Hello with 4');
     await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
 
     expect(activeMessages.value).toHaveLength(4);
-    
+
     // Check first assistant message still has old model
     expect(activeMessages.value[1]?.modelId).toBe('gpt-3.5-turbo');
-    
+
     // Check second assistant message has new model
     expect(activeMessages.value[3]?.role).toBe('assistant');
     expect(activeMessages.value[3]?.modelId).toBe('gpt-4');
@@ -119,11 +119,11 @@ describe('useChat Model ID Persistence & Resolution', () => {
     const lastCall = vi.mocked(storageService.updateChatContent).mock.calls[vi.mocked(storageService.updateChatContent).mock.calls.length - 1];
     const updater = lastCall![1];
     const lastSavedContent = await (updater as any)(null);
-    
+
     // Path: root -> user1 -> assistant1 (gpt-3.5) -> user2 -> assistant2 (gpt-4)
     const assistant1 = lastSavedContent.root.items[0]?.replies.items[0];
     const assistant2 = assistant1?.replies.items[0]?.replies.items[0];
-    
+
     expect(assistant1?.modelId).toBe('gpt-3.5-turbo');
     expect(assistant2?.modelId).toBe('gpt-4');
   });

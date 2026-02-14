@@ -31,7 +31,7 @@ describe('StorageSynchronizer', () => {
         return callback();
       });
       const originalLocks = navigator.locks;
-      
+
       // Mock navigator.locks
       Object.defineProperty(navigator, 'locks', {
         configurable: true,
@@ -52,7 +52,7 @@ describe('StorageSynchronizer', () => {
 
     it('should fallback gracefully if navigator.locks is unavailable', async () => {
       const originalLocks = navigator.locks;
-      
+
       // Remove navigator.locks
       Object.defineProperty(navigator, 'locks', {
         configurable: true,
@@ -72,7 +72,7 @@ describe('StorageSynchronizer', () => {
 
     it('should trigger onLockWait if lock acquisition is delayed', async () => {
       vi.useFakeTimers();
-      
+
       // Mock request that never resolves
       const mockRequest = vi.fn(() => new Promise(() => {}));
       Object.defineProperty(navigator, 'locks', {
@@ -85,13 +85,13 @@ describe('StorageSynchronizer', () => {
 
       await vi.advanceTimersByTimeAsync(150);
       expect(onLockWait).toHaveBeenCalled();
-      
+
       vi.useRealTimers();
     });
 
     it('should trigger onTaskSlow if task execution is delayed', async () => {
       vi.useFakeTimers();
-      
+
       // Mock request that executes task
       const mockRequest = vi.fn((_name, cb) => cb());
       Object.defineProperty(navigator, 'locks', {
@@ -101,18 +101,18 @@ describe('StorageSynchronizer', () => {
 
       const onTaskSlow = vi.fn();
       const task = () => new Promise((resolve) => setTimeout(resolve, 1000));
-      
+
       synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY, onTaskSlow, notifyTaskSlowAfterMs: 500 });
 
       await vi.advanceTimersByTimeAsync(600);
       expect(onTaskSlow).toHaveBeenCalled();
-      
+
       vi.useRealTimers();
     });
 
     it('should trigger onFinalize if any delay occurred', async () => {
       vi.useFakeTimers();
-      
+
       const mockRequest = vi.fn((_name, cb) => cb());
       Object.defineProperty(navigator, 'locks', {
         configurable: true,
@@ -121,7 +121,7 @@ describe('StorageSynchronizer', () => {
 
       const onFinalize = vi.fn();
       const task = () => new Promise((resolve) => setTimeout(resolve, 1000));
-      
+
       const promise = synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY, onFinalize, notifyTaskSlowAfterMs: 500 });
 
       await vi.advanceTimersByTimeAsync(600);
@@ -129,7 +129,7 @@ describe('StorageSynchronizer', () => {
       await promise;
 
       expect(onFinalize).toHaveBeenCalled();
-      
+
       vi.useRealTimers();
     });
   });
@@ -154,7 +154,7 @@ describe('StorageSynchronizer', () => {
       synchronizer.subscribe(listener);
 
       const eventData = { type: 'chat_content', id: '456', timestamp: Date.now() };
-      
+
       // Simulate storage event from another window
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
@@ -233,11 +233,11 @@ describe('StorageSynchronizer', () => {
     it('should trigger local listeners when a BroadcastChannel message arrives', async () => {
       const listener = vi.fn();
       const eventData = { type: 'settings' as const, timestamp: Date.now() };
-      
+
       const originalBC = global.BroadcastChannel;
-      
+
       let capturedHandler: any;
-      
+
       // Mock class
       (global as any).BroadcastChannel = class {
         postMessage = vi.fn();
@@ -252,7 +252,7 @@ describe('StorageSynchronizer', () => {
 
       const syncWithMock = new StorageSynchronizer();
       syncWithMock.subscribe(listener);
-      
+
       if (capturedHandler) {
         capturedHandler({ data: eventData });
       }

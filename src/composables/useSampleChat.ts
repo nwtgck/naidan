@@ -44,7 +44,7 @@ export function useSampleChat() {
       updatedAt: now,
       debugEnabled: true,
     };
-    
+
     await storageService.updateChatContent(sampleChatObj.id, () => ({
       root: sampleChatObj.root,
       currentLeafId: sampleChatObj.currentLeafId

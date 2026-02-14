@@ -54,16 +54,16 @@ const { isOPFSOpen } = useOPFSExplorer();
 useTheme();
 
 // Initialize useConfirm
-const { 
-  isConfirmOpen, confirmTitle, confirmMessage, 
-  confirmConfirmButtonText, confirmCancelButtonText, 
+const {
+  isConfirmOpen, confirmTitle, confirmMessage,
+  confirmConfirmButtonText, confirmCancelButtonText,
   confirmButtonVariant, confirmIcon,
   handleConfirm, handleCancel,
 } = useConfirm();
 
 // Initialize usePrompt
-const { 
-  isPromptOpen, promptTitle, promptMessage, 
+const {
+  isPromptOpen, promptTitle, promptMessage,
   promptConfirmButtonText, promptCancelButtonText, promptInputValue,
   promptBodyComponent,
   handlePromptConfirm, handlePromptCancel,
@@ -73,7 +73,7 @@ const {
 // OR if a query parameter 'q' is provided on the landing page
 watch(
   [
-    () => chatStore.chats.value.length, 
+    () => chatStore.chats.value.length,
     () => router.currentRoute.value?.path,
     () => router.currentRoute.value?.query?.q,
     () => router.currentRoute.value?.query?.['chat-group'],
@@ -98,7 +98,7 @@ watch(
     }
 
     // 2. Handle URL Query Parameters
-    // We only trigger this if 'q' is provided. 'system-prompt' or 'model' alone 
+    // We only trigger this if 'q' is provided. 'system-prompt' or 'model' alone
     // does not trigger a new chat.
     if (q) {
       let targetGroupId: string | undefined = undefined;
@@ -112,18 +112,18 @@ watch(
       }
 
       const targetModelId = (typeof modelId === 'string') ? modelId : undefined;
-      const systemPrompt = (typeof systemPromptStr === 'string' && systemPromptStr) 
-        ? { behavior: 'override' as const, content: systemPromptStr } 
+      const systemPrompt = (typeof systemPromptStr === 'string' && systemPromptStr)
+        ? { behavior: 'override' as const, content: systemPromptStr }
         : undefined;
 
       const { setActiveFocusArea } = useLayout();
       setActiveFocusArea('chat');
-      await chatStore.createNewChat({ 
-        groupId: targetGroupId, 
+      await chatStore.createNewChat({
+        groupId: targetGroupId,
         modelId: targetModelId,
-        systemPrompt 
+        systemPrompt
       });
-      
+
       if (chatStore.currentChat.value) {
         const id = chatStore.currentChat.value.id;
         router.push({
@@ -143,24 +143,24 @@ onKeyStroke(['o', 'O', 'k', 'K'], async (e) => {
     e.preventDefault();
     const { setActiveFocusArea } = useLayout();
     setActiveFocusArea('chat');
-    await chatStore.createNewChat({ 
-      groupId: undefined, 
-      modelId: undefined, 
-      systemPrompt: undefined 
+    await chatStore.createNewChat({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: undefined
     });
     if (chatStore.currentChat.value) {
       router.push(`/chat/${chatStore.currentChat.value.id}`);
     }
   }
-  
+
   // Search (Cmd+K)
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
     // Detect macOS: simple check for platform or assuming metaKey is typically Command on Mac
     const isMac = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-    
+
     // On Mac, only trigger if Meta (Command) is pressed. Ctrl+K should be ignored (Emacs binding).
     if (isMac && !e.metaKey) return;
-    
+
     e.preventDefault();
     useGlobalSearch().toggleSearch();
   }
@@ -176,13 +176,13 @@ defineExpose({
 
 <template>
   <div class="flex h-screen bg-gray-50/50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-hidden transition-colors duration-300">
-    <div 
+    <div
       class="border-r border-gray-100 dark:border-gray-800 shrink-0 h-full transition-all duration-300 ease-in-out relative z-30"
       :class="isSidebarOpen ? 'w-64' : 'w-10'"
     >
       <Sidebar />
     </div>
-    
+
     <main class="flex-1 relative flex flex-col min-w-0 bg-transparent">
       <!-- Use a key based on route to help Vue identify when to remount or transition -->
       <div class="flex-1 relative min-h-0">
@@ -193,9 +193,9 @@ defineExpose({
       <DebugPanel />
     </main>
 
-    <SettingsModal 
-      :is-open="isSettingsOpen" 
-      @close="closeSettings" 
+    <SettingsModal
+      :is-open="isSettingsOpen"
+      @close="closeSettings"
     />
 
     <OnboardingModal />

@@ -6,7 +6,7 @@ import { useImagePreview } from './useImagePreview';
 describe('useImagePreview', () => {
   it('manages preview state locally when not provided', () => {
     const { state, openPreview, closePreview } = useImagePreview();
-    
+
     expect(state.value).toBeNull();
 
     const mockObjects = [{ id: '1', mimeType: 'image/png', size: 100, createdAt: 1000 }];
@@ -46,7 +46,7 @@ describe('useImagePreview', () => {
 
     instance1.openPreview({ objects: [], initialId: 'test' });
     expect(instance2.state.value?.initialId).toBe('test');
-    
+
     wrapper.unmount();
   });
 

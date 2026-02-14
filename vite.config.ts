@@ -23,11 +23,11 @@ if (!fs.existsSync(licensesPath)) {
     fs.mkdirSync(assetsDir, { recursive: true })
   }
   // Create a dummy file because it's gitignored but needed for Vite import analysis in tests
-  fs.writeFileSync(licensesPath, JSON.stringify([{ 
-    name: "dummy-package-for-tests", 
-    version: "0.0.0", 
-    license: "DUMMY-LICENSE", 
-    licenseText: "This is a placeholder for CI tests." 
+  fs.writeFileSync(licensesPath, JSON.stringify([{
+    name: "dummy-package-for-tests",
+    version: "0.0.0",
+    license: "DUMMY-LICENSE",
+    licenseText: "This is a placeholder for CI tests."
   }]))
 }
 
@@ -179,7 +179,7 @@ export default defineConfig(({ mode }) => {
       minify: true,
       sourcemap: isHosted,
       // Using IIFE (Immediately Invoked Function Expression) format is necessary
-      // for compatibility with the file:/// protocol, as it doesn't require 
+      // for compatibility with the file:/// protocol, as it doesn't require
       // the complex module loading system that standard ES modules do.
       // For standard web hosting, we use 'es' modules.
       rollupOptions: {
@@ -225,7 +225,7 @@ const zipPackagerPlugin = (outDir: string) => ({
     console.log('  \u231B Creating standalone zip package...')
     const distDir = path.resolve(__dirname, outDir)
     const zipPath = path.resolve(__dirname, 'dist/naidan-standalone.zip')
-    
+
     if (!fs.existsSync(distDir)) return
 
     const zip = new JSZip()
@@ -240,7 +240,7 @@ const zipPackagerPlugin = (outDir: string) => ({
       compression: 'DEFLATE',
       compressionOptions: { level: 9 }
     })
-    
+
     // Ensure parent dir exists (it should, but just in case)
     const zipDir = path.dirname(zipPath)
     if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true })
@@ -295,7 +295,7 @@ const iifeInlinePlugin = (outDir: string) => ({
       if (src && src.includes('assets/index-')) {
         const relativePath = src.startsWith('./') ? src.slice(2) : src
         const scriptPath = path.join(distDir, relativePath)
-        
+
         if (fs.existsSync(scriptPath)) {
           const scriptContent = fs.readFileSync(scriptPath, 'utf8')
           const newScript = document.createElement('script')
@@ -308,6 +308,6 @@ const iifeInlinePlugin = (outDir: string) => ({
     }
 
     fs.writeFileSync(htmlPath, dom.serialize())
-    console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility.`) 
+    console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility.`)
   },
 })

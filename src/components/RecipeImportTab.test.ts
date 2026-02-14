@@ -19,7 +19,7 @@ describe('RecipeImportTab.vue', () => {
       props: { availableModels: mockModels },
     });
     const textarea = wrapper.find('[data-testid="recipe-json-input"]');
-    
+
     const recipe = {
       type: 'chat_group_recipe',
       name: 'Test Recipe',
@@ -39,7 +39,7 @@ describe('RecipeImportTab.vue', () => {
       props: { availableModels: mockModels },
     });
     const textarea = wrapper.find('[data-testid="recipe-json-input"]');
-    
+
     await textarea.setValue('{ invalid json }');
     await nextTick();
 
@@ -51,7 +51,7 @@ describe('RecipeImportTab.vue', () => {
       props: { availableModels: mockModels },
     });
     const textarea = wrapper.find('[data-testid="recipe-json-input"]');
-    
+
     const recipe = {
       type: 'chat_group_recipe',
       name: 'Test Recipe',
@@ -81,7 +81,7 @@ describe('RecipeImportTab.vue', () => {
       props: { availableModels: mockModels },
     });
     const textarea = wrapper.find('[data-testid="recipe-json-input"]');
-    
+
     await textarea.setValue(JSON.stringify({
       type: 'chat_group_recipe',
       name: 'Original',
@@ -104,7 +104,7 @@ describe('RecipeImportTab.vue', () => {
       props: { availableModels: ['model-1', 'model-2', 'model-3'] },
     });
     const vm = wrapper.vm as any;
-    
+
     // Test sorting with a matched model
     const sorted = vm.getSortedModels('model-2');
     expect(sorted[0]).toBe('model-2');

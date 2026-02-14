@@ -47,15 +47,15 @@ export const RecipeModelSchema = z.object({
  */
 export const ChatGroupRecipeSchema = z.object({
   type: z.literal('chat_group_recipe'),
-  
+
   name: z.string(),
   description: z.string().optional(),
-  
+
   // Settings (subset of ChatGroup settings)
   // Endpoint info is environment-dependent and thus excluded.
   systemPrompt: RecipeSystemPromptSchema.optional(),
   lmParameters: RecipeLmParametersSchema.optional(),
-  
+
   // Model selection logic (required)
   // Empty array means "no preference (use default model)".
   models: z.array(RecipeModelSchema),

@@ -54,11 +54,11 @@ describe('Sidebar DND Improvements', () => {
     };
     (useChat as any).mockReturnValue(mockChatStore);
     (useSettings as any).mockReturnValue({ settings: ref({}), isFetchingModels: ref(false) });
-    (useLayout as any).mockReturnValue({ 
-      isSidebarOpen: ref(true), 
+    (useLayout as any).mockReturnValue({
+      isSidebarOpen: ref(true),
       activeFocusArea: ref('chat'),
       setActiveFocusArea: vi.fn(),
-      toggleSidebar: vi.fn() 
+      toggleSidebar: vi.fn()
     });
   });
 
@@ -84,14 +84,14 @@ describe('Sidebar DND Improvements', () => {
   it('implements group expansion using CSS Grid for stability', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
-    
+
     // Find the expansion wrapper
     const expansionWrapper = wrapper.find('.grid.transition-all');
     expect(expansionWrapper.exists()).toBe(true);
-    
+
     // Should have gridTemplateRows: 0fr when collapsed
     expect(expansionWrapper.attributes('style')).toContain('grid-template-rows: 0fr');
-    
+
     // Expand group
     mockChatStore.chatGroups.value[0].isCollapsed = false;
     mockChatStore.sidebarItems.value[0].chatGroup.isCollapsed = false;
@@ -102,28 +102,28 @@ describe('Sidebar DND Improvements', () => {
   it('implements Show more/less animation using max-height transition', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
-    
+
     const showMoreWrapper = wrapper.find('.transition-\\[max-height\\]');
     expect(showMoreWrapper.exists()).toBe(true);
-    
+
     // Should have a default max-height when not expanded
     expect(showMoreWrapper.attributes('style')).toContain('max-height: 250px');
-    
+
     // Simulate "Show more" expansion (internal state expandedGroupIds)
-    // We can't easily trigger the function from outside without export or component access, 
+    // We can't easily trigger the function from outside without export or component access,
     // but we can verify the binding.
     (wrapper.vm as any).toggleGroupCompactExpansion('g1');
     await nextTick();
     expect(showMoreWrapper.attributes('style')).toContain('max-height: 2000px');
   });
-      
+
   it('should use sortable-ghost class for drag visualization', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
     const draggable = wrapper.findComponent({ name: 'draggable' });
     expect(draggable.props('ghostClass')).toBe('sortable-ghost');
   });
-      
+
   it('should have correct swap settings for intuitive nesting', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
@@ -131,7 +131,7 @@ describe('Sidebar DND Improvements', () => {
     expect(draggable.props('swapThreshold')).toBe(0.5);
     expect(draggable.props('invertSwap')).toBe(true);
   });
-      
+
   it('should have auto-scroll settings enabled on all draggables', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
@@ -143,7 +143,7 @@ describe('Sidebar DND Improvements', () => {
       expect(d.props('scrollSpeed')).toBe(20);
     });
   });
-      
+
   it('should use force-fallback for consistent drag appearance on all draggables', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
@@ -152,7 +152,7 @@ describe('Sidebar DND Improvements', () => {
       expect(d.props('forceFallback')).toBe(true);
     });
   });
-      
+
   it('should have touch delay settings enabled to prevent accidental drags on mobile', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
@@ -172,7 +172,7 @@ describe('Sidebar DND Improvements', () => {
     await nextTick();
     expect(mainDraggable.attributes('class')).toContain('pb-32');
   });
-      
+
   it('should apply highlight class when dragging over a group', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
@@ -185,7 +185,7 @@ describe('Sidebar DND Improvements', () => {
     await groupItem.trigger('dragleave');
     expect(groupItem.attributes('class')).not.toContain('ring-2');
   });
-      
+
   it('should auto-expand collapsed group after hover delay', async () => {
     vi.useFakeTimers();
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
@@ -199,7 +199,7 @@ describe('Sidebar DND Improvements', () => {
     expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
     vi.useRealTimers();
   });
-      
+
   it('should NOT auto-expand collapsed groups when a chat inside them is selected', async () => {
     vi.useFakeTimers();
     mount(Sidebar, { global: { plugins: [router] } });
@@ -213,19 +213,19 @@ describe('Sidebar DND Improvements', () => {
     expect(mockChatStore.chatGroups.value[0].isCollapsed).toBe(true);
     vi.useRealTimers();
   });
-      
+
   it('should allow toggling any group regardless of selection', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
-          
+
     // Find the toggle button for the first group
     const toggleButton = wrapper.find('[data-sidebar-group-id="g1"] button');
     await toggleButton.trigger('click');
-          
+
     expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
   });
   it('should scroll to active chat item when selected', async () => {
-    
+
     vi.useFakeTimers();
     const scrollSpy = vi.fn();
     const querySpy = vi.spyOn(document, 'querySelector').mockReturnValue({
@@ -234,14 +234,14 @@ describe('Sidebar DND Improvements', () => {
 
     mount(Sidebar, { global: { plugins: [router] } });
     mockChatStore.currentChat.value = { id: 'chat-scroll-test' };
-    
+
     await nextTick(); // watch triggered
     await nextTick(); // await nextTick() inside watcher
     vi.advanceTimersByTime(150); // setTimeout
 
     expect(querySpy).toHaveBeenCalledWith('[data-testid="sidebar-chat-item-chat-scroll-test"]');
     expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
-    
+
     querySpy.mockRestore();
     vi.useRealTimers();
   });

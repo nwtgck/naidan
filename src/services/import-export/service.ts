@@ -1,8 +1,8 @@
 import { generateId } from '../../utils/id';
 import JSZip from 'jszip';
-import type { 
-  ExportOptions, 
-  ImportConfig, 
+import type {
+  ExportOptions,
+  ImportConfig,
   ImportPreview,
   ImportPreviewItem,
   PreviewChatGroup,
@@ -29,7 +29,7 @@ import {
 import {
   settingsToDomain,
   chatGroupToDomain,
-  chatMetaToDomain 
+  chatMetaToDomain
 } from '../../models/mappers';
 import { useGlobalEvents } from '../../composables/useGlobalEvents';
 import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '../../models/types';
@@ -81,15 +81,15 @@ export class ImportExportService {
   async exportData(options: ExportOptions): Promise<{ stream: ReadableStream<Uint8Array>, filename: string }> {
     const zip = new JSZip();
     const dateStr = formatDate(new Date());
-    
-    // Linux filename limit is 255 bytes. 
+
+    // Linux filename limit is 255 bytes.
     const SUFFIX = `-${dateStr}.zip`;
     const PREFIX = 'naidan-data';
     const PREFIX_BYTES = PREFIX.length;
-    const SUFFIX_BYTES = SUFFIX.length; 
-    
-    const AVAILABLE_BYTES = 255 - SUFFIX_BYTES - PREFIX_BYTES - 1; 
-    
+    const SUFFIX_BYTES = SUFFIX.length;
+
+    const AVAILABLE_BYTES = 255 - SUFFIX_BYTES - PREFIX_BYTES - 1;
+
     let midSegment = '';
     if (options.fileNameSegment) {
       /* eslint-disable no-control-regex */
@@ -99,7 +99,7 @@ export class ImportExportService {
         midSegment = `-${truncateByByteLength(sanitized, AVAILABLE_BYTES)}`;
       }
     }
-    
+
     const finalBaseName = `${PREFIX}${midSegment}-${dateStr}`;
     const filename = `${finalBaseName}.zip`;
 
@@ -166,7 +166,7 @@ export class ImportExportService {
         }
         }
       }
-      
+
       // Write shard indexes
       for (const [shard, index] of shardIndices.entries()) {
         binFolder.folder(shard)!.file('index.json', JSON.stringify(index, null, 2));
@@ -217,9 +217,9 @@ export class ImportExportService {
 
     // 2. Binary Objects
     const binPrefix = rootPath + 'binary-objects/';
-    stats.attachmentsCount = Object.keys(zip.files).filter(f => 
-      f.startsWith(binPrefix) && 
-      f.endsWith('.bin') && 
+    stats.attachmentsCount = Object.keys(zip.files).filter(f =>
+      f.startsWith(binPrefix) &&
+      f.endsWith('.bin') &&
       !f.includes('/.') // Ignore markers
     ).length;
 
@@ -257,11 +257,11 @@ export class ImportExportService {
                   messageCount = contentJson.root?.items?.length ?? 0;
                 } catch (e) { /* Ignore */ }
               }
-              chatsMap.set(dto.id, { 
-                id: dto.id, 
-                title: dto.title, 
-                updatedAt: dto.updatedAt, 
-                messageCount, 
+              chatsMap.set(dto.id, {
+                id: dto.id,
+                title: dto.title,
+                updatedAt: dto.updatedAt,
+                messageCount,
                 _groupId: (meta as { groupId?: string | null }).groupId ?? null,
                 _order: 0
               });
@@ -307,7 +307,7 @@ export class ImportExportService {
           }
           }
         });
-      } catch (e) { 
+      } catch (e) {
         this.assembleLegacyHierarchy(chatsMap, chatGroupsMap, items);
       }
     } else {
@@ -355,7 +355,7 @@ export class ImportExportService {
   async verify(zipFile: Blob, config: ImportConfig): Promise<void> {
     const zip = await this.loadZip(zipFile);
     const rootPath = this.findRootPath(zip);
-    
+
     let snapshot: StorageSnapshot;
     const mode = config.data.mode;
     switch (mode) {
@@ -426,7 +426,7 @@ export class ImportExportService {
   private findRootPath(zip: JSZip): string {
     const manifestPath = Object.keys(zip.files).find(path => path.endsWith('export-manifest.json'));
     if (!manifestPath) throw new Error('Missing export-manifest.json');
-    
+
     const lastSlash = manifestPath.lastIndexOf('/');
     return lastSlash !== -1 ? manifestPath.substring(0, lastSlash + 1) : '';
   }
@@ -449,7 +449,7 @@ export class ImportExportService {
       applyField(strategies.titleModel, newSettingsDomain.titleModelId, 'titleModelId');
       applyField(strategies.systemPrompt, newSettingsDomain.systemPrompt, 'systemPrompt');
       applyField(strategies.lmParameters, newSettingsDomain.lmParameters, 'lmParameters');
-      
+
       switch (strategies.providerProfiles) {
       case 'replace':
         finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
@@ -467,12 +467,12 @@ export class ImportExportService {
       }
       }
       return finalSettings;
-    });  
+    });
   }
 
   private async createRestoreSnapshot(zip: JSZip, rootPath: string): Promise<StorageSnapshot> {
     const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
-    const hierarchyDto: HierarchyDto = hierarchyFile 
+    const hierarchyDto: HierarchyDto = hierarchyFile
       ? HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')))
       : { items: [] };
 
@@ -540,14 +540,14 @@ export class ImportExportService {
             const meta = unifiedBinIndex[bId];
             if (meta) {
               const blob = await zip.file(filename)!.async('blob');
-              yield { 
-                type: 'binary_object' as const, 
+              yield {
+                type: 'binary_object' as const,
                 id: bId,
                 name: meta.name || 'file',
                 mimeType: meta.mimeType,
                 size: meta.size,
                 createdAt: meta.createdAt,
-                blob 
+                blob
               };
             }
           }
@@ -575,7 +575,7 @@ export class ImportExportService {
   private async createAppendSnapshot(zip: JSZip, rootPath: string, config: ImportConfig): Promise<StorageSnapshot> {
     const groupIdMap = new Map<string, string>();
     const chatIdMap = new Map<string, string>();
-    
+
     // 1. Groups
     const groupsPrefix = rootPath + 'chat-groups/';
     const importedGroupsDto: ChatGroupDto[] = [];
@@ -681,17 +681,17 @@ export class ImportExportService {
 
                   // Resolve binaryObjectId from V1 or V2
                   const oldBinaryId = ('binaryObjectId' in a) ? a.binaryObjectId : originalAttId;
-                  
+
                   if (!binaryRemapMap.has(oldBinaryId)) {
                     binaryRemapMap.set(oldBinaryId, generateId());
                   }
-                  
+
                   const newBinaryId = binaryRemapMap.get(oldBinaryId)!;
-                  
+
                   // Use Record to mutate properties while keeping it somewhat safe
                   const mutAtt = a as unknown as Record<string, unknown>;
                   mutAtt.binaryObjectId = newBinaryId;
-                  
+
                   // Ensure it looks like V2
                   if (!('name' in a)) {
                     mutAtt.name = (a as unknown as { originalName: string }).originalName || 'file';
@@ -720,14 +720,14 @@ export class ImportExportService {
             const meta = unifiedBinIndex[oldBinaryId];
             if (newBinaryId && meta) {
               const blob = await zip.file(filename)!.async('blob');
-              yield { 
-                type: 'binary_object' as const, 
+              yield {
+                type: 'binary_object' as const,
                 id: newBinaryId,
                 name: meta.name || 'file',
                 mimeType: meta.mimeType,
                 size: meta.size,
                 createdAt: meta.createdAt,
-                blob 
+                blob
               };
             }
           }
@@ -737,17 +737,17 @@ export class ImportExportService {
 
     const settings = await this.storage.loadSettings();
     return {
-      structure: { 
+      structure: {
         settings: settings || {
           autoTitleEnabled: true,
           providerProfiles: [],
           storageType: 'local',
           endpointType: 'openai',
           endpointUrl: '',
-        } as Settings, 
-        hierarchy: mergedHierarchy, 
-        chatMetas, 
-        chatGroups 
+        } as Settings,
+        hierarchy: mergedHierarchy,
+        chatMetas,
+        chatGroups
       },
       contentStream: contentStream(),
     };

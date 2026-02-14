@@ -13,11 +13,11 @@ import { useImageGeneration } from './useImageGeneration';
 import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranch, processThinking, createBranchFromMessages, type HistoryItem } from '../utils/chat-tree';
 import { resolveChatSettings } from '../utils/chat-settings-resolver';
 import { detectLanguage, getTitleSystemPrompt, cleanGeneratedTitle } from '../utils/title-generator';
-import { 
-  SENTINEL_IMAGE_PENDING, 
-  isImageRequest, 
-  parseImageRequest, 
-  createImageRequestMarker, 
+import {
+  SENTINEL_IMAGE_PENDING,
+  isImageRequest,
+  parseImageRequest,
+  createImageRequestMarker,
   createImageResponseMarker,
   stripNaidanSentinels,
   type ImageRequestParams
@@ -97,7 +97,7 @@ function isProcessing(chatId: string) {
 function registerLiveInstance(chat: Chat) {
   const raw = toRaw(chat);
   if (!raw || !raw.id) return;
-  
+
   if (!liveChatRegistry.has(raw.id)) {
     liveChatRegistry.set(raw.id, isProxy(chat) ? chat : reactive(chat));
   } else {
@@ -119,7 +119,7 @@ watch(_currentChat, (newChat, oldChat) => {
   if (oldChat) unregisterLiveInstance(toRaw(oldChat).id);
   if (newChat) registerLiveInstance(newChat); // Already reactive or raw
 });
-  
+
 transformersJsService.subscribeModelList(async () => {
   const { fetchAvailableModels, currentChat, resolvedSettings } = useChat();
   const type = resolvedSettings.value?.endpointType;
@@ -138,7 +138,7 @@ transformersJsService.subscribeModelList(async () => {
     }
   }
 });
-  
+
 // --- Synchronization ---
 function syncLiveInstancesWithSidebar() {
   const sync = (items: SidebarItem[], parentGroupId: string | null) => {
@@ -158,7 +158,7 @@ function syncLiveInstancesWithSidebar() {
       default: {
         const _ex: never = item;
         return _ex;
-      }      
+      }
       }
     }
   };
@@ -171,7 +171,7 @@ let lastSidebarReload = 0;
 
 const debouncedSidebarReload = () => {
   const now = Date.now();
-  
+
   const performReload = async () => {
     if (sidebarReloadTimeout) {
       clearTimeout(sidebarReloadTimeout);
@@ -318,7 +318,7 @@ export function useChat() {
       default: {
         const _ex: never = item;
         return _ex;
-      }      
+      }
       }
     });
     return all;
@@ -360,14 +360,14 @@ export function useChat() {
   };
 
   const loadData = async () => {
-    rootItems.value = await storageService.getSidebarStructure(); 
+    rootItems.value = await storageService.getSidebarStructure();
   };
 
   const fetchAvailableModels = async (chatId?: string, customEndpoint?: { type: EndpointType, url: string, headers?: readonly (readonly [string, string])[] }) => {
     const mutableChat = chatId ? liveChatRegistry.get(chatId) : undefined;
     if (mutableChat) incTask(mutableChat.id, 'fetch');
     else if (!customEndpoint) activeTaskCounts.set('fetch:global', (activeTaskCounts.get('fetch:global') || 0) + 1);
-    
+
     let type: EndpointType;
     let url: string;
     let headers: readonly (readonly [string, string])[] | undefined;
@@ -393,14 +393,14 @@ export function useChat() {
 
     if (!url && type !== 'transformers_js') {
       if (mutableChat) {
-        decTask(mutableChat.id, 'fetch'); 
+        decTask(mutableChat.id, 'fetch');
       } else if (!customEndpoint) {
         const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
         if (val <= 0) activeTaskCounts.delete('fetch:global'); else activeTaskCounts.set('fetch:global', val);
       }
       return [];
     }
-    
+
     try {
       const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
       const provider = (() => {
@@ -417,7 +417,7 @@ export function useChat() {
         }
         }
       })();
-      
+
       const models = await provider.listModels({});
       const result = Array.isArray(models) ? models : [];
       if ((mutableChat && _currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) || (!mutableChat && !chatId)) {
@@ -440,7 +440,7 @@ export function useChat() {
       return [];
     } finally {
       if (mutableChat) {
-        decTask(mutableChat.id, 'fetch'); 
+        decTask(mutableChat.id, 'fetch');
       } else if (!customEndpoint) {
         const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
         if (val <= 0) activeTaskCounts.delete('fetch:global'); else activeTaskCounts.set('fetch:global', val);
@@ -475,10 +475,10 @@ export function useChat() {
     });
   };
 
-  const createNewChat = async (options: { 
-    groupId: string | undefined; 
-    modelId: string | undefined; 
-    systemPrompt: SystemPrompt | undefined; 
+  const createNewChat = async (options: {
+    groupId: string | undefined;
+    modelId: string | undefined;
+    systemPrompt: SystemPrompt | undefined;
   }): Promise<Chat | null> => {
     const { groupId, modelId, systemPrompt } = options;
     if (creatingChat.value) return null;
@@ -501,7 +501,7 @@ export function useChat() {
         if (groupId) {
           const group = curr.items.find(i => i.type === 'chat_group' && i.id === groupId) as HierarchyChatGroupNode;
           if (group) {
-            group.chat_ids.unshift(chatId); return curr; 
+            group.chat_ids.unshift(chatId); return curr;
           }
         }
         const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
@@ -509,7 +509,7 @@ export function useChat() {
         curr.items.splice(insertIdx, 0, { type: 'chat', id: chatId });
         return curr;
       });
-      
+
       _currentChat.value = chatObj;
       await loadData();
       return chatObj;
@@ -519,7 +519,7 @@ export function useChat() {
   };
 
   const openChat = async (id: string, leafId?: string): Promise<Chat | null> => {
-    if (liveChatRegistry.has(id)) { 
+    if (liveChatRegistry.has(id)) {
       const chat = liveChatRegistry.get(id)!;
       if (leafId && leafId !== chat.currentLeafId) {
         const node = findNodeInBranch(chat.root.items, leafId);
@@ -555,7 +555,7 @@ export function useChat() {
 
   const openChatGroup = (id: string | null) => {
     if (id === null) {
-      _currentChatGroup.value = null; return; 
+      _currentChatGroup.value = null; return;
     }
     const group = chatGroups.value.find(g => g.id === id);
     if (group) {
@@ -595,7 +595,7 @@ export function useChat() {
 
     const cleanup = async () => {
       if (activeGenerations.has(id)) {
-        activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id); 
+        activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id);
       }
       activeTaskCounts.delete('title:' + id);
       activeTaskCounts.delete('fetch:' + id);
@@ -622,7 +622,7 @@ export function useChat() {
               }
             }) as HierarchyChatGroupNode;
             if (group) {
-              group.chat_ids.push(chatData.id); return curr; 
+              group.chat_ids.push(chatData.id); return curr;
             }
           }
           curr.items.push({ type: 'chat', id: chatData.id });
@@ -661,9 +661,9 @@ export function useChat() {
     for (const c of all) await storageService.deleteChat(c.id);
     const allGroups = await storageService.listChatGroups();
     for (const g of allGroups) await storageService.deleteChatGroup(g.id);
-    
+
     await storageService.updateHierarchy((curr) => {
-      curr.items = []; return curr; 
+      curr.items = []; return curr;
     });
     _currentChat.value = null;
     await loadData();
@@ -676,7 +676,7 @@ export function useChat() {
       liveChat.updatedAt = Date.now();
       if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
     }
-    
+
     await updateChatMeta(id, (curr) => {
       if (!curr) throw new Error('Chat not found');
       return { ...curr, title: newTitle, updatedAt: Date.now() };
@@ -724,17 +724,17 @@ export function useChat() {
     });
   };
 
-  const { 
-    isImageMode, 
-    toggleImageMode, 
-    getResolution, 
-    updateResolution, 
+  const {
+    isImageMode,
+    toggleImageMode,
+    getResolution,
+    updateResolution,
     getCount,
     updateCount,
     getPersistAs,
     updatePersistAs,
-    setImageModel, 
-    getSelectedImageModel, 
+    setImageModel,
+    getSelectedImageModel,
     getSortedImageModels,
     performBase64Generation: _performGeneration,
     handleImageGeneration: _handleImageGeneration,
@@ -814,7 +814,7 @@ export function useChat() {
       if (imageRequest) {
         const { width = 512, height = 512, model, count = 1, persistAs } = imageRequest;
         const prompt = stripNaidanSentinels(parentNode!.content).trim();
-        
+
         const images: { blob: Blob }[] = [];
         if (parentNode?.attachments) {
           for (const att of parentNode.attachments) {
@@ -905,7 +905,7 @@ export function useChat() {
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
             triggerRef(_currentChat);
           }
-          
+
           const now = Date.now();
           if (now - lastSave > 500 && !isSaving) {
             isSaving = true;
@@ -913,7 +913,7 @@ export function useChat() {
               await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
               lastSave = Date.now();
             } finally {
-              isSaving = false; 
+              isSaving = false;
             }
           }
         },
@@ -924,7 +924,7 @@ export function useChat() {
       await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
       processThinking(assistantNode);
       mutableChat.updatedAt = Date.now();
-      
+
       if (mutableChat.title === null && settings.value.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
         await generateChatTitle(mutableChat.id, controller.signal);
       }
@@ -948,7 +948,7 @@ export function useChat() {
             const { useToast } = await import('./useToast');
             const { addToast } = useToast();
             addToast({ message: `Generation failed in "${mutableChat.title || 'New Chat'}"`, actionLabel: 'View', onAction: async () => {
-              await openChat(mutableChat.id); 
+              await openChat(mutableChat.id);
             }, });
           } catch (toastErr) { /* ignore */ }
         }
@@ -980,7 +980,7 @@ export function useChat() {
     if (!target) return false;
     const rawTarget = toRaw(target);
     if (isProcessing(rawTarget.id)) return false;
-    
+
     const chat = getLiveChat(target);
     incTask(chat.id, 'process');
     registerLiveInstance(chat);
@@ -1029,7 +1029,7 @@ export function useChat() {
               await storageService.saveFile(att.blob, att.binaryObjectId, att.originalName);
               processedAttachments.push({ ...att, status: 'persisted' });
             } catch (e) {
-              processedAttachments.push(att); 
+              processedAttachments.push(att);
             }
           } else processedAttachments.push(att);
           break;
@@ -1062,8 +1062,8 @@ export function useChat() {
       }
 
       const userMsg: MessageNode = { id: generateId(), role: 'user', content: finalContent, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
-      
-      const assistantContent = isImgMode 
+
+      const assistantContent = isImgMode
         ? createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING
         : '';
 
@@ -1095,7 +1095,7 @@ export function useChat() {
   };
 
   const regenerateMessage = async (failedMessageId: string) => {
-    if (!_currentChat.value) return; 
+    if (!_currentChat.value) return;
     const chatId = toRaw(_currentChat.value).id;
     if (isProcessing(chatId)) {
       abortChat(chatId);
@@ -1139,12 +1139,12 @@ export function useChat() {
     try {
       const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
       if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') {
-        decTask(taskId, 'title'); return; 
+        decTask(taskId, 'title'); return;
       }
       const history = getChatBranch(mutableChat);
       const content = stripNaidanSentinels(history[0]?.content || '');
       if (!content || typeof content !== 'string') {
-        decTask(taskId, 'title'); return; 
+        decTask(taskId, 'title'); return;
       }
 
       let generatedTitle = '';
@@ -1168,8 +1168,8 @@ export function useChat() {
       const titleGenModel = settings.value.titleModelId || history[history.length - 1]?.modelId || resolved.modelId;
       if (!titleGenModel) return;
 
-      const lang = detectLanguage({ 
-        content, 
+      const lang = detectLanguage({
+        content,
         fallbackLanguage: (() => {
           const t = typeof navigator;
           switch (t) {
@@ -1218,7 +1218,7 @@ export function useChat() {
         }
       }
     } finally {
-      decTask(taskId, 'title'); 
+      decTask(taskId, 'title');
     }
   };
 
@@ -1248,10 +1248,10 @@ export function useChat() {
     const newChatId = generateId();
     try {
       const newChatObj: Chat = reactive({
-        ...toRaw(mutableChat), 
+        ...toRaw(mutableChat),
         id: newChatId, title: `Fork of ${mutableChat.title || 'New Chat'}`,
-        root: { items: [clonedNodes[0]!] }, currentLeafId: clonedNodes[clonedNodes.length - 1]?.id, 
-        originChatId: mutableChat.id, originMessageId: messageId, 
+        root: { items: [clonedNodes[0]!] }, currentLeafId: clonedNodes[clonedNodes.length - 1]?.id,
+        originChatId: mutableChat.id, originMessageId: messageId,
         createdAt: Date.now(), updatedAt: Date.now(),
         modelId: mutableChat.modelId,
       });
@@ -1264,7 +1264,7 @@ export function useChat() {
         if (chatGroupId) {
           const group = curr.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
           if (group) {
-            group.chat_ids.unshift(newChatId); return curr; 
+            group.chat_ids.unshift(newChatId); return curr;
           }
         }
         const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
@@ -1394,7 +1394,7 @@ export function useChat() {
 
     chat.updatedAt = Date.now();
     if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-    
+
     await updateChatContent(chat.id, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
     await updateChatMeta(chat.id, (curr) => {
       if (!curr) return chat;
@@ -1449,17 +1449,17 @@ export function useChat() {
 
   const createChatGroup = async (name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
     const id = generateId();
-    const newGroup: ChatGroup = { 
-      id, 
-      name, 
-      updatedAt: Date.now(), 
-      isCollapsed: false, 
+    const newGroup: ChatGroup = {
+      id,
+      name,
+      updatedAt: Date.now(),
+      isCollapsed: false,
       items: [],
       ...options
     };
     await storageService.updateChatGroup(id, () => newGroup);
     await storageService.updateHierarchy((curr) => {
-      curr.items.unshift({ type: 'chat_group', id, chat_ids: [] }); return curr; 
+      curr.items.unshift({ type: 'chat_group', id, chat_ids: [] }); return curr;
     });
     await loadData();
     return id;
@@ -1567,7 +1567,7 @@ export function useChat() {
 
   const updateChatGroupMetadata = async (id: string, updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
     if (_currentChatGroup.value?.id === id) {
-      Object.assign(_currentChatGroup.value, updates); _currentChatGroup.value.updatedAt = Date.now(); 
+      Object.assign(_currentChatGroup.value, updates); _currentChatGroup.value.updatedAt = Date.now();
     }
     await storageService.updateChatGroup(id, (curr) => {
       if (!curr) throw new Error('Chat group not found');
@@ -1628,20 +1628,20 @@ export function useChat() {
       return curr;
     });
     if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-      _currentChat.value.groupId = targetGroupId; triggerRef(_currentChat); 
+      _currentChat.value.groupId = targetGroupId; triggerRef(_currentChat);
     }
     await loadData();
   };
 
-  const __testOnlySetCurrentChat = (chat: Chat | null) => { 
+  const __testOnlySetCurrentChat = (chat: Chat | null) => {
     _currentChat.value = chat;
     if (chat) registerLiveInstance(chat);
   };
   const __testOnlySetCurrentChatGroup = (group: ChatGroup | null) => {
-    _currentChatGroup.value = group; 
+    _currentChatGroup.value = group;
   };
   const clearLiveChatRegistry = () => {
-    liveChatRegistry.clear(); 
+    liveChatRegistry.clear();
   };
 
   const clearActiveTaskCounts = () => {

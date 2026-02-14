@@ -126,7 +126,7 @@ describe('Sidebar Transformers.js Support', () => {
 
   it('calls updateGlobalModel when model is changed in transformers_js mode', async () => {
     mockSettings.endpointType = 'transformers_js';
-    
+
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });

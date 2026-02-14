@@ -106,6 +106,7 @@ export default tseslint.config(
       'vue/html-indent': ['warn', 2],
       'indent': ['warn', 2],
       'brace-style': ['warn', '1tbs', { allowSingleLine: false }],
+      'no-trailing-spaces': 'error',
       // Prevents components (like icons) from disappearing silently due to missing imports.
       // Without this, build succeeds but the component fails to render at runtime.
       'vue/no-undef-components': ['error', {

@@ -51,10 +51,10 @@ describe('OnboardingModal.vue', () => {
       isFetchingModels: ref(false),
       fetchModels: vi.fn(),
       setIsOnboardingDismissed: (val: boolean) => {
-        mockIsOnboardingDismissed.value = val; 
+        mockIsOnboardingDismissed.value = val;
       },
       setOnboardingDraft: (val: any) => {
-        mockOnboardingDraft.value = val; 
+        mockOnboardingDraft.value = val;
       },
     });
 
@@ -62,9 +62,9 @@ describe('OnboardingModal.vue', () => {
       themeMode: { value: 'system' },
       setTheme: vi.fn(),
     });
-    
+
     listModelsMock.mockResolvedValue(['model-1']);
-    
+
     (llm.OpenAIProvider as unknown as Mock).mockImplementation(function() {
       return { listModels: listModelsMock };
     });
@@ -90,7 +90,7 @@ describe('OnboardingModal.vue', () => {
   it('enables the connection button for valid URLs even without schema', async () => {
     const wrapper = mount(OnboardingModal);
     await wrapper.find('input').setValue('api.openai.com');
-    
+
     const connectBtn = wrapper.find('[data-testid="onboarding-connect-button"]');
     expect((connectBtn.element as HTMLButtonElement).disabled).toBe(false);
   });
@@ -98,7 +98,7 @@ describe('OnboardingModal.vue', () => {
   it('automatically prepends http:// to URLs', async () => {
     const wrapper = mount(OnboardingModal);
     await wrapper.find('input').setValue('api.openai.com');
-    
+
     // Click Connect
     await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
     await flushPromises();
@@ -110,7 +110,7 @@ describe('OnboardingModal.vue', () => {
   it('dismisses onboarding and saves draft when X is clicked', async () => {
     const wrapper = mount(OnboardingModal);
     await wrapper.find('input').setValue('http://api.openai.com');
-    
+
     const closeBtn = wrapper.find('[data-testid="onboarding-close-x"]');
     await closeBtn.trigger('click');
     await flushPromises();
@@ -125,15 +125,15 @@ describe('OnboardingModal.vue', () => {
   it('preserves normalized URL and selected model when dismissed', async () => {
     listModelsMock.mockResolvedValue(['model-x', 'model-y']); // Mock models to ensure Step 2 is reachable
     const wrapper = mount(OnboardingModal);
-    
+
     // 1. Enter non-normalized URL and Connect
     await wrapper.find('input').setValue('api.openai.com'); // URL without schema
     await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
     await flushPromises();
-    
+
     // Wait for connection and normalization to update customUrl.value
-    await nextTick(); 
-    
+    await nextTick();
+
     // 2. Select second model
     const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
     await trigger.trigger('click');
@@ -142,7 +142,7 @@ describe('OnboardingModal.vue', () => {
       .find(b => b.textContent === 'model-y');
     await modelYBtn?.click();
     await new Promise(resolve => setTimeout(resolve, 0)); // Wait for state update
-    
+
     // 3. Dismiss via X
     await wrapper.find('[data-testid="onboarding-close-x"]').trigger('click');
     await flushPromises();
@@ -160,7 +160,7 @@ describe('OnboardingModal.vue', () => {
 
     await wrapper.find('input').setValue('http://api.openai.com');
     await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
-    
+
     await flushPromises();
     await nextTick();
 
@@ -191,7 +191,7 @@ describe('OnboardingModal.vue', () => {
     const modalContainer = wrapper.find('.max-w-4xl');
     expect(modalContainer.exists()).toBe(true);
     expect(modalContainer.classes()).toContain('md:h-[640px]');
-    
+
     expect(wrapper.findComponent(Settings).exists()).toBe(true);
   });
 
@@ -204,7 +204,7 @@ describe('OnboardingModal.vue', () => {
     const wrapper = mount(OnboardingModal);
     // Use substring match for classes with colons or brackets to avoid selector errors
     const guideWrapper = wrapper.find('div[class*="opacity-70"][class*="hover:opacity-100"]');
-    
+
     expect(guideWrapper.exists()).toBe(true);
     expect(guideWrapper.classes()).toContain('opacity-70');
     expect(guideWrapper.classes()).toContain('transition-opacity');
@@ -214,15 +214,15 @@ describe('OnboardingModal.vue', () => {
     const wrapper = mount(OnboardingModal);
     // Find the right column by its structural width class using substring match
     const helpColumn = wrapper.find('div[class*="lg:w-[38%]"]');
-    
+
     expect(helpColumn.exists()).toBe(true);
     expect(helpColumn.classes()).toContain('bg-gray-50/30');
     expect(helpColumn.classes()).toContain('border-gray-100');
   });
 
   it('restores draft state (including models) when reopened', async () => {
-    mockOnboardingDraft.value = { 
-      url: 'http://restored-url:11434', 
+    mockOnboardingDraft.value = {
+      url: 'http://restored-url:11434',
       type: 'ollama',
       headers: [],
       models: ['model-a', 'model-b'],
@@ -230,25 +230,25 @@ describe('OnboardingModal.vue', () => {
     };
 
     const wrapper = mount(OnboardingModal);
-    
+
     // Should be in Step 2 directly because models exist
     expect(wrapper.text()).toContain('Successfully Connected!');
     expect(wrapper.text()).toContain('http://restored-url:11434');
-    
+
     const trigger = wrapper.find('[data-testid="model-selector-trigger"]');
     expect(trigger.text()).toBe('model-b');
-    
+
     await trigger.trigger('click');
     const modelButtons = Array.from(document.body.querySelectorAll('.custom-scrollbar button'))
       .filter(b => ['model-a', 'model-b'].includes(b.textContent || ''));
     expect(modelButtons.length).toBe(2);
-    
+
     wrapper.unmount();
   });
 
   it('shows error message when saving settings fails', async () => {
     const wrapper = mount(OnboardingModal);
-    
+
     // Connect successfully first to get to Step 2
     listModelsMock.mockResolvedValue(['model-1']);
     await wrapper.find('input').setValue('http://api.openai.com');
@@ -257,7 +257,7 @@ describe('OnboardingModal.vue', () => {
     await nextTick();
 
     mockSave.mockRejectedValueOnce(new Error('Persistent Storage Error'));
-    
+
     // Click "Get Started"
     await wrapper.find('[data-testid="onboarding-finish-button"]').trigger('click');
     await flushPromises();
@@ -267,21 +267,21 @@ describe('OnboardingModal.vue', () => {
 
   it('resets models and returns to Step 1 when Back button is clicked', async () => {
     // Start at Step 2 by providing models in the draft
-    mockOnboardingDraft.value = { 
-      url: 'http://api.openai.com', 
+    mockOnboardingDraft.value = {
+      url: 'http://api.openai.com',
       type: 'ollama',
       headers: [],
       models: ['model-1'],
       selectedModel: 'model-1',
     };
     const wrapper = mount(OnboardingModal);
-    
+
     expect(wrapper.text()).toContain('Successfully Connected!');
-    
+
     // Find and click Back button (the one with ArrowLeft)
     const backBtn = wrapper.findAll('button').find(b => b.text().includes('Back'));
     await backBtn?.trigger('click');
-    
+
     expect(wrapper.text()).toContain('Setup Endpoint');
     expect(wrapper.find('input').exists()).toBe(true);
   });
@@ -289,23 +289,23 @@ describe('OnboardingModal.vue', () => {
   it('cancels connection attempt when Cancel is clicked', async () => {
     const wrapper = mount(OnboardingModal);
     await wrapper.find('input').setValue('http://api.openai.com');
-    
+
     // Mock a slow connection
     listModelsMock.mockReturnValue(new Promise(() => {})); // Never resolves
-    
+
     await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
     expect(wrapper.text()).toContain('Connecting');
-    
+
     const cancelBtn = wrapper.findAll('button').find(b => b.text().includes('Cancel'));
     await cancelBtn?.trigger('click');
-    
+
     expect(wrapper.text()).not.toContain('Connecting');
     expect(wrapper.text()).toContain('Connection attempt cancelled');
   });
 
   it('applies animation classes for entrance effects', () => {
     const wrapper = mount(OnboardingModal);
-    
+
     // Check modal content animation class
     const modalContent = wrapper.find('.modal-content-zoom');
     expect(modalContent.exists()).toBe(true);
@@ -313,29 +313,29 @@ describe('OnboardingModal.vue', () => {
 
   it('supports adding and removing custom HTTP headers in UI', async () => {
     // Prevent transition to Step 2
-    listModelsMock.mockReturnValue(new Promise(() => {})); 
+    listModelsMock.mockReturnValue(new Promise(() => {}));
 
     const wrapper = mount(OnboardingModal);
     await wrapper.find('input').setValue('http://api.openai.com');
-    
+
     // Click Add Header
     const addBtn = wrapper.findAll('button').find(b => b.text().includes('Add Header'));
     await addBtn?.trigger('click');
-    
+
     const inputs = wrapper.findAll('input');
     // First input is URL, then Name, then Value
     expect(inputs.length).toBe(3);
-    
+
     await inputs[1]?.setValue('X-Test-Header');
     await inputs[2]?.setValue('Test-Value');
-    
+
     // Click Connect and verify headers are passed
     await wrapper.find('[data-testid="onboarding-connect-button"]').trigger('click');
-    
+
     expect(listModelsMock).toHaveBeenCalledWith(
       expect.objectContaining({ signal: expect.anything() })
     );
-    
+
     // Remove header
     const removeBtn = wrapper.findAll('button').find(b => b.findComponent({ name: 'Trash2' }).exists() || b.html().includes('lucide-trash2'));
     await removeBtn?.trigger('click');
@@ -343,8 +343,8 @@ describe('OnboardingModal.vue', () => {
   });
 
   it('passes a naturally sorted list of models to ModelSelector', async () => {
-    mockOnboardingDraft.value = { 
-      url: 'http://localhost:11434', 
+    mockOnboardingDraft.value = {
+      url: 'http://localhost:11434',
       type: 'ollama',
       headers: [],
       models: ['model-10', 'model-2', 'model-1'],
@@ -362,7 +362,7 @@ describe('OnboardingModal.vue', () => {
         }
       }
     });
-    
+
     const selector = wrapper.getComponent({ name: 'ModelSelector' });
     expect(selector.props('models')).toEqual(['model-1', 'model-2', 'model-10']);
   });
@@ -373,12 +373,12 @@ describe('OnboardingModal.vue', () => {
       mount(OnboardingModal);
       await flushPromises();
       expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
-      
+
       mockSetActiveFocusArea.mockClear();
       mockIsOnboardingDismissed.value = false;
       await flushPromises();
       expect(mockSetActiveFocusArea).toHaveBeenCalledWith('onboarding');
-      
+
       mockSetActiveFocusArea.mockClear();
       mockIsOnboardingDismissed.value = true;
       await flushPromises();

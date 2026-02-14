@@ -262,7 +262,7 @@ describe('Sidebar Logic Stability', () => {
     await nextTick();
     vm.syncLocalItems(); // Manually sync for testing
     await nextTick();
-    
+
     expect(vm.sidebarItemsLocal).toHaveLength(1);
     expect(vm.sidebarItemsLocal[0]?.type).toBe('chat');
     if (vm.sidebarItemsLocal[0]?.type === 'chat') {
@@ -286,7 +286,7 @@ describe('Sidebar Logic Stability', () => {
     vm.isDragging = false;
     vm.syncLocalItems();
     await nextTick();
-    
+
     // Now it should finally reflect the change
     expect(vm.sidebarItemsLocal).toHaveLength(2);
   });
@@ -294,7 +294,7 @@ describe('Sidebar Logic Stability', () => {
   it('should apply the .handle class to both chat groups and chats for drag-and-drop', async () => {
     mockChatGroups.value = [{ id: 'g1', name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
     mockChats.value = [{ id: 'c1', title: 'Chat', updatedAt: 0 }];
-    
+
     const wrapper = mount(Sidebar, {
       global: {
         plugins: [router],
@@ -342,7 +342,7 @@ describe('Sidebar Logic Stability', () => {
 
       await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
       const input = wrapper.find('[data-testid="chat-group-name-input"]');
-      
+
       await input.setValue('My New Group');
       await input.trigger('keydown.enter');
 
@@ -360,7 +360,7 @@ describe('Sidebar Logic Stability', () => {
 
       await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
       const input = wrapper.find('[data-testid="chat-group-name-input"]');
-      
+
       await input.setValue('');
       await input.trigger('blur');
 
@@ -377,7 +377,7 @@ describe('Sidebar Logic Stability', () => {
 
       await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
       const input = wrapper.find('[data-testid="chat-group-name-input"]');
-      
+
       await input.setValue('Retain Me');
       await input.trigger('blur');
 
@@ -395,7 +395,7 @@ describe('Sidebar Logic Stability', () => {
 
       await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
       const input = wrapper.find('[data-testid="chat-group-name-input"]');
-      
+
       await input.setValue('Going to escape');
       await input.trigger('keyup.esc');
 
@@ -431,7 +431,7 @@ describe('Sidebar Logic Stability', () => {
       await wrapper.find('[data-testid="create-chat-group-button"]').trigger('click');
       const input = wrapper.find('[data-testid="chat-group-name-input"]');
       const container = wrapper.find('[data-testid="chat-group-creation-container"]');
-      
+
       await input.trigger('keyup.esc');
       expect(container.classes()).not.toContain('skip-leave');
     });
@@ -447,7 +447,7 @@ describe('Sidebar Logic Stability', () => {
 
     const newChatButton = wrapper.find('[data-testid="new-chat-button"]');
     expect(newChatButton.exists()).toBe(true);
-    
+
     const text = newChatButton.text();
     expect(text).toContain('New Chat');
     expect(text).toMatch(/(Ctrl\+Shift\+O|⌘⇧O)/);
@@ -458,7 +458,7 @@ describe('Sidebar Logic Stability', () => {
       { id: 'chat-empty-1', title: '', updatedAt: 0 },
       { id: 'chat-null-1', title: null as any, updatedAt: 0 },
     ];
-    
+
     const wrapper = mount(Sidebar, {
       global: {
         plugins: [router],
@@ -478,12 +478,12 @@ describe('Sidebar Logic Stability', () => {
 
   describe('Group Deletion Confirmation', () => {
     it('should prompt for confirmation when deleting a group with chats', async () => {
-      const groupWithChats: ChatGroup = { 
+      const groupWithChats: ChatGroup = {
         id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0,
-        items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }] 
+        items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }]
       };
       mockChatGroups.value = [groupWithChats];
-      
+
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
@@ -499,12 +499,12 @@ describe('Sidebar Logic Stability', () => {
     });
 
     it('should prompt for confirmation when deleting an empty group with custom settings', async () => {
-      const groupWithSettings: ChatGroup = { 
+      const groupWithSettings: ChatGroup = {
         id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [],
         systemPrompt: { content: 'sys', behavior: 'append' }
       };
       mockChatGroups.value = [groupWithSettings];
-      
+
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
@@ -520,11 +520,11 @@ describe('Sidebar Logic Stability', () => {
     });
 
     it('should delete IMMEDIATELY without confirmation for an empty group with no settings', async () => {
-      const emptyGroup: ChatGroup = { 
-        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] 
+      const emptyGroup: ChatGroup = {
+        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: []
       };
       mockChatGroups.value = [emptyGroup];
-      
+
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
@@ -541,8 +541,8 @@ describe('Sidebar Logic Stability', () => {
     });
 
     it('should call deleteChatGroup after confirmation is accepted', async () => {
-      const group: ChatGroup = { 
-        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, 
+      const group: ChatGroup = {
+        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0,
         items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }]
       };
       mockChatGroups.value = [group];
@@ -557,7 +557,7 @@ describe('Sidebar Logic Stability', () => {
 
       await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
-      
+
       await nextTick();
       await nextTick();
 
@@ -565,8 +565,8 @@ describe('Sidebar Logic Stability', () => {
     });
 
     it('should NOT call deleteChatGroup if confirmation is cancelled', async () => {
-      const group: ChatGroup = { 
-        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, 
+      const group: ChatGroup = {
+        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0,
         items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }]
       };
       mockChatGroups.value = [group];
@@ -581,7 +581,7 @@ describe('Sidebar Logic Stability', () => {
 
       await wrapper.find('[data-testid="group-more-actions"]').trigger('click');
       await wrapper.find('[data-testid="delete-group-button"]').trigger('click');
-      
+
       await nextTick();
       await nextTick();
 
@@ -592,7 +592,7 @@ describe('Sidebar Logic Stability', () => {
   describe('Debug and Footer Actions', () => {
     it('shows error badge in the sidebar when errors exist', async () => {
       mockErrorCount.value = 5;
-      
+
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
@@ -632,7 +632,7 @@ describe('Sidebar Logic Stability', () => {
     it('applies touch-visible class to action containers for non-hover environments', async () => {
       mockChatGroups.value = [{ id: 'g1', name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
       mockChats.value = [{ id: 'c1', title: 'Chat', updatedAt: 0 }];
-      
+
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
@@ -642,7 +642,7 @@ describe('Sidebar Logic Stability', () => {
 
       // Check group actions
       expect(wrapper.find('.group-action-container').classes()).toContain('touch-visible');
-      
+
       // Check top-level chat actions
       expect(wrapper.find('.sidebar-chat-item .touch-visible').exists()).toBe(true);
     });

@@ -174,7 +174,7 @@ export const ChatMetaSchemaDto = z.object({
   updatedAt: z.number(),
   createdAt: z.number(),
   debugEnabled: z.boolean().optional().default(false),
-  
+
   endpoint: EndpointSchemaDto.optional(),
   modelId: z.string().optional(),
   originChatId: z.string().optional(),
@@ -214,7 +214,7 @@ export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
 export const ChatSchemaDto = ChatMetaSchemaDto.extend({
   root: MessageBranchSchemaDto.optional(),
   currentLeafId: z.string().optional(),
-  
+
   // Legacy support field
   messages: z.array(z.unknown()).optional(),
 });
@@ -249,21 +249,21 @@ export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
 
 /**
  * Migration Data Chunk
- * 
+ *
  * Represents a single unit of heavy data during storage migration.
- * Structural metadata (Settings, Hierarchy, Groups) are handled as 
+ * Structural metadata (Settings, Hierarchy, Groups) are handled as
  * complete domain objects during the restoration process.
  */
-export type MigrationChunkDto = 
+export type MigrationChunkDto =
   | { type: 'chat'; data: ChatDto }
-  | { 
-      type: 'binary_object'; 
+  | {
+      type: 'binary_object';
       id: string; // The binaryObjectId
-      name: string; 
+      name: string;
       mimeType: string;
       size: number;
       createdAt: number;
-      blob: Blob 
+      blob: Blob
     };
 
 /**

@@ -35,8 +35,8 @@ const DraggableStub = defineComponent({
   setup(props, { slots }) {
     return () => {
       const items = (props.modelValue || props.list || []) as unknown[];
-      return h('div', { class: 'draggable-stub' }, 
-        items.map((item: unknown, index: number) => 
+      return h('div', { class: 'draggable-stub' },
+        items.map((item: unknown, index: number) =>
           slots.item ? slots.item({ element: item, index }) : null,
         ),
       );
@@ -84,12 +84,12 @@ describe('Sidebar Design Specifications', () => {
 
   it('is explicitly white in light mode to match the modern aesthetic', async () => {
     const wrapper = mount(Sidebar, {
-      global: { 
-        stubs: { 
-          'router-link': { template: '<a><slot /></a>' }, 
-          'Logo': true, 
+      global: {
+        stubs: {
+          'router-link': { template: '<a><slot /></a>' },
+          'Logo': true,
           'draggable': DraggableStub,
-        }, 
+        },
       },
     });
     await nextTick();
@@ -98,12 +98,12 @@ describe('Sidebar Design Specifications', () => {
 
   it('uses rounded-xl and soft shadows for the primary New Chat button', async () => {
     const wrapper = mount(Sidebar, {
-      global: { 
-        stubs: { 
-          'router-link': { template: '<a><slot /></a>' }, 
-          'Logo': true, 
-          'draggable': true, 
-        }, 
+      global: {
+        stubs: {
+          'router-link': { template: '<a><slot /></a>' },
+          'Logo': true,
+          'draggable': true,
+        },
       },
     });
     await nextTick();
@@ -115,12 +115,12 @@ describe('Sidebar Design Specifications', () => {
 
   it('uses gray-800 for the header title to avoid harsh black', async () => {
     const wrapper = mount(Sidebar, {
-      global: { 
-        stubs: { 
-          'router-link': { template: '<a><slot /></a>' }, 
-          'Logo': true, 
-          'draggable': true, 
-        }, 
+      global: {
+        stubs: {
+          'router-link': { template: '<a><slot /></a>' },
+          'Logo': true,
+          'draggable': true,
+        },
       },
     });
     await nextTick();
@@ -132,7 +132,7 @@ describe('Sidebar Design Specifications', () => {
   it('uses blue-600 for active chat highlighting instead of indigo', async () => {
     const currentChat = ref({ id: 'active-chat-id' });
     const sidebarItems = ref([{ id: 'item-1', type: 'chat', chat: { id: 'active-chat-id', title: 'Test Active' } }]);
-    
+
     (useChat as unknown as Mock).mockReturnValue({
       currentChat,
       currentChatGroup: ref(null),
@@ -145,17 +145,17 @@ describe('Sidebar Design Specifications', () => {
       isProcessing: vi.fn().mockReturnValue(false),
       abortChat: vi.fn(),
     });
-    
+
     const wrapper = mount(Sidebar, {
-      global: { 
-        stubs: { 
-          'router-link': { template: '<a><slot /></a>' }, 
-          'Logo': true, 
+      global: {
+        stubs: {
+          'router-link': { template: '<a><slot /></a>' },
+          'Logo': true,
           'draggable': DraggableStub,
-        }, 
+        },
       },
     });
-    
+
     // Wait for onMounted and internal syncLocalItems
     await nextTick();
     await nextTick(); // Second tick for the nested draggable update

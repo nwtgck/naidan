@@ -49,7 +49,7 @@ describe('useChat Error Handling', () => {
     vi.clearAllMocks();
     mockChat.mockReset();
     mockListModels.mockResolvedValue(['gpt-4']);
-    
+
     __testOnlySetSettings({
       endpointType: 'openai',
       endpointUrl: 'https://api.openai.com',

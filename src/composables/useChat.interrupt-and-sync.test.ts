@@ -19,10 +19,10 @@ const mockLlm = {
 vi.mock('../services/llm', () => {
   return {
     OpenAIProvider: vi.fn().mockImplementation(function() {
-      return mockLlm; 
+      return mockLlm;
     }),
     OllamaProvider: vi.fn().mockImplementation(function() {
-      return mockLlm; 
+      return mockLlm;
     }),
   };
 });
@@ -33,7 +33,7 @@ vi.mock('../services/storage', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn().mockResolvedValue(undefined), 
+    updateChatMeta: vi.fn().mockResolvedValue(undefined),
     loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation((_id, updater) => {
       return Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined })) as any;
@@ -82,7 +82,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
     clearEvents();
-    
+
     vi.mocked(storageService.updateChatMeta).mockResolvedValue(undefined);
     vi.mocked(storageService.updateChatContent).mockImplementation((_id, updater) => {
       return Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined })) as any;
@@ -106,7 +106,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     // 1. Start a slow regular chat generation
     let resolveGen: (value: any) => void;
     const genStarted = new Promise<any>(resolve => resolveGen = resolve);
-    
+
     mockLlm.chat.mockImplementation(async (params: any) => {
       resolveGen(params.signal);
       return new Promise((resolve) => {
@@ -124,16 +124,16 @@ describe('useChat Interrupt and Sync Tests', () => {
     const sendResultPromise = sendMessage('First version');
     const signal = await genStarted;
     expect(chatStore.isProcessing(chat.id)).toBe(true);
-    
+
     const userMsgId = chat.root.items[0].id;
-    
+
     // 2. Edit the message while processing. This should now wait for isProcessing to become false.
     await editMessage(userMsgId, 'Second version');
-    
+
     expect(chat.root.items).toHaveLength(2);
     expect(chat.root.items[1].content).toBe('Second version');
     expect(signal.aborted).toBe(true);
-    
+
     await sendResultPromise;
   }, 15000);
 
@@ -141,18 +141,18 @@ describe('useChat Interrupt and Sync Tests', () => {
     const chatId = 'sync-test';
     const assistantId = 'assistant-1';
     const chat = reactive({
-      id: chatId, title: 'Sync Test', 
-      root: { 
+      id: chatId, title: 'Sync Test',
+      root: {
         items: [
-          { 
-            id: 'user-1', role: 'user', content: 'two cats', timestamp: 0, 
-            replies: { 
+          {
+            id: 'user-1', role: 'user', content: 'two cats', timestamp: 0,
+            replies: {
               items: [
                 { id: assistantId, role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }
-              ] 
-            } 
+              ]
+            }
           }
-        ] 
+        ]
       },
       currentLeafId: assistantId,
       modelId: 'x/z-image-turbo:v1',
@@ -160,7 +160,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     }) as any;
     __testOnlySetCurrentChat(chat);
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
-    
+
     const { handleImageGeneration, availableModels } = chatStore;
     availableModels.value = ['gpt-4', 'x/z-image-turbo:v1'];
 
@@ -187,18 +187,18 @@ describe('useChat Interrupt and Sync Tests', () => {
     const chatId = 'abort-test';
     const assistantId = 'assistant-1';
     const chat = reactive({
-      id: chatId, title: 'Abort Test', 
-      root: { 
+      id: chatId, title: 'Abort Test',
+      root: {
         items: [
-          { 
-            id: 'user-1', role: 'user', content: 'Will be aborted', timestamp: 0, 
-            replies: { 
+          {
+            id: 'user-1', role: 'user', content: 'Will be aborted', timestamp: 0,
+            replies: {
               items: [
                 { id: assistantId, role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }
-              ] 
-            } 
+              ]
+            }
           }
-        ] 
+        ]
       },
       currentLeafId: assistantId,
       modelId: 'gpt-4',
@@ -224,13 +224,13 @@ describe('useChat Interrupt and Sync Tests', () => {
 
     // 2. Start generation
     const genPromise = generateResponse(chat, assistantId);
-    
+
     // 3. Wait for it to be processing
     await vi.waitUntil(() => isProcessing(chatId));
-    
+
     // 4. Abort the chat
     abortChat(chatId);
-    
+
     await genPromise;
     await vi.waitUntil(() => !isProcessing(chatId));
 

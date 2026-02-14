@@ -15,7 +15,7 @@ const app = createApp(App)
 
 /**
  * Global Vue error handler.
- * This is essential for catching and logging rendering errors that might otherwise 
+ * This is essential for catching and logging rendering errors that might otherwise
  * fail silently, particularly in the restrictive 'file:///' environment.
  * It helps identify which component and lifecycle hook caused the issue.
  */
@@ -37,13 +37,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   const appElement = document.querySelector('#app')
   if (!appElement) return
 
-  // Initialize global state (storage, settings, chat list) 
+  // Initialize global state (storage, settings, chat list)
   // BEFORE the router processes the initial URL.
   // This prevents race conditions where a child component (like a chat page)
   // tries to load data before the storage provider is correctly initialized.
   const settingsStore = useSettings()
   const chatStore = useChat()
-  
+
   await settingsStore.init()
   await chatStore.loadChats()
 

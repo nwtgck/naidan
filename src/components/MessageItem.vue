@@ -24,7 +24,7 @@ const DOMPurify = (() => {
   }
   }
 })();
-import 'highlight.js/styles/github-dark.css'; 
+import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject } from '../models/types';
 import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2, XCircle, Square } from 'lucide-vue-next';
@@ -38,11 +38,11 @@ import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
-import { 
-  isImageGenerationPending, 
-  isImageGenerationProcessed, 
+import {
+  isImageGenerationPending,
+  isImageGenerationProcessed,
   getImageGenerationProgress,
-  stripNaidanSentinels, 
+  stripNaidanSentinels,
   IMAGE_BLOCK_LANG,
   GeneratedImageBlockSchema,
   isImageRequest,
@@ -96,7 +96,7 @@ async function handlePreviewImage(id: string) {
     const allImages: BinaryObject[] = (props.message.attachments || [])
       .filter(a => a.status !== 'missing' && a.mimeType.startsWith('image/'))
       .map(a => ({ id: a.binaryObjectId, mimeType: a.mimeType, size: a.size, createdAt: a.uploadedAt, name: a.originalName }));
-    
+
     // Also include generated images if they exist in this message's content
     const placeholders = messageRef.value?.querySelectorAll('.naidan-generated-image');
     if (placeholders) {
@@ -110,9 +110,9 @@ async function handlePreviewImage(id: string) {
       }
     }
 
-    openPreview({ 
-      objects: allImages.length > 0 ? allImages : [obj], 
-      initialId: id 
+    openPreview({
+      objects: allImages.length > 0 ? allImages : [obj],
+      initialId: id
     });
   }
 }
@@ -149,13 +149,13 @@ async function loadGeneratedImages() {
   await nextTick();
   if (!messageRef.value) return;
   const placeholders = messageRef.value.querySelectorAll('.naidan-generated-image');
-  
+
   for (const el of placeholders) {
     const htmlEl = el as HTMLElement;
     const id = htmlEl.dataset.id;
     const w = htmlEl.dataset.width;
     const h = htmlEl.dataset.height;
-    
+
     if (id) {
       if (!generatedImageUrls.value[id]) {
         try {
@@ -213,7 +213,7 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 watch(isEditing, (editing) => {
   if (editing) {
     editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
-    
+
     // Initialize image generation settings if it's an image request
     if (isImageRequestMsg.value) {
       editImageMode.value = true;
@@ -348,18 +348,18 @@ marked.use({
           const result = GeneratedImageBlockSchema.safeParse(JSON.parse(code));
           if (result.success) {
             const { binaryObjectId: id, displayWidth: w, displayHeight: h, prompt: p } = result.data;
-            
+
             const div = document.createElement('div');
             div.className = 'naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl overflow-hidden';
             div.dataset.id = id;
             div.dataset.width = String(w);
             div.dataset.height = String(h);
             div.dataset.prompt = p || '';
-            
+
             div.innerHTML = `<div class="flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0" style="width: ${w}px; height: ${h}px; max-width: 100%">
                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image text-gray-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
                              </div>`;
-            
+
             return div.outerHTML;
           } else {
             console.error('Failed to validate generated image block', result.error);
@@ -384,7 +384,7 @@ marked.use({
       if (lang === 'mermaid') {
         const mode = mermaidMode.value;
         const encodedCode = btoa(unescape(encodeURIComponent(code))); // Base64 to safely store in attribute
-        
+
         return `<div class="mermaid-block relative group/mermaid" data-mermaid-mode="${mode}" data-raw="${encodedCode}">
                   <div class="mermaid-ui-overlay flex items-center gap-2">
                     <div class="mermaid-tabs">
@@ -449,7 +449,7 @@ marked.use({
       // 3. Standard Code Block
       const language = hljs.getLanguage(lang) ? lang : 'plaintext';
       const highlighted = hljs.highlight(code, { language }).value;
-                                    
+
       return `<div class="code-block-wrapper my-4 rounded-lg overflow-hidden border border-gray-700/50 bg-[#0d1117] group/code">` +
                `<div class="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700/50 text-xs text-gray-400">` +
                  `<span class="font-mono">${language}</span>` +
@@ -486,7 +486,7 @@ onMounted(() => {
   // Handle clicks via event delegation
   messageRef.value?.addEventListener('click', async (e) => {
     const target = e.target as HTMLElement;
-    
+
     // Mermaid tabs
     const tab = target.closest('.mermaid-tab') as HTMLElement;
     if (tab) {
@@ -533,7 +533,7 @@ onMounted(() => {
       const id = block?.dataset.id;
       const prompt = block?.dataset.prompt || '';
       const url = id ? generatedImageUrls.value[id] : null;
-      
+
       if (url && id) {
         try {
           const obj = await storageService.getBinaryObject({ binaryObjectId: id });
@@ -550,7 +550,7 @@ onMounted(() => {
             suffix,
             fallback: 'generated-image',
           });
-          
+
           const link = document.createElement('a');
           link.href = url;
           link.download = filename;
@@ -569,16 +569,16 @@ onMounted(() => {
     if (copyBtn && !copyBtn.dataset.copied) {
       const wrapper = copyBtn.closest('.code-block-wrapper');
       const codeEl = wrapper?.querySelector('code');
-      
+
       if (codeEl) {
         try {
           await navigator.clipboard.writeText(codeEl.textContent || '');
-          
+
           // Visual feedback
           copyBtn.innerHTML = actionIcons.check + '<span>Copied</span>';
           copyBtn.classList.add('!opacity-100');
           copyBtn.dataset.copied = 'true';
-          
+
           setTimeout(() => {
             copyBtn.innerHTML = actionIcons.copy + '<span>Copy</span>';
             copyBtn.classList.remove('!opacity-100');
@@ -627,17 +627,17 @@ const showThinking = ref(false); // Default to collapsed
 
 const displayThinking = computed(() => {
   if (props.message.thinking) return props.message.thinking;
-  
+
   // Try to extract from content if not yet processed (streaming case)
   const matches = [...props.message.content.matchAll(/<think>([\s\S]*?)(?:<\/think>|$)/gi)];
   if (matches.length === 0) return '';
-  
+
   return matches.map(m => m[1]?.trim()).filter(Boolean).join('\n\n---\n\n');
 });
 
 const displayContent = computed(() => {
   let content = props.message.content;
-  
+
   // Remove technical comments (including image request and processed markers)
   content = stripNaidanSentinels(content);
 
@@ -647,7 +647,7 @@ const displayContent = computed(() => {
   // If we have any content after removing <think>, return it (even if just whitespace)
   // to signal that we are no longer in "initial loading" state.
   if (cleanContent.length > 0) return cleanContent;
-  
+
   return '';
 });
 
@@ -732,7 +732,7 @@ defineExpose({
           <span>{{ message.modelId || 'Assistant' }}</span>
           <div class="flex items-center gap-1">
             <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" />
-            <button 
+            <button
               v-if="isGenerating"
               @click="emit('abort')"
               class="p-1 rounded-lg text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -745,19 +745,19 @@ defineExpose({
         </template>
       </div>
     </div>
-    
+
     <div :class="isEditing ? 'overflow-visible' : 'overflow-hidden'">
       <!-- Attachments -->
       <div v-if="message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
         <div v-for="att in message.attachments" :key="att.id" class="relative group/att">
           <template v-if="att.status !== 'missing' && attachmentUrls[att.id]">
-            <img 
-              :src="attachmentUrls[att.id]" 
+            <img
+              :src="attachmentUrls[att.id]"
               @click="handlePreviewImage(att.binaryObjectId)"
               class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
             />
-            <a 
-              :href="attachmentUrls[att.id]" 
+            <a
+              :href="attachmentUrls[att.id]"
               :download="att.originalName"
               class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-all z-10"
               title="Download image"
@@ -777,33 +777,33 @@ defineExpose({
 
       <!-- Thinking Block -->
       <div v-if="hasThinking" class="mb-3" data-testid="thinking-block">
-        <div 
+        <div
           class="transition-all duration-300 ease-in-out relative group/thinking"
           :class="[
             /* Shape & Size */
             showThinking ? 'w-full p-5 rounded-2xl' : 'inline-flex items-center w-auto px-3 py-1.5 rounded-xl cursor-pointer',
-            
+
             /* State: Active Thinking */
-            /* We remove 'border' and 'shadow' from parent when thinking to avoid artifacts. 
+            /* We remove 'border' and 'shadow' from parent when thinking to avoid artifacts.
                The child div handles the border/glow. */
-            isThinkingNow 
-              ? 'overflow-visible' 
+            isThinkingNow
+              ? 'overflow-visible'
               : 'border shadow-sm overflow-hidden',
 
             /* Background & Colors (Normal State) */
-            !isThinkingNow && showThinking 
-              ? 'bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner' 
+            !isThinkingNow && showThinking
+              ? 'bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner'
               : '',
-            !isThinkingNow && !showThinking 
-              ? 'bg-white dark:bg-gray-800/50 border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800' 
+            !isThinkingNow && !showThinking
+              ? 'bg-white dark:bg-gray-800/50 border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800'
               : '',
 
             /* Background (Thinking State) - No borders here, handled by CSS */
-            isThinkingNow && showThinking 
-              ? 'bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 shadow-inner' 
+            isThinkingNow && showThinking
+              ? 'bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 shadow-inner'
               : '',
-            isThinkingNow && !showThinking 
-              ? 'bg-white dark:bg-gray-800/50' 
+            isThinkingNow && !showThinking
+              ? 'bg-white dark:bg-gray-800/50'
               : ''
           ]"
           @click="handleToggleThinking"
@@ -811,14 +811,14 @@ defineExpose({
         >
           <!-- Dedicated Thinking Border Element -->
           <!-- Using style="border-radius: inherit" ensures we perfectly match the parent's rounded-xl/2xl state -->
-          <div 
-            v-if="isThinkingNow" 
+          <div
+            v-if="isThinkingNow"
             class="absolute inset-0 pointer-events-none thinking-gradient-border"
             style="border-radius: inherit;"
           ></div>
 
           <!-- Header / Button Content -->
-          <div 
+          <div
             class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider relative z-20 transition-colors"
             :class="[
               showThinking ? 'mb-3 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 group-hover/thinking:text-blue-600',
@@ -831,9 +831,9 @@ defineExpose({
           </div>
 
           <!-- Expanded Content -->
-          <div 
-            v-if="showThinking && displayThinking" 
-            class="relative z-20 text-gray-600 dark:text-gray-400 text-[11px] font-mono whitespace-pre-wrap leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200" 
+          <div
+            v-if="showThinking && displayThinking"
+            class="relative z-20 text-gray-600 dark:text-gray-400 text-[11px] font-mono whitespace-pre-wrap leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200"
             data-testid="thinking-content"
           >
             <!-- Brain watermark -->
@@ -848,7 +848,7 @@ defineExpose({
       <!-- Content -->
       <div v-if="isEditing" class="mt-1" data-testid="edit-mode">
         <div class="border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all overflow-visible">
-          <textarea 
+          <textarea
             ref="textareaRef"
             v-model="editContent"
             @keydown.enter.ctrl.prevent="handleSaveEdit"
@@ -857,10 +857,10 @@ defineExpose({
             class="w-full p-4 bg-transparent text-gray-800 dark:text-gray-100 text-sm focus:outline-none h-32 resize-none"
             data-testid="edit-textarea"
           ></textarea>
-          
+
           <div class="flex items-center justify-between px-3 pb-3">
             <div class="flex items-center gap-1">
-              <button 
+              <button
                 v-if="canGenerateImage"
                 @click="editImageMode = !editImageMode"
                 class="p-2 rounded-xl transition-colors"
@@ -872,9 +872,9 @@ defineExpose({
               </button>
             </div>
             <div class="flex items-center gap-2">
-              <button 
+              <button
                 v-if="editContent"
-                @click="handleClearContent" 
+                @click="handleClearContent"
                 class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
                 title="Clear all text"
                 data-testid="clear-edit-content"
@@ -917,8 +917,8 @@ defineExpose({
         <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
 
         <!-- AI Image Synthesis Loader (Componentized) -->
-        <ImageConjuringLoader 
-          v-if="isImageGenerationPending(message.content) && message.role === 'assistant' && !message.error" 
+        <ImageConjuringLoader
+          v-if="isImageGenerationPending(message.content) && message.role === 'assistant' && !message.error"
           v-bind="getImageGenerationProgress(message.content)"
         />
 
@@ -935,7 +935,7 @@ defineExpose({
             <span>Generation Failed</span>
           </div>
           <div class="opacity-90">{{ message.error }}</div>
-          <button 
+          <button
             @click="emit('regenerate', message.id)"
             class="mt-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold transition-colors flex items-center gap-2"
             data-testid="retry-button"
@@ -944,11 +944,11 @@ defineExpose({
             <span>Retry</span>
           </button>
         </div>
-        
+
         <div class="mt-3 flex items-center justify-between min-h-[28px]">
           <!-- Version Paging -->
           <div v-if="versionInfo" class="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700" data-testid="version-paging">
-            <button 
+            <button
               @click="versionInfo.prevId && emit('switch-version', versionInfo.prevId)"
               :disabled="!versionInfo.hasPrev"
               class="p-1 hover:text-blue-600 disabled:opacity-20 transition-colors"
@@ -956,7 +956,7 @@ defineExpose({
               <ChevronLeft class="w-3 h-3" />
             </button>
             <span class="min-w-[2.5rem] text-center">{{ versionInfo.current }} / {{ versionInfo.total }}</span>
-            <button 
+            <button
               @click="versionInfo.nextId && emit('switch-version', versionInfo.nextId)"
               :disabled="!versionInfo.hasNext"
               class="p-1 hover:text-blue-600 disabled:opacity-20 transition-colors"
@@ -971,7 +971,7 @@ defineExpose({
             <!-- Speech Controls -->
             <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" show-full-controls />
 
-            <button 
+            <button
               v-if="!isUser"
               @click="emit('regenerate', message.id)"
               class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -980,7 +980,7 @@ defineExpose({
             >
               <RefreshCw class="w-3.5 h-3.5" />
             </button>
-            <button 
+            <button
               v-if="isUser"
               @click="emit('edit', message.id, message.content)"
               class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -989,7 +989,7 @@ defineExpose({
             >
               <Send class="w-3.5 h-3.5" />
             </button>
-            <button 
+            <button
               @click="handleCopy"
               class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               :title="copied ? 'Copied!' : 'Copy message'"
@@ -998,7 +998,7 @@ defineExpose({
               <Check v-if="copied" class="w-3.5 h-3.5" />
               <Copy v-else class="w-3.5 h-3.5" />
             </button>
-            <button 
+            <button
               @click="isEditing = true"
               class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               title="Edit message"
@@ -1006,7 +1006,7 @@ defineExpose({
             >
               <Pencil class="w-3.5 h-3.5" />
             </button>
-            <button 
+            <button
               @click="emit('fork', message.id)"
               class="flex items-center gap-1.5 px-3 py-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
               title="Create a new chat branching from this message"
@@ -1052,7 +1052,7 @@ defineExpose({
 .thinking-gradient-border {
   /* Line thickness defined by padding */
   padding: 1.2px;
-  
+
   /* Glow effect applied to this element (which matches the parent's shape via border-radius: inherit) */
   box-shadow: 0 0 20px -5px rgba(59, 130, 246, 0.4);
 
@@ -1067,19 +1067,19 @@ defineExpose({
   );
 
   /* MASKING: Cut out the content box, leaving only the padding area (border) */
-  -webkit-mask: 
-    linear-gradient(#fff 0 0) content-box, 
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
-  
-  mask: 
-    linear-gradient(#fff 0 0) content-box, 
+
+  mask:
+    linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
   mask-composite: exclude;
 
   /* Animation */
   animation: thinking-sweep 0.9s linear infinite;
-  
+
   /* Sit behind content (z-10/20) but above parent background if transparent */
   z-index: 10;
 }

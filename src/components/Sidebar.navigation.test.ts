@@ -15,7 +15,7 @@ const mockSetChatGroupCollapsed = vi.fn();
 
 const mockActiveFocusArea = ref('chat');
 const mockSetActiveFocusArea = vi.fn((area) => {
-  mockActiveFocusArea.value = area; 
+  mockActiveFocusArea.value = area;
 });
 
 vi.mock('../composables/useChat', () => ({
@@ -101,7 +101,7 @@ describe('Sidebar Keyboard Navigation', () => {
   it('navigates down on ArrowDown only when area is sidebar', async () => {
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
-    
+
     // Switch to chat area
     mockActiveFocusArea.value = 'chat';
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
@@ -116,10 +116,10 @@ describe('Sidebar Keyboard Navigation', () => {
   it('sets focus area to sidebar when focused or clicked', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     const nav = wrapper.get('[data-testid="sidebar-nav"]');
-    
+
     await nav.trigger('focus');
     expect(mockSetActiveFocusArea).toHaveBeenCalledWith('sidebar');
-    
+
     await nav.trigger('click');
     expect(mockSetActiveFocusArea).toHaveBeenCalledWith('sidebar');
   });
@@ -132,9 +132,9 @@ describe('Sidebar Keyboard Navigation', () => {
 
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
-    
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    
+
     expect(mockOpenChat).toHaveBeenCalledWith('1');
   });
 
@@ -146,9 +146,9 @@ describe('Sidebar Keyboard Navigation', () => {
 
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
-    
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
-    
+
     expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
   });
 
@@ -160,9 +160,9 @@ describe('Sidebar Keyboard Navigation', () => {
 
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
-    
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
-    
+
     expect(mockSetChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
   });
 
@@ -174,16 +174,16 @@ describe('Sidebar Keyboard Navigation', () => {
 
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
-    
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
-    
+
     expect(mockSetChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: true });
   });
 
   it('jumps to parent group on ArrowLeft from a grouped chat', async () => {
-    const group1: ChatGroup = { 
+    const group1: ChatGroup = {
       id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0,
-      items: [{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Chat 1', updatedAt: 0, groupId: 'g1' } }] 
+      items: [{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Chat 1', updatedAt: 0, groupId: 'g1' } }]
     };
     mockChatGroups.value = [group1];
     mockChats.value = [{ id: '1', title: 'Chat 1', updatedAt: 0, groupId: 'g1' }];
@@ -192,9 +192,9 @@ describe('Sidebar Keyboard Navigation', () => {
 
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
-    
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
-    
+
     expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
   });
 
@@ -210,10 +210,10 @@ describe('Sidebar Keyboard Navigation', () => {
 
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
-    
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
     expect(mockOpenChatGroup).toHaveBeenCalledWith('g2');
-    
+
     mockCurrentChatGroup.value = { id: 'g2' };
     await nextTick();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
@@ -222,9 +222,9 @@ describe('Sidebar Keyboard Navigation', () => {
 
   it('recovers navigation when current item is hidden (e.g. parent collapsed)', async () => {
     mockChatGroups.value = [
-      { 
-        id: 'g1', name: 'G1', isCollapsed: true, updatedAt: 0, 
-        items: [{ id: 'chat:hidden', type: 'chat', chat: { id: 'hidden', title: 'Hidden', updatedAt: 0, groupId: 'g1' } }] 
+      {
+        id: 'g1', name: 'G1', isCollapsed: true, updatedAt: 0,
+        items: [{ id: 'chat:hidden', type: 'chat', chat: { id: 'hidden', title: 'Hidden', updatedAt: 0, groupId: 'g1' } }]
       },
       { id: 'g2', name: 'G2', isCollapsed: true, updatedAt: 0, items: [] }
     ];
@@ -233,7 +233,7 @@ describe('Sidebar Keyboard Navigation', () => {
 
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
-    
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
     expect(mockOpenChatGroup).toHaveBeenCalledWith('g2');
   });
@@ -244,10 +244,10 @@ describe('Sidebar Keyboard Navigation', () => {
     const chat1: ChatSummary = { id: 'c1', title: 'C1', updatedAt: 0, groupId: 'g1' };
     const chat2: ChatSummary = { id: 'c2', title: 'C2', updatedAt: 0, groupId: 'g2' };
     const chat3: ChatSummary = { id: 'c3', title: 'C3', updatedAt: 0, groupId: 'g2' };
-    
+
     group1.items = [{ id: 'chat:c1', type: 'chat', chat: chat1 }];
     group2.items = [{ id: 'chat:c2', type: 'chat', chat: chat2 }, { id: 'chat:c3', type: 'chat', chat: chat3 }];
-    
+
     mockChatGroups.value = [group1, group2];
     mockChats.value = [chat1, chat2, chat3];
     mockCurrentChat.value = { id: 'c1', groupId: 'g1' };
@@ -255,22 +255,22 @@ describe('Sidebar Keyboard Navigation', () => {
 
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
-    
+
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
     expect(mockOpenChatGroup).toHaveBeenCalledWith('g2');
-    
+
     mockCurrentChatGroup.value = { id: 'g2' };
     await nextTick();
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
     expect(mockOpenChat).toHaveBeenCalledWith('c2');
 
-    mockCurrentChatGroup.value = null; 
+    mockCurrentChatGroup.value = null;
     await nextTick();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    
+
     expect(mockOpenChat).toHaveBeenCalledWith('c3');
-    expect(mockOpenChatGroup).toHaveBeenCalledTimes(1); 
+    expect(mockOpenChatGroup).toHaveBeenCalledTimes(1);
   });
 
   it('triggers scrollIntoView when chat is selected', async () => {
@@ -280,7 +280,7 @@ describe('Sidebar Keyboard Navigation', () => {
 
     mockCurrentChat.value = { id: '1' };
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
-    
+
     await nextTick();
     vi.advanceTimersByTime(150);
 
@@ -295,7 +295,7 @@ describe('Sidebar Keyboard Navigation', () => {
 
     mockCurrentChatGroup.value = { id: 'g1' };
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
-    
+
     await nextTick();
     vi.advanceTimersByTime(150);
 
@@ -306,7 +306,7 @@ describe('Sidebar Keyboard Navigation', () => {
   it('ignores arrow keys when focus area is NOT sidebar', async () => {
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
     await nextTick();
-    
+
     const nonSidebarAreas = ['chat', 'chat-group-settings', 'chat-settings', 'settings', 'onboarding', 'dialog', 'none'] as const;
 
     for (const area of nonSidebarAreas) {

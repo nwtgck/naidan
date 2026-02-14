@@ -64,9 +64,9 @@ defineExpose({
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <a 
-          href="https://github.com/nwtgck/naidan" 
-          target="_blank" 
+        <a
+          href="https://github.com/nwtgck/naidan"
+          target="_blank"
           rel="noopener noreferrer"
           class="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-3xl hover:bg-gray-50 dark:hover:bg-gray-750 transition-all group no-underline shadow-sm"
         >
@@ -82,9 +82,9 @@ defineExpose({
           </div>
         </a>
 
-        <a 
+        <a
           v-if="!isStandalone"
-          href="./naidan-standalone.zip" 
+          href="./naidan-standalone.zip"
           download="naidan-standalone.zip"
           class="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-3xl transition-all group no-underline"
         >
@@ -104,7 +104,7 @@ defineExpose({
         <ShieldCheck class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Open Source Licenses</h2>
       </div>
-    
+
       <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
         Naidan is built with incredible open-source software. We are grateful to the community for their contributions.
       </p>
@@ -127,8 +127,8 @@ defineExpose({
           <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Loading licenses...</p>
         </div>
         <div v-else class="w-full max-h-[400px] overflow-y-auto p-2 space-y-1 overscroll-contain">
-          <div 
-            v-for="license in ossLicenses" 
+          <div
+            v-for="license in ossLicenses"
             :key="license.name"
             class="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-2xl transition-colors group"
           >

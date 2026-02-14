@@ -7,7 +7,7 @@ import { generateId } from '../utils/id';
 import { naturalSort } from '../utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
-import { 
+import {
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, Image,
   ChevronDown, ChevronUp
@@ -77,7 +77,7 @@ function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 
   default: {
     const _ex: never = source;
     throw new Error(`Unhandled source: ${_ex}`);
-  }  
+  }
   }
 }
 
@@ -185,7 +185,7 @@ function triggerFileInput() {
 async function processFiles(files: File[]) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
-    
+
     const attachmentId = generateId();
     const attachment: Attachment = {
       id: attachmentId,
@@ -246,12 +246,12 @@ function applySuggestion(text: string) {
 function adjustTextareaHeight() {
   if (textareaRef.value) {
     const target = textareaRef.value;
-    
+
     // Temporarily reset height to auto to measure content height
     if (!isAnimatingHeight.value) {
       target.style.height = 'auto';
     }
-    
+
     const currentScrollHeight = target.scrollHeight;
     const computedStyle = getComputedStyle(target);
     const lineHeight = parseFloat(computedStyle.lineHeight);
@@ -260,7 +260,7 @@ function adjustTextareaHeight() {
     const borderTop = parseFloat(computedStyle.borderTopWidth);
     const borderBottom = parseFloat(computedStyle.borderBottomWidth);
     const verticalPadding = paddingTop + paddingBottom + borderTop + borderBottom;
-    
+
     const minHeight = lineHeight + verticalPadding;
     const maxSixLinesHeight = (lineHeight * 6) + verticalPadding;
 
@@ -287,10 +287,10 @@ function toggleMaximized() {
     // 1. Capture current height and set it explicitly to ensure transition works
     const startHeight = textareaRef.value.getBoundingClientRect().height;
     textareaRef.value.style.height = startHeight + 'px';
-    
+
     // 2. Enable animation state
     isAnimatingHeight.value = true;
-    
+
     // 3. Trigger state change in next frames to allow CSS transition to catch the change
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -300,7 +300,7 @@ function toggleMaximized() {
         }
       });
     });
-    
+
     // 4. Cleanup after animation
     setTimeout(() => {
       isAnimatingHeight.value = false;
@@ -318,15 +318,15 @@ function toggleSubmerged() {
 
 async function handleGenerateImage() {
   if (!currentChat.value || (!input.value.trim() && attachments.value.length === 0) || props.isStreaming) return;
-  
+
   const prompt = input.value;
   const currentAttachments = [...attachments.value];
   const sendingChatId = currentChat.value.id;
   const { width, height } = currentResolution.value;
   const count = currentCount.value;
-  const success = await chatStore.sendImageRequest({ 
-    prompt, 
-    width, 
+  const success = await chatStore.sendImageRequest({
+    prompt,
+    width,
     height,
     count,
     persistAs: currentPersistAs.value,
@@ -353,7 +353,7 @@ async function handleSend() {
   const text = input.value;
   const currentAttachments = [...attachments.value];
   const sendingChatId = currentChat.value?.id;
-  
+
   if (isMaximized.value && textareaRef.value) {
     const startHeight = textareaRef.value.getBoundingClientRect().height;
     textareaRef.value.style.height = startHeight + 'px';
@@ -369,16 +369,16 @@ async function handleSend() {
   } else {
     isMaximized.value = false; // Reset maximized state immediately
   }
-  
+
   const success = await chatStore.sendMessage(text, undefined, currentAttachments);
-  
+
   if (success) {
     if (currentChat.value?.id === sendingChatId) {
       input.value = '';
       attachments.value = [];
     }
     clearDraft(sendingChatId);
-    
+
     nextTick(() => { // Ensure textarea is cleared before adjusting height
       adjustTextareaHeight();
       scrollToBottom();
@@ -394,11 +394,11 @@ watch(
   () => currentChat.value?.currentLeafId,
   (newLeafId) => {
     if (!newLeafId || !currentChat.value) return;
-    
+
     const currentLeafInUrl = router.currentRoute.value.query.leaf;
     if (newLeafId !== currentLeafInUrl) {
       const query = { ...router.currentRoute.value.query };
-      
+
       // If we are at the deepest leaf, we don't need the leaf param in URL
       // Use toRaw and cast to Chat to avoid deep-readonly type issues with findDeepestLeaf
       const rawChat = toRaw(currentChat.value) as Chat | null;
@@ -436,8 +436,8 @@ watch(
   () => currentChat.value?.id,
   (newId, oldId) => {
     // Save previous draft
-    saveDraft(oldId, { 
-      input: input.value, 
+    saveDraft(oldId, {
+      input: input.value,
       attachments: attachments.value,
       attachmentUrls: attachmentUrls.value
     });
@@ -500,7 +500,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', adjustTextareaHeight);
-  
+
   // Save final state
   saveDraft(currentChat.value?.id, {
     input: input.value,
@@ -530,11 +530,11 @@ function focusInput() {
     throw new Error(`Unhandled focus area: ${_ex}`);
   }
   }
-  
+
   if (props.isSubmerged) {
     emit('update:isSubmerged', false);
   }
-  
+
   if (document.activeElement !== textareaRef.value) {
     nextTick(() => {
       textareaRef.value?.focus();
@@ -549,7 +549,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 </script>
 
 <template>
-  <div 
+  <div
     v-if="currentChat"
     class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out"
     :class="isSubmerged ? 'translate-y-[calc(100%-32px)] sm:translate-y-[calc(100%-40px)]' : 'translate-y-0'"
@@ -557,7 +557,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
     <!-- Glass Zone behind the input card (Full width blur) -->
     <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': isSubmerged }"></div>
 
-    <div 
+    <div
       class="max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all duration-300 flex flex-col"
       :class="[
         isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl',
@@ -566,15 +566,15 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       @mouseenter="$emit('update:isSubmerged', false)"
       @click="isSubmerged ? $emit('update:isSubmerged', false) : null"
     >
-        
+
       <!-- Attachment Previews -->
       <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
         <div v-for="att in attachments" :key="att.id" class="relative group/att">
-          <img 
-            :src="attachmentUrls[att.id]" 
+          <img
+            :src="attachmentUrls[att.id]"
             class="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
           />
-          <button 
+          <button
             @click="removeAttachment(att.id)"
             class="absolute -top-2 -right-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-opacity"
           >
@@ -626,7 +626,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       <div class="flex items-center justify-between px-4 pb-2" :class="{ 'pointer-events-none invisible': isSubmerged }">
         <div class="flex items-center gap-2">
           <div class="w-[100px] sm:w-[180px]">
-            <ModelSelector 
+            <ModelSelector
               :model-value="currentChat.modelId"
               @update:model-value="val => currentChat && chatStore.updateChatModel(currentChat.id, val!)"
               :models="sortedAvailableModels"
@@ -638,15 +638,15 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             />
           </div>
 
-          <input 
+          <input
             ref="fileInputRef"
-            type="file" 
-            accept="image/*" 
-            multiple 
-            class="hidden" 
+            type="file"
+            accept="image/*"
+            multiple
+            class="hidden"
             @change="handleFileSelect"
           />
-          <button 
+          <button
             @click="triggerFileInput"
             class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             title="Attach images"
@@ -654,7 +654,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             <Paperclip class="w-5 h-5" />
           </button>
 
-          <ChatToolsMenu 
+          <ChatToolsMenu
             :can-generate-image="canGenerateImage && hasImageModel"
             :is-processing="isCurrentChatStreaming"
             :is-image-mode="isImageMode"
@@ -672,7 +672,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           />
         </div>
 
-        <button 
+        <button
           @click="isCurrentChatStreaming ? chatStore.abortChat() : handleSend()"
           :disabled="!isCurrentChatStreaming && !input.trim() && attachments.length === 0"
           class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
@@ -711,18 +711,18 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
   -webkit-mask-image: linear-gradient(to bottom, transparent, black 35%);
   /* Start background fade later to match */
   background: linear-gradient(
-    to bottom, 
-    transparent 25%, 
-    rgba(255, 255, 255, 0.5) 60%, 
+    to bottom,
+    transparent 25%,
+    rgba(255, 255, 255, 0.5) 60%,
     rgba(255, 255, 255, 1) 95%
   );
 }
 
 .dark .glass-zone-mask {
   background: linear-gradient(
-    to bottom, 
-    transparent 25%, 
-    rgba(17, 24, 39, 0.5) 60%, 
+    to bottom,
+    transparent 25%,
+    rgba(17, 24, 39, 0.5) 60%,
     rgba(17, 24, 39, 1) 95%
   );
 }

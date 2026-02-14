@@ -93,10 +93,10 @@ describe('Sidebar Duplicate Group Feature', () => {
     const wrapper = mount(Sidebar, {
       global: {
         plugins: [router],
-        stubs: { 
-          'lucide-vue-next': true, 
-          'Logo': true, 
-          'ThemeToggle': true, 
+        stubs: {
+          'lucide-vue-next': true,
+          'Logo': true,
+          'ThemeToggle': true,
           'ModelSelector': true,
           'ChatGroupActions': ChatGroupActions
         },
@@ -112,11 +112,11 @@ describe('Sidebar Duplicate Group Feature', () => {
     expect(moreBtn.exists()).toBe(true);
     await moreBtn.trigger('click');
 
-    // Need to trigger hover or something if it was hidden by opacity-0, 
+    // Need to trigger hover or something if it was hidden by opacity-0,
     // but in test-utils we can just find it.
     const duplicateBtn = wrapper.find('[data-testid="duplicate-group-button"]');
     expect(duplicateBtn.exists()).toBe(true);
-    
+
     await duplicateBtn.trigger('click');
     expect(mockDuplicateChatGroup).toHaveBeenCalledWith('g1');
   });

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { 
-  Folder, FileText, Trash2, ChevronLeft, X, 
+import {
+  Folder, FileText, Trash2, ChevronLeft, X,
   ChevronRight, HardDrive, AlertCircle, Braces,
   AlertTriangle
 } from 'lucide-vue-next';
@@ -24,7 +24,7 @@ interface OPFSEntry {
 }
 
 const TEXT_EXTENSIONS = [
-  '.txt', '.md', '.json', '.ts', '.js', '.vue', '.css', '.html', 
+  '.txt', '.md', '.json', '.ts', '.js', '.vue', '.css', '.html',
   '.xml', '.yaml', '.yml', '.svg', '.gitignore', '.env', '.jsonl'
 ];
 
@@ -61,7 +61,7 @@ async function loadDirectory(handle: FileSystemDirectoryHandle) {
     for await (const entry of handle.values()) {
       let size: number | undefined;
       let lastModified: number | undefined;
-      
+
       const kind = entry.kind;
       switch (kind) {
       case 'file': {
@@ -138,7 +138,7 @@ async function viewFile(entry: OPFSEntry) {
     const handle = entry.handle as FileSystemFileHandle;
     const file = await handle.getFile();
     const isText = isTextFile(entry.name);
-    
+
     selectedFile.value = {
       name: entry.name,
       size: file.size,
@@ -149,7 +149,7 @@ async function viewFile(entry: OPFSEntry) {
     if (isText) {
       const text = await file.text();
       rawFileContent.value = text;
-      
+
       if (entry.name.endsWith('.json')) {
         try {
           const parsed = JSON.parse(text);
@@ -236,7 +236,7 @@ defineExpose({
 <template>
   <div v-if="modelValue" class="fixed inset-0 z-[120] flex items-center justify-center p-2 md:p-6 bg-black/50 backdrop-blur-[2px] transition-all">
     <div class="bg-white dark:bg-gray-900 w-full max-w-[95vw] h-[95vh] md:h-[90vh] rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-800 flex flex-col overflow-hidden font-mono animate-in fade-in zoom-in-95 duration-200">
-      
+
       <!-- Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex-shrink-0">
         <div class="flex items-center gap-3">
@@ -255,8 +255,8 @@ defineExpose({
 
       <!-- Toolbar / Breadcrumbs -->
       <div class="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
-        <button 
-          @click="goUp" 
+        <button
+          @click="goUp"
           :disabled="pathStack.length === 0"
           class="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 disabled:opacity-30 transition-colors"
           data-testid="opfs-back-button"
@@ -284,16 +284,16 @@ defineExpose({
           </div>
 
           <div class="p-2 space-y-0.5">
-            <div 
-              v-for="entry in entries" 
+            <div
+              v-for="entry in entries"
               :key="entry.name"
               @click="navigateTo(entry)"
               class="group flex items-center justify-between p-2 rounded-lg cursor-pointer hover:bg-white dark:hover:bg-gray-800 hover:shadow-sm border border-transparent hover:border-gray-100 dark:hover:border-gray-700 transition-all"
               data-testid="opfs-entry"
             >
               <div class="flex items-center gap-3 min-w-0 flex-1">
-                <component :is="entry.kind === 'directory' ? Folder : FileText" 
-                           class="w-4 h-4 shrink-0" 
+                <component :is="entry.kind === 'directory' ? Folder : FileText"
+                           class="w-4 h-4 shrink-0"
                            :class="entry.kind === 'directory' ? 'text-amber-500' : 'text-blue-500'"
                 />
                 <div class="flex flex-col min-w-0">
@@ -307,7 +307,7 @@ defineExpose({
                   </span>
                 </div>
               </div>
-              <button 
+              <button
                 @click.stop="deleteEntry(entry)"
                 class="p-1.5 opacity-0 group-hover:opacity-100 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-all"
               >
@@ -336,12 +336,12 @@ defineExpose({
                   </div>
                 </div>
               </div>
-              <button 
+              <button
                 v-if="selectedFile.isText && selectedFile.name.endsWith('.json')"
                 @click="toggleFormat"
                 class="px-2 py-1 text-[10px] font-bold border rounded transition-colors flex items-center gap-1.5"
-                :class="isFormatted 
-                  ? 'bg-blue-600 border-blue-600 text-white shadow-sm' 
+                :class="isFormatted
+                  ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
                   : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'"
                 :title="isFormatted ? 'Show Raw JSON' : 'Format JSON'"
               >

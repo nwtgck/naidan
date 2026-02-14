@@ -13,7 +13,7 @@ class MockFileSystemFileHandle {
   createWritable() {
     return Promise.resolve({
       write: (data: string) => {
-        this.content = data; return Promise.resolve(); 
+        this.content = data; return Promise.resolve();
       },
       close: () => Promise.resolve(),
     });
@@ -23,7 +23,7 @@ class MockFileSystemFileHandle {
 class MockFileSystemDirectoryHandle {
   kind = 'directory' as const;
   public entries = new Map<string, MockFileSystemDirectoryHandle | MockFileSystemFileHandle>();
-  
+
   constructor(public name: string) {}
 
   async getDirectoryHandle(name: string, options?: { create?: boolean }) {
@@ -81,7 +81,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
 
   it('should create and use "naidan-storage" directory within OPFS root', async () => {
     const provider = new OPFSStorageProvider();
-    
+
     // Initial state: root is empty
     expect(mockOpfsRoot.entries.size).toBe(0);
 
@@ -111,7 +111,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
 
     // Manually add a file to root (outside our app's control)
     mockOpfsRoot.entries.set('other-app-data.txt', new MockFileSystemFileHandle('other-app-data.txt'));
-    
+
     // Save some app data
     await provider.saveSettings({
       autoTitleEnabled: true,
@@ -129,12 +129,12 @@ describe('OPFSStorageProvider Directory Isolation', () => {
 
     // App data should be gone from the subdirectory
     expect(storageDir.entries.size).toBe(0);
-    
+
     // Subdirectory itself should still exist (or be re-created by init/clearAll logic)
     // Actually clearAll in opfs-storage.ts currently does:
     // for await (const key of this.root!.keys()) { await this.root!.removeEntry(key, ...); }
     // Since this.root is the SUBDIRECTORY, it clears contents of the subdirectory.
-    
+
     // The file in the OPFS root should remain untouched
     expect(mockOpfsRoot.entries.has('other-app-data.txt')).toBe(true);
   });

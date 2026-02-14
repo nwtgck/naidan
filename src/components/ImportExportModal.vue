@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { 
-  X, Upload, Download, FileArchive, 
+import {
+  X, Upload, Download, FileArchive,
   CheckCircle2, AlertTriangle, Loader2,
   RefreshCw, CopyPlus, ArrowRight,
   Database, Settings2, FolderInput
@@ -9,8 +9,8 @@ import {
 import { ImportExportService } from '../services/import-export/service';
 import { storageService } from '../services/storage';
 import { useToast } from '../composables/useToast';
-import type { 
-  ImportConfig, 
+import type {
+  ImportConfig,
   ImportPreview
 } from '../services/import-export/types';
 
@@ -88,8 +88,8 @@ const importConfig = ref<ImportConfig>(JSON.parse(JSON.stringify(APPEND_DEFAULT_
 // Computed to determine if the current config matches a preset
 const activePreset = computed(() => {
   const c = importConfig.value;
-  
-  const isAppendPreset = 
+
+  const isAppendPreset =
       c.data.mode === 'append' &&
       c.settings.endpoint === 'none' &&
       c.settings.model === 'none' &&
@@ -98,7 +98,7 @@ const activePreset = computed(() => {
       c.settings.lmParameters === 'none' &&
       c.settings.providerProfiles === 'append';
 
-  const isReplacePreset = 
+  const isReplacePreset =
       c.data.mode === 'replace' &&
       c.settings.endpoint === 'replace' &&
       c.settings.model === 'replace' &&
@@ -152,8 +152,8 @@ async function handleExport() {
   error.value = null;
 
   try {
-    const { stream, filename } = await service.exportData({ 
-      fileNameSegment: exportName.value.trim() 
+    const { stream, filename } = await service.exportData({
+      fileNameSegment: exportName.value.trim()
     });
 
     const newResponse = new Response(stream);
@@ -179,12 +179,12 @@ async function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement;
   const files = target.files;
   if (!files || files.length === 0) return;
-  
+
   const file = files[0];
   if (!file) return;
 
   selectedFile.value = file;
-  
+
   mode.value = 'processing';
   processingMessage.value = 'Analyzing file...';
   error.value = null;
@@ -211,13 +211,13 @@ async function handleImportExecute() {
   try {
     // 1. Verify before destructive restore
     await service.verify(file, importConfig.value);
-    
+
     // 2. Execute
     processingMessage.value = 'Importing data...';
     await service.executeImport(file, importConfig.value);
-    
+
     addToast({ message: 'Import successful!', duration: 3000 });
-    
+
     setTimeout(() => {
       window.location.reload();
     }, 1000);
@@ -240,9 +240,9 @@ defineExpose({
   <Teleport to="body">
     <div v-if="isOpen" class="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4 transition-all">
       <div class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in-95 duration-200 overflow-hidden relative">
-        
+
         <!-- Close Button -->
-        <button 
+        <button
           @click="emit('close')"
           class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
         >
@@ -267,7 +267,7 @@ defineExpose({
 
         <!-- Content -->
         <div class="flex-1 overflow-y-auto p-6 overscroll-contain">
-          
+
           <!-- Error Message -->
           <div v-if="error" class="mb-6 p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-2xl flex items-start gap-3">
             <AlertTriangle class="w-5 h-5 text-red-500 shrink-0" />
@@ -317,14 +317,14 @@ defineExpose({
               <div class="w-full space-y-3 pt-2">
                 <div class="space-y-1.5 text-left max-w-sm mx-auto">
                   <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Filename Tag (Optional)</label>
-                  <input 
+                  <input
                     v-model="exportName"
-                    type="text" 
-                    placeholder="e.g. before-update" 
+                    type="text"
+                    placeholder="e.g. before-update"
                     class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-xs font-bold focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                   />
                 </div>
-                
+
                 <div class="flex flex-col items-center gap-4">
                   <div class="w-full max-w-md bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-3 flex flex-col gap-1.5 shadow-inner">
                     <span class="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Output Filename</span>
@@ -332,7 +332,7 @@ defineExpose({
                       {{ previewFilename }}
                     </p>
                   </div>
-                  
+
                   <button @click="handleExport" class="w-full sm:w-auto px-10 py-4 rounded-2xl font-black bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-3">
                     <component :is="ExportIcon" class="w-6 h-6" />
                     Export Now
@@ -393,7 +393,7 @@ defineExpose({
 
           <!-- IMPORT CONFIG MODE -->
           <div v-if="mode === 'import_config'" class="space-y-8">
-            
+
             <!-- Data Strategy -->
             <section class="space-y-4">
               <div class="flex items-center justify-between">
@@ -402,7 +402,7 @@ defineExpose({
                   Mode & Data Strategy
                 </h3>
                 <div class="flex gap-2">
-                  <button v-if="activePreset === 'custom'" 
+                  <button v-if="activePreset === 'custom'"
                           @click="applyPreset(importConfig.data.mode)"
                           class="text-[9px] font-black uppercase tracking-widest bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800/50 hover:bg-amber-200 transition-colors">
                     Custom (Click to Reset)
@@ -460,7 +460,7 @@ defineExpose({
                   Settings & Profiles
                 </h3>
               </div>
-              
+
               <div v-if="importPreview?.stats.hasSettings" class="space-y-3 p-4 border border-gray-100 dark:border-gray-700 rounded-2xl flex flex-col gap-1">
                 <!-- Endpoint -->
                 <div class="flex items-center justify-between">
@@ -488,7 +488,7 @@ defineExpose({
                     <option value="none">Keep Current {{ activePreset === 'append' ? '(Default)' : '' }}</option>
                   </select>
                 </div>
-                
+
                 <!-- Profiles -->
                 <div class="flex items-center justify-between">
                   <span class="text-xs font-bold text-gray-600 dark:text-gray-300">Provider Profiles</span>
@@ -524,8 +524,8 @@ defineExpose({
 
             <div class="flex justify-end gap-3 pt-4">
               <button @click="mode = 'import_preview'" class="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Back</button>
-              <button 
-                @click="handleImportExecute" 
+              <button
+                @click="handleImportExecute"
                 class="px-8 py-2.5 rounded-xl font-bold text-white shadow-lg transition-all active:scale-95 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 shadow-blue-500/20"
               >
                 <CheckCircle2 class="w-4 h-4" />

@@ -14,7 +14,7 @@ const toasts = ref<Toast[]>([]);
 const addToast = (toast: Omit<Toast, 'id'>) => {
   const id = Math.random().toString(36).substring(2, 9);
   const newToast = { ...toast, id };
-  
+
   toasts.value.push(newToast);
 
   if (toast.duration !== 0) {
@@ -22,7 +22,7 @@ const addToast = (toast: Omit<Toast, 'id'>) => {
       removeToast(id, 'timeout');
     }, toast.duration || 20000);
   }
-  
+
   return id;
 };
 

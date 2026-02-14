@@ -71,9 +71,9 @@ describe('HistoryManipulationModal', () => {
 
   it('renders messages when open', async () => {
     const wrapper = await mountModal();
-    
+
     // System prompt textarea might not be present if behavior is 'inherit' (it shows info div)
-    // In our component, if behavior is 'inherit', it shows a div. 
+    // In our component, if behavior is 'inherit', it shows a div.
     // So there should be as many textareas as messages.
     const messageTextareas = wrapper.findAll('textarea[placeholder="Type message content..."]');
     expect(messageTextareas.length).toBe(2);
@@ -88,7 +88,7 @@ describe('HistoryManipulationModal', () => {
     const addButtons = wrapper.findAll('button[title="Add Message After"]');
     await addButtons[0]!.trigger('click');
     await nextTick();
-    
+
     let messageTextareas = wrapper.findAll('textarea[placeholder="Type message content..."]');
     expect(messageTextareas.length).toBe(3);
 
@@ -99,7 +99,7 @@ describe('HistoryManipulationModal', () => {
 
     messageTextareas = wrapper.findAll('textarea[placeholder="Type message content..."]');
     expect(messageTextareas.length).toBe(2);
-    expect((messageTextareas[0]!.element as HTMLTextAreaElement).value).toBe(''); 
+    expect((messageTextareas[0]!.element as HTMLTextAreaElement).value).toBe('');
   });
 
   it('can duplicate messages', async () => {
@@ -119,16 +119,16 @@ describe('HistoryManipulationModal', () => {
     const wrapper = await mountModal();
 
     const roleButtons = wrapper.findAll('button[title^="Switch Role"]');
-    
+
     // First message is 'user', click to change to 'assistant'
     await roleButtons[0]!.trigger('click');
     await nextTick();
-    expect(wrapper.find('.bg-purple-50').exists()).toBe(true); 
-    
+    expect(wrapper.find('.bg-purple-50').exists()).toBe(true);
+
     // Click again to change back to 'user'
     await roleButtons[0]!.trigger('click');
     await nextTick();
-    expect(wrapper.find('.bg-blue-50').exists()).toBe(true); 
+    expect(wrapper.find('.bg-blue-50').exists()).toBe(true);
   });
 
   it('configures draggable correctly and updates order', async () => {
@@ -268,7 +268,7 @@ describe('HistoryManipulationModal', () => {
     const wrapper = await mountModal();
 
     expect(wrapper.text()).toContain('Forge empty history');
-    
+
     const addButton = wrapper.find('button:has(.lucide-plus)');
     await addButton.trigger('click');
     await nextTick();
@@ -289,14 +289,14 @@ describe('HistoryManipulationModal', () => {
     const addButtons = wrapper.findAll('button[title="Add Message After"]');
     await addButtons[0]!.trigger('click');
     await nextTick();
-    
+
     let labels = wrapper.findAll('[data-testid="role-label"]');
     expect(labels[1]!.text()).toBe('Assistant');
 
     const newAddButtons = wrapper.findAll('button[title="Add Message After"]');
-    await newAddButtons[2]!.trigger('click'); 
+    await newAddButtons[2]!.trigger('click');
     await nextTick();
-    
+
     labels = wrapper.findAll('[data-testid="role-label"]');
     expect(labels[3]!.text()).toBe('User');
   });
@@ -313,7 +313,7 @@ describe('HistoryManipulationModal', () => {
     await nextTick();
 
     const labels = wrapper.findAll('[data-testid="role-label"]');
-    expect(labels[1]!.text()).toBe('Assistant'); 
+    expect(labels[1]!.text()).toBe('Assistant');
   });
 
   it('loads existing attachments and shows previews', async () => {
@@ -324,13 +324,13 @@ describe('HistoryManipulationModal', () => {
 
     const mockCreateObjectURL = vi.fn().mockReturnValue('blob:test-persisted');
     global.URL.createObjectURL = mockCreateObjectURL;
-    
+
     // Manual mock for this test
     const mockGetFile = vi.fn().mockResolvedValue(new Blob([''], { type: 'image/png' }));
     (storageService.getFile as any) = mockGetFile;
 
     const wrapper = await mountModal();
-    
+
     expect(wrapper.find('img').exists()).toBe(true);
     expect(wrapper.find('img').attributes('src')).toBe('blob:test-persisted');
   });
@@ -340,10 +340,10 @@ describe('HistoryManipulationModal', () => {
     global.URL.createObjectURL = mockCreateObjectURL;
 
     const wrapper = await mountModal();
-    
+
     const fileInput = wrapper.find('input[type="file"]');
     const file = new File([''], 'test.png', { type: 'image/png' });
-    
+
     Object.defineProperty(fileInput.element, 'files', {
       value: [file]
     });
@@ -366,7 +366,7 @@ describe('HistoryManipulationModal', () => {
     const wrapper = await mountModal();
     expect(wrapper.find('img').exists()).toBe(true);
 
-    const removeAttButton = wrapper.find('.group\\/att button'); 
+    const removeAttButton = wrapper.find('.group\\/att button');
     await removeAttButton.trigger('click');
     await nextTick();
 
@@ -382,7 +382,7 @@ describe('HistoryManipulationModal', () => {
     const messageTextarea = messageTextareas[0];
 
     const file = new File([''], 'test.png', { type: 'image/png' });
-    
+
     await messageTextarea!.trigger('paste', {
       clipboardData: {
         items: [
@@ -393,7 +393,7 @@ describe('HistoryManipulationModal', () => {
         ]
       }
     });
-    
+
     await nextTick();
     expect(wrapper.find('img').exists()).toBe(true);
   });

@@ -61,8 +61,8 @@ describe('MessageItem Edit Image Generation', () => {
     const message = createMessage(`${marker}\n${content}`);
 
     const wrapper = mount(MessageItem, {
-      props: { 
-        message, 
+      props: {
+        message,
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1', 'x/other-model:v1']
       },
@@ -75,7 +75,7 @@ describe('MessageItem Edit Image Generation', () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="edit-mode"]').exists()).toBe(true);
-    
+
     const settings = wrapper.findComponent({ name: 'ImageGenerationSettings' });
     expect(settings.exists()).toBe(true);
     expect(settings.props('isImageMode')).toBe(true);
@@ -99,8 +99,8 @@ describe('MessageItem Edit Image Generation', () => {
     const message = createMessage(`${marker}\n${content}`);
 
     const wrapper = mount(MessageItem, {
-      props: { 
-        message, 
+      props: {
+        message,
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1']
       },
@@ -112,7 +112,7 @@ describe('MessageItem Edit Image Generation', () => {
     await flushPromises();
 
     const settings = wrapper.findComponent({ name: 'ImageGenerationSettings' });
-    
+
     // Simulate changing resolution and count via emits
     await settings.vm.$emit('update:resolution', 256, 256);
     await settings.vm.$emit('update:count', 4);
@@ -124,7 +124,7 @@ describe('MessageItem Edit Image Generation', () => {
     const emitted = wrapper.emitted('edit');
     expect(emitted).toBeTruthy();
     const [msgId, newContent] = emitted![0] as [string, string];
-    
+
     expect(msgId).toBe(message.id);
     expect(newContent).toContain(SENTINEL_IMAGE_REQUEST_PREFIX);
     expect(newContent).toContain('"width":256');
@@ -138,8 +138,8 @@ describe('MessageItem Edit Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { 
-        message, 
+      props: {
+        message,
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1']
       },
@@ -150,7 +150,7 @@ describe('MessageItem Edit Image Generation', () => {
     await nextTick();
 
     const toggleButton = wrapper.find('[data-testid="toggle-edit-image-mode"]');
-    
+
     // Toggle image mode on
     await toggleButton.trigger('click');
     await nextTick();
@@ -158,7 +158,7 @@ describe('MessageItem Edit Image Generation', () => {
 
     const settings = wrapper.findComponent({ name: 'ImageGenerationSettings' });
     expect(settings.exists()).toBe(true);
-    
+
     await wrapper.find('[data-testid="save-edit"]').trigger('click');
 
     const emitted = wrapper.emitted('edit');
@@ -173,8 +173,8 @@ describe('MessageItem Edit Image Generation', () => {
     const message = createMessage(`${marker}\n${content}`);
 
     const wrapper = mount(MessageItem, {
-      props: { 
-        message, 
+      props: {
+        message,
         canGenerateImage: true,
         availableImageModels: ['x/z-image-turbo:v1']
       },
@@ -185,7 +185,7 @@ describe('MessageItem Edit Image Generation', () => {
     await nextTick();
 
     const toggleButton = wrapper.find('[data-testid="toggle-edit-image-mode"]');
-    
+
     // Toggle image mode off
     await toggleButton.trigger('click');
     await nextTick();
@@ -193,7 +193,7 @@ describe('MessageItem Edit Image Generation', () => {
 
     const settings = wrapper.findComponent({ name: 'ImageGenerationSettings' });
     expect(settings.exists()).toBe(false);
-    
+
     await wrapper.find('[data-testid="save-edit"]').trigger('click');
 
     const emitted = wrapper.emitted('edit');
@@ -211,18 +211,18 @@ describe('MessageItem Edit Image Generation', () => {
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     await nextTick();
-    
+
     const toggleButton = wrapper.find('[data-testid="toggle-edit-image-mode"]');
-    
+
     // Initially hidden
     expect(wrapper.find('[data-testid="embedded-experimental-tools"]').exists()).toBe(false);
-    
+
     // Toggle ON
     await toggleButton.trigger('click');
     await nextTick();
     await flushPromises();
     expect(wrapper.find('[data-testid="embedded-experimental-tools"]').exists()).toBe(true);
-    
+
     // Toggle OFF
     await toggleButton.trigger('click');
     await nextTick();

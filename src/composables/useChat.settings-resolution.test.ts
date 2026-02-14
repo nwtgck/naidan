@@ -56,7 +56,7 @@ describe('useChat Settings Resolution Policy', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.mocked(storageService.getSidebarStructure).mockImplementation(() => Promise.resolve(chatStore.rootItems.value));
-    
+
     // Default Global Settings
     __testOnlySetSettings({
       endpointType: 'openai',
@@ -69,10 +69,10 @@ describe('useChat Settings Resolution Policy', () => {
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'other-gpt', 'pinned-model', 'model-a', 'model-b']);
     mockOllamaModels.mockResolvedValue(['llama-global', 'llama-other']);
-    
+
     mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Resp'));
     mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Resp'));
-    
+
     chatStore.__testOnly.__testOnlySetCurrentChat(null);
   });
 
@@ -83,7 +83,7 @@ describe('useChat Settings Resolution Policy', () => {
       endpointUrl: 'http://endpoint-a',
       defaultModelId: 'global-gpt',
     });
-    
+
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat(id);
@@ -104,7 +104,7 @@ describe('useChat Settings Resolution Policy', () => {
     await sendMessage('Message 2');
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'model-b', onChunk: expect.any(Function) }));
-    
+
     // 3. Verify that the chat object itself didn't "lock in" model-b
     expect(currentChat.value!.modelId).toBeUndefined();
   });
@@ -179,7 +179,7 @@ describe('useChat Settings Resolution Policy', () => {
 
   it('Policy: Hierarchy Resolution (Chat > Group > Global) in resolvedSettings metadata', async () => {
     const { rootItems, resolvedSettings, createNewChat, openChat, updateChatModel, updateChatGroupOverride } = chatStore;
-    
+
     // 1. Initial State: Global Default
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;

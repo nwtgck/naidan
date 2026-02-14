@@ -88,7 +88,7 @@ describe('transformersJsService worker restart', () => {
 
     // 2. Import service
     const { transformersJsService } = await import('./transformers-js');
-    
+
     // 3. Initial load success
     await transformersJsService.loadModel('some-model');
     const countAfterLoad = MockWorker.constructorCount;

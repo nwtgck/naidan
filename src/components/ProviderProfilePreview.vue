@@ -19,7 +19,7 @@ defineExpose({
     <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 opacity-70">
       Configuration Preview
     </p>
-    
+
     <div class="space-y-2 px-1">
       <!-- Provider & Model -->
       <div class="flex items-center justify-between text-[11px]">
@@ -38,19 +38,19 @@ defineExpose({
       </div>
 
       <!-- Optional Features (Badges) -->
-      <div v-if="form.endpointHttpHeaders?.length || form.systemPrompt || form.lmParameters" 
+      <div v-if="form.endpointHttpHeaders?.length || form.systemPrompt || form.lmParameters"
            class="flex items-center gap-2 pt-1">
-        <span v-if="form.endpointHttpHeaders?.length" 
+        <span v-if="form.endpointHttpHeaders?.length"
               class="text-[9px] font-bold text-gray-400 flex items-center gap-1">
           <span class="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-600"></span>
           Headers
         </span>
-        <span v-if="form.systemPrompt" 
+        <span v-if="form.systemPrompt"
               class="text-[9px] font-bold text-gray-400 flex items-center gap-1">
           <span class="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-600"></span>
           System Prompt
         </span>
-        <span v-if="form.lmParameters" 
+        <span v-if="form.lmParameters"
               class="text-[9px] font-bold text-gray-400 flex items-center gap-1">
           <span class="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-600"></span>
           LM Params

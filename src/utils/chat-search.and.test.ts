@@ -39,7 +39,7 @@ describe('chat-search AND logic', () => {
         query: 'test world',
         chatId: 'chat1'
       });
-      
+
       expect(results).toHaveLength(2); // Both message 1 and 2 have both words
       expect(results.some(r => r.messageId === '1')).toBe(true);
       expect(results.some(r => r.messageId === '2')).toBe(true);
@@ -51,7 +51,7 @@ describe('chat-search AND logic', () => {
         query: 'test　world', // IDEographic space
         chatId: 'chat1'
       });
-      
+
       expect(results).toHaveLength(2);
     });
 
@@ -61,7 +61,7 @@ describe('chat-search AND logic', () => {
         query: 'test missing',
         chatId: 'chat1'
       });
-      
+
       expect(results).toHaveLength(0);
     });
 
@@ -71,7 +71,7 @@ describe('chat-search AND logic', () => {
         query: 'TEST WORLD',
         chatId: 'chat1'
       });
-      
+
       expect(results).toHaveLength(2);
     });
   });
@@ -86,7 +86,7 @@ describe('chat-search AND logic', () => {
         query: 'message world',
         chatId: 'chat1'
       });
-      
+
       expect(results).toHaveLength(2);
     });
   });

@@ -42,10 +42,10 @@ describe('useImageGeneration', () => {
   it('toggles image mode', () => {
     const { isImageMode, toggleImageMode } = useImageGeneration();
     expect(isImageMode({ chatId })).toBe(false);
-    
+
     toggleImageMode({ chatId });
     expect(isImageMode({ chatId })).toBe(true);
-    
+
     toggleImageMode({ chatId });
     expect(isImageMode({ chatId })).toBe(false);
   });
@@ -53,7 +53,7 @@ describe('useImageGeneration', () => {
   it('manages resolution', () => {
     const { getResolution, updateResolution } = useImageGeneration();
     expect(getResolution({ chatId })).toEqual({ width: 512, height: 512 });
-    
+
     updateResolution({ chatId, width: 1024, height: 1024 });
     expect(getResolution({ chatId })).toEqual({ width: 1024, height: 1024 });
   });
@@ -61,14 +61,14 @@ describe('useImageGeneration', () => {
   it('selects the correct image model', () => {
     const { getSelectedImageModel, setImageModel } = useImageGeneration();
     const availableModels = ['llama3', 'x/z-image-turbo:v1', 'x/z-image-turbo:v2'];
-    
+
     // Default to first image model
     expect(getSelectedImageModel({ chatId, availableModels })).toBe('x/z-image-turbo:v1');
-    
+
     // Manual override
     setImageModel({ chatId, modelId: 'x/z-image-turbo:v2' });
     expect(getSelectedImageModel({ chatId, availableModels })).toBe('x/z-image-turbo:v2');
-    
+
     // Invalid override falls back
     setImageModel({ chatId, modelId: 'invalid' });
     expect(getSelectedImageModel({ chatId, availableModels })).toBe('x/z-image-turbo:v1');
@@ -85,7 +85,7 @@ describe('useImageGeneration', () => {
       const { sendImageRequest } = useImageGeneration();
       const sendMessage = vi.fn().mockResolvedValue(true);
       const availableModels = ['x/z-image-turbo:v1'];
-      
+
       const result = await sendImageRequest({
         prompt: 'a sunset',
         width: 1024,
@@ -141,7 +141,7 @@ describe('useImageGeneration', () => {
 
     it('generates a specialized markdown block when using OPFS', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      
+
       await handleImageGeneration({
         ...commonParams,
         storageType: 'opfs'
@@ -159,7 +159,7 @@ describe('useImageGeneration', () => {
 
     it('generates a legacy img tag when using local storage', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      
+
       await handleImageGeneration({
         ...commonParams,
         storageType: 'local'
@@ -175,7 +175,7 @@ describe('useImageGeneration', () => {
     it('generates multiple images sequentially', async () => {
       const { handleImageGeneration } = useImageGeneration();
       const triggerChatRef = vi.fn();
-      
+
       // Reset assistant content
       mockChat.root.items[0]!.content = '';
 
@@ -187,14 +187,14 @@ describe('useImageGeneration', () => {
       });
 
       const assistantNode = mockChat.root.items[0];
-      
+
       // Should have 3 image tags
       const imgMatches = assistantNode!.content.match(/<img/g);
       expect(imgMatches?.length).toBe(3);
-      
+
       // Should have triggered ref update at least once for each image + start/end
       expect(triggerChatRef).toHaveBeenCalled();
-      
+
       // Verify final content has the processed sentinel
       expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
     });
@@ -202,7 +202,7 @@ describe('useImageGeneration', () => {
     it('converts image to requested format when persistAs is specified', async () => {
       const { handleImageGeneration } = useImageGeneration();
       const { storageService } = await import('../services/storage');
-      
+
       await handleImageGeneration({
         ...commonParams,
         persistAs: 'webp',
@@ -226,7 +226,7 @@ describe('useImageGeneration', () => {
     it('falls back to original format if re-encoding fails', async () => {
       const { handleImageGeneration } = useImageGeneration();
       const { storageService } = await import('../services/storage');
-      
+
       // Force failure
       mockReencodeImage.mockRejectedValueOnce(new Error('Canvas failure'));
 

@@ -18,7 +18,7 @@ const isLoading = ref(false);
 const branchMessages = ref<MessageNode[]>([]);
 const matchedIndex = ref(-1);
 
-const CONTEXT_SIZE = computed(() => searchContextSize.value); 
+const CONTEXT_SIZE = computed(() => searchContextSize.value);
 
 async function loadContext() {
   if (!props.match) {
@@ -57,9 +57,9 @@ const visibleMessages = computed(() => {
 });
 
 const formatDate = (ts: number) => {
-  return new Date(ts).toLocaleString(undefined, { 
-    month: 'short', day: 'numeric', 
-    hour: '2-digit', minute: '2-digit' 
+  return new Date(ts).toLocaleString(undefined, {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
   });
 };
 
@@ -99,7 +99,7 @@ defineExpose({
           <span>Last updated: {{ formatDate(chat.updatedAt) }}</span>
         </div>
       </div>
-      
+
       <div class="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 text-blue-700 dark:text-blue-300 rounded-2xl text-xs font-bold flex items-center gap-3">
         <div class="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-xl">
           <MessageSquare class="w-4 h-4" />
@@ -115,13 +115,13 @@ defineExpose({
           <span>Conversation Context</span>
           <span class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[10px]">{{ visibleMessages.length }} messages</span>
         </div>
-        
+
         <div v-if="!match.isCurrentThread" class="flex items-center gap-1.5 text-[10px] font-bold bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-3 py-1 rounded-full border border-amber-100 dark:border-amber-800/50">
           <GitBranch class="w-3.5 h-3.5" />
           <span>ALTERNATIVE BRANCH</span>
         </div>
       </div>
-      
+
       <div class="flex-1 overflow-y-auto bg-white dark:bg-gray-900/50">
         <div v-if="matchedIndex > CONTEXT_SIZE" class="p-4 text-center">
           <span class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">... previous messages ...</span>
@@ -129,8 +129,8 @@ defineExpose({
 
         <div v-for="msg in visibleMessages" :key="msg.id" class="relative">
           <div v-if="msg.id === match.messageId" class="absolute inset-0 bg-yellow-50/30 dark:bg-yellow-900/5 border-y-2 border-yellow-200/50 dark:border-yellow-900/20 pointer-events-none z-0"></div>
-          <MessageItem 
-            :message="msg" 
+          <MessageItem
+            :message="msg"
             class="relative z-10"
             :class="{ 'opacity-50 grayscale-[0.5]': msg.id !== match.messageId }"
             @fork="handleDummy"

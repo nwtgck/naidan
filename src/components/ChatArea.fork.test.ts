@@ -22,11 +22,11 @@ const mockCurrentChat = ref<{
   originChatId: string | undefined;
   modelId: string | undefined;
 }>({
-  id: '1', 
-  title: 'Test Chat', 
+  id: '1',
+  title: 'Test Chat',
   root: { items: [] },
   currentLeafId: undefined,
-  debugEnabled: false, 
+  debugEnabled: false,
   originChatId: undefined,
   modelId: undefined,
 });
@@ -57,8 +57,8 @@ vi.mock('../composables/useChat', () => ({
     isProcessing: vi.fn().mockReturnValue(false),
     isImageMode: vi.fn(() => false),
     toggleImageMode: vi.fn(),
-    getResolution: vi.fn(() => ({ width: 512, height: 512 })), 
-    getCount: vi.fn(() => 1), 
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    getCount: vi.fn(() => 1),
     updateCount: vi.fn(),
     getPersistAs: vi.fn(() => 'original'),
     updatePersistAs: vi.fn(),
@@ -67,7 +67,7 @@ vi.mock('../composables/useChat', () => ({
     getSelectedImageModel: vi.fn(),
     getSortedImageModels: vi.fn(() => []),
     imageModeMap: ref({}),
-    imageResolutionMap: ref({}), 
+    imageResolutionMap: ref({}),
     imageCountMap: ref({}),
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
@@ -91,7 +91,7 @@ describe('ChatArea Fork Functionality', () => {
     const wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
-    
+
     expect(wrapper.find('[data-testid="fork-chat-button"]').exists()).toBe(false);
   });
 
@@ -100,7 +100,7 @@ describe('ChatArea Fork Functionality', () => {
     const wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
-    
+
     expect(wrapper.find('[data-testid="fork-chat-button"]').exists()).toBe(true);
   });
 
@@ -110,14 +110,14 @@ describe('ChatArea Fork Functionality', () => {
       { id: 'msg-2', role: 'assistant', content: 'hi' }
     ];
     mockForkChat.mockResolvedValue('new-chat-id');
-    
+
     const wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
-    
+
     const forkBtn = wrapper.find('[data-testid="fork-chat-button"]');
     await forkBtn.trigger('click');
-    
+
     expect(mockForkChat).toHaveBeenCalledWith('msg-2');
   });
 
@@ -126,12 +126,12 @@ describe('ChatArea Fork Functionality', () => {
     const wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
-    
+
     const jumpBtn = wrapper.find('[data-testid="jump-to-origin-button"]');
     expect(jumpBtn.exists()).toBe(true);
-    
-    // In lucide-vue-next, icons are rendered as SVG. 
-    // We can check if it contains the ArrowUp component or class if it was stubbed, 
+
+    // In lucide-vue-next, icons are rendered as SVG.
+    // We can check if it contains the ArrowUp component or class if it was stubbed,
     // but since we're using full mount, we'll check for the icon component or title.
     // Lucide icons usually have a class like 'lucide-arrow-up'
     expect(jumpBtn.find('.lucide-arrow-up').exists()).toBe(true);

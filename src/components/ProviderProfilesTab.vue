@@ -3,8 +3,8 @@ import { ref } from 'vue';
 import { useSettings } from '../composables/useSettings';
 import { useToast } from '../composables/useToast';
 import type { ProviderProfile } from '../models/types';
-import { 
-  BookmarkPlus, Pencil, Trash, Check 
+import {
+  BookmarkPlus, Pencil, Trash, Check
 } from 'lucide-vue-next';
 import { capitalize } from '../utils/string';
 
@@ -27,7 +27,7 @@ const editingProviderProfileName = ref('');
 async function handleDeleteProviderProfile(id: string) {
   const index = props.profiles.findIndex(p => p.id === id);
   if (index === -1) return;
-  
+
   const deletedProfile = props.profiles[index];
   if (!deletedProfile) return;
 
@@ -35,7 +35,7 @@ async function handleDeleteProviderProfile(id: string) {
   newProfiles.splice(index, 1);
   emit('update:profiles', newProfiles);
   await updateProviderProfiles(JSON.parse(JSON.stringify(newProfiles)));
-  
+
   addToast({
     message: `Profile "${deletedProfile.name}" deleted`,
     actionLabel: 'Undo',
@@ -84,7 +84,7 @@ defineExpose({
         <BookmarkPlus class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Provider Profiles</h2>
       </div>
-    
+
       <p class="text-sm font-medium text-gray-500">Save and switch between different AI provider configurations easily.</p>
 
       <div v-if="!profiles || profiles.length === 0" class="flex flex-col items-center justify-center p-16 bg-gray-50 dark:bg-gray-800/30 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-800">
@@ -92,7 +92,7 @@ defineExpose({
           <BookmarkPlus class="w-12 h-12 text-gray-300" />
         </div>
         <p class="text-sm text-gray-400 font-bold mb-6">No profiles saved yet.</p>
-        <button 
+        <button
           @click="emit('goToConnection')"
           class="px-8 py-3 bg-blue-600 text-white text-sm font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95"
         >
@@ -101,15 +101,15 @@ defineExpose({
       </div>
 
       <div v-else class="grid grid-cols-1 gap-5">
-        <div 
-          v-for="providerProfile in profiles" 
+        <div
+          v-for="providerProfile in profiles"
           :key="providerProfile.id"
           class="group p-6 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-3xl flex items-center justify-between transition-all hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/5"
           data-testid="provider-profile-item"
         >
           <div class="flex-1 min-w-0 mr-6">
             <div v-if="editingProviderProfileId === providerProfile.id" class="flex items-center gap-2">
-              <input 
+              <input
                 v-model="editingProviderProfileName"
                 @keydown.enter="$event => !$event.isComposing && saveRename()"
                 @keyup.esc="editingProviderProfileId = null"
@@ -131,7 +131,7 @@ defineExpose({
           </div>
 
           <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
-            <button 
+            <button
               @click="startRename(providerProfile)"
               class="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors"
               title="Rename Profile"
@@ -139,7 +139,7 @@ defineExpose({
             >
               <Pencil class="w-4 h-4" />
             </button>
-            <button 
+            <button
               @click="handleDeleteProviderProfile(providerProfile.id)"
               class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"
               title="Delete Profile"

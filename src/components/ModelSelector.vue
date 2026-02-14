@@ -74,11 +74,11 @@ const floatingStyle = computed((): CSSProperties => {
   const rect = triggerBounding;
   const margin = 8;
   const dropdownHeight = 320; // Max expected height
-  
+
   // Decide vertical position
   const spaceBelow = windowHeight.value - rect.bottom.value;
   const preferredPosition = spaceBelow < dropdownHeight && rect.top.value > dropdownHeight ? 'top' : 'bottom';
-  
+
   // Set position ref for animation classes
   // eslint-disable-next-line vue/no-side-effects-in-computed-properties
   dropdownPosition.value = preferredPosition;
@@ -131,7 +131,7 @@ function toggleDropdown() {
     // Set initial highlighted index to current model or first item
     const currentIndex = combinedOptions.value.indexOf(props.modelValue);
     highlightedIndex.value = currentIndex >= 0 ? currentIndex : 0;
-    
+
     nextTick(() => {
       searchInputRef.value?.focus();
       scrollToHighlighted();
@@ -260,9 +260,9 @@ defineExpose({
       data-testid="model-selector-trigger"
     >
       <div class="flex items-center min-w-0 flex-1 overflow-hidden">
-        <span 
-          v-if="modelNameParts.prefix" 
-          class="font-normal whitespace-nowrap overflow-hidden min-w-0" 
+        <span
+          v-if="modelNameParts.prefix"
+          class="font-normal whitespace-nowrap overflow-hidden min-w-0"
           style="direction: rtl; text-align: left; text-overflow: ellipsis; flex: 0 1000 auto;"
         >
           <bdi style="direction: ltr; unicode-bidi: isolate;">{{ modelNameParts.prefix }}</bdi>
@@ -273,7 +273,7 @@ defineExpose({
       </div>
       <div class="flex items-center gap-1.5 shrink-0 ml-1">
         <Loader2 v-if="isFetchingModels" class="w-3 h-3 animate-spin text-gray-400" />
-        <ChevronDown 
+        <ChevronDown
           class="w-3.5 h-3.5 text-gray-400 transition-transform duration-200"
           :class="{ 'rotate-180': isOpen }"
         />
@@ -302,8 +302,8 @@ defineExpose({
               placeholder="Filter models..."
               @click.stop
             />
-            <button 
-              v-if="searchQuery" 
+            <button
+              v-if="searchQuery"
               @click="searchQuery = ''"
               class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"
             >
@@ -328,11 +328,11 @@ defineExpose({
             @click="selectModel(undefined)"
             class="w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors border-b border-gray-50 dark:border-gray-700/50 mb-1"
             :class="[
-              !modelValue 
-                ? 'text-blue-600 dark:text-blue-400 font-bold' 
+              !modelValue
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
                 : 'text-gray-500 dark:text-gray-400',
-              highlightedIndex === 0 
-                ? 'bg-gray-100 dark:bg-gray-700/50' 
+              highlightedIndex === 0
+                ? 'bg-gray-100 dark:bg-gray-700/50'
                 : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
             ]"
             data-testid="model-selector-clear"
@@ -355,8 +355,8 @@ defineExpose({
             @click="selectModel(model)"
             class="w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors"
             :class="[
-              model === modelValue 
-                ? 'text-blue-600 dark:text-blue-400 font-bold' 
+              model === modelValue
+                ? 'text-blue-600 dark:text-blue-400 font-bold'
                 : 'text-gray-700 dark:text-gray-300',
               highlightedIndex === (allowClear ? index + 1 : index)
                 ? 'bg-gray-100 dark:bg-gray-700/50'

@@ -81,7 +81,7 @@ describe('useChat Image Generation', () => {
     const chat = { id: 'chat-1', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
     chatStore.registerLiveInstance(chat);
     await chatStore.openChat('chat-1');
-    
+
     // Verify currentChat is set
     expect(toRaw(chatStore.currentChat.value)).toMatchObject({ id: 'chat-1' });
 
@@ -108,7 +108,7 @@ describe('useChat Image Generation', () => {
     const chat = { id: 'chat-attachments', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
     chatStore.registerLiveInstance(chat);
     await chatStore.openChat('chat-attachments');
-    
+
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
     const mockAttachment = { id: 'att-1', originalName: 'test.png', mimeType: 'image/png', status: 'memory', blob: new Blob(['test'], { type: 'image/png' }) } as any;
 
@@ -130,17 +130,17 @@ describe('useChat Image Generation', () => {
   });
 
   it('generateChatTitle strips sentinels from content', async () => {
-    const chat = { 
-      id: 'chat-title-test', 
+    const chat = {
+      id: 'chat-title-test',
       title: 'New Chat',
-      root: { 
-        items: [{ 
-          id: '1', role: 'user', content: '<!-- naidan_experimental_image_request {"w":512} -->A beautiful landscape', replies: { items: [] } 
-        }] 
-      } 
+      root: {
+        items: [{
+          id: '1', role: 'user', content: '<!-- naidan_experimental_image_request {"w":512} -->A beautiful landscape', replies: { items: [] }
+        }]
+      }
     } as any;
     chatStore.registerLiveInstance(chat);
-    
+
     await chatStore.generateChatTitle('chat-title-test');
 
     expect(mockOllamaChat).toHaveBeenCalledWith(expect.objectContaining({
@@ -148,39 +148,39 @@ describe('useChat Image Generation', () => {
         expect.objectContaining({ content: expect.stringContaining('A beautiful landscape') })
       ])
     }));
-    
+
     // Ensure the sentinel is NOT in the prompt sent to LLM
     const sentPrompt = mockOllamaChat.mock.calls[0]![0].messages.find((m: any) => m.role === 'user')?.content;
     expect(sentPrompt).not.toContain('naidan_experimental');
   });
 
   it('forking a chat preserves image requests and allows regeneration', async () => {
-    const chat = { 
-      id: 'chat-fork', 
-      root: { 
-        items: [{ 
-          id: 'u1', role: 'user', content: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->small cat', 
-          replies: { items: [{ id: 'a1', role: 'assistant', content: 'Failed', replies: { items: [] } }] } 
-        }] 
-      } 
+    const chat = {
+      id: 'chat-fork',
+      root: {
+        items: [{
+          id: 'u1', role: 'user', content: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->small cat',
+          replies: { items: [{ id: 'a1', role: 'assistant', content: 'Failed', replies: { items: [] } }] }
+        }]
+      }
     } as any;
     chatStore.registerLiveInstance(chat);
-    
+
     // Mock loadChat to return the chat structure so forkChat can work
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     // Fork from assistant message 'a1'
     const forkedChatId = await chatStore.forkChat('a1', 'chat-fork');
-    
+
     expect(forkedChatId).toBeDefined();
     const forkedChat = chatStore.getLiveChat({ id: forkedChatId! } as any) as any;
     expect(forkedChat).toBeDefined();
     expect(forkedChat.root.items[0].content).toContain('naidan_experimental_image_request');
-    
+
     // Regerenerating on the forked chat should trigger image generation again
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
     await chatStore.regenerateMessage('a1');
-    
+
     expect(updateSpy).toHaveBeenCalled();
   });
 
@@ -199,23 +199,23 @@ describe('useChat Image Generation', () => {
   });
 
   it('handleImageGeneration successfully processes a request', async () => {
-    const chat = { 
-      id: 'chat-img-process', 
-      modelId: 'llama3', 
-      root: { 
-        items: [{ 
-          id: 'u1', role: 'user', content: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->cat', 
-          replies: { items: [{ id: 'a1', role: 'assistant', content: '', replies: { items: [] } }] } 
-        }] 
-      } 
+    const chat = {
+      id: 'chat-img-process',
+      modelId: 'llama3',
+      root: {
+        items: [{
+          id: 'u1', role: 'user', content: '<!-- naidan_experimental_image_request {"width":256,"height":256,"model":"x/z-image-turbo:v1"} -->cat',
+          replies: { items: [{ id: 'a1', role: 'assistant', content: '', replies: { items: [] } }] }
+        }]
+      }
     } as any;
     chatStore.registerLiveInstance(chat);
-    
+
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
-    
+
     // Directly call regenerateMessage to trigger background generation
     await chatStore.regenerateMessage('a1');
-    
+
     // It should trigger updateChatContent at least once (for pending)
     await vi.waitFor(() => {
       expect(updateSpy).toHaveBeenCalled();

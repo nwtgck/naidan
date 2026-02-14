@@ -152,12 +152,12 @@ describe('OllamaProvider', () => {
 
     expect(onChunk).toHaveBeenCalledWith('valid');
     expect(onChunk).toHaveBeenCalledTimes(1);
-    
+
     // Assert error reporting
     expect(errorCount.value).toBe(1);
     expect(events.value[0]?.source).toBe('OllamaProvider');
     expect(events.value[0]?.message).toContain('Failed to parse or validate Ollama JSON');
-    
+
     const details = events.value[0]?.details as Record<string, unknown>;
     expect(details.line).toBe('{"invalid json on purpose": true');
 
@@ -280,7 +280,7 @@ describe('OllamaProvider', () => {
 
     expect(errorCount.value).toBe(1);
     expect(events.value[0]?.message).toContain("OLLAMA_ORIGINS='*'");
-    
+
     clearEvents();
   });
 
@@ -299,7 +299,7 @@ describe('OllamaProvider', () => {
 
     expect(errorCount.value).toBe(1);
     expect(events.value[0]?.message).toContain('Specific API Error Message');
-    
+
     clearEvents();
   });
 

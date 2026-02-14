@@ -35,10 +35,10 @@ describe('TransformersJsManager Dropdown', () => {
 
   it('should open the dropdown downwards with correct classes', async () => {
     const wrapper = mount(TransformersJsManager);
-    
+
     // Find the input to trigger dropdown focus or button to toggle
     const input = wrapper.find('input[placeholder*="Hugging Face model ID"]');
-    
+
     // Check dropdown is initially not visible
     expect(wrapper.find('.absolute.z-50.top-full').exists()).toBe(false);
 
@@ -55,7 +55,7 @@ describe('TransformersJsManager Dropdown', () => {
     expect(dropdown.classes()).toContain('top-full');
     expect(dropdown.classes()).toContain('mt-3');
     expect(dropdown.classes()).toContain('slide-in-from-top-2');
-    
+
     // Ensure it does NOT have the old upward classes
     expect(dropdown.classes()).not.toContain('bottom-full');
     expect(dropdown.classes()).not.toContain('mb-3');

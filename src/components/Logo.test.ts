@@ -36,7 +36,7 @@ describe('Logo', () => {
       const wrapper = mount(Logo);
       const logoImg = wrapper.find('img');
       expect(logoImg.exists()).toBe(true);
-      
+
       // Ensure we are NOT using the old div-mask approach
       const logoDiv = wrapper.find('div.logo-gradient');
       expect(logoDiv.exists()).toBe(false);
@@ -48,7 +48,7 @@ describe('Logo', () => {
       const src = logoImg.attributes('src');
       expect(src).toBeDefined();
       expect(src?.length).toBeGreaterThan(0);
-      
+
       // In a production build, this would be a data: URL or a relative path.
       // In tests, it depends on the mock, but the existence of the attribute is key.
     });

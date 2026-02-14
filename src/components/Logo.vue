@@ -21,13 +21,13 @@ defineExpose({
 <template>
   <div class="relative flex items-center justify-center group" :style="{ width: size + 'px', height: size + 'px' }">
     <!-- Vibrant Glow Effect -->
-    <div 
+    <div
       class="absolute inset-0 bg-sky-400/30 dark:bg-blue-400/20 blur-2xl rounded-full scale-150 opacity-0 group-hover:opacity-100 transition-all duration-700"
     ></div>
 
     <!-- Standard img tag for perfect SVG rendering -->
     <!-- Vite will inline the logoUrl as a Base64 string for file:// compatibility -->
-    <img 
+    <img
       :src="logoUrl"
       :width="size"
       :height="size"

@@ -3,8 +3,8 @@ import { ref, onMounted, watch, computed } from 'vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
 import { useLayout } from '../composables/useLayout';
-import { 
-  X, Settings2, 
+import {
+  X, Settings2,
   MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
@@ -102,7 +102,7 @@ function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 
   default: {
     const _ex: never = source;
     throw new Error(`Unhandled source: ${_ex}`);
-  }  
+  }
   }
 }
 
@@ -170,7 +170,7 @@ async function fetchModels() {
 
 // Auto-fetch for localhost or transformers_js when URL/Type changes
 watch([
-  () => localSettings.value.endpointUrl, 
+  () => localSettings.value.endpointUrl,
   () => localSettings.value.endpointType,
 ], ([url, type]) => {
   error.value = null;
@@ -247,8 +247,8 @@ defineExpose({
             </div>
             <h3 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Chat Specific Overrides</h3>
           </div>
-          <button 
-            @click="emit('close')" 
+          <button
+            @click="emit('close')"
             class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
             data-testid="close-button"
           >
@@ -263,7 +263,7 @@ defineExpose({
               <!-- Quick Switcher -->
               <div v-if="settings.providerProfiles && settings.providerProfiles.length > 0" class="w-full md:max-w-[240px] space-y-2">
                 <label class="block text-[10px] font-bold text-blue-600/70 dark:text-blue-400 uppercase tracking-wider ml-1">Quick Profile Switcher</label>
-                <select 
+                <select
                   v-model="selectedProviderProfileId"
                   @change="handleQuickProviderProfileChange"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-blue-800 rounded-xl px-4 py-2.5 text-xs font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
@@ -278,8 +278,8 @@ defineExpose({
               <div class="space-y-2 flex-1">
                 <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider ml-1">Quick Endpoint Presets</label>
                 <div class="flex flex-wrap gap-1.5">
-                  <button 
-                    v-for="preset in ENDPOINT_PRESETS" 
+                  <button
+                    v-for="preset in ENDPOINT_PRESETS"
                     :key="preset.name"
                     @click="applyPreset(preset)"
                     type="button"
@@ -296,7 +296,7 @@ defineExpose({
           <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div class="space-y-2">
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint Type</label>
-              <select 
+              <select
                 :value="localSettings.endpointType || 'global'"
                 @change="async (e) => {
                   const val = (e.target as HTMLSelectElement).value;
@@ -315,7 +315,7 @@ defineExpose({
 
             <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
-              <input 
+              <input
                 v-model="localSettings.endpointUrl"
                 @blur="saveChanges"
                 @keyup.enter="(e) => (e.target as HTMLInputElement).blur()"
@@ -333,7 +333,7 @@ defineExpose({
             <div class="space-y-2" v-if="effectiveEndpointType !== 'transformers_js'">
               <div class="flex items-center justify-between ml-1">
                 <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Custom HTTP Headers</label>
-                <button 
+                <button
                   @click="addHeader"
                   type="button"
                   class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
@@ -344,26 +344,26 @@ defineExpose({
               </div>
 
               <div v-if="localSettings.endpointHttpHeaders && localSettings.endpointHttpHeaders.length > 0" class="space-y-2">
-                <div 
-                  v-for="(header, index) in localSettings.endpointHttpHeaders" 
+                <div
+                  v-for="(header, index) in localSettings.endpointHttpHeaders"
                   :key="index"
                   class="flex gap-2"
                 >
-                  <input 
+                  <input
                     v-model="header[0]"
                     @blur="saveChanges"
                     type="text"
                     class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                     placeholder="Name"
                   />
-                  <input 
+                  <input
                     v-model="header[1]"
                     @blur="saveChanges"
                     type="text"
                     class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                     placeholder="Value"
                   />
-                  <button 
+                  <button
                     @click="removeHeader(index)"
                     class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                   >
@@ -376,7 +376,7 @@ defineExpose({
 
             <div class="space-y-2">
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
-              <ModelSelector 
+              <ModelSelector
                 :model-value="localSettings.modelId"
                 @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
                 :models="sortedAvailableModels"
@@ -409,8 +409,8 @@ defineExpose({
               <div class="space-y-1">
                 <p class="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Local Overrides</p>
                 <p class="text-[11px] text-gray-500/70 dark:text-gray-400/70 leading-relaxed font-medium">
-                  These settings only apply to this chat. 
-                  <button 
+                  These settings only apply to this chat.
+                  <button
                     @click="handleRestoreDefaults"
                     class="font-bold underline hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     data-testid="chat-setting-restore-defaults"
@@ -431,30 +431,30 @@ defineExpose({
                     <MessageSquareQuote class="w-3 h-3" />
                     Chat System Prompt
                   </label>
-                
+
                   <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-                    <button 
+                    <button
                       @click="updateSystemPromptBehavior('inherit')"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="!localSettings.systemPrompt ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Inherit
                     </button>
-                    <button 
+                    <button
                       @click="updateSystemPromptBehavior('override', true)"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Clear
                     </button>
-                    <button 
+                    <button
                       @click="updateSystemPromptBehavior('override')"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Override
                     </button>
-                    <button 
+                    <button
                       @click="updateSystemPromptBehavior('append')"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
@@ -473,10 +473,10 @@ defineExpose({
                   <p class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Parent Prompt Cleared</p>
                   <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1">This chat will not use any system instructions.</p>
                 </div>
-                <textarea 
+                <textarea
                   v-else
                   :value="localSettings.systemPrompt?.content || ''"
-                  @input="e => { 
+                  @input="e => {
                     const val = (e.target as HTMLTextAreaElement).value;
                     if(localSettings.systemPrompt) {
                       localSettings.systemPrompt.content = val;
@@ -518,8 +518,8 @@ defineExpose({
             </div>
 
             <div class="p-6 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-3xl">
-              <LmParametersEditor 
-                :model-value="localSettings.lmParameters" 
+              <LmParametersEditor
+                :model-value="localSettings.lmParameters"
                 @update:model-value="val => { localSettings.lmParameters = val; saveChanges(); }"
               />
             </div>
@@ -560,13 +560,13 @@ defineExpose({
   to { opacity: 1; }
 }
 @keyframes zoom-in {
-  from { 
-    opacity: 0; 
-    transform: scale(0.9); 
+  from {
+    opacity: 0;
+    transform: scale(0.9);
   }
-  to { 
-    opacity: 1; 
-    transform: scale(1); 
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 @keyframes slide-in-from-top {

@@ -69,17 +69,17 @@ describe('ImportExportService', () => {
   describe('exportData', () => {
     it('handles empty storage gracefully and uses dumpWithoutLock', async () => {
       mockStorage.dumpWithoutLock.mockResolvedValue({
-        structure: { 
+        structure: {
           settings: {
             endpointType: 'openai',
             endpointUrl: '',
             autoTitleEnabled: true,
             storageType: 'local',
             providerProfiles: []
-          } as any, 
-          hierarchy: { items: [] }, 
-          chatMetas: [], 
-          chatGroups: [] 
+          } as any,
+          hierarchy: { items: [] },
+          chatMetas: [],
+          chatGroups: []
         },
         contentStream: (async function* () {})()
       });
@@ -94,7 +94,7 @@ describe('ImportExportService', () => {
       const zip = new JSZip();
       zip.file('export-manifest.json', '{}');
       zip.file('chat-metas.json', JSON.stringify({ entries: [] }));
-      
+
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const config: ImportConfig = {
         data: { mode: 'replace' },
@@ -113,7 +113,7 @@ describe('ImportExportService', () => {
     it('preserves timestamps but remaps IDs', async () => {
       const zip = new JSZip();
       zip.file('export-manifest.json', '{}');
-      
+
       const ORIGINAL_TIME = 123456789;
       const chatMeta = createValidChatMetaDto({ id: UUID_C1, updatedAt: ORIGINAL_TIME, createdAt: ORIGINAL_TIME });
       zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
@@ -126,7 +126,7 @@ describe('ImportExportService', () => {
       const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
       for await (const chunk of snapshot.contentStream) {
-        chunks.push(chunk); 
+        chunks.push(chunk);
       }
 
       const chatChunk = chunks.find(c => c.type === 'chat');
@@ -143,7 +143,7 @@ describe('ImportExportService', () => {
       const now = 1000;
       const chatMeta = createValidChatMetaDto({ id: UUID_C1 });
       zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
-      
+
       const content = {
         root: {
           items: [{
@@ -151,8 +151,8 @@ describe('ImportExportService', () => {
             replies: {
               items: [{
                 id: UUID_M2, role: 'assistant', content: 'response', timestamp: now + 100,
-                attachments: [{ 
-                  id: UUID_A1, binaryObjectId: UUID_A1, name: 'img.png', status: 'persisted' 
+                attachments: [{
+                  id: UUID_A1, binaryObjectId: UUID_A1, name: 'img.png', status: 'persisted'
                 }],
                 replies: { items: [] }
               }]
@@ -161,7 +161,7 @@ describe('ImportExportService', () => {
         }
       };
       zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify(content));
-      
+
       const shard = UUID_A1.slice(-2);
       const binFolder = zip.folder('binary-objects')!.folder(shard);
       binFolder!.file(`${UUID_A1}.bin`, new Blob(['...']));
@@ -180,7 +180,7 @@ describe('ImportExportService', () => {
       const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
       for await (const chunk of snapshot.contentStream) {
-        chunks.push(chunk); 
+        chunks.push(chunk);
       }
 
       const chatChunk = chunks.find(c => c.type === 'chat');
@@ -194,10 +194,10 @@ describe('ImportExportService', () => {
     it('applies prefixes to both chat titles and group names', async () => {
       const zip = new JSZip();
       zip.file('export-manifest.json', '{}');
-      
+
       const groupDto: ChatGroupDto = { id: UUID_G1, name: 'General', updatedAt: 1000, isCollapsed: false };
       zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify(groupDto));
-      
+
       const chatMeta = createValidChatMetaDto({ id: UUID_C1, title: 'Old Title' });
       zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
       zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
@@ -211,7 +211,7 @@ describe('ImportExportService', () => {
       const snapshot = calls[0]![0] as StorageSnapshot;
       const chunks = [];
       for await (const chunk of snapshot.contentStream) {
-        chunks.push(chunk); 
+        chunks.push(chunk);
       }
 
       expect(snapshot.structure.chatGroups.find(g => g.name === '[Group] General')).toBeDefined();
@@ -228,13 +228,13 @@ describe('ImportExportService', () => {
       const existingHierarchy = { items: [{ type: 'chat', id: 'existing-chat' }] };
       mockStorage.loadHierarchy.mockResolvedValue(existingHierarchy as any);
 
-      await service.executeImport(zipBlob, { 
-        data: { mode: 'append' }, 
-        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' } 
+      await service.executeImport(zipBlob, {
+        data: { mode: 'append' },
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
       });
 
       expect(mockStorage.clearAll).not.toHaveBeenCalled();
-      
+
       // Verify that the hierarchy sent to restore contains the existing item
       const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
       expect(snapshot.structure.hierarchy.items).toContainEqual({ type: 'chat', id: 'existing-chat' });
@@ -250,7 +250,7 @@ describe('ImportExportService', () => {
       })));
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      mockStorage.loadSettings.mockResolvedValue({ 
+      mockStorage.loadSettings.mockResolvedValue({
         endpointType: 'ollama',
         lmParameters: { temperature: 0.9, maxCompletionTokens: 500, stop: ['OLD'] }
       } as any);
@@ -317,7 +317,7 @@ describe('ImportExportService', () => {
       const zip = new JSZip();
       const now = Date.now();
       zip.file('export-manifest.json', JSON.stringify({ app_version: '1.0' }));
-      
+
       zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', updatedAt: now, isCollapsed: false }));
       zip.file('chat-metas.json', JSON.stringify({ entries: [
         { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: now, createdAt: now },
@@ -328,9 +328,9 @@ describe('ImportExportService', () => {
       // Add a binary object in a shard
       const shard = UUID_A1.slice(-2);
       zip.folder('binary-objects')!.folder(shard)!.file(`${UUID_A1}.bin`, new Blob(['...']));
-      
+
       const preview = await service.analyze(await zip.generateAsync({ type: 'blob' }));
-      
+
       expect(preview.stats.chatsCount).toBe(2); // Broken is skipped
       expect(preview.stats.attachmentsCount).toBe(1);
       expect(preview.items).toHaveLength(2); // Group 1 and Root Chat C2

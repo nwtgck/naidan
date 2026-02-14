@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { transformersJsService } from '../services/transformers-js';
-import { 
-  Loader2, CheckCircle2, AlertCircle, Download, FolderOpen, RefreshCcw, Trash2, 
+import {
+  Loader2, CheckCircle2, AlertCircle, Download, FolderOpen, RefreshCcw, Trash2,
   ChevronDown, Plus, HardDriveDownload, X, BrainCircuit, PowerOff, ExternalLink, Search, FileCode, RotateCcw
 } from 'lucide-vue-next';
 import { useToast } from '../composables/useToast';
@@ -19,6 +19,9 @@ const emit = defineEmits<{
 
 const status = ref(transformersJsService.getState().status);
 const progress = ref(transformersJsService.getState().progress);
+const progressItems = ref(transformersJsService.getState().progressItems);
+const totalLoadedAmount = ref(transformersJsService.getState().totalLoadedAmount);
+const totalSizeAmount = ref(transformersJsService.getState().totalSizeAmount);
 const error = ref(transformersJsService.getState().error);
 const activeModelId = ref(transformersJsService.getState().activeModelId);
 const device = ref(transformersJsService.getState().device);
@@ -50,6 +53,7 @@ const cachedModels = ref<Array<{ id: string; isLocal: boolean; size: number; fil
 const searchQuery = ref('');
 const listSearchQuery = ref('');
 const isDropdownOpen = ref(false);
+const isDetailsExpanded = ref(true);
 const containerRef = ref<HTMLElement | null>(null);
 const isImporting = ref(false);
 const importProgress = ref(0);
@@ -66,13 +70,13 @@ const formatSize = (bytes: number) => {
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
 };
 
 const formatDate = (timestamp: number) => {
   if (!timestamp) return 'Unknown';
-  return new Date(timestamp).toLocaleDateString(undefined, { 
-    month: 'short', 
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
@@ -81,7 +85,7 @@ const formatDate = (timestamp: number) => {
 
 const filteredPresets = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
-  
+
   // Filter out models that are already cached
   const cachedIds = new Set(cachedModels.value.map(m => m.id));
   const availablePresets = defaultModels.filter(m => {
@@ -97,10 +101,10 @@ const filteredPresets = computed(() => {
 
 const filteredCachedModels = computed(() => {
   const query = listSearchQuery.value.trim().toLowerCase();
-  const models = query 
+  const models = query
     ? cachedModels.value.filter(m => m.id.toLowerCase().includes(query))
     : [...cachedModels.value];
-  
+
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
   return models.sort((a, b) => collator.compare(a.id, b.id));
 });
@@ -120,14 +124,18 @@ onMounted(async () => {
   searchQuery.value = '';
   document.addEventListener('mousedown', handleClickOutside);
   await refreshLocalModels();
-  unsubscribe = transformersJsService.subscribe((s, p, e, c, l) => {
+  unsubscribe = transformersJsService.subscribe((s, p, e, c, l, items) => {
     status.value = s;
     progress.value = p;
     error.value = e;
     isCached.value = c;
     isLoadingFromCache.value = l;
-    activeModelId.value = transformersJsService.getState().activeModelId;
-    device.value = transformersJsService.getState().device;
+    progressItems.value = items;
+    const state = transformersJsService.getState();
+    activeModelId.value = state.activeModelId;
+    device.value = state.device;
+    totalLoadedAmount.value = state.totalLoadedAmount;
+    totalSizeAmount.value = state.totalSizeAmount;
   });
 });
 
@@ -177,7 +185,7 @@ const handleRestart = async () => {
 const downloadModel = async () => {
   const modelId = searchQuery.value.trim();
   if (!modelId || isStandalone) return;
-  
+
   lastDownloadError.value = null;
   // Checking if it is already cached
   const isAlreadyCached = cachedModels.value.some(m => m.id === modelId || m.id === `hf.co/${modelId}`);
@@ -190,7 +198,7 @@ const downloadModel = async () => {
     await transformersJsService.downloadModel(modelId);
     await refreshLocalModels();
     addToast({ message: `Successfully downloaded: ${modelId}` });
-    
+
     // Auto-load after download
     await loadModel(modelId);
   } catch (e) {
@@ -230,7 +238,7 @@ const handleImportLocalModel = async (event: Event) => {
   const pathSegments = relativePath.split('/');
   let modelName = pathSegments[0];
 
-  // If the user selected a folder named 'models' or 'local', 
+  // If the user selected a folder named 'models' or 'local',
   // try to take the actual model name from the next level
   if ((modelName === 'models' || modelName === 'local') && pathSegments.length > 1) {
     modelName = pathSegments[1]!;
@@ -243,7 +251,7 @@ const handleImportLocalModel = async (event: Event) => {
 
   isImporting.value = true;
   importProgress.value = 0;
-  
+
   try {
     let completed = 0;
     for (const file of files) {
@@ -253,7 +261,7 @@ const handleImportLocalModel = async (event: Event) => {
       completed++;
       importProgress.value = Math.round((completed / files.length) * 100);
     }
-    
+
     addToast({ message: `Successfully imported model: user/${modelName}` });
     await refreshLocalModels();
   } catch (err) {
@@ -285,9 +293,9 @@ defineExpose({
         </p>
       </div>
       <div class="flex justify-end border-t border-amber-200/30 dark:border-amber-900/20 pt-3">
-        <a 
-          href="https://github.com/nwtgck/naidan/releases" 
-          target="_blank" 
+        <a
+          href="https://github.com/nwtgck/naidan/releases"
+          target="_blank"
           rel="noopener noreferrer"
           class="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95"
         >
@@ -302,13 +310,13 @@ defineExpose({
       <div class="flex items-start gap-3 text-red-700 dark:text-red-400 leading-relaxed italic text-sm">
         <AlertCircle class="w-5 h-5 shrink-0 mt-0.5" />
         <p>
-          In-browser AI (Transformers.js) is not available because the browser does not support or allow access to <strong>Origin Private File System (OPFS)</strong>, which is required for storing model files. 
+          In-browser AI (Transformers.js) is not available because the browser does not support or allow access to <strong>Origin Private File System (OPFS)</strong>, which is required for storing model files.
           This often happens in private browsing modes or insecure contexts.
         </p>
       </div>
     </div>
 
-    <div 
+    <div
       class="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-400"
       :class="{ 'opacity-40 pointer-events-none grayscale select-none': isStandalone || !isOpfsSupported }"
     >
@@ -319,9 +327,9 @@ defineExpose({
             <HardDriveDownload class="w-5 h-5 text-purple-500" />
             <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Add New Models</h2>
           </div>
-          <a 
-            href="https://huggingface.co/onnx-community/models" 
-            target="_blank" 
+          <a
+            href="https://huggingface.co/onnx-community/models"
+            target="_blank"
             rel="noopener noreferrer"
             class="flex items-center gap-1 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
           >
@@ -346,7 +354,7 @@ defineExpose({
             <div class="flex flex-col sm:flex-row gap-3">
               <div class="relative flex-1 flex gap-2" ref="containerRef">
                 <div class="relative flex-1">
-                  <input 
+                  <input
                     v-model="searchQuery"
                     type="text"
                     placeholder="Enter Hugging Face model ID (e.g. onnx-community/phi-4)"
@@ -354,7 +362,7 @@ defineExpose({
                     @focus="isDropdownOpen = true"
                     @keydown.enter="downloadModel"
                   />
-                  <button 
+                  <button
                     @click="isDropdownOpen = !isDropdownOpen"
                     class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                     type="button"
@@ -367,7 +375,7 @@ defineExpose({
                     <div class="max-h-[320px] overflow-y-auto p-2 custom-scrollbar overscroll-contain">
                       <!-- Use Custom ID Option -->
                       <div v-if="filteredPresets.showCustom">
-                        <button 
+                        <button
                           @click="selectModelId(searchQuery)"
                           class="w-full text-left px-4 py-3 rounded-2xl text-xs font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 flex items-center gap-2 border border-dashed border-purple-200 dark:border-purple-800/50 mb-2"
                         >
@@ -379,8 +387,8 @@ defineExpose({
                       <!-- Recommended Section -->
                       <div v-if="filteredPresets.recommended.length > 0">
                         <div class="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Preset Model Paths</div>
-                        <button 
-                          v-for="m in filteredPresets.recommended" 
+                        <button
+                          v-for="m in filteredPresets.recommended"
                           :key="m"
                           @click="selectModelId(m)"
                           class="w-full text-left px-4 py-3 rounded-2xl text-xs font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -393,8 +401,8 @@ defineExpose({
                   </div>
                 </div>
               </div>
-              <button 
-                @click="downloadModel" 
+              <button
+                @click="downloadModel"
                 :disabled="status === 'loading' || !searchQuery.trim()"
                 class="flex items-center justify-center gap-2 px-8 py-3.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95 shrink-0"
               >
@@ -424,13 +432,52 @@ defineExpose({
                 <div class="flex items-center justify-between mb-2 px-1">
                   <span class="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-2">
                     <Loader2 class="w-3 h-3 animate-spin" />
-                    Downloading Assets...
+                    Overall Progress
                   </span>
-                  <span class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ progress }}%</span>
+                  <div class="flex flex-col items-end">
+                    <span class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ progress }}%</span>
+                    <span v-if="totalLoadedAmount > 0" class="text-[8px] text-gray-400 font-bold uppercase tabular-nums">
+                      {{ formatSize(totalLoadedAmount) }} / {{ formatSize(totalSizeAmount) }}
+                    </span>
+                  </div>
                 </div>
                 <div class="h-1.5 w-full bg-purple-100 dark:bg-purple-900/30 rounded-full overflow-hidden">
                   <div class="h-full bg-purple-600 dark:bg-purple-400 transition-all duration-300 ease-out" :style="{ width: progress + '%' }"></div>
                 </div>
+
+                <!-- Detailed File Progress -->
+                <div v-if="progressItems && Object.keys(progressItems).length > 0" class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3 animate-in fade-in duration-500">
+                  <button
+                    @click="isDetailsExpanded = !isDetailsExpanded"
+                    class="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors uppercase tracking-widest mb-3"
+                  >
+                    <ChevronDown class="w-2.5 h-2.5 transition-transform" :class="{ '-rotate-90': !isDetailsExpanded }" />
+                    Asset Details
+                  </button>
+
+                  <div v-if="isDetailsExpanded" class="space-y-3 ml-1 border-l-2 border-gray-50 dark:border-gray-800/50 pl-3">
+                    <template v-for="(info, fileName) in progressItems" :key="fileName">
+                      <div v-if="info.progress !== undefined && info.progress < 100" class="space-y-1.5">
+                        <div class="flex justify-between text-[8px] font-medium tracking-tight">
+                          <div class="flex flex-col min-w-0">
+                            <span class="text-gray-500 truncate" :title="String(fileName)">{{ fileName }}</span>
+                            <span v-if="info.loaded !== undefined" class="text-[7px] text-gray-400 font-bold uppercase tabular-nums">
+                              {{ formatSize(info.loaded) }} / {{ info.total ? formatSize(info.total) : '??' }}
+                            </span>
+                          </div>
+                          <span class="text-purple-500/70 shrink-0 self-start">{{ Math.round(info.progress) }}%</span>
+                        </div>
+                        <div class="h-0.5 w-full bg-gray-100 dark:bg-gray-800/50 rounded-full overflow-hidden">
+                          <div
+                            class="h-full bg-purple-400/40 dark:bg-purple-500/30 transition-all duration-300"
+                            :style="{ width: info.progress + '%' }"
+                          ></div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
                 <p class="text-[10px] text-gray-400 mt-2 ml-1 italic">Models are cached locally in the browser (OPFS) for offline use.</p>
               </template>
             </div>
@@ -443,15 +490,15 @@ defineExpose({
             <h3 class="text-sm font-bold text-gray-700 dark:text-gray-300">Import from Local Files</h3>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">Select a folder containing ONNX model files to import it into the browser's storage.</p>
           </div>
-          
+
           <div class="flex justify-center">
             <label class="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 font-bold text-sm rounded-xl cursor-pointer transition-all border border-gray-200 dark:border-gray-700 shadow-sm active:scale-95">
               <FolderOpen class="w-5 h-5" />
               <span>Select Model Folder</span>
-              <input 
-                type="file" 
-                class="hidden" 
-                webkitdirectory 
+              <input
+                type="file"
+                class="hidden"
+                webkitdirectory
                 @change="handleImportLocalModel"
                 :disabled="isImporting || status === 'loading'"
               />
@@ -459,7 +506,7 @@ defineExpose({
           </div>
         </div>
       </section>
-      
+
       <!-- Section 2: Engine Status & Control -->
       <section class="space-y-6">
         <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
@@ -467,8 +514,8 @@ defineExpose({
             <BrainCircuit class="w-5 h-5 text-purple-500" />
             <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Engine Control</h2>
           </div>
-          <button 
-            @click="refreshLocalModels" 
+          <button
+            @click="refreshLocalModels"
             class="flex items-center gap-1.5 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
           >
             <RefreshCcw class="w-3 h-3" :class="{ 'animate-spin': isImporting }" />
@@ -477,7 +524,7 @@ defineExpose({
         </div>
 
         <!-- Status Card -->
-        <div class="rounded-3xl border border-gray-200 dark:border-gray-700 p-6" 
+        <div class="rounded-3xl border border-gray-200 dark:border-gray-700 p-6"
              :class="{
                'bg-gray-50/50 dark:bg-gray-800/30': status === 'idle',
                'bg-blue-50/50 dark:bg-blue-900/10 border-blue-200/50 dark:border-blue-800/50': status === 'loading',
@@ -496,8 +543,8 @@ defineExpose({
                 <h4 class="font-bold text-base text-gray-900 dark:text-gray-100">
                   <template v-if="isImporting">Importing Local Model... {{ importProgress }}%</template>
                   <template v-else>
-                    {{ status === 'idle' ? 'Engine Idle' : 
-                      status === 'loading' ? 'Initializing Engine...' : 
+                    {{ status === 'idle' ? 'Engine Idle' :
+                      status === 'loading' ? 'Initializing Engine...' :
                       status === 'ready' ? 'Engine Ready' : 'Error' }}
                   </template>
                 </h4>
@@ -508,7 +555,7 @@ defineExpose({
                   <span v-if="status === 'ready'" class="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
                     {{ device }}
                   </span>
-                  <button 
+                  <button
                     v-if="status === 'ready'"
                     @click="unloadModel"
                     class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
@@ -516,7 +563,7 @@ defineExpose({
                   >
                     <PowerOff class="w-4 h-4" />
                   </button>
-                  <button 
+                  <button
                     @click="handleRestart"
                     class="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
                     title="Hard restart AI worker engine"
@@ -530,11 +577,11 @@ defineExpose({
                 <template v-else>
                   {{ status === 'idle' ? 'Load a model from the list below to start in-browser inference.' :
                     status === 'loading' ? (isLoadingFromCache ? `Loading from local storage... ${progress > 0 ? progress + '%' : ''}` : `Downloading and compiling... ${progress}%`) :
-                    status === 'ready' ? `Active Model: ${activeModelId}` : 
+                    status === 'ready' ? `Active Model: ${activeModelId}` :
                     (lastDownloadError ? 'Download failed. Check details in the section below.' : error) }}
                 </template>
               </p>
-              
+
               <!-- Progress Bar -->
               <div v-if="status === 'loading' || isImporting" class="mt-5 h-2 w-full bg-blue-200 dark:bg-blue-900/50 rounded-full overflow-hidden">
                 <div class="h-full bg-blue-600 dark:bg-blue-400 transition-all duration-300 ease-out" :style="{ width: (isImporting ? importProgress : progress) + '%' }"></div>
@@ -549,7 +596,7 @@ defineExpose({
             <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest shrink-0">Downloaded Models</h3>
             <div class="relative flex-1 max-w-sm">
               <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <input 
+              <input
                 v-model="listSearchQuery"
                 type="text"
                 placeholder="Filter downloaded models..."
@@ -560,8 +607,8 @@ defineExpose({
 
           <div v-if="filteredCachedModels.length > 0" class="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar -mr-2 overscroll-contain">
             <div class="grid grid-cols-1 gap-2 pb-1">
-              <div 
-                v-for="model in filteredCachedModels" 
+              <div
+                v-for="model in filteredCachedModels"
                 :key="model.id"
                 class="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-sm hover:border-purple-200 dark:hover:border-purple-900/50 transition-all group relative"
               >
@@ -584,14 +631,14 @@ defineExpose({
                   </div>
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
-                  <button 
+                  <button
                     @click="loadModel(model.id)"
                     :disabled="status === 'loading' || activeModelId === model.id"
                     class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-[10px] font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-all disabled:opacity-50"
                   >
                     {{ activeModelId === model.id ? 'Active' : 'Load' }}
                   </button>
-                  <button 
+                  <button
                     @click="deleteModel(model.id)"
                     class="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                     title="Delete model"

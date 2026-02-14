@@ -13,12 +13,12 @@ export async function reencodeImage({ blob, format }: {
   const canvas = document.createElement('canvas');
   canvas.width = img.width;
   canvas.height = img.height;
-  
+
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Failed to get canvas context');
-  
+
   ctx.drawImage(img, 0, 0);
-  
+
   const mimeType = `image/${format}`;
   return new Promise((resolve, reject) => {
     canvas.toBlob((result) => {

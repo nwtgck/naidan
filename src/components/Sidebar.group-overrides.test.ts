@@ -10,7 +10,7 @@ const mockChats = ref<ChatSummary[]>([]);
 const mockCurrentChatGroup = ref<ChatGroup | null>(null);
 const mockOpenChatGroup = vi.fn((id: string | null) => {
   if (id === null) {
-    mockCurrentChatGroup.value = null; return; 
+    mockCurrentChatGroup.value = null; return;
   }
   const group = mockChatGroups.value.find(g => g.id === id);
   if (group) mockCurrentChatGroup.value = group;
@@ -107,7 +107,7 @@ describe('Sidebar Group Overrides', () => {
       global: { plugins: [router], stubs: globalStubs },
     });
     await nextTick();
-    
+
     // Find the group item container
     const groupItem = wrapper.find('[data-sidebar-group-id="g1"]');
     expect(groupItem.exists()).toBe(true);
@@ -121,7 +121,7 @@ describe('Sidebar Group Overrides', () => {
       global: { plugins: [router], stubs: globalStubs },
     });
     await nextTick();
-    
+
     // Expansion icon is inside a button
     const collapseButton = wrapper.find('button.p-1.-ml-1');
     expect(collapseButton.exists()).toBe(true);
@@ -136,7 +136,7 @@ describe('Sidebar Group Overrides', () => {
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });
-    
+
     mockCurrentChatGroup.value = mockChatGroups.value[0]!;
     await nextTick();
 
@@ -148,7 +148,7 @@ describe('Sidebar Group Overrides', () => {
   it('clears currentChatGroup when a chat item is clicked', async () => {
     mockChats.value = [{ id: 'c1', title: 'Chat 1', updatedAt: 0 }];
     mockCurrentChatGroup.value = mockChatGroups.value[0]!;
-    
+
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },
     });

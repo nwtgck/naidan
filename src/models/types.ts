@@ -1,9 +1,9 @@
 /**
  * Domain Definitions (Single Source of Truth)
- * 
+ *
  * These models represent the definitive state used by the UI and business logic.
- * They are strictly decoupled from DTOs to prevent persistence details from 
- * leaking into the core, ensuring structural integrity and preventing data 
+ * They are strictly decoupled from DTOs to prevent persistence details from
+ * leaking into the core, ensuring structural integrity and preventing data
  * inconsistencies.
  */
 // --- Domain Definitions (Business Logic Layer) ---
@@ -21,7 +21,7 @@ export interface LmParameters {
   stop?: string[];
 }
 
-export type SystemPrompt = 
+export type SystemPrompt =
   | { behavior: 'override'; content: string | null }
   | { behavior: 'append'; content: string };
 
@@ -31,7 +31,7 @@ export interface Endpoint {
   httpHeaders?: [string, string][];
 }
 
-export type MultimodalContent = 
+export type MultimodalContent =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
 
@@ -49,7 +49,7 @@ export interface AttachmentBase {
   uploadedAt: number;
 }
 
-export type Attachment = 
+export type Attachment =
   | (AttachmentBase & { status: 'persisted' })
   | (AttachmentBase & { status: 'memory'; blob: Blob })
   | (AttachmentBase & { status: 'missing' });
@@ -89,11 +89,11 @@ export interface Chat {
   groupId?: string | null;
   root: MessageBranch;
   currentLeafId?: string;
-  
+
   createdAt: number;
   updatedAt: number;
   debugEnabled: boolean;
-  
+
   // TODO: Refactor into atomic endpoint object (e.g. endpoint: { type, url, httpHeaders })
   // to ensure data consistency and prevent invalid states (e.g. type without URL).
   endpointType?: EndpointType;
@@ -140,7 +140,7 @@ export interface ChatContent {
 export type ChatSummary = Pick<Chat, 'id' | 'title' | 'updatedAt' | 'groupId'>;
 
 // Sidebar hierarchy - order is implicit by position in array
-export type SidebarItem = 
+export type SidebarItem =
   | { id: string; type: 'chat'; chat: ChatSummary }
   | { id: string; type: 'chat_group'; chatGroup: ChatGroup };
 

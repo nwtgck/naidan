@@ -1,11 +1,11 @@
 /**
  * LLM Service Providers
- * 
+ *
  * This file handles communication with various LLM APIs (OpenAI compatible and Ollama).
- * 
- * CRITICAL: All API responses MUST be validated using Zod schemas. 
- * External APIs are unreliable and may change their response structure without notice. 
- * Validation ensures that type errors do not leak into the application logic 
+ *
+ * CRITICAL: All API responses MUST be validated using Zod schemas.
+ * External APIs are unreliable and may change their response structure without notice.
+ * Validation ensures that type errors do not leak into the application logic
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
@@ -60,7 +60,7 @@ export interface LLMProvider {
     parameters?: LmParameters;
     signal?: AbortSignal;
   }): Promise<void>;
-  
+
   listModels(params: { signal?: AbortSignal }): Promise<string[]>;
 }
 
@@ -161,7 +161,7 @@ export class OpenAIProvider implements LLMProvider {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      
+
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
@@ -320,7 +320,7 @@ export class OllamaProvider implements LLMProvider {
       }
       }
     });
-    
+
     const body: OllamaChatRequest = {
       model,
       messages: ollamaMessages,
@@ -335,7 +335,7 @@ export class OllamaProvider implements LLMProvider {
       if (parameters.presencePenalty !== undefined) options.presence_penalty = parameters.presencePenalty;
       if (parameters.frequencyPenalty !== undefined) options.frequency_penalty = parameters.frequencyPenalty;
       if (parameters.stop !== undefined) options.stop = parameters.stop;
-      
+
       if (Object.keys(options).length > 0) {
         body.options = options;
       }
@@ -405,7 +405,7 @@ export class OllamaProvider implements LLMProvider {
           const rawJson = JSON.parse(line);
           // Validate with Zod
           const validated = OllamaChatChunkSchema.parse(rawJson);
-          
+
           const thinking = validated.message?.thinking || '';
           if (thinking) {
             if (!isThinking) {
@@ -423,7 +423,7 @@ export class OllamaProvider implements LLMProvider {
             }
             onChunk(content);
           }
-          
+
           if (validated.done) {
             if (isThinking) {
               onChunk('</think>');
@@ -499,9 +499,9 @@ export class OllamaProvider implements LLMProvider {
 
     if (images.length > 0) {
       const url = `${endpoint.replace(/\/$/, '')}/api/generate`;
-      
+
       const b64Images = await Promise.all(images.map(img => blobToBase64(img.blob)));
-      
+
       const body = {
         model,
         prompt,
@@ -637,7 +637,7 @@ export class OllamaProvider implements LLMProvider {
       throw new Error('Invalid response format from Ollama: data[0] is missing');
     }
     const b64Data = first.b64_json;
-    
+
     // Avoid fetching data URLs due to Content Security Policy restrictions.
     // Convert base64 string to Blob (browser-compatible)
     const byteCharacters = atob(b64Data);

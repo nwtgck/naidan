@@ -7,7 +7,7 @@ class MockFileSystemFileHandle {
   kind = 'file' as const;
   constructor(public name: string, private blob: Blob = new Blob()) {}
   async getFile() {
-    return this.blob; 
+    return this.blob;
   }
   createWritable() {
     return Promise.resolve({
@@ -29,7 +29,7 @@ class MockFileSystemDirectoryHandle {
     if (!this.entries.has(name)) {
       if (options?.create) this.entries.set(name, new MockFileSystemDirectoryHandle(name));
       else {
-        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err; 
+        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err;
       }
     }
     const entry = this.entries.get(name);
@@ -40,7 +40,7 @@ class MockFileSystemDirectoryHandle {
     if (!this.entries.has(name)) {
       if (options?.create) this.entries.set(name, new MockFileSystemFileHandle(name));
       else {
-        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err; 
+        const err = new Error('Not found'); err.name = 'NotFoundError'; throw err;
       }
     }
     const entry = this.entries.get(name);
@@ -48,13 +48,13 @@ class MockFileSystemDirectoryHandle {
     return entry as MockFileSystemFileHandle;
   }
   async removeEntry(name: string, _options?: { recursive?: boolean }) {
-    this.entries.delete(name); 
+    this.entries.delete(name);
   }
   async *values() {
-    for (const entry of this.entries.values()) yield entry; 
+    for (const entry of this.entries.values()) yield entry;
   }
   async *keys() {
-    for (const key of this.entries.keys()) yield key; 
+    for (const key of this.entries.keys()) yield key;
   }
 }
 
@@ -98,7 +98,7 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     // Both UUIDs end in 'a1'
     const id1 = '00000000-0000-4000-a000-0000000000a1';
     const id2 = 'ffffffff-ffff-4fff-afff-ffffffffffa1';
-    
+
     await storageService.saveFile(new Blob(['D1'], { type: 'image/png' }), id1, 'img1.png');
     await storageService.saveFile(new Blob(['D22'], { type: 'image/jpeg' }), id2, 'img2.jpg');
 
@@ -128,16 +128,16 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     root!.file('settings.json', JSON.stringify({ storageType: 'opfs', endpoint: { type: 'openai', url: '' }, autoTitleEnabled: true, providerProfiles: [] }));
     root!.file('hierarchy.json', JSON.stringify({ items: [{ type: 'chat', id: chatID }] }));
     root!.file('chat-metas.json', JSON.stringify({ entries: [{ id: chatID, title: 'Test', createdAt: 0, updatedAt: 0, debugEnabled: false }] }));
-    
+
     // Chat content with attachment (V2 format)
     root!.folder('chat-contents')!.file(`${chatID}.json`, JSON.stringify({
       root: {
         items: [{
           id: msgID, role: 'user', content: 'hello', timestamp: 0,
-          attachments: [{ 
-            id: attID, 
-            binaryObjectId: binaryID, 
-            name: 'test.png', 
+          attachments: [{
+            id: attID,
+            binaryObjectId: binaryID,
+            name: 'test.png',
             status: 'persisted'
           }],
           replies: { items: [] }
@@ -172,11 +172,11 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     const loadedChat = await storageService.loadChat(chatID);
     expect(loadedChat).not.toBeNull();
     const att = loadedChat!.root.items[0]!.attachments![0]!;
-    
+
     expect(att.binaryObjectId).toBe(binaryID);
     expect(att.mimeType).toBe('image/png'); // Must be hydrated from storage index
     expect(att.size).toBe(16);
-    
+
     // Verify physical shard in mock OPFS
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage');
     const binDir = await naidanDir.getDirectoryHandle('binary-objects');

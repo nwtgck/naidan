@@ -1,5 +1,5 @@
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '../../models/types';
-import { 
+import {
   type ChatMetaDto,
   type ChatGroupDto,
   type HierarchyDto,
@@ -9,7 +9,7 @@ import {
   HierarchySchemaDto,
   ChatContentSchemaDto,
 } from '../../models/dto';
-import { 
+import {
   chatToDomain,
   chatToDto,
   chatGroupToDomain,
@@ -158,7 +158,7 @@ export class LocalStorageProvider extends IStorageProvider {
 
       return chat;
     } catch {
-      return null; 
+      return null;
     }
   }
 
@@ -175,7 +175,7 @@ export class LocalStorageProvider extends IStorageProvider {
       }
       return meta;
     } catch {
-      return null; 
+      return null;
     }
   }
 
@@ -185,7 +185,7 @@ export class LocalStorageProvider extends IStorageProvider {
     try {
       const dto = ChatContentSchemaDto.parse(JSON.parse(rawContent));
       const content = chatContentToDomain(dto);
-      
+
       const restoreBlobs = (nodes: MessageNode[]) => {
         for (const node of nodes) {
           if (node.attachments) {
@@ -213,7 +213,7 @@ export class LocalStorageProvider extends IStorageProvider {
 
       return content;
     } catch {
-      return null; 
+      return null;
     }
   }
 
@@ -240,7 +240,7 @@ export class LocalStorageProvider extends IStorageProvider {
       const h = hierarchy || { items: [] };
       return chatGroupToDomain(ChatGroupSchemaDto.parse(JSON.parse(raw)), h, chatMetas);
     } catch {
-      return null; 
+      return null;
     }
   }
 
@@ -273,12 +273,12 @@ export class LocalStorageProvider extends IStorageProvider {
     try {
       return settingsToDomain(SettingsSchemaDto.parse(JSON.parse(raw)));
     } catch {
-      return null; 
+      return null;
     }
   }
 
   // --- File Storage ---
-  
+
   /**
    * @deprecated Use the named arguments version instead.
    */

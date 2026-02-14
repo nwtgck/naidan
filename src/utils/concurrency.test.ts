@@ -50,7 +50,7 @@ describe('Semaphore', () => {
   it('releases and executes the next task when one completes', async () => {
     const semaphore = new Semaphore(2);
     let activeCount = 0;
-    
+
     const task = async () => {
       activeCount++;
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -67,7 +67,7 @@ describe('Semaphore', () => {
 
     // Wait for first batch to finish
     await Promise.all([p1, p2]);
-    
+
     // Now p3 should be running or finished
     expect(activeCount).toBeLessThanOrEqual(1);
     await p3;
@@ -76,7 +76,7 @@ describe('Semaphore', () => {
 
   it('handles rejections and still releases the semaphore', async () => {
     const semaphore = new Semaphore(1);
-    
+
     const failingTask = async () => {
       throw new Error('Task failed');
     };
@@ -138,7 +138,7 @@ describe('Semaphore', () => {
     });
 
     const results = await Promise.all(tasks);
-    
+
     expect(results.length).toBe(totalTasks);
     expect(totalCompleted).toBe(totalTasks);
     expect(maxActive).toBeLessThanOrEqual(concurrencyLimit);

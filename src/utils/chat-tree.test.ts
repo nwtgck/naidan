@@ -13,7 +13,7 @@ describe('chat-tree utils', () => {
       const nodes = createBranchFromMessages(messages);
 
       expect(nodes.length).toBe(3);
-      
+
       // Check first node
       expect(nodes[0]!.role).toBe('user');
       expect(nodes[0]!.content).toBe('Hello');
@@ -40,9 +40,9 @@ describe('chat-tree utils', () => {
 
     it('should preserve attachments and thinking content', () => {
       const messages: HistoryItem[] = [
-        { 
-          role: 'assistant', 
-          content: 'I thought about it.', 
+        {
+          role: 'assistant',
+          content: 'I thought about it.',
           thinking: 'Inner thoughts',
           attachments: [{ id: '1', binaryObjectId: '1', status: 'persisted', originalName: 'n.png', mimeType: 'image/png', size: 10, uploadedAt: 0 }]
         }

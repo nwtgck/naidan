@@ -9,7 +9,7 @@ export type { ChatSummary };
  */
 export abstract class IStorageProvider {
   abstract init(): Promise<void>;
-  
+
   /**
    * Whether this provider supports efficient binary persistence (e.g. OPFS).
    * LocalStorage returns false to indicate potential capacity issues.
@@ -46,7 +46,7 @@ export abstract class IStorageProvider {
   public async listChats(): Promise<ChatSummary[]> {
     const sidebar = await this.getSidebarStructure();
     const allSummaries: ChatSummary[] = [];
-    
+
     sidebar.forEach(item => {
       switch (item.type) {
       case 'chat_group':
@@ -83,7 +83,7 @@ export abstract class IStorageProvider {
   public abstract getSidebarStructure(): Promise<SidebarItem[]>;
 
   // --- Persistence Methods ---
-  
+
   /**
    * Persists chat metadata (title, updated date, etc).
    */
@@ -98,11 +98,11 @@ export abstract class IStorageProvider {
   abstract loadChatMeta(id: string): Promise<ChatMeta | null>;
   abstract loadChatContent(id: string): Promise<ChatContent | null>;
   abstract deleteChat(id: string): Promise<void>;
-  
+
   abstract saveChatGroup(chatGroup: ChatGroup): Promise<void>;
   abstract loadChatGroup(id: string): Promise<ChatGroup | null>;
   abstract deleteChatGroup(id: string): Promise<void>;
-  
+
   abstract saveSettings(settings: Settings): Promise<void>;
   abstract loadSettings(): Promise<Settings | null>;
   abstract clearAll(): Promise<void>;

@@ -30,13 +30,13 @@ vi.mock('../services/llm', () => ({
       return new Promise<void>(() => {});
     }
     async listModels() {
-      return ['gpt-4']; 
+      return ['gpt-4'];
     }
   },
   OllamaProvider: class {
     constructor() {}
     async listModels() {
-      return []; 
+      return [];
     }
   },
 }));
@@ -53,7 +53,7 @@ vi.mock('../services/storage', () => ({
       const updated = updater(existing);
       Object.assign(existing, updated);
       return Promise.resolve();
-    }), 
+    }),
     loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id))),
     updateChatContent: vi.fn().mockImplementation((id, updater) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
@@ -82,11 +82,11 @@ describe('ChatArea Streaming DOM Test', () => {
 
   it('should render assistant chunks in the DOM in real-time', async () => {
     const { createNewChat } = useChat();
-    await createNewChat({ 
-      groupId: undefined, 
-      modelId: undefined, 
-      systemPrompt: undefined 
-    }); 
+    await createNewChat({
+      groupId: undefined,
+      modelId: undefined,
+      systemPrompt: undefined
+    });
 
     const wrapper = mount(ChatArea, {
       global: {
@@ -104,18 +104,18 @@ describe('ChatArea Streaming DOM Test', () => {
 
     await textarea.setValue('Hello');
     await textarea.trigger('keydown.enter', { ctrlKey: true });
-    
+
     // Wait for sendMessage to reach generateResponse where triggerChunk is assigned
     await vi.waitUntil(() => triggerChunk !== undefined, { timeout: 2000, interval: 50 });
 
     if (!triggerChunk) {
       throw new Error('LLM chat was not triggered');
     }
-    
+
     triggerChunk('Live');
     await nextTick();
     await nextTick();
-    
+
     const html = wrapper.html();
     if (!html.includes('Live')) {
       console.log('DOM after first chunk:', html);

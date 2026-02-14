@@ -13,8 +13,8 @@ const router = useRouter();
 const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
 const { query, isSearching, results, search } = useChatSearch();
 const { openChat, chatGroups, currentChat } = useChat();
-const { 
-  searchPreviewEnabled, 
+const {
+  searchPreviewEnabled,
   searchContextSize,
   setSearchPreviewEnabled,
   setSearchContextSize,
@@ -66,13 +66,13 @@ function toggleGroupFilter(groupId: string) {
 let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const performSearch = (val: string) => {
-  search({ 
-    searchQuery: val, 
-    options: { 
+  search({
+    searchQuery: val,
+    options: {
       scope: searchScope.value,
       chatGroupIds: chatGroupIds.value,
       chatId: chatId.value
-    } 
+    }
   });
   selectedIndex.value = 0;
 };
@@ -80,7 +80,7 @@ const performSearch = (val: string) => {
 const handleInput = (e: Event) => {
   const val = (e.target as HTMLInputElement).value;
   if (debounceTimeout) clearTimeout(debounceTimeout);
-  
+
   debounceTimeout = setTimeout(() => {
     performSearch(val);
   }, 300);
@@ -114,7 +114,7 @@ const totalItems = computed(() => flatList.value.length);
 
 function flattenResults(items: SearchResultItem[]) {
   const flat: { type: 'chat' | 'message'; item: SearchResultItem | ContentMatch; parentChat?: SearchResultItem }[] = [];
-  
+
   for (const item of items) {
     flat.push({ type: 'chat', item });
     for (const match of item.contentMatches) {
@@ -182,25 +182,25 @@ watch(isSearchOpen, (isOpen) => {
 });
 
 function formatTime(timestamp: number) {
-  return new Date(timestamp).toLocaleDateString(undefined, { 
-    month: 'short', day: 'numeric', 
-    hour: '2-digit', minute: '2-digit' 
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
   });
 }
 
 function escapeRegExp(string: string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function highlight(text: string, query: string) {
   if (!query) return he.encode(text);
-  
+
   const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
   if (keywords.length === 0) return he.encode(text);
 
   const pattern = keywords.map(k => escapeRegExp(k)).join('|');
   const regex = new RegExp(`(${pattern})`, 'gi');
-  
+
   const parts = text.split(regex);
   return parts.map(part => {
     const isMatch = keywords.some(k => part.toLowerCase() === k);
@@ -227,16 +227,16 @@ defineExpose({
 
       <!-- Modal Container (Split View) -->
       <div class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col h-[70vh] overflow-hidden transform transition-all scale-100">
-        
+
         <!-- Search Header -->
         <div class="flex items-center gap-3 p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
           <Search class="w-5 h-5 text-gray-400" />
-          <input 
+          <input
             ref="searchInput"
             :value="query"
             @input="handleInput"
             @keydown="handleKeydown"
-            type="text" 
+            type="text"
             class="flex-1 bg-transparent border-none outline-none text-lg text-gray-900 dark:text-gray-100 placeholder-gray-400"
             placeholder="Search chats and messages..."
             aria-label="Search"
@@ -247,13 +247,13 @@ defineExpose({
             <X class="w-5 h-5 inline-block" />
           </button>
         </div>
-        
+
         <!-- Search Options -->
         <div class="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between shrink-0 overflow-visible">
           <div class="flex items-center gap-1.5 min-w-0">
             <div class="flex items-center gap-1 shrink-0">
-              <button 
-                v-for="scope in (['all', 'current_thread', 'title_only'] as SearchScope[])" 
+              <button
+                v-for="scope in (['all', 'current_thread', 'title_only'] as SearchScope[])"
                 :key="scope"
                 @click="searchScope = scope"
                 class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
@@ -267,7 +267,7 @@ defineExpose({
 
             <!-- Group Filter Popover -->
             <div class="relative shrink-0">
-              <button 
+              <button
                 @click="showGroupSelector = !showGroupSelector"
                 class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
                 :class="chatGroupIds.length > 0 ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
@@ -279,16 +279,16 @@ defineExpose({
               </button>
 
               <Transition name="dropdown">
-                <div 
-                  v-if="showGroupSelector" 
+                <div
+                  v-if="showGroupSelector"
                   class="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden"
                   @click.stop
                   data-testid="group-selector-dropdown"
                 >
                   <div class="px-3 py-2 border-b border-gray-50 dark:border-gray-700/50 text-[10px] font-black text-gray-400 uppercase tracking-widest">Filter by Group</div>
                   <div class="max-h-64 overflow-y-auto p-1">
-                    <button 
-                      v-for="group in chatGroups" 
+                    <button
+                      v-for="group in chatGroups"
                       :key="group.id"
                       @click="toggleGroupFilter(group.id)"
                       class="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors"
@@ -313,7 +313,7 @@ defineExpose({
             <!-- Active Filters (Groups & Specific Chat) -->
             <div class="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
               <!-- Specific Chat Filter -->
-              <div 
+              <div
                 v-if="chatId"
                 class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
               >
@@ -324,8 +324,8 @@ defineExpose({
                 </button>
               </div>
 
-              <div 
-                v-for="group in selectedGroups" 
+              <div
+                v-for="group in selectedGroups"
                 :key="group.id"
                 class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
               >
@@ -340,12 +340,12 @@ defineExpose({
           <div class="flex items-center gap-4 text-[10px] font-bold text-gray-400 ml-4">
             <div class="flex items-center gap-2">
               <span>PREVIEW</span>
-              <button 
+              <button
                 @click="setSearchPreviewEnabled(!searchPreviewEnabled)"
                 class="w-8 h-4 rounded-full transition-colors relative"
                 :class="searchPreviewEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
               >
-                <div 
+                <div
                   class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform"
                   :class="searchPreviewEnabled ? 'translate-x-4' : 'translate-x-0'"
                 ></div>
@@ -354,8 +354,8 @@ defineExpose({
 
             <div v-if="searchPreviewEnabled" class="flex items-center gap-2">
               <span>CONTEXT</span>
-              <select 
-                :value="searchContextSize === Infinity ? 'max' : searchContextSize" 
+              <select
+                :value="searchContextSize === Infinity ? 'max' : searchContextSize"
                 @change="e => setSearchContextSize((e.target as HTMLSelectElement).value === 'max' ? Infinity : parseInt((e.target as HTMLSelectElement).value))"
                 class="bg-transparent border-none outline-none text-gray-600 dark:text-gray-300 font-black cursor-pointer"
               >
@@ -372,7 +372,7 @@ defineExpose({
         <!-- Main Body (Split View) -->
         <div class="flex-1 flex overflow-hidden min-h-0">
           <!-- Left: Results List -->
-          <div 
+          <div
             ref="scrollContainer"
             class="overflow-y-auto scrollbar-thin p-2 space-y-1 border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300"
             :class="searchPreviewEnabled ? 'w-1/3 min-w-[320px]' : 'w-full'"
@@ -380,14 +380,14 @@ defineExpose({
             <div v-if="!query && !isSearching" class="p-8 text-center text-gray-400 text-sm">
               Type to search...
             </div>
-            
+
             <div v-else-if="results.length === 0 && !isSearching" class="p-8 text-center text-gray-500 text-sm">
               No results found for "{{ query }}"
             </div>
 
             <template v-else>
-              <div 
-                v-for="(entry, index) in flatList" 
+              <div
+                v-for="(entry, index) in flatList"
                 :key="index"
                 :data-index="index"
                 :data-testid="'search-result-item-' + index"
@@ -423,7 +423,7 @@ defineExpose({
                       <span class="text-[9px] text-gray-400">{{ formatTime((entry.item as ContentMatch).timestamp) }}</span>
                     </div>
                     <span class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed" v-html="highlight((entry.item as ContentMatch).excerpt, query)"></span>
-                     
+
                     <div v-if="!(entry.item as ContentMatch).isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">
                       <GitBranch class="w-2.5 h-2.5" />
                       <span>ALT BRANCH</span>
@@ -431,7 +431,7 @@ defineExpose({
                   </div>
                 </div>
               </div>
-              
+
               <div v-if="isSearching" class="p-4 flex items-center justify-center text-gray-400 gap-2 border-t border-gray-50 dark:border-gray-800/50 mt-2">
                 <Loader2 class="w-4 h-4 animate-spin" />
                 <span class="text-[11px] font-bold">SCANNING CONTENT...</span>
@@ -441,7 +441,7 @@ defineExpose({
 
           <!-- Right: Preview -->
           <div v-if="searchPreviewEnabled" class="flex-1 bg-white dark:bg-gray-900 overflow-hidden">
-            <SearchPreview 
+            <SearchPreview
               :match="currentSelectedItem?.type === 'message' ? currentSelectedItem.item as ContentMatch : undefined"
               :chat="currentSelectedItem?.type === 'chat' ? currentSelectedItem.item as SearchResultItem : undefined"
             />

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { generateId } from '../utils/id';
 import { ref, computed, watch } from 'vue';
-import { 
+import {
   X, ChefHat, Copy, Check, Plus, Trash2, Info, Globe, AlertCircle, MessageSquareQuote
 } from 'lucide-vue-next';
 import type { ChatGroupRecipe, RecipeSystemPrompt } from '../models/recipe';
@@ -28,7 +28,7 @@ const recipeForm = ref({
 });
 
 function initForm() {
-  const modelPatterns = props.initialModelId 
+  const modelPatterns = props.initialModelId
     ? generateDefaultModelPatterns(props.initialModelId).map(p => ({ id: generateId(), pattern: p, caseSensitive: false }))
     : [];
 
@@ -113,10 +113,10 @@ defineExpose({
   <Transition name="modal">
     <div v-if="isOpen" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
       <div class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-5xl h-[85vh] overflow-hidden flex flex-col md:flex-row border border-gray-100 dark:border-gray-800 modal-content-zoom relative">
-        
+
         <!-- Top Right Close Button -->
-        <button 
-          @click="emit('close')" 
+        <button
+          @click="emit('close')"
           class="absolute top-4 right-4 z-[70] p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
         >
           <X class="w-5 h-5" />
@@ -136,7 +136,7 @@ defineExpose({
             <div class="grid grid-cols-1 gap-6">
               <div class="space-y-2">
                 <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Recipe Name</label>
-                <input 
+                <input
                   v-model="recipeForm.name"
                   type="text"
                   class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 dark:text-white outline-none focus:ring-4 focus:ring-blue-500/10 transition-all shadow-sm"
@@ -145,7 +145,7 @@ defineExpose({
 
               <div class="space-y-2">
                 <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Description</label>
-                <textarea 
+                <textarea
                   v-model="recipeForm.description"
                   rows="2"
                   class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-4 focus:ring-blue-500/10 transition-all resize-none shadow-sm"
@@ -161,23 +161,23 @@ defineExpose({
                   <MessageSquareQuote class="w-3 h-3" />
                   Recipe System Prompt
                 </label>
-                
+
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-                  <button 
+                  <button
                     @click="recipeForm.systemPrompt = { behavior: 'override', content: null }"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="recipeForm.systemPrompt.behavior === 'override' && recipeForm.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Clear
                   </button>
-                  <button 
+                  <button
                     @click="recipeForm.systemPrompt = { behavior: 'override', content: recipeForm.systemPrompt.content ?? '' }"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="recipeForm.systemPrompt.behavior === 'override' && recipeForm.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Override
                   </button>
-                  <button 
+                  <button
                     @click="recipeForm.systemPrompt = { behavior: 'append', content: recipeForm.systemPrompt.content ?? '' }"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="recipeForm.systemPrompt.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
@@ -186,14 +186,14 @@ defineExpose({
                   </button>
                 </div>
               </div>
-              <textarea 
+              <textarea
                 v-if="!(recipeForm.systemPrompt.behavior === 'override' && recipeForm.systemPrompt.content === null)"
                 v-model="recipeForm.systemPrompt.content"
                 rows="5"
                 class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 dark:text-white outline-none focus:ring-4 focus:ring-blue-500/10 transition-all resize-none shadow-sm"
                 placeholder="Include custom instructions in the recipe..."
               ></textarea>
-              <div 
+              <div
                 v-else
                 class="w-full bg-gray-50/50 dark:bg-gray-800/30 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl px-4 py-8 text-center"
               >
@@ -206,7 +206,7 @@ defineExpose({
             <div class="space-y-4 pt-4 border-t border-gray-100 dark:border-gray-800">
               <div class="flex items-center justify-between ml-1">
                 <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Model Matching Rules (Regex)</label>
-                <button 
+                <button
                   @click="addModelPattern"
                   class="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
                 >
@@ -214,26 +214,26 @@ defineExpose({
                   Add Rule
                 </button>
               </div>
-              
+
               <div v-if="recipeForm.models.length === 0" class="text-[11px] text-gray-400 italic ml-1 p-4 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
                 No matching rules. Recipe will use the default model.
               </div>
-              
+
               <TransitionGroup name="list" tag="div" class="space-y-4">
                 <div v-for="m in recipeForm.models" :key="m.id" class="space-y-2">
                   <div class="flex gap-2 items-center">
-                    <div 
+                    <div
                       class="flex-1 bg-gray-50 dark:bg-gray-800 border rounded-xl flex overflow-hidden transition-colors"
                       :class="isRegexValid(m.pattern) ? 'border-gray-100 dark:border-gray-700' : 'border-red-300 dark:border-red-900/50'"
                     >
                       <div class="bg-gray-100 dark:bg-gray-700 px-3 py-3 text-[10px] font-bold text-gray-400 flex items-center border-r border-gray-200 dark:border-gray-600 uppercase tracking-tighter">Regex</div>
-                      <input 
+                      <input
                         v-model="m.pattern"
                         type="text"
                         class="flex-1 bg-transparent px-4 py-3 text-sm font-mono text-gray-800 dark:text-white outline-none"
                         placeholder="^llama3.*$"
                       />
-                      <button 
+                      <button
                         @click="m.caseSensitive = !m.caseSensitive"
                         class="px-3 py-3 text-[9px] font-bold transition-colors border-l border-gray-200 dark:border-gray-600 tracking-tight"
                         :class="m.caseSensitive ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:text-gray-600'"
@@ -273,12 +273,12 @@ defineExpose({
               <Globe class="w-4 h-4 text-gray-400" />
               <h3 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Live Recipe Preview</h3>
             </div>
-            
-            <button 
+
+            <button
               @click="copyToClipboard"
               class="w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-2xl font-bold text-sm transition-all shadow-lg active:scale-95 border"
-              :class="copySuccess 
-                ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-100 dark:border-green-800 shadow-green-500/10' 
+              :class="copySuccess
+                ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 border-green-100 dark:border-green-800 shadow-green-500/10'
                 : 'bg-blue-600 hover:bg-blue-700 text-white border-blue-500 shadow-blue-500/20'"
               data-testid="recipe-export-copy-button"
             >
@@ -287,7 +287,7 @@ defineExpose({
               <span>{{ copySuccess ? 'Copied to Clipboard!' : 'Copy Recipe JSON' }}</span>
             </button>
           </div>
-          
+
           <div class="flex-1 overflow-hidden relative">
             <pre class="h-full w-full p-6 overflow-auto font-mono text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed scrollbar-thin whitespace-pre-wrap break-words overscroll-contain">{{ exportedRecipeJson }}</pre>
             <div class="absolute bottom-0 inset-x-0 h-12 bg-gradient-to-t from-gray-50/80 dark:from-black/40 to-transparent pointer-events-none"></div>

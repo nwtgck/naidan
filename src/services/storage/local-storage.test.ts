@@ -27,7 +27,7 @@ describe('LocalStorageProvider', () => {
 
     await provider.saveChatContent(mockChat.id, mockChat);
     await provider.saveChatMeta(mockChat);
-    
+
     // 1. Verify Meta (Should exist at its own key)
     const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${mockChat.id}`);
     expect(rawMeta).not.toBeNull();
@@ -127,7 +127,7 @@ describe('LocalStorageProvider', () => {
     it('should fail if hierarchy data is invalid (Zod validation)', async () => {
       const invalidH = { items: [{ type: 'unknown', id: '123' }] };
       localStorage.setItem(`${STORAGE_KEY_PREFIX}lsp:hierarchy`, JSON.stringify(invalidH));
-      
+
       await expect(provider.loadHierarchy()).rejects.toThrow();
     });
   });
@@ -159,7 +159,7 @@ describe('LocalStorageProvider', () => {
       // 2. Verify they are NOT in the public lists
       const chats = await provider.listChats();
       const groups = await provider.listChatGroups();
-      
+
       expect(chats).toHaveLength(0);
       expect(groups).toHaveLength(0);
 
@@ -173,7 +173,7 @@ describe('LocalStorageProvider', () => {
       // 4. Verify they ARE now visible
       const visibleChats = await provider.listChats();
       const visibleGroups = await provider.listChatGroups();
-      
+
       expect(visibleChats).toHaveLength(1);
       expect(visibleChats[0]?.id).toBe(mockChat.id);
       expect(visibleGroups).toHaveLength(1);

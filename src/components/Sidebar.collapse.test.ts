@@ -104,7 +104,7 @@ describe('Sidebar Collapse Functionality', () => {
 
     // Logo should be hidden
     expect(wrapper.find('logo-stub').exists()).toBe(false);
-    
+
     // Title should be hidden
     expect(wrapper.find('h1').exists()).toBe(false);
 
