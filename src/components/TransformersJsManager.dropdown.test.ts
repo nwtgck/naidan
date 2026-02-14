@@ -15,6 +15,7 @@ vi.mock('../services/transformers-js', () => ({
       isLoadingFromCache: false,
     }),
     subscribe: vi.fn().mockReturnValue(() => {}),
+    subscribeModelList: vi.fn().mockReturnValue(() => {}),
     listCachedModels: vi.fn().mockResolvedValue([]),
   },
 }));
