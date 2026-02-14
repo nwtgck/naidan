@@ -37,8 +37,8 @@ vi.mock('../composables/useChat', () => ({
     abortChat: vi.fn(),
     isImageMode: vi.fn(() => false),
     toggleImageMode: vi.fn(),
-    getResolution: vi.fn(() => ({ width: 512, height: 512 })), 
-    getCount: vi.fn(() => 1), 
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    getCount: vi.fn(() => 1),
     updateCount: vi.fn(),
     getPersistAs: vi.fn(() => 'original'),
     updatePersistAs: vi.fn(),
@@ -47,7 +47,7 @@ vi.mock('../composables/useChat', () => ({
     getSelectedImageModel: vi.fn(),
     getSortedImageModels: vi.fn(() => []),
     imageModeMap: ref({}),
-    imageResolutionMap: ref({}), 
+    imageResolutionMap: ref({}),
     imageCountMap: ref({}),
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
@@ -76,7 +76,7 @@ describe('ChatArea Group Inheritance UI', () => {
       groupId: null,
     };
     mockChatGroups.value = [];
-    
+
     // Default resolution (Global)
     mockResolvedSettings.value = {
       modelId: 'global-model',
@@ -92,10 +92,11 @@ describe('ChatArea Group Inheritance UI', () => {
     const wrapper = mount(ChatArea, {
       global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
     });
+    await nextTick();
 
     const modelBadge = wrapper.find('[data-testid="model-trigger"]');
     expect(modelBadge.text()).toContain('global-model (Global)');
-    
+
     const selector = wrapper.getComponent(ModelSelector);
     expect(selector.props('placeholder')).toBe('global-model (Global)');
   });
@@ -114,6 +115,7 @@ describe('ChatArea Group Inheritance UI', () => {
     const wrapper = mount(ChatArea, {
       global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
     });
+    await nextTick();
 
     const modelBadge = wrapper.find('[data-testid="model-trigger"]');
     expect(modelBadge.text()).toContain('group-model (Group)');
@@ -134,6 +136,7 @@ describe('ChatArea Group Inheritance UI', () => {
     const wrapper = mount(ChatArea, {
       global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
     });
+    await nextTick();
 
     // Header badge should show the specific model without suffix
     const modelBadge = wrapper.find('[data-testid="model-trigger"]');
@@ -150,6 +153,7 @@ describe('ChatArea Group Inheritance UI', () => {
     const wrapper = mount(ChatArea, {
       global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
     });
+    await nextTick();
 
     // 1. Initially Global
     expect(wrapper.find('[data-testid="model-trigger"]').text()).toContain('global-model (Global)');
@@ -163,7 +167,7 @@ describe('ChatArea Group Inheritance UI', () => {
       modelId: 'new-group-model',
       sources: { modelId: 'chat_group' }
     };
-    
+
     await nextTick();
 
     expect(wrapper.find('[data-testid="model-trigger"]').text()).toContain('new-group-model (Group)');
