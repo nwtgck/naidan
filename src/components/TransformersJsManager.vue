@@ -43,6 +43,7 @@ const defaultModels = [
   // 'onnx-community/Qwen3-1.7B-ONNX', // failed
   'onnx-community/Qwen3-4B-Instruct-2507-ONNX',
   'onnx-community/Llama-3.2-1B-Instruct',
+  'onnx-community/gpt-oss-20b-ONNX',
 ];
 
 const cachedModels = ref<Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number }>>([]);

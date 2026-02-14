@@ -80,6 +80,10 @@ export default defineConfig(({ mode }) => {
           {
             src: 'node_modules/@huggingface/transformers/dist/ort-wasm*',
             dest: 'transformers'
+          },
+          {
+            src: 'node_modules/onnxruntime-web/dist/ort-wasm*',
+            dest: 'transformers'
           }
         ]
       }),
@@ -229,7 +233,7 @@ const iifeInlinePlugin = (outDir: string) => ({
   async closeBundle() {
     const distDir = path.resolve(__dirname, outDir)
     const htmlPath = path.join(distDir, 'index.html')
-    
+
     if (!fs.existsSync(htmlPath)) return
 
     const html = fs.readFileSync(htmlPath, 'utf8')
