@@ -127,6 +127,9 @@ export function getTitleSystemPrompt(lang: SupportedLanguage): string {
  */
 export function cleanGeneratedTitle(title: string): string {
   return title
+    .replace(/<think>[\s\S]*?<\/think>/gi, '') // Remove <think>...</think> blocks
+    .replace(/<think>|<\/think>/gi, '') // Remove leftover tags
+    .replace(/\s+/g, ' ') // Normalize multiple spaces to a single space
     .trim()
     .replace(/^["']|["']$/g, '') // Remove surrounding quotes
     .trim()
