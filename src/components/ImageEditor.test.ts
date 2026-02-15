@@ -198,7 +198,29 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(wrapper.vm.__testOnly.selectionStatus.value).toBe('none');
+    expect(wrapper.vm.__testOnly.selection.value.status).toBe('none');
+  });
+
+  it('should restore selection state when undoing an action', async () => {
+    const wrapper = mount(ImageEditor, { props });
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // 1. Create a selection manually for testing
+    wrapper.vm.__testOnly.selection.value.status = 'active';
+    wrapper.vm.__testOnly.selection.value.rect = { x: 0.2, y: 0.2, w: 0.5, h: 0.5 };
+    await nextTick();
+
+    // 2. Perform action (Crop) - it should clear the active selection in current view
+    await wrapper.vm.__testOnly.executeAction({ action: 'crop' });
+    expect(wrapper.vm.__testOnly.selection.value.status).toBe('none');
+
+    // 3. Undo - it should restore the selection that was used for the crop
+    wrapper.vm.__testOnly.undo();
+    await nextTick();
+
+    expect(wrapper.vm.__testOnly.selection.value.status).toBe('active');
+    expect(wrapper.vm.__testOnly.selection.value.rect.x).toBe(0.2);
   });
 
   it('should reset editor state correctly', async () => {
@@ -222,7 +244,7 @@ describe('ImageEditor', () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     // Switch to ellipse mode
-    wrapper.vm.__testOnly.selectionShape.value = 'ellipse';
+    wrapper.vm.__testOnly.selection.value.shape = 'ellipse';
     await nextTick();
 
     await wrapper.vm.__testOnly.executeAction({ action: 'mask-inside' });
@@ -247,13 +269,13 @@ describe('ImageEditor', () => {
       });
 
       await container.trigger('mousedown', { clientX: 10, clientY: 10 });
-      expect(wrapper.vm.__testOnly.selectionStatus.value).toBe('active');
+      expect(wrapper.vm.__testOnly.selection.value.status).toBe('active');
 
       // Simulate mousemove to (50, 50)
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 50 }));
       await nextTick();
 
-      expect(wrapper.vm.__testOnly.selectionStatus.value).toBe('active');
+      expect(wrapper.vm.__testOnly.selection.value.status).toBe('active');
       // Selection should be visible in DOM
       expect(wrapper.find('[data-testid="image-editor-selection"]').exists()).toBe(true);
     });
@@ -263,13 +285,13 @@ describe('ImageEditor', () => {
       await nextTick();
 
       // Manually set a selection
-      wrapper.vm.__testOnly.selectionStatus.value = 'active';
+      wrapper.vm.__testOnly.selection.value.status = 'active';
       await nextTick();
 
       const cropBtn = wrapper.find('[data-testid="image-editor-action-crop"]');
       await cropBtn.trigger('click');
 
-      expect(wrapper.vm.__testOnly.selectionStatus.value).toBe('none');
+      expect(wrapper.vm.__testOnly.selection.value.status).toBe('none');
       expect(wrapper.find('[data-testid="image-editor-selection"]').exists()).toBe(false);
     });
 
@@ -293,7 +315,7 @@ describe('ImageEditor', () => {
       window.dispatchEvent(new MouseEvent('mouseup'));
       await nextTick();
 
-      expect(wrapper.vm.__testOnly.selectionStatus.value).toBe('none');
+      expect(wrapper.vm.__testOnly.selection.value.status).toBe('none');
     });
   });
 });

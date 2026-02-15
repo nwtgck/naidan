@@ -28,11 +28,17 @@ const canvasRef = ref<HTMLCanvasElement | undefined>(undefined);
 type EditorMode = 'idle' | 'creating' | 'moving' | 'resizing';
 const editorMode = ref<EditorMode>('idle');
 
-type SelectionStatus = 'none' | 'active';
-const selectionStatus = ref<SelectionStatus>('none');
+interface SelectionState {
+  rect: { x: number; y: number; w: number; h: number };
+  status: 'none' | 'active';
+  shape: 'rectangle' | 'ellipse';
+}
 
-type SelectionShape = 'rectangle' | 'ellipse';
-const selectionShape = ref<SelectionShape>('rectangle');
+const selection = ref<SelectionState>({
+  rect: { x: 0, y: 0, w: 0, h: 0 },
+  status: 'none',
+  shape: 'rectangle',
+});
 
 type OutputFormat = 'original' | 'image/png' | 'image/jpeg' | 'image/webp';
 const selectedFormat = ref<OutputFormat>('original');
@@ -47,11 +53,14 @@ type FillColor = 'transparent' | 'white' | 'black';
 const selectedFill = ref<FillColor>('transparent');
 
 // Geometry
-const cropRect = ref({ x: 0, y: 0, w: 0, h: 0 });
 const displayScale = ref(1);
 
 // History Management
-const history = ref<ImageData[]>([]);
+interface HistoryEntry {
+  imageData: ImageData;
+  selection: SelectionState;
+}
+const history = ref<HistoryEntry[]>([]);
 const historyIndex = ref(-1);
 
 const canUndo = computed(() => historyIndex.value > 0);
@@ -94,8 +103,11 @@ async function initEditor() {
   ctx.drawImage(img, 0, 0);
 
   // Initial history state
-  const initialData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  history.value = [initialData];
+  const initialImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  history.value = [{
+    imageData: initialImageData,
+    selection: JSON.parse(JSON.stringify(selection.value)) // Deep copy
+  }];
   historyIndex.value = 0;
 
   updateDisplayLayout();
@@ -151,13 +163,16 @@ function commitHistory() {
   const ctx = canvasRef.value.getContext('2d', { willReadFrequently: true });
   if (!ctx) return;
 
-  const data = ctx.getImageData(0, 0, canvasRef.value.width, canvasRef.value.height);
+  const imageData = ctx.getImageData(0, 0, canvasRef.value.width, canvasRef.value.height);
 
   if (historyIndex.value < history.value.length - 1) {
     history.value = history.value.slice(0, historyIndex.value + 1);
   }
 
-  history.value.push(data);
+  history.value.push({
+    imageData,
+    selection: JSON.parse(JSON.stringify(selection.value))
+  });
   historyIndex.value++;
 
   updateResizeInputs({ w: canvasRef.value.width, h: canvasRef.value.height });
@@ -177,16 +192,21 @@ function redo() {
 }
 
 function restoreFromHistory() {
-  const data = history.value[historyIndex.value];
-  if (!data || !canvasRef.value) return;
+  const entry = history.value[historyIndex.value];
+  if (!entry || !canvasRef.value) return;
 
+  const { imageData, selection: storedSelection } = entry;
   const canvas = canvasRef.value;
-  canvas.width = data.width;
-  canvas.height = data.height;
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
   const ctx = canvas.getContext('2d');
   if (ctx) {
-    ctx.putImageData(data, 0, 0);
+    ctx.putImageData(imageData, 0, 0);
   }
+
+  // Restore selection
+  selection.value = JSON.parse(JSON.stringify(storedSelection));
+
   updateResizeInputs({ w: canvas.width, h: canvas.height });
   updateDisplayLayout();
 }
@@ -281,12 +301,19 @@ function executeAction({ action }: { action: ActionType }) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const sx = cropRect.value.x * canvas.width;
-  const sy = cropRect.value.y * canvas.height;
-  const sw = cropRect.value.w * canvas.width;
-  const sh = cropRect.value.h * canvas.height;
+  // Before performing action, ensure the *previous* state in history remembers
+  // the selection that was just used. This allows Undo to restore it.
+  const currentEntry = history.value[historyIndex.value];
+  if (currentEntry) {
+    currentEntry.selection = JSON.parse(JSON.stringify(selection.value));
+  }
 
-  const shape = selectionShape.value;
+  const sx = selection.value.rect.x * canvas.width;
+  const sy = selection.value.rect.y * canvas.height;
+  const sw = selection.value.rect.w * canvas.width;
+  const sh = selection.value.rect.h * canvas.height;
+
+  const shape = selection.value.shape;
 
   /**
    * Helper to create path based on current shape
@@ -386,17 +413,17 @@ function executeAction({ action }: { action: ActionType }) {
     ctx.globalCompositeOperation = 'source-over';
     break;
   }
-
   default: {
     const _ex: never = action;
     throw new Error(`Unhandled action: ${_ex}`);
   }
   }
 
-  // Clear selection after action
-  selectionStatus.value = 'none';
+  // Clear selection status after action
+  selection.value.status = 'none';
   commitHistory();
 }
+
 
 /**
  * Final save
@@ -436,10 +463,10 @@ function startNewSelection({ event }: { event: MouseEvent }) {
   const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
 
   editorMode.value = 'creating';
-  selectionStatus.value = 'active';
+  selection.value.status = 'active';
   dragStart.value = { x: event.clientX, y: event.clientY };
-  cropRect.value = { x, y, w: 0, h: 0 };
-  initialCrop.value = { ...cropRect.value };
+  selection.value.rect = { x, y, w: 0, h: 0 };
+  initialCrop.value = { ...selection.value.rect };
 
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
@@ -451,7 +478,7 @@ function startDragging({ event, handle }: { event: MouseEvent; handle: string })
   editorMode.value = handle === 'center' ? 'moving' : 'resizing';
   activeHandle.value = handle;
   dragStart.value = { x: event.clientX, y: event.clientY };
-  initialCrop.value = { ...cropRect.value };
+  initialCrop.value = { ...selection.value.rect };
 
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
@@ -513,15 +540,15 @@ function onMouseMove(e: MouseEvent) {
     throw new Error(`Unhandled editor mode: ${_ex}`);
   }
   }
-  cropRect.value = { x, y, w, h };
+  selection.value.rect = { x, y, w, h };
 }
 
 function onMouseUp() {
   const mode = editorMode.value;
   switch (mode) {
   case 'creating':
-    if (cropRect.value.w < 0.005 || cropRect.value.h < 0.005) {
-      selectionStatus.value = 'none';
+    if (selection.value.rect.w < 0.005 || selection.value.rect.h < 0.005) {
+      selection.value.status = 'none';
     }
     break;
   case 'moving':
@@ -552,10 +579,10 @@ onUnmounted(() => {
 const cropBoxStyle = computed(() => {
   if (!canvasRef.value) return {};
   return {
-    left: `${cropRect.value.x * 100}%`,
-    top: `${cropRect.value.y * 100}%`,
-    width: `${cropRect.value.w * 100}%`,
-    height: `${cropRect.value.h * 100}%`,
+    left: `${selection.value.rect.x * 100}%`,
+    top: `${selection.value.rect.y * 100}%`,
+    width: `${selection.value.rect.w * 100}%`,
+    height: `${selection.value.rect.h * 100}%`,
   };
 });
 
@@ -571,8 +598,7 @@ defineExpose({
     selectedFill,
     resizeW,
     resizeH,
-    selectionStatus,
-    selectionShape,
+    selection,
     resizeLock,
     hasChanges
   }
@@ -639,15 +665,15 @@ defineExpose({
 
         <!-- Selection Rect -->
         <div
-          v-if="selectionStatus === 'active'"
+          v-if="selection.status === 'active'"
           data-testid="image-editor-selection"
           class="absolute border-2 border-blue-500 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] cursor-move group"
-          :class="selectionShape === 'ellipse' ? 'rounded-full' : ''"
+          :class="selection.shape === 'ellipse' ? 'rounded-full' : ''"
           :style="cropBoxStyle"
           @mousedown.stop="startDragging({ event: $event, handle: 'center' })"
         >
           <div
-            v-if="selectionShape === 'rectangle'"
+            v-if="selection.shape === 'rectangle'"
             class="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-30"
           >
             <div v-for="i in 9" :key="i" class="border-[0.5px] border-white/50"></div>
@@ -674,17 +700,17 @@ defineExpose({
             <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Selection Shape</span>
             <div class="flex items-center gap-1 bg-gray-800 p-1.5 rounded-2xl border border-gray-700">
               <button
-                @click="selectionShape = 'rectangle'"
+                @click="selection.shape = 'rectangle'"
                 class="p-2 rounded-xl transition-all"
-                :class="selectionShape === 'rectangle' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
+                :class="selection.shape === 'rectangle' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
                 title="Rectangular Selection"
               >
                 <Square class="w-5 h-5" />
               </button>
               <button
-                @click="selectionShape = 'ellipse'"
+                @click="selection.shape = 'ellipse'"
                 class="p-2 rounded-xl transition-all"
-                :class="selectionShape === 'ellipse' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
+                :class="selection.shape === 'ellipse' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
                 title="Elliptical Selection"
               >
                 <Circle class="w-5 h-5" />
@@ -693,7 +719,7 @@ defineExpose({
           </div>
 
           <!-- Actions Toolset -->
-          <div class="flex flex-col gap-2 transition-opacity duration-200" :class="{ 'opacity-30 pointer-events-none': selectionStatus === 'none' }">
+          <div class="flex flex-col gap-2 transition-opacity duration-200" :class="{ 'opacity-30 pointer-events-none': selection.status === 'none' }">
             <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Selection Actions</span>
             <div class="flex items-center gap-2 bg-gray-800 p-1.5 rounded-2xl border border-gray-700">
               <div class="flex items-center gap-1.5 p-1">
