@@ -764,3 +764,60 @@ describe('MessageItem Abort Button', () => {
     expect(cls).not.toContain('animate-pulse');
   });
 });
+
+describe('MessageItem Actions Menu', () => {
+  const createMessage = (content: string): MessageNode => ({
+    id: generateId(),
+    role: 'assistant',
+    content,
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  it('toggles the actions menu when the more-actions button is clicked', async () => {
+    const message = createMessage('Hello');
+    const wrapper = mount(MessageItem, { props: { message } });
+
+    const menuButton = wrapper.find('[data-testid="message-more-actions-button"]');
+    expect(menuButton.exists()).toBe(true);
+
+    // Menu should be hidden by default
+    expect(wrapper.find('.absolute.right-0.bottom-full').exists()).toBe(false);
+
+    await menuButton.trigger('click');
+    await nextTick();
+
+    // Menu should be visible
+    const menu = wrapper.find('.absolute.right-0.bottom-full');
+    expect(menu.exists()).toBe(true);
+    expect(menu.text()).toContain('Compare Versions');
+  });
+
+  it('opens the MessageDiffModal when "Compare Versions" is clicked', async () => {
+    const message = createMessage('Hello');
+    const wrapper = mount(MessageItem, {
+      props: { message },
+      global: {
+        stubs: {
+          MessageDiffModal: {
+            template: '<div data-testid="message-diff-modal"></div>'
+          }
+        }
+      }
+    });
+
+    // Open menu
+    await wrapper.find('[data-testid="message-more-actions-button"]').trigger('click');
+    await nextTick();
+
+    const compareBtn = wrapper.findAll('button').find(b => b.text().includes('Compare Versions'));
+    expect(compareBtn?.exists()).toBe(true);
+
+    await compareBtn?.trigger('click');
+    await nextTick();
+
+    // Check if MessageDiffModal is triggered
+    const modal = wrapper.find('[data-testid="message-diff-modal"]');
+    expect(modal.exists()).toBe(true);
+  });
+});
