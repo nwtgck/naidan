@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { X, History, Clock, Cpu, ArrowDown, Copy, Check, ArrowRight, XCircle } from 'lucide-vue-next';
+import { X, History, Clock, Cpu, ArrowDown, Copy, Check, ArrowRight, RotateCcw } from 'lucide-vue-next';
 import type { MessageNode } from '../models/types';
 import { computeWordDiff, type DiffPart } from '../utils/diff';
 
@@ -153,18 +153,9 @@ defineExpose({
               </button>
             </div>
 
-            <div class="flex items-center gap-3">
-              <button
-                v-if="baseVersionId || targetVersionId"
-                @click="clearSelection"
-                class="flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-              >
-                <XCircle class="w-3.5 h-3.5" />
-                <span>Clear Selection</span>
-              </button>              <button @click="handleClose" class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors">
-                <X class="w-5 h-5" />
-              </button>
-            </div>
+            <button @click="handleClose" class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors">
+              <X class="w-5 h-5" />
+            </button>
           </div>
         </div>
 
@@ -183,14 +174,28 @@ defineExpose({
                   <ArrowRight class="w-3 h-3" />
                   <span class="text-green-600 dark:text-green-400">Target v{{ customDiff.target.versionNumber }}</span>
                 </div>
-                <button
-                  @click="handleCopy({ id: customDiff.target.id, content: customDiff.target.content })"
-                  class="flex items-center gap-2 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-blue-600 transition-colors"
-                >
-                  <Check v-if="copiedId === customDiff.target.id" class="w-3.5 h-3.5 text-green-500" />
-                  <Copy v-else class="w-3.5 h-3.5" />
-                  <span>Copy Result</span>
-                </button>
+
+                <div class="flex items-center gap-4">
+                  <!-- Reset Selection inside panel -->
+                  <button
+                    @click="clearSelection"
+                    class="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-blue-600 transition-colors"
+                    title="Reset selection"
+                    data-testid="reset-selection-button"
+                  >
+                    <RotateCcw class="w-3.5 h-3.5" />
+                    <span>Reset Selection</span>
+                  </button>
+
+                  <button
+                    @click="handleCopy({ id: customDiff.target.id, content: customDiff.target.content })"
+                    class="flex items-center gap-2 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-blue-600 transition-colors"
+                  >
+                    <Check v-if="copiedId === customDiff.target.id" class="w-3.5 h-3.5 text-green-500" />
+                    <Copy v-else class="w-3.5 h-3.5" />
+                    <span>Copy Result</span>
+                  </button>
+                </div>
               </div>
               <div class="p-5 overflow-y-auto font-mono text-sm leading-relaxed whitespace-pre-wrap break-words dark:text-gray-200">
                 <template v-if="diffVisibility === 'visible'">
@@ -304,13 +309,6 @@ defineExpose({
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex justify-end bg-white dark:bg-gray-900 shrink-0">
-          <button @click="handleClose" class="px-8 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-2xl font-bold text-[11px] uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-95">
-            Close
-          </button>
         </div>
       </div>
     </div>

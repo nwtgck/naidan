@@ -92,16 +92,21 @@ describe('MessageDiffModal', () => {
     const baseBtn = v1Card?.findAll('button').find(b => b.text().includes('Base'));
     await baseBtn?.trigger('click');
 
+    // Select Target for v2 to ensure customDiff panel is visible (where Reset button lives)
+    const v2Card = wrapper.findAll('.group\\/card').find(c => c.text().includes('v2'));
+    const targetBtn = v2Card?.findAll('button').find(b => b.text().includes('Target'));
+    await targetBtn?.trigger('click');
+
     await nextTick();
 
-    // "Clear Selection" button should appear in the header
-    const clearBtn = wrapper.findAll('button').find(b => b.text().includes('Clear Selection'));
-    expect(clearBtn).toBeTruthy();
+    // "Reset Selection" button should appear in the customDiff panel
+    const resetBtn = wrapper.find('[data-testid="reset-selection-button"]');
+    expect(resetBtn.exists()).toBe(true);
 
-    await clearBtn?.trigger('click');
+    await resetBtn.trigger('click');
     await nextTick();
 
-    expect(wrapper.text()).not.toContain('Clear Selection');
+    expect(wrapper.text()).not.toContain('Comparing Base');
   });
 
   it('handles copying sequential version content from the list', async () => {
