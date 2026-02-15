@@ -7,10 +7,14 @@ import { generateId } from '../utils/id';
 import { naturalSort } from '../utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
+
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
+
 import {
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, Image,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Edit2
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import type { Attachment, Chat } from '../models/types';
@@ -155,6 +159,44 @@ const isOverLimit = ref(false); // New state to show maximize button only when c
 const attachments = ref<Attachment[]>([]);
 const attachmentUrls = ref<Record<string, string>>({});
 
+// Image Editor integration
+const editingAttachmentId = ref<string | undefined>(undefined);
+const editingAttachment = computed(() => attachments.value.find(a => a.id === editingAttachmentId.value));
+
+function openImageEditor({ id }: { id: string }) {
+  editingAttachmentId.value = id;
+}
+
+function closeImageEditor() {
+  editingAttachmentId.value = undefined;
+}
+
+function saveEditedImage({ blob }: { blob: Blob }) {
+  if (!editingAttachment.value) return;
+
+  const index = attachments.value.findIndex(a => a.id === editingAttachmentId.value);
+  if (index !== -1) {
+    const original = attachments.value[index]!;
+
+    // Explicitly revoke old URL to ensure UI refresh
+    const oldUrl = attachmentUrls.value[original.id];
+    if (oldUrl) {
+      URL.revokeObjectURL(oldUrl);
+      delete attachmentUrls.value[original.id];
+    }
+
+    // Update the attachment with the new blob and a new binary object identity
+    attachments.value[index] = {
+      ...original,
+      binaryObjectId: generateId(),
+      status: 'memory',
+      blob,
+      size: blob.size,
+    };
+  }
+  closeImageEditor();
+}
+
 watch(attachments, (newAtts) => {
   // Revoke URLs for removed attachments
   Object.keys(attachmentUrls.value).forEach(id => {
@@ -167,10 +209,25 @@ watch(attachments, (newAtts) => {
     }
   });
 
-  // Create URLs for new attachments
+  // Create or refresh URLs for new/updated attachments
   newAtts.forEach(att => {
-    if (att.status === 'memory' && !attachmentUrls.value[att.id]) {
-      attachmentUrls.value[att.id] = URL.createObjectURL(att.blob);
+    const status = att.status;
+    switch (status) {
+    case 'memory': {
+      const existingUrl = attachmentUrls.value[att.id];
+      // If we don't have a URL (newly added or just revoked in saveEditedImage), create one
+      if (!existingUrl) {
+        attachmentUrls.value[att.id] = URL.createObjectURL(att.blob);
+      }
+      break;
+    }
+    case 'persisted':
+    case 'missing':
+      break;
+    default: {
+      const _ex: never = status;
+      throw new Error(`Unhandled status: ${_ex}`);
+    }
     }
   });
 }, { deep: true });
@@ -544,7 +601,9 @@ function focusInput() {
 
 defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, formatLabel,
   __testOnly: {
-  // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    attachments,
+    editingAttachmentId,
+    editingAttachment,
   }, });
 </script>
 
@@ -570,16 +629,28 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       <!-- Attachment Previews -->
       <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
         <div v-for="att in attachments" :key="att.id" class="relative group/att">
-          <img
-            :src="attachmentUrls[att.id]"
-            class="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
-          />
-          <button
-            @click="removeAttachment(att.id)"
-            class="absolute -top-2 -right-2 p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-opacity"
-          >
-            <X class="w-3 h-3" />
-          </button>
+          <div class="bg-transparency-grid rounded-lg overflow-hidden" style="--grid-size: 10px;">
+            <img
+              :src="attachmentUrls[att.id]"
+              class="w-20 h-20 object-cover border border-gray-200 dark:border-gray-700"
+            />
+          </div>
+          <div class="absolute -top-2 -right-2 flex gap-1 opacity-0 group-hover/att:opacity-100 transition-opacity z-10">
+            <button
+              @click="openImageEditor({ id: att.id })"
+              class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-blue-500 shadow-sm transition-colors touch-visible"
+              title="Edit Image"
+            >
+              <Edit2 class="w-3 h-3" />
+            </button>
+            <button
+              @click="removeAttachment(att.id)"
+              class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm transition-colors touch-visible"
+              title="Remove"
+            >
+              <X class="w-3 h-3" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -691,6 +762,18 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         </button>
       </div>
     </div>
+
+    <!-- Image Editor Overlay -->
+    <Teleport to="body">
+      <ImageEditor
+        v-if="editingAttachment"
+        :image-url="attachmentUrls[editingAttachment.id]!"
+        :file-name="editingAttachment.originalName"
+        :original-mime-type="editingAttachment.mimeType"
+        @cancel="closeImageEditor"
+        @save="saveEditedImage"
+      />
+    </Teleport>
   </div>
 </template>
 

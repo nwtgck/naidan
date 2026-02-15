@@ -27,6 +27,21 @@ interface ExtendedLogger {
   printCustomError?: (error: VitestError) => Promise<void>
 }
 
+interface TaskResult {
+  state: 'run' | 'pass' | 'fail' | 'skipped' | 'todo' | 'pending' | 'only' | 'bench' | 'failed' | 'passed'
+  errors?: VitestError[]
+}
+
+interface VitestTask {
+  name?: string
+  moduleId?: string
+  relativeModuleId?: string
+  result?: TaskResult
+  task?: {
+    result?: TaskResult
+  }
+}
+
 export default class FailedOnlyReporter implements Reporter {
   private total = 0
   private passed = 0
@@ -34,6 +49,7 @@ export default class FailedOnlyReporter implements Reporter {
   private vitest!: Vitest
   private headerPrinted = false
   private logs: UserConsoleLog[] = []
+  private endReported = false
 
   onInit(vitest: Vitest) {
     this.vitest = vitest
@@ -111,7 +127,72 @@ export default class FailedOnlyReporter implements Reporter {
     }
   }
 
-  onTestRunEnd() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async onFinished(files: any = [], errors: any = []) {
+    await this.reportEnd(files, errors)
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async onTestRunEnd(testModules: any = [], unhandledErrors: any = []) {
+    await this.reportEnd(testModules, unhandledErrors)
+  }
+
+  private async reportEnd(files: readonly VitestTask[], errors: readonly VitestError[]) {
+    if (this.endReported) {
+      return
+    }
+    this.endReported = true
+
+    for (const file of files) {
+      const result = file.result || file.task?.result
+      if (!result) {
+        continue
+      }
+
+      const state = result.state
+      switch (state) {
+      case 'fail':
+      case 'failed': {
+        const fileErrors = result.errors || []
+        if (fileErrors.length > 0) {
+          this.failed++
+          this.total++
+          if (!this.headerPrinted) {
+            this.vitest.logger.log('\nFAILED TESTS:')
+            this.headerPrinted = true
+          }
+          const name = file.name || file.relativeModuleId || file.moduleId || 'unknown'
+          await this.printFailure({ name, errors: fileErrors })
+        }
+        break
+      }
+      case 'run':
+      case 'pass':
+      case 'passed':
+      case 'skipped':
+      case 'todo':
+      case 'pending':
+      case 'only':
+      case 'bench': {
+        break
+      }
+      default: {
+        const _ex: never = state
+        throw new Error(`Unhandled state: ${_ex}`)
+      }
+      }
+    }
+
+    for (const error of errors) {
+      this.failed++
+      this.total++
+      if (!this.headerPrinted) {
+        this.vitest.logger.log('\nFAILED TESTS:')
+        this.headerPrinted = true
+      }
+      await this.printFailure({ name: 'Global Error', errors: [error] })
+    }
+
     this.vitest.logger.log(`\nTests: ${this.passed} passed, ${this.failed} failed, ${this.total} total`)
   }
 }

@@ -93,5 +93,11 @@ describe('title-generator utilities', () => {
     it('handles mixed cleaning', () => {
       expect(cleanGeneratedTitle(' "Title: Mixed Cleanup" ')).toBe('Mixed Cleanup');
     });
+
+    it('removes thinking tags and content', () => {
+      expect(cleanGeneratedTitle('<think>Thinking about a title...</think>Final Title')).toBe('Final Title');
+      expect(cleanGeneratedTitle('<think>Wrapped</think>')).toBe('');
+      expect(cleanGeneratedTitle('Title with <think>some</think> thoughts')).toBe('Title with thoughts');
+    });
   });
 });

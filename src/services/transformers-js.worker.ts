@@ -262,8 +262,9 @@ const opfsCache = {
 
     const contentType = response.headers.get('Content-Type') || '';
     if (contentType.includes('text/html')) {
-      console.error(`[opfsCache] ERROR: Detected HTML response for model request! Possible 404 fallback from server. URL: ${urlString}`);
-      return;
+      const msg = `[opfsCache] ERROR: Detected HTML response for model request! Possible 404 fallback from server. URL: ${urlString}`;
+      console.error(msg);
+      throw new Error(msg);
     }
 
     const pathParts = path.split('/');
@@ -295,6 +296,7 @@ const opfsCache = {
       }
     } catch (err) {
       console.error(`[opfsCache] FAILED TO SAVE: ${path}:`, err);
+      throw err;
     }
   }
 };

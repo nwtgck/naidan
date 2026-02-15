@@ -12,6 +12,7 @@ interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
 
 // Singleton state for UI
 let activeModelId: string | undefined = undefined;
+let loadingModelId: string | undefined = undefined;
 let loadingStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
 let loadingProgress: number = 0;
 let progressItems: Record<string, ProgressInfo> = {};
@@ -29,7 +30,8 @@ type ProgressListener = (
   error: string | undefined,
   isCached: boolean,
   isLoadingFromCache: boolean,
-  progressItems: Record<string, ProgressInfo>
+  progressItems: Record<string, ProgressInfo>,
+  loadingModelId: string | undefined
 ) => void;
 const listeners: Set<ProgressListener> = new Set();
 
@@ -37,7 +39,7 @@ type ModelListListener = () => void;
 const modelListListeners: Set<ModelListListener> = new Set();
 
 function notify() {
-  listeners.forEach(l => l(loadingStatus, loadingProgress, loadingError, isCached, isLoadingFromCache, progressItems));
+  listeners.forEach(l => l(loadingStatus, loadingProgress, loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId));
 }
 
 function updateProgress({ info }: { info: ProgressInfo }) {
@@ -170,15 +172,18 @@ initWorker();
  * Checks if an error message indicates a fatal state that requires a worker restart.
  */
 function isFatalError(msg: string): boolean {
-  return msg.includes('Aborted()') ||
-         msg.includes('[WebGPU] Kernel') ||
-         msg.includes('protobuf parsing failed');
+  const m = msg.toLowerCase();
+  return m.includes('aborted()') ||
+         m.includes('[webgpu] kernel') ||
+         m.includes('protobuf parsing failed') ||
+         m.includes('allocation failed') ||
+         m.includes('out of memory');
 }
 
 export const transformersJsService = {
   subscribe(listener: ProgressListener) {
     listeners.add(listener);
-    listener(loadingStatus, loadingProgress, loadingError, isCached, isLoadingFromCache, progressItems);
+    listener(loadingStatus, loadingProgress, loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId);
     return () => listeners.delete(listener);
   },
 
@@ -193,6 +198,7 @@ export const transformersJsService = {
       progress: loadingProgress,
       error: loadingError,
       activeModelId,
+      loadingModelId,
       device: currentDevice,
       isCached,
       isLoadingFromCache,
@@ -488,6 +494,7 @@ export const transformersJsService = {
       isLoadingFromCache = isLocal || cached.some(m => (m.id === modelId || m.id === hfId) && m.isComplete);
 
       // 2. Now set loading state
+      loadingModelId = modelId;
       loadingStatus = 'loading';
       loadingProgress = 0;
       progressItems = {};
@@ -515,6 +522,7 @@ export const transformersJsService = {
       currentDevice = result.device;
 
       activeModelId = modelId;
+      loadingModelId = undefined;
       loadingStatus = 'ready';
       notify();
       notifyModelListChange();
@@ -531,6 +539,7 @@ export const transformersJsService = {
       loadingStatus = 'error';
       loadingError = errorMsg;
       activeModelId = undefined;
+      loadingModelId = undefined;
       notify();
       throw e;
     }
@@ -555,6 +564,7 @@ export const transformersJsService = {
       // No longer deleting partial models to allow resume support.
       // Transformers.js handles missing files gracefully.
 
+      loadingModelId = modelId;
       loadingStatus = 'loading';
       loadingProgress = 0;
       progressItems = {};
@@ -579,6 +589,7 @@ export const transformersJsService = {
 
       loadingStatus = 'idle';
       loadingProgress = 0;
+      loadingModelId = undefined;
       notify();
       notifyModelListChange();
     } catch (e) {
@@ -592,6 +603,7 @@ export const transformersJsService = {
 
       loadingStatus = 'error';
       loadingError = errorMsg;
+      loadingModelId = undefined;
       notify();
       throw e;
     }
