@@ -15,6 +15,7 @@ vi.mock('lucide-vue-next', () => ({
   ChevronDown: { template: '<span>ChevronDown</span>' },
   ChevronUp: { template: '<span>ChevronUp</span>' },
   Edit2: { template: '<span>Edit2</span>' },
+  FileEdit: { template: '<span>FileEdit</span>' },
 }));
 
 // Mock child components
