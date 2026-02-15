@@ -629,7 +629,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       <!-- Attachment Previews -->
       <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
         <div v-for="att in attachments" :key="att.id" class="relative group/att">
-          <div class="checkerboard rounded-lg overflow-hidden">
+          <div class="bg-transparency-grid rounded-lg overflow-hidden" style="--grid-size: 10px;">
             <img
               :src="attachmentUrls[att.id]"
               class="w-20 h-20 object-cover border border-gray-200 dark:border-gray-700"
@@ -823,16 +823,5 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 }
 .zoom-in {
   animation-name: zoom-in;
-}
-
-.checkerboard {
-  background-image:
-    linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
-    linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
-    linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
-  background-size: 10px 10px;
-  background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
-  background-color: #1f1f1f;
 }
 </style>

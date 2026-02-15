@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import {
   X, Check, RotateCw, FlipHorizontal, FlipVertical,
   RotateCcw, RefreshCcw, Undo2, Redo2,
-  Crop as CropIcon, Eraser, Square,
+  Crop as CropIcon, Eraser, Square, Circle,
   Link, Link2Off
 } from 'lucide-vue-next';
 
@@ -30,6 +30,9 @@ const editorMode = ref<EditorMode>('idle');
 
 type SelectionStatus = 'none' | 'active';
 const selectionStatus = ref<SelectionStatus>('none');
+
+type SelectionShape = 'rectangle' | 'ellipse';
+const selectionShape = ref<SelectionShape>('rectangle');
 
 type OutputFormat = 'original' | 'image/png' | 'image/jpeg' | 'image/webp';
 const selectedFormat = ref<OutputFormat>('original');
@@ -283,12 +286,51 @@ function executeAction({ action }: { action: ActionType }) {
   const sw = cropRect.value.w * canvas.width;
   const sh = cropRect.value.h * canvas.height;
 
+  const shape = selectionShape.value;
+
+  /**
+   * Helper to create path based on current shape
+   */
+  const createSelectionPath = (context: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
+    context.beginPath();
+    switch (shape) {
+    case 'rectangle':
+      context.rect(x, y, w, h);
+      break;
+    case 'ellipse':
+      context.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      break;
+    default: {
+      const _ex: never = shape;
+      throw new Error(`Unhandled shape: ${_ex}`);
+    }
+    }
+  };
+
   switch (action) {
   case 'crop': {
     const data = ctx.getImageData(sx, sy, sw, sh);
     canvas.width = sw;
     canvas.height = sh;
     ctx.putImageData(data, 0, 0);
+
+    // If elliptical crop, we need to mask out the exterior of the ellipse on the new canvas
+    switch (shape) {
+    case 'ellipse':
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.fillStyle = 'black'; // Opaque brush for destination-in
+      ctx.beginPath();
+      ctx.ellipse(sw / 2, sh / 2, sw / 2, sh / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      break;
+    case 'rectangle':
+      break; // No extra masking needed for rectangle crop
+    default: {
+      const _ex: never = shape;
+      throw new Error(`Unhandled shape: ${_ex}`);
+    }
+    }
     break;
   }
   case 'mask-outside':
@@ -296,7 +338,7 @@ function executeAction({ action }: { action: ActionType }) {
     const fillColor = selectedFill.value;
     ctx.fillStyle = (() => {
       switch (fillColor) {
-      case 'transparent': return 'black'; // Use opaque color as a mask for destination-out
+      case 'transparent': return 'black'; // Opaque for destination-out
       case 'white': return 'white';
       case 'black': return 'black';
       default: {
@@ -306,30 +348,35 @@ function executeAction({ action }: { action: ActionType }) {
       }
     })();
 
-    switch (fillColor) {
-    case 'transparent':
-      ctx.globalCompositeOperation = 'destination-out';
-      break;
-    case 'white':
-    case 'black':
-      ctx.globalCompositeOperation = 'source-over';
-      break;
-    default: {
-      const _ex: never = fillColor;
-      throw new Error(`Unhandled fill color: ${_ex}`);
-    }
-    }
+    const isTransparent = fillColor === 'transparent';
 
     switch (action) {
-    case 'mask-outside':
-      ctx.fillRect(0, 0, canvas.width, sy); // Top
-      ctx.fillRect(0, sy + sh, canvas.width, canvas.height - (sy + sh)); // Bottom
-      ctx.fillRect(0, sy, sx, sh); // Left
-      ctx.fillRect(sx + sw, sy, canvas.width - (sx + sw), sh); // Right
-      break;
     case 'mask-inside':
-      ctx.fillRect(sx, sy, sw, sh);
+      if (isTransparent) ctx.globalCompositeOperation = 'destination-out';
+      createSelectionPath(ctx, sx, sy, sw, sh);
+      ctx.fill();
       break;
+    case 'mask-outside': {
+      // mask-outside
+      const temp = document.createElement('canvas');
+      temp.width = canvas.width;
+      temp.height = canvas.height;
+      const tctx = temp.getContext('2d');
+      if (tctx) {
+        // Fill the whole area with the color
+        tctx.fillStyle = ctx.fillStyle;
+        tctx.fillRect(0, 0, canvas.width, canvas.height);
+        // "Punch a hole" for the selection
+        tctx.globalCompositeOperation = 'destination-out';
+        createSelectionPath(tctx, sx, sy, sw, sh);
+        tctx.fill();
+
+        // Draw the mask onto the main canvas
+        if (isTransparent) ctx.globalCompositeOperation = 'destination-out';
+        ctx.drawImage(temp, 0, 0);
+      }
+      break;
+    }
     default: {
       const _ex: never = action;
       throw new Error(`Unhandled action: ${_ex}`);
@@ -339,6 +386,7 @@ function executeAction({ action }: { action: ActionType }) {
     ctx.globalCompositeOperation = 'source-over';
     break;
   }
+
   default: {
     const _ex: never = action;
     throw new Error(`Unhandled action: ${_ex}`);
@@ -524,6 +572,7 @@ defineExpose({
     resizeW,
     resizeH,
     selectionStatus,
+    selectionShape,
     resizeLock,
     hasChanges
   }
@@ -580,7 +629,7 @@ defineExpose({
       @mousedown="startNewSelection({ event: $event })"
     >
       <div
-        class="relative border border-white/10 checkerboard"
+        class="relative border border-white/10 bg-transparency-grid"
         :style="{
           width: canvasRef ? `${canvasRef.width * displayScale}px` : '0px',
           height: canvasRef ? `${canvasRef.height * displayScale}px` : '0px',
@@ -593,10 +642,14 @@ defineExpose({
           v-if="selectionStatus === 'active'"
           data-testid="image-editor-selection"
           class="absolute border-2 border-blue-500 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] cursor-move group"
+          :class="selectionShape === 'ellipse' ? 'rounded-full' : ''"
           :style="cropBoxStyle"
           @mousedown.stop="startDragging({ event: $event, handle: 'center' })"
         >
-          <div class="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-30">
+          <div
+            v-if="selectionShape === 'rectangle'"
+            class="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-30"
+          >
             <div v-for="i in 9" :key="i" class="border-[0.5px] border-white/50"></div>
           </div>
           <!-- Handles -->
@@ -612,59 +665,84 @@ defineExpose({
       </div>
     </div>
 
-    <!-- Controls -->
     <div class="w-full max-w-6xl mt-6 flex flex-col gap-6">
       <div class="flex flex-wrap items-end justify-between gap-6">
-        <!-- Actions Toolset -->
-        <div class="flex flex-col gap-2 transition-opacity duration-200" :class="{ 'opacity-30 pointer-events-none': selectionStatus === 'none' }">
-          <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Selection Actions</span>
-          <div class="flex items-center gap-2 bg-gray-800 p-1.5 rounded-2xl border border-gray-700">
-            <div class="flex items-center gap-1.5 p-1">
+        <!-- Shape & Actions -->
+        <div class="flex items-end gap-6">
+          <!-- Selection Shape -->
+          <div class="flex flex-col gap-2">
+            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Selection Shape</span>
+            <div class="flex items-center gap-1 bg-gray-800 p-1.5 rounded-2xl border border-gray-700">
               <button
-                @click="executeAction({ action: 'crop' })"
-                data-testid="image-editor-action-crop"
-                class="px-4 py-2 bg-gray-900/50 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-gray-700 hover:border-blue-500 shadow-lg"
-                title="Crop to selection"
+                @click="selectionShape = 'rectangle'"
+                class="p-2 rounded-xl transition-all"
+                :class="selectionShape === 'rectangle' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
+                title="Rectangular Selection"
               >
-                <CropIcon class="w-4 h-4" />
-                <span>Crop</span>
+                <Square class="w-5 h-5" />
               </button>
               <button
-                @click="executeAction({ action: 'mask-outside' })"
-                data-testid="image-editor-action-mask-out"
-                class="px-4 py-2 bg-gray-900/50 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-gray-700 hover:border-blue-500 shadow-lg"
-                title="Fill everything outside selection"
+                @click="selectionShape = 'ellipse'"
+                class="p-2 rounded-xl transition-all"
+                :class="selectionShape === 'ellipse' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
+                title="Elliptical Selection"
               >
-                <Square class="w-4 h-4" />
-                <span>Mask Out</span>
-              </button>
-              <button
-                @click="executeAction({ action: 'mask-inside' })"
-                data-testid="image-editor-action-mask-in"
-                class="px-4 py-2 bg-gray-900/50 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-gray-700 hover:border-blue-500 shadow-lg"
-                title="Fill selection area"
-              >
-                <Eraser class="w-4 h-4" />
-                <span>Mask In</span>
+                <Circle class="w-5 h-5" />
               </button>
             </div>
+          </div>
 
-            <div class="w-px h-6 bg-gray-700 mx-1"></div>
+          <!-- Actions Toolset -->
+          <div class="flex flex-col gap-2 transition-opacity duration-200" :class="{ 'opacity-30 pointer-events-none': selectionStatus === 'none' }">
+            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Selection Actions</span>
+            <div class="flex items-center gap-2 bg-gray-800 p-1.5 rounded-2xl border border-gray-700">
+              <div class="flex items-center gap-1.5 p-1">
+                <button
+                  @click="executeAction({ action: 'crop' })"
+                  data-testid="image-editor-action-crop"
+                  class="px-4 py-2 bg-gray-900/50 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-gray-700 hover:border-blue-500 shadow-lg"
+                  title="Crop to selection"
+                >
+                  <CropIcon class="w-4 h-4" />
+                  <span>Crop</span>
+                </button>
+                <button
+                  @click="executeAction({ action: 'mask-outside' })"
+                  data-testid="image-editor-action-mask-out"
+                  class="px-4 py-2 bg-gray-900/50 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-gray-700 hover:border-blue-500 shadow-lg"
+                  title="Fill everything outside selection"
+                >
+                  <Square class="w-4 h-4" />
+                  <span>Mask Out</span>
+                </button>
+                <button
+                  @click="executeAction({ action: 'mask-inside' })"
+                  data-testid="image-editor-action-mask-in"
+                  class="px-4 py-2 bg-gray-900/50 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-gray-700 hover:border-blue-500 shadow-lg"
+                  title="Fill selection area"
+                >
+                  <Eraser class="w-4 h-4" />
+                  <span>Mask In</span>
+                </button>
+              </div>
 
-            <div class="flex items-center gap-1.5 px-1">
-              <button
-                v-for="color in (['transparent', 'white', 'black'] as FillColor[])"
-                :key="color"
-                @click="selectedFill = color"
-                class="w-8 h-8 rounded-lg border-2 transition-all flex items-center justify-center"
-                :class="[
-                  selectedFill === color ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent',
-                  color === 'transparent' ? 'bg-gray-700' : (color === 'white' ? 'bg-white' : 'bg-black')
-                ]"
-                :title="`Fill with ${color}`"
-              >
-                <div v-if="color === 'transparent'" class="w-4 h-4 border border-red-500/50 rotate-45"></div>
-              </button>
+              <div class="w-px h-6 bg-gray-700 mx-1"></div>
+
+              <div class="flex items-center gap-1.5 px-1">
+                <button
+                  v-for="color in (['transparent', 'white', 'black'] as FillColor[])"
+                  :key="color"
+                  @click="selectedFill = color"
+                  class="w-8 h-8 rounded-lg border-2 transition-all flex items-center justify-center"
+                  :class="[
+                    selectedFill === color ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent',
+                    color === 'transparent' ? 'bg-gray-700' : (color === 'white' ? 'bg-white' : 'bg-black')
+                  ]"
+                  :title="`Fill with ${color}`"
+                >
+                  <div v-if="color === 'transparent'" class="w-4 h-4 border border-red-500/50 rotate-45"></div>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -754,6 +832,7 @@ defineExpose({
           <button
             @click="performSave"
             :disabled="!hasChanges"
+            data-testid="image-editor-finish-button"
             class="px-10 py-3 bg-blue-600 text-white text-sm font-bold rounded-2xl hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-500/30 flex items-center gap-3"
           >
             <Check class="w-5 h-5" />
@@ -782,16 +861,5 @@ input::-webkit-inner-spin-button {
 }
 input[type=number] {
   -moz-appearance: textfield;
-}
-
-.checkerboard {
-  background-image:
-    linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
-    linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
-    linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
-  background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
-  background-color: #1f1f1f;
 }
 </style>

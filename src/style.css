@@ -55,3 +55,19 @@
 .mermaid-raw {
   @apply m-0 rounded-none border-t border-gray-200 dark:border-gray-700;
 }
+
+/* Global Transparency Grid Utility */
+.bg-transparency-grid {
+  --grid-size: 20px;
+  --grid-color: #2a2a2a;
+  --bg-color: #1f1f1f;
+  
+  background-image:
+    linear-gradient(45deg, var(--grid-color) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--grid-color) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--grid-color) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--grid-color) 75%);
+  background-size: var(--grid-size) var(--grid-size);
+  background-position: 0 0, 0 calc(var(--grid-size) / 2), calc(var(--grid-size) / 2) calc(var(--grid-size) / -2), calc(var(--grid-size) / -2) 0px;
+  background-color: var(--bg-color);
+}

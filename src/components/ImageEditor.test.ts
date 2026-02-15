@@ -17,6 +17,7 @@ vi.mock('lucide-vue-next', () => ({
   Crop: { template: '<span>Crop</span>' },
   Eraser: { template: '<span>Eraser</span>' },
   Square: { template: '<span>Square</span>' },
+  Circle: { template: '<span>Circle</span>' },
   Link: { template: '<span>Link</span>' },
   Link2Off: { template: '<span>Link2Off</span>' },
 }));
@@ -31,6 +32,10 @@ const mockContext = {
   scale: vi.fn(),
   translate: vi.fn(),
   rotate: vi.fn(),
+  ellipse: vi.fn(),
+  beginPath: vi.fn(),
+  rect: vi.fn(),
+  fill: vi.fn(),
   setTransform: vi.fn(),
   globalCompositeOperation: 'source-over',
   fillStyle: 'black',
@@ -68,7 +73,7 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    const applyButton = wrapper.find('button.bg-blue-600');
+    const applyButton = wrapper.find('[data-testid="image-editor-finish-button"]');
     expect(applyButton.attributes('disabled')).toBeDefined();
     expect(wrapper.vm.__testOnly.hasChanges.value).toBe(false);
   });
@@ -81,7 +86,7 @@ describe('ImageEditor', () => {
     const webpButton = wrapper.findAll('button').find(b => b.text().includes('WebP'));
     await webpButton?.trigger('click');
 
-    const applyButton = wrapper.find('button.bg-blue-600');
+    const applyButton = wrapper.find('[data-testid="image-editor-finish-button"]');
     expect(applyButton.attributes('disabled')).toBeUndefined();
     expect(wrapper.vm.__testOnly.hasChanges.value).toBe(true);
   });
@@ -179,13 +184,13 @@ describe('ImageEditor', () => {
     expect(mockContext.globalCompositeOperation).toBe('source-over');
   });
 
-  it('should have checkerboard background for transparency visualization', async () => {
+  it('should have transparency grid background for transparency visualization', async () => {
     const wrapper = mount(ImageEditor, { props });
     await nextTick();
 
-    const workspace = wrapper.find('.checkerboard');
+    const workspace = wrapper.find('.bg-transparency-grid');
     expect(workspace.exists()).toBe(true);
-    expect(workspace.classes()).toContain('checkerboard');
+    expect(workspace.classes()).toContain('bg-transparency-grid');
   });
 
   it('should start with no selection', async () => {
@@ -209,6 +214,20 @@ describe('ImageEditor', () => {
     await new Promise(resolve => setTimeout(resolve, 10));
 
     expect(wrapper.vm.__testOnly.historyIndex.value).toBe(0);
+  });
+
+  it('should support elliptical selection and use ellipse path', async () => {
+    const wrapper = mount(ImageEditor, { props });
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Switch to ellipse mode
+    wrapper.vm.__testOnly.selectionShape.value = 'ellipse';
+    await nextTick();
+
+    await wrapper.vm.__testOnly.executeAction({ action: 'mask-inside' });
+
+    expect(mockContext.ellipse).toHaveBeenCalled();
   });
 
   describe('Direct Manipulation UX', () => {
