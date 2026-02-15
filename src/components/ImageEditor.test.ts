@@ -20,6 +20,10 @@ vi.mock('lucide-vue-next', () => ({
   Circle: { template: '<span>Circle</span>' },
   Link: { template: '<span>Link</span>' },
   Link2Off: { template: '<span>Link2Off</span>' },
+  PanelRight: { template: '<span>PanelRight</span>' },
+  ZoomIn: { template: '<span>ZoomIn</span>' },
+  ZoomOut: { template: '<span>ZoomOut</span>' },
+  Search: { template: '<span>Search</span>' },
 }));
 
 // Mock HTML5 Canvas and Image
@@ -69,7 +73,12 @@ describe('ImageEditor', () => {
   });
 
   it('should disable Finish & Apply button when no changes are made', async () => {
-    const wrapper = mount(ImageEditor, { props });
+    const wrapper = mount(ImageEditor, {
+      props: {
+        ...props,
+        originalMimeType: 'image/png'
+      }
+    });
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -79,7 +88,12 @@ describe('ImageEditor', () => {
   });
 
   it('should enable Finish & Apply button when format is changed', async () => {
-    const wrapper = mount(ImageEditor, { props });
+    const wrapper = mount(ImageEditor, {
+      props: {
+        ...props,
+        originalMimeType: 'image/png'
+      }
+    });
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -231,7 +245,7 @@ describe('ImageEditor', () => {
     await wrapper.vm.__testOnly.applyTransform({ type: 'rotate-r' });
     expect(wrapper.vm.__testOnly.historyIndex.value).toBe(1);
 
-    const resetBtn = wrapper.find('button[title="Reset All"]');
+    const resetBtn = wrapper.find('button[title="Reset Image"]');
     await resetBtn.trigger('click');
     await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -316,6 +330,98 @@ describe('ImageEditor', () => {
       await nextTick();
 
       expect(wrapper.vm.__testOnly.selection.value.status).toBe('none');
+    });
+  });
+
+  describe('New UI Features', () => {
+    it('should toggle sidebar visibility', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.isSidebarOpen.value).toBe(true);
+
+      const toggleBtn = wrapper.find('button[title="Toggle Tools Sidebar"]');
+      await toggleBtn.trigger('click');
+      expect(wrapper.vm.__testOnly.isSidebarOpen.value).toBe(false);
+
+      await toggleBtn.trigger('click');
+      expect(wrapper.vm.__testOnly.isSidebarOpen.value).toBe(true);
+    });
+
+    it('should update zoom on wheel event', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+
+      // Zoom In
+      await container.trigger('wheel', { deltaY: -100 });
+      expect(wrapper.vm.__testOnly.zoom.value).toBeGreaterThan(1);
+
+      // Zoom Out
+      const zoomedIn = wrapper.vm.__testOnly.zoom.value;
+      await container.trigger('wheel', { deltaY: 100 });
+      expect(wrapper.vm.__testOnly.zoom.value).toBeLessThan(zoomedIn);
+    });
+
+    it('should pan image when dragging with Alt key', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+
+      // Start panning with Alt key
+      await container.trigger('mousedown', { clientX: 100, clientY: 100, button: 0, altKey: true });
+
+      // Move mouse
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 150 }));
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.panOffset.value.x).toBe(50);
+      expect(wrapper.vm.__testOnly.panOffset.value.y).toBe(50);
+
+      window.dispatchEvent(new MouseEvent('mouseup'));
+    });
+
+    it('should show confirmation dialog when closing with unsaved changes', async () => {
+      const wrapper = mount(ImageEditor, {
+        props: { ...props, originalMimeType: 'image/jpeg' }
+      });
+      await nextTick();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // 1. Make a change (Rotate)
+      await wrapper.vm.__testOnly.applyTransform({ type: 'rotate-r' });
+      expect(wrapper.vm.__testOnly.hasChanges.value).toBe(true);
+
+      // 2. Click Close
+      const closeBtn = wrapper.findAll('button').find(b => b.text().includes('Close'));
+      await closeBtn?.trigger('click');
+
+      // 3. Dialog should be visible
+      expect(wrapper.vm.__testOnly.showCloseConfirm.value).toBe(true);
+
+      // 4. Confirm discard
+      await wrapper.findComponent({ name: 'CustomDialog' }).vm.$emit('confirm');
+      expect(wrapper.emitted('cancel')).toBeDefined();
+    });
+
+    it('should NOT show confirmation dialog when closing without changes', async () => {
+      const wrapper = mount(ImageEditor, {
+        props: { ...props, originalMimeType: 'image/png' } // Default is PNG
+      });
+      await nextTick();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(wrapper.vm.__testOnly.hasChanges.value).toBe(false);
+
+      const closeBtn = wrapper.findAll('button').find(b => b.text().includes('Close'));
+      await closeBtn?.trigger('click');
+
+      expect(wrapper.vm.__testOnly.showCloseConfirm.value).toBe(false);
+      expect(wrapper.emitted('cancel')).toBeDefined();
     });
   });
 });
