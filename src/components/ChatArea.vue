@@ -12,6 +12,7 @@ import MessageItem from './MessageItem.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
+import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
@@ -474,11 +475,18 @@ watch(
               :is-processing="isCurrentChatStreaming"
               :is-generating="isCurrentChatStreaming && msg.id === currentChat?.currentLeafId"
               :available-image-models="availableImageModels"
+              :endpoint-type="resolvedSettings?.endpointType"
               @fork="handleFork"
               @edit="handleEdit"
               @switch-version="handleSwitchVersion"
               @regenerate="handleRegenerate"
               @abort="chatStore.abortChat()"
+            />
+
+            <!-- Global Transformers.js Loading Indicator in the scroll flow -->
+            <TransformersJsLoadingIndicator
+              v-if="resolvedSettings?.endpointType === 'transformers_js'"
+              mode="full"
             />
           </div>
           <WelcomeScreen

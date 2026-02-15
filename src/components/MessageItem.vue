@@ -26,7 +26,7 @@ const DOMPurify = (() => {
 })();
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
-import type { MessageNode, BinaryObject } from '../models/types';
+import type { MessageNode, BinaryObject, EndpointType } from '../models/types';
 import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2, XCircle, Square } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
@@ -35,6 +35,7 @@ import { sanitizeFilename } from '../utils/string';
 import SpeechControl from './SpeechControl.vue';
 // IMPORTANT: ImageConjuringLoader is essential for showing image generation progress immediately.
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
+import { transformersJsService } from '../services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
@@ -57,6 +58,7 @@ const props = defineProps<{
   isProcessing?: boolean;
   isGenerating?: boolean;
   availableImageModels?: string[];
+  endpointType?: EndpointType;
 }>();
 
 const emit = defineEmits<{
@@ -71,6 +73,9 @@ const isEditing = ref(false);
 const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const copied = ref(false);
+
+const transformersStatus = ref(transformersJsService.getState().status);
+let transformersUnsubscribe: (() => void) | null = null;
 
 const isImageRequestMsg = computed(() => isImageRequest(props.message.content));
 const editImageMode = ref(false);
@@ -483,6 +488,11 @@ onMounted(() => {
   renderMermaid();
   loadAttachments();
   loadGeneratedImages();
+
+  transformersUnsubscribe = transformersJsService.subscribe((s) => {
+    transformersStatus.value = s;
+  });
+
   // Handle clicks via event delegation
   messageRef.value?.addEventListener('click', async (e) => {
     const target = e.target as HTMLElement;
@@ -598,6 +608,8 @@ onUnmounted(() => {
   // Revoke all created URLs
   Object.values(attachmentUrls.value).forEach(url => URL.revokeObjectURL(url));
   Object.values(generatedImageUrls.value).forEach(url => URL.revokeObjectURL(url));
+
+  if (transformersUnsubscribe) transformersUnsubscribe();
 });
 
 watch(() => props.message.content, () => {
@@ -720,7 +732,12 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="messageRef" class="flex flex-col gap-2 p-5 group transition-colors" :class="{ 'bg-gray-50/30 dark:bg-gray-800/20 border-y border-gray-100 dark:border-gray-800/50': !isUser }">
+  <div
+    v-if="!(isGenerating && (transformersStatus === 'loading' || transformersStatus === 'error') && endpointType === 'transformers_js')"
+    ref="messageRef"
+    class="flex flex-col gap-2 p-5 group transition-colors"
+    :class="{ 'bg-gray-50/30 dark:bg-gray-800/20 border-y border-gray-100 dark:border-gray-800/50': !isUser }"
+  >
     <div class="flex items-center gap-3 mb-1">
       <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
         <User v-if="isUser" class="w-4 h-4 text-gray-500" />
