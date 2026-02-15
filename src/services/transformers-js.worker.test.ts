@@ -74,9 +74,6 @@ function createMockDir(entries: Record<string, any> = {}) {
 }
 
 function createMockFile(size: number) {
-  let resolveWrite: () => void;
-  const writePromise = new Promise<void>(resolve => { resolveWrite = resolve; });
-
   const file = {
     kind: 'file',
     size,
@@ -86,7 +83,7 @@ function createMockFile(size: number) {
     }),
     createWritable: vi.fn().mockResolvedValue(new WritableStream({
       write: vi.fn(),
-      close: vi.fn(() => resolveWrite())
+      close: vi.fn()
     }))
   };
   return file;
