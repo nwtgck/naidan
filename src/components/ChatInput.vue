@@ -629,11 +629,13 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       <!-- Attachment Previews -->
       <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
         <div v-for="att in attachments" :key="att.id" class="relative group/att">
-          <img
-            :src="attachmentUrls[att.id]"
-            class="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
-          />
-          <div class="absolute -top-2 -right-2 flex gap-1 opacity-0 group-hover/att:opacity-100 transition-opacity">
+          <div class="checkerboard rounded-lg overflow-hidden">
+            <img
+              :src="attachmentUrls[att.id]"
+              class="w-20 h-20 object-cover border border-gray-200 dark:border-gray-700"
+            />
+          </div>
+          <div class="absolute -top-2 -right-2 flex gap-1 opacity-0 group-hover/att:opacity-100 transition-opacity z-10">
             <button
               @click="openImageEditor({ id: att.id })"
               class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-blue-500 shadow-sm transition-colors touch-visible"
@@ -821,5 +823,16 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 }
 .zoom-in {
   animation-name: zoom-in;
+}
+
+.checkerboard {
+  background-image:
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+    linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+  background-size: 10px 10px;
+  background-position: 0 0, 0 5px, 5px -5px, -5px 0px;
+  background-color: #1f1f1f;
 }
 </style>

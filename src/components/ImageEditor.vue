@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import {
   X, Check, RotateCw, FlipHorizontal, FlipVertical,
   RotateCcw, RefreshCcw, Undo2, Redo2,
-  Crop as CropIcon, Eraser, Square, Pencil, PencilOff,
+  Crop as CropIcon, Eraser, Square,
   Link, Link2Off
 } from 'lucide-vue-next';
 
@@ -25,11 +25,11 @@ const containerRef = ref<HTMLDivElement | undefined>(undefined);
 const canvasRef = ref<HTMLCanvasElement | undefined>(undefined);
 
 // Editor State
-type EditorMode = 'idle' | 'moving' | 'resizing';
+type EditorMode = 'idle' | 'creating' | 'moving' | 'resizing';
 const editorMode = ref<EditorMode>('idle');
 
-type ViewMode = 'editing' | 'preview';
-const viewMode = ref<ViewMode>('editing');
+type SelectionStatus = 'none' | 'active';
+const selectionStatus = ref<SelectionStatus>('none');
 
 type OutputFormat = 'original' | 'image/png' | 'image/jpeg' | 'image/webp';
 const selectedFormat = ref<OutputFormat>('original');
@@ -44,7 +44,7 @@ type FillColor = 'transparent' | 'white' | 'black';
 const selectedFill = ref<FillColor>('transparent');
 
 // Geometry
-const cropRect = ref({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
+const cropRect = ref({ x: 0, y: 0, w: 0, h: 0 });
 const displayScale = ref(1);
 
 // History Management
@@ -296,7 +296,7 @@ function executeAction({ action }: { action: ActionType }) {
     const fillColor = selectedFill.value;
     ctx.fillStyle = (() => {
       switch (fillColor) {
-      case 'transparent': return 'rgba(0,0,0,0)';
+      case 'transparent': return 'black'; // Use opaque color as a mask for destination-out
       case 'white': return 'white';
       case 'black': return 'black';
       default: {
@@ -345,6 +345,8 @@ function executeAction({ action }: { action: ActionType }) {
   }
   }
 
+  // Clear selection after action
+  selectionStatus.value = 'none';
   commitHistory();
 }
 
@@ -377,19 +379,26 @@ const dragStart = ref({ x: 0, y: 0 });
 const initialCrop = ref({ x: 0, y: 0, w: 0, h: 0 });
 const activeHandle = ref<string | undefined>(undefined);
 
+function startNewSelection({ event }: { event: MouseEvent }) {
+  event.preventDefault();
+  if (!canvasRef.value) return;
+
+  const rect = canvasRef.value.getBoundingClientRect();
+  const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+  const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+
+  editorMode.value = 'creating';
+  selectionStatus.value = 'active';
+  dragStart.value = { x: event.clientX, y: event.clientY };
+  cropRect.value = { x, y, w: 0, h: 0 };
+  initialCrop.value = { ...cropRect.value };
+
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+}
+
 function startDragging({ event, handle }: { event: MouseEvent; handle: string }) {
   event.preventDefault();
-  const currentView = viewMode.value;
-  switch (currentView) {
-  case 'preview':
-    return;
-  case 'editing':
-    break;
-  default: {
-    const _ex: never = currentView;
-    throw new Error(`Unhandled view mode: ${_ex}`);
-  }
-  }
 
   editorMode.value = handle === 'center' ? 'moving' : 'resizing';
   activeHandle.value = handle;
@@ -401,56 +410,86 @@ function startDragging({ event, handle }: { event: MouseEvent; handle: string })
 }
 
 function onMouseMove(e: MouseEvent) {
-  if (editorMode.value === 'idle' || !activeHandle.value || !canvasRef.value) return;
+  if (editorMode.value === 'idle' || !canvasRef.value) return;
 
   const dx = (e.clientX - dragStart.value.x) / (canvasRef.value.width * displayScale.value);
   const dy = (e.clientY - dragStart.value.y) / (canvasRef.value.height * displayScale.value);
 
   let { x, y, w, h } = initialCrop.value;
 
-  if (activeHandle.value === 'center') {
-    x = Math.max(0, Math.min(1 - w, x + dx));
-    y = Math.max(0, Math.min(1 - h, y + dy));
-  } else {
-    if (activeHandle.value.includes('e')) w = Math.max(0.01, Math.min(1 - x, w + dx));
-    if (activeHandle.value.includes('w')) {
-      const maxX = x + w - 0.01;
-      const nx = Math.max(0, Math.min(maxX, x + dx));
-      w = w - (nx - x);
+  const mode = editorMode.value;
+  switch (mode) {
+  case 'creating':
+    if (dx >= 0) {
+      w = Math.min(1 - x, dx);
+    } else {
+      const nx = Math.max(0, x + dx);
+      w = x - nx;
       x = nx;
     }
-    if (activeHandle.value.includes('s')) h = Math.max(0.01, Math.min(1 - y, h + dy));
-    if (activeHandle.value.includes('n')) {
-      const maxY = y + h - 0.01;
-      const ny = Math.max(0, Math.min(maxY, y + dy));
-      h = h - (ny - y);
+
+    if (dy >= 0) {
+      h = Math.min(1 - y, dy);
+    } else {
+      const ny = Math.max(0, y + dy);
+      h = y - ny;
       y = ny;
     }
+    break;
+  case 'moving':
+    if (activeHandle.value === 'center') {
+      x = Math.max(0, Math.min(1 - w, x + dx));
+      y = Math.max(0, Math.min(1 - h, y + dy));
+    }
+    break;
+  case 'resizing':
+    if (activeHandle.value) {
+      if (activeHandle.value.includes('e')) w = Math.max(0.01, Math.min(1 - x, w + dx));
+      if (activeHandle.value.includes('w')) {
+        const maxX = x + w - 0.01;
+        const nx = Math.max(0, Math.min(maxX, x + dx));
+        w = w - (nx - x);
+        x = nx;
+      }
+      if (activeHandle.value.includes('s')) h = Math.max(0.01, Math.min(1 - y, h + dy));
+      if (activeHandle.value.includes('n')) {
+        const maxY = y + h - 0.01;
+        const ny = Math.max(0, Math.min(maxY, y + dy));
+        h = h - (ny - y);
+        y = ny;
+      }
+    }
+    break;
+  default: {
+    const _ex: never = mode;
+    throw new Error(`Unhandled editor mode: ${_ex}`);
+  }
   }
   cropRect.value = { x, y, w, h };
 }
 
 function onMouseUp() {
+  const mode = editorMode.value;
+  switch (mode) {
+  case 'creating':
+    if (cropRect.value.w < 0.005 || cropRect.value.h < 0.005) {
+      selectionStatus.value = 'none';
+    }
+    break;
+  case 'moving':
+  case 'resizing':
+  case 'idle':
+    break;
+  default: {
+    const _ex: never = mode;
+    throw new Error(`Unhandled editor mode: ${_ex}`);
+  }
+  }
+
   editorMode.value = 'idle';
   activeHandle.value = undefined;
   window.removeEventListener('mousemove', onMouseMove);
   window.removeEventListener('mouseup', onMouseUp);
-}
-
-function toggleViewMode() {
-  const current = viewMode.value;
-  switch (current) {
-  case 'editing':
-    viewMode.value = 'preview';
-    break;
-  case 'preview':
-    viewMode.value = 'editing';
-    break;
-  default: {
-    const _ex: never = current;
-    throw new Error(`Unhandled view mode: ${_ex}`);
-  }
-  }
 }
 
 onMounted(() => {
@@ -472,32 +511,6 @@ const cropBoxStyle = computed(() => {
   };
 });
 
-const viewModeStyles = computed(() => {
-  const mode = viewMode.value;
-  switch (mode) {
-  case 'editing':
-    return {
-      previewBtnClass: 'text-gray-400',
-      controlsClass: '',
-      showSelection: true,
-      icon: Pencil,
-      title: 'Editing mode (Click to preview)',
-    };
-  case 'preview':
-    return {
-      previewBtnClass: 'text-blue-400 bg-gray-700',
-      controlsClass: 'opacity-50 pointer-events-none',
-      showSelection: false,
-      icon: PencilOff,
-      title: 'Preview mode (Click to edit)',
-    };
-  default: {
-    const _ex: never = mode;
-    throw new Error(`Unhandled view mode: ${_ex}`);
-  }
-  }
-});
-
 defineExpose({
   __testOnly: {
     history,
@@ -510,8 +523,7 @@ defineExpose({
     selectedFill,
     resizeW,
     resizeH,
-    viewMode,
-    toggleViewMode,
+    selectionStatus,
     resizeLock,
     hasChanges
   }
@@ -534,27 +546,6 @@ defineExpose({
 
       <div class="flex items-center gap-2">
         <div class="flex items-center gap-1 bg-gray-800 p-1 rounded-xl border border-gray-700 mr-4">
-          <button
-            @click="toggleViewMode"
-            class="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-            :class="viewModeStyles.previewBtnClass"
-            :title="viewModeStyles.title"
-          >
-            <component
-              :is="(() => {
-                switch (viewMode) {
-                case 'editing': return Pencil;
-                case 'preview': return PencilOff;
-                default: {
-                  const _ex: never = viewMode;
-                  throw new Error(`Unhandled view mode: ${_ex}`);
-                }
-                }
-              })()"
-              class="w-5 h-5"
-            />
-          </button>
-          <div class="w-px h-6 bg-gray-700 mx-1"></div>
           <button
             @click="undo"
             :disabled="!canUndo"
@@ -584,10 +575,12 @@ defineExpose({
     <!-- Workspace -->
     <div
       ref="containerRef"
-      class="relative flex-1 w-full max-w-6xl bg-gray-900 rounded-3xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center select-none"
+      data-testid="image-editor-container"
+      class="relative flex-1 w-full max-w-6xl bg-gray-900 rounded-3xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center select-none cursor-crosshair"
+      @mousedown="startNewSelection({ event: $event })"
     >
       <div
-        class="relative border border-white/10"
+        class="relative border border-white/10 checkerboard"
         :style="{
           width: canvasRef ? `${canvasRef.width * displayScale}px` : '0px',
           height: canvasRef ? `${canvasRef.height * displayScale}px` : '0px',
@@ -595,15 +588,13 @@ defineExpose({
       >
         <canvas ref="canvasRef" class="w-full h-full object-contain pointer-events-none"></canvas>
 
-        <!-- Lighter Overlay -->
-        <div class="absolute inset-0 bg-black/20 pointer-events-none"></div>
-
         <!-- Selection Rect -->
         <div
-          v-if="viewModeStyles.showSelection"
+          v-if="selectionStatus === 'active'"
+          data-testid="image-editor-selection"
           class="absolute border-2 border-blue-500 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] cursor-move group"
           :style="cropBoxStyle"
-          @mousedown="startDragging({ event: $event, handle: 'center' })"
+          @mousedown.stop="startDragging({ event: $event, handle: 'center' })"
         >
           <div class="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-30">
             <div v-for="i in 9" :key="i" class="border-[0.5px] border-white/50"></div>
@@ -622,23 +613,25 @@ defineExpose({
     </div>
 
     <!-- Controls -->
-    <div class="w-full max-w-6xl mt-6 flex flex-col gap-6" :class="viewModeStyles.controlsClass">
+    <div class="w-full max-w-6xl mt-6 flex flex-col gap-6">
       <div class="flex flex-wrap items-end justify-between gap-6">
         <!-- Actions Toolset -->
-        <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-2 transition-opacity duration-200" :class="{ 'opacity-30 pointer-events-none': selectionStatus === 'none' }">
           <span class="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">Selection Actions</span>
           <div class="flex items-center gap-2 bg-gray-800 p-1.5 rounded-2xl border border-gray-700">
             <div class="flex items-center gap-1.5 p-1">
               <button
                 @click="executeAction({ action: 'crop' })"
+                data-testid="image-editor-action-crop"
                 class="px-4 py-2 bg-gray-900/50 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-gray-700 hover:border-blue-500 shadow-lg"
                 title="Crop to selection"
               >
                 <CropIcon class="w-4 h-4" />
-                <span>Apply Crop</span>
+                <span>Crop</span>
               </button>
               <button
                 @click="executeAction({ action: 'mask-outside' })"
+                data-testid="image-editor-action-mask-out"
                 class="px-4 py-2 bg-gray-900/50 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-gray-700 hover:border-blue-500 shadow-lg"
                 title="Fill everything outside selection"
               >
@@ -647,6 +640,7 @@ defineExpose({
               </button>
               <button
                 @click="executeAction({ action: 'mask-inside' })"
+                data-testid="image-editor-action-mask-in"
                 class="px-4 py-2 bg-gray-900/50 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 border border-gray-700 hover:border-blue-500 shadow-lg"
                 title="Fill selection area"
               >
@@ -788,5 +782,16 @@ input::-webkit-inner-spin-button {
 }
 input[type=number] {
   -moz-appearance: textfield;
+}
+
+.checkerboard {
+  background-image:
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+    linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+  background-color: #1f1f1f;
 }
 </style>

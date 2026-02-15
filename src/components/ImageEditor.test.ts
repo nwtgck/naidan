@@ -17,8 +17,6 @@ vi.mock('lucide-vue-next', () => ({
   Crop: { template: '<span>Crop</span>' },
   Eraser: { template: '<span>Eraser</span>' },
   Square: { template: '<span>Square</span>' },
-  Pencil: { template: '<span>Pencil</span>' },
-  PencilOff: { template: '<span>PencilOff</span>' },
   Link: { template: '<span>Link</span>' },
   Link2Off: { template: '<span>Link2Off</span>' },
 }));
@@ -35,6 +33,7 @@ const mockContext = {
   rotate: vi.fn(),
   setTransform: vi.fn(),
   globalCompositeOperation: 'source-over',
+  fillStyle: 'black',
 };
 
 // Mocking global Canvas API
@@ -164,14 +163,37 @@ describe('ImageEditor', () => {
     expect(wrapper.vm.__testOnly.historyIndex.value).toBe(2);
   });
 
-  it('should toggle view mode correctly', async () => {
+  it('should use opaque fill and reset composite operation when masking with transparent color', async () => {
     const wrapper = mount(ImageEditor, { props });
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(wrapper.vm.__testOnly.viewMode.value).toBe('editing');
-    await wrapper.vm.__testOnly.toggleViewMode();
-    expect(wrapper.vm.__testOnly.viewMode.value).toBe('preview');
+    wrapper.vm.__testOnly.selectedFill.value = 'transparent';
+    await wrapper.vm.__testOnly.executeAction({ action: 'mask-inside' });
+
+    // Important: fillStyle must be opaque (e.g., 'black') during execution to actually erase pixels in destination-out mode
+    // The test confirms that we are not setting it to 'rgba(0,0,0,0)' which was the bug.
+    expect(mockContext.fillStyle).toBe('black');
+
+    // Ensure it's reset to source-over after completion
+    expect(mockContext.globalCompositeOperation).toBe('source-over');
+  });
+
+  it('should have checkerboard background for transparency visualization', async () => {
+    const wrapper = mount(ImageEditor, { props });
+    await nextTick();
+
+    const workspace = wrapper.find('.checkerboard');
+    expect(workspace.exists()).toBe(true);
+    expect(workspace.classes()).toContain('checkerboard');
+  });
+
+  it('should start with no selection', async () => {
+    const wrapper = mount(ImageEditor, { props });
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(wrapper.vm.__testOnly.selectionStatus.value).toBe('none');
   });
 
   it('should reset editor state correctly', async () => {
@@ -187,5 +209,72 @@ describe('ImageEditor', () => {
     await new Promise(resolve => setTimeout(resolve, 10));
 
     expect(wrapper.vm.__testOnly.historyIndex.value).toBe(0);
+  });
+
+  describe('Direct Manipulation UX', () => {
+    it('should start a new selection on mousedown and update on mousemove', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+      expect(container.exists()).toBe(true);
+
+      const canvas = wrapper.find('canvas').element;
+      vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+        left: 0, top: 0, width: 100, height: 100,
+        bottom: 100, right: 100, x: 0, y: 0,
+        toJSON: () => {}
+      });
+
+      await container.trigger('mousedown', { clientX: 10, clientY: 10 });
+      expect(wrapper.vm.__testOnly.selectionStatus.value).toBe('active');
+
+      // Simulate mousemove to (50, 50)
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 50 }));
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.selectionStatus.value).toBe('active');
+      // Selection should be visible in DOM
+      expect(wrapper.find('[data-testid="image-editor-selection"]').exists()).toBe(true);
+    });
+
+    it('should clear selection status after executing an action', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      // Manually set a selection
+      wrapper.vm.__testOnly.selectionStatus.value = 'active';
+      await nextTick();
+
+      const cropBtn = wrapper.find('[data-testid="image-editor-action-crop"]');
+      await cropBtn.trigger('click');
+
+      expect(wrapper.vm.__testOnly.selectionStatus.value).toBe('none');
+      expect(wrapper.find('[data-testid="image-editor-selection"]').exists()).toBe(false);
+    });
+
+    it('should cancel very small selections on mouseup', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+      const canvas = wrapper.find('canvas').element;
+      vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+        left: 0, top: 0, width: 100, height: 100,
+        bottom: 100, right: 100, x: 0, y: 0,
+        toJSON: () => {}
+      });
+
+      // Start selection
+      await container.trigger('mousedown', { clientX: 10, clientY: 10 });
+
+      // Move only 1 pixel (too small)
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10.1, clientY: 10.1 }));
+      window.dispatchEvent(new MouseEvent('mouseup'));
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.selectionStatus.value).toBe('none');
+    });
   });
 });
