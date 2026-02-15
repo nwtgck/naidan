@@ -85,7 +85,7 @@ function calculateLineHeights() {
   const style = window.getComputedStyle(textarea);
   const width = textarea.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   const font = style.font;
-  const lineHeight = parseFloat(style.lineHeight) || 21; // Default fallback
+  const lineHeight = parseFloat(style.lineHeight) || 21;
 
   // Create ghost element for measurement
   const ghost = document.createElement('div');
@@ -102,13 +102,9 @@ function calculateLineHeights() {
 
   const lines = content.value.split('\n');
   const heights = lines.map(line => {
-    // Empty lines or just newline still take up one line height
     if (line === '') return lineHeight;
-
     ghost.textContent = line;
-    // Add a zero-width space to ensure empty lines have height if logic fails
     if (line.length === 0) ghost.textContent = '\u200b';
-
     return ghost.clientHeight || lineHeight;
   });
 
@@ -116,7 +112,6 @@ function calculateLineHeights() {
   lineHeights.value = heights;
 }
 
-// Re-calculate on content change or resize
 watch([content, wrapMode], () => {
   nextTick(calculateLineHeights);
 });
@@ -538,8 +533,6 @@ onUnmounted(() => {
   if (historyTimeout) clearTimeout(historyTimeout);
 });
 
-
-
 defineExpose({
   __testOnly: {
     isMultiEditMode,
@@ -547,27 +540,26 @@ defineExpose({
     history,
     historyIndex,
     wrapMode,
-    calculateLineHeights, // Expose method to mock/spy
+    calculateLineHeights,
     lineHeights,
   }
 });
 </script>
 
 <template>
-  <!-- Backdrop Container (Fixed Blur) -->
+  <!-- Backdrop Container (Minimal blur and darkness) -->
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 md:p-8 transition-opacity"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/5 backdrop-blur-[0.2px] p-4 md:p-8 transition-opacity"
     @click="handleBackdropClick"
     data-testid="editor-backdrop"
-  >
-    <!-- Editor Container -->
+  >    <!-- Editor Container (Lighter Slate-900 background) -->
     <div
-      class="w-full h-full max-w-5xl flex bg-white dark:bg-[#020617] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-black/5 dark:ring-white/5"
+      class="w-full h-full max-w-5xl flex bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] ring-1 ring-black/5 dark:ring-white/5"
       @click.stop
       data-testid="advanced-text-editor"
     >
       <!-- Sidebar -->
-      <div class="w-12 border-r border-gray-100 dark:border-white/10 flex flex-col items-center py-4 gap-4 bg-gray-50 dark:bg-[#0b1120] z-30 shrink-0">
+      <div class="w-12 border-r border-gray-100 dark:border-white/10 flex flex-col items-center py-4 gap-4 bg-gray-50 dark:bg-slate-950/50 z-30 shrink-0">
         <button
           @click="handleClose"
           class="p-2.5 bg-gray-200 dark:bg-white/10 hover:bg-gray-300 dark:hover:bg-white/20 rounded-xl transition-all shadow-sm text-gray-600 dark:text-gray-300 mb-2 group"
@@ -654,7 +646,7 @@ defineExpose({
           leave-from-class="opacity-100 translate-y-0"
           leave-to-class="opacity-0 -translate-y-2"
         >
-          <div v-if="searchMode === 'visible'" class="px-6 py-4 border-b border-gray-100 dark:border-white/10 bg-gray-50/90 dark:bg-[#0b1120]/95 backdrop-blur-md flex flex-col gap-3 z-30">
+          <div v-if="searchMode === 'visible'" class="px-6 py-4 border-b border-gray-100 dark:border-white/10 bg-gray-50/90 dark:bg-slate-950/95 backdrop-blur-md flex flex-col gap-3 z-30">
             <div class="flex items-center gap-3">
               <div class="relative flex-1 group">
                 <input
@@ -735,9 +727,9 @@ defineExpose({
 
         <!-- Editor Canvas -->
         <div class="flex-1 flex flex-col min-h-0 bg-transparent relative group/editor">
-          <!-- Line Numbers Area (SYNCED TRANSFORM FIX + WRAP SUPPORT) -->
+          <!-- Line Numbers Area (Synced with Slate-900 background) -->
           <div
-            class="absolute left-0 top-0 bottom-0 w-12 border-r border-gray-50 dark:border-white/10 overflow-hidden pointer-events-none select-none bg-gray-50 dark:bg-[#020617] z-20"
+            class="absolute left-0 top-0 bottom-0 w-12 border-r border-gray-50 dark:border-white/10 overflow-hidden pointer-events-none select-none bg-gray-50 dark:bg-[#0f172a] z-20"
           >
             <!-- Inner container that moves with transform -->
             <div ref="lineNumbersContentRef" class="flex flex-col items-center py-5 text-[10px] font-mono text-gray-300 dark:text-gray-500 will-change-transform">
@@ -775,7 +767,7 @@ defineExpose({
           </div>
         </div>
 
-        <!-- Multi-Edit Overlay (Bottom) -->
+        <!-- Multi-Edit Overlay -->
         <Transition
           enter-active-class="transition duration-300 ease-out"
           enter-from-class="opacity-0 translate-y-4 scale-95"
@@ -784,7 +776,7 @@ defineExpose({
           leave-from-class="opacity-100 translate-y-0 scale-100"
           leave-to-class="opacity-0 translate-y-4 scale-95"
         >
-          <div v-if="isMultiEditMode" class="absolute bottom-12 left-1/2 -translate-x-1/2 w-96 z-50 bg-white dark:bg-[#0b1120] border border-amber-500/30 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-4 ring-1 ring-black/5">
+          <div v-if="isMultiEditMode" class="absolute bottom-12 left-1/2 -translate-x-1/2 w-96 z-50 bg-white dark:bg-slate-900 border border-amber-500/30 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] p-4 ring-1 ring-black/5">
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-2">
                 <div class="p-1.5 bg-amber-500/10 rounded-lg text-amber-500">
@@ -826,8 +818,8 @@ defineExpose({
           </div>
         </Transition>
 
-        <!-- Footer Info Bar (OPAQUE FIX) -->
-        <div class="h-9 border-t border-gray-100 dark:border-white/10 flex items-center justify-between px-6 bg-white dark:bg-[#020617] text-[10px] font-bold uppercase tracking-widest text-gray-400 z-30 relative shrink-0">
+        <!-- Footer Info Bar (Opaque Slate-900 background) -->
+        <div class="h-9 border-t border-gray-100 dark:border-white/10 flex items-center justify-between px-6 bg-white dark:bg-[#0f172a] text-[10px] font-bold uppercase tracking-widest text-gray-400 z-30 relative shrink-0">
           <div class="flex items-center gap-6">
             <span class="flex items-center gap-1.5"><Type class="w-3 h-3 text-blue-500/50" /> {{ stats.chars }} <span class="opacity-40 font-medium">Chars</span></span>
             <span class="flex items-center gap-1.5"><PencilLine class="w-3 h-3 text-amber-500/50" /> {{ stats.words }} <span class="opacity-40 font-medium">Words</span></span>
