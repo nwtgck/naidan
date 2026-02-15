@@ -43,7 +43,7 @@ const { setActiveFocusArea, activeFocusArea } = useLayout();
 
 const props = defineProps<{
   autoSendPrompt?: string;
-  isSubmerged: boolean;
+  visibility: 'submerged' | 'peeking' | 'active';
   isStreaming: boolean;
   canGenerateImage: boolean;
   hasImageModel: boolean;
@@ -53,10 +53,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'auto-sent'): void;
-  (e: 'update:isSubmerged', value: boolean): void;
+  (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void;
   (e: 'update:isAnimatingHeight', value: boolean): void;
   (e: 'scroll-to-bottom'): void;
 }>();
+
+const isFocused = ref(false);
+const isHovered = ref(false);
 
 const isCurrentChatStreaming = computed(() => props.isStreaming);
 const canGenerateImage = computed(() => props.canGenerateImage);
@@ -353,7 +356,7 @@ function toggleMaximized() {
       requestAnimationFrame(() => {
         isMaximized.value = !isMaximized.value;
         if (isMaximized.value) {
-          emit('update:isSubmerged', false);
+          emit('update:visibility', 'active');
         }
       });
     });
@@ -365,12 +368,56 @@ function toggleMaximized() {
   }
 }
 
-function toggleSubmerged() {
-  const nextValue = !props.isSubmerged;
-  if (nextValue) {
-    isMaximized.value = false;
+function handleMouseEnter() {
+  isHovered.value = true;
+  switch (props.visibility) {
+  case 'submerged':
+    emit('update:visibility', 'peeking');
+    break;
+  case 'peeking':
+  case 'active':
+    break;
+  default: {
+    const _ex: never = props.visibility;
+    throw new Error(`Unhandled visibility: ${_ex}`);
   }
-  emit('update:isSubmerged', nextValue);
+  }
+}
+
+function handleMouseLeave() {
+  isHovered.value = false;
+  switch (props.visibility) {
+  case 'peeking':
+    emit('update:visibility', 'submerged');
+    break;
+  case 'submerged':
+  case 'active':
+    break;
+  default: {
+    const _ex: never = props.visibility;
+    throw new Error(`Unhandled visibility: ${_ex}`);
+  }
+  }
+}
+
+function toggleSubmerged() {
+  const current = props.visibility;
+  switch (current) {
+  case 'submerged':
+    emit('update:visibility', 'active');
+    nextTick(() => textareaRef.value?.focus());
+    break;
+  case 'peeking':
+  case 'active':
+    emit('update:visibility', 'submerged');
+    isMaximized.value = false;
+    textareaRef.value?.blur();
+    break;
+  default: {
+    const _ex: never = current;
+    throw new Error(`Unhandled visibility: ${_ex}`);
+  }
+  }
 }
 
 async function handleGenerateImage() {
@@ -510,8 +557,18 @@ watch(
       fetchModels();
       nextTick(() => {
         scrollToBottom();
-        if (!props.isSubmerged) {
+        const currentVis = props.visibility;
+        switch (currentVis) {
+        case 'active':
           focusInput();
+          break;
+        case 'submerged':
+        case 'peeking':
+          break;
+        default: {
+          const _ex: never = currentVis;
+          throw new Error(`Unhandled visibility: ${_ex}`);
+        }
         }
         adjustTextareaHeight();
       });
@@ -570,6 +627,17 @@ onUnmounted(() => {
   revokeAll();
 });
 
+function handleFocus() {
+  isFocused.value = true;
+  setActiveFocusArea('chat');
+  emit('update:visibility', 'active');
+}
+
+function handleBlur() {
+  isFocused.value = false;
+  // We no longer automatically submerge on blur to keep it 'active'
+}
+
 function focusInput() {
   switch (activeFocusArea.value) {
   case 'sidebar':
@@ -588,8 +656,18 @@ function focusInput() {
   }
   }
 
-  if (props.isSubmerged) {
-    emit('update:isSubmerged', false);
+  const currentVis = props.visibility;
+  switch (currentVis) {
+  case 'submerged':
+  case 'peeking':
+    emit('update:visibility', 'active');
+    break;
+  case 'active':
+    break;
+  default: {
+    const _ex: never = currentVis;
+    throw new Error(`Unhandled visibility: ${_ex}`);
+  }
   }
 
   if (document.activeElement !== textareaRef.value) {
@@ -610,21 +688,24 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 <template>
   <div
     v-if="currentChat"
-    class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out"
-    :class="isSubmerged ? 'translate-y-[calc(100%-32px)] sm:translate-y-[calc(100%-40px)]' : 'translate-y-0'"
+    class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out will-change-transform"
+    :class="visibility === 'submerged' ? 'translate-y-[calc(100%-32px)] sm:translate-y-[calc(100%-40px)]' : 'translate-y-0'"
   >
     <!-- Glass Zone behind the input card (Full width blur) -->
-    <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': isSubmerged }"></div>
+    <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': visibility === 'submerged' }"></div>
 
     <div
       class="max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all duration-300 flex flex-col"
       :class="[
         isMaximized || isAnimatingHeight ? 'shadow-2xl ring-1 ring-black/5 dark:ring-white/10' : 'shadow-lg group-hover:shadow-xl',
-        isSubmerged ? 'cursor-pointer' : ''
+        visibility === 'submerged' ? 'cursor-pointer' : ''
       ]"
-      @mouseenter="$emit('update:isSubmerged', false)"
-      @click="isSubmerged ? $emit('update:isSubmerged', false) : null"
+      @mouseenter="handleMouseEnter"
+      @mouseleave="handleMouseLeave"
+      @click="visibility === 'submerged' ? handleFocus() : null"
     >
+      <!-- Hit area extension: expands the interaction zone around the card to prevent jittering during transitions -->
+      <div class="absolute -inset-x-4 -top-4 -bottom-16 pointer-events-auto -z-10" data-testid="hit-area-extension"></div>
 
       <!-- Attachment Previews -->
       <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
@@ -659,13 +740,14 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         v-model="input"
         @input="adjustTextareaHeight"
         @paste="handlePaste"
-        @focus="setActiveFocusArea('chat')"
+        @focus="handleFocus"
+        @blur="handleBlur"
         @click="setActiveFocusArea('chat')"
         @keydown.enter.ctrl.prevent="handleSend"
         @keydown.enter.meta.prevent="handleSend"
         @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
         placeholder="Type a message..."
-        class="w-full text-base pl-5 pr-20 pt-4 pb-0 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[48px] transition-colors"
+        class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[48px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
         data-testid="chat-input"
       ></textarea>
@@ -675,10 +757,10 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         <button
           @click.stop="toggleSubmerged"
           class="p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="isSubmerged ? 'Show Input' : 'Hide Input'"
+          :title="visibility === 'submerged' ? 'Show Input' : 'Hide Input'"
           data-testid="submerge-button"
         >
-          <ChevronUp v-if="isSubmerged" class="w-4 h-4" />
+          <ChevronUp v-if="visibility === 'submerged'" class="w-4 h-4" />
           <ChevronDown v-else class="w-4 h-4" />
         </button>
 
@@ -694,7 +776,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         </button>
       </div>
 
-      <div class="flex items-center justify-between px-4 pb-2" :class="{ 'pointer-events-none invisible': isSubmerged }">
+      <div class="flex items-center justify-between px-4 pb-2" :class="{ 'pointer-events-none invisible': visibility === 'submerged' }">
         <div class="flex items-center gap-2">
           <div class="w-[100px] sm:w-[180px]">
             <ModelSelector

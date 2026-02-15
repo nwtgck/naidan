@@ -81,7 +81,7 @@ describe('ChatInput Integration', () => {
 
   const getWrapper = () => mount(ChatInput, {
     props: {
-      isSubmerged: false,
+      visibility: 'active',
       isStreaming: false,
       canGenerateImage: true,
       hasImageModel: true,
