@@ -275,4 +275,22 @@ describe('TransformersJsManager.vue', () => {
       expect(mainSection.classes()).not.toContain('opacity-40');
     });
   });
+
+  describe('Error Handling', () => {
+    it('displays error message when service state is error', async () => {
+      const errorMessage = 'Array buffer allocation failed';
+      (transformersJsService.getState as any).mockReturnValue({
+        ...mockState,
+        status: 'error',
+        error: errorMessage
+      });
+
+      const wrapper = mount(TransformersJsManager);
+      await flushPromises();
+
+      // The component shows "Error" and the error message when status is 'error'
+      expect(wrapper.text()).toContain('Error');
+      expect(wrapper.text()).toContain(errorMessage);
+    });
+  });
 });

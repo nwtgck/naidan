@@ -170,9 +170,12 @@ initWorker();
  * Checks if an error message indicates a fatal state that requires a worker restart.
  */
 function isFatalError(msg: string): boolean {
-  return msg.includes('Aborted()') ||
-         msg.includes('[WebGPU] Kernel') ||
-         msg.includes('protobuf parsing failed');
+  const m = msg.toLowerCase();
+  return m.includes('aborted()') ||
+         m.includes('[webgpu] kernel') ||
+         m.includes('protobuf parsing failed') ||
+         m.includes('allocation failed') ||
+         m.includes('out of memory');
 }
 
 export const transformersJsService = {

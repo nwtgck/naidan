@@ -74,6 +74,9 @@ function createMockDir(entries: Record<string, any> = {}) {
 }
 
 function createMockFile(size: number) {
+  let resolveWrite: () => void;
+  const writePromise = new Promise<void>(resolve => { resolveWrite = resolve; });
+
   const file = {
     kind: 'file',
     size,
@@ -81,10 +84,10 @@ function createMockFile(size: number) {
       size,
       stream: vi.fn().mockReturnValue(new ReadableStream())
     }),
-    createWritable: vi.fn().mockResolvedValue({
+    createWritable: vi.fn().mockResolvedValue(new WritableStream({
       write: vi.fn(),
-      close: vi.fn()
-    })
+      close: vi.fn(() => resolveWrite())
+    }))
   };
   return file;
 }
@@ -162,6 +165,52 @@ describe('transformers-js.worker', () => {
 
     await cache.put('https://huggingface.co/org/repo/model.onnx', response);
     expect(mockRoot.getDirectoryHandle).toHaveBeenCalledWith('models', { create: true });
+  });
+
+  it('opfsCache.put should throw error when storage write fails', async () => {
+    await import('./transformers-js.worker');
+    const { env } = await import('@huggingface/transformers');
+    const cache = (env as any).customCache;
+
+    // Force failure in createWritable deep inside the hierarchy
+    const failingFile = {
+      createWritable: vi.fn().mockRejectedValue(new Error('QuotaExceededError'))
+    };
+
+    const failingDir = createMockDir({
+      'model.onnx': failingFile
+    });
+
+    mockRoot.getDirectoryHandle.mockResolvedValue(failingDir);
+
+    const response = new Response('model data', { status: 200 });
+
+    // The URL 'https://huggingface.co/org/repo/model.onnx' maps to
+    // models/huggingface.co/org/repo/model.onnx
+    // So it will call getDirectoryHandle('models'), then 'huggingface.co', etc.
+    // Our mock above handles the first 'models' call, but we need it to handle the others or be recursive.
+    // Let's make it simpler: just mock getDirectoryHandle to always return a dir that has what's needed.
+    const deepDir = createMockDir();
+    deepDir.getFileHandle = vi.fn().mockResolvedValue(failingFile);
+    deepDir.getDirectoryHandle.mockResolvedValue(deepDir);
+    mockRoot.getDirectoryHandle.mockResolvedValue(deepDir);
+
+    await expect(cache.put('https://huggingface.co/org/repo/model.onnx', response))
+      .rejects.toThrow('QuotaExceededError');
+  });
+
+  it('opfsCache.put should throw error when HTML response is received', async () => {
+    await import('./transformers-js.worker');
+    const { env } = await import('@huggingface/transformers');
+    const cache = (env as any).customCache;
+
+    const response = new Response('<html>Error</html>', {
+      status: 200,
+      headers: { 'Content-Type': 'text/html' }
+    });
+
+    await expect(cache.put('https://huggingface.co/org/repo/model.onnx', response))
+      .rejects.toThrow('Detected HTML response');
   });
 
   it('loadModel should try tiered fallback from WebGPU to WASM', async () => {
