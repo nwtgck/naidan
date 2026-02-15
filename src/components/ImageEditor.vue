@@ -5,7 +5,8 @@ import {
   Check, RotateCw, FlipHorizontal, FlipVertical,
   RotateCcw, RefreshCcw, Undo2, Redo2,
   Crop as CropIcon, Eraser, Square, Circle,
-  Link, Link2Off, PanelRight, ZoomIn, ZoomOut
+  Link, Link2Off, PanelRight, ZoomIn, ZoomOut,
+  Pipette
 } from 'lucide-vue-next';
 
 interface ImageEditorProps {
@@ -20,6 +21,9 @@ const emit = defineEmits<{
   (e: 'save', payload: { blob: Blob }): void;
   (e: 'cancel'): void;
 }>();
+
+const TRANSPARENT = Symbol('transparent');
+type FillColor = string | symbol;
 
 // Canvas Refs
 const containerRef = ref<HTMLDivElement | undefined>(undefined);
@@ -72,8 +76,25 @@ const resizeLock = ref<AspectRatioLock>('locked');
 // Mask/Crop Actions
 type ActionType = 'crop' | 'mask-outside' | 'mask-inside';
 
-type FillColor = 'transparent' | 'white' | 'black';
-const selectedFill = ref<FillColor>('transparent');
+const selectedFill = ref<FillColor>(TRANSPARENT);
+const isPickingColor = ref(false);
+const colorHistory = ref<FillColor[]>([]);
+
+function addToHistory({ color }: { color: FillColor }) {
+  if (color === TRANSPARENT) return;
+  const index = colorHistory.value.indexOf(color);
+  if (index !== -1) {
+    colorHistory.value.splice(index, 1);
+  }
+  colorHistory.value.unshift(color);
+  if (colorHistory.value.length > 10) {
+    colorHistory.value.pop();
+  }
+}
+
+watch(selectedFill, (newColor) => {
+  addToHistory({ color: newColor });
+});
 
 // Geometry
 const displayScale = ref(1);
@@ -453,18 +474,11 @@ function executeAction({ action }: { action: ActionType }) {
   case 'mask-inside': {
     const fillColor = selectedFill.value;
     ctx.fillStyle = (() => {
-      switch (fillColor) {
-      case 'transparent': return 'black'; // Opaque for destination-out
-      case 'white': return 'white';
-      case 'black': return 'black';
-      default: {
-        const _ex: never = fillColor;
-        throw new Error(`Unhandled fill color: ${_ex}`);
-      }
-      }
+      if (fillColor === TRANSPARENT) return 'black'; // Opaque for destination-out
+      return fillColor as string;
     })();
 
-    const isTransparent = fillColor === 'transparent';
+    const isTransparent = fillColor === TRANSPARENT;
 
     switch (action) {
     case 'mask-inside':
@@ -514,6 +528,31 @@ function executeAction({ action }: { action: ActionType }) {
 }
 
 
+function pickColor({ event }: { event: MouseEvent }) {
+  if (!canvasRef.value) return;
+  const canvas = canvasRef.value;
+  const rect = canvas.getBoundingClientRect();
+
+  const x = Math.floor(((event.clientX - rect.left) / rect.width) * canvas.width);
+  const y = Math.floor(((event.clientY - rect.top) / rect.height) * canvas.height);
+
+  if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) return;
+
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return;
+
+  const pixel = ctx.getImageData(x, y, 1, 1).data;
+  const [r = 0, g = 0, b = 0, a = 0] = pixel;
+
+  if (a === 0) {
+    selectedFill.value = TRANSPARENT;
+  } else {
+    const toHex = (v: number) => v.toString(16).padStart(2, '0');
+    selectedFill.value = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }
+  isPickingColor.value = false;
+}
+
 /**
  * Final save
  */
@@ -544,6 +583,10 @@ const initialCrop = ref({ x: 0, y: 0, w: 0, h: 0 });
 const activeHandle = ref<string | undefined>(undefined);
 
 function startNewSelection({ event }: { event: MouseEvent }) {
+  if (isPickingColor.value) {
+    pickColor({ event });
+    return;
+  }
   if (startPanning(event)) return;
 
   event.preventDefault();
@@ -688,6 +731,9 @@ defineExpose({
     applyResize,
     executeAction,
     selectedFill,
+    colorHistory,
+    isPickingColor,
+    TRANSPARENT,
     resizeW,
     resizeH,
     selection,
@@ -770,7 +816,8 @@ defineExpose({
       <div
         ref="containerRef"
         data-testid="image-editor-container"
-        class="flex-1 relative bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center select-none cursor-crosshair transition-all duration-300"
+        class="flex-1 relative bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center select-none transition-all duration-300"
+        :class="isPickingColor ? 'cursor-pointer' : 'cursor-crosshair'"
         @mousedown="startNewSelection({ event: $event })"
         @wheel="handleWheel"
       >
@@ -878,20 +925,67 @@ defineExpose({
               </div>
 
               <!-- Fill Color -->
-              <div class="flex items-center justify-between px-1" :class="{ 'opacity-30 pointer-events-none': selection.status === 'none' }">
-                <button
-                  v-for="color in (['transparent', 'white', 'black'] as FillColor[])"
-                  :key="color"
-                  @click="selectedFill = color"
-                  class="w-6 h-6 rounded-md border-2 transition-all flex items-center justify-center"
-                  :class="[
-                    selectedFill === color ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent',
-                    color === 'transparent' ? 'bg-gray-700' : (color === 'white' ? 'bg-white' : 'bg-black')
-                  ]"
-                  :title="`Fill with ${color}`"
-                >
-                  <div v-if="color === 'transparent'" class="w-2.5 h-2.5 border border-red-500/50 rotate-45"></div>
-                </button>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between px-1">
+                  <div class="flex gap-1.5">
+                    <button
+                      @click="selectedFill = TRANSPARENT"
+                      class="w-6 h-6 rounded-md border-2 transition-all flex items-center justify-center bg-gray-700"
+                      :class="selectedFill === TRANSPARENT ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent'"
+                      title="Transparent"
+                    >
+                      <div class="w-2.5 h-2.5 border border-red-500/50 rotate-45"></div>
+                    </button>
+                    <button
+                      @click="selectedFill = '#ffffff'"
+                      class="w-6 h-6 rounded-md border-2 transition-all bg-white"
+                      :class="selectedFill === '#ffffff' ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent'"
+                      title="White"
+                    ></button>
+                    <button
+                      @click="selectedFill = '#000000'"
+                      class="w-6 h-6 rounded-md border-2 transition-all bg-black"
+                      :class="selectedFill === '#000000' ? 'border-blue-500 scale-110 shadow-lg' : 'border-transparent'"
+                      title="Black"
+                    ></button>
+                  </div>
+
+                  <button
+                    @click="isPickingColor = !isPickingColor"
+                    class="p-1.5 rounded-lg transition-colors"
+                    :class="isPickingColor ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
+                    title="Pick color from canvas"
+                  >
+                    <Pipette class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div class="flex items-center gap-2 px-1">
+                  <input
+                    type="color"
+                    :value="typeof selectedFill === 'string' ? selectedFill : '#000000'"
+                    @input="(e) => selectedFill = (e.target as HTMLInputElement).value"
+                    class="w-full h-8 bg-transparent cursor-pointer rounded border border-gray-700"
+                  />
+                </div>
+
+                <!-- Color History -->
+                <div v-if="colorHistory.length > 0" class="px-1 pt-1">
+                  <span class="text-[8px] font-bold text-gray-500 uppercase tracking-tighter mb-1 block">Recent</span>
+                  <div class="flex flex-wrap gap-1">
+                    <button
+                      v-for="color in colorHistory"
+                      :key="String(color)"
+                      @click="selectedFill = color"
+                      class="w-4 h-4 rounded-sm border transition-all"
+                      :class="selectedFill === color ? 'border-blue-500 scale-110' : 'border-gray-700'"
+                      :style="{ backgroundColor: typeof color === 'string' ? color : 'transparent' }"
+                      :title="String(color)"
+                    >
+                      <div v-if="color === TRANSPARENT" class="w-full h-full border border-red-500/50 rotate-45"></div>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

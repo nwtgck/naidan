@@ -24,6 +24,7 @@ vi.mock('lucide-vue-next', () => ({
   ZoomIn: { template: '<span>ZoomIn</span>' },
   ZoomOut: { template: '<span>ZoomOut</span>' },
   Search: { template: '<span>Search</span>' },
+  Pipette: { template: '<span>Pipette</span>' },
 }));
 
 // Mock HTML5 Canvas and Image
@@ -173,7 +174,7 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    wrapper.vm.__testOnly.selectedFill.value = 'transparent';
+    wrapper.vm.__testOnly.selectedFill.value = wrapper.vm.__testOnly.TRANSPARENT;
     await wrapper.vm.__testOnly.executeAction({ action: 'mask-inside' });
     expect(wrapper.vm.__testOnly.historyIndex.value).toBe(1);
 
@@ -187,7 +188,7 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    wrapper.vm.__testOnly.selectedFill.value = 'transparent';
+    wrapper.vm.__testOnly.selectedFill.value = wrapper.vm.__testOnly.TRANSPARENT;
     await wrapper.vm.__testOnly.executeAction({ action: 'mask-inside' });
 
     // Important: fillStyle must be opaque (e.g., 'black') during execution to actually erase pixels in destination-out mode
@@ -422,6 +423,106 @@ describe('ImageEditor', () => {
 
       expect(wrapper.vm.__testOnly.showCloseConfirm.value).toBe(false);
       expect(wrapper.emitted('cancel')).toBeDefined();
+    });
+  });
+
+  describe('Color Picker & History', () => {
+    it('should toggle color picking mode', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      const pipetteBtn = wrapper.find('button[title="Pick color from canvas"]');
+      await pipetteBtn.trigger('click');
+      expect(wrapper.vm.__testOnly.isPickingColor.value).toBe(true);
+
+      await pipetteBtn.trigger('click');
+      expect(wrapper.vm.__testOnly.isPickingColor.value).toBe(false);
+    });
+
+    it('should pick color from canvas and add to history', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      // Mock canvas getImageData for a specific color (red)
+      mockContext.getImageData.mockReturnValue({
+        data: new Uint8ClampedArray([255, 0, 0, 255]),
+        width: 1,
+        height: 1
+      } as any);
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+      const canvas = wrapper.find('canvas').element;
+      vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+        left: 0, top: 0, width: 100, height: 100,
+        bottom: 100, right: 100, x: 0, y: 0,
+        toJSON: () => {}
+      });
+
+      // Enable picking mode
+      wrapper.vm.__testOnly.isPickingColor.value = true;
+      await nextTick();
+
+      // Click on canvas
+      await container.trigger('mousedown', { clientX: 50, clientY: 50 });
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.selectedFill.value).toBe('#ff0000');
+      expect(wrapper.vm.__testOnly.isPickingColor.value).toBe(false);
+      expect(wrapper.vm.__testOnly.colorHistory.value).toContain('#ff0000');
+    });
+
+    it('should pick transparent if alpha is 0', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      mockContext.getImageData.mockReturnValue({
+        data: new Uint8ClampedArray([0, 0, 0, 0]),
+        width: 1,
+        height: 1
+      } as any);
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+      const canvas = wrapper.find('canvas').element;
+      vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+        left: 0, top: 0, width: 100, height: 100,
+        bottom: 100, right: 100, x: 0, y: 0,
+        toJSON: () => {}
+      });
+
+      wrapper.vm.__testOnly.isPickingColor.value = true;
+      await container.trigger('mousedown', { clientX: 50, clientY: 50 });
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.selectedFill.value).toBe(wrapper.vm.__testOnly.TRANSPARENT);
+    });
+
+    it('should update history when selectedFill changes', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      wrapper.vm.__testOnly.selectedFill.value = '#00ff00';
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.colorHistory.value[0]).toBe('#00ff00');
+
+      wrapper.vm.__testOnly.selectedFill.value = '#0000ff';
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.colorHistory.value[0]).toBe('#0000ff');
+      expect(wrapper.vm.__testOnly.colorHistory.value[1]).toBe('#00ff00');
+    });
+
+    it('should change cursor based on isPickingColor state', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+
+      expect(container.classes()).toContain('cursor-crosshair');
+
+      wrapper.vm.__testOnly.isPickingColor.value = true;
+      await nextTick();
+      expect(container.classes()).toContain('cursor-pointer');
     });
   });
 });
