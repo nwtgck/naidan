@@ -162,4 +162,40 @@ describe('MessageDiffModal', () => {
 
     expect(wrapper.find('.bg-red-50\\/50, .dark\\:bg-red-900\\/20').exists()).toBe(true);
   });
+
+  it('allows skipping a version to recalculate sequential diffs', async () => {
+    const wrapper = mount(MessageDiffModal, {
+      props: {
+        isOpen: true,
+        siblings,
+        currentMessageId: 'v3'
+      }
+    });
+
+    // v3 sequential diff is normally against v2.
+    const v3Card = wrapper.findAll('.group\\/card').find(c => c.text().includes('v3'));
+    expect(v3Card?.text()).toContain('Modified');
+
+    // Skip v2
+    const v2Card = wrapper.findAll('.group\\/card').find(c => c.text().includes('v2'));
+    const skipBtn = v2Card?.findAll('button').find(b => b.text().includes('Skip'));
+    await skipBtn?.trigger('click');
+    await nextTick();
+
+    // Verify v2 content is hidden (collapsed)
+    const v2Content = v2Card?.find('.p-5.font-mono');
+    expect(v2Content?.exists()).toBe(false);
+
+    // Now v3 sequential diff should be against v1.
+    expect(v3Card?.text()).toContain('Original');
+    expect(v3Card?.text()).not.toContain('Modified');
+
+    // Unskip v2
+    const skippedBtn = v2Card?.findAll('button').find(b => b.text().includes('Include'));
+    await skippedBtn?.trigger('click');
+    await nextTick();
+
+    // Should be back to normal
+    expect(v3Card?.text()).toContain('Modified');
+  });
 });
