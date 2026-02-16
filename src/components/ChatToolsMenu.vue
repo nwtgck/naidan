@@ -14,6 +14,8 @@ const props = withDefaults(defineProps<{
   selectedWidth: number;
   selectedHeight: number;
   selectedCount: number;
+  selectedSteps: number | undefined;
+  selectedSeed: number | 'browser_random' | undefined;
   selectedPersistAs: 'original' | 'webp' | 'jpeg' | 'png';
   availableImageModels: string[];
   selectedImageModel: string | undefined;
@@ -26,6 +28,8 @@ const emit = defineEmits<{
   (e: 'toggle-image-mode'): void;
   (e: 'update:resolution', width: number, height: number): void;
   (e: 'update:count', count: number): void;
+  (e: 'update:steps', steps: number | undefined): void;
+  (e: 'update:seed', seed: number | 'browser_random' | undefined): void;
   (e: 'update:persist-as', format: 'original' | 'webp' | 'jpeg' | 'png'): void;
   (e: 'update:model', modelId: string): void;
 }>();
@@ -173,6 +177,8 @@ defineExpose({
             @toggle-image-mode="emit('toggle-image-mode')"
             @update:resolution="(w, h) => emit('update:resolution', w, h)"
             @update:count="c => emit('update:count', c)"
+            @update:steps="s => emit('update:steps', s)"
+            @update:seed="s => emit('update:seed', s)"
             @update:persist-as="f => emit('update:persist-as', f)"
             @update:model="m => emit('update:model', m)"
           />

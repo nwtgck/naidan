@@ -36,6 +36,10 @@ const {
   updateCount: _updateCount,
   getPersistAs,
   updatePersistAs: _updatePersistAs,
+  getSteps,
+  updateSteps: _updateSteps,
+  getSeed,
+  updateSeed: _updateSeed,
   setImageModel,
   getSelectedImageModel,
 } = chatStore;
@@ -129,6 +133,26 @@ const currentPersistAs = computed(() => {
 function updatePersistAs(format: 'original' | 'webp' | 'jpeg' | 'png') {
   if (currentChat.value) {
     _updatePersistAs({ chatId: currentChat.value.id, format });
+  }
+}
+
+const currentSteps = computed(() => {
+  return currentChat.value ? getSteps({ chatId: currentChat.value.id }) : undefined;
+});
+
+function updateSteps(steps: number | undefined) {
+  if (currentChat.value) {
+    _updateSteps({ chatId: currentChat.value.id, steps });
+  }
+}
+
+const currentSeed = computed(() => {
+  return currentChat.value ? getSeed({ chatId: currentChat.value.id }) : undefined;
+});
+
+function updateSeed(seed: number | 'browser_random' | undefined) {
+  if (currentChat.value) {
+    _updateSeed({ chatId: currentChat.value.id, seed });
   }
 }
 
@@ -447,6 +471,8 @@ async function handleGenerateImage() {
     width,
     height,
     count,
+    steps: currentSteps.value,
+    seed: currentSeed.value,
     persistAs: currentPersistAs.value,
     attachments: currentAttachments
   });
@@ -837,12 +863,16 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             :selected-width="currentResolution.width"
             :selected-height="currentResolution.height"
             :selected-count="currentCount"
+            :selected-steps="currentSteps"
+            :selected-seed="currentSeed"
             :selected-persist-as="currentPersistAs"
             :available-image-models="availableImageModels"
             :selected-image-model="selectedImageModel"
             @toggle-image-mode="toggleImageMode"
             @update:resolution="updateResolution"
             @update:count="updateCount"
+            @update:steps="updateSteps"
+            @update:seed="updateSeed"
             @update:persist-as="updatePersistAs"
             @update:model="handleUpdateImageModel"
           />

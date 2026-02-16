@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Image, Loader2, Check, ArrowLeftRight } from 'lucide-vue-next';
+import { ref, nextTick } from 'vue';
+import { Image, Loader2, Check, ArrowLeftRight, Dice5 } from 'lucide-vue-next';
 import ModelSelector from './ModelSelector.vue';
 
 defineOptions({
@@ -13,6 +14,8 @@ const props = defineProps<{
   selectedWidth: number;
   selectedHeight: number;
   selectedCount: number;
+  selectedSteps: number | undefined;
+  selectedSeed: number | 'browser_random' | undefined;
   selectedPersistAs: 'original' | 'webp' | 'jpeg' | 'png';
   availableImageModels: string[];
   selectedImageModel: string | undefined;
@@ -23,6 +26,8 @@ const emit = defineEmits<{
   (e: 'toggle-image-mode'): void;
   (e: 'update:resolution', width: number, height: number): void;
   (e: 'update:count', count: number): void;
+  (e: 'update:steps', steps: number | undefined): void;
+  (e: 'update:seed', seed: number | 'browser_random' | undefined): void;
   (e: 'update:persist-as', format: 'original' | 'webp' | 'jpeg' | 'png'): void;
   (e: 'update:model', modelId: string): void;
 }>();
@@ -45,12 +50,41 @@ const saveFormats = [
   { label: 'PNG', value: 'png' },
 ] as const;
 
+const seedInputRef = ref<HTMLInputElement | null>(null);
+
 function handleCountInput(event: Event) {
   const target = event.target as HTMLInputElement;
   const val = parseInt(target.value);
   if (!isNaN(val) && val > 0) {
     emit('update:count', val);
   }
+}
+
+function handleStepsInput(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const val = parseInt(target.value);
+  if (!isNaN(val) && val > 0) {
+    emit('update:steps', val);
+  } else if (target.value === '') {
+    emit('update:steps', undefined);
+  }
+}
+
+function handleSeedInput(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const val = parseInt(target.value);
+  if (!isNaN(val)) {
+    emit('update:seed', val);
+  } else if (target.value === '') {
+    emit('update:seed', undefined);
+  }
+}
+
+function handleSeedReEnable() {
+  emit('update:seed', undefined);
+  nextTick(() => {
+    seedInputRef.value?.focus();
+  });
 }
 
 function handleWidthInput(event: Event) {
@@ -188,6 +222,54 @@ defineExpose({
             class="w-12 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             placeholder="Qty"
           />
+        </div>
+      </div>
+
+      <!-- Steps & Seed -->
+      <div class="px-3 py-2 border-t dark:border-gray-700 flex items-end gap-4">
+        <div class="flex-1 flex flex-col">
+          <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2 leading-none">Steps</div>
+          <input
+            type="number"
+            min="1"
+            :value="selectedSteps"
+            @input="handleStepsInput"
+            class="w-full h-7 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all block m-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            placeholder="Auto"
+          />
+        </div>
+        <div class="flex-[1.5] flex flex-col">
+          <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2 leading-none">Seed</div>
+          <div class="flex items-stretch gap-1 h-7">
+            <button
+              @click="emit('update:seed', selectedSeed === 'browser_random' ? undefined : 'browser_random')"
+              class="h-full px-1.5 border rounded-md transition-all flex items-center justify-center shrink-0 m-0"
+              :class="selectedSeed === 'browser_random'
+                ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
+              title="Explicitly generate random seed in browser for each image"
+            >
+              <Dice5 class="w-3 h-3" />
+            </button>
+            <div class="flex-1 relative">
+              <input
+                ref="seedInputRef"
+                type="number"
+                :value="typeof selectedSeed === 'number' ? selectedSeed : ''"
+                @input="handleSeedInput"
+                :disabled="selectedSeed === 'browser_random'"
+                class="w-full h-full min-w-0 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all disabled:opacity-50 block m-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                placeholder="Auto"
+                data-testid="seed-input"
+              />
+              <div
+                v-if="selectedSeed === 'browser_random'"
+                @click="handleSeedReEnable"
+                class="absolute inset-0 cursor-text z-10"
+                title="Click to enter specific seed"
+              ></div>
+            </div>
+          </div>
         </div>
       </div>
 
