@@ -237,11 +237,11 @@ async function loadGeneratedImages() {
             }
           }
 
-          // Hydrate the download button portal using the specialized hydrator
-          const portal = htmlEl.querySelector('.naidan-download-portal');
-          if (portal instanceof HTMLElement) {
+          // Hydrate the download button portal
+          const dlPortal = htmlEl.querySelector('.naidan-download-portal');
+          if (dlPortal instanceof HTMLElement) {
             const unmount = ImageDownloadHydrator.mount({
-              portal,
+              portal: dlPortal,
               isSupported,
               onDownload: ({ withMetadata }) => ImageDownloadHydrator.download({
                 id, prompt, steps, seed,
@@ -256,6 +256,18 @@ async function loadGeneratedImages() {
               })
             });
             hydrationCleanups.push(unmount);
+          }
+
+          // Hydrate the info display portal
+          const infoPortal = htmlEl.querySelector('.naidan-info-portal');
+          if (infoPortal instanceof HTMLElement) {
+            const unmountInfo = ImageDownloadHydrator.mountInfo({
+              portal: infoPortal,
+              prompt,
+              steps,
+              seed
+            });
+            hydrationCleanups.push(unmountInfo);
           }
         }
       } catch (e) {
@@ -454,11 +466,16 @@ marked.use({
             skeleton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image text-gray-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
             div.appendChild(skeleton);
 
-            // Portal for Vue component (will be hydrated in loadGeneratedImages)
-            const portal = document.createElement('div');
-            portal.className = 'naidan-download-portal absolute top-2 right-2 z-10 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all';
-            portal.innerHTML = '<!-- hydratable -->';
-            div.appendChild(portal);
+            // Portals for Vue components (will be hydrated in loadGeneratedImages)
+            const dlPortal = document.createElement('div');
+            dlPortal.className = 'naidan-download-portal absolute top-2 right-2 z-10 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all';
+            dlPortal.innerHTML = '<!-- hydratable -->';
+            div.appendChild(dlPortal);
+
+            const infoPortal = document.createElement('div');
+            infoPortal.className = 'naidan-info-portal absolute top-2 left-2 z-10 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all';
+            infoPortal.innerHTML = '<!-- hydratable -->';
+            div.appendChild(infoPortal);
 
             return div.outerHTML;
           } else {

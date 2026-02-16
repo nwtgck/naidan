@@ -346,4 +346,57 @@ describe('MessageItem Image Generation', () => {
     appendChildSpy.mockRestore();
     removeChildSpy.mockRestore();
   });
+
+  it('renders and hydrates ImageInfoDisplay with metadata', async () => {
+    const binaryObjectId = 'info-test-id';
+    const block = {
+      binaryObjectId,
+      displayWidth: 400,
+      displayHeight: 300,
+      prompt: 'a futuristic city',
+      steps: 30,
+      seed: 12345
+    };
+    const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(block)}\n\`\`\``;
+    const message = createMessage(content);
+
+    const wrapper = mount(MessageItem, {
+      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' },
+      global: {
+        components: { ImageDownloadButton }
+      }
+    });
+
+    await flushPromises();
+
+    // Poll for hydration
+    let hydrated = false;
+    for (let i = 0; i < 40; i++) {
+      await nextTick();
+      if (wrapper.find('[data-testid="image-info-button"]').exists()) {
+        hydrated = true;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 20));
+    }
+
+    expect(hydrated).toBe(true);
+
+    const infoButton = wrapper.find('[data-testid="image-info-button"]');
+    expect(infoButton.exists()).toBe(true);
+
+    // Initial state: popup should not be visible (it's v-if based)
+    expect(wrapper.text()).not.toContain('Steps');
+
+    // Click to open
+    await infoButton.trigger('click');
+    await nextTick();
+
+    // Verify content
+    expect(wrapper.text()).toContain('a futuristic city');
+    expect(wrapper.text()).toContain('Steps');
+    expect(wrapper.text()).toContain('30');
+    expect(wrapper.text()).toContain('Seed');
+    expect(wrapper.text()).toContain('12345');
+  });
 });
