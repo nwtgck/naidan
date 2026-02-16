@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick, watch } from 'vue';
+import { computed, ref, onMounted, nextTick, watch, onUnmounted } from 'vue';
 import { Marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import createDOMPurify from 'dompurify';
@@ -77,8 +77,11 @@ const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const copied = ref(false);
 
+import MessageActionsMenu from './MessageActionsMenu.vue';
+
 const showMoreMenu = ref(false);
 const showDiffModal = ref(false);
+const moreActionsTriggerRef = ref<HTMLElement | null>(null);
 
 const transformersStatus = ref(transformersJsService.getState().status);
 let transformersUnsubscribe: (() => void) | null = null;
@@ -620,8 +623,6 @@ onMounted(() => {
   });
 });
 
-import { onUnmounted } from 'vue';
-
 onUnmounted(() => {
   // Revoke all created URLs
   Object.values(attachmentUrls.value).forEach(url => URL.revokeObjectURL(url));
@@ -1061,6 +1062,7 @@ defineExpose({
             <!-- More Actions Menu -->
             <div class="relative">
               <button
+                ref="moreActionsTriggerRef"
                 @click="showMoreMenu = !showMoreMenu"
                 class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 title="More actions"
@@ -1069,21 +1071,20 @@ defineExpose({
                 <MoreVertical class="w-3.5 h-3.5" />
               </button>
 
-              <Transition name="dropdown">
-                <div
-                  v-if="showMoreMenu"
-                  class="absolute right-0 bottom-full mb-2 w-48 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-bottom-right animate-in fade-in slide-in-from-bottom-1 duration-200"
-                  @mouseleave="showMoreMenu = false"
+              <MessageActionsMenu
+                :is-open="showMoreMenu"
+                :trigger-el="moreActionsTriggerRef"
+                @close="showMoreMenu = false"
+              >
+                <button
+                  @click="showDiffModal = true; showMoreMenu = false"
+                  class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+                  data-testid="compare-versions-button"
                 >
-                  <button
-                    @click="showDiffModal = true; showMoreMenu = false"
-                    class="w-full flex items-center gap-3 px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
-                  >
-                    <History class="w-3.5 h-3.5" />
-                    <span>Compare Versions</span>
-                  </button>
-                </div>
-              </Transition>
+                  <History class="w-3.5 h-3.5" />
+                  <span>Compare Versions</span>
+                </button>
+              </MessageActionsMenu>
             </div>
           </div>
         </div>

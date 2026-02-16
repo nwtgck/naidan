@@ -776,27 +776,31 @@ describe('MessageItem Actions Menu', () => {
 
   it('toggles the actions menu when the more-actions button is clicked', async () => {
     const message = createMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message }, attachTo: document.body });
 
     const menuButton = wrapper.find('[data-testid="message-more-actions-button"]');
     expect(menuButton.exists()).toBe(true);
 
-    // Menu should be hidden by default
-    expect(wrapper.find('.absolute.right-0.bottom-full').exists()).toBe(false);
+    // Menu should be hidden by default (MessageActionsMenu is teleported, check body)
+    // We don't have a direct data-testid on the MessageActionsMenu div yet, but we can check the button inside
+    expect(document.body.querySelector('[data-testid="compare-versions-button"]')).toBeFalsy();
 
     await menuButton.trigger('click');
     await nextTick();
 
-    // Menu should be visible
-    const menu = wrapper.find('.absolute.right-0.bottom-full');
-    expect(menu.exists()).toBe(true);
-    expect(menu.text()).toContain('Compare Versions');
+    // Menu should be visible in body (teleported)
+    const compareBtn = document.body.querySelector('[data-testid="compare-versions-button"]');
+    expect(compareBtn).toBeTruthy();
+    expect(compareBtn?.textContent).toContain('Compare Versions');
+
+    wrapper.unmount();
   });
 
   it('opens the MessageDiffModal when "Compare Versions" is clicked', async () => {
     const message = createMessage('Hello');
     const wrapper = mount(MessageItem, {
       props: { message },
+      attachTo: document.body,
       global: {
         stubs: {
           MessageDiffModal: {
@@ -810,14 +814,16 @@ describe('MessageItem Actions Menu', () => {
     await wrapper.find('[data-testid="message-more-actions-button"]').trigger('click');
     await nextTick();
 
-    const compareBtn = wrapper.findAll('button').find(b => b.text().includes('Compare Versions'));
-    expect(compareBtn?.exists()).toBe(true);
+    const compareBtn = document.body.querySelector('[data-testid="compare-versions-button"]');
+    expect(compareBtn).toBeTruthy();
 
-    await compareBtn?.trigger('click');
+    await (compareBtn as HTMLButtonElement).click();
     await nextTick();
 
     // Check if MessageDiffModal is triggered
     const modal = wrapper.find('[data-testid="message-diff-modal"]');
     expect(modal.exists()).toBe(true);
+
+    wrapper.unmount();
   });
 });
