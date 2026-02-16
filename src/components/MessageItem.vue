@@ -41,6 +41,7 @@ const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => impor
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted(() => import('./MessageDiffModal.vue'));
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditor.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
+import { useChat } from '../composables/useChat';
 import {
   isImageGenerationPending,
   isImageGenerationProcessed,
@@ -54,6 +55,7 @@ import {
 } from '../utils/image-generation';
 
 const props = defineProps<{
+  chatId?: string;
   message: MessageNode;
   siblings?: MessageNode[];
   canGenerateImage?: boolean;
@@ -93,6 +95,8 @@ const editImageParams = ref({
   height: 512,
   model: undefined as string | undefined,
   count: 1,
+  steps: undefined as number | undefined,
+  seed: undefined as number | 'browser_random' | undefined,
   persistAs: 'original' as 'original' | 'webp' | 'jpeg' | 'png'
 });
 
@@ -100,6 +104,7 @@ const attachmentUrls = ref<Record<string, string>>({});
 const generatedImageUrls = ref<Record<string, string>>({});
 
 const { openPreview } = useImagePreview();
+const { imageProgressMap } = useChat();
 
 function openAdvancedEditor() {
   isAdvancedEditorOpen.value = true;
@@ -250,6 +255,8 @@ watch(isEditing, (editing) => {
           height: parsed.height ?? 512,
           model: parsed.model || undefined,
           count: parsed.count ?? 1,
+          steps: parsed.steps,
+          seed: parsed.seed,
           persistAs: parsed.persistAs ?? 'original'
         };
       }
@@ -290,6 +297,8 @@ function handleSaveEdit() {
         height: editImageParams.value.height,
         model: editImageParams.value.model,
         count: editImageParams.value.count,
+        steps: editImageParams.value.steps,
+        seed: editImageParams.value.seed,
         persistAs: editImageParams.value.persistAs
       });
       finalContent = marker + '\n' + finalContent;
@@ -943,6 +952,8 @@ defineExpose({
               :selected-width="editImageParams.width"
               :selected-height="editImageParams.height"
               :selected-count="editImageParams.count"
+              :selected-steps="editImageParams.steps"
+              :selected-seed="editImageParams.seed"
               :selected-persist-as="editImageParams.persistAs"
               :available-image-models="availableImageModels ?? []"
               :selected-image-model="editImageParams.model"
@@ -950,6 +961,8 @@ defineExpose({
               @toggle-image-mode="editImageMode = !editImageMode"
               @update:resolution="(w, h) => { editImageParams.width = w; editImageParams.height = h; }"
               @update:count="c => editImageParams.count = c"
+              @update:steps="s => editImageParams.steps = s"
+              @update:seed="s => editImageParams.seed = s"
               @update:persist-as="f => editImageParams.persistAs = f"
               @update:model="m => editImageParams.model = m"
             />
@@ -964,6 +977,8 @@ defineExpose({
         <ImageConjuringLoader
           v-if="isImageGenerationPending(message.content) && message.role === 'assistant' && !message.error"
           v-bind="getImageGenerationProgress(message.content)"
+          :current-step="isGenerating && chatId ? imageProgressMap[chatId]?.currentStep : undefined"
+          :total-steps="isGenerating && chatId ? imageProgressMap[chatId]?.totalSteps : undefined"
         />
 
         <!-- Loading State (Initial Wait for regular text) -->

@@ -25,7 +25,10 @@ const mockChatStore = {
   getResolution: vi.fn(() => ({ width: 512, height: 512 })),
   getCount: vi.fn(() => 1),
   updateCount: vi.fn(),
-  getPersistAs: vi.fn(() => 'original'),
+  getSteps: vi.fn(() => undefined),
+  updateSteps: vi.fn(),
+  getSeed: vi.fn(() => 'browser_random'),
+  updateSeed: vi.fn(),  getPersistAs: vi.fn(() => 'original'),
   updatePersistAs: vi.fn(),
   imagePersistAsMap: ref({}),
   updateResolution: vi.fn(),
@@ -94,6 +97,8 @@ describe('ChatArea Image Generation Integration', () => {
       width: 512,
       height: 512,
       count: 1,
+      seed: 'browser_random',
+      steps: undefined,
       persistAs: 'original',
       attachments: []
     });
@@ -124,6 +129,8 @@ describe('ChatArea Image Generation Integration', () => {
       width: 512,
       height: 512,
       count: 1,
+      seed: 'browser_random',
+      steps: undefined,
       persistAs: 'original',
       attachments: expect.arrayContaining([expect.objectContaining({ id: 'att-1' })])
     });

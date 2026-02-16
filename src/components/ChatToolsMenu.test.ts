@@ -32,6 +32,8 @@ describe('ChatToolsMenu', () => {
     selectedWidth: 512,
     selectedHeight: 512,
     selectedCount: 1,
+    selectedSteps: undefined,
+    selectedSeed: undefined,
     selectedPersistAs: 'original' as const,
     availableImageModels: ['model-1', 'model-2'],
     selectedImageModel: 'model-1'

@@ -4,6 +4,8 @@ import { computed } from 'vue';
 const props = defineProps<{
   remainingCount?: number;
   totalCount?: number;
+  currentStep?: number;
+  totalSteps?: number;
 }>();
 
 const currentNumber = computed(() => {
@@ -12,9 +14,17 @@ const currentNumber = computed(() => {
 });
 
 const label = computed(() => {
-  if (props.totalCount === undefined || props.remainingCount === undefined) return 'Generating image...';
-  if (props.totalCount <= 1) return 'Generating image...';
-  return `Generating images (${currentNumber.value} / ${props.totalCount})`;
+  const stepInfo = (props.currentStep !== undefined && props.totalSteps !== undefined)
+    ? ` [${props.currentStep}/${props.totalSteps}]`
+    : '';
+
+  if (props.totalCount === undefined || props.remainingCount === undefined) {
+    return `Generating image...${stepInfo}`;
+  }
+  if (props.totalCount <= 1) {
+    return `Generating image...${stepInfo}`;
+  }
+  return `Generating images (${currentNumber.value} / ${props.totalCount})${stepInfo}`;
 });
 
 

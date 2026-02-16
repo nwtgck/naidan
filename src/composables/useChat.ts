@@ -731,6 +731,10 @@ export function useChat() {
     updateResolution,
     getCount,
     updateCount,
+    getSteps,
+    updateSteps,
+    getSeed,
+    updateSeed,
     getPersistAs,
     updatePersistAs,
     setImageModel,
@@ -743,16 +747,19 @@ export function useChat() {
     imageResolutionMap,
     imageCountMap,
     imagePersistAsMap,
+    imageProgressMap,
     imageModelOverrideMap
   } = useImageGeneration();
 
-  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, count, persistAs, images, model, signal }: {
+  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, count, steps, seed, persistAs, images, model, signal }: {
     chatId: string;
     assistantId: string;
     prompt: string;
     width: number;
     height: number;
     count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
     persistAs: ImageRequestParams['persistAs'] | undefined;
     images: { blob: Blob }[];
     model: string | undefined;
@@ -769,6 +776,8 @@ export function useChat() {
       width,
       height,
       count,
+      steps,
+      seed,
       persistAs,
       images,
       model,
@@ -812,7 +821,7 @@ export function useChat() {
 
     try {
       if (imageRequest) {
-        const { width = 512, height = 512, model, count = 1, persistAs } = imageRequest;
+        const { width = 512, height = 512, model, count = 1, persistAs, steps, seed } = imageRequest;
         const prompt = stripNaidanSentinels(parentNode!.content).trim();
 
         const images: { blob: Blob }[] = [];
@@ -840,7 +849,7 @@ export function useChat() {
           }
         }
 
-        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, count, persistAs, images, model, signal: controller.signal });
+        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, count, steps, seed, persistAs, images, model, signal: controller.signal });
         return;
       }
 
@@ -1044,13 +1053,15 @@ export function useChat() {
         }
       }
 
-      let finalContent = content;
       const isImgMode = isImageMode({ chatId: chat.id });
       const imageModel = isImgMode ? getSelectedImageModel({ chatId: chat.id, availableModels: availableModels.value }) : undefined;
       const res = getResolution({ chatId: chat.id });
       const count = getCount({ chatId: chat.id });
+      const steps = getSteps({ chatId: chat.id });
+      const seed = getSeed({ chatId: chat.id });
       const persistAs = getPersistAs({ chatId: chat.id });
 
+      let finalContent = content;
       if (isImgMode && !isImageRequest(content)) {
         if (!imageModel) {
           const { useGlobalEvents } = await import('../composables/useGlobalEvents');
@@ -1058,7 +1069,15 @@ export function useChat() {
           addErrorEvent({ source: 'useChat:sendMessage', message: 'No image generation model found (starting with x/z-image-turbo:).' });
           return false;
         }
-        finalContent = createImageRequestMarker({ ...res, model: imageModel, count, persistAs }) + content;
+        finalContent = createImageRequestMarker({
+          ...res,
+          model: imageModel,
+          count,
+          steps,
+          seed: seed === 'browser_random' ? 'browser_random' : seed,
+          persistAs
+        }) + content;
+
       }
 
       const userMsg: MessageNode = { id: generateId(), role: 'user', content: finalContent, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
@@ -1402,11 +1421,13 @@ export function useChat() {
     });
   };
 
-  const generateImage = async ({ prompt, model, width, height, images, chat, signal }: {
+  const generateImage = async ({ prompt, model, width, height, steps, seed, images, chat, signal }: {
     prompt: string,
     model: string,
     width: number,
     height: number,
+    steps: number | undefined,
+    seed: number | undefined,
     images: { blob: Blob }[],
     chat: Chat,
     signal: AbortSignal | undefined
@@ -1417,18 +1438,23 @@ export function useChat() {
       model,
       width,
       height,
+      steps,
+      seed,
       images,
       endpointUrl: resolved.endpointUrl,
       endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+      onProgress: () => {},
       signal
     });
   };
 
-  const sendImageRequest = async ({ prompt, width, height, count, persistAs, attachments }: {
+  const sendImageRequest = async ({ prompt, width, height, count, steps, seed, persistAs, attachments }: {
     prompt: string;
     width: number;
     height: number;
     count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
     persistAs: ImageRequestParams['persistAs'];
     attachments: Attachment[];
   }): Promise<boolean> => {
@@ -1439,6 +1465,8 @@ export function useChat() {
       width,
       height,
       count,
+      steps,
+      seed,
       persistAs,
       chatId: toRaw(target).id,
       attachments,
@@ -1650,8 +1678,8 @@ export function useChat() {
 
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, streaming, generatingTitle, availableModels, fetchingModels,
-    imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageModelOverrideMap,
-    isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels,
+    imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
+    isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels,
     loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
     __testOnly: {

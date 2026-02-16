@@ -91,6 +91,8 @@ describe('useImageGeneration', () => {
         width: 1024,
         height: 1024,
         count: 1,
+        steps: undefined,
+        seed: undefined,
         persistAs: 'original',
         chatId,
         attachments: [],
@@ -144,6 +146,8 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
+        steps: undefined,
+        seed: undefined,
         storageType: 'opfs'
       });
 
@@ -162,6 +166,8 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
+        steps: undefined,
+        seed: undefined,
         storageType: 'local'
       });
 
@@ -182,6 +188,8 @@ describe('useImageGeneration', () => {
       await handleImageGeneration({
         ...commonParams,
         count: 3,
+        steps: undefined,
+        seed: undefined,
         storageType: 'local',
         triggerChatRef
       });
@@ -205,6 +213,8 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
+        steps: undefined,
+        seed: undefined,
         persistAs: 'webp',
         storageType: 'opfs'
       });
@@ -232,6 +242,8 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
+        steps: undefined,
+        seed: undefined,
         persistAs: 'jpeg',
         storageType: 'opfs'
       });

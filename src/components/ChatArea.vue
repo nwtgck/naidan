@@ -470,6 +470,7 @@ watch(
             <MessageItem
               v-for="msg in activeMessages"
               :key="msg.id"
+              :chat-id="currentChat!.id"
               :message="msg"
               :siblings="chatStore.getSiblings(msg.id)"
               :can-generate-image="canGenerateImage && hasImageModel"

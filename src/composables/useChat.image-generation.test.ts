@@ -92,6 +92,8 @@ describe('useChat Image Generation', () => {
       width: 1024,
       height: 1024,
       count: 1,
+      steps: undefined,
+      seed: undefined,
       persistAs: 'original',
       attachments: []
     });
@@ -117,6 +119,8 @@ describe('useChat Image Generation', () => {
       width: 1024,
       height: 1024,
       count: 1,
+      steps: undefined,
+      seed: undefined,
       persistAs: 'original',
       attachments: [mockAttachment]
     });
