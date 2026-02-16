@@ -52,7 +52,8 @@ const availableImageModels = computed(() => {
 });
 
 const { setActiveFocusArea } = useLayout();
-const isSubmerged = ref(false);
+type ChatInputVisibility = 'submerged' | 'peeking' | 'active';
+const inputVisibility = ref<ChatInputVisibility>('active');
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
 
@@ -259,8 +260,8 @@ watch(
     </div>
 
     <!-- Header -->
-    <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-3 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
-      <div class="flex items-center gap-3 overflow-hidden min-h-[44px]">
+    <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-2 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
+      <div class="flex items-center gap-3 overflow-hidden min-h-[38px]">
         <div class="flex flex-col overflow-hidden">
           <template v-if="currentChat">
             <div class="flex items-center gap-2">
@@ -273,7 +274,7 @@ watch(
               >
                 <ArrowUp class="w-4 h-4" />
               </button>
-              <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
+              <h2 class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button
                 v-if="activeMessages.length > 0"
                 @click="currentChat && chatStore.generateChatTitle(currentChat.id)"
@@ -459,7 +460,7 @@ watch(
         data-testid="scroll-container"
         class="absolute inset-0 overflow-y-auto overscroll-contain transition-[padding-bottom] duration-500"
         style="overflow-anchor: none;"
-        :style="{ paddingBottom: isSubmerged ? '48px' : '300px' }"
+        :style="{ paddingBottom: inputVisibility === 'submerged' ? '48px' : '300px' }"
       >
         <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
           Select or create a chat to start
@@ -519,7 +520,7 @@ watch(
     <ChatInput
       v-if="currentChat"
       ref="chatInputRef"
-      v-model:is-submerged="isSubmerged"
+      v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
       :is-streaming="isCurrentChatStreaming"
       :can-generate-image="canGenerateImage"

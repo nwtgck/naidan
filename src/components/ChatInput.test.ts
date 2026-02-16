@@ -15,6 +15,7 @@ vi.mock('lucide-vue-next', () => ({
   ChevronDown: { template: '<span>ChevronDown</span>' },
   ChevronUp: { template: '<span>ChevronUp</span>' },
   Edit2: { template: '<span>Edit2</span>' },
+  FileEdit: { template: '<span>FileEdit</span>' },
 }));
 
 // Mock child components
@@ -81,7 +82,7 @@ describe('ChatInput Integration', () => {
 
   const getWrapper = () => mount(ChatInput, {
     props: {
-      isSubmerged: false,
+      visibility: 'active',
       isStreaming: false,
       canGenerateImage: true,
       hasImageModel: true,

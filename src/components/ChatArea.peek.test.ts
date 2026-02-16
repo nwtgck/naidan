@@ -107,16 +107,16 @@ describe('ChatArea Peek Mode Specifications', () => {
 
     const button = wrapper.get('[data-testid="submerge-button"]');
 
-    // Initially not submerged
-    expect(wrapper.vm.isSubmerged).toBe(false);
+    // Initially active
+    expect(wrapper.vm.inputVisibility).toBe('active');
 
     // Click to submerge
     await button.trigger('click');
-    expect(wrapper.vm.isSubmerged).toBe(true);
+    expect(wrapper.vm.inputVisibility).toBe('submerged');
 
-    // Click again to unsubmerge
+    // Click again to unsubmerge (becomes active)
     await button.trigger('click');
-    expect(wrapper.vm.isSubmerged).toBe(false);
+    expect(wrapper.vm.inputVisibility).toBe('active');
   });
 
   it('automatically unsubmerges when mouse enters the input area', async () => {
@@ -126,13 +126,14 @@ describe('ChatArea Peek Mode Specifications', () => {
     await nextTick();
 
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
-    expect(wrapper.vm.isSubmerged).toBe(true);
+    expect(wrapper.vm.inputVisibility).toBe('submerged');
 
     // Find the input container (the one with the border and rounded-2xl)
     const inputContainer = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
     await inputContainer.trigger('mouseenter');
 
-    expect(wrapper.vm.isSubmerged).toBe(false);
+    // Should become peeking
+    expect(wrapper.vm.inputVisibility).toBe('peeking');
   });
 
   it('maintains submerged state when switching chats', async () => {
@@ -143,7 +144,7 @@ describe('ChatArea Peek Mode Specifications', () => {
 
     // Submerge in chat 1
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
-    expect(wrapper.vm.isSubmerged).toBe(true);
+    expect(wrapper.vm.inputVisibility).toBe('submerged');
 
     // Switch to chat 2
     mockCurrentChat.value = {
@@ -158,10 +159,10 @@ describe('ChatArea Peek Mode Specifications', () => {
     await nextTick();
 
     // Should still be submerged
-    expect(wrapper.vm.isSubmerged).toBe(true);
+    expect(wrapper.vm.inputVisibility).toBe('submerged');
   });
 
-  it('adjusts scroll container padding-bottom based on submerged state', async () => {
+  it('adjusts scroll container padding-bottom based on visibility state', async () => {
     wrapper = mount(ChatArea, {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
@@ -169,7 +170,7 @@ describe('ChatArea Peek Mode Specifications', () => {
 
     const scrollContainer = wrapper.get('[data-testid="scroll-container"]');
 
-    // Default padding
+    // Default padding (active)
     expect((scrollContainer.element as HTMLElement).style.paddingBottom).toBe('300px');
 
     // Submerge
@@ -191,7 +192,44 @@ describe('ChatArea Peek Mode Specifications', () => {
 
     // Submerge
     await wrapper.get('[data-testid="submerge-button"]').trigger('click');
-    expect(wrapper.vm.isSubmerged).toBe(true);
+    expect(wrapper.vm.inputVisibility).toBe('submerged');
     expect((chatInput.vm as any).isMaximized).toBe(false);
+  });
+
+  it('stays in active state on mouseleave if focused', async () => {
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
+    });
+    await nextTick();
+
+    const inputContainer = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
+    const textarea = wrapper.find('textarea');
+
+    // Submerge first
+    await wrapper.get('[data-testid="submerge-button"]').trigger('click');
+    expect(wrapper.vm.inputVisibility).toBe('submerged');
+
+    // Hover -> peeking
+    await inputContainer.trigger('mouseenter');
+    expect(wrapper.vm.inputVisibility).toBe('peeking');
+
+    // Focus -> active
+    await textarea.trigger('focus');
+    expect(wrapper.vm.inputVisibility).toBe('active');
+
+    // Mouse leave -> should STAY active
+    await inputContainer.trigger('mouseleave');
+    expect(wrapper.vm.inputVisibility).toBe('active');
+  });
+
+  it('contains a hit area extension for stable hover detection', async () => {
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
+    });
+    await nextTick();
+
+    const hitArea = wrapper.find('[data-testid="hit-area-extension"]');
+    expect(hitArea.exists()).toBe(true);
+    expect(hitArea.classes()).toContain('-bottom-16');
   });
 });

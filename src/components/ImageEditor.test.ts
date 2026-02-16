@@ -20,6 +20,11 @@ vi.mock('lucide-vue-next', () => ({
   Circle: { template: '<span>Circle</span>' },
   Link: { template: '<span>Link</span>' },
   Link2Off: { template: '<span>Link2Off</span>' },
+  PanelRight: { template: '<span>PanelRight</span>' },
+  ZoomIn: { template: '<span>ZoomIn</span>' },
+  ZoomOut: { template: '<span>ZoomOut</span>' },
+  Search: { template: '<span>Search</span>' },
+  Pipette: { template: '<span>Pipette</span>' },
 }));
 
 // Mock HTML5 Canvas and Image
@@ -69,7 +74,12 @@ describe('ImageEditor', () => {
   });
 
   it('should disable Finish & Apply button when no changes are made', async () => {
-    const wrapper = mount(ImageEditor, { props });
+    const wrapper = mount(ImageEditor, {
+      props: {
+        ...props,
+        originalMimeType: 'image/png'
+      }
+    });
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -79,7 +89,12 @@ describe('ImageEditor', () => {
   });
 
   it('should enable Finish & Apply button when format is changed', async () => {
-    const wrapper = mount(ImageEditor, { props });
+    const wrapper = mount(ImageEditor, {
+      props: {
+        ...props,
+        originalMimeType: 'image/png'
+      }
+    });
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -159,7 +174,7 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    wrapper.vm.__testOnly.selectedFill.value = 'transparent';
+    wrapper.vm.__testOnly.selectedFill.value = wrapper.vm.__testOnly.TRANSPARENT;
     await wrapper.vm.__testOnly.executeAction({ action: 'mask-inside' });
     expect(wrapper.vm.__testOnly.historyIndex.value).toBe(1);
 
@@ -173,7 +188,7 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    wrapper.vm.__testOnly.selectedFill.value = 'transparent';
+    wrapper.vm.__testOnly.selectedFill.value = wrapper.vm.__testOnly.TRANSPARENT;
     await wrapper.vm.__testOnly.executeAction({ action: 'mask-inside' });
 
     // Important: fillStyle must be opaque (e.g., 'black') during execution to actually erase pixels in destination-out mode
@@ -231,7 +246,7 @@ describe('ImageEditor', () => {
     await wrapper.vm.__testOnly.applyTransform({ type: 'rotate-r' });
     expect(wrapper.vm.__testOnly.historyIndex.value).toBe(1);
 
-    const resetBtn = wrapper.find('button[title="Reset All"]');
+    const resetBtn = wrapper.find('button[title="Reset Image"]');
     await resetBtn.trigger('click');
     await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -316,6 +331,198 @@ describe('ImageEditor', () => {
       await nextTick();
 
       expect(wrapper.vm.__testOnly.selection.value.status).toBe('none');
+    });
+  });
+
+  describe('New UI Features', () => {
+    it('should toggle sidebar visibility', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.isSidebarOpen.value).toBe(true);
+
+      const toggleBtn = wrapper.find('button[title="Toggle Tools Sidebar"]');
+      await toggleBtn.trigger('click');
+      expect(wrapper.vm.__testOnly.isSidebarOpen.value).toBe(false);
+
+      await toggleBtn.trigger('click');
+      expect(wrapper.vm.__testOnly.isSidebarOpen.value).toBe(true);
+    });
+
+    it('should update zoom on wheel event', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+
+      // Zoom In
+      await container.trigger('wheel', { deltaY: -100 });
+      expect(wrapper.vm.__testOnly.zoom.value).toBeGreaterThan(1);
+
+      // Zoom Out
+      const zoomedIn = wrapper.vm.__testOnly.zoom.value;
+      await container.trigger('wheel', { deltaY: 100 });
+      expect(wrapper.vm.__testOnly.zoom.value).toBeLessThan(zoomedIn);
+    });
+
+    it('should pan image when dragging with Alt key', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+
+      // Start panning with Alt key
+      await container.trigger('mousedown', { clientX: 100, clientY: 100, button: 0, altKey: true });
+
+      // Move mouse
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 150 }));
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.panOffset.value.x).toBe(50);
+      expect(wrapper.vm.__testOnly.panOffset.value.y).toBe(50);
+
+      window.dispatchEvent(new MouseEvent('mouseup'));
+    });
+
+    it('should show confirmation dialog when closing with unsaved changes', async () => {
+      const wrapper = mount(ImageEditor, {
+        props: { ...props, originalMimeType: 'image/jpeg' }
+      });
+      await nextTick();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // 1. Make a change (Rotate)
+      await wrapper.vm.__testOnly.applyTransform({ type: 'rotate-r' });
+      expect(wrapper.vm.__testOnly.hasChanges.value).toBe(true);
+
+      // 2. Click Close
+      const closeBtn = wrapper.findAll('button').find(b => b.text().includes('Close'));
+      await closeBtn?.trigger('click');
+
+      // 3. Dialog should be visible
+      expect(wrapper.vm.__testOnly.showCloseConfirm.value).toBe(true);
+
+      // 4. Confirm discard
+      await wrapper.findComponent({ name: 'CustomDialog' }).vm.$emit('confirm');
+      expect(wrapper.emitted('cancel')).toBeDefined();
+    });
+
+    it('should NOT show confirmation dialog when closing without changes', async () => {
+      const wrapper = mount(ImageEditor, {
+        props: { ...props, originalMimeType: 'image/png' } // Default is PNG
+      });
+      await nextTick();
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      expect(wrapper.vm.__testOnly.hasChanges.value).toBe(false);
+
+      const closeBtn = wrapper.findAll('button').find(b => b.text().includes('Close'));
+      await closeBtn?.trigger('click');
+
+      expect(wrapper.vm.__testOnly.showCloseConfirm.value).toBe(false);
+      expect(wrapper.emitted('cancel')).toBeDefined();
+    });
+  });
+
+  describe('Color Picker & History', () => {
+    it('should toggle color picking mode', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      const pipetteBtn = wrapper.find('button[title="Pick color from canvas"]');
+      await pipetteBtn.trigger('click');
+      expect(wrapper.vm.__testOnly.isPickingColor.value).toBe(true);
+
+      await pipetteBtn.trigger('click');
+      expect(wrapper.vm.__testOnly.isPickingColor.value).toBe(false);
+    });
+
+    it('should pick color from canvas and add to history', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      // Mock canvas getImageData for a specific color (red)
+      mockContext.getImageData.mockReturnValue({
+        data: new Uint8ClampedArray([255, 0, 0, 255]),
+        width: 1,
+        height: 1
+      } as any);
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+      const canvas = wrapper.find('canvas').element;
+      vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+        left: 0, top: 0, width: 100, height: 100,
+        bottom: 100, right: 100, x: 0, y: 0,
+        toJSON: () => {}
+      });
+
+      // Enable picking mode
+      wrapper.vm.__testOnly.isPickingColor.value = true;
+      await nextTick();
+
+      // Click on canvas
+      await container.trigger('mousedown', { clientX: 50, clientY: 50 });
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.selectedFill.value).toBe('#ff0000');
+      expect(wrapper.vm.__testOnly.isPickingColor.value).toBe(false);
+      expect(wrapper.vm.__testOnly.colorHistory.value).toContain('#ff0000');
+    });
+
+    it('should pick transparent if alpha is 0', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      mockContext.getImageData.mockReturnValue({
+        data: new Uint8ClampedArray([0, 0, 0, 0]),
+        width: 1,
+        height: 1
+      } as any);
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+      const canvas = wrapper.find('canvas').element;
+      vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+        left: 0, top: 0, width: 100, height: 100,
+        bottom: 100, right: 100, x: 0, y: 0,
+        toJSON: () => {}
+      });
+
+      wrapper.vm.__testOnly.isPickingColor.value = true;
+      await container.trigger('mousedown', { clientX: 50, clientY: 50 });
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.selectedFill.value).toBe(wrapper.vm.__testOnly.TRANSPARENT);
+    });
+
+    it('should update history when selectedFill changes', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      wrapper.vm.__testOnly.selectedFill.value = '#00ff00';
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.colorHistory.value[0]).toBe('#00ff00');
+
+      wrapper.vm.__testOnly.selectedFill.value = '#0000ff';
+      await nextTick();
+
+      expect(wrapper.vm.__testOnly.colorHistory.value[0]).toBe('#0000ff');
+      expect(wrapper.vm.__testOnly.colorHistory.value[1]).toBe('#00ff00');
+    });
+
+    it('should change cursor based on isPickingColor state', async () => {
+      const wrapper = mount(ImageEditor, { props });
+      await nextTick();
+
+      const container = wrapper.find('[data-testid="image-editor-container"]');
+
+      expect(container.classes()).toContain('cursor-crosshair');
+
+      wrapper.vm.__testOnly.isPickingColor.value = true;
+      await nextTick();
+      expect(container.classes()).toContain('cursor-pointer');
     });
   });
 });
