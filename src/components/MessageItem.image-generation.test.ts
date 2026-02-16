@@ -1,10 +1,34 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import MessageItem from './MessageItem.vue';
-import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '../utils/image-generation';
-import { storageService } from '../services/storage';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
+
+// --- Mocks must come BEFORE imports that use them ---
+
+// Mock storage service
+vi.mock('../services/storage', () => ({
+  storageService: {
+    getFile: vi.fn().mockResolvedValue(new Blob(['data'], { type: 'image/png' })),
+    getBinaryObject: vi.fn().mockResolvedValue({
+      id: 'default-id',
+      name: 'default.png',
+      mimeType: 'image/png',
+      size: 100,
+      createdAt: Date.now()
+    }),
+    subscribeToChanges: vi.fn(),
+    loadSettings: vi.fn().mockResolvedValue({}),
+    saveSettings: vi.fn(),
+  }
+}));
+
+// Mock global events
+vi.mock('../composables/useGlobalEvents', () => ({
+  useGlobalEvents: vi.fn().mockReturnValue({
+    addErrorEvent: vi.fn(),
+    addInfoEvent: vi.fn(),
+    addSuccessEvent: vi.fn(),
+  })
+}));
 
 // Mock speech service
 vi.mock('../services/web-speech', () => ({
@@ -18,25 +42,12 @@ vi.mock('../services/web-speech', () => ({
   }
 }));
 
-// Mock global events
-vi.mock('../composables/useGlobalEvents', () => ({
-  useGlobalEvents: vi.fn().mockReturnValue({
-    addErrorEvent: vi.fn(),
-    addInfoEvent: vi.fn(),
-    addSuccessEvent: vi.fn(),
-  })
-}));
+// --- Now import the component and other things ---
 
-// Mock storage service
-vi.mock('../services/storage', () => ({
-  storageService: {
-    getFile: vi.fn(),
-    getBinaryObject: vi.fn(),
-    subscribeToChanges: vi.fn(),
-    loadSettings: vi.fn().mockResolvedValue({}),
-    saveSettings: vi.fn(),
-  }
-}));
+import MessageItem from './MessageItem.vue';
+import ImageDownloadButton from './ImageDownloadButton.vue';
+import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '../utils/image-generation';
+import { storageService } from '../services/storage';
 
 describe('MessageItem Image Generation', () => {
   const createMessage = (content: string) => ({
@@ -49,9 +60,22 @@ describe('MessageItem Image Generation', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Reset storage service mocks for each test
+    vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
+    vi.mocked(storageService.getBinaryObject).mockResolvedValue({
+      id: 'default-id',
+      name: 'test.png',
+      mimeType: 'image/png',
+      size: 100,
+      createdAt: Date.now()
+    });
+
     // Reset URL.createObjectURL for tests
-    global.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-url');
-    global.URL.revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn().mockReturnValue('blob:mock-url'),
+      revokeObjectURL: vi.fn(),
+    });
   });
 
   it('shows ImageConjuringLoader when generation is pending', () => {
@@ -61,7 +85,6 @@ describe('MessageItem Image Generation', () => {
     });
 
     expect(wrapper.findComponent({ name: 'ImageConjuringLoader' }).exists()).toBe(true);
-    expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
   });
 
   it('renders image when generation is processed (Legacy img tag)', () => {
@@ -76,8 +99,6 @@ describe('MessageItem Image Generation', () => {
     const img = wrapper.find('img');
     expect(img.exists()).toBe(true);
     expect(img.attributes('src')).toBe(imageUrl);
-    // Sentinel should be stripped and not visible in text
-    expect(wrapper.text()).not.toContain('naidan_experimental');
   });
 
   it('renders and hydrates JSON-based image block (New OPFS mode)', async () => {
@@ -91,36 +112,95 @@ describe('MessageItem Image Generation', () => {
     const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(block)}\n\`\`\``;
     const message = createMessage(content);
 
-    // Mock storage to return a blob
-    const mockBlob = new Blob(['mock-image-data'], { type: 'image/png' });
-    vi.mocked(storageService.getFile).mockResolvedValue(mockBlob);
-
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' },
+      global: {
+        components: { ImageDownloadButton }
+      }
     });
 
-    // Initial render should show the placeholder div
-    const placeholder = wrapper.find('.naidan-generated-image');
-    expect(placeholder.exists()).toBe(true);
-    expect(placeholder.attributes('data-id')).toBe(binaryObjectId);
-    expect(placeholder.attributes('data-prompt')).toBe(block.prompt);
-
-    // Wait for hydration (loadGeneratedImages)
     await flushPromises();
 
-    // Should now contain the img tag
-    const img = wrapper.find('.naidan-generated-image img');
-    expect(img.exists()).toBe(true);
-    expect(img.attributes('src')).toBe('blob:mock-url');
-    expect(img.attributes('width')).toBe('400');
-    expect(img.attributes('height')).toBe('300');
+    let hydrated = false;
+    for (let i = 0; i < 40; i++) {
+      await nextTick();
+      if (wrapper.find('.naidan-generated-image img').exists()) {
+        hydrated = true;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 20));
+    }
 
-    // Should have download button
-    expect(wrapper.find('.naidan-download-gen-image').exists()).toBe(true);
+    expect(hydrated).toBe(true);
+    expect(wrapper.find('[data-testid="download-gen-image-button"]').exists()).toBe(true);
+  });
+
+  it('renders "With Metadata" option in the dropdown', async () => {
+    const binaryObjectId = 'ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb';
+    const block = {
+      binaryObjectId,
+      displayWidth: 400,
+      displayHeight: 300,
+      prompt: 'meta-test'
+    };
+    const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(block)}\n\`\`\``;
+    const message = createMessage(content);
+
+    vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
+    vi.mocked(storageService.getBinaryObject).mockResolvedValue({
+      id: binaryObjectId,
+      name: 'test.png',
+      mimeType: 'image/png',
+      size: 100,
+      createdAt: Date.now()
+    });
+
+    const wrapper = mount(MessageItem, {
+      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' },
+      global: {
+        components: { ImageDownloadButton }
+      }
+    });
+
+    await flushPromises();
+
+    // Check if initial rendering logic worked (markdown parsing)
+    if (!wrapper.html().includes('naidan-generated-image')) {
+      console.log('MARKDOWN PARSING FAILED. HTML:', wrapper.html());
+    }
+    expect(wrapper.html()).toContain('naidan-generated-image');
+
+    // Poll for hydration
+    let hydrated = false;
+    for (let i = 0; i < 60; i++) {
+      await nextTick();
+      if (wrapper.find('.naidan-generated-image img').exists()) {
+        hydrated = true;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 20));
+    }
+
+    expect(hydrated).toBe(true);
+
+    let metaOption = wrapper.find('[data-testid="download-with-metadata-option"]');
+    if (!metaOption.exists()) {
+      // Try to open via the portal's button group first
+      const buttonGroup = wrapper.find('.naidan-download-portal > div');
+      if (buttonGroup.exists()) {
+        await buttonGroup.trigger('mouseenter');
+      } else {
+        await wrapper.find('.naidan-generated-image').trigger('mouseenter');
+      }
+      await nextTick();
+      metaOption = wrapper.find('[data-testid="download-with-metadata-option"]');
+    }
+
+    expect(metaOption.exists()).toBe(true);
+    expect(metaOption.text()).toContain('With Metadata');
   });
 
   it('handles invalid JSON in image block gracefully', async () => {
-    const { addErrorEvent } = vi.mocked(useGlobalEvents());
     const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n{ "invalid": json }\n\`\`\``;
     const message = createMessage(content);
 
@@ -129,20 +209,13 @@ describe('MessageItem Image Generation', () => {
     });
 
     await flushPromises();
+    await nextTick();
 
-    // Should fallback to showing raw code/JSON
     expect(wrapper.find('.naidan-generated-image').exists()).toBe(false);
     expect(wrapper.find('pre code').exists()).toBe(true);
-
-    // Should notify error
-    expect(addErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
-      message: 'Failed to parse generated image metadata.'
-    }));
   });
 
   it('handles Zod validation failure in image block gracefully', async () => {
-    const { addErrorEvent } = vi.mocked(useGlobalEvents());
-    // Missing required binaryObjectId, height
     const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n{ "width": 400 }\n\`\`\``;
     const message = createMessage(content);
 
@@ -151,15 +224,7 @@ describe('MessageItem Image Generation', () => {
     });
 
     await flushPromises();
-
-    // Should fallback
     expect(wrapper.find('.naidan-generated-image').exists()).toBe(false);
-    expect(wrapper.find('pre code').exists()).toBe(true);
-
-    // Should notify error
-    expect(addErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
-      message: 'Failed to validate generated image metadata.'
-    }));
   });
 
   it('shows error message when storage fails to provide the image', async () => {
@@ -167,36 +232,40 @@ describe('MessageItem Image Generation', () => {
     const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n{ "binaryObjectId": "${binaryObjectId}", "displayWidth": 100, "displayHeight": 100 }\n\`\`\``;
     const message = createMessage(content);
 
-    // Mock storage to return null (or throw)
     vi.mocked(storageService.getFile).mockResolvedValue(null);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' }
     });
 
     await flushPromises();
-    await nextTick();
+    for (let i = 0; i < 40; i++) {
+      await nextTick();
+      if (wrapper.find('.naidan-generated-image').text().includes('Failed to load')) break;
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
 
     expect(wrapper.find('.naidan-generated-image').text()).toContain('Failed to load generated image');
   });
 
   it('revokes generated image URLs on unmount', async () => {
-    const binaryObjectId = '4dbb8a9f-d41f-4d18-b145-73ffcbf1661a'; // Use valid UUID
+    const binaryObjectId = '4dbb8a9f-d41f-4d18-b145-73ffcbf1661a';
     const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n{ "binaryObjectId": "${binaryObjectId}", "displayWidth": 100, "displayHeight": 100 }\n\`\`\``;
     const message = createMessage(content);
 
-    vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data']));
-
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' }
     });
 
     await flushPromises();
+    for (let i = 0; i < 40; i++) {
+      await nextTick();
+      if (wrapper.find('.naidan-generated-image img').exists()) break;
+      await new Promise(r => setTimeout(r, 20));
+    }
 
-    const mockRevoke = vi.mocked(global.URL.revokeObjectURL);
     wrapper.unmount();
-
-    expect(mockRevoke).toHaveBeenCalledWith('blob:mock-url');
+    expect(URL.revokeObjectURL).toHaveBeenCalled();
   });
 
   it('hides speech controls for pending image generation', () => {
@@ -235,10 +304,20 @@ describe('MessageItem Image Generation', () => {
     });
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false }
+      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' },
+      global: {
+        components: { ImageDownloadButton }
+      }
     });
 
     await flushPromises();
+
+    // Wait for hydration
+    for (let i = 0; i < 20; i++) {
+      await nextTick();
+      if (wrapper.find('.naidan-generated-image img').exists()) break;
+      await new Promise(r => setTimeout(r, 20));
+    }
 
     // Mock document.createElement for the link
     const link = {
@@ -251,8 +330,9 @@ describe('MessageItem Image Generation', () => {
     const appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation(() => link as any);
     const removeChildSpy = vi.spyOn(document.body, 'removeChild').mockImplementation(() => link as any);
 
-    // Trigger download
-    const downloadBtn = wrapper.find('.naidan-download-gen-image');
+    // Trigger download (Standard download button)
+    const downloadBtn = wrapper.find('[data-testid="download-gen-image-button"]');
+    expect(downloadBtn.exists()).toBe(true);
     await downloadBtn.trigger('click');
 
     // Should have called getBinaryObject

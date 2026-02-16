@@ -122,10 +122,15 @@ describe('MessageItem.vue Preview Integration', () => {
     });
 
     await flushPromises();
-    await nextTick();
-    await flushPromises();
 
-    console.log('HTML:', wrapper.html());
+    // Poll for the image element to appear (hydration is async)
+    for (let i = 0; i < 20; i++) {
+      await nextTick();
+      if (wrapper.find('.naidan-clickable-img').exists()) {
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
 
     // The image is rendered via loadGeneratedImages
     const img = wrapper.find('.naidan-clickable-img');

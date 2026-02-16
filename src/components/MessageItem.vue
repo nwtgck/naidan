@@ -35,6 +35,7 @@ import { sanitizeFilename } from '../utils/string';
 import SpeechControl from './SpeechControl.vue';
 // IMPORTANT: ImageConjuringLoader is essential for showing image generation progress immediately.
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
+import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import { transformersJsService } from '../services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
@@ -102,6 +103,8 @@ const editImageParams = ref({
 
 const attachmentUrls = ref<Record<string, string>>({});
 const generatedImageUrls = ref<Record<string, string>>({});
+const hydrationCleanups: (() => void)[] = [];
+let hydrationLock = false;
 
 const { openPreview } = useImagePreview();
 const { imageProgressMap } = useChat();
@@ -177,44 +180,93 @@ async function loadAttachments() {
 }
 
 async function loadGeneratedImages() {
-  await nextTick();
-  if (!messageRef.value) return;
-  const placeholders = messageRef.value.querySelectorAll('.naidan-generated-image');
+  if (hydrationLock) return;
+  hydrationLock = true;
 
-  for (const el of placeholders) {
-    const htmlEl = el as HTMLElement;
-    const id = htmlEl.dataset.id;
-    const w = htmlEl.dataset.width;
-    const h = htmlEl.dataset.height;
+  try {
+    await nextTick();
+    const root = contentRef.value || messageRef.value;
+    if (!root) return;
 
-    if (id) {
-      if (!generatedImageUrls.value[id]) {
-        try {
+    // Cleanup previous hydrations before starting new ones
+    while (hydrationCleanups.length > 0) {
+      const cleanup = hydrationCleanups.pop();
+      if (cleanup) cleanup();
+    }
+
+    const placeholders = Array.from(root.querySelectorAll('.naidan-generated-image'));
+
+    for (const el of placeholders) {
+      const htmlEl = el as HTMLElement;
+
+      try {
+        const ctx = await ImageDownloadHydrator.prepareContext(htmlEl, storageService);
+        if (!ctx) continue;
+
+        const { id, isSupported, width, height, prompt, steps, seed } = ctx;
+        let urlObj = generatedImageUrls.value[id];
+
+        if (!urlObj) {
           const blob = await storageService.getFile(id);
           if (blob) {
-            const url = URL.createObjectURL(blob);
-            generatedImageUrls.value[id] = url;
+            urlObj = URL.createObjectURL(blob);
+            generatedImageUrls.value[id] = urlObj;
           } else {
-            throw new Error('Image not found in storage');
+            throw new Error(`Image not found in storage: ${id}`);
           }
-        } catch (e) {
-          console.error('Failed to load generated image:', e);
-          htmlEl.innerHTML = `<div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs">Failed to load generated image</div>`;
-          continue;
         }
-      }
 
-      const url = generatedImageUrls.value[id];
-      if (url) {
-        htmlEl.innerHTML = `
-          <img src="${url}" width="${w}" height="${h}" alt="generated image" class="naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity">
-          <button class="naidan-download-gen-image absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all z-10" title="Download image">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-          </button>
-        `;
+        if (urlObj) {
+          // Create the hydrated image element via the hydrator
+          const imgEl = ImageDownloadHydrator.createImageElement({
+            url: urlObj,
+            width,
+            height,
+            onPreview: () => handlePreviewImage(id)
+          });
+
+          const skeleton = htmlEl.querySelector('.animate-pulse');
+          if (skeleton) {
+            skeleton.replaceWith(imgEl);
+          } else {
+            const existingImg = htmlEl.querySelector('img.naidan-clickable-img');
+            if (existingImg instanceof HTMLImageElement) {
+              existingImg.src = urlObj;
+            } else {
+              htmlEl.prepend(imgEl);
+            }
+          }
+
+          // Hydrate the download button portal using the specialized hydrator
+          const portal = htmlEl.querySelector('.naidan-download-portal');
+          if (portal instanceof HTMLElement) {
+            const unmount = ImageDownloadHydrator.mount({
+              portal,
+              isSupported,
+              onDownload: ({ withMetadata }) => ImageDownloadHydrator.download({
+                id, prompt, steps, seed,
+                model: props.message.modelId || undefined,
+                withMetadata,
+                storageService,
+                onError: (err) => addErrorEvent({
+                  source: 'MessageItem:Download',
+                  message: 'Failed to embed metadata in image.',
+                  details: err instanceof Error ? err.message : String(err),
+                })
+              })
+            });
+            hydrationCleanups.push(unmount);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load generated image:', e);
+        htmlEl.innerHTML = `<div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs">Failed to load generated image</div>`;
       }
     }
+  } finally {
+    hydrationLock = false;
   }
+  await nextTick();
 }
 
 type MermaidMode = 'preview' | 'code' | 'both';
@@ -382,18 +434,31 @@ marked.use({
         try {
           const result = GeneratedImageBlockSchema.safeParse(JSON.parse(code));
           if (result.success) {
-            const { binaryObjectId: id, displayWidth: w, displayHeight: h, prompt: p } = result.data;
+            const { binaryObjectId: id, displayWidth: w, displayHeight: h, prompt: p, steps: s, seed: sd } = result.data;
 
             const div = document.createElement('div');
-            div.className = 'naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl overflow-hidden';
+            div.className = 'naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl';
             div.dataset.id = id;
             div.dataset.width = String(w);
             div.dataset.height = String(h);
             div.dataset.prompt = p || '';
+            if (s !== undefined) div.dataset.steps = String(s);
+            if (sd !== undefined) div.dataset.seed = String(sd);
 
-            div.innerHTML = `<div class="flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0" style="width: ${w}px; height: ${h}px; max-width: 100%">
-                               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image text-gray-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                             </div>`;
+            // Skeleton placeholder
+            const skeleton = document.createElement('div');
+            skeleton.className = 'flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0 rounded-xl';
+            skeleton.style.width = `${w}px`;
+            skeleton.style.height = `${h}px`;
+            skeleton.style.maxWidth = '100%';
+            skeleton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image text-gray-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+            div.appendChild(skeleton);
+
+            // Portal for Vue component (will be hydrated in loadGeneratedImages)
+            const portal = document.createElement('div');
+            portal.className = 'naidan-download-portal absolute top-2 right-2 z-10 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all';
+            portal.innerHTML = '<!-- hydratable -->';
+            div.appendChild(portal);
 
             return div.outerHTML;
           } else {
@@ -515,9 +580,7 @@ const renderMermaid = async () => {
 };
 
 onMounted(() => {
-  renderMermaid();
   loadAttachments();
-  loadGeneratedImages();
 
   transformersUnsubscribe = transformersJsService.subscribe((s) => {
     transformersStatus.value = s;
@@ -638,14 +701,16 @@ onUnmounted(() => {
   Object.values(generatedImageUrls.value).forEach(url => URL.revokeObjectURL(url));
 
   if (transformersUnsubscribe) transformersUnsubscribe();
-});
 
-watch(() => props.message.content, () => {
-  renderMermaid();
-  loadGeneratedImages();
+  // Cleanup all hydrated components
+  while (hydrationCleanups.length > 0) {
+    const cleanup = hydrationCleanups.pop();
+    if (cleanup) cleanup();
+  }
 });
 
 const messageRef = ref<HTMLElement | null>(null);
+const contentRef = ref<HTMLElement | null>(null);
 
 watch(mermaidMode, async () => {
   switch (mermaidMode.value) {
@@ -706,12 +771,18 @@ const parsedContent = computed(() => {
   void mermaidMode.value;
   const html = marked.parse(displayContent.value) as string;
   return DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true },
+    USE_PROFILES: { html: true, svg: true },
     FORBID_ATTR: ['onerror', 'onclick', 'onload'], // Explicitly forbid dangerous attributes
+    ADD_ATTR: ['data-id', 'data-width', 'data-height', 'data-prompt', 'data-steps', 'data-seed', 'data-testid'], // Allow hydration and test data
     // Allow blob: and data: protocols for experimental image generation
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|blob|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
   });
 });
+
+watch(parsedContent, () => {
+  renderMermaid();
+  loadGeneratedImages();
+}, { immediate: true });
 
 const isUser = computed(() => {
   switch (props.message.role) {
@@ -971,7 +1042,7 @@ defineExpose({
       </div>
       <div v-else>
         <!-- Content Display (Always shown if present) -->
-        <div v-if="displayContent" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
+        <div v-if="displayContent" ref="contentRef" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
 
         <!-- AI Image Synthesis Loader (Componentized) -->
         <ImageConjuringLoader

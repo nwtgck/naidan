@@ -327,8 +327,9 @@ describe('useImageGeneration', () => {
       expect(typeof blockData.seed).toBe('number');
       expect(blockData.seed).toBeGreaterThan(0);
 
-      // Verify prompt in block contains the seed
-      expect(blockData.prompt).toMatch(/\(seed: \d+\)$/);
+      // Verify prompt in block does NOT contain the seed anymore
+      expect(blockData.prompt).not.toMatch(/\(seed: \d+\)$/);
+      expect(blockData.prompt).toBe('a futuristic city');
     });
 
     it('propagates explicit steps and seed to the final output blocks', async () => {
@@ -348,7 +349,8 @@ describe('useImageGeneration', () => {
 
       expect(blockData.steps).toBe(42);
       expect(blockData.seed).toBe(1337);
-      expect(blockData.prompt).toContain('(seed: 1337)');
+      expect(blockData.prompt).not.toContain('(seed: 1337)');
+      expect(blockData.prompt).toBe('a futuristic city');
     });
 
     it('updates and then clears imageProgressMap during generation', async () => {

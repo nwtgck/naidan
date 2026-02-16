@@ -286,8 +286,6 @@ export function useImageGeneration() {
         const displayWidth = width * 0.8;
         const displayHeight = height * 0.8;
 
-        const finalPrompt = activeSeed !== undefined ? `${prompt} (seed: ${activeSeed})` : prompt;
-
         switch (storageType) {
         case 'opfs': {
           const binaryObjectId = generateId();
@@ -302,7 +300,7 @@ export function useImageGeneration() {
             binaryObjectId,
             displayWidth,
             displayHeight,
-            prompt: finalPrompt,
+            prompt, // Use original prompt without (seed: ...)
             steps,
             seed: activeSeed
           });
