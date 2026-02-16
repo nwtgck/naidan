@@ -75,6 +75,13 @@ describe('image-generation utilities', () => {
     it('should return null for invalid format', () => {
       expect(parseImageRequest('not a marker')).toBeNull();
     });
+
+    it('should handle invalid types for steps and seed by falling back to undefined', () => {
+      const content = '<!-- naidan_experimental_image_request {"steps":"high","seed":{}} -->';
+      const result = parseImageRequest(content);
+      expect(result?.steps).toBeUndefined();
+      expect(result?.seed).toBeUndefined();
+    });
   });
 
   describe('stripNaidanSentinels', () => {

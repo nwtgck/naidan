@@ -29,7 +29,7 @@ describe('MessageItem Image Generation Progress', () => {
 
     expect(loader.props('totalCount')).toBe(3);
     expect(loader.props('remainingCount')).toBe(3);
-    expect(loader.text()).toContain('Generating images (1 / 3)');
+    expect(loader.text()).toContain('Image 1 / 3');
   });
 
   it('shows incremented progress after some images are generated (local mode)', async () => {
@@ -48,7 +48,7 @@ describe('MessageItem Image Generation Progress', () => {
     const loader = wrapper.findComponent({ name: 'ImageConjuringLoader' });
     expect(loader.props('totalCount')).toBe(3);
     expect(loader.props('remainingCount')).toBe(2); // 3 - 1 = 2 remaining
-    expect(loader.text()).toContain('Generating images (2 / 3)');
+    expect(loader.text()).toContain('Image 2 / 3');
   });
 
   it('shows incremented progress after some images are generated (OPFS mode)', async () => {
@@ -68,6 +68,6 @@ describe('MessageItem Image Generation Progress', () => {
     const loader = wrapper.findComponent({ name: 'ImageConjuringLoader' });
     expect(loader.props('totalCount')).toBe(4);
     expect(loader.props('remainingCount')).toBe(2); // 4 - 2 = 2 remaining
-    expect(loader.text()).toContain('Generating images (3 / 4)');
+    expect(loader.text()).toContain('Image 3 / 4');
   });
 });

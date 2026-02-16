@@ -18,6 +18,8 @@ export const GeneratedImageBlockSchema = z.object({
   displayWidth: z.number(),
   displayHeight: z.number(),
   prompt: z.string().optional(),
+  steps: z.number().optional(),
+  seed: z.number().optional(),
 });
 
 export type GeneratedImageBlock = z.infer<typeof GeneratedImageBlockSchema>;
@@ -28,6 +30,8 @@ export const ImageRequestParamsSchema = z.object({
   model: z.string().optional(),
   count: z.number().optional(),
   persistAs: z.enum(['original', 'webp', 'jpeg', 'png']).default('original'),
+  steps: z.number().optional(),
+  seed: z.union([z.number(), z.literal('browser_random')]).optional(),
 });
 
 export type ImageRequestParams = z.infer<typeof ImageRequestParamsSchema>;
@@ -49,8 +53,8 @@ export function getImageGenerationModels(models: string[]): string[] {
 /**
  * Creates a sentinel marker for an image generation request.
  */
-export function createImageRequestMarker({ width, height, model, count, persistAs }: ImageRequestParams): string {
-  const params = JSON.stringify({ width, height, model, count, persistAs });
+export function createImageRequestMarker({ width, height, model, count, persistAs, steps, seed }: ImageRequestParams): string {
+  const params = JSON.stringify({ width, height, model, count, persistAs, steps, seed });
   return `${SENTINEL_IMAGE_REQUEST_PREFIX} ${params} -->`;
 }
 
@@ -94,7 +98,9 @@ export function parseImageRequest(content: string): ImageRequestParams | null {
       height: data.height ?? 512,
       model: data.model ?? '',
       count: data.count ?? 1,
-      persistAs: data.persistAs ?? 'original'
+      persistAs: data.persistAs ?? 'original',
+      steps: data.steps,
+      seed: data.seed
     };
   } catch (e) {
     console.warn('Failed to parse image request params JSON', e);
@@ -136,7 +142,7 @@ export function stripNaidanSentinels(content: string): string {
  * Checks if the content indicates a pending image generation.
  */
 export function isImageGenerationPending(content: string): boolean {
-  return content.includes(SENTINEL_IMAGE_PENDING);
+  return content.includes('<!-- naidan_experimental_image_generation_pending');
 }
 
 /**
@@ -148,11 +154,31 @@ export function isImageGenerationProcessed(content: string): boolean {
 
 /**
  * Calculates the progress of image generation from the content.
- * Returns total count and current remaining count.
+ * Returns total count, remaining count, and current step within the active generation.
  */
-export function getImageGenerationProgress(content: string): { totalCount: number | undefined, remainingCount: number | undefined } {
+export function getImageGenerationProgress(content: string): {
+  totalCount: number | undefined,
+  remainingCount: number | undefined,
+  currentStep: number | undefined,
+  totalSteps: number | undefined
+} {
   const response = parseImageResponse(content);
-  if (!response) return { totalCount: undefined, remainingCount: undefined };
+
+  // Extract progress info from the pending sentinel if present
+  // Format: <!-- naidan_experimental_image_generation_pending {"currentStep":1,"totalSteps":10} -->
+  const pendingMatch = content.match(/<!-- naidan_experimental_image_generation_pending (\{.*?\}) -->/);
+  let currentStep: number | undefined;
+  let totalSteps: number | undefined;
+
+  if (pendingMatch) {
+    try {
+      const params = JSON.parse(pendingMatch[1]!);
+      currentStep = params.currentStep;
+      totalSteps = params.totalSteps;
+    } catch (e) { /* ignore parse errors */ }
+  }
+
+  if (!response) return { totalCount: undefined, remainingCount: undefined, currentStep, totalSteps };
 
   const totalCount = response.count ?? 1;
 
@@ -163,6 +189,8 @@ export function getImageGenerationProgress(content: string): { totalCount: numbe
 
   return {
     totalCount,
-    remainingCount: Math.max(0, totalCount - processedCount)
+    remainingCount: Math.max(0, totalCount - processedCount),
+    currentStep,
+    totalSteps
   };
 }

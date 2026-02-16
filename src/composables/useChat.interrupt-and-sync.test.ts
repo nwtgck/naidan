@@ -173,6 +173,8 @@ describe('useChat Interrupt and Sync Tests', () => {
       width: 512,
       height: 512,
       count: 2,
+      steps: undefined,
+      seed: undefined,
       persistAs: 'original',
       images: [],
       model: 'x/z-image-turbo:v1',

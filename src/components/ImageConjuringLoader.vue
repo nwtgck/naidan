@@ -4,6 +4,8 @@ import { computed } from 'vue';
 const props = defineProps<{
   remainingCount?: number;
   totalCount?: number;
+  currentStep?: number;
+  totalSteps?: number;
 }>();
 
 const currentNumber = computed(() => {
@@ -11,16 +13,15 @@ const currentNumber = computed(() => {
   return Math.min(props.totalCount, Math.max(1, props.totalCount - props.remainingCount + 1));
 });
 
-const label = computed(() => {
-  if (props.totalCount === undefined || props.remainingCount === undefined) return 'Generating image...';
-  if (props.totalCount <= 1) return 'Generating image...';
-  return `Generating images (${currentNumber.value} / ${props.totalCount})`;
+const stepProgress = computed(() => {
+  if (props.currentStep === undefined || props.totalSteps === undefined || props.totalSteps === 0) return undefined;
+  return Math.round((props.currentStep / props.totalSteps) * 100);
 });
-
 
 defineExpose({
   __testOnly: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    currentNumber,
+    stepProgress
   }
 });
 </script>
@@ -33,7 +34,7 @@ defineExpose({
       <div class="absolute inset-0 opacity-[0.05] dark:opacity-[0.1]" style="background-image: linear-gradient(rgba(59,130,246,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.3) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(circle at center, black, transparent 80%);"></div>
     </div>
 
-    <!-- Magical Particles (More visible & vibrant) -->
+    <!-- Magical Particles -->
     <div class="absolute inset-0 overflow-hidden pointer-events-none">
       <div v-for="i in 30" :key="i" class="magic-particle"
            :style="`
@@ -49,31 +50,61 @@ defineExpose({
 
     <!-- Central Core -->
     <div class="relative flex flex-col items-center gap-6">
-      <!-- Stronger ambient glow around text -->
+      <!-- Ambient glow -->
       <div class="absolute w-40 h-40 bg-blue-500/15 blur-[50px] animate-pulse"></div>
 
-      <!-- Typography: Increased opacity and vibrance -->
-      <div class="relative z-10 flex flex-col items-center gap-3">
-        <span class="text-[11px] font-mono font-bold text-blue-400 dark:text-blue-300 animate-subtle-pulse mix-blend-plus-lighter whitespace-nowrap drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]">
-          {{ label }}
-        </span>
+      <div class="relative z-10 flex flex-col items-center gap-4">
+        <!-- Status Header -->
+        <div class="flex flex-col items-center gap-1">
+          <span class="text-[11px] font-bold text-blue-500/80 dark:text-blue-400/80 drop-shadow-[0_0_8px_rgba(96,165,250,0.4)] animate-subtle-pulse whitespace-nowrap">
+            {{ totalCount && totalCount > 1 ? 'Generating images...' : 'Generating image...' }}
+          </span>
 
-        <!-- Progress Indicators (Dots) for multiple images -->
-        <div v-if="totalCount && totalCount > 1" class="flex gap-1.5">
-          <div
-            v-for="i in totalCount"
-            :key="i"
-            class="w-1.5 h-1.5 rounded-full transition-all duration-500"
-            :class="[
-              i < (currentNumber || 0) ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' :
-              i === (currentNumber || 0) ? 'bg-blue-400 animate-pulse scale-125' :
-              'bg-gray-200 dark:bg-gray-700'
-            ]"
-          ></div>
+          <!-- Step Display -->
+          <div v-if="currentStep !== undefined" class="flex flex-col items-center -gap-1" data-testid="step-display">
+            <div class="flex items-baseline gap-1">
+              <span class="text-3xl font-mono font-bold text-blue-500 dark:text-blue-400 tabular-nums">
+                {{ currentStep }}
+              </span>
+              <span class="text-xl font-bold text-blue-500/60 dark:text-blue-400/60">/ {{ totalSteps }}</span>
+            </div>
+            <span class="text-[10px] font-mono font-bold text-blue-500/40 dark:text-blue-400/40 uppercase tracking-widest">steps</span>
+          </div>
+          <div v-else class="h-14 flex items-center justify-center">
+            <div class="w-1.5 h-1.5 bg-blue-500/60 rounded-full animate-ping"></div>
+          </div>
         </div>
 
-        <!-- Breathing line (fallback for single image or when count unknown) -->
-        <div v-else class="w-10 h-[1px] bg-gradient-to-r from-transparent via-blue-500/60 to-transparent shadow-[0_0_10px_rgba(59,130,246,0.3)]"></div>
+        <!-- Progress bar for steps -->
+        <div v-if="totalSteps" class="w-32 h-1 bg-blue-500/10 dark:bg-blue-400/5 rounded-full overflow-hidden border border-blue-500/10">
+          <div
+            :key="currentNumber"
+            class="h-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all duration-500 ease-out relative animate-bar-reset"
+            :style="{ width: `${stepProgress}%` }"
+            data-testid="step-progress-bar"
+          >
+            <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+          </div>
+        </div>
+
+        <!-- Image Count Indicators -->
+        <div v-if="totalCount && totalCount > 1" class="flex flex-col items-center gap-2 mt-1" data-testid="image-count-indicators">
+          <div class="flex gap-2">
+            <div
+              v-for="i in totalCount"
+              :key="i"
+              class="w-1.5 h-1.5 rounded-full transition-all duration-500"
+              :class="[
+                i < (currentNumber || 0) ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]' :
+                i === (currentNumber || 0) ? 'bg-blue-400 scale-125 ring-2 ring-blue-500/20 animate-pulse' :
+                'bg-gray-200 dark:bg-white/10'
+              ]"
+            ></div>
+          </div>
+          <span class="text-[10px] font-mono font-bold text-blue-400/60" data-testid="image-count-label">
+            Image {{ currentNumber }} / {{ totalCount }}
+          </span>
+        </div>
       </div>
     </div>
   </div>
@@ -81,11 +112,27 @@ defineExpose({
 
 <style scoped>
 @keyframes subtle-pulse {
-  0%, 100% { opacity: 0.5; transform: scale(0.97); }
+  0%, 100% { opacity: 0.8; transform: scale(0.99); }
   50% { opacity: 1; transform: scale(1); }
 }
 .animate-subtle-pulse {
   animation: subtle-pulse 3s ease-in-out infinite;
+}
+
+@keyframes bar-reset {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.animate-bar-reset {
+  animation: bar-reset 0.4s ease-out;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
 }
 
 .magic-particle {
@@ -108,7 +155,7 @@ defineExpose({
     opacity: 0;
   }
   15% {
-    opacity: 0.8; /* Significantly higher opacity */
+    opacity: 0.8;
     transform: rotate(var(--d)) translateX(30px) scale(1.2);
   }
   100% {
