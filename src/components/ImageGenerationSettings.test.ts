@@ -56,4 +56,58 @@ describe('ImageGenerationSettings', () => {
 
     expect(wrapper.emitted('update:resolution')).toContainEqual([1280, 720]);
   });
+
+  it('renders steps input and emits update:steps', async () => {
+    const wrapper = mount(ImageGenerationSettings, {
+      props: { ...defaultProps, selectedSteps: 20 }
+    });
+
+    const stepsInput = wrapper.find('input[type="number"][title*="steps" i], input[type="number"][placeholder*="steps" i]');
+    // Note: If title/placeholder is not found, we might need to find by label text or data-testid
+    // But let's try to find it among inputs
+    const allInputs = wrapper.findAll('input[type="number"]');
+    // Usually steps is after count
+    const input = allInputs.find(i => i.element.value === '20');
+    expect(input?.exists()).toBe(true);
+
+    await input?.setValue(30);
+    expect(wrapper.emitted('update:steps')).toContainEqual([30]);
+  });
+
+  it('renders seed input and emits update:seed', async () => {
+    const wrapper = mount(ImageGenerationSettings, {
+      props: { ...defaultProps, selectedSeed: 12345 }
+    });
+
+    const allInputs = wrapper.findAll('input[type="number"]');
+    const input = allInputs.find(i => i.element.value === '12345');
+    expect(input?.exists()).toBe(true);
+
+    await input?.setValue(54321);
+    expect(wrapper.emitted('update:seed')).toContainEqual([54321]);
+  });
+
+  it('emits undefined when seed input is cleared', async () => {
+    const wrapper = mount(ImageGenerationSettings, {
+      props: { ...defaultProps, selectedSeed: 12345 }
+    });
+
+    const allInputs = wrapper.findAll('input[type="number"]');
+    const input = allInputs.find(i => i.element.value === '12345');
+
+    await input?.setValue('');
+    expect(wrapper.emitted('update:seed')).toContainEqual([undefined]);
+  });
+
+  it('emits browser_random when random seed button is clicked', async () => {
+    const wrapper = mount(ImageGenerationSettings, {
+      props: { ...defaultProps, selectedSeed: undefined }
+    });
+
+    const diceButton = wrapper.find('button[title*="random seed" i]');
+    expect(diceButton.exists()).toBe(true);
+
+    await diceButton.trigger('click');
+    expect(wrapper.emitted('update:seed')).toContainEqual(['browser_random']);
+  });
 });

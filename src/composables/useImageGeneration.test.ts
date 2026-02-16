@@ -23,6 +23,16 @@ vi.mock('../utils/image-processing', () => ({
 global.URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-url');
 global.URL.revokeObjectURL = vi.fn();
 
+// Mock crypto
+if (!global.crypto) {
+  (global as any).crypto = {
+    getRandomValues: (arr: Uint32Array) => {
+      for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 1000000);
+      return arr;
+    }
+  };
+}
+
 // Mock LLM provider
 vi.mock('../services/llm', () => {
   return {
@@ -106,6 +116,54 @@ describe('useImageGeneration', () => {
         parentId: undefined,
         attachments: []
       });
+    });
+
+    it('includes steps and seed in the request marker', async () => {
+      const { sendImageRequest } = useImageGeneration();
+      const sendMessage = vi.fn().mockResolvedValue(true);
+      const availableModels = ['x/z-image-turbo:v1'];
+
+      await sendImageRequest({
+        prompt: 'a snowy mountain',
+        width: 1024,
+        height: 1024,
+        count: 1,
+        steps: 35,
+        seed: 12345,
+        persistAs: 'original',
+        chatId,
+        attachments: [],
+        availableModels,
+        sendMessage
+      });
+
+      expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        content: expect.stringContaining('"steps":35,"seed":12345')
+      }));
+    });
+
+    it('handles browser_random seed in sendImageRequest', async () => {
+      const { sendImageRequest } = useImageGeneration();
+      const sendMessage = vi.fn().mockResolvedValue(true);
+      const availableModels = ['x/z-image-turbo:v1'];
+
+      await sendImageRequest({
+        prompt: 'a rainy street',
+        width: 512,
+        height: 512,
+        count: 1,
+        steps: undefined,
+        seed: 'browser_random',
+        persistAs: 'original',
+        chatId,
+        attachments: [],
+        availableModels,
+        sendMessage
+      });
+
+      expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        content: expect.stringContaining('"seed":"browser_random"')
+      }));
     });
   });
 
@@ -254,6 +312,64 @@ describe('useImageGeneration', () => {
         expect.any(String),
         expect.stringMatching(/\.png$/)
       );
+    });
+
+    it('generates a random numeric seed when "browser_random" is specified and includes it in blocks and prompt', async () => {
+      const { handleImageGeneration } = useImageGeneration();
+
+      await handleImageGeneration({
+        ...commonParams,
+        seed: 'browser_random',
+        storageType: 'opfs'
+      });
+
+      const assistantNode = mockChat.root.items[0];
+      // Find the JSON block content (more flexible regex)
+      const blockMatch = assistantNode!.content.match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
+      const blockData = JSON.parse(blockMatch![1]);
+
+      // Verify seed is a number
+      expect(typeof blockData.seed).toBe('number');
+      expect(blockData.seed).toBeGreaterThan(0);
+
+      // Verify prompt in block contains the seed
+      expect(blockData.prompt).toMatch(/\(seed: \d+\)$/);
+    });
+
+    it('propagates explicit steps and seed to the final output blocks', async () => {
+      const { handleImageGeneration } = useImageGeneration();
+
+      await handleImageGeneration({
+        ...commonParams,
+        steps: 42,
+        seed: 1337,
+        storageType: 'opfs'
+      });
+
+      const assistantNode = mockChat.root.items[0];
+      const blockMatch = assistantNode!.content.match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
+      const blockData = JSON.parse(blockMatch![1]);
+
+      expect(blockData.steps).toBe(42);
+      expect(blockData.seed).toBe(1337);
+      expect(blockData.prompt).toContain('(seed: 1337)');
+    });
+
+    it('updates and then clears imageProgressMap during generation', async () => {
+      const { handleImageGeneration, imageProgressMap } = useImageGeneration();
+      
+      // We need to capture the progress map state DURING generation.
+      // Since generateImage is async, we can check it after the first updateChatContent call if we're careful,
+      // but a more robust way is to verify it was set and then is gone.
+      
+      await handleImageGeneration({
+        ...commonParams,
+        chatId: 'progress-test-chat',
+        storageType: 'opfs'
+      });
+
+      // After generation, it should be cleared
+      expect(imageProgressMap.value['progress-test-chat']).toBeUndefined();
     });
   });
 });

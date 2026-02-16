@@ -65,6 +65,48 @@ describe('OllamaProvider Image Generation', () => {
     );
   });
 
+  it('reports progress during streaming generation', async () => {
+    const onProgress = vi.fn();
+    const mockResponse = {
+      ok: true,
+      body: {
+        getReader: () => {
+          const encoder = new TextEncoder();
+          const chunks = [
+            JSON.stringify({ done: false, completed: 1, total: 10 }) + '\n',
+            JSON.stringify({ done: false, completed: 5, total: 10 }) + '\n',
+            JSON.stringify({ done: true, image: 'YmFzZTY0ZGF0YQ==' })
+          ];
+          let index = 0;
+          return {
+            read: () => {
+              if (index >= chunks.length) return Promise.resolve({ done: true });
+              return Promise.resolve({ done: false, value: encoder.encode(chunks[index++]) });
+            }
+          };
+        }
+      }
+    };
+    (fetch as any).mockResolvedValueOnce(mockResponse);
+
+    const provider = new OllamaProvider(config);
+    await provider.generateImage({
+      prompt: 'test',
+      model: 'model',
+      width: 512,
+      height: 512,
+      steps: 10,
+      seed: 123,
+      images: [],
+      onProgress,
+      signal: undefined
+    });
+
+    expect(onProgress).toHaveBeenCalledTimes(2);
+    expect(onProgress).toHaveBeenNthCalledWith(1, { currentStep: 1, totalSteps: 10 });
+    expect(onProgress).toHaveBeenNthCalledWith(2, { currentStep: 5, totalSteps: 10 });
+  });
+
   it('successfully generates an image from another image (multimodal)', async () => {
     // Mock FileReader
     function MockFileReader(this: any) {

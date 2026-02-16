@@ -206,6 +206,47 @@ describe('ChatToolsMenu', () => {
     expect(wrapper.emitted('update:persist-as')).toEqual([['webp']]);
   });
 
+  it('emits update:steps when steps are changed in settings', async () => {
+    wrapper = mount(ChatToolsMenu, {
+      props: { ...defaultProps, isImageMode: true },
+      attachTo: document.body
+    });
+    await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    const input = document.body.querySelector('input[placeholder*="steps" i]') as HTMLInputElement;
+    if (!input) {
+      // Find all number inputs and pick the second to last one (usually steps)
+      const inputs = Array.from(document.body.querySelectorAll('input[type="number"]'));
+      const stepsInput = inputs[inputs.length - 2] as HTMLInputElement;
+      stepsInput.value = '25';
+      stepsInput.dispatchEvent(new Event('input'));
+    } else {
+      input.value = '25';
+      input.dispatchEvent(new Event('input'));
+    }
+
+    expect(wrapper.emitted('update:steps')).toEqual([[25]]);
+  });
+
+  it('emits update:seed when seed is changed in settings', async () => {
+    wrapper = mount(ChatToolsMenu, {
+      props: { ...defaultProps, isImageMode: true },
+      attachTo: document.body
+    });
+    await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    const inputs = Array.from(document.body.querySelectorAll('input[type="number"]'));
+    const seedInput = inputs[inputs.length - 1] as HTMLInputElement;
+    seedInput.value = '12345';
+    seedInput.dispatchEvent(new Event('input'));
+
+    expect(wrapper.emitted('update:seed')).toEqual([[12345]]);
+  });
+
   it('shows empty state when no tools are available', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: { ...defaultProps, canGenerateImage: false },
