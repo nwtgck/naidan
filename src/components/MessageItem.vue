@@ -27,7 +27,7 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject, EndpointType } from '../models/types';
-import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2, XCircle, Square, MoreVertical, History } from 'lucide-vue-next';
+import { User, Bird, Brain, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2, XCircle, Square, MoreVertical, History, FileEdit } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
@@ -39,6 +39,7 @@ import { transformersJsService } from '../services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted(() => import('./MessageDiffModal.vue'));
+const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditor.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
 import {
   isImageGenerationPending,
@@ -71,6 +72,7 @@ const emit = defineEmits<{
 }>();
 
 const isEditing = ref(false);
+const isAdvancedEditorOpen = ref(false);
 const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const copied = ref(false);
@@ -95,6 +97,18 @@ const attachmentUrls = ref<Record<string, string>>({});
 const generatedImageUrls = ref<Record<string, string>>({});
 
 const { openPreview } = useImagePreview();
+
+function openAdvancedEditor() {
+  isAdvancedEditorOpen.value = true;
+}
+
+function closeAdvancedEditor() {
+  isAdvancedEditorOpen.value = false;
+}
+
+function handleAdvancedEditorUpdate({ content: newContent }: { content: string }) {
+  editContent.value = newContent;
+}
 
 async function handlePreviewImage(id: string) {
   // To support next/prev navigation, we'd ideally pass all images in this chat or message.
@@ -891,6 +905,14 @@ defineExpose({
               >
                 <Settings2 class="w-5 h-5" />
               </button>
+              <button
+                @click="openAdvancedEditor"
+                class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                title="Open Advanced Editor"
+                data-testid="open-advanced-editor-button"
+              >
+                <FileEdit class="w-5 h-5" />
+              </button>
             </div>
             <div class="flex items-center gap-2">
               <button
@@ -1077,6 +1099,19 @@ defineExpose({
       @close="showDiffModal = false"
       data-testid="message-diff-modal"
     />
+
+    <Teleport to="body">
+      <div v-if="isAdvancedEditorOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10 bg-black/50 backdrop-blur-sm">
+        <div class="w-full max-w-5xl h-full max-h-[90vh]">
+          <AdvancedTextEditor
+            :initial-value="editContent"
+            :title="undefined"
+            @update:content="handleAdvancedEditorUpdate"
+            @close="closeAdvancedEditor"
+          />
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 

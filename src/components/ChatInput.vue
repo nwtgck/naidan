@@ -10,11 +10,12 @@ import ChatToolsMenu from './ChatToolsMenu.vue';
 
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
+const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditor.vue'));
 
 import {
   Square, Minimize2, Maximize2, Send,
   Paperclip, X, Image,
-  ChevronDown, ChevronUp, Edit2
+  ChevronDown, ChevronUp, Edit2, FileEdit
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import type { Attachment, Chat } from '../models/types';
@@ -158,6 +159,19 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isMaximized = ref(false); // New state for maximize button
 const isOverLimit = ref(false); // New state to show maximize button only when content is long
+const isAdvancedEditorOpen = ref(false);
+
+function openAdvancedEditor() {
+  isAdvancedEditorOpen.value = true;
+}
+
+function closeAdvancedEditor() {
+  isAdvancedEditorOpen.value = false;
+}
+
+function handleAdvancedEditorUpdate({ content: newContent }: { content: string }) {
+  input.value = newContent;
+}
 
 const attachments = ref<Attachment[]>([]);
 const attachmentUrls = ref<Record<string, string>>({});
@@ -747,16 +761,27 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @keydown.enter.meta.prevent="handleSend"
         @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
         placeholder="Type a message..."
-        class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[48px] transition-colors"
+        class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
         data-testid="chat-input"
       ></textarea>
 
       <!-- Control Buttons inside input area -->
-      <div class="absolute right-4 top-4 flex items-center gap-1 z-20">
+      <div class="absolute right-3 top-3 flex flex-col items-center gap-1.5 z-20">
+        <button
+          v-if="isOverLimit || isMaximized"
+          @click.stop="toggleMaximized"
+          class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
+          :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
+          data-testid="maximize-button"
+        >
+          <Minimize2 v-if="isMaximized" class="w-4 h-4" />
+          <Maximize2 v-else class="w-4 h-4" />
+        </button>
+
         <button
           @click.stop="toggleSubmerged"
-          class="p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
+          class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
           :title="visibility === 'submerged' ? 'Show Input' : 'Hide Input'"
           data-testid="submerge-button"
         >
@@ -765,14 +790,12 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         </button>
 
         <button
-          v-if="isOverLimit || isMaximized"
-          @click.stop="toggleMaximized"
-          class="p-1.5 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
-          :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
-          data-testid="maximize-button"
+          @click.stop="openAdvancedEditor"
+          class="p-1 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-colors"
+          title="Open Advanced Editor"
+          data-testid="open-advanced-editor-button"
         >
-          <Minimize2 v-if="isMaximized" class="w-4 h-4" />
-          <Maximize2 v-else class="w-4 h-4" />
+          <FileEdit class="w-4 h-4" />
         </button>
       </div>
 
@@ -855,6 +878,16 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @cancel="closeImageEditor"
         @save="saveEditedImage"
       />
+      <div v-if="isAdvancedEditorOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-10 bg-black/50 backdrop-blur-sm">
+        <div class="w-full max-w-5xl h-full max-h-[90vh]">
+          <AdvancedTextEditor
+            :initial-value="input"
+            :title="undefined"
+            @update:content="handleAdvancedEditorUpdate"
+            @close="closeAdvancedEditor"
+          />
+        </div>
+      </div>
     </Teleport>
   </div>
 </template>
