@@ -237,6 +237,9 @@ export function useImageGeneration() {
       for (let i = 0; i < imageCount; i++) {
         if (signal?.aborted) break;
 
+        // Clear progress for the new image starting to avoid showing stale progress from the previous image
+        delete imageProgressMap.value[chatId];
+
         let activeSeed: number | undefined = undefined;
         if (typeof seed === 'number' && seed >= 0) {
           activeSeed = seed;

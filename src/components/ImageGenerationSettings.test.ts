@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ImageGenerationSettings from './ImageGenerationSettings.vue';
+import { nextTick } from 'vue';
 
 describe('ImageGenerationSettings', () => {
   const defaultProps = {
@@ -62,12 +63,10 @@ describe('ImageGenerationSettings', () => {
       props: { ...defaultProps, selectedSteps: 20 }
     });
 
-    const stepsInput = wrapper.find('input[type="number"][title*="steps" i], input[type="number"][placeholder*="steps" i]');
-    // Note: If title/placeholder is not found, we might need to find by label text or data-testid
-    // But let's try to find it among inputs
+    // const stepsInput = wrapper.find('input[type="number"][title*="steps" i], input[type="number"][placeholder*="steps" i]');
     const allInputs = wrapper.findAll('input[type="number"]');
     // Usually steps is after count
-    const input = allInputs.find(i => i.element.value === '20');
+    const input = allInputs.find(i => (i.element as HTMLInputElement).value === '20');
     expect(input?.exists()).toBe(true);
 
     await input?.setValue(30);
@@ -80,7 +79,7 @@ describe('ImageGenerationSettings', () => {
     });
 
     const allInputs = wrapper.findAll('input[type="number"]');
-    const input = allInputs.find(i => i.element.value === '12345');
+    const input = allInputs.find(i => (i.element as HTMLInputElement).value === '12345');
     expect(input?.exists()).toBe(true);
 
     await input?.setValue(54321);
@@ -93,7 +92,7 @@ describe('ImageGenerationSettings', () => {
     });
 
     const allInputs = wrapper.findAll('input[type="number"]');
-    const input = allInputs.find(i => i.element.value === '12345');
+    const input = allInputs.find(i => (i.element as HTMLInputElement).value === '12345');
 
     await input?.setValue('');
     expect(wrapper.emitted('update:seed')).toContainEqual([undefined]);
@@ -109,5 +108,30 @@ describe('ImageGenerationSettings', () => {
 
     await diceButton.trigger('click');
     expect(wrapper.emitted('update:seed')).toContainEqual(['browser_random']);
+  });
+
+  it('re-enables and focuses seed input when clicking overlay in browser_random mode', async () => {
+    const wrapper = mount(ImageGenerationSettings, {
+      props: { ...defaultProps, selectedSeed: 'browser_random' },
+      attachTo: document.body // Required for testing focus
+    });
+
+    const overlay = wrapper.find('.cursor-text');
+    expect(overlay.exists()).toBe(true);
+
+    const input = wrapper.find('[data-testid="seed-input"]');
+    const inputEl = input.element as HTMLInputElement;
+    const focusSpy = vi.spyOn(inputEl, 'focus');
+
+    await overlay.trigger('click');
+
+    // Should emit update:seed with undefined to re-enable
+    expect(wrapper.emitted('update:seed')).toContainEqual([undefined]);
+
+    // Focus should be called after nextTick
+    await nextTick();
+    expect(focusSpy).toHaveBeenCalled();
+
+    wrapper.unmount();
   });
 });

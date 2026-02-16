@@ -37,7 +37,9 @@ if (!global.crypto) {
 vi.mock('../services/llm', () => {
   return {
     OllamaProvider: class {
-      generateImage = vi.fn().mockResolvedValue(new Blob(['test-image'], { type: 'image/png' }))
+      generateImage() {
+        return Promise.resolve(new Blob(['test-image'], { type: 'image/png' }));
+      }
     }
   };
 });
@@ -185,6 +187,8 @@ describe('useImageGeneration', () => {
       width: 512,
       height: 512,
       count: 1,
+      steps: undefined,
+      seed: undefined,
       persistAs: 'original' as const,
       images: [],
       model: 'x/z-image-turbo:v1',
@@ -204,8 +208,6 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
-        steps: undefined,
-        seed: undefined,
         storageType: 'opfs'
       });
 
@@ -224,8 +226,6 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
-        steps: undefined,
-        seed: undefined,
         storageType: 'local'
       });
 
@@ -246,8 +246,6 @@ describe('useImageGeneration', () => {
       await handleImageGeneration({
         ...commonParams,
         count: 3,
-        steps: undefined,
-        seed: undefined,
         storageType: 'local',
         triggerChatRef
       });
@@ -271,8 +269,6 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
-        steps: undefined,
-        seed: undefined,
         persistAs: 'webp',
         storageType: 'opfs'
       });
@@ -300,8 +296,6 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
-        steps: undefined,
-        seed: undefined,
         persistAs: 'jpeg',
         storageType: 'opfs'
       });
@@ -326,7 +320,8 @@ describe('useImageGeneration', () => {
       const assistantNode = mockChat.root.items[0];
       // Find the JSON block content (more flexible regex)
       const blockMatch = assistantNode!.content.match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
-      const blockData = JSON.parse(blockMatch![1]);
+      expect(blockMatch).not.toBeNull();
+      const blockData = JSON.parse(blockMatch![1]!);
 
       // Verify seed is a number
       expect(typeof blockData.seed).toBe('number');
@@ -348,7 +343,8 @@ describe('useImageGeneration', () => {
 
       const assistantNode = mockChat.root.items[0];
       const blockMatch = assistantNode!.content.match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
-      const blockData = JSON.parse(blockMatch![1]);
+      expect(blockMatch).not.toBeNull();
+      const blockData = JSON.parse(blockMatch![1]!);
 
       expect(blockData.steps).toBe(42);
       expect(blockData.seed).toBe(1337);
@@ -357,11 +353,11 @@ describe('useImageGeneration', () => {
 
     it('updates and then clears imageProgressMap during generation', async () => {
       const { handleImageGeneration, imageProgressMap } = useImageGeneration();
-      
+
       // We need to capture the progress map state DURING generation.
       // Since generateImage is async, we can check it after the first updateChatContent call if we're careful,
       // but a more robust way is to verify it was set and then is gone.
-      
+
       await handleImageGeneration({
         ...commonParams,
         chatId: 'progress-test-chat',
@@ -370,6 +366,34 @@ describe('useImageGeneration', () => {
 
       // After generation, it should be cleared
       expect(imageProgressMap.value['progress-test-chat']).toBeUndefined();
+    });
+
+    it('clears imageProgressMap at the start of each image in a batch', async () => {
+      const { handleImageGeneration, imageProgressMap } = useImageGeneration();
+      const { OllamaProvider } = await import('../services/llm');
+
+      // Set stale progress
+      imageProgressMap.value[chatId] = { currentStep: 50, totalSteps: 50 };
+
+      // Spy on generateImage and check progress map state when it's called
+      const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
+        .mockImplementation(async ({ onProgress }) => {
+          // When this is called, the progress map should have been cleared by the loop
+          expect(imageProgressMap.value[chatId]).toBeUndefined();
+
+          // Simulate some progress
+          if (onProgress) onProgress({ currentStep: 1, totalSteps: 10 });
+          return new Blob(['test'], { type: 'image/png' });
+        });
+
+      await handleImageGeneration({
+        ...commonParams,
+        count: 2,
+        storageType: 'opfs'
+      });
+
+      expect(generateImageSpy).toHaveBeenCalledTimes(2);
+      generateImageSpy.mockRestore();
     });
   });
 });

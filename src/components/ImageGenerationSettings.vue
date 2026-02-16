@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, nextTick } from 'vue';
 import { Image, Loader2, Check, ArrowLeftRight, Dice5 } from 'lucide-vue-next';
 import ModelSelector from './ModelSelector.vue';
 
@@ -49,6 +50,8 @@ const saveFormats = [
   { label: 'PNG', value: 'png' },
 ] as const;
 
+const seedInputRef = ref<HTMLInputElement | null>(null);
+
 function handleCountInput(event: Event) {
   const target = event.target as HTMLInputElement;
   const val = parseInt(target.value);
@@ -75,6 +78,13 @@ function handleSeedInput(event: Event) {
   } else if (target.value === '') {
     emit('update:seed', undefined);
   }
+}
+
+function handleSeedReEnable() {
+  emit('update:seed', undefined);
+  nextTick(() => {
+    seedInputRef.value?.focus();
+  });
 }
 
 function handleWidthInput(event: Event) {
@@ -241,14 +251,24 @@ defineExpose({
             >
               <Dice5 class="w-3 h-3" />
             </button>
-            <input
-              type="number"
-              :value="typeof selectedSeed === 'number' ? selectedSeed : ''"
-              @input="handleSeedInput"
-              :disabled="selectedSeed === 'browser_random'"
-              class="flex-1 h-full min-w-0 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all disabled:opacity-50 block m-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              placeholder="Auto"
-            />
+            <div class="flex-1 relative">
+              <input
+                ref="seedInputRef"
+                type="number"
+                :value="typeof selectedSeed === 'number' ? selectedSeed : ''"
+                @input="handleSeedInput"
+                :disabled="selectedSeed === 'browser_random'"
+                class="w-full h-full min-w-0 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all disabled:opacity-50 block m-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                placeholder="Auto"
+                data-testid="seed-input"
+              />
+              <div
+                v-if="selectedSeed === 'browser_random'"
+                @click="handleSeedReEnable"
+                class="absolute inset-0 cursor-text z-10"
+                title="Click to enter specific seed"
+              ></div>
+            </div>
           </div>
         </div>
       </div>
