@@ -6,7 +6,7 @@ import { z } from 'zod';
 export const RoleSchemaDto = z.enum(['user', 'assistant', 'system']);
 export type RoleDto = z.infer<typeof RoleSchemaDto>;
 
-export const StorageTypeSchemaDto = z.enum(['local', 'opfs']);
+export const StorageTypeSchemaDto = z.enum(['local', 'opfs', 'memory']);
 export type StorageTypeDto = z.infer<typeof StorageTypeSchemaDto>;
 
 export const HttpHeaderSchemaDto = z.tuple([z.string(), z.string()]);

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ShieldCheck, Download } from 'lucide-vue-next';
+import { ShieldCheck, Download, Ghost } from 'lucide-vue-next';
+import { useSettings } from '../composables/useSettings';
 
 defineProps<{
   hasInput?: boolean
@@ -8,6 +9,8 @@ defineProps<{
 defineEmits<{
   (e: 'select-suggestion', text: string): void
 }>();
+
+const { settings } = useSettings();
 
 // Access the build mode global defined in vite.config.ts
 const isHosted = (() => {
@@ -53,20 +56,37 @@ defineExpose({
       <div class="flex flex-col items-center space-y-4 sm:space-y-6 pointer-events-auto">
         <div class="relative group">
           <!-- Subtle Glow Effect -->
-          <div class="absolute inset-0 bg-emerald-500/20 dark:bg-emerald-500/10 blur-2xl rounded-full scale-150 group-hover:scale-110 transition-transform duration-1000"></div>
+          <div
+            class="absolute inset-0 blur-2xl rounded-full scale-150 group-hover:scale-110 transition-transform duration-1000"
+            :class="settings.storageType === 'memory' ? 'bg-indigo-500/20 dark:bg-indigo-500/10' : 'bg-emerald-500/20 dark:bg-emerald-500/10'"
+          ></div>
 
-          <div class="relative p-4 sm:p-5 rounded-[2rem] bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/20 shadow-sm">
-            <ShieldCheck class="w-8 h-8 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
+          <div
+            class="relative p-4 sm:p-5 rounded-[2rem] border shadow-sm"
+            :class="settings.storageType === 'memory' ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-100 dark:border-indigo-900/20' : 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/20'"
+          >
+            <Ghost v-if="settings.storageType === 'memory'" class="w-8 h-8 sm:w-10 sm:h-10 text-indigo-600 dark:text-indigo-400" />
+            <ShieldCheck v-else class="w-8 h-8 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
           </div>
         </div>
 
         <div class="space-y-3 sm:space-y-4">
           <div class="space-y-1 sm:space-y-2">
             <h2 class="text-xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100 tracking-tight leading-tight">
-              All conversations are stored locally.
+              <template v-if="settings.storageType === 'memory'">
+                Conversations are stored in-memory.
+              </template>
+              <template v-else>
+                All conversations are stored locally.
+              </template>
             </h2>
             <p class="text-gray-500 dark:text-gray-400 text-xs sm:text-base font-medium max-w-sm mx-auto leading-relaxed">
-              Your data stays on your device.
+              <template v-if="settings.storageType === 'memory'">
+                Data is lost on page reload.
+              </template>
+              <template v-else>
+                Your data stays on your device.
+              </template>
             </p>
           </div>
 

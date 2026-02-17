@@ -191,7 +191,7 @@ export function useImageGeneration() {
     availableModels: string[],
     endpointUrl: string,
     endpointHttpHeaders: [string, string][] | undefined,
-    storageType: 'opfs' | 'local',
+    storageType: 'opfs' | 'local' | 'memory',
     signal: AbortSignal | undefined,
     getLiveChat: ({ chat }: { chat: Chat }) => Chat | undefined,
     updateChatContent: ({ chatId, updater }: { chatId: string, updater: (current: ChatContent) => ChatContent }) => Promise<void>,
@@ -287,7 +287,8 @@ export function useImageGeneration() {
         const displayHeight = height * 0.8;
 
         switch (storageType) {
-        case 'opfs': {
+        case 'opfs':
+        case 'memory': {
           const binaryObjectId = generateId();
           const fileName = sanitizeFilename({
             base: prompt,
