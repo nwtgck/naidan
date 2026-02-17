@@ -399,4 +399,112 @@ describe('MessageItem Image Generation', () => {
     expect(wrapper.text()).toContain('Seed');
     expect(wrapper.text()).toContain('12345');
   });
+
+  it('maintains layout stability with aspect-ratio skeleton and hydrates multiple images in parallel', async () => {
+    const images = [
+      { id: 'img-1', w: 512, h: 512 },
+      { id: 'img-2', w: 1024, h: 768 }
+    ];
+    const content = SENTINEL_IMAGE_PROCESSED + '\n\n' + images.map(img => (
+      `\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify({
+        binaryObjectId: img.id,
+        displayWidth: img.w,
+        displayHeight: img.h,
+        prompt: `image ${img.id}`
+      })}\n\`\`\``
+    )).join('\n\n');
+
+    const message = createMessage(content);
+
+    const wrapper = mount(MessageItem, {
+      props: { message, isCurrentChatStreaming: false, chatId: 'parallel-test' }
+    });
+
+    // Check skeletons immediately after mount
+    const skeletons = wrapper.findAll('.naidan-image-skeleton');
+    expect(skeletons).toHaveLength(2);
+
+    const skeleton0 = skeletons.at(0)?.element as HTMLElement;
+    const skeleton1 = skeletons.at(1)?.element as HTMLElement;
+    expect(skeleton0.style.aspectRatio).toBe('512 / 512');
+    expect(skeleton0.style.maxWidth).toBe('100%');
+    expect(skeleton1.style.aspectRatio).toBe('1024 / 768');
+    expect(skeleton1.style.maxWidth).toBe('100%');
+    await flushPromises();
+
+    // Poll for hydration of all images
+    let allHydrated = false;
+    for (let i = 0; i < 50; i++) {
+      await nextTick();
+      const imgs = wrapper.findAll('.naidan-generated-image img.naidan-clickable-img');
+      if (imgs.length === 2) {
+        allHydrated = true;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 20));
+    }
+
+    expect(allHydrated).toBe(true);
+    const hydratedImgs = wrapper.findAll('.naidan-generated-image img.naidan-clickable-img');
+    expect(hydratedImgs[0]?.attributes('src')).toBe('blob:mock-url');
+    expect(hydratedImgs[1]?.attributes('src')).toBe('blob:mock-url');
+
+    // Skeletons should be gone
+    expect(wrapper.find('.naidan-image-skeleton').exists()).toBe(false);
+  });
+
+  it('reuses existing image elements and avoids redundant storage reads (cache/idempotency)', async () => {
+    const binaryObjectId = 'idempotency-test';
+    const block = { binaryObjectId, displayWidth: 100, displayHeight: 100 };
+    const content = `${SENTINEL_IMAGE_PROCESSED}\n\n\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(block)}\n\`\`\``;
+
+    // Create a reactive message object to trigger updates
+    const message = {
+      id: '1',
+      role: 'assistant' as const,
+      content,
+      timestamp: Date.now(),
+      replies: { items: [] }
+    };
+
+    const wrapper = mount(MessageItem, {
+      props: { message, isCurrentChatStreaming: false, chatId: 'cache-test' }
+    });
+
+    // 1. Wait for first hydration
+    for (let i = 0; i < 40; i++) {
+      await nextTick();
+      if (wrapper.find('img.naidan-clickable-img').exists()) break;
+      await new Promise(r => setTimeout(r, 20));
+    }
+
+    const initialGetFileCount = vi.mocked(storageService.getFile).mock.calls.length;
+
+    // 2. Trigger a message content update (e.g. streaming more text)
+    // This will trigger the watch(parsedContent) and loadGeneratedImages again
+    await wrapper.setProps({
+      message: {
+        ...message,
+        content: content + '\n\nMore text added to message.'
+      }
+    });
+
+    // Wait for potential re-hydration
+    await flushPromises();
+    await nextTick();
+
+    // 3. Wait for re-hydration
+    for (let i = 0; i < 40; i++) {
+      await nextTick();
+      if (wrapper.find('img.naidan-clickable-img').exists()) break;
+      await new Promise(r => setTimeout(r, 20));
+    }
+
+    expect(wrapper.find('img.naidan-clickable-img').exists()).toBe(true);
+
+    // 4. Verify no new getFile calls were made for metadata/image loading for this ID
+    // The count should stay the same as after the first hydration due to caching
+    const finalGetFileCount = vi.mocked(storageService.getFile).mock.calls.length;
+    expect(finalGetFileCount).toBe(initialGetFileCount);
+  });
 });

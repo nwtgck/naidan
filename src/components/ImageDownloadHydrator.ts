@@ -12,18 +12,18 @@ import type { StorageService } from '../services/storage';
 export const ImageDownloadHydrator = {
   /**
    * Extract all necessary data from the placeholder element to prepare for hydration.
+   * If a blob is already available, it can be passed to avoid redundant storage reads.
    */
-  async prepareContext(el: HTMLElement, storageService: StorageService) {
+  async prepareContext(el: HTMLElement, storageService: StorageService, blob?: Blob) {
     const id = el.dataset.id;
     if (!id) return null;
 
     // Detect format for metadata support
     let isSupported = false;
     try {
-      const blob = await storageService.getFile(id);
-      if (blob) {
-        const format = await detectFormat({ blob });
-        isSupported = format !== UNSUPPORTED;
+      const activeBlob = blob || await storageService.getFile(id);
+      if (activeBlob) {
+        isSupported = await this.detectSupport(activeBlob);
       }
     } catch (err) {
       console.warn('[Hydrator] Metadata support detection failed:', err);
@@ -38,6 +38,19 @@ export const ImageDownloadHydrator = {
       steps: el.dataset.steps ? parseInt(el.dataset.steps) : undefined,
       seed: el.dataset.seed ? parseInt(el.dataset.seed) : undefined,
     };
+  },
+
+  /**
+   * Detects if the given blob's format supports metadata embedding.
+   */
+  async detectSupport(blob: Blob): Promise<boolean> {
+    try {
+      const format = await detectFormat({ blob });
+      return format !== UNSUPPORTED;
+    } catch (err) {
+      console.warn('[Hydrator] Format detection failed:', err);
+      return false;
+    }
   },
 
   /**

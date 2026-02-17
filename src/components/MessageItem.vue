@@ -105,6 +105,10 @@ const attachmentUrls = ref<Record<string, string>>({});
 const generatedImageUrls = ref<Record<string, string>>({});
 const hydrationCleanups: (() => void)[] = [];
 let hydrationLock = false;
+let pendingHydration = false;
+
+// Cache for metadata support to avoid redundant file reads
+const metadataSupportCache = new Map<string, boolean>();
 
 const { openPreview } = useImagePreview();
 const { imageProgressMap } = useChat();
@@ -180,8 +184,12 @@ async function loadAttachments() {
 }
 
 async function loadGeneratedImages() {
-  if (hydrationLock) return;
+  if (hydrationLock) {
+    pendingHydration = true;
+    return;
+  }
   hydrationLock = true;
+  pendingHydration = false;
 
   try {
     await nextTick();
@@ -196,23 +204,43 @@ async function loadGeneratedImages() {
 
     const placeholders = Array.from(root.querySelectorAll('.naidan-generated-image'));
 
-    for (const el of placeholders) {
+    // Parallelize hydration to improve performance, especially with multiple images
+    await Promise.all(placeholders.map(async (el) => {
       const htmlEl = el as HTMLElement;
 
       try {
-        const ctx = await ImageDownloadHydrator.prepareContext(htmlEl, storageService);
-        if (!ctx) continue;
+        const id = htmlEl.dataset.id;
+        if (!id) return;
 
-        const { id, isSupported, width, height, prompt, steps, seed } = ctx;
+        // Use cached support status if available to avoid redundant file reads
+        let isSupported = metadataSupportCache.get(id);
+
+        const width = htmlEl.dataset.width;
+        const height = htmlEl.dataset.height;
+        const prompt = htmlEl.dataset.prompt || '';
+        const steps = htmlEl.dataset.steps ? parseInt(htmlEl.dataset.steps) : undefined;
+        const seed = htmlEl.dataset.seed ? parseInt(htmlEl.dataset.seed) : undefined;
+
         let urlObj = generatedImageUrls.value[id];
+        let blob: Blob | undefined;
 
         if (!urlObj) {
-          const blob = await storageService.getFile(id);
-          if (blob) {
+          const fetchedBlob = await storageService.getFile(id);
+          if (fetchedBlob) {
+            blob = fetchedBlob;
             urlObj = URL.createObjectURL(blob);
             generatedImageUrls.value[id] = urlObj;
           } else {
             throw new Error(`Image not found in storage: ${id}`);
+          }
+        }
+
+        // If support status not cached, we need to prepare context once
+        if (isSupported === undefined) {
+          const ctx = await ImageDownloadHydrator.prepareContext(htmlEl, storageService, blob);
+          if (ctx) {
+            isSupported = ctx.isSupported;
+            metadataSupportCache.set(id, isSupported);
           }
         }
 
@@ -225,7 +253,7 @@ async function loadGeneratedImages() {
             onPreview: () => handlePreviewImage(id)
           });
 
-          const skeleton = htmlEl.querySelector('.animate-pulse');
+          const skeleton = htmlEl.querySelector('.naidan-image-skeleton');
           if (skeleton) {
             skeleton.replaceWith(imgEl);
           } else {
@@ -242,7 +270,7 @@ async function loadGeneratedImages() {
           if (dlPortal instanceof HTMLElement) {
             const unmount = ImageDownloadHydrator.mount({
               portal: dlPortal,
-              isSupported,
+              isSupported: isSupported ?? false,
               onDownload: ({ withMetadata }) => ImageDownloadHydrator.download({
                 id, prompt, steps, seed,
                 model: props.message.modelId || undefined,
@@ -274,9 +302,12 @@ async function loadGeneratedImages() {
         console.error('Failed to load generated image:', e);
         htmlEl.innerHTML = `<div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs">Failed to load generated image</div>`;
       }
-    }
+    }));
   } finally {
     hydrationLock = false;
+    if (pendingHydration) {
+      loadGeneratedImages();
+    }
   }
   await nextTick();
 }
@@ -459,10 +490,10 @@ marked.use({
 
             // Skeleton placeholder
             const skeleton = document.createElement('div');
-            skeleton.className = 'flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0 rounded-xl';
+            skeleton.className = 'naidan-image-skeleton flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0 rounded-xl';
             skeleton.style.width = `${w}px`;
-            skeleton.style.height = `${h}px`;
             skeleton.style.maxWidth = '100%';
+            skeleton.style.aspectRatio = `${w} / ${h}`;
             skeleton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image text-gray-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
             div.appendChild(skeleton);
 
