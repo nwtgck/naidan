@@ -9,7 +9,7 @@
 // --- Domain Definitions (Business Logic Layer) ---
 
 export type Role = 'user' | 'assistant' | 'system';
-export type StorageType = 'local' | 'opfs';
+export type StorageType = 'local' | 'opfs' | 'memory';
 export type EndpointType = 'openai' | 'ollama' | 'transformers_js';
 
 export interface LmParameters {

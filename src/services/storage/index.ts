@@ -2,6 +2,7 @@ import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, Cha
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
+import { MemoryStorageProvider } from './memory-storage';
 import { checkOPFSSupport } from './opfs-detection';
 import { useGlobalEvents } from '../../composables/useGlobalEvents';
 import { STORAGE_BOOTSTRAP_KEY, SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '../../models/constants';
@@ -21,7 +22,7 @@ import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } fro
  */
 export class StorageService {
   private provider: IStorageProvider | null = null;
-  private currentType: 'local' | 'opfs' | null = null;
+  private currentType: 'local' | 'opfs' | 'memory' | null = null;
   private synchronizer: StorageSynchronizer;
 
   constructor() {
@@ -38,10 +39,10 @@ export class StorageService {
     return this.provider;
   }
 
-  async init(type: 'local' | 'opfs') {
+  async init(type: 'local' | 'opfs' | 'memory') {
     await this.synchronizer.withLock(async () => {
       const isOPFSSupported = await checkOPFSSupport();
-      let targetType: 'local' | 'opfs' = type;
+      let targetType: 'local' | 'opfs' | 'memory' = type;
 
       if (targetType === 'opfs' && !isOPFSSupported) {
         targetType = 'local';
@@ -56,6 +57,9 @@ export class StorageService {
       case 'local':
         this.provider = new LocalStorageProvider();
         break;
+      case 'memory':
+        this.provider = new MemoryStorageProvider();
+        break;
       default: {
         const _exhaustiveCheck: never = this.currentType;
         throw new Error(`Unhandled currentType: ${_exhaustiveCheck}`);
@@ -65,7 +69,7 @@ export class StorageService {
     }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('init') });
   }
 
-  getCurrentType(): 'local' | 'opfs' {
+  getCurrentType(): 'local' | 'opfs' | 'memory' {
     if (!this.currentType) {
       throw new Error('StorageService not initialized. Call init() first.');
     }
@@ -310,7 +314,7 @@ export class StorageService {
     }
   }
 
-  async switchProvider(type: 'local' | 'opfs') {
+  async switchProvider(type: 'local' | 'opfs' | 'memory') {
     try {
       await this.synchronizer.withLock(async () => {
         const activeProvider = this.getProvider();
@@ -319,12 +323,21 @@ export class StorageService {
         const oldProvider = activeProvider;
         const snapshot = await oldProvider.dump();
 
-        let newProvider: IStorageProvider;
-        if (type === 'opfs' && await checkOPFSSupport()) {
-          newProvider = new OPFSStorageProvider();
-        } else {
-          newProvider = new LocalStorageProvider();
-        }
+        const isOPFSSupported = await checkOPFSSupport();
+        const newProvider = (() => {
+          switch (type) {
+          case 'opfs':
+            return isOPFSSupported ? new OPFSStorageProvider() : new LocalStorageProvider();
+          case 'memory':
+            return new MemoryStorageProvider();
+          case 'local':
+            return new LocalStorageProvider();
+          default: {
+            const _ex: never = type;
+            throw new Error(`Unhandled storage type: ${_ex}`);
+          }
+          }
+        })();
 
         await newProvider.init();
 

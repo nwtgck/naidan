@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { X, History, Clock, Cpu, ArrowDown, Copy, Check, ArrowRight, RotateCcw } from 'lucide-vue-next';
+import { computed, ref, onUnmounted, watch } from 'vue';
+import { X, History, Clock, Cpu, ArrowDown, Copy, Check, ArrowRight, RotateCcw, Eye, EyeOff } from 'lucide-vue-next';
 import type { MessageNode } from '../models/types';
 import { computeWordDiff, type DiffPart } from '../utils/diff';
 
@@ -19,6 +19,43 @@ const diffVisibility = ref<DiffVisibility>('visible');
 
 const baseVersionId = ref<string | undefined>(undefined);
 const targetVersionId = ref<string | undefined>(undefined);
+const skippedMessageIds = ref<Set<string>>(new Set());
+const visibleCount = ref(10);
+const loadMoreTrigger = ref<HTMLElement | null>(null);
+
+let observer: IntersectionObserver | undefined;
+
+function setupObserver() {
+  if (typeof IntersectionObserver === 'undefined') return;
+  if (observer) observer.disconnect();
+
+  observer = new IntersectionObserver((entries) => {
+    const entry = entries[0];
+    if (entry?.isIntersecting) {
+      if (visibleCount.value < props.siblings.length) {
+        visibleCount.value += 10;
+      }
+    }
+  }, { threshold: 0.1 });
+
+  if (loadMoreTrigger.value) {
+    observer.observe(loadMoreTrigger.value);
+  }
+}
+
+watch([() => props.isOpen, loadMoreTrigger], ([isOpen, trigger]) => {
+  if (isOpen && trigger) {
+    setupObserver();
+  } else if (!isOpen && observer) {
+    observer.disconnect();
+    observer = undefined;
+    visibleCount.value = 10; // Reset when closed
+  }
+});
+
+onUnmounted(() => {
+  if (observer) observer.disconnect();
+});
 
 interface VersionItem {
   id: string;
@@ -59,34 +96,68 @@ interface SequentialDiff {
   content: string;
   diffParts: DiffPart[];
   isCurrent: boolean;
+  isSkipped: boolean;
 }
 
 const copiedId = ref<string | undefined>(undefined);
 
 const sequentialDiffs = computed(() => {
   const result: SequentialDiff[] = [];
+  const reversedSiblings = [...props.siblings].reverse();
 
-  for (let i = 0; i < props.siblings.length; i++) {
-    const msg = props.siblings[i]!;
-    const prevMsg = i > 0 ? props.siblings[i - 1] : null;
+  for (let i = 0; i < reversedSiblings.length; i++) {
+    const msg = reversedSiblings[i];
+    if (!msg) continue;
 
-    const diffParts = prevMsg
-      ? computeWordDiff({ oldText: prevMsg.content, newText: msg.content })
-      : [{ type: 'unchanged', value: msg.content } as DiffPart];
+    const isSkipped = skippedMessageIds.value.has(msg.id);
+
+    let diffParts: DiffPart[] = [];
+
+    // Only calculate diff if within visibleCount and not skipped
+    if (i < visibleCount.value && !isSkipped) {
+      const originalIndex = props.siblings.findIndex(m => m.id === msg.id);
+
+      // Find previous non-skipped message in chronological order
+      let prevMsg: MessageNode | undefined = undefined;
+      for (let j = originalIndex - 1; j >= 0; j--) {
+        const potentialPrev = props.siblings[j];
+        if (potentialPrev && !skippedMessageIds.value.has(potentialPrev.id)) {
+          prevMsg = potentialPrev;
+          break;
+        }
+      }
+
+      diffParts = prevMsg
+        ? computeWordDiff({ oldText: prevMsg.content, newText: msg.content })
+        : [{ type: 'unchanged', value: msg.content } as DiffPart];
+    }
 
     result.push({
       id: msg.id,
-      versionNumber: i + 1,
+      versionNumber: props.siblings.findIndex(m => m.id === msg.id) + 1,
       timestamp: msg.timestamp,
       modelId: msg.modelId,
       content: msg.content,
       diffParts,
       isCurrent: msg.id === props.currentMessageId,
+      isSkipped,
     });
   }
 
-  return result.reverse(); // Show latest first
+  return result;
 });
+function toggleSkip({ id }: { id: string }) {
+  const next = new Set(skippedMessageIds.value);
+  if (next.has(id)) {
+    next.delete(id);
+  } else {
+    next.add(id);
+    // If it was base or target, clear it
+    if (baseVersionId.value === id) baseVersionId.value = undefined;
+    if (targetVersionId.value === id) targetVersionId.value = undefined;
+  }
+  skippedMessageIds.value = next;
+}
 
 async function handleCopy({ id, content }: { id: string, content: string }) {
   try {
@@ -220,12 +291,13 @@ defineExpose({
 
           <!-- Version List -->
           <div class="p-6 space-y-8">
-            <div v-for="(diff, index) in sequentialDiffs" :key="diff.id" class="relative">
+            <div v-for="(diff, index) in sequentialDiffs.slice(0, visibleCount)" :key="diff.id" class="relative">
               <!-- Version Card -->
               <div
                 class="bg-white dark:bg-gray-900 rounded-2xl border transition-all shadow-sm group/card"
                 :class="[
                   diff.isCurrent ? 'ring-2 ring-blue-500/10' : '',
+                  diff.isSkipped ? 'bg-gray-50/30 dark:bg-gray-800/20 border-dashed border-gray-200 dark:border-gray-700' :
                   baseVersionId === diff.id ? 'border-blue-500 bg-blue-50/5 dark:bg-blue-900/5' :
                   targetVersionId === diff.id ? 'border-green-500 bg-green-50/5 dark:bg-green-900/5' :
                   'border-gray-100 dark:border-gray-800'
@@ -233,7 +305,7 @@ defineExpose({
               >
                 <!-- Card Header -->
                 <div class="px-5 py-3 border-b border-gray-50 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/30">
-                  <div class="flex items-center gap-3">
+                  <div class="flex items-center gap-3" :class="diff.isSkipped ? 'opacity-40 grayscale' : ''">
                     <span
                       class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest"
                       :class="diff.isCurrent ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
@@ -247,12 +319,13 @@ defineExpose({
                   </div>
 
                   <div class="flex items-center gap-2">
-                    <div v-if="diff.modelId" class="hidden sm:flex items-center gap-1.5 text-[10px] font-bold text-gray-400 tracking-widest mr-2">
+                    <div v-if="diff.modelId" class="hidden sm:flex items-center gap-1.5 text-[10px] font-bold text-gray-400 tracking-widest mr-2" :class="diff.isSkipped ? 'opacity-40 grayscale' : ''">
                       <Cpu class="w-3 h-3" />
                       {{ diff.modelId }}
                     </div>
+
                     <!-- Comparison Selectors -->
-                    <div class="flex items-center gap-1 bg-gray-100/50 dark:bg-black/20 p-0.5 rounded-lg mr-1">
+                    <div v-if="!diff.isSkipped" class="flex items-center gap-1 bg-gray-100/50 dark:bg-black/20 p-0.5 rounded-lg">
                       <button
                         @click="baseVersionId = baseVersionId === diff.id ? undefined : diff.id"
                         class="px-2 py-1 text-[9px] font-black uppercase tracking-tighter rounded transition-all"
@@ -269,7 +342,22 @@ defineExpose({
                       </button>
                     </div>
 
+                    <!-- Skip Toggle -->
                     <button
+                      @click="toggleSkip({ id: diff.id })"
+                      class="min-w-[72px] p-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 px-2.5 shadow-sm"
+                      :class="diff.isSkipped ?
+                        'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-500/20 ring-1 ring-blue-500/50' :
+                        'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-800 border border-transparent'"
+                      :title="diff.isSkipped ? 'Include in diff' : 'Exclude from diff'"
+                    >
+                      <EyeOff v-if="!diff.isSkipped" class="w-3.5 h-3.5" />
+                      <Eye v-else class="w-3.5 h-3.5" />
+                      <span class="text-[9px] font-black uppercase tracking-widest">{{ diff.isSkipped ? 'Include' : 'Skip' }}</span>
+                    </button>
+
+                    <button
+                      v-if="!diff.isSkipped"
                       @click="handleCopy({ id: diff.id, content: diff.content })"
                       class="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-white dark:hover:bg-gray-800 transition-colors"
                       :title="copiedId === diff.id ? 'Copied!' : 'Copy this version'"
@@ -277,11 +365,10 @@ defineExpose({
                       <Check v-if="copiedId === diff.id" class="w-3.5 h-3.5 text-green-500" />
                       <Copy v-else class="w-3.5 h-3.5" />
                     </button>
-                  </div>
-                </div>
+                  </div>                </div>
 
                 <!-- Content Area (Default shows sequential diff) -->
-                <div class="p-5 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words dark:text-gray-300">
+                <div v-if="!diff.isSkipped" class="p-5 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words dark:text-gray-300">
                   <template v-if="diffVisibility === 'visible'">
                     <template v-for="(part, pIdx) in diff.diffParts" :key="pIdx">
                       <span
@@ -302,10 +389,17 @@ defineExpose({
               </div>
 
               <!-- Connector Arrow -->
-              <div v-if="index < sequentialDiffs.length - 1" class="flex justify-center -my-3 relative z-10">
+              <div v-if="index < visibleCount - 1 && index < sequentialDiffs.length - 1" class="flex justify-center -my-3 relative z-10">
                 <div class="bg-gray-100 dark:bg-gray-800 p-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-400 shadow-sm">
                   <ArrowDown class="w-4 h-4" />
                 </div>
+              </div>
+            </div>
+
+            <!-- Load More Trigger -->
+            <div ref="loadMoreTrigger" class="h-10 flex items-center justify-center">
+              <div v-if="visibleCount < sequentialDiffs.length" class="text-[10px] font-bold text-gray-400 uppercase tracking-widest animate-pulse">
+                Loading more versions...
               </div>
             </div>
           </div>

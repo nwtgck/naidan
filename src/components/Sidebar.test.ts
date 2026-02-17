@@ -4,7 +4,7 @@ import Sidebar from './Sidebar.vue';
 import ChatGroupActions from './ChatGroupActions.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem } from '../models/types';
+import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '../models/types';
 
 // --- Shared Mock State ---
 // Using mock prefix to satisfy Vitest hoisting requirements
@@ -17,9 +17,12 @@ const mockUpdateGlobalModel = vi.fn();
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
-const mockSettings = reactive({
+const mockSettings = ref({
   endpointUrl: 'http://localhost:11434',
   defaultModelId: 'llama3',
+  storageType: 'local' as StorageType,
+  autoTitleEnabled: true,
+  providerProfiles: [],
 });
 const mockAvailableModels = ref(['llama3', 'mistral', 'phi3']);
 const mockIsFetchingModels = ref(false);
@@ -94,7 +97,7 @@ vi.mock('../composables/useChat', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref(mockSettings),
+    settings: mockSettings,
     availableModels: mockAvailableModels,
     isFetchingModels: mockIsFetchingModels,
     save: mockSaveSettings,
@@ -139,6 +142,7 @@ describe('Sidebar Logic Stability', () => {
   const globalStubs = {
     'lucide-vue-next': true,
     'Logo': true,
+    'Ghost': true,
     'ThemeToggle': true,
     'ChatGroupActions': ChatGroupActions,
     'ModelSelector': {
@@ -162,8 +166,9 @@ describe('Sidebar Logic Stability', () => {
   beforeEach(() => {
     mockChatGroups.value = [];
     mockChats.value = [{ id: '1', title: 'Initial Chat', updatedAt: 0 }];
-    mockSettings.endpointUrl = 'http://localhost:11434';
-    mockSettings.defaultModelId = 'llama3';
+    mockSettings.value.endpointUrl = 'http://localhost:11434';
+    mockSettings.value.defaultModelId = 'llama3';
+    mockSettings.value.storageType = 'local';
     mockAvailableModels.value = ['llama3', 'mistral', 'phi3'];
     mockIsSidebarOpen.value = true;
     mockErrorCount.value = 0;
@@ -183,7 +188,7 @@ describe('Sidebar Logic Stability', () => {
     });
 
     it('does not render the selector if endpointUrl is missing', async () => {
-      mockSettings.endpointUrl = '';
+      mockSettings.value.endpointUrl = '';
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
       });
@@ -645,6 +650,28 @@ describe('Sidebar Logic Stability', () => {
 
       // Check top-level chat actions
       expect(wrapper.find('.sidebar-chat-item .touch-visible').exists()).toBe(true);
+    });
+  });
+
+  describe('Storage Info', () => {
+    it('shows the ghost icon when storageType is memory', async () => {
+      mockSettings.value.storageType = 'memory';
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      expect(wrapper.find('[data-testid="sidebar-ghost-icon"]').exists()).toBe(true);
+    });
+
+    it('hides the ghost icon when storageType is not memory', async () => {
+      mockSettings.value.storageType = 'local';
+      const wrapper = mount(Sidebar, {
+        global: { plugins: [router], stubs: globalStubs },
+      });
+      await nextTick();
+
+      expect(wrapper.find('[data-testid="sidebar-ghost-icon"]').exists()).toBe(false);
     });
   });
 });

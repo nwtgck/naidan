@@ -8,7 +8,7 @@ import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 import {
   ShieldCheck, CheckCircle2, FileArchive,
-  Database, HardDrive, Info, Trash2
+  Database, HardDrive, Info, Trash2, Ghost
 } from 'lucide-vue-next';
 import { useConfirm } from '../composables/useConfirm';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
@@ -17,11 +17,11 @@ import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImportExportModal = defineAsyncComponentAndLoadOnMounted(() => import('./ImportExportModal.vue'));
 
 const props = defineProps<{
-  storageType: 'local' | 'opfs';
+  storageType: 'local' | 'opfs' | 'memory';
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:storageType', value: 'local' | 'opfs'): void;
+  (e: 'update:storageType', value: 'local' | 'opfs' | 'memory'): void;
   (e: 'close'): void;
 }>();
 
@@ -81,18 +81,18 @@ async function handleEnablePersistence() {
   }
 }
 
-async function handleStorageChange(targetType: 'local' | 'opfs') {
+async function handleStorageChange(targetType: 'local' | 'opfs' | 'memory') {
   if (targetType === props.storageType) return;
 
   const currentProviderType = storageService.getCurrentType();
 
-  // Check for potential data loss when switching FROM opfs TO local
-  if (currentProviderType === 'opfs' && targetType === 'local') {
+  // Check for potential data loss when switching FROM opfs/memory TO local
+  if ((currentProviderType === 'opfs' || currentProviderType === 'memory') && targetType === 'local') {
     const hasFiles = await storageService.hasAttachments();
     if (hasFiles) {
       const confirmed = await showConfirm({
         title: 'Attachments will be inaccessible',
-        message: 'You have images or files saved in OPFS. Local Storage does not support permanent file storage, so these attachments will not be accessible after switching. Are you sure you want to continue?',
+        message: 'Local Storage does not support permanent file storage, so current attachments will not be accessible after switching. Are you sure you want to continue?',
         confirmButtonText: 'Switch and Lose Attachments',
         confirmButtonVariant: 'danger',
       });
@@ -108,6 +108,7 @@ async function handleStorageChange(targetType: 'local' | 'opfs') {
       switch (targetType) {
       case 'opfs': return 'OPFS';
       case 'local': return 'Local Storage';
+      case 'memory': return 'Ephemeral';
       default: {
         const _ex: never = targetType;
         return _ex;
@@ -229,7 +230,7 @@ defineExpose({
 
       <div class="space-y-6">
         <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Active Storage Provider</label>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           <button
             @click="handleStorageChange('opfs')"
             type="button"
@@ -268,6 +269,23 @@ defineExpose({
             <div>
               <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">Local Storage</div>
               <div class="text-xs font-medium text-gray-500 leading-relaxed">Save locally in the standard browser storage. Limited size (5-10MB). Sent images are NOT persisted.</div>
+            </div>
+          </button>
+          <button
+            @click="handleStorageChange('memory')"
+            type="button"
+            class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
+            :class="storageType === 'memory' ? 'border-purple-500 bg-purple-50/50 dark:bg-purple-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700'"
+            data-testid="storage-memory"
+          >
+            <div class="flex items-center justify-between">
+              <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <Ghost class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+              </div>
+            </div>
+            <div>
+              <div class="font-bold text-base mb-1 text-gray-800 dark:text-white">Ephemeral</div>
+              <div class="text-xs font-medium text-gray-500 leading-relaxed">In-memory storage. All data will be lost on page reload or tab closure. No persistent footprint.</div>
             </div>
           </button>
         </div>

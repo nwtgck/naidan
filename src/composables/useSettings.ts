@@ -85,7 +85,7 @@ export function useSettings() {
         })();
 
         const validatedType = StorageTypeSchemaDto.safeParse(rawSavedType);
-        let bootstrapType: 'local' | 'opfs' | null = validatedType.success ? validatedType.data : null;
+        let bootstrapType: 'local' | 'opfs' | 'memory' | null = validatedType.success ? validatedType.data : null;
 
         if (rawSavedType !== null && !validatedType.success) {
           console.warn(`Invalid storage type found in localStorage: "${rawSavedType}". Falling back to detection.`, validatedType.error);

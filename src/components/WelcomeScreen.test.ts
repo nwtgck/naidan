@@ -1,12 +1,33 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import WelcomeScreen from './WelcomeScreen.vue';
+import { useSettings } from '../composables/useSettings';
+import type { Settings } from '../models/types';
 
 describe('WelcomeScreen.vue', () => {
+  const { __testOnly } = useSettings();
+
+  beforeEach(() => {
+    __testOnly.__testOnlyReset();
+  });
+
   it('renders the main security message', () => {
     const wrapper = mount(WelcomeScreen);
     expect(wrapper.text()).toContain('All conversations are stored locally.');
     expect(wrapper.text()).toContain('Your data stays on your device.');
+  });
+
+  it('renders ephemeral storage message when memory storage is active', async () => {
+    __testOnly.__testOnlySetSettings({
+      storageType: 'memory',
+      endpointType: 'openai',
+      autoTitleEnabled: true,
+      providerProfiles: []
+    } as Settings);
+
+    const wrapper = mount(WelcomeScreen);
+    expect(wrapper.text()).toContain('Conversations are stored in-memory.');
+    expect(wrapper.text()).toContain('Data is lost on page reload.');
   });
 
   it('renders suggestions', () => {

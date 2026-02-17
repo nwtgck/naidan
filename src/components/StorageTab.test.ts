@@ -104,7 +104,7 @@ const globalStubs = {
   Type: true, FlaskConical: true, AlertTriangle: true, ShieldCheck: true,
   Logo: true, ImportExportModal: true, ChefHat: true, Download: true,
   Github: true, ExternalLink: true, Plus: true, Info: true,
-  FileArchive: true, HardDrive: true, MessageSquareQuote: true,
+  FileArchive: true, HardDrive: true, Ghost: true, MessageSquareQuote: true,
   'router-link': true,
 };
 
@@ -328,9 +328,23 @@ describe('StorageTab.vue Tests', () => {
 
       const localBtn = wrapper.find('[data-testid="storage-local"]');
       const opfsBtn = wrapper.find('[data-testid="storage-opfs"]');
+      const memoryBtn = wrapper.find('[data-testid="storage-memory"]');
 
       expect(localBtn.classes()).toContain('border-blue-500');
       expect(opfsBtn.classes()).not.toContain('border-blue-500');
+      expect(memoryBtn.exists()).toBe(true);
+    });
+
+    it('highlights ephemeral provider when active', async () => {
+      const wrapper = mount(StorageTab, {
+        props: { storageType: 'memory' },
+        global: globalMocks
+      });
+      await flushPromises();
+      await vi.dynamicImportSettled();
+
+      const memoryBtn = wrapper.find('[data-testid="storage-memory"]');
+      expect(memoryBtn.classes()).toContain('border-purple-500');
     });
 
     it('emits update:storageType after migration confirmation', async () => {

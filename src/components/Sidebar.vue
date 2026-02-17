@@ -17,7 +17,7 @@ import {
   Pencil, Folder, FolderPlus,
   ChevronDown, ChevronUp, ChevronRight, Check, X,
   Bot, PanelLeft, SquarePen, Loader2, MoreHorizontal,
-  Search,
+  Search, Ghost
 } from 'lucide-vue-next';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupActions.vue'));
@@ -579,7 +579,15 @@ defineExpose({
           <h1 class="text-lg font-bold tracking-tight bg-gradient-to-br from-gray-800 to-gray-500 dark:from-white dark:to-gray-400 bg-clip-text text-transparent">
             Naidan
           </h1>
-          <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">v{{ appVersion }}</span>
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] font-medium text-gray-400 dark:text-gray-500">v{{ appVersion }}</span>
+            <Ghost
+              v-if="settings.storageType === 'memory'"
+              class="w-3.5 h-3.5 text-indigo-500/80 dark:text-indigo-400/80 animate-pulse"
+              title="Ephemeral Session"
+              data-testid="sidebar-ghost-icon"
+            />
+          </div>
         </div>
       </router-link>
       <button
