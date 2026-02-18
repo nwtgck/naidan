@@ -15,6 +15,7 @@ import ToastContainer from './components/ToastContainer.vue';
 import { useLayout } from './composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from './utils/vue';
 import { useGlobalSearch } from './composables/useGlobalSearch';
+import type { EndpointType } from './models/types';
 
 // Lazily load components that are not visible on initial mount, but prefetch them when idle.
 const SettingsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/SettingsModal.vue'));
@@ -68,6 +69,44 @@ const {
   promptBodyComponent,
   handlePromptConfirm, handlePromptCancel,
 } = usePrompt();
+
+// Synchronize Global Endpoint Settings from URL Query Parameters
+watch(
+  [
+    () => route.query['global-endpoint-type'],
+    () => route.query['global-endpoint-url'],
+    () => settingsStore.initialized.value
+  ],
+  async ([type, url, initialized]) => {
+    if (!initialized) return;
+    if (typeof type === 'string' && typeof url === 'string') {
+      const isEndpointType = (val: string): val is EndpointType =>
+        ['openai', 'ollama'].includes(val);
+
+      if (isEndpointType(type)) {
+        await settingsStore.updateGlobalEndpoint({          type,
+          url
+        });
+      }
+    }
+  },
+  { immediate: true }
+);
+
+// Synchronize Global Model from URL Query Parameters
+watch(
+  [
+    () => route.query['global-model'],
+    () => settingsStore.initialized.value
+  ],
+  async ([modelId, initialized]) => {
+    if (!initialized) return;
+    if (typeof modelId === 'string') {
+      await settingsStore.updateGlobalModel(modelId);
+    }
+  },
+  { immediate: true }
+);
 
 // Automatically create a new chat if the list becomes empty while on the landing page
 // OR if a query parameter 'q' is provided on the landing page
@@ -198,7 +237,9 @@ defineExpose({
       @close="closeSettings"
     />
 
-    <OnboardingModal />
+    <Transition name="modal">
+      <OnboardingModal v-if="settingsStore.initialized.value && !settingsStore.isOnboardingDismissed.value" />
+    </Transition>
     <GlobalSearchModal />
 
     <ToastContainer />
@@ -239,6 +280,28 @@ defineExpose({
 <style scoped>
 .fade-enter-from,
 .fade-leave-to {
+  opacity: 0;
+}
+
+/* Modal Transition */
+.modal-enter-active,
+.modal-leave-active {
+  transition: all 0.3s ease;
+}
+
+.modal-enter-active :deep(.modal-content-zoom),
+.modal-leave-active :deep(.modal-content-zoom) {
+  transition: all 0.3s cubic-bezier(0.34, 1.05, 0.64, 1);
+}
+
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+
+.modal-enter-from :deep(.modal-content-zoom),
+.modal-leave-to :deep(.modal-content-zoom) {
+  transform: scale(0.9);
   opacity: 0;
 }
 </style>

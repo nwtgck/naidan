@@ -133,13 +133,14 @@ describe('useSettings Initialization and Bootstrap', () => {
     consoleSpy.mockRestore();
   });
 
-  it('should set isOnboardingDismissed to true if endpointUrl is present in loaded settings', async () => {
-    // Setup mock to return settings WITH endpointUrl
+  it('should set isOnboardingDismissed to true if endpointUrl AND defaultModelId are present in loaded settings', async () => {
+    // Setup mock to return settings WITH endpointUrl and defaultModelId
     mocks.loadSettings.mockResolvedValue({
       ...DEFAULT_SETTINGS,
       storageType: 'local',
       endpointUrl: 'http://localhost:11434',
       endpointType: 'openai',
+      defaultModelId: 'gpt-3.5'
     });
 
     // Act
@@ -149,6 +150,21 @@ describe('useSettings Initialization and Bootstrap', () => {
     // Assert
     expect(isOnboardingDismissed.value).toBe(true);
     expect(settings.value.endpointUrl).toBe('http://localhost:11434');
+  });
+
+  it('should NOT set isOnboardingDismissed to true if endpointUrl is present but defaultModelId is missing', async () => {
+    mocks.loadSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      storageType: 'local',
+      endpointUrl: 'http://localhost:11434',
+      endpointType: 'openai',
+      defaultModelId: undefined
+    });
+
+    const { init, isOnboardingDismissed } = useSettings();
+    await init();
+
+    expect(isOnboardingDismissed.value).toBe(false);
   });
 
   it('should NOT set isOnboardingDismissed to true if endpointUrl is missing', async () => {
@@ -246,6 +262,35 @@ describe('useSettings Initialization and Bootstrap', () => {
 
       expect(mockListModels).toHaveBeenCalledWith({});
       expect(mockListModels).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Explicit Actions and Onboarding Dismissal', () => {
+    const { __testOnly: { __testOnlyReset } } = useSettings();
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      localStorage.clear();
+      __testOnlyReset();
+    });
+
+    it('should set isOnboardingDismissed to true when BOTH endpoint and model are set', async () => {
+      const { updateGlobalEndpoint, updateGlobalModel, isOnboardingDismissed } = useSettings();
+
+      expect(isOnboardingDismissed.value).toBe(false);
+
+      await updateGlobalEndpoint({
+        type: 'ollama',
+        url: 'http://localhost:11434'
+      });
+
+      // Still false because model is missing
+      expect(isOnboardingDismissed.value).toBe(false);
+
+      await updateGlobalModel('test-model');
+
+      // Now true because both are present
+      expect(isOnboardingDismissed.value).toBe(true);
     });
   });
 });
