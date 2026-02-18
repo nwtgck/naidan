@@ -10,6 +10,15 @@ const mockChatGroupIds = ref<string[]>([]);
 const mockChatId = ref<string | undefined>(undefined);
 const mockCloseSearch = vi.fn();
 
+const mockSetActiveFocusArea = vi.fn();
+const mockActiveFocusArea = ref('chat');
+vi.mock('../composables/useLayout', () => ({
+  useLayout: () => ({
+    setActiveFocusArea: mockSetActiveFocusArea,
+    activeFocusArea: mockActiveFocusArea,
+  }),
+}));
+
 const mockPush = vi.fn();
 vi.mock('vue-router', () => ({
   useRouter: () => ({
@@ -28,6 +37,7 @@ vi.mock('../composables/useGlobalSearch', () => ({
 
 const mockQuery = ref('');
 const mockIsSearching = ref(false);
+const mockIsScanningContent = ref(false);
 const mockResults = ref([]);
 const mockSearch = vi.fn();
 
@@ -35,15 +45,18 @@ vi.mock('../composables/useChatSearch', () => ({
   useChatSearch: () => ({
     query: mockQuery,
     isSearching: mockIsSearching,
+    isScanningContent: mockIsScanningContent,
     results: mockResults,
     search: mockSearch,
   }),
 }));
 
 const mockOpenChat = vi.fn();
+const mockOpenChatGroup = vi.fn();
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     openChat: mockOpenChat,
+    openChatGroup: mockOpenChatGroup,
     chatGroups: ref([{ id: 'g1', name: 'Group 1' }]),
     currentChat: ref(null),
   }),
@@ -154,8 +167,8 @@ describe('GlobalSearchModal Component', () => {
   it('should navigate and select results with keyboard', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
-      { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [] },
-      { chatId: 'chat2', title: 'Chat 2', updatedAt: 2, contentMatches: [] },
+      { type: 'chat', chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [] },
+      { type: 'chat', chatId: 'chat2', title: 'Chat 2', updatedAt: 2, contentMatches: [] },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -178,7 +191,7 @@ describe('GlobalSearchModal Component', () => {
   it('should select a result when clicked', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
-      { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [] },
+      { type: 'chat', chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [] },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -188,5 +201,85 @@ describe('GlobalSearchModal Component', () => {
 
     expect(mockOpenChat).toHaveBeenCalledWith('chat1');
     expect(mockCloseSearch).toHaveBeenCalled();
+  });
+
+  it('should select input text when opening with existing query', async () => {
+    mockQuery.value = 'existing query';
+    mockIsSearchOpen.value = false;
+
+    const selectSpy = vi.spyOn(HTMLInputElement.prototype, 'select');
+
+    mount(GlobalSearchModal);
+
+    mockIsSearchOpen.value = true;
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 0)); // wait for nextTick in watch
+
+    expect(selectSpy).toHaveBeenCalled();
+    selectSpy.mockRestore();
+  });
+
+  it('should navigate to group when a chat_group result is selected', async () => {
+    mockQuery.value = 'work';
+    mockResults.value = [
+      { type: 'chat_group', groupId: 'g1', name: 'Work', updatedAt: 1, matchType: 'title' },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
+
+    expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockCloseSearch).toHaveBeenCalled();
+  });
+
+  it('should hide SearchPreview while scanning content', async () => {
+    mockQuery.value = 'test'; // Ensure query is present to enter the results block
+    mockIsScanningContent.value = true;
+    mockResults.value = [{ type: 'chat', chatId: 'c1', title: 'C1', updatedAt: 1, contentMatches: [] }] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    // The container for SearchPreview should be hidden by v-if="... && !isScanningContent"
+    expect(wrapper.findComponent({ name: 'SearchPreview' }).exists()).toBe(false);
+    expect(wrapper.text()).toContain('SCANNING CONTENT...');
+  });
+
+  it('should manage FocusArea when opening and closing', async () => {
+    mockIsSearchOpen.value = false;
+    mockActiveFocusArea.value = 'sidebar';
+    mount(GlobalSearchModal);
+
+    mockIsSearchOpen.value = true;
+    await nextTick();
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('search');
+
+    mockIsSearchOpen.value = false;
+    await nextTick();
+    // Should restore to previous ('sidebar')
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('sidebar');
+  });
+
+  it('should switch between results and preview panes with ArrowRight/Left', async () => {
+    mockQuery.value = 'work';
+    mockResults.value = [
+      { type: 'chat_group', groupId: 'g1', name: 'Work', updatedAt: 1, matchType: 'title' },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    // Initial state
+    expect((wrapper.vm as any).activePane).toBe('results');
+
+    // ArrowRight to switch to preview
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowRight' });
+    expect((wrapper.vm as any).activePane).toBe('preview');
+
+    // ArrowLeft to switch back to results
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowLeft' });
+    expect((wrapper.vm as any).activePane).toBe('results');
   });
 });

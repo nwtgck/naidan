@@ -38,7 +38,7 @@ vi.mock('./services/storage/opfs-detection', () => ({
 // 3. Mock useSettings with internal state and reset helpers
 vi.mock('./composables/useSettings', async () => {
   const vue = await import('vue');
-  
+
   // Singleton state for the mock
   const settings = vue.ref({ endpointUrl: '', endpointType: 'openai', defaultModelId: '' });
   const manualDismiss = vue.ref(false);
@@ -47,9 +47,9 @@ vi.mock('./composables/useSettings', async () => {
   const availableModels = vue.ref([]);
 
   const isOnboardingDismissed = vue.computed(() => {
-      const hasEndpoint = !!settings.value.endpointUrl || settings.value.endpointType === 'transformers_js';
-      const hasModel = !!settings.value.defaultModelId;
-      return manualDismiss.value || (hasEndpoint && hasModel);
+    const hasEndpoint = !!settings.value.endpointUrl || settings.value.endpointType === 'transformers_js';
+    const hasModel = !!settings.value.defaultModelId;
+    return manualDismiss.value || (hasEndpoint && hasModel);
   });
 
   return {
@@ -68,9 +68,9 @@ vi.mock('./composables/useSettings', async () => {
       },
       // Test Helpers
       __reset: () => {
-         settings.value = { endpointUrl: '', endpointType: 'openai', defaultModelId: '' };
-         manualDismiss.value = false;
-         initialized.value = true;
+        settings.value = { endpointUrl: '', endpointType: 'openai', defaultModelId: '' };
+        manualDismiss.value = false;
+        initialized.value = true;
       }
     })
   };
@@ -134,9 +134,9 @@ vi.mock('./components/CustomDialog.vue', () => ({ __esModule: true, default: { t
 vi.mock('./components/OPFSExplorer.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
 vi.mock('./components/GlobalSearchModal.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
 
-vi.mock('./components/OnboardingModal.vue', () => ({ 
+vi.mock('./components/OnboardingModal.vue', () => ({
   __esModule: true,
-  default: { template: '<div data-testid="onboarding-modal"></div>' } 
+  default: { template: '<div data-testid="onboarding-modal"></div>' }
 }));
 
 import App from './App.vue';
@@ -148,12 +148,12 @@ describe('App Global Settings Sync', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     (useSettings() as any).__reset(); // Reset the shared state in the mock
-    
+
     router = createRouter({
       history: createWebHistory(),
       routes: [{ path: '/', component: { template: '<div></div>' } }]
     });
-    
+
     await router.push('/');
     await router.isReady();
   });
@@ -163,7 +163,7 @@ describe('App Global Settings Sync', () => {
       global: {
         plugins: [router],
         stubs: {
-          'transition': true, 
+          'transition': true,
           'OnboardingModal': false,
         }
       }
@@ -183,7 +183,7 @@ describe('App Global Settings Sync', () => {
         'global-model': 'llama3'
       }
     });
-    
+
     await flushPromises();
     await nextTick();
 
@@ -211,7 +211,7 @@ describe('App Global Settings Sync', () => {
         'global-endpoint-url': 'http://localhost:11434'
       }
     });
-    
+
     await flushPromises();
     await nextTick();
 

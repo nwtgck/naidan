@@ -681,6 +681,7 @@ function handleBlur() {
 function focusInput() {
   switch (activeFocusArea.value) {
   case 'sidebar':
+  case 'search':
     return;
   case 'chat':
   case 'chat-group-settings':

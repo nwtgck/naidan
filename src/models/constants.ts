@@ -20,3 +20,5 @@ export const SYNC_LOCK_KEY = `${STORAGE_KEY_PREFIX}sync:lock`; // Legacy/Global 
 export const LOCK_METADATA = `${STORAGE_KEY_PREFIX}sync:lock:metadata`;
 
 export const LOCK_CHAT_CONTENT_PREFIX = `${STORAGE_KEY_PREFIX}sync:lock:chat_content:`;
+
+export const UNTITLED_CHAT_TITLE = 'New Chat';

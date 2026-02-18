@@ -2,24 +2,59 @@ import { ref, shallowRef } from 'vue';
 import { storageService } from '../services/storage';
 import { searchChatTree, searchLinearBranch, type ContentMatch } from '../utils/chat-search';
 import { getChatBranch } from '../utils/chat-tree';
+import { UNTITLED_CHAT_TITLE } from '../models/constants';
 
 export type { ContentMatch };
 
-export interface SearchResultItem {
-  chatId: string;
-  title: string | null;
-  updatedAt: number;
-  matchType: 'title' | 'content' | 'both'; // 'both' if matches found in both title and content
-  titleMatch?: boolean;
-  contentMatches: ContentMatch[];
-}
+export type SearchResultItem =
+  | {
+      type: 'chat';
+      chatId: string;
+      title: string | null;
+      groupId?: string | null;
+      groupName?: string;
+      updatedAt: number;
+      matchType: 'title' | 'content' | 'both';
+      titleMatch?: boolean;
+      contentMatches: ContentMatch[];
+    }
+  | {
+      type: 'chat_group';
+      groupId: string;
+      name: string;
+      updatedAt: number;
+      matchType: 'title';
+    };
 
 export type SearchScope = 'all' | 'title_only' | 'current_thread';
 
 export function useChatSearch() {
   const query = ref('');
   const isSearching = ref(false);
+  const isScanningContent = ref(false); // New flag for heavy content scanning
   const results = shallowRef<SearchResultItem[]>([]);
+  let lastSearchedTrimmedQuery = '';
+
+  const sortResults = (items: SearchResultItem[]) => {
+    return items.sort((a, b) => {
+      // Priority 1: Groups first
+      if (a.type !== b.type) {
+        const typeA = a.type;
+        switch (typeA) {
+        case 'chat_group':
+          return -1;
+        case 'chat':
+          return 1;
+        default: {
+          const _ex: never = typeA;
+          throw new Error(`Unhandled type: ${_ex}`);
+        }
+        }
+      }
+      // Priority 2: Newest first
+      return b.updatedAt - a.updatedAt;
+    });
+  };
 
   /**
    * Performs the search.
@@ -27,19 +62,29 @@ export function useChatSearch() {
    * Uses time-slicing to avoid blocking the main thread.
    */
   const search = async ({ searchQuery, options = { scope: 'all' } }: { searchQuery: string, options?: { scope: SearchScope, chatGroupIds?: string[], chatId?: string } }) => {
+    query.value = searchQuery;
     const trimmedQuery = searchQuery.trim();
-    query.value = trimmedQuery;
 
     if (!trimmedQuery) {
       results.value = [];
       isSearching.value = false;
+      isScanningContent.value = false;
+      lastSearchedTrimmedQuery = '';
       return;
     }
 
+    // Skip if query hasn't changed after trimming
+    if (trimmedQuery === lastSearchedTrimmedQuery) {
+      return;
+    }
+    lastSearchedTrimmedQuery = trimmedQuery;
+
     isSearching.value = true;
-    // Do not clear results immediately if you want to keep showing old ones while typing,
-    // but here we clear to show we are searching anew.
-    results.value = [];
+    isScanningContent.value = false;
+
+    // NOTE: We do NOT clear results.value immediately here.
+    // This prevents the UI from flickering to an empty state while searching.
+    // The results will be updated as soon as title search or content matches are found.
 
     try {
       const keywords = trimmedQuery.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
@@ -50,6 +95,9 @@ export function useChatSearch() {
       }
 
       const allChatsRaw = await storageService.listChats();
+      const allGroups = await storageService.listChatGroups();
+      const groupMap = new Map(allGroups.map(g => [g.id, g.name]));
+
       const chatGroupIds = options.chatGroupIds;
       const targetChatId = options.chatId;
 
@@ -63,26 +111,48 @@ export function useChatSearch() {
       const resultMap = new Map<string, SearchResultItem>();
 
       // 1. Title Search (Fast - can be done in one go)
-      // Always perform title search unless we decide to have a "content only" mode later.
-      for (const chat of allChats) {
-        if (chat.title) {
-          const lowerTitle = chat.title.toLowerCase();
-          const allMatch = keywords.every(k => lowerTitle.includes(k));
+
+      // Search Groups
+      if (!targetChatId) { // If filtering by specific chat, groups are irrelevant
+        for (const group of allGroups) {
+          const lowerName = group.name.toLowerCase();
+          const allMatch = keywords.every(k => lowerName.includes(k));
           if (allMatch) {
-            resultMap.set(chat.id, {
-              chatId: chat.id,
-              title: chat.title,
-              updatedAt: chat.updatedAt,
+            resultMap.set(`group:${group.id}`, {
+              type: 'chat_group',
+              groupId: group.id,
+              name: group.name,
+              updatedAt: group.updatedAt,
               matchType: 'title',
-              titleMatch: true,
-              contentMatches: [],
             });
           }
         }
       }
 
+      // Search Chat Titles
+      for (const chat of allChats) {
+        const title = chat.title || UNTITLED_CHAT_TITLE;
+        const lowerTitle = title.toLowerCase();
+
+        // Match if ALL keywords are found in the chat title
+        const allMatch = keywords.every(k => lowerTitle.includes(k));
+
+        if (allMatch) {
+          resultMap.set(`chat:${chat.id}`, {
+            type: 'chat',
+            chatId: chat.id,
+            title: title,
+            groupName: chat.groupId ? groupMap.get(chat.groupId) : undefined,
+            updatedAt: chat.updatedAt,
+            matchType: 'title',
+            titleMatch: true,
+            contentMatches: [],
+          });
+        }
+      }
+
       // Update UI with initial title results
-      results.value = Array.from(resultMap.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+      results.value = sortResults(Array.from(resultMap.values()));
 
       // If scope is title_only, we stop here.
       const scope = options.scope;
@@ -100,6 +170,7 @@ export function useChatSearch() {
       }
 
       // 2. Content Search (Slower - Time Sliced)
+      isScanningContent.value = true;
       let processedCount = 0;
       const CHUNK_SIZE = 1; // Process 1 chat at a time to be safe, or 5 if they are small.
 
@@ -165,14 +236,18 @@ export function useChatSearch() {
             }
 
             if (matches.length > 0) {
-              const existing = resultMap.get(chat.id);
-              if (existing) {
+              const existing = resultMap.get(`chat:${chat.id}`);
+              if (existing && existing.type === 'chat') {
                 existing.matchType = 'both';
                 existing.contentMatches = matches;
               } else {
-                resultMap.set(chat.id, {
+                const title = chat.title || UNTITLED_CHAT_TITLE;
+                const groupName = chat.groupId ? groupMap.get(chat.groupId) : undefined;
+                resultMap.set(`chat:${chat.id}`, {
+                  type: 'chat',
                   chatId: chat.id,
-                  title: chat.title,
+                  title: title,
+                  groupName: groupName,
                   updatedAt: chat.updatedAt,
                   matchType: 'content',
                   titleMatch: false,
@@ -181,7 +256,7 @@ export function useChatSearch() {
               }
               // Progressively update results
               // We create a new array to trigger Vue reactivity
-              results.value = Array.from(resultMap.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+              results.value = sortResults(Array.from(resultMap.values()));
             }
           }
         } catch (e) {
@@ -193,6 +268,7 @@ export function useChatSearch() {
       // Only unset loading if we are still on the same query
       if (query.value === trimmedQuery) {
         isSearching.value = false;
+        isScanningContent.value = false;
       }
     }
   };
@@ -201,11 +277,14 @@ export function useChatSearch() {
     query.value = '';
     results.value = [];
     isSearching.value = false;
+    isScanningContent.value = false;
+    lastSearchedTrimmedQuery = '';
   };
 
   return {
     query,
     isSearching,
+    isScanningContent,
     results,
     search,
     clearSearch,
