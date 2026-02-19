@@ -25,10 +25,12 @@ const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./C
 const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted(() => import('./HistoryManipulationModal.vue'));
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted(() => import('./ChatDebugInspector.vue'));
+// Lazily load the media shelf, prefetch on mounted.
+const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./ChatMediaShelf.vue'));
 import {
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight, Hammer, Search
+  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon
 } from 'lucide-vue-next';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 
@@ -37,10 +39,16 @@ const chatStore = useChat();
 const { state: previewState, closePreview } = useImagePreview(true);
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
+  mediaShelfVisibility,
+  setMediaShelfVisibility,
+  toggleMediaShelf
+} = useLayout();
+const {
   currentChat,
   streaming,
   generatingTitle,
   activeMessages,
+  allMessages,
   availableModels,
   resolvedSettings,
   isProcessing,
@@ -153,6 +161,18 @@ function scrollToBottom(force = true) {
     if (force || scrollHeight - scrollTop - clientHeight < 150) {
       container.value.scrollTop = scrollHeight;
     }
+  }
+}
+
+function jumpToMessage({ messageId }: { messageId: string }) {
+  if (!container.value) return;
+  const el = container.value.querySelector(`#message-${messageId}`);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('bg-blue-50/50', 'dark:bg-blue-900/20');
+    setTimeout(() => {
+      el.classList.remove('bg-blue-50/50', 'dark:bg-blue-900/20');
+    }, 2000);
   }
 }
 
@@ -426,6 +446,18 @@ watch(
               <span>Search in Chat</span>
             </button>
             <button
+              @click="toggleMediaShelf(); showMoreMenu = false"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
+              :class="mediaShelfVisibility === 'visible'
+                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
+              "
+              data-testid="toggle-media-gallery-button"
+            >
+              <ImageIcon class="w-4 h-4" />
+              <span>Media Gallery</span>
+            </button>
+            <button
               @click="chatStore.toggleDebug(); showMoreMenu = false"
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
               :class="currentChat?.debugEnabled
@@ -469,6 +501,7 @@ watch(
           <div v-if="activeMessages.length > 0" class="relative p-2">
             <MessageItem
               v-for="msg in activeMessages"
+              :id="'message-' + msg.id"
               :key="msg.id"
               :chat-id="currentChat!.id"
               :message="msg"
@@ -518,6 +551,13 @@ watch(
     </div>
 
     <!-- Input Layer -->
+    <ChatMediaShelf
+      v-if="currentChat && mediaShelfVisibility === 'visible'"
+      :chat-id="currentChat.id"
+      :messages="allMessages"
+      @close="setMediaShelfVisibility({ visibility: 'hidden' })"
+      @jump-to-message="(id) => jumpToMessage({ messageId: id })"
+    />
     <ChatInput
       v-if="currentChat"
       ref="chatInputRef"
