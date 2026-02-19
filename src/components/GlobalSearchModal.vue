@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Search, X, Loader2, MessageSquare, CornerDownRight, Clock, GitBranch, Folder, Filter, Check } from 'lucide-vue-next';
+import { Search, X, Loader2, MessageSquare, CornerDownRight, Clock, GitBranch, Folder, Filter, Check, Eye } from 'lucide-vue-next';
 import he from 'he';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { useChatSearch, type SearchResultItem, type SearchScope, type ContentMatch } from '../composables/useChatSearch';
@@ -16,13 +16,13 @@ const GroupSearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./
 
 const router = useRouter();
 const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
-const { query, isSearching, isScanningContent, results, search } = useChatSearch();
+const { query, isSearching, isScanningContent, results, search, clearSearch } = useChatSearch();
 const { openChat, openChatGroup, chatGroups, currentChat } = useChat();
 const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
-  searchPreviewEnabled,
+  searchPreviewMode,
   searchContextSize,
-  setSearchPreviewEnabled,
+  setSearchPreviewMode,
   setSearchContextSize,
 } = useSettings();
 
@@ -37,6 +37,42 @@ const scrollContainer = ref<HTMLElement | null>(null);
 const searchScope = ref<SearchScope>('title_only');
 const showGroupSelector = ref(false);
 const activePane = ref<'results' | 'preview'>('results');
+const isHoveringPreview = ref(false);
+const isHoveringResults = ref(false);
+let previewHoverTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const handlePreviewMouseEnter = () => {
+  if (previewHoverTimeout) clearTimeout(previewHoverTimeout);
+  isHoveringPreview.value = true;
+};
+
+const handlePreviewMouseLeave = () => {
+  previewHoverTimeout = setTimeout(() => {
+    isHoveringPreview.value = false;
+  }, 100);
+};
+
+const isPreviewExpanded = computed(() => {
+  return isHoveringPreview.value || activePane.value === 'preview';
+});
+
+const shouldLoadPreview = computed(() => {
+  const mode = searchPreviewMode.value;
+  switch (mode) {
+  case 'disabled':
+    return false;
+  case 'always':
+    return true;
+  case 'peek':
+    return isPreviewExpanded.value;
+  default: {
+    const _ex: never = mode;
+    throw new Error(`Unhandled search preview mode: ${_ex}`);
+  }
+  }
+});
+
+const isPreviewVisible = computed(() => searchPreviewMode.value !== 'disabled');
 
 // Reset focus to results when search result changes
 watch(results, () => {
@@ -63,14 +99,14 @@ const selectedGroups = computed(() => {
 });
 
 const targetChatTitle = computed(() => {
-  if (!chatId.value) return null;
+  if (!chatId.value) return undefined;
   // If it's the current chat, we can get it from currentChat
   if (currentChat.value?.id === chatId.value) return currentChat.value.title || UNTITLED_CHAT_TITLE;
   // Otherwise we'd need to fetch it or rely on a generic name
   return 'Filtered Chat';
 });
 
-function toggleGroupFilter(groupId: string) {
+function toggleGroupFilter({ groupId }: { groupId: string }) {
   const index = chatGroupIds.value.indexOf(groupId);
   if (index === -1) {
     chatGroupIds.value.push(groupId);
@@ -82,7 +118,7 @@ function toggleGroupFilter(groupId: string) {
 // Debounce search input
 let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
-const performSearch = (val: string) => {
+const performSearch = ({ val }: { val: string }) => {
   search({
     searchQuery: val,
     options: {
@@ -107,20 +143,19 @@ const handleInput = (e: Event) => {
     case 'current_thread':
       return 300;
     default: {
-      // const __exhaustiveCheck: never = scope;
       return 300;
     }
     }
   })();
 
   debounceTimeout = setTimeout(() => {
-    performSearch(val);
+    performSearch({ val });
   }, delay);
 };
 
 watch([searchScope, chatGroupIds, chatId], () => {
-  if (isSearchOpen.value && query.value) {
-    performSearch(query.value);
+  if (isSearchOpen.value && (query.value || searchScope.value === 'title_only')) {
+    performSearch({ val: query.value });
   }
 }, { deep: true });
 
@@ -187,7 +222,7 @@ const handleKeydown = (e: KeyboardEvent) => {
     if (activePane.value === 'preview' && groupPreviewRef.value) {
       groupPreviewRef.value.handleEnter();
     } else {
-      selectItem(selectedIndex.value);
+      selectItem({ index: selectedIndex.value });
     }
   } else if (e.key === 'Escape') {
     e.preventDefault();
@@ -195,35 +230,9 @@ const handleKeydown = (e: KeyboardEvent) => {
   }
 };
 
-const totalItems = computed(() => flatList.value.length);
+const totalItems = computed(() => results.value.length);
 
-function flattenResults(items: SearchResultItem[]) {
-  const flat: { type: 'chat' | 'message' | 'chat_group'; item: SearchResultItem | ContentMatch; parentChat?: SearchResultItem }[] = [];
-
-  for (const item of items) {
-    const type = item.type;
-    switch (type) {
-    case 'chat':
-      flat.push({ type: 'chat', item });
-      for (const match of item.contentMatches) {
-        flat.push({ type: 'message', item: match, parentChat: item });
-      }
-      break;
-    case 'chat_group':
-      flat.push({ type: 'chat_group', item });
-      break;
-    default: {
-      const _ex: never = type;
-      throw new Error(`Unhandled type: ${_ex}`);
-    }
-    }
-  }
-  return flat;
-}
-
-const flatList = computed(() => flattenResults(results.value));
-
-const currentSelectedItem = computed(() => flatList.value[selectedIndex.value]);
+const currentSelectedItem = computed(() => results.value[selectedIndex.value]);
 
 function scrollToSelected() {
   nextTick(() => {
@@ -235,22 +244,22 @@ function scrollToSelected() {
   });
 }
 
-async function selectItem(index: number) {
-  const target = flatList.value[index];
+async function selectItem({ index }: { index: number }) {
+  const target = results.value[index];
   if (!target) return;
 
   const type = target.type;
   switch (type) {
   case 'chat': {
-    const chatItem = target.item as Extract<SearchResultItem, { type: 'chat' }>;
+    const chatItem = target.item;
     await openChat(chatItem.chatId);
     router.push(`/chat/${chatItem.chatId}`);
     closeSearch();
     break;
   }
   case 'message': {
-    const matchItem = target.item as ContentMatch;
-    const parentChat = target.parentChat as Extract<SearchResultItem, { type: 'chat' }>;
+    const matchItem = target.item;
+    const parentChat = target.parentChat;
     await openChat(parentChat.chatId, matchItem.targetLeafId);
     router.push({
       path: `/chat/${parentChat.chatId}`,
@@ -260,7 +269,7 @@ async function selectItem(index: number) {
     break;
   }
   case 'chat_group': {
-    const groupItem = target.item as Extract<SearchResultItem, { type: 'chat_group' }>;
+    const groupItem = target.item;
     openChatGroup(groupItem.groupId);
     closeSearch();
     break;
@@ -272,7 +281,7 @@ async function selectItem(index: number) {
   }
 }
 
-const previousFocusArea = ref<import('../composables/useLayout').FocusArea | null>(null);
+const previousFocusArea = ref<import('../composables/useLayout').FocusArea | undefined>(undefined);
 
 watch(isSearchOpen, (isOpen) => {
   if (isOpen) {
@@ -283,38 +292,43 @@ watch(isSearchOpen, (isOpen) => {
         searchInput.value.focus();
         searchInput.value.select();
       }
-      if (query.value) {
-        performSearch(query.value);
+      if (query.value || searchScope.value === 'title_only') {
+        performSearch({ val: query.value });
       }
     });
   } else {
+    clearSearch();
     if (previousFocusArea.value) {
       setActiveFocusArea(previousFocusArea.value);
-      previousFocusArea.value = null;
+      previousFocusArea.value = undefined;
     } else {
       setActiveFocusArea('chat');
     }
   }
 });
 
-function formatTime(timestamp: number) {
+function formatTime({ timestamp }: { timestamp: number }) {
   return new Date(timestamp).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
 }
 
-function escapeRegExp(string: string) {
+function escapeRegExp({ string }: { string: string }) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function highlight(text: string, query: string, color: 'indigo' | 'blue' = 'indigo') {
+function highlight({ text, query, color }: {
+  text: string,
+  query: string,
+  color: 'indigo' | 'blue',
+}) {
   if (!query) return he.encode(text);
 
   const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
   if (keywords.length === 0) return he.encode(text);
 
-  const pattern = keywords.map(k => escapeRegExp(k)).join('|');
+  const pattern = keywords.map(k => escapeRegExp({ string: k })).join('|');
   const regex = new RegExp(`(${pattern})`, 'gi');
 
   const parts = text.split(regex);
@@ -420,7 +434,7 @@ defineExpose({
                     <button
                       v-for="group in chatGroups"
                       :key="group.id"
-                      @click="toggleGroupFilter(group.id)"
+                      @click="toggleGroupFilter({ groupId: group.id })"
                       class="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors"
                       :class="chatGroupIds.includes(group.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:indigo-text-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                       :data-testid="'group-filter-item-' + group.id"
@@ -460,7 +474,7 @@ defineExpose({
                 class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
               >
                 <span>{{ group.name }}</span>
-                <button @click="toggleGroupFilter(group.id)" class="hover:text-indigo-800 dark:hover:text-indigo-300">
+                <button @click="toggleGroupFilter({ groupId: group.id })" class="hover:text-indigo-800 dark:hover:text-indigo-300">
                   <X class="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -470,19 +484,20 @@ defineExpose({
           <div class="flex items-center gap-4 text-[10px] font-bold text-gray-400 ml-4">
             <div class="flex items-center gap-2">
               <span>PREVIEW</span>
-              <button
-                @click="setSearchPreviewEnabled(!searchPreviewEnabled)"
-                class="w-8 h-4 rounded-full transition-colors relative"
-                :class="searchPreviewEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'"
-              >
-                <div
-                  class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform"
-                  :class="searchPreviewEnabled ? 'translate-x-4' : 'translate-x-0'"
-                ></div>
-              </button>
+              <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+                <button
+                  v-for="mode in (['always', 'peek', 'disabled'] as const)"
+                  :key="mode"
+                  @click="setSearchPreviewMode({ mode })"
+                  class="px-2 py-1 rounded-md transition-all uppercase tracking-tighter"
+                  :class="searchPreviewMode === mode ? 'bg-blue-600 text-white shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-700'"
+                >
+                  {{ mode === 'always' ? 'on' : mode === 'disabled' ? 'off' : mode }}
+                </button>
+              </div>
             </div>
 
-            <div v-if="searchPreviewEnabled" class="flex items-center gap-2">
+            <div v-if="isPreviewVisible" class="flex items-center gap-2">
               <span>CONTEXT</span>
               <select
                 :value="searchContextSize === Infinity ? 'max' : searchContextSize"
@@ -504,13 +519,17 @@ defineExpose({
           <!-- Left: Results List -->
           <div
             ref="scrollContainer"
-            class="overflow-y-auto scrollbar-thin p-2 space-y-1 border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300 relative"
+            @mouseenter="isHoveringResults = true"
+            @mouseleave="isHoveringResults = false"
+            class="overflow-y-auto scrollbar-thin p-2 space-y-1 bg-white dark:bg-gray-900 transition-all duration-300 relative"
             :class="[
-              searchPreviewEnabled ? 'w-1/3 min-w-[320px]' : 'w-full',
+              isPreviewVisible
+                ? (isPreviewExpanded ? 'w-[15%] min-w-[200px]' : (searchPreviewMode === 'peek' ? 'w-full' : 'w-[75%] min-w-[320px]'))
+                : 'w-full',
               activePane === 'results' ? 'ring-2 ring-inset ring-blue-500/10' : ''
             ]"
           >
-            <div v-if="!query && !isSearching" class="p-8 text-center text-gray-400 text-sm">
+            <div v-if="!query && !isSearching && searchScope !== 'title_only'" class="p-8 text-center text-gray-400 text-sm">
               Type to search...
             </div>
 
@@ -520,12 +539,12 @@ defineExpose({
 
             <template v-else>
               <div
-                v-for="(entry, index) in flatList"
+                v-for="(entry, index) in results"
                 :key="index"
                 :data-index="index"
                 :data-testid="'search-result-item-' + index"
                 @mouseenter="selectedIndex = index"
-                @click="selectItem(index)"
+                @click="selectItem({ index })"
                 class="group flex flex-col p-2.5 rounded-xl cursor-pointer transition-all border border-transparent"
                 :class="selectedIndex === index
                   ? (activePane === 'results' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800 shadow-sm' : 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-80')
@@ -538,7 +557,7 @@ defineExpose({
                   </div>
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
-                      <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-html="highlight((entry.item as Extract<SearchResultItem, { type: 'chat_group' }>).name, query, 'blue')"></span>
+                      <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-html="highlight({ text: entry.item.name, query, color: 'blue' })"></span>
                       <span class="text-[9px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded font-black uppercase tracking-wider">Group</span>
                     </div>
                   </div>
@@ -552,13 +571,13 @@ defineExpose({
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
                       <div class="flex flex-col overflow-hidden">
-                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-html="highlight((entry.item as Extract<SearchResultItem, { type: 'chat' }>).title || UNTITLED_CHAT_TITLE, query)"></span>
-                        <span v-if="(entry.item as Extract<SearchResultItem, { type: 'chat' }>).groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
+                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-html="highlight({ text: entry.item.title || UNTITLED_CHAT_TITLE, query, color: 'indigo' })"></span>
+                        <span v-if="entry.item.groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
                           <Folder class="w-2.5 h-2.5 opacity-50 text-blue-500" />
-                          <span v-html="highlight((entry.item as Extract<SearchResultItem, { type: 'chat' }>).groupName!, query, 'blue')"></span>
+                          <span v-html="highlight({ text: entry.item.groupName, query, color: 'blue' })"></span>
                         </span>
                       </div>
-                      <span class="text-[10px] text-gray-400 shrink-0">{{ formatTime((entry.item as Extract<SearchResultItem, { type: 'chat' }>).updatedAt) }}</span>
+                      <span class="text-[10px] text-gray-400 shrink-0">{{ formatTime({ timestamp: entry.item.updatedAt }) }}</span>
                     </div>
                     <div class="flex items-center gap-1.5 mt-0.5">
                       <Clock class="w-3 h-3 text-gray-300" />
@@ -573,12 +592,12 @@ defineExpose({
                   <CornerDownRight class="w-3 h-3 text-gray-300 mt-1 shrink-0" />
                   <div class="flex flex-col overflow-hidden text-sm flex-1">
                     <div class="flex items-center justify-between gap-2 mb-1">
-                      <span class="text-[9px] font-black uppercase tracking-wider text-gray-400">{{ (entry.item as ContentMatch).role }}</span>
-                      <span class="text-[9px] text-gray-400">{{ formatTime((entry.item as ContentMatch).timestamp) }}</span>
+                      <span class="text-[9px] font-black uppercase tracking-wider text-gray-400">{{ entry.item.role }}</span>
+                      <span class="text-[9px] text-gray-400">{{ formatTime({ timestamp: entry.item.timestamp }) }}</span>
                     </div>
-                    <span class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed" v-html="highlight((entry.item as ContentMatch).excerpt, query)"></span>
+                    <span class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed" v-html="highlight({ text: entry.item.excerpt, query, color: 'indigo' })"></span>
 
-                    <div v-if="!(entry.item as ContentMatch).isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">
+                    <div v-if="!entry.item.isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">
                       <GitBranch class="w-2.5 h-2.5" />
                       <span>ALT BRANCH</span>
                     </div>
@@ -594,22 +613,36 @@ defineExpose({
           </div>
 
           <!-- Right: Preview -->
-          <div v-if="searchPreviewEnabled && !isScanningContent && results.length > 0"
-               class="flex-1 bg-white dark:bg-gray-900 overflow-hidden transition-all duration-300"
-               :class="activePane === 'preview' ? 'ring-2 ring-inset ring-blue-500/20' : ''">
-            <template v-if="currentSelectedItem?.type === 'chat_group'">
-              <GroupSearchPreview
-                ref="groupPreviewRef"
-                :groupId="(currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).groupId"
-                :groupName="(currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).name"
-              />
+          <div v-if="isPreviewVisible && !isScanningContent && results.length > 0"
+               @mouseenter="handlePreviewMouseEnter"
+               @mouseleave="handlePreviewMouseLeave"
+               data-testid="search-preview-container"
+               class="bg-white dark:bg-gray-900 overflow-hidden transition-all duration-300 border-l border-gray-100 dark:border-gray-800"
+               :class="[
+                 isPreviewExpanded ? 'w-[85%]' : 'w-[25%]',
+                 activePane === 'preview' ? 'ring-2 ring-inset ring-blue-500/20' : ''
+               ]">
+            <template v-if="shouldLoadPreview">
+              <template v-if="currentSelectedItem?.type === 'chat_group'">
+                <GroupSearchPreview
+                  ref="groupPreviewRef"
+                  :groupId="(currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).groupId"
+                  :groupName="(currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).name"
+                />
+              </template>
+              <template v-else>
+                <SearchPreview
+                  :match="currentSelectedItem?.type === 'message' ? currentSelectedItem.item as ContentMatch : undefined"
+                  :chat="currentSelectedItem?.type === 'chat' ? currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat' }> : undefined"
+                />
+              </template>
             </template>
-            <template v-else>
-              <SearchPreview
-                :match="currentSelectedItem?.type === 'message' ? currentSelectedItem.item as ContentMatch : undefined"
-                :chat="currentSelectedItem?.type === 'chat' ? currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat' }> : undefined"
-              />
-            </template>
+            <div v-else class="h-full flex items-center justify-center bg-gray-50/50 dark:bg-gray-950/20">
+              <div class="flex flex-col items-center gap-2 opacity-20">
+                <Eye class="w-8 h-8 text-gray-400" />
+                <span class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Peek</span>
+              </div>
+            </div>
           </div>
         </div>
 

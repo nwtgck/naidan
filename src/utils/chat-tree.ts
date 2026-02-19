@@ -54,6 +54,21 @@ export function findDeepestLeaf(node: MessageNode | Readonly<MessageNode>): Mess
   return findDeepestLeaf(node.replies.items[node.replies.items.length - 1]!);
 }
 
+/**
+ * Retrieves all messages in the entire chat tree (all branches).
+ */
+export function getAllMessages(chat: Chat | Readonly<Chat>): MessageNode[] {
+  const all: MessageNode[] = [];
+  const collect = (items: MessageNode[]) => {
+    for (const item of items) {
+      all.push(item);
+      collect(item.replies.items);
+    }
+  };
+  collect(chat.root.items);
+  return all;
+}
+
 export function processThinking(node: MessageNode) {
   const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
   const matches = [...node.content.matchAll(thinkRegex)];

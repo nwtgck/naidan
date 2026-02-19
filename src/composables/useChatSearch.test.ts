@@ -6,8 +6,7 @@ import * as chatSearchUtils from '../utils/chat-search';
 
 vi.mock('../services/storage', () => ({
   storageService: {
-    listChats: vi.fn(),
-    listChatGroups: vi.fn(),
+    getSidebarStructure: vi.fn(),
     loadChatContent: vi.fn(),
   },
 }));
@@ -28,24 +27,23 @@ describe('useChatSearch Composable', () => {
     results = composable.results;
     query = composable.query;
     vi.clearAllMocks();
-    vi.mocked(storageService.listChatGroups).mockResolvedValue([]);
   });
 
   it('should skip search if trimmed query is the same', async () => {
-    const mockChats = [{ id: 'chat1', title: 'Test', updatedAt: 100 }];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
+    const mockSidebar = [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } }];
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
 
     await search({ searchQuery: 'test', options: { scope: 'title_only' } });
-    expect(storageService.listChats).toHaveBeenCalledTimes(1);
+    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1);
 
     await search({ searchQuery: 'test ', options: { scope: 'title_only' } });
-    expect(storageService.listChats).toHaveBeenCalledTimes(1); // Should be skipped
+    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1); // Should be skipped
   });
 
   it('should manage isScanningContent flag', async () => {
     const composable = useChatSearch();
-    const mockChats = [{ id: 'chat1', title: 'Test', updatedAt: 100 }];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
+    const mockSidebar = [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } }];
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
     vi.mocked(storageService.loadChatContent).mockResolvedValue({ root: { items: [] } } as any);
 
     const promise = composable.search({ searchQuery: 'test', options: { scope: 'all' } });
@@ -56,14 +54,19 @@ describe('useChatSearch Composable', () => {
   });
 
   it('should match by group name independently', async () => {
-    const mockChats = [
-      { id: 'chat1', title: 'Chat 1', groupId: 'group1', updatedAt: 100 },
+    const mockSidebar = [
+      {
+        id: 'group1',
+        type: 'chat_group',
+        chatGroup: {
+          id: 'group1',
+          name: 'Work',
+          updatedAt: 150,
+          items: [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', groupId: 'group1', updatedAt: 100 } }]
+        }
+      }
     ];
-    const mockGroups = [
-      { id: 'group1', name: 'Work', updatedAt: 150 },
-    ];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
-    vi.mocked(storageService.listChatGroups).mockResolvedValue(mockGroups as any);
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
 
     await search({
       searchQuery: 'Work',
@@ -73,16 +76,15 @@ describe('useChatSearch Composable', () => {
     expect(results.value).toHaveLength(1);
     const first = results.value[0];
     if (first && first.type === 'chat_group') {
-      expect(first.name).toBe('Work');
+      expect(first.item.name).toBe('Work');
+    } else {
+      throw new Error('Expected chat_group result');
     }
   });
 
   it('should match "new chat" for null titles', async () => {
-    const mockChats = [
-      { id: 'chat1', title: null, updatedAt: 100 },
-    ];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
-    vi.mocked(storageService.listChatGroups).mockResolvedValue([]);
+    const mockSidebar = [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: null, updatedAt: 100 } }];
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
 
     await search({
       searchQuery: 'new chat',
@@ -92,14 +94,16 @@ describe('useChatSearch Composable', () => {
     expect(results.value).toHaveLength(1);
     const first = results.value[0];
     if (first && first.type === 'chat') {
-      expect(first.chatId).toBe('chat1');
-      expect(first.title).toBe('New Chat');
+      expect(first.item.chatId).toBe('chat1');
+      expect(first.item.title).toBe('New Chat');
+    } else {
+      throw new Error('Expected chat result');
     }
   });
 
   it('should preserve raw query with spaces but search with trimmed version', async () => {
-    const mockChats = [{ id: 'chat1', title: 'Test', updatedAt: 100 }];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
+    const mockSidebar = [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } }];
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
 
     await search({
       searchQuery: 'test  ', // trailing spaces
@@ -112,12 +116,30 @@ describe('useChatSearch Composable', () => {
   });
 
   it('should filter by chatGroupIds', async () => {
-    const mockChats = [
-      { id: 'chat1', title: 'Chat 1', groupId: 'group1', updatedAt: 100 },
-      { id: 'chat2', title: 'Chat 2', groupId: 'group2', updatedAt: 200 },
-      { id: 'chat3', title: 'Chat 3', groupId: 'group1', updatedAt: 300 },
+    const mockSidebar = [
+      {
+        id: 'group1',
+        type: 'chat_group',
+        chatGroup: {
+          id: 'group1',
+          name: 'Group 1',
+          items: [
+            { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', groupId: 'group1', updatedAt: 100 } },
+            { id: 'chat3', type: 'chat', chat: { id: 'chat3', title: 'Chat 3', groupId: 'group1', updatedAt: 300 } }
+          ]
+        }
+      },
+      {
+        id: 'group2',
+        type: 'chat_group',
+        chatGroup: {
+          id: 'group2',
+          name: 'Group 2',
+          items: [{ id: 'chat2', type: 'chat', chat: { id: 'chat2', title: 'Chat 2', groupId: 'group2', updatedAt: 200 } }]
+        }
+      }
     ];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
     vi.mocked(chatSearchUtils.searchChatTree).mockReturnValue([]);
 
     await search({
@@ -125,21 +147,17 @@ describe('useChatSearch Composable', () => {
       options: { scope: 'all', chatGroupIds: ['group1'] }
     });
 
-    // Should only process chats in group1 (chat1 and chat3)
-    // Title search is done for all filtered chats.
-    // In this case, 'test' doesn't match titles 'Chat 1' or 'Chat 3'.
-    // Then it calls loadChatContent for those.
     expect(storageService.loadChatContent).toHaveBeenCalledWith('chat1');
     expect(storageService.loadChatContent).toHaveBeenCalledWith('chat3');
     expect(storageService.loadChatContent).not.toHaveBeenCalledWith('chat2');
   });
 
   it('should filter by specific chatId', async () => {
-    const mockChats = [
-      { id: 'chat1', title: 'Chat 1', groupId: 'group1', updatedAt: 100 },
-      { id: 'chat2', title: 'Chat 2', groupId: 'group2', updatedAt: 200 },
+    const mockSidebar = [
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', updatedAt: 100 } },
+      { id: 'chat2', type: 'chat', chat: { id: 'chat2', title: 'Chat 2', updatedAt: 200 } }
     ];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
 
     await search({
       searchQuery: 'test',
@@ -151,11 +169,11 @@ describe('useChatSearch Composable', () => {
   });
 
   it('should handle AND search keywords in titles', async () => {
-    const mockChats = [
-      { id: 'chat1', title: 'Hello World Test', updatedAt: 100 },
-      { id: 'chat2', title: 'Hello World', updatedAt: 200 },
+    const mockSidebar = [
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Hello World Test', updatedAt: 100 } },
+      { id: 'chat2', type: 'chat', chat: { id: 'chat2', title: 'Hello World', updatedAt: 200 } }
     ];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
 
     await search({
       searchQuery: 'hello test',
@@ -165,15 +183,15 @@ describe('useChatSearch Composable', () => {
     expect(results.value).toHaveLength(1);
     const first = results.value[0]!;
     if (first.type === 'chat') {
-      expect(first.chatId).toBe('chat1');
+      expect(first.item.chatId).toBe('chat1');
     } else {
       throw new Error('Expected chat result');
     }
   });
 
   it('should set matchType to "both" if keywords match in both title and content', async () => {
-    const mockChats = [{ id: 'chat1', title: 'Hello World', updatedAt: 100 }];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
+    const mockSidebar = [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Hello World', updatedAt: 100 } }];
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
     vi.mocked(storageService.loadChatContent).mockResolvedValue({
       root: { items: [] },
       currentLeafId: 'leaf1'
@@ -184,45 +202,97 @@ describe('useChatSearch Composable', () => {
 
     await search({ searchQuery: 'hello', options: { scope: 'all' } });
 
-    expect(results.value).toHaveLength(1);
+    expect(results.value).toHaveLength(2); // Header + Message match
     const first = results.value[0]!;
     if (first.type === 'chat') {
-      expect(first.matchType).toBe('both');
-      expect(first.contentMatches).toHaveLength(1);
+      expect(first.item.matchType).toBe('both');
+      expect(first.item.contentMatches).toHaveLength(1);
+    } else {
+      throw new Error('Expected chat header');
     }
   });
 
   it('should include groupName in chat results', async () => {
-    const mockChats = [{ id: 'chat1', title: 'Chat 1', groupId: 'g1', updatedAt: 100 }];
-    const mockGroups = [{ id: 'g1', name: 'Work', updatedAt: 100 }];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
-    vi.mocked(storageService.listChatGroups).mockResolvedValue(mockGroups as any);
+    const mockSidebar = [
+      {
+        id: 'group1',
+        type: 'chat_group',
+        chatGroup: {
+          id: 'group1',
+          name: 'Work',
+          items: [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', groupId: 'group1', updatedAt: 100 } }]
+        }
+      }
+    ];
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
 
     await search({ searchQuery: 'Chat', options: { scope: 'title_only' } });
 
     const first = results.value[0]!;
     if (first.type === 'chat') {
-      expect(first.groupName).toBe('Work');
+      expect(first.item.groupName).toBe('Work');
+    } else {
+      throw new Error('Expected chat result');
     }
   });
 
-  it('should prioritize chat groups over individual chats even if chats are newer', async () => {
-    const mockChats = [
-      { id: 'chat1', title: 'Newer Individual Chat', updatedAt: 2000 },
+  it('should prioritize items by sidebar order', async () => {
+    const mockSidebar = [
+      {
+        id: 'group1',
+        type: 'chat_group',
+        chatGroup: {
+          id: 'group1',
+          name: 'Older Group',
+          updatedAt: 100,
+          items: []
+        }
+      },
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Newer Individual Chat', updatedAt: 2000 } }
     ];
-    const mockGroups = [
-      { id: 'group1', name: 'Older Group', updatedAt: 100 },
-    ];
-    vi.mocked(storageService.listChats).mockResolvedValue(mockChats as any);
-    vi.mocked(storageService.listChatGroups).mockResolvedValue(mockGroups as any);
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
 
-    // Search for 'o' which matches both 'Newer' and 'Group' (case-insensitive depends on impl, but 'o' is in both)
-    // Actually search for 'e' to be safer as it is in both 'Newer' and 'Older'
+    // Search for 'e' which matches both 'Newer' and 'Older'
     await search({ searchQuery: 'e', options: { scope: 'title_only' } });
 
     expect(results.value).toHaveLength(2);
-    // Even though the chat is newer (2000 > 100), the group should be first
+    // Follows sidebar order: Group first, then Chat
     expect(results.value[0]!.type).toBe('chat_group');
     expect(results.value[1]!.type).toBe('chat');
+  });
+
+  it('should list all groups and chats if query is empty and scope is title_only', async () => {
+    const mockSidebar = [
+      { id: 'group1', type: 'chat_group', chatGroup: { id: 'group1', name: 'Work', items: [] } },
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Chat 1', updatedAt: 100 } }
+    ];
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
+
+    await search({ searchQuery: '', options: { scope: 'title_only' } });
+
+    expect(results.value).toHaveLength(2);
+    expect(results.value[0]!.type).toBe('chat_group');
+    expect(results.value[1]!.type).toBe('chat');
+  });
+
+  it('should clear sidebar cache when clearSearch is called', async () => {
+    const { search, clearSearch } = useChatSearch();
+    const mockSidebar = [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } }];
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
+
+    // First search - should call storage
+    await search({ searchQuery: 'test', options: { scope: 'title_only' } });
+    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1);
+
+    // Second search - should use cache
+    await search({ searchQuery: 'tes', options: { scope: 'title_only' } });
+    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1);
+
+    // Clear search - should reset cache
+    clearSearch();
+
+    // Third search - should call storage again
+    await search({ searchQuery: 'test', options: { scope: 'title_only' } });
+    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(2);
   });
 });
