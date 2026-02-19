@@ -40,6 +40,7 @@ const mockIsSearching = ref(false);
 const mockIsScanningContent = ref(false);
 const mockResults = ref([]);
 const mockSearch = vi.fn();
+const mockClearSearch = vi.fn();
 
 vi.mock('../composables/useChatSearch', () => ({
   useChatSearch: () => ({
@@ -48,6 +49,7 @@ vi.mock('../composables/useChatSearch', () => ({
     isScanningContent: mockIsScanningContent,
     results: mockResults,
     search: mockSearch,
+    clearSearch: mockClearSearch,
   }),
 }));
 
@@ -64,9 +66,9 @@ vi.mock('../composables/useChat', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    searchPreviewEnabled: ref(true),
+    searchPreviewMode: ref('always'),
     searchContextSize: ref(2),
-    setSearchPreviewEnabled: vi.fn(),
+    setSearchPreviewMode: vi.fn(),
     setSearchContextSize: vi.fn(),
   }),
 }));
@@ -83,6 +85,7 @@ vi.mock('lucide-vue-next', () => ({
   Folder: { render: () => null },
   Filter: { render: () => null },
   Check: { render: () => null },
+  Eye: { render: () => null },
 }));
 
 // Mock scrollIntoView
@@ -167,8 +170,8 @@ describe('GlobalSearchModal Component', () => {
   it('should navigate and select results with keyboard', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
-      { type: 'chat', chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [] },
-      { type: 'chat', chatId: 'chat2', title: 'Chat 2', updatedAt: 2, contentMatches: [] },
+      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: 'chat2', title: 'Chat 2', updatedAt: 2, contentMatches: [], matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -191,7 +194,7 @@ describe('GlobalSearchModal Component', () => {
   it('should select a result when clicked', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
-      { type: 'chat', chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [] },
+      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -222,7 +225,7 @@ describe('GlobalSearchModal Component', () => {
   it('should navigate to group when a chat_group result is selected', async () => {
     mockQuery.value = 'work';
     mockResults.value = [
-      { type: 'chat_group', groupId: 'g1', name: 'Work', updatedAt: 1, matchType: 'title' },
+      { type: 'chat_group', item: { groupId: 'g1', name: 'Work', updatedAt: 1, matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -237,7 +240,7 @@ describe('GlobalSearchModal Component', () => {
   it('should hide SearchPreview while scanning content', async () => {
     mockQuery.value = 'test'; // Ensure query is present to enter the results block
     mockIsScanningContent.value = true;
-    mockResults.value = [{ type: 'chat', chatId: 'c1', title: 'C1', updatedAt: 1, contentMatches: [] }] as any;
+    mockResults.value = [{ type: 'chat', item: { chatId: 'c1', title: 'C1', updatedAt: 1, contentMatches: [], matchType: 'title' } }] as any;
 
     const wrapper = mount(GlobalSearchModal);
     await nextTick();
@@ -265,7 +268,7 @@ describe('GlobalSearchModal Component', () => {
   it('should switch between results and preview panes with ArrowRight/Left', async () => {
     mockQuery.value = 'work';
     mockResults.value = [
-      { type: 'chat_group', groupId: 'g1', name: 'Work', updatedAt: 1, matchType: 'title' },
+      { type: 'chat_group', item: { groupId: 'g1', name: 'Work', updatedAt: 1, matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -281,5 +284,69 @@ describe('GlobalSearchModal Component', () => {
     // ArrowLeft to switch back to results
     await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowLeft' });
     expect((wrapper.vm as any).activePane).toBe('results');
+  });
+
+  it('should list all items if opened with empty query in title_only mode', async () => {
+    mockQuery.value = '';
+    mockIsSearchOpen.value = false;
+
+    mount(GlobalSearchModal);
+
+    mockIsSearchOpen.value = true;
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 0)); // wait for watch and performSearch
+
+    expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
+      searchQuery: '',
+      options: expect.objectContaining({ scope: 'title_only' })
+    }));
+  });
+
+  it('should render results list even if query is empty in title_only mode', async () => {
+    mockQuery.value = '';
+    mockIsSearching.value = false;
+    mockResults.value = [
+      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    expect(wrapper.text()).not.toContain('Type to search...');
+    expect(wrapper.find('[data-testid="search-result-item-0"]').exists()).toBe(true);
+  });
+
+  it('should maintain expanded preview during the 100ms mouseleave buffer', async () => {
+    vi.useFakeTimers();
+    mockQuery.value = 'test';
+    mockIsScanningContent.value = false; // Ensure it's not hidden by scanning state
+    mockResults.value = [
+      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    const previewContainer = wrapper.get('[data-testid="search-preview-container"]');
+
+    // Trigger hover
+    await previewContainer.trigger('mouseenter');
+    await nextTick();
+    expect((wrapper.vm as any).isPreviewExpanded).toBe(true);
+
+    // Trigger leave - should still be true due to buffer
+    await previewContainer.trigger('mouseleave');
+    await nextTick();
+    expect((wrapper.vm as any).isPreviewExpanded).toBe(true);
+
+    // Advance time by 50ms - should still be true
+    vi.advanceTimersByTime(50);
+    expect((wrapper.vm as any).isPreviewExpanded).toBe(true);
+
+    // Advance time beyond 100ms - should finally be false
+    vi.advanceTimersByTime(60);
+    expect((wrapper.vm as any).isPreviewExpanded).toBe(false);
+
+    vi.useRealTimers();
   });
 });

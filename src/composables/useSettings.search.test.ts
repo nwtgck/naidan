@@ -3,22 +3,24 @@ import { useSettings } from './useSettings';
 
 describe('useSettings - Search Volatile State', () => {
   const {
-    searchPreviewEnabled,
+    searchPreviewMode,
     searchContextSize,
-    setSearchPreviewEnabled,
+    setSearchPreviewMode,
     setSearchContextSize
   } = useSettings();
 
   beforeEach(() => {
     // Reset to defaults manually as useSettings uses global state
-    setSearchPreviewEnabled(true);
+    setSearchPreviewMode({ mode: 'always' });
     setSearchContextSize(2);
   });
 
-  it('should update searchPreviewEnabled', () => {
-    expect(searchPreviewEnabled.value).toBe(true);
-    setSearchPreviewEnabled(false);
-    expect(searchPreviewEnabled.value).toBe(false);
+  it('should update searchPreviewMode', () => {
+    expect(searchPreviewMode.value).toBe('always');
+    setSearchPreviewMode({ mode: 'peek' });
+    expect(searchPreviewMode.value).toBe('peek');
+    setSearchPreviewMode({ mode: 'disabled' });
+    expect(searchPreviewMode.value).toBe('disabled');
   });
 
   it('should update searchContextSize', () => {

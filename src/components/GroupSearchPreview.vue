@@ -125,7 +125,7 @@ function formatTime(timestamp: number) {
           <Folder class="w-5 h-5" />
         </div>
         <div>
-          <h3 class="text-sm font-black text-gray-900 dark:text-gray-100 uppercase tracking-wider">{{ groupName }}</h3>
+          <h3 class="text-sm font-black text-gray-900 dark:text-gray-100 tracking-wider">{{ groupName }}</h3>
           <p class="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Group Preview</p>
         </div>
       </div>

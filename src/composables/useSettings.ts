@@ -20,7 +20,9 @@ const _isOnboardingDismissed = ref(false);
 const _onboardingDraft = ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>(null);
 const availableModels = ref<string[]>([]);
 const isFetchingModels = ref(false);
-const _searchPreviewEnabled = ref(true);
+
+export type SearchPreviewMode = 'always' | 'disabled' | 'peek';
+const _searchPreviewMode = ref<SearchPreviewMode>('always');
 const _searchContextSize = ref(2);
 
 let initPromise: Promise<void> | null = null;
@@ -286,8 +288,8 @@ export function useSettings() {
     storageService.updateSettings((curr) => ({ ...(curr || _settings.value), heavyContentAlertDismissed: dismissed }));
   }
 
-  function setSearchPreviewEnabled(enabled: boolean) {
-    _searchPreviewEnabled.value = enabled;
+  function setSearchPreviewMode({ mode }: { mode: SearchPreviewMode }) {
+    _searchPreviewMode.value = mode;
   }
 
   function setSearchContextSize(size: number) {
@@ -309,6 +311,7 @@ export function useSettings() {
     } as Settings;
     availableModels.value = [];
     isFetchingModels.value = false;
+    _searchPreviewMode.value = 'always';
     initPromise = null;
   }
 
@@ -319,7 +322,7 @@ export function useSettings() {
     onboardingDraft: readonly(_onboardingDraft),
     availableModels: readonly(availableModels),
     isFetchingModels: readonly(isFetchingModels),
-    searchPreviewEnabled: readonly(_searchPreviewEnabled),
+    searchPreviewMode: readonly(_searchPreviewMode),
     searchContextSize: readonly(_searchContextSize),
     init,
     save,
@@ -332,7 +335,7 @@ export function useSettings() {
     setIsOnboardingDismissed,
     setOnboardingDraft,
     setHeavyContentAlertDismissed,
-    setSearchPreviewEnabled,
+    setSearchPreviewMode,
     setSearchContextSize,
     __testOnly: {
       __testOnlyReset,
