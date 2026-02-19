@@ -8,7 +8,7 @@ import { capitalize, naturalSort } from '../utils/string';
 import {
   Loader2, Trash2, Globe, Bot, Type, Save,
   CheckCircle2, BookmarkPlus,
-  Check, Activity, MessageSquareQuote, Plus
+  Check, Activity, MessageSquareQuote, Plus, Link
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 
@@ -62,7 +62,45 @@ const saveSuccess = ref(false);
 
 const selectedProviderProfileId = ref('');
 
+const copied = ref(false);
 
+function copySetupUrl() {
+  const baseUrl = window.location.origin + window.location.pathname;
+  const params = new URLSearchParams();
+
+  const type = form.value.endpointType;
+  switch (type) {
+  case 'openai':
+  case 'ollama':
+    params.set('global-endpoint-type', type);
+    if (form.value.endpointUrl) {
+      params.set('global-endpoint-url', form.value.endpointUrl);
+    }
+    break;
+  case 'transformers_js':
+    // transformers_js doesn't use global-endpoint parameters in this implementation
+    break;
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
+  }
+  }
+
+  if (form.value.defaultModelId) {
+    params.set('global-model', form.value.defaultModelId);
+  }
+
+  const queryString = params.toString();
+  const fullUrl = queryString ? `${baseUrl}#/?${queryString}` : baseUrl;
+
+  navigator.clipboard.writeText(fullUrl).then(() => {
+    copied.value = true;
+    addToast({ message: 'Setup URL copied to clipboard', duration: 2000 });
+    setTimeout(() => {
+      copied.value = false;
+    }, 2000);
+  });
+}
 
 function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
   form.value = {
@@ -245,9 +283,21 @@ defineExpose({
           </div>
 
           <section class="space-y-6">
-            <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-              <Globe class="w-5 h-5 text-blue-500" />
-              <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Endpoint Configuration</h2>
+            <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+              <div class="flex items-center gap-2">
+                <Globe class="w-5 h-5 text-blue-500" />
+                <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Endpoint Configuration</h2>
+              </div>
+              <button
+                @click="copySetupUrl"
+                class="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg transition-all border border-blue-100/50 dark:border-blue-900/30"
+                title="Copy URL with current settings"
+                data-testid="setting-copy-setup-url"
+              >
+                <Check v-if="copied" class="w-3 h-3" />
+                <Link v-else class="w-3 h-3" />
+                <span>{{ copied ? 'URL Copied!' : 'Copy Setup URL' }}</span>
+              </button>
             </div>
 
             <div class="grid grid-cols-1 gap-8">

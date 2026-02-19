@@ -1,4 +1,4 @@
-import { ref, readonly } from 'vue';
+import { ref, readonly, computed } from 'vue';
 import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, type ProviderProfile } from '../models/types';
 import { storageService } from '../services/storage';
 import { checkOPFSSupport } from '../services/storage/opfs-detection';
@@ -56,6 +56,12 @@ transformersJsService.subscribeModelList(async () => {
 
 export function useSettings() {
   const loading = ref(false);
+
+  const isOnboardingDismissed = computed(() => {
+    const hasEndpoint = !!_settings.value.endpointUrl || _settings.value.endpointType === 'transformers_js';
+    const hasModel = !!_settings.value.defaultModelId;
+    return _isOnboardingDismissed.value || (hasEndpoint && hasModel);
+  });
 
   async function init() {
     if (_initialized.value) return;
@@ -132,7 +138,6 @@ export function useSettings() {
         if (s) {
           _settings.value = s;
           if (s.endpointUrl || s.endpointType === 'transformers_js') {
-            _isOnboardingDismissed.value = true;
             // Initial fetch of models if we have an endpoint
             fetchModels();
           }
@@ -310,7 +315,7 @@ export function useSettings() {
   return {
     settings: readonly(_settings),
     initialized: readonly(_initialized),
-    isOnboardingDismissed: readonly(_isOnboardingDismissed),
+    isOnboardingDismissed,
     onboardingDraft: readonly(_onboardingDraft),
     availableModels: readonly(availableModels),
     isFetchingModels: readonly(isFetchingModels),

@@ -7,12 +7,18 @@ import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { useChatSearch, type SearchResultItem, type SearchScope, type ContentMatch } from '../composables/useChatSearch';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
-import SearchPreview from './SearchPreview.vue';
+import { useLayout } from '../composables/useLayout';
+import { UNTITLED_CHAT_TITLE } from '../models/constants';
+import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+
+const SearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./SearchPreview.vue'));
+const GroupSearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./GroupSearchPreview.vue'));
 
 const router = useRouter();
 const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
-const { query, isSearching, results, search } = useChatSearch();
-const { openChat, chatGroups, currentChat } = useChat();
+const { query, isSearching, isScanningContent, results, search } = useChatSearch();
+const { openChat, openChatGroup, chatGroups, currentChat } = useChat();
+const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
   searchPreviewEnabled,
   searchContextSize,
@@ -21,10 +27,21 @@ const {
 } = useSettings();
 
 const searchInput = ref<HTMLInputElement | null>(null);
+const groupPreviewRef = ref<{
+  navigate: (direction: 'up' | 'down') => void;
+  handleEnter: () => void;
+  selectedChatId: string | null;
+    } | null>(null);
 const selectedIndex = ref(0);
 const scrollContainer = ref<HTMLElement | null>(null);
-const searchScope = ref<SearchScope>('all');
+const searchScope = ref<SearchScope>('title_only');
 const showGroupSelector = ref(false);
+const activePane = ref<'results' | 'preview'>('results');
+
+// Reset focus to results when search result changes
+watch(results, () => {
+  activePane.value = 'results';
+});
 
 const handleClickOutsideGroupSelector = (event: MouseEvent) => {
   const target = event.target as HTMLElement;
@@ -48,7 +65,7 @@ const selectedGroups = computed(() => {
 const targetChatTitle = computed(() => {
   if (!chatId.value) return null;
   // If it's the current chat, we can get it from currentChat
-  if (currentChat.value?.id === chatId.value) return currentChat.value.title || 'This Chat';
+  if (currentChat.value?.id === chatId.value) return currentChat.value.title || UNTITLED_CHAT_TITLE;
   // Otherwise we'd need to fetch it or rely on a generic name
   return 'Filtered Chat';
 });
@@ -81,9 +98,24 @@ const handleInput = (e: Event) => {
   const val = (e.target as HTMLInputElement).value;
   if (debounceTimeout) clearTimeout(debounceTimeout);
 
+  const delay = (() => {
+    const scope = searchScope.value;
+    switch (scope) {
+    case 'title_only':
+      return 100;
+    case 'all':
+    case 'current_thread':
+      return 300;
+    default: {
+      // const __exhaustiveCheck: never = scope;
+      return 300;
+    }
+    }
+  })();
+
   debounceTimeout = setTimeout(() => {
     performSearch(val);
-  }, 300);
+  }, delay);
 };
 
 watch([searchScope, chatGroupIds, chatId], () => {
@@ -95,15 +127,68 @@ watch([searchScope, chatGroupIds, chatId], () => {
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'ArrowDown') {
     e.preventDefault();
-    selectedIndex.value = Math.min(selectedIndex.value + 1, totalItems.value - 1);
-    scrollToSelected();
+    const pane = activePane.value;
+    switch (pane) {
+    case 'preview':
+      if (groupPreviewRef.value) {
+        groupPreviewRef.value.navigate('down');
+      }
+      break;
+    case 'results':
+      selectedIndex.value = Math.min(selectedIndex.value + 1, totalItems.value - 1);
+      scrollToSelected();
+      break;
+    default: {
+      const _ex: never = pane;
+      throw new Error(`Unhandled pane: ${_ex}`);
+    }
+    }
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
-    scrollToSelected();
+    const pane = activePane.value;
+    switch (pane) {
+    case 'preview':
+      if (groupPreviewRef.value) {
+        groupPreviewRef.value.navigate('up');
+      }
+      break;
+    case 'results':
+      selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
+      scrollToSelected();
+      break;
+    default: {
+      const _ex: never = pane;
+      throw new Error(`Unhandled pane: ${_ex}`);
+    }
+    }
+  } else if (e.key === 'ArrowRight') {
+    // If we are on a chat group, focus the preview pane
+    if (activePane.value === 'results' && currentSelectedItem.value?.type === 'chat_group') {
+      e.preventDefault();
+      activePane.value = 'preview';
+    }
+  } else if (e.key === 'ArrowLeft') {
+    const pane = activePane.value;
+    switch (pane) {
+    case 'preview':
+      e.preventDefault();
+      activePane.value = 'results';
+      break;
+    case 'results':
+      // Do nothing
+      break;
+    default: {
+      const _ex: never = pane;
+      throw new Error(`Unhandled pane: ${_ex}`);
+    }
+    }
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    selectItem(selectedIndex.value);
+    if (activePane.value === 'preview' && groupPreviewRef.value) {
+      groupPreviewRef.value.handleEnter();
+    } else {
+      selectItem(selectedIndex.value);
+    }
   } else if (e.key === 'Escape') {
     e.preventDefault();
     closeSearch();
@@ -113,12 +198,24 @@ const handleKeydown = (e: KeyboardEvent) => {
 const totalItems = computed(() => flatList.value.length);
 
 function flattenResults(items: SearchResultItem[]) {
-  const flat: { type: 'chat' | 'message'; item: SearchResultItem | ContentMatch; parentChat?: SearchResultItem }[] = [];
+  const flat: { type: 'chat' | 'message' | 'chat_group'; item: SearchResultItem | ContentMatch; parentChat?: SearchResultItem }[] = [];
 
   for (const item of items) {
-    flat.push({ type: 'chat', item });
-    for (const match of item.contentMatches) {
-      flat.push({ type: 'message', item: match, parentChat: item });
+    const type = item.type;
+    switch (type) {
+    case 'chat':
+      flat.push({ type: 'chat', item });
+      for (const match of item.contentMatches) {
+        flat.push({ type: 'message', item: match, parentChat: item });
+      }
+      break;
+    case 'chat_group':
+      flat.push({ type: 'chat_group', item });
+      break;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled type: ${_ex}`);
+    }
     }
   }
   return flat;
@@ -145,19 +242,27 @@ async function selectItem(index: number) {
   const type = target.type;
   switch (type) {
   case 'chat': {
-    const chatItem = target.item as SearchResultItem;
+    const chatItem = target.item as Extract<SearchResultItem, { type: 'chat' }>;
     await openChat(chatItem.chatId);
     router.push(`/chat/${chatItem.chatId}`);
+    closeSearch();
     break;
   }
   case 'message': {
     const matchItem = target.item as ContentMatch;
-    const parentChat = target.parentChat!;
+    const parentChat = target.parentChat as Extract<SearchResultItem, { type: 'chat' }>;
     await openChat(parentChat.chatId, matchItem.targetLeafId);
     router.push({
       path: `/chat/${parentChat.chatId}`,
       query: { leaf: matchItem.targetLeafId }
     });
+    closeSearch();
+    break;
+  }
+  case 'chat_group': {
+    const groupItem = target.item as Extract<SearchResultItem, { type: 'chat_group' }>;
+    openChatGroup(groupItem.groupId);
+    closeSearch();
     break;
   }
   default: {
@@ -165,19 +270,30 @@ async function selectItem(index: number) {
     throw new Error(`Unhandled target type: ${_ex}`);
   }
   }
-  closeSearch();
 }
+
+const previousFocusArea = ref<import('../composables/useLayout').FocusArea | null>(null);
 
 watch(isSearchOpen, (isOpen) => {
   if (isOpen) {
-    // Clear old results immediately to avoid flicker
-    results.value = [];
+    previousFocusArea.value = activeFocusArea.value;
+    setActiveFocusArea('search');
     nextTick(() => {
-      searchInput.value?.focus();
+      if (searchInput.value) {
+        searchInput.value.focus();
+        searchInput.value.select();
+      }
       if (query.value) {
         performSearch(query.value);
       }
     });
+  } else {
+    if (previousFocusArea.value) {
+      setActiveFocusArea(previousFocusArea.value);
+      previousFocusArea.value = null;
+    } else {
+      setActiveFocusArea('chat');
+    }
   }
 });
 
@@ -192,7 +308,7 @@ function escapeRegExp(string: string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function highlight(text: string, query: string) {
+function highlight(text: string, query: string, color: 'indigo' | 'blue' = 'indigo') {
   if (!query) return he.encode(text);
 
   const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
@@ -202,10 +318,24 @@ function highlight(text: string, query: string) {
   const regex = new RegExp(`(${pattern})`, 'gi');
 
   const parts = text.split(regex);
+  const colorClasses = (() => {
+    switch (color) {
+    case 'blue':
+      return 'bg-blue-200 dark:bg-blue-900/50 text-blue-800 dark:text-blue-100';
+    case 'indigo':
+      return 'bg-indigo-200 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-100';
+    default: {
+      const _ex: never = color;
+      throw new Error(`Unhandled color: ${_ex}`);
+    }
+    }
+  })();
+
   return parts.map(part => {
+
     const isMatch = keywords.some(k => part.toLowerCase() === k);
     if (isMatch) {
-      return `<span class="bg-indigo-200 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-100 font-bold rounded px-0.5">${he.encode(part)}</span>`;
+      return `<span class="${colorClasses} font-bold rounded px-0.5">${he.encode(part)}</span>`;
     }
     return he.encode(part);
   }).join('');
@@ -222,11 +352,11 @@ defineExpose({
 <template>
   <Transition name="fade">
     <div v-if="isSearchOpen" class="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4" @click.self="closeSearch">
-      <!-- Backdrop -->
-      <div class="absolute inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm transition-opacity" aria-hidden="true" />
+      <!-- Backdrop (Added click handler for robust outside click closing) -->
+      <div class="absolute inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm transition-opacity" aria-hidden="true" @click="closeSearch" />
 
       <!-- Modal Container (Split View) -->
-      <div class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col h-[70vh] overflow-hidden transform transition-all scale-100">
+      <div class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col h-[70vh] overflow-hidden transform transition-all scale-100" @click.stop>
 
         <!-- Search Header -->
         <div class="flex items-center gap-3 p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
@@ -374,8 +504,11 @@ defineExpose({
           <!-- Left: Results List -->
           <div
             ref="scrollContainer"
-            class="overflow-y-auto scrollbar-thin p-2 space-y-1 border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300"
-            :class="searchPreviewEnabled ? 'w-1/3 min-w-[320px]' : 'w-full'"
+            class="overflow-y-auto scrollbar-thin p-2 space-y-1 border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300 relative"
+            :class="[
+              searchPreviewEnabled ? 'w-1/3 min-w-[320px]' : 'w-full',
+              activePane === 'results' ? 'ring-2 ring-inset ring-blue-500/10' : ''
+            ]"
           >
             <div v-if="!query && !isSearching" class="p-8 text-center text-gray-400 text-sm">
               Type to search...
@@ -394,17 +527,38 @@ defineExpose({
                 @mouseenter="selectedIndex = index"
                 @click="selectItem(index)"
                 class="group flex flex-col p-2.5 rounded-xl cursor-pointer transition-all border border-transparent"
-                :class="selectedIndex === index ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800 shadow-sm' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'"
+                :class="selectedIndex === index
+                  ? (activePane === 'results' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800 shadow-sm' : 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-80')
+                  : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'"
               >
+                <!-- Chat Group Item -->
+                <div v-if="entry.type === 'chat_group'" class="flex items-center justify-between gap-3">
+                  <div class="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg shrink-0">
+                    <Folder class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div class="flex flex-col flex-1 overflow-hidden">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-html="highlight((entry.item as Extract<SearchResultItem, { type: 'chat_group' }>).name, query, 'blue')"></span>
+                      <span class="text-[9px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded font-black uppercase tracking-wider">Group</span>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Chat Header Item -->
-                <div v-if="entry.type === 'chat'" class="flex items-center justify-between gap-3">
+                <div v-else-if="entry.type === 'chat'" class="flex items-center justify-between gap-3">
                   <div class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg shrink-0">
                     <MessageSquare class="w-4 h-4 text-gray-500 dark:text-gray-400" />
                   </div>
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
-                      <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-html="highlight((entry.item as SearchResultItem).title || 'Untitled Chat', query)"></span>
-                      <span class="text-[10px] text-gray-400 shrink-0">{{ formatTime((entry.item as SearchResultItem).updatedAt) }}</span>
+                      <div class="flex flex-col overflow-hidden">
+                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-html="highlight((entry.item as Extract<SearchResultItem, { type: 'chat' }>).title || UNTITLED_CHAT_TITLE, query)"></span>
+                        <span v-if="(entry.item as Extract<SearchResultItem, { type: 'chat' }>).groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
+                          <Folder class="w-2.5 h-2.5 opacity-50 text-blue-500" />
+                          <span v-html="highlight((entry.item as Extract<SearchResultItem, { type: 'chat' }>).groupName!, query, 'blue')"></span>
+                        </span>
+                      </div>
+                      <span class="text-[10px] text-gray-400 shrink-0">{{ formatTime((entry.item as Extract<SearchResultItem, { type: 'chat' }>).updatedAt) }}</span>
                     </div>
                     <div class="flex items-center gap-1.5 mt-0.5">
                       <Clock class="w-3 h-3 text-gray-300" />
@@ -414,7 +568,7 @@ defineExpose({
                 </div>
 
                 <!-- Message Match Item -->
-                <div v-else class="flex items-start gap-3 pl-10 opacity-90 relative">
+                <div v-else-if="entry.type === 'message'" class="flex items-start gap-3 pl-10 opacity-90 relative">
                   <div class="absolute left-4 top-1 h-full w-0.5 bg-gray-100 dark:bg-gray-800"></div>
                   <CornerDownRight class="w-3 h-3 text-gray-300 mt-1 shrink-0" />
                   <div class="flex flex-col overflow-hidden text-sm flex-1">
@@ -432,7 +586,7 @@ defineExpose({
                 </div>
               </div>
 
-              <div v-if="isSearching" class="p-4 flex items-center justify-center text-gray-400 gap-2 border-t border-gray-50 dark:border-gray-800/50 mt-2">
+              <div v-if="isScanningContent" class="p-4 flex items-center justify-center text-gray-400 gap-2 border-t border-gray-50 dark:border-gray-800/50 mt-2">
                 <Loader2 class="w-4 h-4 animate-spin" />
                 <span class="text-[11px] font-bold">SCANNING CONTENT...</span>
               </div>
@@ -440,11 +594,22 @@ defineExpose({
           </div>
 
           <!-- Right: Preview -->
-          <div v-if="searchPreviewEnabled" class="flex-1 bg-white dark:bg-gray-900 overflow-hidden">
-            <SearchPreview
-              :match="currentSelectedItem?.type === 'message' ? currentSelectedItem.item as ContentMatch : undefined"
-              :chat="currentSelectedItem?.type === 'chat' ? currentSelectedItem.item as SearchResultItem : undefined"
-            />
+          <div v-if="searchPreviewEnabled && !isScanningContent && results.length > 0"
+               class="flex-1 bg-white dark:bg-gray-900 overflow-hidden transition-all duration-300"
+               :class="activePane === 'preview' ? 'ring-2 ring-inset ring-blue-500/20' : ''">
+            <template v-if="currentSelectedItem?.type === 'chat_group'">
+              <GroupSearchPreview
+                ref="groupPreviewRef"
+                :groupId="(currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).groupId"
+                :groupName="(currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).name"
+              />
+            </template>
+            <template v-else>
+              <SearchPreview
+                :match="currentSelectedItem?.type === 'message' ? currentSelectedItem.item as ContentMatch : undefined"
+                :chat="currentSelectedItem?.type === 'chat' ? currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat' }> : undefined"
+              />
+            </template>
           </div>
         </div>
 

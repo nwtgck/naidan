@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import type { ContentMatch, SearchResultItem } from '../composables/useChatSearch';
-import { Clock, GitBranch, Loader2, MessageSquare } from 'lucide-vue-next';
+import { GitBranch, Loader2, MessageSquare } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { getChatBranch } from '../utils/chat-tree';
 import type { MessageNode, Chat } from '../models/types';
 import { useSettings } from '../composables/useSettings';
+import { UNTITLED_CHAT_TITLE } from '../models/constants';
 import MessageItem from './MessageItem.vue';
 
 const props = defineProps<{
   match?: ContentMatch;
-  chat?: SearchResultItem;
+  chat?: Extract<SearchResultItem, { type: 'chat' }>;
 }>();
 
 const { searchContextSize } = useSettings();
@@ -21,7 +22,8 @@ const matchedIndex = ref(-1);
 const CONTEXT_SIZE = computed(() => searchContextSize.value);
 
 async function loadContext() {
-  if (!props.match) {
+  const chatId = props.match?.chatId || props.chat?.chatId;
+  if (!chatId) {
     branchMessages.value = [];
     matchedIndex.value = -1;
     return;
@@ -29,16 +31,23 @@ async function loadContext() {
 
   isLoading.value = true;
   try {
-    const fullChat = await storageService.loadChat(props.match.chatId);
+    const fullChat = await storageService.loadChat(chatId);
     if (fullChat) {
-      // We want the branch that leads to the targetLeafId of the match
+      // If we have a match, use its leaf. Otherwise use the chat's current leaf.
+      const targetLeafId = props.match?.targetLeafId || fullChat.currentLeafId;
       const virtualChat: Chat = {
         ...fullChat,
-        currentLeafId: props.match.targetLeafId
+        currentLeafId: targetLeafId
       };
       const branch = getChatBranch(virtualChat);
       branchMessages.value = branch;
-      matchedIndex.value = branch.findIndex(m => m.id === props.match?.messageId);
+
+      if (props.match) {
+        matchedIndex.value = branch.findIndex(m => m.id === props.match?.messageId);
+      } else {
+        // If no match, "focus" on the last message
+        matchedIndex.value = branch.length - 1;
+      }
     }
   } catch (e) {
     console.error('Failed to load context for search preview:', e);
@@ -47,21 +56,18 @@ async function loadContext() {
   }
 }
 
-watch(() => props.match?.messageId, loadContext, { immediate: true });
+watch(() => props.match?.messageId || props.chat?.chatId, loadContext, { immediate: true });
 
 const visibleMessages = computed(() => {
-  if (matchedIndex.value === -1) return [];
+  if (branchMessages.value.length === 0) return [];
+  // If we don't have a specific match index, show the last N messages
+  if (matchedIndex.value === -1) {
+    return branchMessages.value.slice(-CONTEXT_SIZE.value);
+  }
   const start = Math.max(0, matchedIndex.value - CONTEXT_SIZE.value);
   const end = Math.min(branchMessages.value.length, matchedIndex.value + CONTEXT_SIZE.value + 1);
   return branchMessages.value.slice(start, end);
 });
-
-const formatDate = (ts: number) => {
-  return new Date(ts).toLocaleString(undefined, {
-    month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
-};
 
 // Dummy handlers for MessageItem
 const handleDummy = () => {};
@@ -90,35 +96,21 @@ defineExpose({
       <Loader2 class="w-6 h-6 animate-spin" />
     </div>
 
-    <!-- Chat Preview (When a chat header is selected) -->
-    <div v-else-if="chat && !match" class="flex-1 p-8 space-y-6 overflow-y-auto">
-      <div class="space-y-2">
-        <h3 class="text-2xl font-black text-gray-900 dark:text-gray-100 leading-tight">{{ chat.title || 'Untitled Chat' }}</h3>
-        <div class="flex items-center gap-3 text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-          <Clock class="w-3.5 h-3.5" />
-          <span>Last updated: {{ formatDate(chat.updatedAt) }}</span>
-        </div>
-      </div>
-
-      <div class="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 text-blue-700 dark:text-blue-300 rounded-2xl text-xs font-bold flex items-center gap-3">
-        <div class="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-xl">
-          <MessageSquare class="w-4 h-4" />
-        </div>
-        <span>TITLE MATCH FOUND IN THIS CHAT</span>
-      </div>
-    </div>
-
-    <!-- Message Match Preview (With Context) -->
-    <div v-else-if="match" class="flex-1 flex flex-col overflow-hidden">
+    <!-- Message Preview (Both for Match and Chat) -->
+    <div v-else-if="match || chat" class="flex-1 flex flex-col overflow-hidden">
+      <!-- Context Header -->
       <div class="p-4 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex justify-between items-center shrink-0">
-        <div class="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-          <span>Conversation Context</span>
-          <span class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[10px]">{{ visibleMessages.length }} messages</span>
+        <div class="flex flex-col gap-0.5 overflow-hidden">
+          <h3 v-if="chat" class="text-xs font-black text-gray-900 dark:text-gray-100 truncate">{{ chat.title || UNTITLED_CHAT_TITLE }}</h3>
+          <div class="text-[9px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <span>{{ match ? 'Conversation Match' : 'Recent History' }}</span>
+            <span class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-[8px]">{{ visibleMessages.length }} messages</span>
+          </div>
         </div>
 
-        <div v-if="!match.isCurrentThread" class="flex items-center gap-1.5 text-[10px] font-bold bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-3 py-1 rounded-full border border-amber-100 dark:border-amber-800/50">
-          <GitBranch class="w-3.5 h-3.5" />
-          <span>ALTERNATIVE BRANCH</span>
+        <div v-if="match && !match.isCurrentThread" class="flex items-center gap-1.5 text-[9px] font-bold bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded-full border border-amber-100 dark:border-amber-800/50">
+          <GitBranch class="w-3 h-3" />
+          <span>ALT BRANCH</span>
         </div>
       </div>
 
@@ -128,11 +120,11 @@ defineExpose({
         </div>
 
         <div v-for="msg in visibleMessages" :key="msg.id" class="relative">
-          <div v-if="msg.id === match.messageId" class="absolute inset-0 bg-yellow-50/30 dark:bg-yellow-900/5 border-y-2 border-yellow-200/50 dark:border-yellow-900/20 pointer-events-none z-0"></div>
+          <div v-if="match && msg.id === match.messageId" class="absolute inset-0 bg-yellow-50/30 dark:bg-yellow-900/5 border-y-2 border-yellow-200/50 dark:border-yellow-900/20 pointer-events-none z-0"></div>
           <MessageItem
             :message="msg"
             class="relative z-10"
-            :class="{ 'opacity-50 grayscale-[0.5]': msg.id !== match.messageId }"
+            :class="{ 'opacity-50 grayscale-[0.5]': match && msg.id !== match.messageId }"
             @fork="handleDummy"
             @edit="handleDummy"
             @switch-version="handleDummy"

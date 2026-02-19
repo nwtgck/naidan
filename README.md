@@ -98,6 +98,9 @@ Naidan supports URL fragment parameters (following the `#`) to automate actions 
 -   `model`: **Model Override**. Specifies the model ID to use for the new chat.
 -   `chat-group`: **Target Group**. The name or ID of the group for the new chat. If the group doesn't exist, it is created automatically.
 -   `system-prompt` (or `sp`): **System Prompt Override**. Specifies the system prompt for the new chat. This will set the chat's system behavior to `override` with the provided content.
+-   `global-endpoint-type`: **Global Endpoint Type**. Specifies the type of the global endpoint (`openai` or `ollama`).
+-   `global-endpoint-url`: **Global Endpoint URL**. Specifies the base URL for the global endpoint.
+-   `global-model`: **Global Default Model**. Specifies the default model ID to be used globally.
 
 ### Examples
 
@@ -107,6 +110,8 @@ Naidan supports URL fragment parameters (following the `#`) to automate actions 
     `index.html#/?sp=You+are+a+concise+assistant&q=%s`
 -   **Organized Chat**: Start a chat directly inside a specific group.
     `index.html#/?chat-group=Work&q=%s`
+-   **Zero-Config Setup**: Launch the app pre-configured with a specific local Ollama instance and model.
+    `index.html#/?global-endpoint-type=ollama&global-endpoint-url=http://localhost:11434&global-model=llama3`
 
 ## Development
 

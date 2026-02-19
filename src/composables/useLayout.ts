@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 
-export type FocusArea = 'sidebar' | 'chat' | 'chat-group-settings' | 'chat-settings' | 'settings' | 'onboarding' | 'dialog' | 'none';
+export type FocusArea = 'sidebar' | 'chat' | 'chat-group-settings' | 'chat-settings' | 'settings' | 'onboarding' | 'dialog' | 'none' | 'search';
 
 const isSidebarOpen = ref(true);
 const isDebugOpen = ref(false);

@@ -13,6 +13,7 @@ import type {
   ImportConfig,
   ImportPreview
 } from '../services/import-export/types';
+import { UNTITLED_CHAT_TITLE } from '../models/constants';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -377,7 +378,7 @@ defineExpose({
                 </div>
                 <div v-else class="pl-6 text-gray-600 dark:text-gray-300 flex items-center gap-2">
                   <div class="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></div>
-                  {{ item.data.title || 'Untitled Chat' }}
+                  {{ item.data.title || UNTITLED_CHAT_TITLE }}
                 </div>
               </div>
             </div>

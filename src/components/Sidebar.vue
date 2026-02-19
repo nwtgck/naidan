@@ -435,6 +435,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
   case 'onboarding':
   case 'dialog':
   case 'none':
+  case 'search':
     return;
   default: {
     const _ex: never = area;
