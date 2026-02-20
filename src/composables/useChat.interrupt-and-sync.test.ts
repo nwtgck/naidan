@@ -18,6 +18,7 @@ const mockLlm = {
 
 vi.mock('../services/llm', () => {
   return {
+    UNKNOWN_STEPS: Symbol('unknown'),
     OpenAIProvider: vi.fn().mockImplementation(function() {
       return mockLlm;
     }),
@@ -164,7 +165,10 @@ describe('useChat Interrupt and Sync Tests', () => {
     const { handleImageGeneration, availableModels } = chatStore;
     availableModels.value = ['gpt-4', 'x/z-image-turbo:v1'];
 
-    mockLlm.generateImage.mockResolvedValue(new Blob(['img'], { type: 'image/png' }));
+    mockLlm.generateImage.mockResolvedValue({
+      image: new Blob(['img'], { type: 'image/png' }),
+      totalSteps: 10
+    });
 
     await handleImageGeneration({
       chatId,

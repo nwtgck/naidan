@@ -61,6 +61,8 @@ const OllamaImageStreamChunkSchema = z.discriminatedUnion('done', [
   }),
 ]);
 
+export const UNKNOWN_STEPS: unique symbol = Symbol('unknown');
+
 export interface LLMProvider {
   chat(params: {
     messages: ChatMessage[];
@@ -506,7 +508,7 @@ export class OllamaProvider implements LLMProvider {
     images: { blob: Blob }[];
     onProgress: (params: { currentStep: number; totalSteps: number }) => void;
     signal: AbortSignal | undefined;
-  }): Promise<Blob> {
+  }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> {
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/generate`;
 
@@ -573,6 +575,7 @@ export class OllamaProvider implements LLMProvider {
     const decoder = new TextDecoder();
     let buffer = '';
     let b64Data = '';
+    let totalSteps: number | typeof UNKNOWN_STEPS = UNKNOWN_STEPS;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -594,6 +597,7 @@ export class OllamaProvider implements LLMProvider {
             }
           } else {
             if (validated.completed !== undefined && validated.total !== undefined) {
+              totalSteps = validated.total;
               onProgress({ currentStep: validated.completed, totalSteps: validated.total });
             }
           }
@@ -637,6 +641,9 @@ export class OllamaProvider implements LLMProvider {
       byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
     const byteArray = new Uint8Array(byteNumbers);
-    return new Blob([byteArray], { type: 'image/png' });
+    return {
+      image: new Blob([byteArray], { type: 'image/png' }),
+      totalSteps
+    };
   }
 }

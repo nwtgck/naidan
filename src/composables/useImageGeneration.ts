@@ -1,6 +1,6 @@
 import { generateId } from '../utils/id';
 import { ref } from 'vue';
-import { OllamaProvider } from '../services/llm';
+import { OllamaProvider, UNKNOWN_STEPS } from '../services/llm';
 import { storageService } from '../services/storage';
 import {
   getImageGenerationModels,
@@ -135,7 +135,7 @@ export function useImageGeneration() {
     endpointHttpHeaders: [string, string][] | undefined,
     onProgress: (params: { currentStep: number, totalSteps: number }) => void,
     signal: AbortSignal | undefined
-  }) => {
+  }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
     const provider = new OllamaProvider({
       endpoint: endpointUrl,
       headers: endpointHttpHeaders
@@ -248,7 +248,7 @@ export function useImageGeneration() {
           if (activeSeed !== undefined && activeSeed < 1) activeSeed = 1;
         }
 
-        const blob = await performBase64Generation({
+        const { image: blob, totalSteps } = await performBase64Generation({
           prompt,
           model: imageModel,
           width,
@@ -302,7 +302,7 @@ export function useImageGeneration() {
             displayWidth,
             displayHeight,
             prompt, // Use original prompt without (seed: ...)
-            steps,
+            steps: totalSteps === UNKNOWN_STEPS ? undefined : totalSteps,
             seed: activeSeed
           });
 

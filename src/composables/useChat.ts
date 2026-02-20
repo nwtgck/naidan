@@ -2,7 +2,7 @@ import { generateId } from '../utils/id';
 import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } from 'vue';
 import type { Chat, MessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt } from '../models/types';
 import { storageService } from '../services/storage';
-import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
+import { OpenAIProvider, OllamaProvider, UNKNOWN_STEPS, type LLMProvider } from '../services/llm';
 import { TransformersJsProvider } from '../services/transformers-js-provider';
 import { transformersJsService } from '../services/transformers-js';
 import { useSettings } from './useSettings';
@@ -1436,7 +1436,7 @@ export function useChat() {
     images: { blob: Blob }[],
     chat: Chat,
     signal: AbortSignal | undefined
-  }) => {
+  }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
     const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
     return await _performGeneration({
       prompt,

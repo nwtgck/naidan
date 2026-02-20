@@ -34,11 +34,16 @@ if (!global.crypto) {
 }
 
 // Mock LLM provider
-vi.mock('../services/llm', () => {
+vi.mock('../services/llm', async (importOriginal) => {
+  const actual = await importOriginal<any>();
   return {
+    ...actual,
     OllamaProvider: class {
       generateImage() {
-        return Promise.resolve(new Blob(['test-image'], { type: 'image/png' }));
+        return Promise.resolve({
+          image: new Blob(['test-image'], { type: 'image/png' }),
+          totalSteps: 10
+        });
       }
     }
   };
@@ -332,7 +337,7 @@ describe('useImageGeneration', () => {
       expect(blockData.prompt).toBe('a futuristic city');
     });
 
-    it('propagates explicit steps and seed to the final output blocks', async () => {
+    it('uses steps and totalSteps from the provider in the final output blocks', async () => {
       const { handleImageGeneration } = useImageGeneration();
 
       await handleImageGeneration({
@@ -347,10 +352,35 @@ describe('useImageGeneration', () => {
       expect(blockMatch).not.toBeNull();
       const blockData = JSON.parse(blockMatch![1]!);
 
-      expect(blockData.steps).toBe(42);
+      expect(blockData.steps).toBe(10); // Mock returns 10
       expect(blockData.seed).toBe(1337);
       expect(blockData.prompt).not.toContain('(seed: 1337)');
       expect(blockData.prompt).toBe('a futuristic city');
+    });
+
+    it('uses undefined for steps in the final output blocks if provider returns UNKNOWN_STEPS', async () => {
+      const { handleImageGeneration } = useImageGeneration();
+      const { OllamaProvider } = await import('../services/llm');
+      const { UNKNOWN_STEPS } = await import('../services/llm');
+
+      const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
+        .mockResolvedValueOnce({
+          image: new Blob(['test'], { type: 'image/png' }),
+          totalSteps: UNKNOWN_STEPS as any
+        });
+
+      await handleImageGeneration({
+        ...commonParams,
+        steps: 42,
+        storageType: 'opfs'
+      });
+
+      const assistantNode = mockChat.root.items[0];
+      const blockMatch = assistantNode!.content.match(/```naidan_experimental_image\s+([\s\S]*?)\s+```/);
+      const blockData = JSON.parse(blockMatch![1]!);
+
+      expect(blockData.steps).toBeUndefined();
+      generateImageSpy.mockRestore();
     });
 
     it('updates and then clears imageProgressMap during generation', async () => {
@@ -385,7 +415,10 @@ describe('useImageGeneration', () => {
 
           // Simulate some progress
           if (onProgress) onProgress({ currentStep: 1, totalSteps: 10 });
-          return new Blob(['test'], { type: 'image/png' });
+          return {
+            image: new Blob(['test'], { type: 'image/png' }),
+            totalSteps: 10
+          };
         });
 
       await handleImageGeneration({
