@@ -3,7 +3,8 @@ import { ref } from 'vue';
 import { useLayout } from '../composables/useLayout';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { useOPFSExplorer } from '../composables/useOPFSExplorer';
-import { Terminal, HardDrive, MoreVertical } from 'lucide-vue-next';
+import { useRecentChats } from '../composables/useRecentChats';
+import { Terminal, HardDrive, MoreVertical, History } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';
 
 defineProps<{
@@ -13,12 +14,18 @@ defineProps<{
 const { isDebugOpen, toggleDebug } = useLayout();
 const { errorCount } = useGlobalEvents();
 const { openOPFS } = useOPFSExplorer();
+const { openRecent } = useRecentChats();
 
 const showOpfsMenu = ref(false);
 const opfsTriggerRef = ref<HTMLElement | null>(null);
 
 function handleOpenOPFS() {
   openOPFS();
+  showOpfsMenu.value = false;
+}
+
+function handleOpenRecent() {
+  openRecent();
   showOpfsMenu.value = false;
 }
 
@@ -72,6 +79,17 @@ defineExpose({
           <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
             Quick Access
           </div>
+          <button
+            @click="handleOpenRecent"
+            class="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium group"
+            data-testid="sidebar-recent-button"
+          >
+            <div class="flex items-center gap-3">
+              <History class="w-4 h-4" />
+              <span>Recent Chats</span>
+            </div>
+            <kbd class="hidden group-hover:inline-block px-1 py-0.5 text-[9px] font-sans font-medium text-gray-400 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Ctrl+E</kbd>
+          </button>
           <button
             @click="handleOpenOPFS"
             class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
