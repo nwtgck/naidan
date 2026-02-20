@@ -417,13 +417,23 @@ function handleClearContent() {
 
 async function handleCopy() {
   try {
-    await navigator.clipboard.writeText(props.message.content);
+    await navigator.clipboard.writeText(displayContent.value);
     copied.value = true;
     setTimeout(() => {
       copied.value = false;
     }, 2000);
   } catch (err) {
     console.error('Failed to copy text: ', err);
+  }
+}
+
+async function handleCopyRaw() {
+  try {
+    await navigator.clipboard.writeText(props.message.content);
+    // Use a temporary visual feedback or just close the menu
+    // For now, let's just close the menu which is handled by the click
+  } catch (err) {
+    console.error('Failed to copy raw text: ', err);
   }
 }
 
@@ -1210,6 +1220,15 @@ defineExpose({
                 :trigger-el="moreActionsTriggerRef"
                 @close="showMoreMenu = false"
               >
+                <button
+                  @click="handleCopyRaw(); showMoreMenu = false"
+                  class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+                  data-testid="copy-raw-button"
+                >
+                  <Copy class="w-3.5 h-3.5" />
+                  <span>Copy Raw</span>
+                </button>
+
                 <button
                   @click="showDiffModal = true; showMoreMenu = false"
                   class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"

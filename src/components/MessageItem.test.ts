@@ -122,8 +122,8 @@ describe('MessageItem Rendering', () => {
     expect(wrapper.find('[data-testid="thinking-block"]').exists()).toBe(true);
   });
 
-  it('copies message content to clipboard', async () => {
-    const message = createMessage('Copy me');
+  it('copies clean message content to clipboard (excluding markers and thinking)', async () => {
+    const message = createMessage('<think>Secret thought</think><!-- naidan_experimental_image_request {} -->Copy me');
     const wrapper = mount(MessageItem, { props: { message } });
 
     // Mock clipboard
@@ -143,6 +143,33 @@ describe('MessageItem Rendering', () => {
 
     // Icon should change to checkmark
     expect(wrapper.findComponent(Check).exists()).toBe(true);
+  });
+
+  it('copies raw message content to clipboard via more actions menu', async () => {
+    const content = '<think>Secret thought</think>Raw message';
+    const message = createMessage(content);
+    const wrapper = mount(MessageItem, { props: { message }, attachTo: document.body });
+
+    // Mock clipboard
+    const writeText = vi.fn().mockImplementation(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    // Open menu
+    await wrapper.find('[data-testid="message-more-actions-button"]').trigger('click');
+    await nextTick();
+
+    const copyRawBtn = document.body.querySelector('[data-testid="copy-raw-button"]');
+    expect(copyRawBtn).toBeTruthy();
+
+    await (copyRawBtn as HTMLButtonElement).click();
+    await nextTick();
+
+    expect(writeText).toHaveBeenCalledWith(content);
+
+    wrapper.unmount();
   });
 
   it('toggles mermaid display modes', async () => {
