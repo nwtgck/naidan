@@ -41,6 +41,7 @@ const mockIsScanningContent = ref(false);
 const mockResults = ref([]);
 const mockSearch = vi.fn();
 const mockClearSearch = vi.fn();
+const mockStopSearch = vi.fn();
 
 vi.mock('../composables/useChatSearch', () => ({
   useChatSearch: () => ({
@@ -50,6 +51,7 @@ vi.mock('../composables/useChatSearch', () => ({
     results: mockResults,
     search: mockSearch,
     clearSearch: mockClearSearch,
+    stopSearch: mockStopSearch,
   }),
 }));
 
@@ -225,7 +227,7 @@ describe('GlobalSearchModal Component', () => {
   it('should navigate to group when a chat_group result is selected', async () => {
     mockQuery.value = 'work';
     mockResults.value = [
-      { type: 'chat_group', item: { groupId: 'g1', name: 'Work', updatedAt: 1, matchType: 'title' } },
+      { type: 'chat_group', item: { groupId: 'g1', name: 'Work', updatedAt: 1, chatCount: 5, matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -329,8 +331,8 @@ describe('GlobalSearchModal Component', () => {
 
     const previewContainer = wrapper.get('[data-testid="search-preview-container"]');
 
-    // Trigger hover
-    await previewContainer.trigger('mouseenter');
+    // Trigger expansion via click (since hover expansion was removed)
+    await previewContainer.trigger('click');
     await nextTick();
     expect((wrapper.vm as any).isPreviewExpanded).toBe(true);
 
@@ -348,5 +350,154 @@ describe('GlobalSearchModal Component', () => {
     expect((wrapper.vm as any).isPreviewExpanded).toBe(false);
 
     vi.useRealTimers();
+  });
+
+  it('should expand preview on click and focus input on collapse', async () => {
+    vi.useFakeTimers();
+    mockQuery.value = 'test';
+    mockResults.value = [
+      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    const previewContainer = wrapper.get('[data-testid="search-preview-container"]');
+    const input = wrapper.find('[data-testid="search-input"]').element as HTMLInputElement;
+    const focusSpy = vi.spyOn(input, 'focus');
+
+    // Click to expand (capture phase handler)
+    await previewContainer.trigger('click');
+    expect((wrapper.vm as any).isPreviewExpanded).toBe(true);
+
+    // Leave - should trigger collapse after delay and focus input
+    await previewContainer.trigger('mouseleave');
+    vi.advanceTimersByTime(150);
+    await nextTick();
+
+    expect((wrapper.vm as any).isPreviewExpanded).toBe(false);
+    expect(focusSpy).toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it('should expand preview with ArrowRight for chat results', async () => {
+    mockQuery.value = 'test';
+    mockResults.value = [
+      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    expect((wrapper.vm as any).activePane).toBe('results');
+
+    // ArrowRight to switch to preview
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowRight' });
+    expect((wrapper.vm as any).activePane).toBe('preview');
+  });
+
+  it('should focus search input when switching back from preview with ArrowLeft', async () => {
+    mockQuery.value = 'test';
+    mockResults.value = [
+      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    const input = wrapper.find('[data-testid="search-input"]').element as HTMLInputElement;
+    const focusSpy = vi.spyOn(input, 'focus');
+
+    // Switch to preview
+    (wrapper.vm as any).activePane = 'preview';
+
+    // ArrowLeft to switch back
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'ArrowLeft' });
+
+    expect((wrapper.vm as any).activePane).toBe('results');
+    await nextTick();
+    expect(focusSpy).toHaveBeenCalled();
+  });
+
+  it('should delay highlighting of search results', async () => {
+    vi.useFakeTimers();
+    mockQuery.value = 'initial';
+    const wrapper = mount(GlobalSearchModal);
+
+    // Initially disabled
+    expect((wrapper.vm as any).isHighlightingEnabled).toBe(false);
+
+    // Advance 100ms
+    vi.advanceTimersByTime(100);
+    expect((wrapper.vm as any).isHighlightingEnabled).toBe(true);
+
+    // Update query - should disable highlighting again
+    mockQuery.value = 'updated';
+    await nextTick(); // trigger watch
+    expect((wrapper.vm as any).isHighlightingEnabled).toBe(false);
+
+    vi.advanceTimersByTime(100);
+    expect((wrapper.vm as any).isHighlightingEnabled).toBe(true);
+
+    vi.useRealTimers();
+  });
+
+  it('should update query state immediately on input before debounce', async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(GlobalSearchModal);
+
+    // Wait for any initial searches triggered on mount/open
+    await nextTick();
+    vi.advanceTimersByTime(500);
+    mockSearch.mockClear();
+
+    const input = wrapper.get('[data-testid="search-input"]');
+
+    // Simulate typing
+    await input.setValue('fast typing');
+
+    // Verify query is updated immediately (stability fix)
+    expect(mockQuery.value).toBe('fast typing');
+
+    // Search should not have been called yet due to debounce
+    expect(mockSearch).not.toHaveBeenCalled();
+
+    // Advance time to trigger search
+    vi.advanceTimersByTime(350);
+    expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
+      searchQuery: 'fast typing'
+    }));
+
+    vi.useRealTimers();
+  });
+
+  it('should persist query and select it on reopen', async () => {
+    // 1. Open and type something
+    mockIsSearchOpen.value = true;
+    mockQuery.value = 'persistent query';
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    // 2. Close modal
+    mockIsSearchOpen.value = false;
+    await nextTick();
+
+    // Verify stopSearch was called, NOT clearSearch
+    expect(mockStopSearch).toHaveBeenCalled();
+    expect(mockClearSearch).not.toHaveBeenCalled();
+
+    // 3. Reopen modal
+    const selectSpy = vi.spyOn(HTMLInputElement.prototype, 'select');
+    mockIsSearchOpen.value = true;
+    await nextTick();
+    await new Promise(resolve => setTimeout(resolve, 0)); // wait for watcher's nextTick
+
+    // Verify query is still there and selected
+    const input = wrapper.find('[data-testid="search-input"]').element as HTMLInputElement;
+    expect(input.value).toBe('persistent query');
+    expect(selectSpy).toHaveBeenCalled();
+
+    selectSpy.mockRestore();
   });
 });

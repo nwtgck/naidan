@@ -24,6 +24,7 @@ export type SearchResultItem =
       groupId: string;
       name: string;
       updatedAt: number;
+      chatCount: number;
       matchType: 'title';
     };
 
@@ -156,6 +157,7 @@ export function useChatSearch() {
             groupId: chatGroup.id,
             name: chatGroup.name,
             updatedAt: chatGroup.updatedAt,
+            chatCount: chatGroup.items.length,
             matchType: 'title',
           };
           flatResults.push({ type: 'chat_group', item });
@@ -307,6 +309,17 @@ export function useChatSearch() {
     searchSourceCache = null;
   };
 
+  /**
+   * Resets searching state and invalidates cache without clearing query/results.
+   * Used when closing the modal to ensure fresh data on reopen while preserving UX.
+   */
+  const stopSearch = () => {
+    isSearching.value = false;
+    isScanningContent.value = false;
+    lastSearchedTrimmedQuery = null;
+    searchSourceCache = null;
+  };
+
   return {
     query,
     isSearching,
@@ -314,6 +327,7 @@ export function useChatSearch() {
     results,
     search,
     clearSearch,
+    stopSearch,
     __testOnly: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
     },

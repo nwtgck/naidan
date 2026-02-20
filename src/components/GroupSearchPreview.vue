@@ -30,6 +30,14 @@ async function selectAndNavigate(chatId: string) {
   closeSearch();
 }
 
+const timeFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short', day: 'numeric'
+});
+
+function formatTime(timestamp: number) {
+  return timeFormatter.format(new Date(timestamp));
+}
+
 function navigate(direction: 'up' | 'down') {
   if (chats.value.length === 0) return;
   const currentIndex = chats.value.findIndex(c => c.id === selectedChatId.value);
@@ -54,7 +62,7 @@ function navigate(direction: 'up' | 'down') {
     // Ensure the selected item is visible
     nextTick(() => {
       const el = document.querySelector(`[data-group-chat-id="${nextChat.id}"]`);
-      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      el?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     });
   }
 }
@@ -108,12 +116,6 @@ async function loadChats() {
 }
 
 watch(() => props.groupId, loadChats, { immediate: true });
-
-function formatTime(timestamp: number) {
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric'
-  });
-}
 </script>
 
 <template>
