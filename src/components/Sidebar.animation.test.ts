@@ -95,6 +95,7 @@ vi.mock('lucide-vue-next', () => {
     Minimize2: mockIcon,
     Monitor: mockIcon,
     HardDrive: mockIcon,
+    Package: mockIcon,
   };
 });
 
