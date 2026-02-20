@@ -6,7 +6,10 @@ import { toRaw } from 'vue';
 
 // Mock LLM
 const mockOllamaChat = vi.fn();
-const mockOllamaGenerateImage = vi.fn().mockResolvedValue(new Blob(['test'], { type: 'image/png' }));
+const mockOllamaGenerateImage = vi.fn().mockResolvedValue({
+  image: new Blob(['test'], { type: 'image/png' }),
+  totalSteps: 10
+});
 
 vi.mock('../services/llm', () => {
   return {

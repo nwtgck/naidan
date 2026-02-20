@@ -34,7 +34,7 @@ describe('OllamaProvider Image Generation', () => {
     (fetch as any).mockResolvedValueOnce(mockResponse);
 
     const provider = new OllamaProvider(config);
-    const blob = await provider.generateImage({
+    const { image, totalSteps } = await provider.generateImage({
       prompt: 'test prompt',
       model: 'x/z-image-turbo:test',
       width: 512,
@@ -46,7 +46,8 @@ describe('OllamaProvider Image Generation', () => {
       signal: undefined
     });
 
-    expect(blob).toBeInstanceOf(Blob);
+    expect(image).toBeInstanceOf(Blob);
+    expect(totalSteps).toBe(10);
     expect(fetch).toHaveBeenCalledWith(
       'http://localhost:11434/api/generate',
       expect.objectContaining({
@@ -141,7 +142,7 @@ describe('OllamaProvider Image Generation', () => {
 
     const provider = new OllamaProvider(config);
     const inputBlob = new Blob(['input'], { type: 'image/png' });
-    const blob = await provider.generateImage({
+    const { image, totalSteps } = await provider.generateImage({
       prompt: 'test prompt',
       model: 'x/z-image-turbo:test',
       width: 512,
@@ -153,7 +154,8 @@ describe('OllamaProvider Image Generation', () => {
       signal: undefined
     });
 
-    expect(blob).toBeInstanceOf(Blob);
+    expect(image).toBeInstanceOf(Blob);
+    expect(totalSteps).toBe(10);
     expect(fetch).toHaveBeenCalledWith(
       'http://localhost:11434/api/generate',
       expect.objectContaining({

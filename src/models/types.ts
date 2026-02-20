@@ -79,6 +79,8 @@ export interface ChatGroup {
 
   endpoint?: Endpoint;
   modelId?: string;
+  autoTitleEnabled?: boolean;
+  titleModelId?: string;
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
 }
@@ -100,6 +102,8 @@ export interface Chat {
   endpointUrl?: string;
   endpointHttpHeaders?: [string, string][];
   modelId?: string;
+  autoTitleEnabled?: boolean;
+  titleModelId?: string;
   originChatId?: string;
   originMessageId?: string;
 
@@ -122,6 +126,8 @@ export interface ChatMeta {
   debugEnabled: boolean;
   endpoint?: Endpoint;
   modelId?: string;
+  autoTitleEnabled?: boolean;
+  titleModelId?: string;
   originChatId?: string;
   originMessageId?: string;
   systemPrompt?: SystemPrompt;

@@ -77,6 +77,7 @@ describe('useChatSearch Composable', () => {
     const first = results.value[0];
     if (first && first.type === 'chat_group') {
       expect(first.item.name).toBe('Work');
+      expect(first.item.chatCount).toBe(1);
     } else {
       throw new Error('Expected chat_group result');
     }
@@ -292,6 +293,27 @@ describe('useChatSearch Composable', () => {
     clearSearch();
 
     // Third search - should call storage again
+    await search({ searchQuery: 'test', options: { scope: 'title_only' } });
+    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(2);
+  });
+
+  it('should invalidate cache but preserve query/results when stopSearch is called', async () => {
+    const { search, stopSearch, query, results } = useChatSearch();
+    const mockSidebar = [{ id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Test', updatedAt: 100 } }];
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue(mockSidebar as any);
+
+    // 1. Search to populate query and results
+    await search({ searchQuery: 'test', options: { scope: 'title_only' } });
+    expect(query.value).toBe('test');
+    expect(results.value).toHaveLength(1);
+    expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1);
+
+    // 2. Stop search - should invalidate cache but keep query/results
+    stopSearch();
+    expect(query.value).toBe('test');
+    expect(results.value).toHaveLength(1);
+
+    // 3. Search again with same query - should call storage again because cache was invalidated
     await search({ searchQuery: 'test', options: { scope: 'title_only' } });
     expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(2);
   });

@@ -15,17 +15,20 @@ import ToastContainer from './components/ToastContainer.vue';
 import { useLayout } from './composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from './utils/vue';
 import { useGlobalSearch } from './composables/useGlobalSearch';
+import { useRecentChats } from './composables/useRecentChats';
 import type { EndpointType } from './models/types';
 
 // Lazily load components that are not visible on initial mount, but prefetch them when idle.
 const SettingsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/SettingsModal.vue'));
 const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/GlobalSearchModal.vue'));
+const RecentChatsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/RecentChatsModal.vue'));
 const DebugPanel = defineAsyncComponentAndLoadOnMounted(() => import('./components/DebugPanel.vue'));
 const CustomDialog = defineAsyncComponentAndLoadOnMounted(() => import('./components/CustomDialog.vue'));
 const OPFSExplorer = defineAsyncComponentAndLoadOnMounted(() => import('./components/OPFSExplorer.vue'));
 
 const chatStore = useChat();
 const settingsStore = useSettings();
+const { addRecentChat, toggleRecent } = useRecentChats();
 const { isSidebarOpen } = useLayout();
 const router = useRouter();
 const route = useRoute();
@@ -38,6 +41,13 @@ watch(() => route.path, (path) => {
     lastNonSettingsPath.value = path;
   }
 });
+
+// Watch for chat navigation and update recent chats
+watch(() => route.path, () => {
+  if (route.name === '/chat/[id]' && route.params.id && typeof route.params.id === 'string') {
+    addRecentChat({ id: route.params.id });
+  }
+}, { immediate: true });
 
 const closeSettings = () => {
   if (route.query.settings) {
@@ -176,7 +186,7 @@ watch(
 );
 
 // ChatGPT-style shortcut for New Chat: Ctrl+Shift+O (Cmd+Shift+O on Mac)
-onKeyStroke(['o', 'O', 'k', 'K'], async (e) => {
+onKeyStroke(['o', 'O', 'k', 'K', 'e', 'E'], async (e) => {
   // New Chat
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'o' || e.key === 'O')) {
     e.preventDefault();
@@ -202,6 +212,12 @@ onKeyStroke(['o', 'O', 'k', 'K'], async (e) => {
 
     e.preventDefault();
     useGlobalSearch().toggleSearch();
+  }
+
+  // Recent Chats (Cmd+E)
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+    e.preventDefault();
+    toggleRecent();
   }
 });
 
@@ -241,6 +257,7 @@ defineExpose({
       <OnboardingModal v-if="settingsStore.initialized.value && !settingsStore.isOnboardingDismissed.value" />
     </Transition>
     <GlobalSearchModal />
+    <RecentChatsModal />
 
     <ToastContainer />
 

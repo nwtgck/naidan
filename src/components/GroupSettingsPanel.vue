@@ -24,6 +24,7 @@ const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { ChatGroup } from '../models/types';
 import { naturalSort } from '../utils/string';
+import { hasGroupOverrides } from '../utils/chat-settings-resolver';
 
 const chatStore = useChat();
 const {
@@ -43,7 +44,7 @@ const effectiveEndpointType = computed(() => {
 });
 
 // Local state for editing
-const localSettings = ref<Partial<Pick<ChatGroup, 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>>({});
+const localSettings = ref<Partial<Pick<ChatGroup, 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>>({});
 
 // Recipe Export State
 const showExportModal = ref(false);
@@ -57,6 +58,8 @@ function syncLocalWithCurrent() {
     localSettings.value = {
       endpoint: currentChatGroup.value.endpoint ? JSON.parse(JSON.stringify(currentChatGroup.value.endpoint)) : undefined,
       modelId: currentChatGroup.value.modelId,
+      autoTitleEnabled: currentChatGroup.value.autoTitleEnabled,
+      titleModelId: currentChatGroup.value.titleModelId,
       systemPrompt: currentChatGroup.value.systemPrompt ? JSON.parse(JSON.stringify(currentChatGroup.value.systemPrompt)) : undefined,
       lmParameters: currentChatGroup.value.lmParameters ? JSON.parse(JSON.stringify(currentChatGroup.value.lmParameters)) : undefined,
     };
@@ -78,17 +81,7 @@ onMounted(() => {
 watch(currentChatGroup, syncLocalWithCurrent, { deep: true });
 
 const hasActiveOverrides = computed(() => {
-  const s = localSettings.value;
-  const hasEndpoint = !!s.endpoint && (
-    s.endpoint.type === 'transformers_js' ||
-    !!s.endpoint.url ||
-    (s.endpoint.httpHeaders && s.endpoint.httpHeaders.length > 0)
-  );
-  const hasModel = !!s.modelId;
-  const hasPrompt = !!s.systemPrompt;
-  const hasParams = !!s.lmParameters && Object.keys(s.lmParameters).length > 0;
-
-  return hasEndpoint || hasModel || hasPrompt || hasParams;
+  return hasGroupOverrides({ group: localSettings.value });
 });
 
 async function saveChanges() {
@@ -222,6 +215,8 @@ async function restoreDefaults() {
   localSettings.value = {
     endpoint: undefined,
     modelId: undefined,
+    autoTitleEnabled: undefined,
+    titleModelId: undefined,
     systemPrompt: undefined,
     lmParameters: undefined
   };
@@ -448,6 +443,66 @@ defineExpose({
               data-testid="group-setting-model-select"
             />
             <TransformersJsUpsell :show="effectiveEndpointType === 'transformers_js'" />
+          </div>
+        </div>
+
+        <!-- Automatic Title Section -->
+        <div class="p-6 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-3xl space-y-6 shadow-sm">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-blue-600/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
+                <Settings2 class="w-4 h-4 text-blue-600" />
+              </div>
+              <div>
+                <h4 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Automatic Title</h4>
+                <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Configure how chats in this group are automatically named.</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+              <button
+                @click="localSettings.autoTitleEnabled = undefined; saveChanges();"
+                class="px-3 py-1 text-[9px] font-bold rounded transition-all"
+                :class="localSettings.autoTitleEnabled === undefined ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+              >
+                Inherit
+              </button>
+              <button
+                @click="localSettings.autoTitleEnabled = true; saveChanges();"
+                class="px-3 py-1 text-[9px] font-bold rounded transition-all"
+                :class="localSettings.autoTitleEnabled === true ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+              >
+                Enabled
+              </button>
+              <button
+                @click="localSettings.autoTitleEnabled = false; saveChanges();"
+                class="px-3 py-1 text-[9px] font-bold rounded transition-all"
+                :class="localSettings.autoTitleEnabled === false ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+              >
+                Disabled
+              </button>
+            </div>
+          </div>
+
+          <div v-if="localSettings.autoTitleEnabled !== false" class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-gray-50 dark:border-gray-800/50">
+            <div class="space-y-2">
+              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Title Model Override</label>
+              <ModelSelector
+                :model-value="localSettings.titleModelId"
+                @update:model-value="val => { localSettings.titleModelId = val; saveChanges(); }"
+                :models="sortedGroupModels"
+                :loading="fetchingModels"
+                :placeholder="'Global (' + (settings.titleModelId || 'None') + ')'"
+                :allow-clear="true"
+                @refresh="fetchModels"
+                data-testid="group-setting-title-model-select"
+              />
+            </div>
+            <div class="flex items-center">
+              <p class="text-[10px] text-gray-400 italic leading-relaxed">
+                The title model is used to summarize the first user message in new chats.
+                {{ localSettings.autoTitleEnabled === undefined ? ' Currently inheriting ' + (settings.autoTitleEnabled ? 'Enabled' : 'Disabled') + ' from Global Settings.' : '' }}
+              </p>
+            </div>
           </div>
         </div>
 

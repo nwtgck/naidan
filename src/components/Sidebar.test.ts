@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import ChatGroupActions from './ChatGroupActions.vue';
+import SidebarDebugControls from './SidebarDebugControls.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '../models/types';
@@ -145,6 +146,7 @@ describe('Sidebar Logic Stability', () => {
     'Ghost': true,
     'ThemeToggle': true,
     'ChatGroupActions': ChatGroupActions,
+    'SidebarDebugControls': SidebarDebugControls,
     'ModelSelector': {
       name: 'ModelSelector',
       template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear">{{ modelValue }}<div v-if="loading" class="animate-spin-mock"></div></div>',
@@ -623,11 +625,19 @@ describe('Sidebar Logic Stability', () => {
     it('opens OPFS explorer when the OPFS button is clicked', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
+        attachTo: document.body
       });
       await nextTick();
 
-      const opfsBtn = wrapper.find('[data-testid="sidebar-opfs-button"]');
-      await opfsBtn.trigger('click');
+      // Open the menu first
+      const menuBtn = wrapper.find('[data-testid="sidebar-opfs-menu-button"]');
+      await menuBtn.trigger('click');
+      await nextTick();
+
+      // The button is now teleported to body
+      const opfsBtn = document.body.querySelector('[data-testid="sidebar-opfs-button"]') as HTMLElement;
+      expect(opfsBtn).toBeTruthy();
+      opfsBtn.click();
 
       expect(mockOpenOPFS).toHaveBeenCalled();
     });

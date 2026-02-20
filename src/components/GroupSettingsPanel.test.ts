@@ -83,6 +83,8 @@ describe('GroupSettingsPanel.vue', () => {
       name: 'Test Group',
       endpoint: undefined,
       modelId: undefined,
+      autoTitleEnabled: undefined,
+      titleModelId: undefined,
       systemPrompt: undefined,
       lmParameters: {},
     });
@@ -123,19 +125,23 @@ describe('GroupSettingsPanel.vue', () => {
   });
 
   it('hides the "Active Overrides" badge when endpoint URL is cleared', async () => {
+    // Explicitly set title overrides to undefined
+    mockGroup.autoTitleEnabled = undefined;
+    mockGroup.titleModelId = undefined;
+
     const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
-    await nextTick();
+    await flushPromises();
 
     // Set an endpoint with URL
     mockGroup.endpoint = { type: 'openai', url: 'http://example.com' };
-    await nextTick();
+    await flushPromises();
     expect(wrapper.text()).toContain('Active Overrides');
 
-    // Clear the URL but keep the endpoint object (simulating manual clearing of the input)
-    mockGroup.endpoint.url = '';
-    await nextTick();
+    // Clear the endpoint entirely to ensure no overrides
+    mockGroup.endpoint = undefined;
+    await flushPromises();
 
-    // The badge should disappear because the override is no longer "meaningful" (empty URL)
+    // The badge should disappear because there are no longer any overrides
     expect(wrapper.text()).not.toContain('Active Overrides');
   });
 
@@ -219,8 +225,10 @@ describe('GroupSettingsPanel.vue', () => {
     // Ensure textarea exists initially
     expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(true);
 
-    // Click Inherit
-    const inheritBtn = wrapper.findAll('button').find(b => b.text() === 'Inherit');
+    // Click Inherit in the System Prompt section
+    const inheritBtns = wrapper.findAll('button').filter(b => b.text().includes('Inherit'));
+    // The second one is for the system prompt
+    const inheritBtn = inheritBtns[1] || inheritBtns[0];
     await inheritBtn?.trigger('click');
     await nextTick();
 

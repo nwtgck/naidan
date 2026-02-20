@@ -10,7 +10,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 import Logo from './Logo.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
-import SidebarDebugControls from './SidebarDebugControls.vue';
+const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted(() => import('./SidebarDebugControls.vue'));
 import type { ChatGroup, SidebarItem } from '../models/types';
 import {
   Trash2, Settings as SettingsIcon,
@@ -571,7 +571,7 @@ defineExpose({
 <template>
   <div class="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 select-none transition-colors">
     <!-- Header -->
-    <div class="py-4 flex items-center overflow-hidden" :class="isSidebarOpen ? 'justify-between px-4' : 'justify-center px-1'">
+    <div class="py-2 flex items-center overflow-hidden" :class="isSidebarOpen ? 'justify-between px-4' : 'justify-center px-1'">
       <router-link v-if="isSidebarOpen" to="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer overflow-hidden">
         <div class="p-1.5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 shrink-0">
           <Logo :size="20" />
@@ -602,12 +602,12 @@ defineExpose({
     </div>
 
     <!-- Actions -->
-    <div class="py-4 space-y-2" :class="isSidebarOpen ? 'px-4' : 'px-1'">
+    <div class="py-2 space-y-2" :class="isSidebarOpen ? 'px-4' : 'px-1'">
       <div class="flex gap-2" :class="{ 'flex-col items-center': !isSidebarOpen }">
         <button
           @click="handleNewChat(undefined)"
           class="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
-          :class="isSidebarOpen ? 'flex-1 px-3 py-3 text-xs' : 'w-8 h-8'"
+          :class="isSidebarOpen ? 'flex-1 px-3 py-2 text-xs' : 'w-8 h-8'"
           data-testid="new-chat-button"
           :title="!isSidebarOpen ? 'New Chat' : ''"
         >
@@ -620,7 +620,7 @@ defineExpose({
         <button
           @click="useGlobalSearch().openSearch()"
           class="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
-          :class="isSidebarOpen ? 'p-3' : 'w-8 h-8 flex items-center justify-center p-0'"
+          :class="isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0'"
           title="Search (Cmd+K)"
           data-testid="search-button"
         >
@@ -629,7 +629,7 @@ defineExpose({
         <button
           v-if="isSidebarOpen"
           @click="isCreatingChatGroup = true"
-          class="p-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
+          class="p-2 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
           title="Create Chat Group"
           data-testid="create-chat-group-button"
         >
@@ -639,7 +639,7 @@ defineExpose({
     </div>
     <!-- Navigation List -->
     <div
-      class="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide focus:outline-none overscroll-contain"
+      class="flex-1 overflow-y-auto px-3 py-1 scrollbar-hide focus:outline-none overscroll-contain"
       :class="{ 'is-dragging': isDragging }"
       data-testid="sidebar-nav"
       tabindex="0"
@@ -877,7 +877,7 @@ defineExpose({
     </div>
 
     <!-- Footer -->
-    <div class="border-t border-gray-100 dark:border-gray-800 space-y-4 bg-gray-50/30 dark:bg-black/20" :class="isSidebarOpen ? 'p-3' : 'py-3 px-1'">
+    <div class="border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20" :class="isSidebarOpen ? 'p-2' : 'py-2 px-1'">
       <!-- Global Model Selector -->
       <div v-if="isSidebarOpen && (settings.endpointUrl || settings.endpointType === 'transformers_js')" class="px-1 space-y-2 animate-in fade-in duration-300">
         <div class="flex items-center justify-between px-1">
@@ -899,7 +899,7 @@ defineExpose({
         <button
           @click="router.push({ query: { ...route.query, settings: 'connection' } })"
           class="flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-white rounded-xl hover:bg-white dark:hover:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 transition-all shadow-sm"
-          :class="isSidebarOpen ? 'flex-1 py-3 px-2' : 'w-8 h-8'"
+          :class="isSidebarOpen ? 'flex-1 py-2 px-2' : 'w-8 h-8'"
           title="Settings"
           data-testid="sidebar-settings-button"
         >

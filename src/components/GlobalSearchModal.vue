@@ -16,7 +16,7 @@ const GroupSearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./
 
 const router = useRouter();
 const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
-const { query, isSearching, isScanningContent, results, search, clearSearch } = useChatSearch();
+const { query, isSearching, isScanningContent, results, search, stopSearch } = useChatSearch();
 const { openChat, openChatGroup, chatGroups, currentChat } = useChat();
 const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
@@ -37,23 +37,28 @@ const scrollContainer = ref<HTMLElement | null>(null);
 const searchScope = ref<SearchScope>('title_only');
 const showGroupSelector = ref(false);
 const activePane = ref<'results' | 'preview'>('results');
-const isHoveringPreview = ref(false);
+const isExpandedByClick = ref(false);
 const isHoveringResults = ref(false);
 let previewHoverTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const handlePreviewMouseEnter = () => {
   if (previewHoverTimeout) clearTimeout(previewHoverTimeout);
-  isHoveringPreview.value = true;
 };
 
 const handlePreviewMouseLeave = () => {
   previewHoverTimeout = setTimeout(() => {
-    isHoveringPreview.value = false;
+    if (isExpandedByClick.value) {
+      isExpandedByClick.value = false;
+      // Focus search input when collapsing
+      nextTick(() => {
+        searchInput.value?.focus();
+      });
+    }
   }, 100);
 };
 
 const isPreviewExpanded = computed(() => {
-  return isHoveringPreview.value || activePane.value === 'preview';
+  return isExpandedByClick.value || activePane.value === 'preview';
 });
 
 const shouldLoadPreview = computed(() => {
@@ -74,10 +79,28 @@ const shouldLoadPreview = computed(() => {
 
 const isPreviewVisible = computed(() => searchPreviewMode.value !== 'disabled');
 
+// Performance Optimization: Defer highlighting to ensure the initial list rendering is near-instant.
+// This allows the modal to open and the results to appear immediately, with visual highlights appearing shortly after.
+const isHighlightingEnabled = ref(false);
+let highlightTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const updateHighlightState = () => {
+  isHighlightingEnabled.value = false;
+  if (highlightTimeout) clearTimeout(highlightTimeout);
+  highlightTimeout = setTimeout(() => {
+    isHighlightingEnabled.value = true;
+  }, 50);
+};
+
 // Reset focus to results when search result changes
 watch(results, () => {
   activePane.value = 'results';
+  updateHighlightState();
 });
+
+watch(query, () => {
+  updateHighlightState();
+}, { immediate: true });
 
 const handleClickOutsideGroupSelector = (event: MouseEvent) => {
   const target = event.target as HTMLElement;
@@ -115,6 +138,74 @@ function toggleGroupFilter({ groupId }: { groupId: string }) {
   }
 }
 
+// Performance Optimization: Cache DateTimeFormat to avoid expensive re-initialization during list rendering.
+const timeFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short', day: 'numeric',
+  hour: '2-digit', minute: '2-digit'
+});
+
+function formatTime({ timestamp }: { timestamp: number }) {
+  return timeFormatter.format(new Date(timestamp));
+}
+
+function escapeRegExp({ string }: { string: string }) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Performance Optimization: Memoize highlighted strings.
+// Regex matching and string concatenation are expensive during rapid list navigation.
+const highlightCache = new Map<string, string>();
+
+function highlight({ text, query, color }: {
+  text: string,
+  query: string,
+  color: 'indigo' | 'blue',
+}) {
+  if (!query) return he.encode(text);
+
+  const cacheKey = `${color}:${query}:${text}`;
+  const cached = highlightCache.get(cacheKey);
+  if (cached) return cached;
+
+  const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
+  if (keywords.length === 0) return he.encode(text);
+
+  const pattern = keywords.map(k => escapeRegExp({ string: k })).join('|');
+  const regex = new RegExp(`(${pattern})`, 'gi');
+
+  const parts = text.split(regex);
+  const colorClasses = (() => {
+    switch (color) {
+    case 'blue':
+      return 'bg-blue-200 dark:bg-blue-900/50 text-blue-800 dark:text-blue-100';
+    case 'indigo':
+      return 'bg-indigo-200 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-100';
+    default: {
+      const _ex: never = color;
+      throw new Error(`Unhandled color: ${_ex}`);
+    }
+    }
+  })();
+
+  const result = parts.map(part => {
+    const isMatch = keywords.some(k => part.toLowerCase() === k);
+    if (isMatch) {
+      return `<span class="${colorClasses} font-bold rounded px-0.5">${he.encode(part)}</span>`;
+    }
+    return he.encode(part);
+  }).join('');
+
+  // Limit cache size to prevent memory leaks
+  if (highlightCache.size > 1000) highlightCache.clear();
+  highlightCache.set(cacheKey, result);
+  return result;
+}
+
+// Clear highlight cache when results change
+watch(results, () => {
+  highlightCache.clear();
+});
+
 // Debounce search input
 let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -132,6 +223,10 @@ const performSearch = ({ val }: { val: string }) => {
 
 const handleInput = (e: Event) => {
   const val = (e.target as HTMLInputElement).value;
+  // Performance & Stability Note: Synchronize the query state immediately to prevent
+  // the input field from jumping or losing characters during rapid typing.
+  query.value = val;
+
   if (debounceTimeout) clearTimeout(debounceTimeout);
 
   const delay = (() => {
@@ -197,8 +292,8 @@ const handleKeydown = (e: KeyboardEvent) => {
     }
     }
   } else if (e.key === 'ArrowRight') {
-    // If we are on a chat group, focus the preview pane
-    if (activePane.value === 'results' && currentSelectedItem.value?.type === 'chat_group') {
+    // If we are on a result item, focus the preview pane
+    if (activePane.value === 'results' && currentSelectedItem.value) {
       e.preventDefault();
       activePane.value = 'preview';
     }
@@ -208,6 +303,9 @@ const handleKeydown = (e: KeyboardEvent) => {
     case 'preview':
       e.preventDefault();
       activePane.value = 'results';
+      nextTick(() => {
+        searchInput.value?.focus();
+      });
       break;
     case 'results':
       // Do nothing
@@ -234,12 +332,27 @@ const totalItems = computed(() => results.value.length);
 
 const currentSelectedItem = computed(() => results.value[selectedIndex.value]);
 
+// Performance Optimization: Debounce the preview update during list navigation.
+// This prevents expensive preview re-renders (and data fetching) while the user is rapidly
+// moving through the result list with arrow keys.
+const deferredSelectedItem = ref(currentSelectedItem.value);
+let previewDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+
+watch(currentSelectedItem, (newItem) => {
+  if (previewDebounceTimeout) clearTimeout(previewDebounceTimeout);
+  previewDebounceTimeout = setTimeout(() => {
+    deferredSelectedItem.value = newItem;
+  }, 120);
+}, { immediate: true });
+
 function scrollToSelected() {
   nextTick(() => {
     if (!scrollContainer.value) return;
     const el = scrollContainer.value.querySelector(`[data-index="${selectedIndex.value}"]`);
     if (el) {
-      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      // Performance Optimization: Use 'instant' behavior to avoid layout thrashing
+      // during rapid navigation.
+      el.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     }
   });
 }
@@ -297,7 +410,7 @@ watch(isSearchOpen, (isOpen) => {
       }
     });
   } else {
-    clearSearch();
+    stopSearch();
     if (previousFocusArea.value) {
       setActiveFocusArea(previousFocusArea.value);
       previousFocusArea.value = undefined;
@@ -306,55 +419,6 @@ watch(isSearchOpen, (isOpen) => {
     }
   }
 });
-
-function formatTime({ timestamp }: { timestamp: number }) {
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
-}
-
-function escapeRegExp({ string }: { string: string }) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function highlight({ text, query, color }: {
-  text: string,
-  query: string,
-  color: 'indigo' | 'blue',
-}) {
-  if (!query) return he.encode(text);
-
-  const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
-  if (keywords.length === 0) return he.encode(text);
-
-  const pattern = keywords.map(k => escapeRegExp({ string: k })).join('|');
-  const regex = new RegExp(`(${pattern})`, 'gi');
-
-  const parts = text.split(regex);
-  const colorClasses = (() => {
-    switch (color) {
-    case 'blue':
-      return 'bg-blue-200 dark:bg-blue-900/50 text-blue-800 dark:text-blue-100';
-    case 'indigo':
-      return 'bg-indigo-200 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-100';
-    default: {
-      const _ex: never = color;
-      throw new Error(`Unhandled color: ${_ex}`);
-    }
-    }
-  })();
-
-  return parts.map(part => {
-
-    const isMatch = keywords.some(k => part.toLowerCase() === k);
-    if (isMatch) {
-      return `<span class="${colorClasses} font-bold rounded px-0.5">${he.encode(part)}</span>`;
-    }
-    return he.encode(part);
-  }).join('');
-}
-
 
 defineExpose({
   __testOnly: {
@@ -545,11 +609,14 @@ defineExpose({
                 :data-testid="'search-result-item-' + index"
                 @mouseenter="selectedIndex = index"
                 @click="selectItem({ index })"
-                class="group flex flex-col p-2.5 rounded-xl cursor-pointer transition-all border border-transparent"
+                class="group flex flex-col p-2.5 rounded-xl cursor-pointer transition-[background-color,border-color,opacity] duration-200 border border-transparent"
                 :class="selectedIndex === index
                   ? (activePane === 'results' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800 shadow-sm' : 'bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 opacity-80')
                   : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'"
               >
+                <!-- Performance Note: CSS transitions are restricted to specific properties
+                     to minimize layout recalculations during rapid list updates. -->
+
                 <!-- Chat Group Item -->
                 <div v-if="entry.type === 'chat_group'" class="flex items-center justify-between gap-3">
                   <div class="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg shrink-0">
@@ -557,8 +624,11 @@ defineExpose({
                   </div>
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
-                      <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-html="highlight({ text: entry.item.name, query, color: 'blue' })"></span>
-                      <span class="text-[9px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded font-black uppercase tracking-wider">Group</span>
+                      <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.name, query, color: 'blue' })"></span>
+                      <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.name }}</span>
+                      <div class="flex items-center gap-1.5 shrink-0">
+                        <span class="text-[9px] px-1.5 py-0.5 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded font-black uppercase tracking-wider">{{ entry.item.chatCount }} chats</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -571,10 +641,12 @@ defineExpose({
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
                       <div class="flex flex-col overflow-hidden">
-                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-html="highlight({ text: entry.item.title || UNTITLED_CHAT_TITLE, query, color: 'indigo' })"></span>
+                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.title || UNTITLED_CHAT_TITLE, query, color: 'indigo' })"></span>
+                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.title || UNTITLED_CHAT_TITLE }}</span>
                         <span v-if="entry.item.groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
                           <Folder class="w-2.5 h-2.5 opacity-50 text-blue-500" />
-                          <span v-html="highlight({ text: entry.item.groupName, query, color: 'blue' })"></span>
+                          <span v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.groupName, query, color: 'blue' })"></span>
+                          <span v-else>{{ entry.item.groupName }}</span>
                         </span>
                       </div>
                       <span class="text-[10px] text-gray-400 shrink-0">{{ formatTime({ timestamp: entry.item.updatedAt }) }}</span>
@@ -595,7 +667,8 @@ defineExpose({
                       <span class="text-[9px] font-black uppercase tracking-wider text-gray-400">{{ entry.item.role }}</span>
                       <span class="text-[9px] text-gray-400">{{ formatTime({ timestamp: entry.item.timestamp }) }}</span>
                     </div>
-                    <span class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed" v-html="highlight({ text: entry.item.excerpt, query, color: 'indigo' })"></span>
+                    <span v-if="isHighlightingEnabled" class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed" v-html="highlight({ text: entry.item.excerpt, query, color: 'indigo' })"></span>
+                    <span v-else class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed">{{ entry.item.excerpt }}</span>
 
                     <div v-if="!entry.item.isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">
                       <GitBranch class="w-2.5 h-2.5" />
@@ -616,24 +689,25 @@ defineExpose({
           <div v-if="isPreviewVisible && !isScanningContent && results.length > 0"
                @mouseenter="handlePreviewMouseEnter"
                @mouseleave="handlePreviewMouseLeave"
+               @click.capture="!isPreviewExpanded ? (isExpandedByClick = true, $event.stopPropagation(), $event.preventDefault()) : null"
                data-testid="search-preview-container"
-               class="bg-white dark:bg-gray-900 overflow-hidden transition-all duration-300 border-l border-gray-100 dark:border-gray-800"
+               class="bg-white dark:bg-gray-900 overflow-hidden transition-all duration-300 border-l border-gray-100 dark:border-gray-800 cursor-pointer relative"
                :class="[
                  isPreviewExpanded ? 'w-[85%]' : 'w-[25%]',
                  activePane === 'preview' ? 'ring-2 ring-inset ring-blue-500/20' : ''
                ]">
             <template v-if="shouldLoadPreview">
-              <template v-if="currentSelectedItem?.type === 'chat_group'">
+              <template v-if="deferredSelectedItem?.type === 'chat_group'">
                 <GroupSearchPreview
                   ref="groupPreviewRef"
-                  :groupId="(currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).groupId"
-                  :groupName="(currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).name"
+                  :groupId="(deferredSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).groupId"
+                  :groupName="(deferredSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).name"
                 />
               </template>
               <template v-else>
                 <SearchPreview
-                  :match="currentSelectedItem?.type === 'message' ? currentSelectedItem.item as ContentMatch : undefined"
-                  :chat="currentSelectedItem?.type === 'chat' ? currentSelectedItem.item as Extract<SearchResultItem, { type: 'chat' }> : undefined"
+                  :match="deferredSelectedItem?.type === 'message' ? deferredSelectedItem.item as ContentMatch : undefined"
+                  :chat="deferredSelectedItem?.type === 'chat' ? deferredSelectedItem.item as Extract<SearchResultItem, { type: 'chat' }> : undefined"
                 />
               </template>
             </template>

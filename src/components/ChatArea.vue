@@ -33,6 +33,7 @@ import {
   Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon
 } from 'lucide-vue-next';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
+import { hasChatOverrides } from '../utils/chat-settings-resolver';
 
 
 const chatStore = useChat();
@@ -327,7 +328,7 @@ watch(
                 <Settings2 class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
               </div>
               <div
-                v-if="currentChat.endpointUrl || currentChat.endpointType || currentChat.modelId || currentChat.systemPrompt || (currentChat.lmParameters && Object.keys(currentChat.lmParameters).length > 0)"
+                v-if="currentChat && hasChatOverrides({ chat: currentChat })"
                 class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"
                 title="Custom overrides active"
                 data-testid="custom-overrides-indicator"
