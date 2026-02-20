@@ -64,6 +64,8 @@ export const ChatGroupSchemaDto = z.object({
 
   endpoint: EndpointSchemaDto.optional(),
   modelId: z.string().optional(),
+  autoTitleEnabled: z.boolean().optional(),
+  titleModelId: z.string().optional(),
   systemPrompt: SystemPromptSchemaDto.optional(),
   lmParameters: LmParametersSchemaDto.optional(),
 });
@@ -177,6 +179,8 @@ export const ChatMetaSchemaDto = z.object({
 
   endpoint: EndpointSchemaDto.optional(),
   modelId: z.string().optional(),
+  autoTitleEnabled: z.boolean().optional(),
+  titleModelId: z.string().optional(),
   originChatId: z.string().optional(),
   originMessageId: z.string().optional(),
 

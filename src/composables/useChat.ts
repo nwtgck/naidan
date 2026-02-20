@@ -716,7 +716,7 @@ export function useChat() {
     await loadData();
   };
 
-  const updateChatSettings = async (id: string, updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'systemPrompt' | 'lmParameters'>>) => {
+  const updateChatSettings = async (id: string, updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>) => {
     const liveChat = liveChatRegistry.get(id) || (_currentChat.value && toRaw(_currentChat.value).id === id ? _currentChat.value : null);
     if (liveChat) {
       Object.assign(liveChat, updates);
@@ -939,7 +939,7 @@ export function useChat() {
       processThinking(assistantNode);
       mutableChat.updatedAt = Date.now();
 
-      if (mutableChat.title === null && settings.value.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
+      if (mutableChat.title === null && resolved.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
         await generateChatTitle(mutableChat.id, controller.signal);
       }
     } catch (e) {
@@ -1189,7 +1189,7 @@ export function useChat() {
         throw new Error(`Unsupported endpoint type for title generation: ${_ex}`);
       }
       }
-      const titleGenModel = settings.value.titleModelId || history[history.length - 1]?.modelId || resolved.modelId;
+      const titleGenModel = resolved.titleModelId || resolved.modelId;
       if (!titleGenModel) return;
 
       const lang = detectLanguage({
@@ -1598,7 +1598,7 @@ export function useChat() {
     await loadData();
   };
 
-  const updateChatGroupMetadata = async (id: string, updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
+  const updateChatGroupMetadata = async (id: string, updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>) => {
     if (_currentChatGroup.value?.id === id) {
       Object.assign(_currentChatGroup.value, updates); _currentChatGroup.value.updatedAt = Date.now();
     }

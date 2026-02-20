@@ -20,6 +20,7 @@ const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { Chat } from '../models/types';
 import { naturalSort } from '../utils/string';
+import { hasChatOverrides } from '../utils/chat-settings-resolver';
 
 const props = defineProps<{
   show?: boolean;
@@ -41,12 +42,16 @@ const sortedAvailableModels = computed(() => naturalSort(availableModels?.value 
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 
+const hasActiveOverrides = computed(() => {
+  return hasChatOverrides({ chat: localSettings.value });
+});
+
 const effectiveEndpointType = computed(() => {
   return localSettings.value.endpointType || resolvedSettings?.value?.endpointType;
 });
 
 // Local state for editing
-const localSettings = ref<Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'systemPrompt' | 'lmParameters'>>>({});
+const localSettings = ref<Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>>({});
 
 function syncLocalWithCurrent() {
   if (currentChat.value) {
@@ -55,6 +60,8 @@ function syncLocalWithCurrent() {
       endpointUrl: currentChat.value.endpointUrl,
       endpointHttpHeaders: currentChat.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(currentChat.value.endpointHttpHeaders)) : undefined,
       modelId: currentChat.value.modelId,
+      autoTitleEnabled: currentChat.value.autoTitleEnabled,
+      titleModelId: currentChat.value.titleModelId,
       systemPrompt: currentChat.value.systemPrompt ? JSON.parse(JSON.stringify(currentChat.value.systemPrompt)) : undefined,
       lmParameters: currentChat.value.lmParameters ? JSON.parse(JSON.stringify(currentChat.value.lmParameters)) : undefined,
     };
@@ -215,12 +222,23 @@ async function updateSystemPromptBehavior(behavior: 'override' | 'append' | 'inh
   await saveChanges();
 }
 
+async function updateSystemPromptContent(content: string) {
+  if (localSettings.value.systemPrompt) {
+    localSettings.value.systemPrompt.content = content;
+  } else {
+    localSettings.value.systemPrompt = { content, behavior: 'override' };
+  }
+  await saveChanges();
+}
+
 async function handleRestoreDefaults() {
   localSettings.value = {
     endpointType: undefined,
     endpointUrl: undefined,
     endpointHttpHeaders: undefined,
     modelId: undefined,
+    autoTitleEnabled: undefined,
+    titleModelId: undefined,
     systemPrompt: undefined,
     lmParameters: undefined
   };
@@ -247,13 +265,24 @@ defineExpose({
             </div>
             <h3 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Chat Specific Overrides</h3>
           </div>
-          <button
-            @click="emit('close')"
-            class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
-            data-testid="close-button"
-          >
-            <X class="w-5 h-5" />
-          </button>
+
+          <div class="flex items-center gap-2">
+            <div
+              v-if="hasActiveOverrides"
+              class="flex items-center gap-1.5 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-full"
+            >
+              <div class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+              <span class="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Active Overrides</span>
+            </div>
+
+            <button
+              @click="emit('close')"
+              class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
+              data-testid="close-button"
+            >
+              <X class="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <!-- Scrollable Content -->
@@ -390,6 +419,66 @@ defineExpose({
             </div>
           </div>
 
+          <!-- Automatic Title Section -->
+          <div class="p-6 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-3xl space-y-6">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="p-2 bg-blue-600/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
+                  <Settings2 class="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <h4 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Automatic Title</h4>
+                  <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Configure how this chat is automatically named.</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+                <button
+                  @click="localSettings.autoTitleEnabled = undefined; saveChanges();"
+                  class="px-3 py-1 text-[9px] font-bold rounded transition-all"
+                  :class="localSettings.autoTitleEnabled === undefined ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                >
+                  Inherit
+                </button>
+                <button
+                  @click="localSettings.autoTitleEnabled = true; saveChanges();"
+                  class="px-3 py-1 text-[9px] font-bold rounded transition-all"
+                  :class="localSettings.autoTitleEnabled === true ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                >
+                  Enabled
+                </button>
+                <button
+                  @click="localSettings.autoTitleEnabled = false; saveChanges();"
+                  class="px-3 py-1 text-[9px] font-bold rounded transition-all"
+                  :class="localSettings.autoTitleEnabled === false ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
+                >
+                  Disabled
+                </button>
+              </div>
+            </div>
+
+            <div v-if="localSettings.autoTitleEnabled !== false" class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-gray-50 dark:border-gray-800/50">
+              <div class="space-y-2">
+                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Title Model Override</label>
+                <ModelSelector
+                  :model-value="localSettings.titleModelId"
+                  @update:model-value="val => { localSettings.titleModelId = val; saveChanges(); }"
+                  :models="sortedAvailableModels"
+                  :loading="fetchingModels"
+                  :placeholder="formatLabel(resolvedSettings?.titleModelId, resolvedSettings?.sources.titleModelId)"
+                  :allow-clear="true"
+                  @refresh="fetchModels"
+                  data-testid="chat-setting-title-model-select"
+                />
+              </div>
+              <div class="flex items-center">
+                <p class="text-[10px] text-gray-400 italic leading-relaxed">
+                  The title model is used only once to summarize the first user message.
+                  {{ localSettings.autoTitleEnabled === undefined ? ' Currently inheriting ' + (resolvedSettings?.autoTitleEnabled ? 'Enabled' : 'Disabled') + ' from ' + resolvedSettings?.sources.autoTitleEnabled + '.' : '' }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Info Banners -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="flex items-start gap-4 p-4 bg-white dark:bg-blue-900/10 border border-gray-100 dark:border-blue-900/30 rounded-2xl shadow-sm">
@@ -476,15 +565,7 @@ defineExpose({
                 <textarea
                   v-else
                   :value="localSettings.systemPrompt?.content || ''"
-                  @input="e => {
-                    const val = (e.target as HTMLTextAreaElement).value;
-                    if(localSettings.systemPrompt) {
-                      localSettings.systemPrompt.content = val;
-                    } else {
-                      localSettings.systemPrompt = { content: val, behavior: 'override' };
-                    }
-                  }"
-                  @blur="saveChanges"
+                  @input="e => updateSystemPromptContent((e.target as HTMLTextAreaElement).value)"
                   rows="4"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
                   :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"

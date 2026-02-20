@@ -594,12 +594,13 @@ describe('ChatSettingsPanel.vue', () => {
       // Ensure textarea exists initially
       expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
 
-      // Click Inherit
-      const inheritBtn = wrapper.findAll('button').find(b => b.text() === 'Inherit');
+      // Click Inherit in the System Prompt section (it's the second one now)
+      const inheritBtns = wrapper.findAll('button').filter(b => b.text().includes('Inherit'));
+      const inheritBtn = inheritBtns.find(b => b.element.closest('.md\\:col-span-2')) || inheritBtns[0];
       await inheritBtn?.trigger('click');
-      await nextTick();
+      await flushPromises();
 
-      // Verify updateChatSettings was called with undefined
+      // Verify updateChatSettings was called with undefined for systemPrompt
       expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
         systemPrompt: undefined
       }));
