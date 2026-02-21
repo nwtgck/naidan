@@ -10,7 +10,7 @@ import ChatToolsMenu from './ChatToolsMenu.vue';
 
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
-const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditor.vue'));
+const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
 
 import {
   Square, Minimize2, Maximize2, Send,
