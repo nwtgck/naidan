@@ -44,9 +44,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   const settingsStore = useSettings()
   const chatStore = useChat()
 
-  await settingsStore.init()
+  // Wait for the router to be ready before accessing query parameters.
+  // This ensures that the initial URL (even on root path '/') is correctly parsed.
+  await router.isReady()
+
+  const storageTypeQuery = router.currentRoute.value.query['storage-type'];
+  const storageTypeOverride = Array.isArray(storageTypeQuery) ? storageTypeQuery[0] : storageTypeQuery;
+
+  await settingsStore.init({ storageTypeOverride: storageTypeOverride || undefined })
   await chatStore.loadChats()
 
-  await router.isReady()
   app.mount('#app')
 })

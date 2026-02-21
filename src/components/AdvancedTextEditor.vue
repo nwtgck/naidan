@@ -17,6 +17,7 @@ import {
   Layers,
   Check,
   WrapText,
+  BarChart2,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -56,9 +57,12 @@ const lineNumbersContentRef = ref<HTMLElement | null>(null); // Inner container 
 const multiEditInputRef = ref<HTMLInputElement | null>(null);
 const searchIndex = ref(-1);
 const searchMatches = ref<{ start: number; end: number }[]>([]);
+const showStats = ref(false);
 
 // Line Height Calculation State
 const lineHeights = ref<number[]>([]);
+let ghostElement: HTMLDivElement | null = null;
+let lineHeightDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const modKeyName = isMac ? 'Cmd' : 'Ctrl';
@@ -66,41 +70,81 @@ const modKeyName = isMac ? 'Cmd' : 'Ctrl';
 // --- Computed Stats ---
 const stats = computed(() => {
   const text = content.value;
+
+  // Optimize line counting: Always calculate this as it's needed for line numbers
+  // when word wrap is disabled, regardless of whether stats are shown.
+  let lineCount = 1;
+  if (text.length === 0) {
+    lineCount = 0;
+  } else {
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '\n') lineCount++;
+    }
+  }
+
+  if (!showStats.value) {
+    return { chars: 0, words: 0, lines: lineCount, lineCount: lineCount };
+  }
+
   return {
     chars: text.length,
     words: text.trim() ? text.trim().split(/\s+/).length : 0,
-    lines: text ? text.split('\n').length : 0,
-    lineCount: text.split('\n').length,
+    lines: lineCount,
+    lineCount: lineCount,
   };
 });
-
 // --- Line Height Measurement ---
 function calculateLineHeights() {
-  if (!textareaRef.value || wrapMode.value === 'wrap-off') {
+  if (!textareaRef.value) {
     lineHeights.value = [];
     return;
+  }
+
+  // If wrapping is off, we don't need expensive calculations.
+  const currentWrapMode = wrapMode.value;
+  switch (currentWrapMode) {
+  case 'wrap-off':
+    lineHeights.value = [];
+    return;
+  case 'wrap-on':
+    break;
+  default: {
+    const _ex: never = currentWrapMode;
+    throw new Error(`Unhandled wrap mode: ${_ex}`);
+  }
   }
 
   const textarea = textareaRef.value;
   const style = window.getComputedStyle(textarea);
   const width = textarea.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   const font = style.font;
-  const lineHeight = parseFloat(style.lineHeight) || 21;
+  const lineHeightStr = style.lineHeight;
+  const lineHeight = parseFloat(lineHeightStr) || 21;
 
-  // Create ghost element for measurement
-  const ghost = document.createElement('div');
-  ghost.style.position = 'absolute';
-  ghost.style.top = '-9999px';
-  ghost.style.left = '-9999px';
+  // Create or reuse ghost element for measurement
+  if (!ghostElement) {
+    ghostElement = document.createElement('div');
+    ghostElement.style.position = 'absolute';
+    ghostElement.style.top = '-9999px';
+    ghostElement.style.left = '-9999px';
+    ghostElement.style.whiteSpace = 'pre-wrap';
+    ghostElement.style.wordBreak = 'break-word';
+    ghostElement.style.visibility = 'hidden';
+    document.body.appendChild(ghostElement);
+  }
+
+  const ghost = ghostElement;
   ghost.style.width = `${width}px`;
   ghost.style.font = font;
-  ghost.style.lineHeight = style.lineHeight;
-  ghost.style.whiteSpace = 'pre-wrap';
-  ghost.style.wordBreak = 'break-word';
-  ghost.style.visibility = 'hidden';
-  document.body.appendChild(ghost);
+  ghost.style.lineHeight = lineHeightStr;
 
   const lines = content.value.split('\n');
+
+  // Use a document fragment or batch updates if possible, but for layout thrashing,
+  // we just need to minimize DOM reflows. Reading layout properties forces reflow.
+  // We can't easily batch reads here without losing sync.
+  // However, debouncing the whole operation is the key.
+
   const heights = lines.map(line => {
     if (line === '') return lineHeight;
     ghost.textContent = line;
@@ -108,14 +152,29 @@ function calculateLineHeights() {
     return ghost.clientHeight || lineHeight;
   });
 
-  document.body.removeChild(ghost);
   lineHeights.value = heights;
 }
 
 watch([content, wrapMode], () => {
-  nextTick(calculateLineHeights);
+  const currentWrapMode = wrapMode.value;
+  switch (currentWrapMode) {
+  case 'wrap-off':
+    // No calculation needed for wrap-off, just clear heights immediately
+    lineHeights.value = [];
+    return;
+  case 'wrap-on':
+    // Debounce for wrap-on mode to prevent typing lag
+    if (lineHeightDebounceTimer) clearTimeout(lineHeightDebounceTimer);
+    lineHeightDebounceTimer = setTimeout(() => {
+      calculateLineHeights();
+    }, 100); // 100ms delay to unblock the UI thread during rapid typing
+    break;
+  default: {
+    const _ex: never = currentWrapMode;
+    throw new Error(`Unhandled wrap mode: ${_ex}`);
+  }
+  }
 });
-
 // --- History Management ---
 function recordHistory({ newContent }: { newContent: string }) {
   if (newContent === history.value[historyIndex.value]) return;
@@ -531,6 +590,10 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('resize', calculateLineHeights);
   if (historyTimeout) clearTimeout(historyTimeout);
+  if (lineHeightDebounceTimer) clearTimeout(lineHeightDebounceTimer);
+  if (ghostElement && ghostElement.parentNode) {
+    ghostElement.parentNode.removeChild(ghostElement);
+  }
 });
 
 defineExpose({
@@ -599,6 +662,14 @@ defineExpose({
             :title="`Find & Replace (${modKeyName}+F)`"
           >
             <Search class="w-4.5 h-4.5" />
+          </button>
+          <button
+            @click="showStats = !showStats"
+            class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
+            :class="showStats ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
+            title="Toggle Stats"
+          >
+            <BarChart2 class="w-4.5 h-4.5" />
           </button>
           <button
             @click="handleCmdD"
@@ -819,7 +890,7 @@ defineExpose({
         </Transition>
 
         <!-- Footer Info Bar (Opaque Slate-900 background) -->
-        <div class="h-9 border-t border-gray-100 dark:border-white/10 flex items-center justify-between px-6 bg-white dark:bg-[#0f172a] text-[10px] font-bold uppercase tracking-widest text-gray-400 z-30 relative shrink-0">
+        <div v-if="showStats" class="h-9 border-t border-gray-100 dark:border-white/10 flex items-center justify-between px-6 bg-white dark:bg-[#0f172a] text-[10px] font-bold uppercase tracking-widest text-gray-400 z-30 relative shrink-0">
           <div class="flex items-center gap-6">
             <span class="flex items-center gap-1.5"><Type class="w-3 h-3 text-blue-500/50" /> {{ stats.chars }} <span class="opacity-40 font-medium">Chars</span></span>
             <span class="flex items-center gap-1.5"><PencilLine class="w-3 h-3 text-amber-500/50" /> {{ stats.words }} <span class="opacity-40 font-medium">Words</span></span>

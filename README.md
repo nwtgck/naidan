@@ -101,9 +101,12 @@ Naidan supports URL fragment parameters (following the `#`) to automate actions 
 -   `global-endpoint-type`: **Global Endpoint Type**. Specifies the type of the global endpoint (`openai` or `ollama`).
 -   `global-endpoint-url`: **Global Endpoint URL**. Specifies the base URL for the global endpoint.
 -   `global-model`: **Global Default Model**. Specifies the default model ID to be used globally.
+-   `storage-type`: **Initial Storage Type**. Specifies the storage engine (`local`, `opfs`, or `memory`) to use. This can **only** be used for the very first initialization of the application data. If data is already present in the browser, this parameter is ignored with a notification.
 
 ### Examples
 
+-   **Ephemeral Mode**: Start the application using in-memory storage (data is lost on refresh).
+    `index.html#/?storage-type=memory`
 -   **Quick Question**: Start a chat immediately with a prompt.
     `index.html#/?q=%s`
 -   **Custom Behavior**: Start a chat with a specific system instruction.
