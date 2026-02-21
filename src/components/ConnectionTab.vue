@@ -68,6 +68,10 @@ function copySetupUrl() {
   const baseUrl = window.location.origin + window.location.pathname;
   const params = new URLSearchParams();
 
+  if (form.value.storageType) {
+    params.set('storage-type', form.value.storageType);
+  }
+
   const type = form.value.endpointType;
   switch (type) {
   case 'openai':

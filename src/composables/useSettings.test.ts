@@ -4,14 +4,22 @@ import { DEFAULT_SETTINGS } from '../models/types';
 import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
 import { flushPromises } from '@vue/test-utils';
 
-const { mockAddErrorEvent, mockListModels } = vi.hoisted(() => ({
+const { mockAddErrorEvent, mockListModels, mockShowConfirm } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
   mockListModels: vi.fn().mockResolvedValue(['model-1', 'model-2']),
+  mockShowConfirm: vi.fn(),
 }));
 
 vi.mock('./useGlobalEvents', () => ({
   useGlobalEvents: () => ({
     addErrorEvent: mockAddErrorEvent,
+    addInfoEvent: vi.fn(),
+  }),
+}));
+
+vi.mock('./useConfirm', () => ({
+  useConfirm: () => ({
+    showConfirm: mockShowConfirm,
   }),
 }));
 
@@ -61,7 +69,7 @@ describe('useSettings Initialization and Bootstrap', () => {
   it('should initialize StorageService with correct type from bootstrap key', async () => {
     localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'opfs');
     const { init } = useSettings();
-    await init();
+    await init({ storageTypeOverride: undefined });
     expect(mocks.init).toHaveBeenCalledWith('opfs');
   });
 
@@ -69,7 +77,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
 
     const { init } = useSettings();
-    await init();
+    await init({ storageTypeOverride: undefined });
 
     expect(mocks.init).toHaveBeenCalledWith('opfs');
     expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('opfs');
@@ -83,7 +91,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     // Before init it is local
     expect(settings.value.storageType).toBe('local');
 
-    await init();
+    await init({ storageTypeOverride: undefined });
 
     // After init, it should have been updated to 'opfs' (from detection)
     expect(settings.value.storageType).toBe('opfs');
@@ -94,7 +102,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     localStorage.clear();
 
     const { init, save, settings } = useSettings();
-    await init(); // This detects 'opfs' and sets settings.value.storageType = 'opfs'
+    await init({ storageTypeOverride: undefined }); // This detects 'opfs' and sets settings.value.storageType = 'opfs'
 
     // Simulate finishing onboarding: save new URL/Type but don't explicitly mention storageType
     // (spread of settings.value should include the detected 'opfs')
@@ -120,7 +128,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'invalid-type');
 
     const { init } = useSettings();
-    await init();
+    await init({ storageTypeOverride: undefined });
 
     expect(consoleSpy).toHaveBeenCalled();
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
@@ -131,6 +139,66 @@ describe('useSettings Initialization and Bootstrap', () => {
     expect(mocks.init).toHaveBeenCalledWith('opfs');
 
     consoleSpy.mockRestore();
+  });
+
+  describe('Storage Type Query Parameter', () => {
+    it('should use storage-type from override if not already initialized', async () => {
+      localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+
+      const { init } = useSettings();
+      await init({ storageTypeOverride: 'memory' });
+
+      expect(mocks.init).toHaveBeenCalledWith('memory');
+      expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('memory');
+    });
+
+    it('should ignore storage-type from override if already initialized and show confirm', async () => {
+      localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+
+      const { init } = useSettings();
+      await init({ storageTypeOverride: 'memory' });
+
+      expect(mocks.init).toHaveBeenCalledWith('local');
+      expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('local');
+      expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
+        title: 'Storage Already Initialized',
+      }));
+    });
+
+    it('should NOT show confirm if storage-type from override matches already initialized type', async () => {
+      localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+
+      const { init } = useSettings();
+      await init({ storageTypeOverride: 'local' });
+
+      expect(mocks.init).toHaveBeenCalledWith('local');
+      expect(mockShowConfirm).not.toHaveBeenCalled();
+    });
+
+    it('should ignore invalid storage-type from override', async () => {
+      localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+
+      const { init } = useSettings();
+      await init({ storageTypeOverride: 'invalid' });
+
+      // Should fallback to detection (opfs in this mock environment)
+      expect(mocks.init).toHaveBeenCalledWith('opfs');
+      expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('opfs');
+    });
+
+    it('should successfully initialize with "memory" when provided as a string override (simulating router query param)', async () => {
+      // This mimics the flow in main.ts:
+      // const storageTypeOverride = router.currentRoute.value.query['storage-type'];
+      // await settingsStore.init({ storageTypeOverride });
+
+      localStorage.removeItem(STORAGE_BOOTSTRAP_KEY);
+      const { init } = useSettings();
+
+      await init({ storageTypeOverride: 'memory' });
+
+      expect(mocks.init).toHaveBeenCalledWith('memory');
+      expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('memory');
+    });
   });
 
   it('should set isOnboardingDismissed to true if endpointUrl AND defaultModelId are present in loaded settings', async () => {
@@ -145,7 +213,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Act
     const { init, isOnboardingDismissed, settings } = useSettings();
-    await init();
+    await init({ storageTypeOverride: undefined });
 
     // Assert
     expect(isOnboardingDismissed.value).toBe(true);
@@ -162,7 +230,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     });
 
     const { init, isOnboardingDismissed } = useSettings();
-    await init();
+    await init({ storageTypeOverride: undefined });
 
     expect(isOnboardingDismissed.value).toBe(false);
   });
@@ -176,7 +244,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Act
     const { init, isOnboardingDismissed } = useSettings();
-    await init();
+    await init({ storageTypeOverride: undefined });
 
     // Assert
     expect(isOnboardingDismissed.value).toBe(false);
@@ -188,7 +256,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Act
     const { init, isOnboardingDismissed } = useSettings();
-    await init();
+    await init({ storageTypeOverride: undefined });
 
     // Assert
     expect(isOnboardingDismissed.value).toBe(false);
@@ -206,9 +274,9 @@ describe('useSettings Initialization and Bootstrap', () => {
     const { init, initialized } = useSettings();
 
     // Trigger multiple calls in parallel
-    const p1 = init();
-    const p2 = init();
-    const p3 = init();
+    const p1 = init({ storageTypeOverride: undefined });
+    const p2 = init({ storageTypeOverride: undefined });
+    const p3 = init({ storageTypeOverride: undefined });
 
     // Wait for microtasks (like checkOPFSSupport) to settle
     await flushPromises();
@@ -234,7 +302,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       });
 
       const { init, fetchModels } = useSettings();
-      await init();
+      await init({ storageTypeOverride: undefined });
       mockListModels.mockClear();
 
       await fetchModels();
@@ -251,7 +319,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       });
 
       const { init, fetchModels } = useSettings();
-      await init();
+      await init({ storageTypeOverride: undefined });
       mockListModels.mockClear();
 
       await fetchModels({

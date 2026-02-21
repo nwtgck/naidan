@@ -421,24 +421,7 @@ export class StorageService {
           throw e;
         }
 
-        if ((() => {
-          const t = typeof localStorage;
-          switch (t) {
-          case 'undefined': return false;
-          case 'object':
-          case 'boolean':
-          case 'string':
-          case 'number':
-          case 'function':
-          case 'symbol':
-          case 'bigint':
-            return true;
-          default: {
-            const _ex: never = t;
-            return _ex;
-          }
-          }
-        })()) {
+        if (typeof localStorage !== 'undefined') {
           localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
         }
       }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('switchProvider', { notifyLockWaitAfterMs: 5000 }) });

@@ -8,6 +8,7 @@ import { TransformersJsProvider } from '../services/transformers-js-provider';
 import { transformersJsService } from '../services/transformers-js';
 import { StorageTypeSchemaDto } from '../models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
+import { useConfirm } from './useConfirm';
 
 const _settings = ref<Settings>({
   ...DEFAULT_SETTINGS,
@@ -65,35 +66,46 @@ export function useSettings() {
     return _isOnboardingDismissed.value || (hasEndpoint && hasModel);
   });
 
-  async function init() {
+  async function init({ storageTypeOverride }: { storageTypeOverride: string | undefined }) {
     if (_initialized.value) return;
     if (initPromise) return initPromise;
+    console.log("storageTypeOverride", storageTypeOverride);
 
     initPromise = (async () => {
       loading.value = true;
       try {
         // Determine storage type from persisted flag
-        const rawSavedType = (() => {
-          const t = typeof localStorage;
-          switch (t) {
-          case 'undefined': return null;
-          case 'object':
-          case 'boolean':
-          case 'string':
-          case 'number':
-          case 'function':
-          case 'symbol':
-          case 'bigint':
-            return localStorage.getItem(STORAGE_BOOTSTRAP_KEY);
-          default: {
-            const _ex: never = t;
-            return _ex;
-          }
-          }
-        })();
+        const rawSavedType = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_BOOTSTRAP_KEY) : null;
 
         const validatedType = StorageTypeSchemaDto.safeParse(rawSavedType);
         let bootstrapType: 'local' | 'opfs' | 'memory' | null = validatedType.success ? validatedType.data : null;
+
+        if (storageTypeOverride) {
+          if (rawSavedType !== null) {
+            if (storageTypeOverride !== rawSavedType) {
+              const { addInfoEvent } = useGlobalEvents();
+              addInfoEvent({
+                source: 'SettingsService',
+                message: `Storage type is already set to "${rawSavedType}". The requested type "${storageTypeOverride}" via query parameter was ignored.`,
+              });
+
+              const { showConfirm } = useConfirm();
+              // Do not await to avoid blocking initialization/mount
+              showConfirm({
+                title: 'Storage Already Initialized',
+                message: `Storage type is already set to "${rawSavedType}". The request to use "${storageTypeOverride}" via query parameter was ignored.`,
+                confirmButtonText: 'OK',
+              });
+            }
+          } else {
+            const validatedQuery = StorageTypeSchemaDto.safeParse(storageTypeOverride);
+            if (validatedQuery.success) {
+              bootstrapType = validatedQuery.data;
+            } else {
+              console.warn(`Invalid storage-type override: "${storageTypeOverride}". Ignoring.`);
+            }
+          }
+        }
 
         if (rawSavedType !== null && !validatedType.success) {
           console.warn(`Invalid storage type found in localStorage: "${rawSavedType}". Falling back to detection.`, validatedType.error);
@@ -105,29 +117,16 @@ export function useSettings() {
           });
         }
 
+        if (rawSavedType === null && bootstrapType && typeof localStorage !== 'undefined') {
+          localStorage.setItem(STORAGE_BOOTSTRAP_KEY, bootstrapType);
+        }
+
         if (!bootstrapType) {
           // First run or cleared state: detect best available storage
           const isSupported = await checkOPFSSupport();
           bootstrapType = isSupported ? 'opfs' : 'local';
 
-          if ((() => {
-            const t = typeof localStorage;
-            switch (t) {
-            case 'undefined': return false;
-            case 'object':
-            case 'boolean':
-            case 'string':
-            case 'number':
-            case 'function':
-            case 'symbol':
-            case 'bigint':
-              return true;
-            default: {
-              const _ex: never = t;
-              return _ex;
-            }
-            }
-          })()) {
+          if (typeof localStorage !== 'undefined') {
             localStorage.setItem(STORAGE_BOOTSTRAP_KEY, bootstrapType);
           }
         }
