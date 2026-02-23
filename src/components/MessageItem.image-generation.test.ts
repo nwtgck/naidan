@@ -185,11 +185,12 @@ describe('MessageItem Image Generation', () => {
 
     let metaOption = wrapper.find('[data-testid="download-with-metadata-option"]');
     if (!metaOption.exists()) {
-      // Try to open via the portal's button group first
-      const buttonGroup = wrapper.find('.naidan-download-portal > div');
-      if (buttonGroup.exists()) {
-        await buttonGroup.trigger('mouseenter');
+      // Open via the toggle button
+      const toggle = wrapper.find('[data-testid="download-gen-image-dropdown-toggle"]');
+      if (toggle.exists()) {
+        await toggle.trigger('mouseenter');
       } else {
+        // Fallback for older modes if any
         await wrapper.find('.naidan-generated-image').trigger('mouseenter');
       }
       await nextTick();

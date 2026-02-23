@@ -68,7 +68,6 @@ defineExpose({
   <div
     class="relative inline-flex shadow-sm border border-gray-200 dark:border-gray-700 rounded-lg overflow-visible bg-white dark:bg-gray-800 z-30"
     ref="dropdownRef"
-    @mouseenter="openDropdown"
     @mouseleave="closeDropdown"
   >
     <!-- Main Button (Standard Download) -->
@@ -84,6 +83,7 @@ defineExpose({
     <!-- Split Divider & Dropdown Toggle -->
     <button
       @click="toggleDropdown"
+      @mouseenter="openDropdown"
       class="px-1 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 border-l border-gray-200 dark:border-gray-700 transition-colors rounded-r-lg flex items-center justify-center"
       title="More options"
       data-testid="download-gen-image-dropdown-toggle"
