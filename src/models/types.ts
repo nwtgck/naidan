@@ -70,21 +70,6 @@ export interface MessageBranch {
   items: MessageNode[];
 }
 
-export interface ChatGroup {
-  id: string;
-  name: string;
-  isCollapsed: boolean;
-  items: SidebarItem[]; // Order is defined by array index
-  updatedAt: number;
-
-  endpoint?: Endpoint;
-  modelId?: string;
-  autoTitleEnabled?: boolean;
-  titleModelId?: string;
-  systemPrompt?: SystemPrompt;
-  lmParameters?: LmParameters;
-}
-
 export interface Chat {
   id: string;
   title: string | null;
@@ -145,9 +130,27 @@ export interface ChatContent {
 
 export type ChatSummary = Pick<Chat, 'id' | 'title' | 'updatedAt' | 'groupId'>;
 
+export type ChatSidebarItem =
+  | { id: string; type: 'chat'; chat: ChatSummary };
+
+export interface ChatGroup {
+  id: string;
+  name: string;
+  isCollapsed: boolean;
+  items: ChatSidebarItem[]; // Order is defined by array index
+  updatedAt: number;
+
+  endpoint?: Endpoint;
+  modelId?: string;
+  autoTitleEnabled?: boolean;
+  titleModelId?: string;
+  systemPrompt?: SystemPrompt;
+  lmParameters?: LmParameters;
+}
+
 // Sidebar hierarchy - order is implicit by position in array
 export type SidebarItem =
-  | { id: string; type: 'chat'; chat: ChatSummary }
+  | ChatSidebarItem
   | { id: string; type: 'chat_group'; chatGroup: ChatGroup };
 
 /**

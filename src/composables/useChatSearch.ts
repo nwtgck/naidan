@@ -106,8 +106,6 @@ export function useChatSearch() {
                 case 'chat':
                   chats.push({ chat: chatItem.chat, groupName: chatGroup.name });
                   break;
-                case 'chat_group':
-                  break; // Not supported
                 default: {
                   const _ex: never = cType;
                   throw new Error(`Unhandled sidebar item type: ${_ex}`);

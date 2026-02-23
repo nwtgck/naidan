@@ -11,7 +11,7 @@ import Logo from './Logo.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted(() => import('./SidebarDebugControls.vue'));
-import type { ChatGroup, SidebarItem } from '../models/types';
+import type { ChatGroup, SidebarItem, ChatSidebarItem } from '../models/types';
 import {
   Trash2, Settings as SettingsIcon,
   Pencil, Folder, FolderPlus,
@@ -397,7 +397,7 @@ function getGroupItems(groupId: string) {
   return items.slice(0, COMPACT_THRESHOLD);
 }
 
-function updateGroupItems(groupId: string, newItems: SidebarItem[]) {
+function updateGroupItems(groupId: string, newItems: ChatSidebarItem[]) {
   const groupIndex = sidebarItemsLocal.value.findIndex(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
   if (groupIndex === -1) return;
 

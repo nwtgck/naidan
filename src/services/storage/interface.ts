@@ -51,18 +51,7 @@ export abstract class IStorageProvider {
       switch (item.type) {
       case 'chat_group':
         item.chatGroup.items.forEach(nested => {
-          switch (nested.type) {
-          case 'chat':
-            allSummaries.push(nested.chat);
-            break;
-          case 'chat_group':
-            // Nested groups not supported but handled for exhaustiveness
-            break;
-          default: {
-            const _ex: never = nested;
-            throw new Error(`Unhandled sidebar item type: ${_ex}`);
-          }
-          }
+          allSummaries.push(nested.chat);
         });
         break;
       case 'chat':

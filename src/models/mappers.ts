@@ -22,6 +22,7 @@ import type {
   Chat,
   ChatGroup,
   ChatSummary,
+  ChatSidebarItem,
   SidebarItem,
   Settings,
   EndpointType,
@@ -132,7 +133,7 @@ export const chatGroupToDomain = (
 
   const chatIds = node?.chat_ids || [];
 
-  const items: SidebarItem[] = chatIds.map(cid => {
+  const items: ChatSidebarItem[] = chatIds.map(cid => {
     const meta = chatMetas.find(m => m.id === cid);
     return {
       id: `chat:${cid}`,
@@ -483,7 +484,7 @@ export const buildSidebarItemsFromHierarchy = (
       const groupMeta = groupMap.get(node.id);
       if (!groupMeta) return null;
 
-      const nestedItems: SidebarItem[] = node.chat_ids
+      const nestedItems: ChatSidebarItem[] = node.chat_ids
         .map(cid => {
           const m = metaMap.get(cid);
           if (!m) return null;
@@ -491,9 +492,9 @@ export const buildSidebarItemsFromHierarchy = (
             id: `chat:${cid}`,
             type: 'chat' as const,
             chat: { ...chatMetaToSummary(m), groupId: groupMeta.id }
-          } as SidebarItem;
+          } as ChatSidebarItem;
         })
-        .filter((i): i is SidebarItem => i !== null);
+        .filter((i): i is ChatSidebarItem => i !== null);
 
       return {
         id: `chat_group:${node.id}`,
