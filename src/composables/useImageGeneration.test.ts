@@ -221,8 +221,8 @@ describe('useImageGeneration', () => {
       expect(assistantNode!.content).toContain(SENTINEL_IMAGE_PROCESSED);
       expect(assistantNode!.content).toContain('```' + IMAGE_BLOCK_LANG);
       expect(assistantNode!.content).toContain('"binaryObjectId":');
-      expect(assistantNode!.content).toContain('"displayWidth": 409.6');
-      expect(assistantNode!.content).toContain('"displayHeight": 409.6');
+      expect(assistantNode!.content).toContain('"displayWidth": 410');
+      expect(assistantNode!.content).toContain('"displayHeight": 410');
       expect(assistantNode!.content).toContain('"prompt": "a futuristic city"');
     });
 

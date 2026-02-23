@@ -42,6 +42,8 @@ interface MediaItem {
   steps?: number;
   seed?: number;
   model?: string;
+  width?: number;
+  height?: number;
   index: number;
   total: number;
 }
@@ -97,6 +99,8 @@ const mediaGroups = computed(() => {
             steps: data.steps,
             seed: data.seed,
             model: msg.modelId,
+            width: data.width,
+            height: data.height,
             index: 0,
             total: 0
           });

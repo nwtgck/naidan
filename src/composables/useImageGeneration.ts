@@ -9,6 +9,7 @@ import {
   createImageRequestMarker,
   createImageResponseMarker,
   IMAGE_BLOCK_LANG,
+  getDisplayDimensions,
   type GeneratedImageBlock,
   type ImageRequestParams
 } from '../utils/image-generation';
@@ -283,9 +284,6 @@ export function useImageGeneration() {
           }
         }
 
-        const displayWidth = width * 0.8;
-        const displayHeight = height * 0.8;
-
         switch (storageType) {
         case 'opfs':
         case 'memory': {
@@ -297,10 +295,14 @@ export function useImageGeneration() {
           });
           await storageService.saveFile(finalBlob, binaryObjectId, fileName);
 
+          const { width: dw, height: dh } = getDisplayDimensions({ width, height });
+
           blocks.push({
             binaryObjectId,
-            displayWidth,
-            displayHeight,
+            displayWidth: dw,
+            displayHeight: dh,
+            width,
+            height,
             prompt, // Use original prompt without (seed: ...)
             steps: totalSteps === UNKNOWN_STEPS ? undefined : totalSteps,
             seed: activeSeed
@@ -312,7 +314,8 @@ export function useImageGeneration() {
         }
         case 'local': {
           const url = URL.createObjectURL(finalBlob);
-          const blockHtml = `<img src="${url}" width="${displayWidth}" height="${displayHeight}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
+          const { width: dw, height: dh } = getDisplayDimensions({ width, height });
+          const blockHtml = `<img src="${url}" width="${dw}" height="${dh}" alt="generated image" class="rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 my-2 max-w-full h-auto">`;
 
           if (i === 0) {
             assistantNode.content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + blockHtml;

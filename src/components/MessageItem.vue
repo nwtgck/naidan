@@ -36,6 +36,7 @@ import SpeechControl from './SpeechControl.vue';
 // IMPORTANT: ImageConjuringLoader is essential for showing image generation progress immediately.
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
+import ImageIndexBadge from './ImageIndexBadge.vue';
 import { transformersJsService } from '../services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
@@ -53,7 +54,9 @@ import {
   GeneratedImageBlockSchema,
   isImageRequest,
   parseImageRequest,
-  createImageRequestMarker
+  createImageRequestMarker,
+  getDisplayDimensions,
+  getImageStats
 } from '../utils/image-generation';
 
 const props = defineProps<{
@@ -211,7 +214,7 @@ async function loadGeneratedImages() {
     const placeholders = Array.from(root.querySelectorAll('.naidan-generated-image'));
 
     // Parallelize hydration to improve performance, especially with multiple images
-    await Promise.all(placeholders.map(async (el) => {
+    await Promise.all(placeholders.map(async (el, idx) => {
       const htmlEl = el as HTMLElement;
 
       try {
@@ -221,6 +224,8 @@ async function loadGeneratedImages() {
         // Use cached support status if available to avoid redundant file reads
         let isSupported = metadataSupportCache.get(id);
 
+        const displayWidth = htmlEl.dataset.displayWidth;
+        const displayHeight = htmlEl.dataset.displayHeight;
         const width = htmlEl.dataset.width;
         const height = htmlEl.dataset.height;
         const prompt = htmlEl.dataset.prompt || '';
@@ -254,8 +259,8 @@ async function loadGeneratedImages() {
           // Create the hydrated image element via the hydrator
           const imgEl = ImageDownloadHydrator.createImageElement({
             url: urlObj,
-            width,
-            height,
+            width: displayWidth,
+            height: displayHeight,
             onPreview: () => handlePreviewImage(id)
           });
 
@@ -299,9 +304,25 @@ async function loadGeneratedImages() {
               portal: infoPortal,
               prompt,
               steps,
-              seed
+              seed,
+              width,
+              height
             });
             hydrationCleanups.push(unmountInfo);
+          }
+
+          // Hydrate the badge portal
+          const badgePortal = htmlEl.querySelector('.naidan-badge-portal');
+          const hasMultipleImages = (imageStats.value.totalCount !== undefined && imageStats.value.totalCount > 1) ||
+                                   (imageStats.value.totalCount === undefined && imageStats.value.generatedCount > 1);
+
+          if (badgePortal instanceof HTMLElement && hasMultipleImages) {
+            const unmountBadge = ImageDownloadHydrator.mountBadge({
+              portal: badgePortal,
+              index: idx + 1,
+              total: imageStats.value.totalCount
+            });
+            hydrationCleanups.push(unmountBadge);
           }
         }
       } catch (e) {
@@ -493,13 +514,21 @@ marked.use({
         try {
           const result = GeneratedImageBlockSchema.safeParse(JSON.parse(code));
           if (result.success) {
-            const { binaryObjectId: id, displayWidth: w, displayHeight: h, prompt: p, steps: s, seed: sd } = result.data;
+            const { binaryObjectId: id, prompt: p, steps: s, seed: sd } = result.data;
+            const { width: dw, height: dh } = getDisplayDimensions({
+              width: result.data.width,
+              height: result.data.height,
+              displayWidth: result.data.displayWidth,
+              displayHeight: result.data.displayHeight
+            });
 
             const div = document.createElement('div');
             div.className = 'naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl';
             div.dataset.id = id;
-            div.dataset.width = String(w);
-            div.dataset.height = String(h);
+            div.dataset.displayWidth = String(dw);
+            div.dataset.displayHeight = String(dh);
+            if (result.data.width !== undefined) div.dataset.width = String(result.data.width);
+            if (result.data.height !== undefined) div.dataset.height = String(result.data.height);
             div.dataset.prompt = p || '';
             if (s !== undefined) div.dataset.steps = String(s);
             if (sd !== undefined) div.dataset.seed = String(sd);
@@ -507,9 +536,9 @@ marked.use({
             // Skeleton placeholder
             const skeleton = document.createElement('div');
             skeleton.className = 'naidan-image-skeleton flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0 rounded-xl';
-            skeleton.style.width = `${w}px`;
+            skeleton.style.width = `${dw}px`;
             skeleton.style.maxWidth = '100%';
-            skeleton.style.aspectRatio = `${w} / ${h}`;
+            skeleton.style.aspectRatio = `${dw} / ${dh}`;
             skeleton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image text-gray-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
             div.appendChild(skeleton);
 
@@ -520,9 +549,14 @@ marked.use({
             div.appendChild(dlPortal);
 
             const infoPortal = document.createElement('div');
-            infoPortal.className = 'naidan-info-portal absolute top-2 left-2 z-10 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all';
+            infoPortal.className = 'naidan-info-portal absolute top-2 left-2 z-20 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all';
             infoPortal.innerHTML = '<!-- hydratable -->';
             div.appendChild(infoPortal);
+
+            const badgePortal = document.createElement('div');
+            badgePortal.className = 'naidan-badge-portal absolute bottom-2 left-2 z-10';
+            badgePortal.innerHTML = '<!-- hydratable -->';
+            div.appendChild(badgePortal);
 
             return div.outerHTML;
           } else {
@@ -822,6 +856,8 @@ const displayContent = computed(() => {
 
 const isImageResponse = computed(() => isImageGenerationProcessed(props.message.content));
 
+const imageStats = computed(() => getImageStats(props.message.content));
+
 const speechText = computed(() => {
   if (!displayContent.value) return '';
   if (isImageResponse.value) return 'Image generated.'; // Don't read out HTML tags
@@ -930,13 +966,16 @@ defineExpose({
     <div :class="isEditing ? 'overflow-visible' : 'overflow-hidden'">
       <!-- Attachments -->
       <div v-if="message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
-        <div v-for="att in message.attachments" :key="att.id" class="relative group/att">
+        <div v-for="(att, idx) in message.attachments" :key="att.id" class="relative group/att">
           <template v-if="att.status !== 'missing' && attachmentUrls[att.id]">
             <img
               :src="attachmentUrls[att.id]"
               @click="handlePreviewImage(att.binaryObjectId)"
               class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
             />
+            <div v-if="message.attachments.length > 1" class="absolute bottom-2 left-2 z-10">
+              <ImageIndexBadge :index="idx + 1" :total="message.attachments.length" />
+            </div>
             <a
               :href="attachmentUrls[att.id]"
               :download="att.originalName"

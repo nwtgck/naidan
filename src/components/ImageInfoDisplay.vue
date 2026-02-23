@@ -9,6 +9,10 @@ const props = defineProps<{
   steps: number | undefined;
   /** Random seed used for generation */
   seed: number | undefined;
+  /** Image width */
+  width: number | string | undefined;
+  /** Image height */
+  height: number | string | undefined;
 }>();
 
 const isOpen = ref(false);
@@ -92,11 +96,15 @@ defineExpose({
 
         <!-- Meta Grid -->
         <div class="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+          <div v-if="width && height" class="flex flex-col">
+            <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Size</span>
+            <span class="text-xs font-mono text-gray-700 dark:text-gray-200">{{ width }} × {{ height }}</span>
+          </div>
           <div v-if="steps !== undefined" class="flex flex-col">
             <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Steps</span>
             <span class="text-xs font-mono text-gray-700 dark:text-gray-200">{{ steps }}</span>
           </div>
-          <div v-if="seed !== undefined" class="flex flex-col">
+          <div v-if="seed !== undefined" class="flex flex-col col-span-2">
             <div class="flex items-center justify-between">
               <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Seed</span>
               <button @click="copySeed" class="text-gray-400 hover:text-blue-500 transition-colors" title="Copy Seed">
