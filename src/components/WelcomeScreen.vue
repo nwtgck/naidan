@@ -11,6 +11,7 @@ defineEmits<{
 }>();
 
 const { settings } = useSettings();
+const appVersion = __APP_VERSION__;
 
 // Access the build mode global defined in vite.config.ts
 const isHosted = (() => {
@@ -82,7 +83,7 @@ defineExpose({
             </h2>
             <p class="text-gray-500 dark:text-gray-400 text-xs sm:text-base font-medium max-w-sm mx-auto leading-relaxed">
               <template v-if="settings.storageType === 'memory'">
-                Data is lost on page reload.
+                Data is cleared on reload.
               </template>
               <template v-else>
                 Your data stays on your device.
@@ -94,7 +95,7 @@ defineExpose({
           <div v-if="isHosted" class="flex justify-center pt-1">
             <a
               href="./naidan-standalone.zip"
-              download="naidan-standalone.zip"
+              :download="'naidan-standalone-v' + appVersion + '.zip'"
               class="group/btn flex items-center gap-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-emerald-200 dark:hover:border-emerald-500/30 hover:shadow-md transition-all duration-300"
               title="Download standalone portable version"
             >
