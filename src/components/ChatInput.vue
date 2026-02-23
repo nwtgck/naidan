@@ -60,7 +60,7 @@ const emit = defineEmits<{
   (e: 'auto-sent'): void;
   (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void;
   (e: 'update:isAnimatingHeight', value: boolean): void;
-  (e: 'scroll-to-bottom'): void;
+  (e: 'scroll-to-bottom', force?: boolean): void;
 }>();
 
 const isFocused = ref(false);
@@ -341,7 +341,8 @@ function applySuggestion(text: string) {
   });
 }
 
-function adjustTextareaHeight() {
+function adjustTextareaHeight(forceOrEvent?: boolean | Event) {
+  const force = typeof forceOrEvent === 'boolean' ? forceOrEvent : false;
   if (textareaRef.value) {
     const target = textareaRef.value;
 
@@ -375,7 +376,7 @@ function adjustTextareaHeight() {
     target.style.overflowY = (isMaximized.value ? currentScrollHeight > finalHeight : currentScrollHeight > maxSixLinesHeight) ? 'auto' : 'hidden';
 
     if (!isAnimatingHeight.value) {
-      nextTick(() => emit('scroll-to-bottom'));
+      nextTick(() => emit('scroll-to-bottom', force));
     }
   }
 }
@@ -596,7 +597,6 @@ watch(
       isMaximized.value = false;
       fetchModels();
       nextTick(() => {
-        scrollToBottom();
         const currentVis = props.visibility;
         switch (currentVis) {
         case 'active':
@@ -644,8 +644,7 @@ onMounted(async () => {
   }
 
   nextTick(() => {
-    scrollToBottom();
-    adjustTextareaHeight(); // Call adjustTextareaHeight on mount
+    adjustTextareaHeight(false); // Call adjustTextareaHeight on mount without forcing scroll
     if (currentChat.value) {
       focusInput();
     }

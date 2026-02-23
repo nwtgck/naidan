@@ -442,10 +442,19 @@ describe('ChatArea UI States', () => {
 
 describe('ChatArea Scrolling Logic', () => {
   let scrollTopSetterSpy: Mock;
+  let scrollIntoViewSpy: Mock;
+
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
     scrollTopSetterSpy = vi.fn();
+    scrollIntoViewSpy = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoViewSpy;
+    HTMLElement.prototype.scrollTo = vi.fn().mockImplementation(function(this: HTMLElement, options: any) {
+      if (typeof options.top === 'number') {
+        this.scrollTop = options.top;
+      }
+    });
   });
 
   afterEach(() => {
@@ -454,11 +463,14 @@ describe('ChatArea Scrolling Logic', () => {
       wrapper = null;
     }
     document.body.innerHTML = '';
+    delete (HTMLElement.prototype as any).scrollIntoView;
+    delete (HTMLElement.prototype as any).scrollTo;
   });
 
   function setupScrollMock(element: HTMLElement) {
     Object.defineProperty(element, 'scrollHeight', { configurable: true, value: 1000 });
     Object.defineProperty(element, 'clientHeight', { configurable: true, value: 500 });
+    element.getBoundingClientRect = vi.fn().mockReturnValue({ top: 0, bottom: 500, height: 500, left: 0, right: 1000, width: 1000 });
 
     let internalScrollTop = 0;
     Object.defineProperty(element, 'scrollTop', {
@@ -469,9 +481,30 @@ describe('ChatArea Scrolling Logic', () => {
         scrollTopSetterSpy(val);
       },
     });
+
+    // Mock querySelector to find our mocked messages
+    const originalQuerySelector = element.querySelector.bind(element);
+    element.querySelector = vi.fn().mockImplementation((selector: string) => {
+      if (selector.startsWith('#message-')) {
+        const id = selector.replace('#message-', '');
+        const mockEl = document.createElement('div');
+        mockEl.id = `message-${id}`;
+        // Map specific IDs to specific positions for testing
+        const positions: Record<string, number> = {
+          'u2': 250,
+          'a1': 450,
+          'msg-asst': 450,
+          'user-1': 100,
+        };
+        const top = positions[id] ?? 0;
+        mockEl.getBoundingClientRect = vi.fn().mockReturnValue({ top, bottom: top + 100, height: 100 });
+        return mockEl;
+      }
+      return originalQuerySelector(selector);
+    });
   }
 
-  it('should scroll to bottom when a new message is added', async () => {
+  it('should scroll to bottom when a new USER message is added', async () => {
     wrapper = mount(ChatArea, {
       attachTo: document.body,
       global: { plugins: [router] },
@@ -479,22 +512,101 @@ describe('ChatArea Scrolling Logic', () => {
     const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
     setupScrollMock(container);
 
-    // Settle initial mount scrolls
+    // 1. Initial load phase
+    mockActiveMessages.value = [{ id: 'init', role: 'assistant', content: 'hello', timestamp: Date.now(), replies: { items: [] } }];
     await flushPromises();
     await nextTick();
+    // Manually clear initial load flag to focus on the USER message logic
+    (wrapper.vm as any).isInitialLoad = false;
     scrollTopSetterSpy.mockClear();
 
-    mockActiveMessages.value = [{ id: '1', role: 'user', content: 'hello', timestamp: Date.now(), replies: { items: [] } }];
+    // 2. User sends message
+    mockActiveMessages.value = [
+      { id: 'init', role: 'assistant', content: 'hello', timestamp: Date.now(), replies: { items: [] } },
+      { id: 'user-1', role: 'user', content: 'how are you?', timestamp: Date.now(), replies: { items: [] } }
+    ];
 
     await flushPromises();
     await nextTick();
     await nextTick();
 
+    // Should scroll to bottom (1000) via scrollToBottom()
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
   });
 
-  it('should scroll during streaming if user is at the bottom', async () => {
-    mockActiveMessages.value = [{ id: '1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }];
+  it('should scroll to last USER message on initial load', async () => {
+    // Setup initial state with messages
+    mockActiveMessages.value = [
+      { id: 'u1', role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] } },
+      { id: 'a1', role: 'assistant', content: 'Hi', timestamp: Date.now(), replies: { items: [] } },
+      { id: 'u2', role: 'user', content: 'Last user message', timestamp: Date.now(), replies: { items: [] } },
+      { id: 'a2', role: 'assistant', content: 'Final assistant message', timestamp: Date.now(), replies: { items: [] } },
+    ];
+
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    // Reset initial mount scrolls
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    container.scrollTop = 0; // Reset to 0 explicitly
+    scrollTopSetterSpy.mockClear();
+
+    // Force re-initialization logic
+    (wrapper.vm as any).isInitialLoad = true;
+    mockActiveMessages.value = [
+      ...mockActiveMessages.value,
+      { id: 'extra', role: 'assistant', content: 'extra', timestamp: Date.now(), replies: { items: [] } }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    // scrollIntoViewSafe(block: 'start', offset: 50) should set scrollTop to current(0) + (250 - 0) - 50 = 200
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(200);
+  });
+
+  it('should scroll new ASSISTANT message into start view', async () => {
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    // 1. Initial load settles
+    mockActiveMessages.value = [{ id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } }];
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    container.scrollTop = 0; // Reset to 0 explicitly
+    scrollTopSetterSpy.mockClear();
+
+    // 2. Assistant reply added (length changes from 1 to 2)
+    const assistantId = 'a1';
+    mockActiveMessages.value = [
+      { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
+      { id: assistantId, role: 'assistant', content: 'replying...', timestamp: Date.now(), replies: { items: [] } }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    // scrollIntoViewSafe(block: 'start') should set scrollTop to 0 + (450 - 0) = 450
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(450);
+  });
+
+  it('should scroll to bottom on initial load if no user messages are found', async () => {
+    mockActiveMessages.value = [
+      { id: 'a1', role: 'assistant', content: 'Hi', timestamp: Date.now(), replies: { items: [] } },
+    ];
 
     wrapper = mount(ChatArea, {
       attachTo: document.body,
@@ -505,24 +617,21 @@ describe('ChatArea Scrolling Logic', () => {
 
     await flushPromises();
     await nextTick();
-
-    // Set at bottom (scrollHeight 1000 - clientHeight 500 = 500)
-    container.scrollTop = 500;
+    await nextTick();
     scrollTopSetterSpy.mockClear();
 
-    mockStreaming.value = true;
-    mockActiveMessages.value[0]!.content = 'Thinking...';
+    (wrapper.vm as any).isInitialLoad = true;
+    mockActiveMessages.value = [...mockActiveMessages.value, { id: 'a2', role: 'assistant', content: 'Hi again', timestamp: Date.now(), replies: { items: [] } }];
 
     await flushPromises();
     await nextTick();
     await nextTick();
 
+    // Should fallback to bottom
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
   });
 
-  it('should NOT scroll during streaming if user has scrolled up', async () => {
-    mockActiveMessages.value = [{ id: '1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }];
-
+  it('should not scroll to bottom on window resize (resize event suppression)', async () => {
     wrapper = mount(ChatArea, {
       attachTo: document.body,
       global: { plugins: [router] },
@@ -532,47 +641,17 @@ describe('ChatArea Scrolling Logic', () => {
 
     await flushPromises();
     await nextTick();
-
-    // Set scrolled up (not at bottom)
-    container.scrollTop = 100;
+    container.scrollTop = 0; // Ensure we are at the top
     scrollTopSetterSpy.mockClear();
 
-    mockStreaming.value = true;
-    mockActiveMessages.value[0]!.content = 'Thinking...';
-
-    await flushPromises();
-    await nextTick();
-    await nextTick();
-
-    expect(scrollTopSetterSpy).not.toHaveBeenCalledWith(1000);
-    expect(container.scrollTop).toBe(100);
-  });
-
-  it('should stop scrolling after content exceeds 400 characters', async () => {
-    mockActiveMessages.value = [{ id: '1', role: 'assistant', content: 'A'.repeat(400), timestamp: Date.now(), replies: { items: [] } }];
-
-    wrapper = mount(ChatArea, {
-      attachTo: document.body,
-      global: { plugins: [router] },
-    });
-    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
-    setupScrollMock(container);
+    // Trigger window resize
+    window.dispatchEvent(new Event('resize'));
 
     await flushPromises();
     await nextTick();
 
-    container.scrollTop = 500; // at bottom
-    scrollTopSetterSpy.mockClear();
-
-    mockStreaming.value = true;
-    mockActiveMessages.value[0]!.content += ' exceeded';
-
-    await flushPromises();
-    await nextTick();
-    await nextTick();
-
-    expect(scrollTopSetterSpy).not.toHaveBeenCalledWith(1000);
-    expect(container.scrollTop).toBe(500);
+    // Should NOT have called scrollToBottom
+    expect(scrollTopSetterSpy).not.toHaveBeenCalled();
   });
 });
 

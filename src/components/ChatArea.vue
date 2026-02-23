@@ -34,6 +34,7 @@ import {
 } from 'lucide-vue-next';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { hasChatOverrides } from '../utils/chat-settings-resolver';
+import { scrollIntoViewSafe } from '../utils/dom';
 
 
 const chatStore = useChat();
@@ -46,7 +47,6 @@ const {
 } = useLayout();
 const {
   currentChat,
-  streaming,
   generatingTitle,
   activeMessages,
   allMessages,
@@ -168,8 +168,13 @@ function scrollToBottom(force = true) {
 function jumpToMessage({ messageId }: { messageId: string }) {
   if (!container.value) return;
   const el = container.value.querySelector(`#message-${messageId}`);
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (el instanceof HTMLElement) {
+    scrollIntoViewSafe({
+      container: container.value,
+      element: el,
+      behavior: 'smooth',
+      block: 'center'
+    });
     el.classList.add('bg-blue-50/50', 'dark:bg-blue-900/20');
     setTimeout(() => {
       el.classList.remove('bg-blue-50/50', 'dark:bg-blue-900/20');
@@ -239,26 +244,96 @@ function jumpToOrigin() {
   }
 }
 
+async function scrollToLatestUserMessage() {
+  if (!container.value || !activeMessages.value) return;
+
+  // Find last user message
+  const reversed = [...activeMessages.value].reverse();
+  const lastUserMsg = reversed.find(m => m.role === 'user');
+
+  if (lastUserMsg) {
+    const messageId = lastUserMsg.id;
+    // Robustly find the element, waiting up to 5 ticks for DOM to settle
+    let el: HTMLElement | null = null;
+    for (let i = 0; i < 5; i++) {
+      await nextTick();
+      el = container.value.querySelector(`#message-${messageId}`) as HTMLElement | null;
+      if (el) break;
+    }
+
+    if (el instanceof HTMLElement) {
+      scrollIntoViewSafe({
+        container: container.value,
+        element: el,
+        behavior: 'instant',
+        block: 'start',
+        offset: 50
+      });
+    } else {
+      scrollToBottom();
+    }
+  } else {
+    scrollToBottom();
+  }
+}
+
+const isInitialLoad = ref(true);
+
 watch(
-  () => activeMessages.value.length,
-  () => nextTick(scrollToBottom),
+  () => currentChat.value?.id,
+  () => {
+    isInitialLoad.value = true;
+  }
 );
 
 watch(
-  () => activeMessages.value[activeMessages.value.length - 1]?.content,
-  (newContent) => {
-    if (streaming.value && newContent && newContent.length < 400 && container.value) {
-      const { scrollTop, scrollHeight, clientHeight } = container.value;
-      // Only auto-scroll if user is already at the bottom (within 50px)
-      if (scrollHeight - scrollTop - clientHeight < 50) {
-        nextTick(scrollToBottom);
+  [() => activeMessages.value.length, () => currentChat.value?.id],
+  async ([_newLen, newId], [_oldLen, oldId]) => {
+    if (newId !== oldId) {
+      isInitialLoad.value = true;
+    }
+
+    await nextTick();
+
+    if (isInitialLoad.value) {
+      await scrollToLatestUserMessage();
+      isInitialLoad.value = false;
+      return;
+    }
+
+    const lastMsg = activeMessages.value[activeMessages.value.length - 1];
+    if (!lastMsg) return;
+
+    const role = lastMsg.role;
+    switch (role) {
+    case 'user':
+      scrollToBottom();
+      break;
+    case 'assistant':
+    case 'system': {
+      if (container.value) {
+        const messageId = lastMsg.id;
+        // Wait a tick for the new element
+        await nextTick();
+        const el = container.value.querySelector(`#message-${messageId}`);
+        if (el instanceof HTMLElement) {
+          scrollIntoViewSafe({
+            container: container.value,
+            element: el,
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }
       }
+      break;
+    }
+    default: {
+      const _ex: never = role;
+      throw new Error(`Unhandled role: ${_ex}`);
+    }
     }
   },
-  { deep: true },
-);
-
-</script>
+);</script>
 
 <template>
   <div

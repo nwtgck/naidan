@@ -40,17 +40,18 @@ describe('DebugPanel', () => {
 
   it('is collapsed when isDebugOpen is false', () => {
     const wrapper = mount(DebugPanel);
-    expect(wrapper.classes()).toContain('h-0');
-    expect(wrapper.classes()).toContain('overflow-hidden');
+    expect(wrapper.find('[data-testid="debug-panel"]').exists()).toBe(false);
   });
 
   it('is expanded when isDebugOpen is true', async () => {
     isDebugOpen.value = true;
     const wrapper = mount(DebugPanel);
     await wrapper.vm.$nextTick();
-    expect(wrapper.classes()).toContain('h-72');
-    expect(wrapper.classes()).toContain('overflow-visible');
-    expect(wrapper.classes()).toContain('z-50');
+    const panel = wrapper.find('[data-testid="debug-panel"]');
+    expect(panel.exists()).toBe(true);
+    expect(panel.classes()).toContain('h-72');
+    expect(panel.classes()).toContain('overflow-visible');
+    expect(panel.classes()).toContain('z-50');
     expect(wrapper.find('[data-testid="debug-content-area"]').exists()).toBe(true);
   });
 

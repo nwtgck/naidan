@@ -7,6 +7,7 @@ import type { SearchResultItem } from '../composables/useChatSearch';
 import { useChat } from '../composables/useChat';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { useRouter } from 'vue-router';
+import { scrollIntoViewSafe } from '../utils/dom';
 import SearchPreview from './SearchPreview.vue';
 
 const props = defineProps<{
@@ -21,6 +22,7 @@ const { closeSearch } = useGlobalSearch();
 const chats = ref<ChatSummary[]>([]);
 const isLoading = ref(false);
 const selectedChatId = ref<string | null>(null);
+const chatListContainer = ref<HTMLElement | null>(null);
 
 const selectedChat = computed(() => chats.value.find(c => c.id === selectedChatId.value) || null);
 
@@ -61,8 +63,16 @@ function navigate(direction: 'up' | 'down') {
     selectedChatId.value = nextChat.id;
     // Ensure the selected item is visible
     nextTick(() => {
-      const el = document.querySelector(`[data-group-chat-id="${nextChat.id}"]`);
-      el?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      if (!chatListContainer.value) return;
+      const el = chatListContainer.value.querySelector(`[data-group-chat-id="${nextChat.id}"]`);
+      if (el instanceof HTMLElement) {
+        scrollIntoViewSafe({
+          container: chatListContainer.value,
+          element: el,
+          block: 'nearest',
+          behavior: 'instant'
+        });
+      }
     });
   }
 }
@@ -147,7 +157,7 @@ watch(() => props.groupId, loadChats, { immediate: true });
           <MessageSquare class="w-8 h-8 text-gray-200 dark:text-gray-800 mb-2" />
           <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Empty Group</p>
         </div>
-        <div v-else class="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-hide">
+        <div v-else ref="chatListContainer" class="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-hide">
           <div
             v-for="chat in chats"
             :key="chat.id"

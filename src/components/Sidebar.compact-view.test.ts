@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -109,6 +109,21 @@ describe('Sidebar Compact View & DND Integrity', () => {
     mockChats.value = [];
     mockCurrentChat.value = null;
     vi.clearAllMocks();
+
+    // Individually defined mocks for scrolling as requested
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollTo = vi.fn().mockImplementation(function(this: HTMLElement, options: any) {
+      if (typeof options.top === 'number') this.scrollTop = options.top;
+    });
+    HTMLElement.prototype.getBoundingClientRect = vi.fn().mockReturnValue({
+      top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0
+    });
+  });
+
+  afterEach(() => {
+    delete (HTMLElement.prototype as any).scrollIntoView;
+    delete (HTMLElement.prototype as any).scrollTo;
+    delete (HTMLElement.prototype as any).getBoundingClientRect;
   });
 
   it('initially shows only 5 items in a group with 7 items', async () => {

@@ -6,6 +6,7 @@ import type { Chat } from './models/types';
 import { useRouter, useRoute } from 'vue-router';
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm';
+import { useLayout } from './composables/useLayout';
 
 // Define mock refs in module scope so they can be shared
 const mockCreateNewChat = vi.fn();
@@ -29,6 +30,10 @@ vi.mock('./composables/useChat', () => ({
 
 vi.mock('./composables/useSettings', () => ({
   useSettings: vi.fn(),
+}));
+
+vi.mock('./composables/useLayout', () => ({
+  useLayout: vi.fn(),
 }));
 
 vi.mock('./composables/useConfirm', () => ({
@@ -111,6 +116,16 @@ describe('App', () => {
       settings: ref({ endpointUrl: 'http://localhost:11434' }),
     });
 
+    const isDebugOpen = ref(false);
+    (useLayout as unknown as Mock).mockReturnValue({
+      isSidebarOpen: ref(true),
+      isDebugOpen,
+      toggleDebug: vi.fn(() => {
+        isDebugOpen.value = !isDebugOpen.value;
+      }),
+      setActiveFocusArea: vi.fn(),
+    });
+
     (useRouter as unknown as Mock).mockReturnValue({
       push: mockRouterPush,
       currentRoute: ref(currentRoute),
@@ -151,11 +166,29 @@ describe('App', () => {
   });
 
   it('renders core components', async () => {
+    (useLayout as unknown as Mock).mockReturnValue({
+      isSidebarOpen: ref(true),
+      isDebugOpen: ref(true), // Mock true to ensure it renders as a core component in this test
+      setActiveFocusArea: vi.fn(),
+    });
     const wrapper = mountApp();
     await flushPromises();
     expect(wrapper.find('[data-testid="sidebar"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="debug-panel"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="toast-container"]').exists()).toBe(true);
+  });
+
+  it('does not render debug panel when isDebugOpen is false (prevents black bar glitch)', async () => {
+    (useLayout as unknown as Mock).mockReturnValue({
+      isSidebarOpen: ref(true),
+      isDebugOpen: ref(false),
+      setActiveFocusArea: vi.fn(),
+    });
+    const wrapper = mountApp();
+    await flushPromises();
+    // Verification: When closed, DebugPanel MUST be completely removed from DOM (v-if)
+    // instead of just being hidden via CSS, which was causing layout shifts (black bars).
+    expect(wrapper.find('[data-testid="debug-panel"]').exists()).toBe(false);
   });
 
   it('automatically creates a new chat if none exist and on root path', async () => {

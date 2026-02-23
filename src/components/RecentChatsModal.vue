@@ -8,6 +8,7 @@ import { useSettings } from '../composables/useSettings';
 import { useLayout } from '../composables/useLayout';
 import { UNTITLED_CHAT_TITLE } from '../models/constants';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { scrollIntoViewSafe } from '../utils/dom';
 import RecentChatListItem from './RecentChatListItem.vue';
 
 const SearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./SearchPreview.vue'));
@@ -155,8 +156,13 @@ function scrollToSelected() {
   nextTick(() => {
     if (!scrollContainer.value) return;
     const el = scrollContainer.value.querySelector(`[data-index="${selectedIndex.value}"]`);
-    if (el) {
-      el.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    if (el instanceof HTMLElement) {
+      scrollIntoViewSafe({
+        container: scrollContainer.value,
+        element: el,
+        block: 'nearest',
+        behavior: 'instant'
+      });
     }
   });
 }
