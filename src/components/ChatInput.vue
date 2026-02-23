@@ -44,7 +44,7 @@ const {
   getSelectedImageModel,
 } = chatStore;
 
-const { setActiveFocusArea, activeFocusArea } = useLayout();
+const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
 
 const props = defineProps<{
   autoSendPrompt?: string;
@@ -195,6 +195,10 @@ function closeAdvancedEditor() {
 
 function handleAdvancedEditorUpdate({ content: newContent }: { content: string }) {
   input.value = newContent;
+}
+
+function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea' }) {
+  setPreferredEditorMode({ mode });
 }
 
 const attachments = ref<Attachment[]>([]);
@@ -722,6 +726,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
     attachments,
     editingAttachmentId,
     editingAttachment,
+    openAdvancedEditor,
+    handleAdvancedEditorModeUpdate,
   }, });
 </script>
 
@@ -913,7 +919,9 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           <AdvancedTextEditor
             :initial-value="input"
             :title="undefined"
+            :mode="preferredEditorMode"
             @update:content="handleAdvancedEditorUpdate"
+            @update:mode="handleAdvancedEditorModeUpdate"
             @close="closeAdvancedEditor"
           />
         </div>

@@ -43,6 +43,7 @@ const MessageDiffModal = defineAsyncComponentAndLoadOnMounted(() => import('./Me
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
 import { useChat } from '../composables/useChat';
+import { useLayout } from '../composables/useLayout';
 import {
   isImageGenerationPending,
   isImageGenerationProcessed,
@@ -112,6 +113,7 @@ const metadataSupportCache = new Map<string, boolean>();
 
 const { openPreview } = useImagePreview();
 const { imageProgressMap } = useChat();
+const { preferredEditorMode, setPreferredEditorMode } = useLayout();
 
 function openAdvancedEditor() {
   isAdvancedEditorOpen.value = true;
@@ -123,6 +125,10 @@ function closeAdvancedEditor() {
 
 function handleAdvancedEditorUpdate({ content: newContent }: { content: string }) {
   editContent.value = newContent;
+}
+
+function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea' }) {
+  setPreferredEditorMode({ mode });
 }
 
 async function handlePreviewImage(id: string) {
@@ -883,7 +889,8 @@ function handleToggleThinking() {
 
 defineExpose({
   __testOnly: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    openAdvancedEditor,
+    handleAdvancedEditorModeUpdate,
   }
 });
 </script>
@@ -1260,7 +1267,9 @@ defineExpose({
           <AdvancedTextEditor
             :initial-value="editContent"
             :title="undefined"
+            :mode="preferredEditorMode"
             @update:content="handleAdvancedEditorUpdate"
+            @update:mode="handleAdvancedEditorModeUpdate"
             @close="closeAdvancedEditor"
           />
         </div>

@@ -18,17 +18,43 @@ import {
   Check,
   WrapText,
   BarChart2,
+  AlignLeft,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
   initialValue: string;
   title: string | undefined;
+  mode: 'advanced' | 'textarea';
 }>();
 
 const emit = defineEmits<{
   (e: 'update:content', { content }: { content: string }): void;
+  (e: 'update:mode', { mode }: { mode: 'advanced' | 'textarea' }): void;
   (e: 'close'): void;
 }>();
+
+// --- Mode Management ---
+const localMode = ref<'advanced' | 'textarea'>(props.mode);
+
+watch(() => props.mode, (newVal) => {
+  localMode.value = newVal;
+});
+
+function toggleMode() {
+  const current = localMode.value;
+  const nextMode = (() => {
+    switch (current) {
+    case 'advanced': return 'textarea';
+    case 'textarea': return 'advanced';
+    default: {
+      const _ex: never = current;
+      throw new Error(`Unhandled mode: ${_ex}`);
+    }
+    }
+  })();
+  localMode.value = nextMode;
+  emit('update:mode', { mode: nextMode });
+}
 
 // --- Line-Based Model ---
 // Core performance optimisation: manage text as an array of lines.
@@ -879,6 +905,7 @@ defineExpose({
         <div class="flex-1 flex flex-col min-h-0 bg-transparent relative group/editor">
           <!-- Line Numbers Area -->
           <div
+            v-if="localMode === 'advanced'"
             class="absolute left-0 top-0 bottom-0 w-12 border-r border-gray-50 dark:border-white/10 overflow-hidden pointer-events-none select-none bg-gray-50 dark:bg-[#0f172a] z-20"
           >
             <!-- Inner container that moves with transform -->
@@ -905,8 +932,11 @@ defineExpose({
             :value="fullText"
             @input="handleInput"
             @scroll="handleScroll"
-            class="w-full h-full pr-16 py-5 font-mono text-sm bg-transparent outline-none resize-none text-gray-800 dark:text-gray-200 leading-[21px] selection:bg-blue-500/45 selection:text-white overscroll-area z-10"
-            :class="wrapMode === 'wrap-off' ? 'pl-16 whitespace-pre overflow-x-auto' : 'pl-16 whitespace-pre-wrap overflow-x-hidden'"
+            class="w-full h-full pr-16 py-5 font-mono text-sm bg-transparent outline-none resize-none text-gray-800 dark:text-gray-200 leading-[21px] selection:bg-blue-500/45 selection:text-white overscroll-area z-10 transition-all duration-200"
+            :class="[
+              wrapMode === 'wrap-off' ? 'whitespace-pre overflow-x-auto' : 'whitespace-pre-wrap overflow-x-hidden',
+              localMode === 'advanced' ? 'pl-16' : 'pl-5'
+            ]"
             spellcheck="false"
             :wrap="wrapMode === 'wrap-on' ? 'soft' : 'off'"
             data-testid="advanced-textarea"
@@ -1023,6 +1053,15 @@ defineExpose({
         <div class="h-px w-6 bg-gray-200 dark:bg-white/10"></div>
 
         <div class="flex flex-col gap-1">
+          <button
+            @click="toggleMode"
+            class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
+            :class="localMode === 'textarea' ? 'bg-orange-500/20 text-orange-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
+            :title="localMode === 'textarea' ? 'Switch to Advanced Editor' : 'Switch to Normal Textarea'"
+            data-testid="toggle-mode-button"
+          >
+            <AlignLeft class="w-4.5 h-4.5" />
+          </button>
           <button
             @click="searchMode = searchMode === 'visible' ? 'hidden' : 'visible'"
             class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
