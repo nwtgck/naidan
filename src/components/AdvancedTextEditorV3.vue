@@ -33,6 +33,38 @@ const emit = defineEmits<{
   (e: 'close'): void;
 }>();
 
+// --- Text Model Manager ---
+function useTextModel({ initialValue }: {
+  initialValue: string;
+}) {
+  const fullText = ref(initialValue);
+  const lines = ref<string[]>(initialValue.split('\n'));
+
+  // Atomic update that maintains consistency
+  const updateContent = ({ text, immediateLines }: {
+    text: string;
+    immediateLines: boolean;
+  }) => {
+    fullText.value = text;
+    if (immediateLines) {
+      lines.value = text.split('\n');
+    }
+  };
+
+  const syncLines = () => {
+    lines.value = fullText.value.split('\n');
+  };
+
+  return { fullText, lines, updateContent, syncLines,
+    __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    }, };
+}
+
+const { fullText, lines, updateContent, syncLines } = useTextModel({
+  initialValue: props.initialValue
+});
+
 // --- Mode Management ---
 const localMode = ref<'advanced' | 'textarea'>(props.mode);
 
@@ -45,7 +77,10 @@ function toggleMode() {
   const nextMode = (() => {
     switch (current) {
     case 'advanced': return 'textarea';
-    case 'textarea': return 'advanced';
+    case 'textarea':
+      // Sync lines before switching to advanced for accurate line numbers
+      syncLines();
+      return 'advanced';
     default: {
       const _ex: never = current;
       throw new Error(`Unhandled mode: ${_ex}`);
@@ -55,23 +90,6 @@ function toggleMode() {
   localMode.value = nextMode;
   emit('update:mode', { mode: nextMode });
 }
-
-// --- Line-Based Model ---
-// Core performance optimisation: manage text as an array of lines.
-// Joining is deferred to fullText (Vue computed caching).
-const lines = ref<string[]>(props.initialValue.split('\n'));
-
-const fullText = computed(() => lines.value.join('\n'));
-
-// Sync lines → emit
-watch(fullText, (newVal) => {
-  emit('update:content', { content: newVal });
-
-  if (historyTimeout) clearTimeout(historyTimeout);
-  historyTimeout = setTimeout(() => {
-    recordHistory({ newLines: [...lines.value] });
-  }, 500);
-});
 
 // --- State ---
 const findText = ref('');
@@ -130,10 +148,35 @@ const stats = computed(() => {
 });
 
 // --- Line Height Measurement ---
+const linesForLayout = computed(() => {
+  const current = localMode.value;
+  switch (current) {
+  case 'advanced': return lines.value;
+  case 'textarea': return null;
+  default: {
+    const _ex: never = current;
+    throw new Error(`Unhandled mode: ${_ex}`);
+  }
+  }
+});
+
 function calculateLineHeights() {
   if (!textareaRef.value) {
     lineHeights.value = [];
     return;
+  }
+
+  const currentMode = localMode.value;
+  switch (currentMode) {
+  case 'textarea':
+    lineHeights.value = [];
+    return;
+  case 'advanced':
+    break;
+  default: {
+    const _ex: never = currentMode;
+    throw new Error(`Unhandled mode: ${_ex}`);
+  }
   }
 
   const currentWrapMode = wrapMode.value;
@@ -187,7 +230,12 @@ function calculateLineHeights() {
   lineHeights.value = heights;
 }
 
-watch([lines, wrapMode], () => {
+watch([linesForLayout, wrapMode], () => {
+  if (linesForLayout.value === null) {
+    lineHeights.value = [];
+    return;
+  }
+
   const currentWrapMode = wrapMode.value;
   switch (currentWrapMode) {
   case 'wrap-off':
@@ -206,7 +254,6 @@ watch([lines, wrapMode], () => {
   }
 }, { deep: true });
 
-// --- History Management ---
 function recordHistory({ newLines }: { newLines: string[] }) {
   const current = history.value[historyIndex.value];
   if (current && current.length === newLines.length && current.every((l, i) => l === newLines[i])) return;
@@ -226,14 +273,16 @@ function recordHistory({ newLines }: { newLines: string[] }) {
 function handleUndo() {
   if (historyIndex.value > 0) {
     historyIndex.value--;
-    lines.value = [...history.value[historyIndex.value]!];
+    const recovered = [...history.value[historyIndex.value]!];
+    updateContent({ text: recovered.join('\n'), immediateLines: true });
   }
 }
 
 function handleRedo() {
   if (historyIndex.value < history.value.length - 1) {
     historyIndex.value++;
-    lines.value = [...history.value[historyIndex.value]!];
+    const recovered = [...history.value[historyIndex.value]!];
+    updateContent({ text: recovered.join('\n'), immediateLines: true });
   }
 }
 
@@ -241,7 +290,7 @@ let historyTimeout: ReturnType<typeof setTimeout> | undefined;
 
 // --- Helper: update lines from full text (for bulk operations like search/replace) ---
 function setFullText({ text }: { text: string }) {
-  lines.value = text.split('\n');
+  updateContent({ text, immediateLines: true });
 }
 
 // --- Search & Replace ---
@@ -670,6 +719,7 @@ function copyToClipboard() {
 }
 
 function handleClose() {
+  emit('update:content', { content: fullText.value });
   emit('close');
 }
 
@@ -706,7 +756,31 @@ function toggleWrap() {
 function handleInput() {
   if (!textareaRef.value) return;
   const newText = textareaRef.value.value;
-  lines.value = newText.split('\n');
+  fullText.value = newText;
+
+  if (historyTimeout) clearTimeout(historyTimeout);
+
+  const currentMode = localMode.value;
+  switch (currentMode) {
+  case 'advanced':
+    // Immediate split for line numbers
+    lines.value = newText.split('\n');
+    historyTimeout = setTimeout(() => {
+      recordHistory({ newLines: [...lines.value] });
+    }, 500);
+    break;
+  case 'textarea':
+    // Debounce split for history and stats to keep typing fast
+    historyTimeout = setTimeout(() => {
+      lines.value = newText.split('\n');
+      recordHistory({ newLines: [...lines.value] });
+    }, 500);
+    break;
+  default: {
+    const _ex: never = currentMode;
+    throw new Error(`Unhandled mode: ${_ex}`);
+  }
+  }
 }
 
 // Shortcuts
@@ -934,8 +1008,20 @@ defineExpose({
             @scroll="handleScroll"
             class="w-full h-full pr-16 py-5 font-mono text-sm bg-transparent outline-none resize-none text-gray-800 dark:text-gray-200 leading-[21px] selection:bg-blue-500/45 selection:text-white overscroll-area z-10 transition-all duration-200"
             :class="[
-              wrapMode === 'wrap-off' ? 'whitespace-pre overflow-x-auto' : 'whitespace-pre-wrap overflow-x-hidden',
-              localMode === 'advanced' ? 'pl-16' : 'pl-5'
+              (() => {
+                const current = wrapMode;
+                switch (current) {
+                case 'wrap-off': return 'whitespace-pre overflow-x-auto';
+                case 'wrap-on': return 'whitespace-pre-wrap overflow-x-hidden';
+                }
+              })(),
+              (() => {
+                const current = localMode;
+                switch (current) {
+                case 'advanced': return 'pl-16';
+                case 'textarea': return 'pl-5';
+                }
+              })()
             ]"
             spellcheck="false"
             :wrap="wrapMode === 'wrap-on' ? 'soft' : 'off'"
@@ -1025,6 +1111,7 @@ defineExpose({
           @click="handleClose"
           class="p-2.5 bg-gray-200 dark:bg-white/10 hover:bg-gray-300 dark:hover:bg-white/20 rounded-xl transition-all shadow-sm text-gray-600 dark:text-gray-300 mb-2 group"
           title="Close Editor (Esc)"
+          data-testid="close-button"
         >
           <X class="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
         </button>

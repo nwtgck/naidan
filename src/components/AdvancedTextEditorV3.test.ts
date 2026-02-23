@@ -27,13 +27,19 @@ Line 3`;
     expect(textarea.element.value).toBe(initialValue);
   });
 
-  it('emits update:content when input changes', async () => {
+  it('emits update:content when closed', async () => {
     const wrapper = mount(AdvancedTextEditorV3, {
       props: defaultProps,
     });
 
     const textarea = wrapper.find('textarea');
     await textarea.setValue('New Content');
+
+    // Should not emit live anymore
+    expect(wrapper.emitted('update:content')).toBeFalsy();
+
+    // Trigger close
+    await wrapper.find('[data-testid="close-button"]').trigger('click');
 
     expect(wrapper.emitted('update:content')).toBeTruthy();
     expect(wrapper.emitted('update:content')![0]).toEqual([{ content: 'New Content' }]);
