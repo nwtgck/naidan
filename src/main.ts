@@ -51,7 +51,25 @@ window.addEventListener('DOMContentLoaded', async () => {
   const storageTypeQuery = router.currentRoute.value.query['storage-type'];
   const storageTypeOverride = Array.isArray(storageTypeQuery) ? storageTypeQuery[0] : storageTypeQuery;
 
-  await settingsStore.init({ storageTypeOverride: storageTypeOverride || undefined })
+  // Use a block scope to ensure dataZipBase64 can be GC'd as soon as init is done
+  {
+    const dataZipQuery = router.currentRoute.value.query['data-zip'];
+    const dataZipBase64 = Array.isArray(dataZipQuery) ? dataZipQuery[0] : dataZipQuery;
+
+    // Clear the large data-zip parameter from the URL after extraction to keep it clean and help with GC.
+    // We preserve 'storage-type' as it might be useful for the user to see/bookmark.
+    if (dataZipBase64) {
+      const newQuery = { ...router.currentRoute.value.query };
+      delete newQuery['data-zip'];
+      router.replace({ query: newQuery });
+    }
+
+    await settingsStore.init({
+      storageTypeOverride: storageTypeOverride || undefined,
+      dataZipBase64: dataZipBase64 || undefined
+    })
+  }
+
   await chatStore.loadChats()
 
   app.mount('#app')

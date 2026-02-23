@@ -10,6 +10,7 @@
 
 For **new** or **refactored** functions, use a single mandatory argument object (Swift-style) for clarity and extensibility. **This applies even if the function has only one argument.**
 
+- **Why single-argument objects?**: Function requirements frequently evolve. Starting with an object ensures that adding a second or third parameter is a non-breaking, consistent change. This prevents "parameter creep" where developers might otherwise add positional arguments to avoid refactoring, leading to inconsistent and hard-to-read signatures.
 - **Explicit > Implicit**: Avoid property defaults. They hide intent and create "implicit knowledge". Require explicit values (including `undefined`) so the state is fully visible at the call site.
 - **Inline Types**: Prefer inline destructuring and type definitions in signatures.
 - **No Nulls**: Use `undefined` for missing values.
@@ -24,7 +25,9 @@ async function processRecord(id: string, retryCount: number | undefined, isSilen
 // Caller: What do 3 and true mean here? Is the second arg retryCount or something else?
 await processRecord("rec_123", 3, true);
 
-// Even single arguments should not be positional
+// Even single arguments should not be positional.
+// If you need to add 'force: boolean' later, you'll either have to refactor 
+// all call sites or end up with a confusing positional signature.
 async function deleteUser(id: string) { ... }
 await deleteUser("user_123");
 ```
@@ -61,7 +64,9 @@ await processRecord({
   isSilent: true,
 });
 
-// Even single arguments use the object-based named argument style
+// Even single arguments use the object-based named argument style.
+// This is future-proof: adding 'force: boolean' later won't require 
+// changing the parameter structure at existing call sites.
 async function deleteUser({ id }: { id: string }) { ... }
 await deleteUser({ id: "user_123" });
 ```

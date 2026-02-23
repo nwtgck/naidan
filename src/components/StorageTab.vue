@@ -8,9 +8,12 @@ import { checkOPFSSupport } from '../services/storage/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 import {
   ShieldCheck, CheckCircle2, FileArchive,
-  Database, HardDrive, Info, Trash2, Ghost
+  Database, HardDrive, Info, Trash2, Ghost,
+  Link, Loader2
 } from 'lucide-vue-next';
 import { useConfirm } from '../composables/useConfirm';
+import { useToast } from '../composables/useToast';
+import { urlImportExportLogic } from '../services/import-export/url-logic';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 
 // Lazily load the import/export modal as it is a heavy secondary action, but prefetch it when idle.
@@ -28,6 +31,7 @@ const emit = defineEmits<{
 const { save } = useSettings();
 const chatStore = useChat();
 const { showConfirm } = useConfirm();
+const { addToast } = useToast();
 const router = useRouter();
 
 const isOPFSSupported = computedAsync(async () => {
@@ -35,6 +39,7 @@ const isOPFSSupported = computedAsync(async () => {
 }, false);
 
 const showImportExportModal = ref(false);
+const isExportingURL = ref(false);
 
 // Persistence State
 type PersistenceStatus = 'unknown' | 'persisted' | 'not-persisted';
@@ -151,6 +156,25 @@ async function handleDeleteAllHistory() {
   }
 }
 
+async function handleCopyExportURL() {
+  if (isExportingURL.value) return;
+
+  isExportingURL.value = true;
+  try {
+    const url = await urlImportExportLogic.getExportURL({});
+    await navigator.clipboard.writeText(url);
+    addToast({ message: 'Export URL copied to clipboard!', duration: 3000 });
+  } catch (err) {
+    console.error('Failed to copy export URL:', err);
+    addToast({
+      message: `Failed to generate export URL: ${err instanceof Error ? err.message : String(err)}`,
+      duration: 5000
+    });
+  } finally {
+    isExportingURL.value = false;
+  }
+}
+
 
 defineExpose({
   __testOnly: {
@@ -218,6 +242,29 @@ defineExpose({
         >
           <FileArchive class="w-4 h-4" />
           Manage Data
+        </button>
+      </div>
+
+      <div class="bg-gray-50/50 dark:bg-gray-800/30 p-6 rounded-3xl border border-gray-100 dark:border-gray-800 flex items-center justify-between gap-6 shadow-sm">
+        <div class="space-y-1">
+          <h4 class="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2">
+            Share via URL
+          </h4>
+          <p class="text-xs font-medium text-gray-500 dark:text-gray-400 leading-relaxed">
+            Generate a link containing your entire chat history (Base64 encoded) and copy it to the clipboard.
+            <span class="block mt-1 text-gray-400 dark:text-gray-500 italic">Note: If storage is too large, the link may fail to copy or open.</span>
+          </p>
+        </div>
+        <button
+          @click="handleCopyExportURL"
+          :disabled="isExportingURL"
+          class="shrink-0 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          data-testid="setting-copy-export-url-button"
+        >
+          <Loader2 v-if="isExportingURL" class="w-4 h-4 animate-spin" />
+          <Link v-else class="w-4 h-4" />
+          <span v-if="isExportingURL">Generating...</span>
+          <span v-else>Copy Link</span>
         </button>
       </div>
     </section>

@@ -124,7 +124,12 @@ function calculateLineHeights() {
   }
 
   const textarea = textareaRef.value;
-  const style = window.getComputedStyle(textarea);
+  const win = textarea.ownerDocument.defaultView || window;
+  if (!win || typeof win.getComputedStyle !== 'function') return;
+
+  const style = win.getComputedStyle(textarea);
+  if (!style) return;
+
   const width = textarea.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   const font = style.font;
   const lineHeightStr = style.lineHeight;

@@ -5,6 +5,9 @@ import { ref } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 
+import { setupScrollToMock } from '../utils/test-utils';
+
+
 // Mock router
 const router = createRouter({
   history: createWebHistory(),
@@ -86,6 +89,7 @@ vi.mock('../composables/useSettings', () => ({
 
 describe('ChatArea Fork Functionality', () => {
   beforeEach(() => {
+    setupScrollToMock();
     vi.clearAllMocks();
     mockActiveMessages.value = [];
     mockCurrentChat.value.originChatId = undefined;

@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import RecentChatsModal from './RecentChatsModal.vue';
 import { ref, nextTick } from 'vue';
 import type { ChatSummary } from '../models/types';
+import { setupScrollToMock } from '../utils/test-utils';
 
 // --- Mocks ---
 
@@ -82,6 +83,7 @@ window.HTMLElement.prototype.scrollIntoView = vi.fn();
 
 describe('RecentChatsModal Component', () => {
   beforeEach(() => {
+    setupScrollToMock();
     mockIsRecentOpen.value = true;
     mockRecentChats.value = [
       { id: 'c1', title: 'Chat 1', accessedAt: Date.now(), updatedAt: Date.now() },

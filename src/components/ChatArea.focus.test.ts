@@ -6,6 +6,9 @@ import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '../models/types';
 
 
+import { setupScrollToMock } from '../utils/test-utils';
+
+
 // Mock dependencies
 const mockCurrentChat = ref<Chat | null>({
   id: '1',
@@ -87,6 +90,7 @@ describe('ChatArea Focus Specifications', () => {
   let wrapper: VueWrapper<any> | null = null;
 
   beforeEach(() => {
+    setupScrollToMock();
     mockActiveFocusArea.value = 'chat';
     mockSetActiveFocusArea.mockClear();
     document.body.innerHTML = '<div id="app"></div>';

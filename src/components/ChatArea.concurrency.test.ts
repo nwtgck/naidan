@@ -5,6 +5,8 @@ import { nextTick, ref, computed, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 
+import { setupScrollToMock } from '../utils/test-utils';
+
 // --- Mocks ---
 
 const router = createRouter({
@@ -65,6 +67,7 @@ vi.mock('../composables/useSettings', () => ({
 
 describe('ChatArea Concurrency Button State', () => {
   beforeEach(() => {
+    setupScrollToMock();
     vi.clearAllMocks();
     mockActiveGenerations.clear();
     mockCurrentChat.value = null;

@@ -5,6 +5,7 @@ import ChatInput from './ChatInput.vue';
 import { nextTick, ref, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '../composables/useChatDraft';
+import { setupScrollToMock } from '../utils/test-utils';
 
 // Mock router
 const router = createRouter({
@@ -449,12 +450,8 @@ describe('ChatArea Scrolling Logic', () => {
     document.body.innerHTML = '<div id="app"></div>';
     scrollTopSetterSpy = vi.fn();
     scrollIntoViewSpy = vi.fn();
+    setupScrollToMock();
     HTMLElement.prototype.scrollIntoView = scrollIntoViewSpy;
-    HTMLElement.prototype.scrollTo = vi.fn().mockImplementation(function(this: HTMLElement, options: any) {
-      if (typeof options.top === 'number') {
-        this.scrollTop = options.top;
-      }
-    });
   });
 
   afterEach(() => {

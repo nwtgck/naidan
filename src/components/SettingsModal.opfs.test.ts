@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick, reactive } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
+import StorageTab from './StorageTab.vue';
 import { useSettings } from '../composables/useSettings';
 import { useConfirm } from '../composables/useConfirm';
 
@@ -100,7 +101,12 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
-      global: globalMocks
+      global: {
+        ...globalMocks,
+        components: {
+          StorageTab,
+        }
+      }
     });
     await flushPromises();
 
@@ -123,7 +129,12 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
-      global: globalMocks
+      global: {
+        ...globalMocks,
+        components: {
+          StorageTab,
+        }
+      }
     });
     await flushPromises();
 
@@ -150,7 +161,12 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
-      global: globalMocks
+      global: {
+        ...globalMocks,
+        components: {
+          StorageTab,
+        }
+      }
     });
     await flushPromises();
 
@@ -217,7 +233,12 @@ describe('SettingsModal OPFS and Error Handling', () => {
 
     const wrapper = mount(SettingsModal, {
       props: { isOpen: true },
-      global: globalMocks
+      global: {
+        ...globalMocks,
+        components: {
+          StorageTab,
+        }
+      }
     });
     await flushPromises();
 

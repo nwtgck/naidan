@@ -6,6 +6,9 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '../composables/useChat';
 
 
+import { setupScrollToMock } from '../utils/test-utils';
+
+
 // --- Mocks ---
 
 const router = createRouter({
@@ -75,6 +78,7 @@ vi.mock('../services/storage', () => ({
 describe('ChatArea Streaming DOM Test', () => {
   const chatStore = useChat();
   beforeEach(() => {
+    setupScrollToMock();
     vi.clearAllMocks();
     chats.clear();
     chatStore.__testOnly.__testOnlySetCurrentChat(null);
