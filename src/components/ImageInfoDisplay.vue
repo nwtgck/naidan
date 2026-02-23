@@ -13,6 +13,8 @@ const props = defineProps<{
   width: number | string | undefined;
   /** Image height */
   height: number | string | undefined;
+  /** Alignment of the dropdown: 'left' (default) or 'right' */
+  align?: 'left' | 'right';
 }>();
 
 const isOpen = ref(false);
@@ -65,10 +67,10 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative inline-flex" ref="containerRef">
+  <div class="relative inline-flex z-30 overflow-visible" ref="containerRef">
     <button
       @click="toggle"
-      class="flex items-center justify-center p-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors rounded-lg bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 shadow-sm"
+      class="flex items-center justify-center p-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm"
       title="Image Info"
       data-testid="image-info-button"
     >
@@ -77,7 +79,8 @@ defineExpose({
 
     <div
       v-if="isOpen"
-      class="absolute left-0 top-full mt-1 w-64 bg-white/95 dark:bg-gray-800/95 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 p-3 overflow-hidden animate-in fade-in slide-in-from-top-1 backdrop-blur-md"
+      class="absolute top-full mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[100] p-3 overflow-hidden animate-in fade-in slide-in-from-top-1"
+      :class="align === 'right' ? 'right-0' : 'left-0'"
     >
       <div class="flex flex-col gap-3">
         <!-- Prompt -->

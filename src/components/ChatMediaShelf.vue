@@ -276,7 +276,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-100 dark:border-gray-800 shadow-2xl z-30 flex flex-col h-[70vh] min-h-[400px] overflow-hidden animate-in slide-in-from-bottom-full duration-300">
+  <div class="bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-100 dark:border-gray-800 shadow-2xl z-40 flex flex-col h-[70vh] min-h-[400px] overflow-visible animate-in slide-in-from-bottom-full duration-300">
     <!-- Header -->
     <div class="px-4 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between shrink-0">
       <div class="flex items-center gap-2">
@@ -367,8 +367,8 @@ defineExpose({
           </div>
 
           <!-- Grouped Images (Horizontal Scroll) -->
-          <!-- Use pb-24 to provide internal space for dropdowns, but -mb-20 to pull the next group up visually -->
-          <div class="flex items-center gap-4 overflow-x-auto no-scrollbar pb-24 -mb-20 -mx-1 px-1">
+          <!-- Use pb-32 to provide internal space for dropdowns, but -mb-28 to pull the next group up visually -->
+          <div class="flex items-center gap-4 overflow-x-auto no-scrollbar pb-32 -mb-28 -mx-1 px-1">
             <div
               v-for="item in group.items"
               :key="item.id"
@@ -391,11 +391,12 @@ defineExpose({
               </div>
 
               <!-- Item Overlay - Top Buttons -->
-              <div class="absolute top-2 right-2 z-30 flex flex-col gap-1.5 opacity-0 group-hover/item:opacity-100 transition-all scale-90 origin-top-right">
+              <div class="absolute top-2 right-2 z-50 flex flex-col gap-1.5 opacity-0 group-hover/item:opacity-100 transition-all origin-top-right overflow-visible">
                 <div @click.stop>
                   <ImageDownloadButton
                     :is-supported="isSupportedMap[item.binaryObjectId]"
                     :on-download="(options) => handleDownload(item, options)"
+                    :align="item.index === 1 ? 'left' : 'right'"
                   />
                 </div>
                 <button

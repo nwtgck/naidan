@@ -142,13 +142,15 @@ export const ImageDownloadHydrator = {
    * Mounts the download button into the portal.
    * Returns a cleanup function.
    */
-  mount({ portal, isSupported, onDownload }: {
+  mount({ portal, isSupported, align, onDownload }: {
     portal: HTMLElement,
     isSupported: boolean,
+    align?: 'left' | 'right',
     onDownload: (payload: { withMetadata: boolean }) => void
   }): () => void {
     const vnode = vueH(ImageDownloadButton, {
       isSupported,
+      align,
       onDownload
     });
 
@@ -163,20 +165,22 @@ export const ImageDownloadHydrator = {
    * Mounts the info display into the portal.
    * Returns a cleanup function.
    */
-  mountInfo({ portal, prompt, steps, seed, width, height }: {
+  mountInfo({ portal, prompt, steps, seed, width, height, align }: {
     portal: HTMLElement,
     prompt: string,
     steps: number | undefined,
     seed: number | undefined,
     width: number | string | undefined,
-    height: number | string | undefined
+    height: number | string | undefined,
+    align?: 'left' | 'right'
   }): () => void {
     const vnode = vueH(ImageInfoDisplay, {
       prompt,
       steps,
       seed,
       width,
-      height
+      height,
+      align
     });
 
     render(vnode, portal);

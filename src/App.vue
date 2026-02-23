@@ -238,7 +238,7 @@ defineExpose({
       <Sidebar />
     </div>
 
-    <main class="flex-1 relative flex flex-col min-w-0 bg-transparent">
+    <main class="flex-1 relative flex flex-col min-w-0 bg-transparent z-30">
       <!-- Use a key based on route to help Vue identify when to remount or transition -->
       <div class="flex-1 relative min-h-0">
         <router-view v-slot="{ Component }">

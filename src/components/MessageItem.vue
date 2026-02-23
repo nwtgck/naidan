@@ -278,10 +278,12 @@ async function loadGeneratedImages() {
 
           // Hydrate the download button portal
           const dlPortal = htmlEl.querySelector('.naidan-download-portal');
+          const widthVal = displayWidth ? parseInt(displayWidth) : 0;
           if (dlPortal instanceof HTMLElement) {
             const unmount = ImageDownloadHydrator.mount({
               portal: dlPortal,
               isSupported: isSupported ?? false,
+              align: widthVal < 300 ? 'left' : 'right',
               onDownload: ({ withMetadata }) => ImageDownloadHydrator.download({
                 id, prompt, steps, seed,
                 model: props.message.modelId || undefined,
@@ -306,7 +308,8 @@ async function loadGeneratedImages() {
               steps,
               seed,
               width,
-              height
+              height,
+              align: 'left' // Info is on the left, so always grow right
             });
             hydrationCleanups.push(unmountInfo);
           }
@@ -523,7 +526,7 @@ marked.use({
             });
 
             const div = document.createElement('div');
-            div.className = 'naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl';
+            div.className = 'naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl overflow-visible';
             div.dataset.id = id;
             div.dataset.displayWidth = String(dw);
             div.dataset.displayHeight = String(dh);
@@ -544,12 +547,12 @@ marked.use({
 
             // Portals for Vue components (will be hydrated in loadGeneratedImages)
             const dlPortal = document.createElement('div');
-            dlPortal.className = 'naidan-download-portal absolute top-2 right-2 z-10 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all';
+            dlPortal.className = 'naidan-download-portal absolute top-2 right-2 z-30 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all overflow-visible';
             dlPortal.innerHTML = '<!-- hydratable -->';
             div.appendChild(dlPortal);
 
             const infoPortal = document.createElement('div');
-            infoPortal.className = 'naidan-info-portal absolute top-2 left-2 z-20 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all';
+            infoPortal.className = 'naidan-info-portal absolute top-2 left-2 z-30 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all overflow-visible';
             infoPortal.innerHTML = '<!-- hydratable -->';
             div.appendChild(infoPortal);
 
