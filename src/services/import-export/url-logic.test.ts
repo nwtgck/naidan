@@ -38,7 +38,7 @@ describe('URLImportExportLogic', () => {
       }),
     });
 
-    const data = await urlImportExportLogic.exportToBase64({});
+    const data = await urlImportExportLogic.exportToBase64({ exclude: undefined });
     expect(typeof data.zipBase64).toBe('string');
     expect(data.size).toBe(data.zipBase64.length);
     // 'mock-zip-content' in base64 is 'bW9jay16aXAtY29udGVudA=='
@@ -63,7 +63,7 @@ describe('URLImportExportLogic', () => {
       configurable: true
     });
 
-    const url = await urlImportExportLogic.getExportURL({});
+    const url = await urlImportExportLogic.getExportURL({ exclude: undefined });
     const urlObj = new URL(url);
 
     expect(urlObj.hash).toContain('storage-type=local');
@@ -75,6 +75,22 @@ describe('URLImportExportLogic', () => {
       writable: true,
       configurable: true
     });
+  });
+
+  it('should pass exclude option to the service', async () => {
+    mockExportData.mockResolvedValue({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data'));
+          controller.close();
+        },
+      }),
+    });
+
+    const exclude: Array<'chat' | 'binary_object'> = ['chat'];
+    await urlImportExportLogic.getExportURL({ exclude });
+
+    expect(mockExportData).toHaveBeenCalledWith(expect.objectContaining({ exclude }));
   });
 
   it('should import data from a Base64 string', async () => {

@@ -106,7 +106,7 @@ export class ImportExportService {
     const root = zip.folder(finalBaseName);
     if (!root) throw new Error('Failed to create root folder in ZIP');
 
-    root.file('export-manifest.json', JSON.stringify({ app_version: '0.1.0-dev', exportedAt: Date.now() }, null, 2));
+    root.file('export-manifest.json', JSON.stringify({ app_version: __APP_VERSION__, exportedAt: Date.now() }, null, 2));
 
     const snapshot = await this.storage.dumpWithoutLock();
     const { structure, contentStream } = snapshot;
@@ -114,30 +114,70 @@ export class ImportExportService {
     const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('../../models/mappers');
 
     root.file('settings.json', JSON.stringify(settingsToDto(structure.settings), null, 2));
-    root.file('hierarchy.json', JSON.stringify(hierarchyToDto(structure.hierarchy), null, 2));
 
-    const groupFolder = root.folder('chat-groups');
-    for (const group of structure.chatGroups) {
-      groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto(group), null, 2));
+    const excludeFlags = {
+      chat: false,
+      binary_object: false,
+    };
+
+    for (const item of (options.exclude || [])) {
+      switch (item) {
+      case 'chat':
+        excludeFlags.chat = true;
+        break;
+      case 'binary_object':
+        excludeFlags.binary_object = true;
+        break;
+      default: {
+        const _ex: never = item;
+        throw new Error(`Unknown exclusion type: ${_ex}`);
+      }
+      }
     }
 
-    const metasDto = structure.chatMetas.map(chatMetaToDto);
-    root.file('chat-metas.json', JSON.stringify({ entries: metasDto }, null, 2));
+    if (excludeFlags.chat) {
+      // Filter hierarchy to remove chats and clear chat_ids in groups
+      const filteredHierarchy: Hierarchy = {
+        ...structure.hierarchy,
+        items: structure.hierarchy.items
+          .filter((item): item is Extract<HierarchyNode, { type: 'chat_group' }> => item.type === 'chat_group')
+          .map(item => ({ ...item, chat_ids: [] }))
+      };
+      root.file('hierarchy.json', JSON.stringify(hierarchyToDto(filteredHierarchy), null, 2));
+
+      const groupFolder = root.folder('chat-groups');
+      for (const group of structure.chatGroups) {
+        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto(group), null, 2));
+      }
+      // chat-metas.json is intentionally omitted when chat is excluded
+    } else {
+      root.file('hierarchy.json', JSON.stringify(hierarchyToDto(structure.hierarchy), null, 2));
+
+      const groupFolder = root.folder('chat-groups');
+      for (const group of structure.chatGroups) {
+        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto(group), null, 2));
+      }
+
+      const metasDto = structure.chatMetas.map(chatMetaToDto);
+      root.file('chat-metas.json', JSON.stringify({ entries: metasDto }, null, 2));
+    }
 
     const shardIndices = new Map<string, BinaryShardIndexDto>();
     const getShard = (id: string) => id.slice(-2).toLowerCase();
 
     try {
-      const binFolder = root.folder('binary-objects');
-      if (!binFolder) throw new Error('Failed to create binary-objects folder in ZIP');
-
       for await (const chunk of contentStream) {
         const type = chunk.type;
+
         switch (type) {
         case 'chat':
+          if (excludeFlags.chat) break;
           root.folder('chat-contents')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
           break;
         case 'binary_object': {
+          if (excludeFlags.binary_object) break;
+
+          const binFolder = root.folder('binary-objects') || root;
           const shard = getShard(chunk.id);
           const shardFolder = binFolder.folder(shard);
           if (!shardFolder) throw new Error(`Failed to create shard folder ${shard} in ZIP`);
@@ -168,8 +208,13 @@ export class ImportExportService {
       }
 
       // Write shard indexes
-      for (const [shard, index] of shardIndices.entries()) {
-        binFolder.folder(shard)!.file('index.json', JSON.stringify(index, null, 2));
+      if (!excludeFlags.binary_object) {
+        const binFolder = root.folder('binary-objects');
+        if (binFolder) {
+          for (const [shard, index] of shardIndices.entries()) {
+            binFolder.folder(shard)!.file('index.json', JSON.stringify(index, null, 2));
+          }
+        }
       }
     } catch (err) {
       this.globalEvents.addErrorEvent({ source: 'ImportExportService', message: 'Export dump failed', details: err as Error });

@@ -28,8 +28,8 @@ export class URLImportExportLogic {
   /**
    * Encodes current storage to a Base64 ZIP string.
    */
-  async exportToBase64(_args: Record<string, never>): Promise<{ zipBase64: string; size: number }> {
-    const { stream } = await this.service.exportData({});
+  async exportToBase64({ exclude }: { exclude: Array<'chat' | 'binary_object'> | undefined }): Promise<{ zipBase64: string; size: number }> {
+    const { stream } = await this.service.exportData({ exclude });
 
     // Collect stream chunks into an array to create a Blob
     const chunks: Uint8Array[] = [];
@@ -77,8 +77,8 @@ export class URLImportExportLogic {
   /**
    * Gets the export URL for the current state.
    */
-  async getExportURL(_args: Record<string, never>): Promise<string> {
-    let data: { zipBase64: string; size: number } | null = await this.exportToBase64({});
+  async getExportURL({ exclude }: { exclude: Array<'chat' | 'binary_object'> | undefined }): Promise<string> {
+    let data: { zipBase64: string; size: number } | null = await this.exportToBase64({ exclude });
     const zipBase64 = data.zipBase64;
     const currentType = storageService.getCurrentType();
     const url = new URL(window.location.href);

@@ -3,6 +3,7 @@ import type { Settings } from '../../models/types';
 // --- Export Options ---
 export interface ExportOptions {
   fileNameSegment?: string;
+  exclude?: Array<'chat' | 'binary_object'>;
 }
 
 // --- Import Strategies ---

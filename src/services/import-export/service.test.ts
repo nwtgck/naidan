@@ -87,6 +87,195 @@ describe('ImportExportService', () => {
       expect(filename).toMatch(/^naidan-data-\d{4}-\d{2}-\d{2}\.zip$/);
       expect(mockStorage.dumpWithoutLock).toHaveBeenCalled();
     });
+
+    it('respects exclusion flags and filters hierarchy', async () => {
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: {
+            endpointType: 'openai',
+            endpointUrl: '',
+            autoTitleEnabled: true,
+            storageType: 'local',
+            providerProfiles: []
+          } as any,
+          hierarchy: {
+            items: [
+              { type: 'chat_group', id: UUID_G1, chat_ids: [UUID_C1] },
+              { type: 'chat', id: UUID_C2 }
+            ]
+          },
+          chatMetas: [
+            { id: UUID_C1, title: 'Test 1', updatedAt: 1000, createdAt: 1000, debugEnabled: false },
+            { id: UUID_C2, title: 'Test 2', updatedAt: 1000, createdAt: 1000, debugEnabled: false }
+          ],
+          chatGroups: [{ id: UUID_G1, name: 'Group', updatedAt: 1000, isCollapsed: false, items: [] }]
+        },
+        contentStream: (async function* () {
+          yield { type: 'chat', data: { id: UUID_C1, title: 'Test 1', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
+          yield { type: 'chat', data: { id: UUID_C2, title: 'Test 2', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
+          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
+        })()
+      });
+
+      const { stream } = await service.exportData({ exclude: ['chat', 'binary_object'] });
+
+      const chunks: Uint8Array[] = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value!);
+      }
+      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+
+      const files = Object.keys(zip.files);
+      const rootFolder = files.find(f => f.startsWith('naidan-data-'))!;
+
+      // Structural preservation: hierarchy.json and chat-groups should be there
+      expect(files).toContain(`${rootFolder}hierarchy.json`);
+      expect(files.some(f => f.includes('chat-groups/'))).toBe(true);
+
+      // Exclusion: chat-metas, chat-contents, and binary-objects should be gone
+      expect(files).not.toContain(`${rootFolder}chat-metas.json`);
+      expect(files.some(f => f.includes('chat-contents/'))).toBe(false);
+      expect(files.some(f => f.includes('binary-objects/'))).toBe(false);
+
+      // Verify hierarchy is filtered: only Group remains, and its chat_ids are empty
+      const hierarchy = JSON.parse(await zip.file(`${rootFolder}hierarchy.json`)!.async('string'));
+      expect(hierarchy.items).toHaveLength(1);
+      expect(hierarchy.items[0].type).toBe('chat_group');
+      expect(hierarchy.items[0].chat_ids).toHaveLength(0);
+
+      // Settings should always be included
+      expect(files).toContain(`${rootFolder}settings.json`);
+    });
+
+    it('excludes ONLY binary objects while keeping chat structure', async () => {
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: {
+            endpointType: 'openai',
+            endpointUrl: '',
+            autoTitleEnabled: true,
+            storageType: 'local',
+            providerProfiles: []
+          } as any,
+          hierarchy: { items: [{ type: 'chat', id: UUID_C1 }] },
+          chatMetas: [{ id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
+          chatGroups: []
+        },
+        contentStream: (async function* () {
+          yield { type: 'chat', data: { id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
+          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
+        })()
+      });
+
+      const { stream } = await service.exportData({ exclude: ['binary_object'] });
+
+      const chunks: Uint8Array[] = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value!);
+      }
+      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+
+      const files = Object.keys(zip.files);
+      const rootFolder = files.find(f => f.startsWith('naidan-data-'))!;
+
+      // Chats should be there
+      expect(files).toContain(`${rootFolder}hierarchy.json`);
+      expect(files).toContain(`${rootFolder}chat-metas.json`);
+      expect(files.some(f => f.includes('chat-contents/'))).toBe(true);
+
+      // Binary objects should be gone
+      expect(files.some(f => f.includes('binary-objects/'))).toBe(false);
+    });
+
+    it('excludes ONLY chats while keeping binary objects', async () => {
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: {
+            endpointType: 'openai',
+            endpointUrl: '',
+            autoTitleEnabled: true,
+            storageType: 'local',
+            providerProfiles: []
+          } as any,
+          hierarchy: { items: [{ type: 'chat', id: UUID_C1 }] },
+          chatMetas: [{ id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
+          chatGroups: []
+        },
+        contentStream: (async function* () {
+          yield { type: 'chat', data: { id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
+          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
+        })()
+      });
+
+      const { stream } = await service.exportData({ exclude: ['chat'] });
+
+      const chunks: Uint8Array[] = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value!);
+      }
+      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+
+      const files = Object.keys(zip.files);
+      const rootFolder = files.find(f => f.startsWith('naidan-data-'))!;
+
+      // Chats should be gone
+      expect(files).not.toContain(`${rootFolder}chat-metas.json`);
+      expect(files.some(f => f.includes('chat-contents/'))).toBe(false);
+
+      // Binary objects should STILL BE THERE (though orphaned)
+      expect(files.some(f => f.includes('binary-objects/'))).toBe(true);
+    });
+
+    it('includes all data by default (no exclusion)', async () => {
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: {
+            endpointType: 'openai',
+            endpointUrl: '',
+            autoTitleEnabled: true,
+            storageType: 'local',
+            providerProfiles: []
+          } as any,
+          hierarchy: { items: [{ type: 'chat', id: UUID_C1 }] },
+          chatMetas: [{ id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
+          chatGroups: [{ id: UUID_G1, name: 'Group', updatedAt: 1000, isCollapsed: false, items: [] }]
+        },
+        contentStream: (async function* () {
+          yield { type: 'chat', data: { id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
+          yield { type: 'binary_object', id: UUID_A1, name: 'file.txt', mimeType: 'text/plain', size: 10, createdAt: 1000, blob: new Blob(['hello']) };
+        })()
+      });
+
+      const { stream } = await service.exportData({});
+
+      const chunks: Uint8Array[] = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value!);
+      }
+      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+
+      const files = Object.keys(zip.files);
+      const rootFolder = files.find(f => f.startsWith('naidan-data-'))!;
+
+      expect(files).toContain(`${rootFolder}hierarchy.json`);
+      expect(files).toContain(`${rootFolder}chat-metas.json`);
+      expect(files.some(f => f.includes('chat-groups/'))).toBe(true);
+      expect(files.some(f => f.includes('chat-contents/'))).toBe(true);
+      expect(files.some(f => f.includes('binary-objects/'))).toBe(true);
+      expect(files).toContain(`${rootFolder}settings.json`);
+    });
   });
 
   describe('Import - Replace Mode', () => {
@@ -239,6 +428,24 @@ describe('ImportExportService', () => {
       const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
       expect(snapshot.structure.hierarchy.items).toContainEqual({ type: 'chat', id: 'existing-chat' });
     });
+
+    it('handles ZIP with only groups (chats excluded) in append mode', async () => {
+      const zip = new JSZip();
+      zip.file('export-manifest.json', '{}');
+      // Filtered hierarchy: only group, no chats
+      zip.file('hierarchy.json', JSON.stringify({ items: [{ type: 'chat_group', id: UUID_G1, chat_ids: [] }] }));
+      zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'Empty Group', updatedAt: 1000, isCollapsed: false }));
+
+      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+        data: { mode: 'append' },
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+      });
+
+      const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
+      expect(snapshot.structure.chatGroups).toHaveLength(1);
+      expect(snapshot.structure.chatGroups[0]!.name).toBe('Empty Group');
+      expect(snapshot.structure.chatMetas).toHaveLength(0);
+    });
   });
 
   describe('Settings Merge - Edge Cases', () => {
@@ -311,6 +518,25 @@ describe('ImportExportService', () => {
       const preview = await service.analyze(zipBlob);
       expect(preview.stats.chatsCount).toBe(0);
       expect(preview.stats.hasSettings).toBe(false);
+    });
+
+    it('handles ZIP with only groups (chats excluded)', async () => {
+      const zip = new JSZip();
+      zip.file('export-manifest.json', '{}');
+      zip.file('hierarchy.json', JSON.stringify({ items: [{ type: 'chat_group', id: UUID_G1, chat_ids: [] }] }));
+      zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'Empty Group', updatedAt: 1000, isCollapsed: false }));
+
+      const preview = await service.analyze(await zip.generateAsync({ type: 'blob' }));
+
+      expect(preview.stats.chatGroupsCount).toBe(1);
+      expect(preview.stats.chatsCount).toBe(0);
+      expect(preview.items).toHaveLength(1);
+      const firstItem = preview.items[0];
+      expect(firstItem).toBeDefined();
+      expect(firstItem!.type).toBe('chat_group');
+      if (firstItem!.type === 'chat_group') {
+        expect(firstItem!.data.name).toBe('Empty Group');
+      }
     });
 
     it('correctly builds complex hierarchy and counts while skipping malformed entries', async () => {
