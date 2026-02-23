@@ -11,7 +11,7 @@ import Logo from './Logo.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted(() => import('./SidebarDebugControls.vue'));
-import type { ChatGroup, SidebarItem } from '../models/types';
+import type { ChatGroup, SidebarItem, ChatSidebarItem } from '../models/types';
 import {
   Trash2, Settings as SettingsIcon,
   Pencil, Folder, FolderPlus,
@@ -25,6 +25,7 @@ import { useLayout } from '../composables/useLayout';
 import { useConfirm } from '../composables/useConfirm';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { naturalSort } from '../utils/string';
+import { scrollIntoViewSafe } from '../utils/dom';
 
 const chatStore = useChat();
 const {
@@ -63,6 +64,91 @@ const activeActionGroupId = ref<string | null>(null);
 const COMPACT_THRESHOLD = 5;
 const expandedGroupIds = ref<Set<string>>(new Set());
 const collapsingGroupIds = ref<Set<string>>(new Set());
+
+const navContainer = ref<HTMLElement | null>(null);
+
+const visibleItems = computed(() => {
+  const result: { type: 'chat' | 'chat_group' | 'expand_button'; id: string; groupId?: string }[] = [];
+  function collect(list: SidebarItem[]) {
+    for (const item of list) {
+      switch (item.type) {
+      case 'chat':
+        result.push({ type: 'chat', id: item.chat.id });
+        break;
+      case 'chat_group':
+        result.push({ type: 'chat_group', id: item.chatGroup.id });
+        if (!item.chatGroup.isCollapsed) {
+          const items = item.chatGroup.items;
+          const isExpanded = isGroupCompactExpanded(item.chatGroup.id);
+          const shownItems = (isExpanded || items.length <= COMPACT_THRESHOLD)
+            ? items
+            : items.slice(0, COMPACT_THRESHOLD);
+
+          collect(shownItems);
+
+          if (items.length > COMPACT_THRESHOLD) {
+            result.push({
+              type: 'expand_button',
+              id: `expand-${item.chatGroup.id}`,
+              groupId: item.chatGroup.id
+            });
+          }
+        }
+        break;
+      default: {
+        const _ex: never = item;
+        return _ex;
+      }
+      }
+    }
+  }
+  collect(sidebarItemsLocal.value);
+  return result;
+});
+
+const focusedId = computed(() => {
+  if (lastNavigatedId.value && visibleItems.value.some(i => i.id === lastNavigatedId.value)) {
+    return lastNavigatedId.value;
+  }
+  return currentChatGroup.value?.id || currentChat.value?.id || null;
+});
+
+// Scroll active chat into view
+watch(() => currentChat.value?.id, async (id) => {
+  if (!id || typeof document === 'undefined' || !navContainer.value) return;
+  await nextTick();
+  // Wait a bit for potential transitions
+  setTimeout(() => {
+    if (typeof document === 'undefined' || !navContainer.value) return;
+    const el = navContainer.value.querySelector(`[data-sidebar-chat-id="${id}"]`);
+    if (el instanceof HTMLElement) {
+      scrollIntoViewSafe({
+        container: navContainer.value,
+        element: el,
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  }, 100);
+}, { immediate: true });
+
+// Scroll active group into view
+watch(() => currentChatGroup.value?.id, async (id) => {
+  if (!id || typeof document === 'undefined' || !navContainer.value) return;
+  await nextTick();
+  setTimeout(() => {
+    if (typeof document === 'undefined' || !navContainer.value) return;
+    const el = navContainer.value.querySelector(`[data-sidebar-group-id="${id}"]`);
+    if (el instanceof HTMLElement) {
+      scrollIntoViewSafe({
+        container: navContainer.value,
+        element: el,
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  }, 100);
+}, { immediate: true });
 
 function isGroupCompactExpanded(groupId: string) {
   return expandedGroupIds.value.has(groupId);
@@ -311,7 +397,7 @@ function getGroupItems(groupId: string) {
   return items.slice(0, COMPACT_THRESHOLD);
 }
 
-function updateGroupItems(groupId: string, newItems: SidebarItem[]) {
+function updateGroupItems(groupId: string, newItems: ChatSidebarItem[]) {
   const groupIndex = sidebarItemsLocal.value.findIndex(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
   if (groupIndex === -1) return;
 
@@ -349,79 +435,6 @@ function handleToggleChatGroupCollapse(chatGroup: ChatGroup) {
     isCollapsed: chatGroup.isCollapsed
   });
 }
-
-// Scroll active chat into view
-watch(() => currentChat.value?.id, async (id) => {
-  if (!id || typeof document === 'undefined') return;
-  await nextTick();
-  // Wait a bit for potential transitions
-  setTimeout(() => {
-    if (typeof document === 'undefined') return;
-    const el = document.querySelector(`[data-testid="sidebar-chat-item-${id}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, 100);
-}, { immediate: true });
-
-// Scroll active group into view
-watch(() => currentChatGroup.value?.id, async (id) => {
-  if (!id || typeof document === 'undefined') return;
-  await nextTick();
-  setTimeout(() => {
-    if (typeof document === 'undefined') return;
-    const el = document.querySelector(`[data-sidebar-group-id="${id}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, 100);
-}, { immediate: true });
-
-const visibleItems = computed(() => {
-  const result: { type: 'chat' | 'chat_group' | 'expand_button'; id: string; groupId?: string }[] = [];
-  function collect(list: SidebarItem[]) {
-    for (const item of list) {
-      switch (item.type) {
-      case 'chat':
-        result.push({ type: 'chat', id: item.chat.id });
-        break;
-      case 'chat_group':
-        result.push({ type: 'chat_group', id: item.chatGroup.id });
-        if (!item.chatGroup.isCollapsed) {
-          const items = item.chatGroup.items;
-          const isExpanded = isGroupCompactExpanded(item.chatGroup.id);
-          const shownItems = (isExpanded || items.length <= COMPACT_THRESHOLD)
-            ? items
-            : items.slice(0, COMPACT_THRESHOLD);
-
-          collect(shownItems);
-
-          if (items.length > COMPACT_THRESHOLD) {
-            result.push({
-              type: 'expand_button',
-              id: `expand-${item.chatGroup.id}`,
-              groupId: item.chatGroup.id
-            });
-          }
-        }
-        break;
-      default: {
-        const _ex: never = item;
-        return _ex;
-      }
-      }
-    }
-  }
-  collect(sidebarItemsLocal.value);
-  return result;
-});
-
-const focusedId = computed(() => {
-  if (lastNavigatedId.value && visibleItems.value.some(i => i.id === lastNavigatedId.value)) {
-    return lastNavigatedId.value;
-  }
-  return currentChatGroup.value?.id || currentChat.value?.id || null;
-});
 
 onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
   const area = activeFocusArea.value;
@@ -639,6 +652,7 @@ defineExpose({
     </div>
     <!-- Navigation List -->
     <div
+      ref="navContainer"
       class="flex-1 overflow-y-auto px-3 py-1 scrollbar-hide focus:outline-none overscroll-contain"
       :class="{ 'is-dragging': isDragging }"
       data-testid="sidebar-nav"
@@ -791,6 +805,7 @@ defineExpose({
                             class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
                             :class="focusedId === nestedItem.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
                             :data-testid="'sidebar-chat-item-' + nestedItem.chat.id"
+                            :data-sidebar-chat-id="nestedItem.chat.id"
                           >
                             <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
                               <input
@@ -848,6 +863,7 @@ defineExpose({
                 class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
                 :class="focusedId === element.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
                 :data-testid="'sidebar-chat-item-' + element.chat.id"
+                :data-sidebar-chat-id="element.chat.id"
               >
                 <div class="flex items-center gap-3 overflow-hidden flex-1 pointer-events-none">
                   <input

@@ -4,7 +4,7 @@ import ChatArea from './ChatArea.vue';
 import ChatInput from './ChatInput.vue';
 import { ref, isRef, reactive } from 'vue';
 import { useChatDraft } from '../composables/useChatDraft';
-
+import { setupScrollToMock } from '../utils/test-utils';
 
 // Define shared refs for the mock
 const mockCurrentChat = ref({
@@ -100,6 +100,7 @@ vi.mock('../services/storage', () => ({
 
 describe('ChatArea - Attachment UI', () => {
   beforeEach(() => {
+    setupScrollToMock();
     const { clearAllDrafts } = useChatDraft();
     clearAllDrafts();
   });

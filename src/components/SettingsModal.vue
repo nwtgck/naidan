@@ -56,6 +56,7 @@ const route = useRoute();
 const router = useRouter();
 
 const isHostedMode = __BUILD_MODE_IS_HOSTED__;
+const appVersion = __APP_VERSION__;
 
 const form = ref<Settings>(JSON.parse(JSON.stringify(settings.value)));
 const initialFormState = ref(JSON.stringify(pickConnectionFields(form.value)));
@@ -347,7 +348,7 @@ defineExpose({
             <a
               v-if="isHostedMode"
               href="./naidan-standalone.zip"
-              download="naidan-standalone.zip"
+              :download="'naidan-standalone-v' + appVersion + '.zip'"
               class="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
               data-testid="sidebar-download-button"
             >

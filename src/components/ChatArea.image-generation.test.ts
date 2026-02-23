@@ -6,6 +6,9 @@ import { ref, nextTick } from 'vue';
 import { Image, Send } from 'lucide-vue-next';
 
 
+import { setupScrollToMock } from '../utils/test-utils';
+
+
 // Mock useChat singleton
 const mockIsImageMode = ref(false);
 const mockChatStore = {
@@ -63,6 +66,7 @@ vi.mock('vue-router', () => ({
 
 describe('ChatArea Image Generation Integration', () => {
   beforeEach(() => {
+    setupScrollToMock();
     vi.clearAllMocks();
     mockIsImageMode.value = false;
   });

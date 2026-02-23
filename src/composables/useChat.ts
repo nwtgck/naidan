@@ -1503,18 +1503,7 @@ export function useChat() {
     if (!group) return;
     const items = [...group.items];
     for (const item of items) {
-      switch (item.type) {
-      case 'chat':
-        await deleteChat(item.chat.id, () => '');
-        break;
-      case 'chat_group':
-        // Nested groups not supported in UI but handled for exhaustiveness
-        break;
-      default: {
-        const _ex: never = item;
-        throw new Error(`Unhandled sidebar item type: ${_ex}`);
-      }
-      }
+      await deleteChat(item.chat.id, () => '');
     }
     if (_currentChatGroup.value?.id === id) _currentChatGroup.value = null;
     await storageService.deleteChatGroup(id);

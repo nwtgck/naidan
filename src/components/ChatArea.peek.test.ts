@@ -6,6 +6,8 @@ import { ref, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '../models/types';
 
+import { setupScrollToMock } from '../utils/test-utils';
+
 // Mock dependencies
 const mockCurrentChat = ref<Chat | null>(null);
 
@@ -83,6 +85,7 @@ describe('ChatArea Peek Mode Specifications', () => {
   let wrapper: VueWrapper<any> | null = null;
 
   beforeEach(async () => {
+    setupScrollToMock();
     mockCurrentChat.value = {
       id: '1',
       title: 'Test Chat',

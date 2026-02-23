@@ -18,34 +18,78 @@ import {
   Check,
   WrapText,
   BarChart2,
+  AlignLeft,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
   initialValue: string;
   title: string | undefined;
+  mode: 'advanced' | 'textarea';
 }>();
 
 const emit = defineEmits<{
   (e: 'update:content', { content }: { content: string }): void;
+  (e: 'update:mode', { mode }: { mode: 'advanced' | 'textarea' }): void;
   (e: 'close'): void;
 }>();
 
-// --- Line-Based Model ---
-// Core performance optimisation: manage text as an array of lines.
-// Joining is deferred to fullText (Vue computed caching).
-const lines = ref<string[]>(props.initialValue.split('\n'));
+// --- Text Model Manager ---
+function useTextModel({ initialValue }: {
+  initialValue: string;
+}) {
+  const fullText = ref(initialValue);
+  const lines = ref<string[]>(initialValue.split('\n'));
 
-const fullText = computed(() => lines.value.join('\n'));
+  // Atomic update that maintains consistency
+  const updateContent = ({ text, immediateLines }: {
+    text: string;
+    immediateLines: boolean;
+  }) => {
+    fullText.value = text;
+    if (immediateLines) {
+      lines.value = text.split('\n');
+    }
+  };
 
-// Sync lines → emit
-watch(fullText, (newVal) => {
-  emit('update:content', { content: newVal });
+  const syncLines = () => {
+    lines.value = fullText.value.split('\n');
+  };
 
-  if (historyTimeout) clearTimeout(historyTimeout);
-  historyTimeout = setTimeout(() => {
-    recordHistory({ newLines: [...lines.value] });
-  }, 500);
+  return { fullText, lines, updateContent, syncLines,
+    __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    }, };
+}
+
+const { fullText, lines, updateContent, syncLines } = useTextModel({
+  initialValue: props.initialValue
 });
+
+// --- Mode Management ---
+const localMode = ref<'advanced' | 'textarea'>(props.mode);
+
+watch(() => props.mode, (newVal) => {
+  localMode.value = newVal;
+});
+
+function toggleMode() {
+  const current = localMode.value;
+  const nextMode = (() => {
+    switch (current) {
+    case 'advanced': return 'textarea';
+    case 'textarea':
+      // Sync lines before switching to advanced for accurate line numbers
+      syncLines();
+      return 'advanced';
+    default: {
+      const _ex: never = current;
+      throw new Error(`Unhandled mode: ${_ex}`);
+    }
+    }
+  })();
+  localMode.value = nextMode;
+  emit('update:mode', { mode: nextMode });
+}
 
 // --- State ---
 const findText = ref('');
@@ -104,10 +148,35 @@ const stats = computed(() => {
 });
 
 // --- Line Height Measurement ---
+const linesForLayout = computed(() => {
+  const current = localMode.value;
+  switch (current) {
+  case 'advanced': return lines.value;
+  case 'textarea': return null;
+  default: {
+    const _ex: never = current;
+    throw new Error(`Unhandled mode: ${_ex}`);
+  }
+  }
+});
+
 function calculateLineHeights() {
   if (!textareaRef.value) {
     lineHeights.value = [];
     return;
+  }
+
+  const currentMode = localMode.value;
+  switch (currentMode) {
+  case 'textarea':
+    lineHeights.value = [];
+    return;
+  case 'advanced':
+    break;
+  default: {
+    const _ex: never = currentMode;
+    throw new Error(`Unhandled mode: ${_ex}`);
+  }
   }
 
   const currentWrapMode = wrapMode.value;
@@ -124,7 +193,12 @@ function calculateLineHeights() {
   }
 
   const textarea = textareaRef.value;
-  const style = window.getComputedStyle(textarea);
+  const win = textarea.ownerDocument.defaultView || window;
+  if (!win || typeof win.getComputedStyle !== 'function') return;
+
+  const style = win.getComputedStyle(textarea);
+  if (!style) return;
+
   const width = textarea.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   const font = style.font;
   const lineHeightStr = style.lineHeight;
@@ -156,7 +230,12 @@ function calculateLineHeights() {
   lineHeights.value = heights;
 }
 
-watch([lines, wrapMode], () => {
+watch([linesForLayout, wrapMode], () => {
+  if (linesForLayout.value === null) {
+    lineHeights.value = [];
+    return;
+  }
+
   const currentWrapMode = wrapMode.value;
   switch (currentWrapMode) {
   case 'wrap-off':
@@ -175,7 +254,6 @@ watch([lines, wrapMode], () => {
   }
 }, { deep: true });
 
-// --- History Management ---
 function recordHistory({ newLines }: { newLines: string[] }) {
   const current = history.value[historyIndex.value];
   if (current && current.length === newLines.length && current.every((l, i) => l === newLines[i])) return;
@@ -195,14 +273,16 @@ function recordHistory({ newLines }: { newLines: string[] }) {
 function handleUndo() {
   if (historyIndex.value > 0) {
     historyIndex.value--;
-    lines.value = [...history.value[historyIndex.value]!];
+    const recovered = [...history.value[historyIndex.value]!];
+    updateContent({ text: recovered.join('\n'), immediateLines: true });
   }
 }
 
 function handleRedo() {
   if (historyIndex.value < history.value.length - 1) {
     historyIndex.value++;
-    lines.value = [...history.value[historyIndex.value]!];
+    const recovered = [...history.value[historyIndex.value]!];
+    updateContent({ text: recovered.join('\n'), immediateLines: true });
   }
 }
 
@@ -210,7 +290,7 @@ let historyTimeout: ReturnType<typeof setTimeout> | undefined;
 
 // --- Helper: update lines from full text (for bulk operations like search/replace) ---
 function setFullText({ text }: { text: string }) {
-  lines.value = text.split('\n');
+  updateContent({ text, immediateLines: true });
 }
 
 // --- Search & Replace ---
@@ -639,6 +719,7 @@ function copyToClipboard() {
 }
 
 function handleClose() {
+  emit('update:content', { content: fullText.value });
   emit('close');
 }
 
@@ -675,7 +756,31 @@ function toggleWrap() {
 function handleInput() {
   if (!textareaRef.value) return;
   const newText = textareaRef.value.value;
-  lines.value = newText.split('\n');
+  fullText.value = newText;
+
+  if (historyTimeout) clearTimeout(historyTimeout);
+
+  const currentMode = localMode.value;
+  switch (currentMode) {
+  case 'advanced':
+    // Immediate split for line numbers
+    lines.value = newText.split('\n');
+    historyTimeout = setTimeout(() => {
+      recordHistory({ newLines: [...lines.value] });
+    }, 500);
+    break;
+  case 'textarea':
+    // Debounce split for history and stats to keep typing fast
+    historyTimeout = setTimeout(() => {
+      lines.value = newText.split('\n');
+      recordHistory({ newLines: [...lines.value] });
+    }, 500);
+    break;
+  default: {
+    const _ex: never = currentMode;
+    throw new Error(`Unhandled mode: ${_ex}`);
+  }
+  }
 }
 
 // Shortcuts
@@ -874,6 +979,7 @@ defineExpose({
         <div class="flex-1 flex flex-col min-h-0 bg-transparent relative group/editor">
           <!-- Line Numbers Area -->
           <div
+            v-if="localMode === 'advanced'"
             class="absolute left-0 top-0 bottom-0 w-12 border-r border-gray-50 dark:border-white/10 overflow-hidden pointer-events-none select-none bg-gray-50 dark:bg-[#0f172a] z-20"
           >
             <!-- Inner container that moves with transform -->
@@ -900,8 +1006,23 @@ defineExpose({
             :value="fullText"
             @input="handleInput"
             @scroll="handleScroll"
-            class="w-full h-full pr-16 py-5 font-mono text-sm bg-transparent outline-none resize-none text-gray-800 dark:text-gray-200 leading-[21px] selection:bg-blue-500/45 selection:text-white overscroll-area z-10"
-            :class="wrapMode === 'wrap-off' ? 'pl-16 whitespace-pre overflow-x-auto' : 'pl-16 whitespace-pre-wrap overflow-x-hidden'"
+            class="w-full h-full pr-16 py-5 font-mono text-sm bg-transparent outline-none resize-none text-gray-800 dark:text-gray-200 leading-[21px] selection:bg-blue-500/45 selection:text-white overscroll-area z-10 transition-all duration-200"
+            :class="[
+              (() => {
+                const current = wrapMode;
+                switch (current) {
+                case 'wrap-off': return 'whitespace-pre overflow-x-auto';
+                case 'wrap-on': return 'whitespace-pre-wrap overflow-x-hidden';
+                }
+              })(),
+              (() => {
+                const current = localMode;
+                switch (current) {
+                case 'advanced': return 'pl-16';
+                case 'textarea': return 'pl-5';
+                }
+              })()
+            ]"
             spellcheck="false"
             :wrap="wrapMode === 'wrap-on' ? 'soft' : 'off'"
             data-testid="advanced-textarea"
@@ -990,6 +1111,7 @@ defineExpose({
           @click="handleClose"
           class="p-2.5 bg-gray-200 dark:bg-white/10 hover:bg-gray-300 dark:hover:bg-white/20 rounded-xl transition-all shadow-sm text-gray-600 dark:text-gray-300 mb-2 group"
           title="Close Editor (Esc)"
+          data-testid="close-button"
         >
           <X class="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
         </button>
@@ -1018,6 +1140,15 @@ defineExpose({
         <div class="h-px w-6 bg-gray-200 dark:bg-white/10"></div>
 
         <div class="flex flex-col gap-1">
+          <button
+            @click="toggleMode"
+            class="p-2.5 rounded-xl transition-all hover:shadow-sm group"
+            :class="localMode === 'textarea' ? 'bg-orange-500/20 text-orange-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
+            :title="localMode === 'textarea' ? 'Switch to Advanced Editor' : 'Switch to Normal Textarea'"
+            data-testid="toggle-mode-button"
+          >
+            <AlignLeft class="w-4.5 h-4.5" />
+          </button>
           <button
             @click="searchMode = searchMode === 'visible' ? 'hidden' : 'visible'"
             class="p-2.5 rounded-xl transition-all hover:shadow-sm group"

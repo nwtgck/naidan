@@ -29,7 +29,7 @@ const OPFSExplorer = defineAsyncComponentAndLoadOnMounted(() => import('./compon
 const chatStore = useChat();
 const settingsStore = useSettings();
 const { addRecentChat, toggleRecent } = useRecentChats();
-const { isSidebarOpen } = useLayout();
+const { isSidebarOpen, isDebugOpen } = useLayout();
 const router = useRouter();
 const route = useRoute();
 
@@ -238,14 +238,16 @@ defineExpose({
       <Sidebar />
     </div>
 
-    <main class="flex-1 relative flex flex-col min-w-0 bg-transparent">
+    <main class="flex-1 relative flex flex-col min-w-0 bg-transparent z-30">
       <!-- Use a key based on route to help Vue identify when to remount or transition -->
       <div class="flex-1 relative min-h-0">
         <router-view v-slot="{ Component }">
           <component :is="Component" />
         </router-view>
       </div>
-      <DebugPanel />
+      <Transition name="debug-panel">
+        <DebugPanel v-if="isDebugOpen" />
+      </Transition>
     </main>
 
     <SettingsModal
@@ -320,6 +322,20 @@ defineExpose({
 .modal-leave-to :deep(.modal-content-zoom) {
   transform: scale(0.9);
   opacity: 0;
+}
+
+/* Debug Panel Transition */
+.debug-panel-enter-active,
+.debug-panel-leave-active {
+  transition: all 0.3s ease-in-out;
+  overflow: hidden;
+}
+
+.debug-panel-enter-from,
+.debug-panel-leave-to {
+  height: 0 !important;
+  opacity: 0;
+  border-top-width: 0;
 }
 </style>
 

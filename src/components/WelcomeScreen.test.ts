@@ -27,7 +27,7 @@ describe('WelcomeScreen.vue', () => {
 
     const wrapper = mount(WelcomeScreen);
     expect(wrapper.text()).toContain('Conversations are stored in-memory.');
-    expect(wrapper.text()).toContain('Data is lost on page reload.');
+    expect(wrapper.text()).toContain('Data is cleared on reload.');
   });
 
   it('renders suggestions', () => {

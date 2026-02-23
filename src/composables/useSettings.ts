@@ -66,7 +66,7 @@ export function useSettings() {
     return _isOnboardingDismissed.value || (hasEndpoint && hasModel);
   });
 
-  async function init({ storageTypeOverride }: { storageTypeOverride: string | undefined }) {
+  async function init({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) {
     if (_initialized.value) return;
     if (initPromise) return initPromise;
     console.log("storageTypeOverride", storageTypeOverride);
@@ -135,6 +135,30 @@ export function useSettings() {
         _settings.value.storageType = bootstrapType;
 
         await storageService.init(bootstrapType);
+
+        // Handle URL-based data import BEFORE loading existing settings to ensure append mode works correctly
+        if (dataZipBase64) {
+          try {
+            const { urlImportExportLogic } = await import('../services/import-export/url-logic');
+            await urlImportExportLogic.importFromBase64({ zipBase64: dataZipBase64 });
+            // Clear local reference to large data to help GC
+            dataZipBase64 = undefined;
+            const { addInfoEvent } = useGlobalEvents();
+            addInfoEvent({
+              source: 'SettingsService',
+              message: 'Data successfully imported from URL.',
+            });
+          } catch (err) {
+            console.error('Failed to import data from URL:', err);
+            const { addErrorEvent } = useGlobalEvents();
+            addErrorEvent({
+              source: 'SettingsService',
+              message: 'Failed to import data from URL.',
+              details: err instanceof Error ? err : String(err),
+            });
+          }
+        }
+
         const s = await storageService.loadSettings();
         if (s) {
           _settings.value = s;

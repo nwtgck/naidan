@@ -6,6 +6,7 @@ import ChatInput from './ChatInput.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useChat } from '../composables/useChat';
 import { useSettings } from '../composables/useSettings';
+import { setupScrollToMock } from '../utils/test-utils';
 
 
 vi.mock('../composables/useChat', () => ({
@@ -20,6 +21,7 @@ vi.mock('vue-router', () => ({
 
 describe('ChatArea Design Specifications', () => {
   beforeEach(() => {
+    setupScrollToMock();
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref({ id: '1', title: 'Test Chat', modelId: 'gemma3n:e2b' }),
       streaming: ref(false),

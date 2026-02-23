@@ -5,6 +5,8 @@ import { nextTick, ref, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 
+import { setupScrollToMock } from '../utils/test-utils';
+
 // Mock router
 const router = createRouter({
   history: createWebHistory(),
@@ -96,6 +98,7 @@ vi.mock('mermaid', () => ({
 
 describe('ChatArea Auto-send', () => {
   beforeEach(() => {
+    setupScrollToMock();
     vi.clearAllMocks();
     mockCurrentChat.value = {
       id: '1',

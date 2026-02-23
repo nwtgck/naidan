@@ -7,6 +7,8 @@ const props = defineProps<{
   onDownload: ({ withMetadata }: { withMetadata: boolean }) => void;
   /** Whether metadata embedding is supported for the current image format */
   isSupported?: boolean;
+  /** Alignment of the dropdown: 'left' or 'right' (default) */
+  align?: 'left' | 'right';
 }>();
 
 const isOpen = ref(false);
@@ -64,9 +66,8 @@ defineExpose({
 
 <template>
   <div
-    class="relative inline-flex shadow-sm border border-gray-200 dark:border-gray-700 rounded-lg overflow-visible bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm"
+    class="relative inline-flex shadow-sm border border-gray-200 dark:border-gray-700 rounded-lg overflow-visible bg-white dark:bg-gray-800 z-30"
     ref="dropdownRef"
-    @mouseenter="openDropdown"
     @mouseleave="closeDropdown"
   >
     <!-- Main Button (Standard Download) -->
@@ -82,6 +83,7 @@ defineExpose({
     <!-- Split Divider & Dropdown Toggle -->
     <button
       @click="toggleDropdown"
+      @mouseenter="openDropdown"
       class="px-1 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 border-l border-gray-200 dark:border-gray-700 transition-colors rounded-r-lg flex items-center justify-center"
       title="More options"
       data-testid="download-gen-image-dropdown-toggle"
@@ -92,7 +94,8 @@ defineExpose({
     <!-- Dropdown Menu -->
     <div
       v-if="isOpen"
-      class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1"
+      class="absolute top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[100] py-1 overflow-hidden animate-in fade-in slide-in-from-top-1"
+      :class="align === 'left' ? 'left-0' : 'right-0'"
     >
       <button
         @click="isSupported !== false ? handleDownload(true, $event) : null"

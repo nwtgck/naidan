@@ -17,6 +17,8 @@ export const GeneratedImageBlockSchema = z.object({
   binaryObjectId: z.string(),
   displayWidth: z.number(),
   displayHeight: z.number(),
+  width: z.number().optional(),
+  height: z.number().optional(),
   prompt: z.string().optional(),
   steps: z.number().optional(),
   seed: z.number().optional(),
@@ -153,6 +155,51 @@ export function isImageGenerationProcessed(content: string): boolean {
 }
 
 /**
+ * Counts the number of generated image blocks in the content.
+ */
+export function countGeneratedImages(content: string): number {
+  const codeBlockRegex = new RegExp('```' + IMAGE_BLOCK_LANG, 'g');
+  return (content.match(codeBlockRegex) || []).length;
+}
+
+/**
+ * Calculates display dimensions based on raw dimensions or fallback.
+ * Follows the project convention of 80% scaling for UI display.
+ */
+export function getDisplayDimensions({ width, height, displayWidth, displayHeight }: {
+  width?: number,
+  height?: number,
+  displayWidth?: number,
+  displayHeight?: number
+}): { width: number, height: number } {
+  if (width !== undefined && height !== undefined) {
+    return {
+      width: Math.round(width * 0.8),
+      height: Math.round(height * 0.8)
+    };
+  }
+  return {
+    width: displayWidth ?? 512,
+    height: displayHeight ?? 512
+  };
+}
+
+/**
+ * Gets statistics about generated images in the content.
+ */
+export function getImageStats(content: string): {
+  generatedCount: number,
+  totalCount: number | undefined
+} {
+  const response = parseImageResponse(content);
+  const generatedCount = countGeneratedImages(content);
+  return {
+    generatedCount,
+    totalCount: response?.count
+  };
+}
+
+/**
  * Calculates the progress of image generation from the content.
  * Returns total count, remaining count, and current step within the active generation.
  */
@@ -183,9 +230,7 @@ export function getImageGenerationProgress(content: string): {
   const totalCount = response.count ?? 1;
 
   // Count already generated images in both OPFS (Markdown block) and local (img tag) modes
-  const processedCount =
-    (content.match(new RegExp('```' + IMAGE_BLOCK_LANG, 'g')) || []).length +
-    (content.match(/<img/g) || []).length;
+  const processedCount = countGeneratedImages(content) + (content.match(/<img/g) || []).length;
 
   return {
     totalCount,

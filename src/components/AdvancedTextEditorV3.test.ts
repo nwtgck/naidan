@@ -2,6 +2,10 @@ import { mount } from '@vue/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import AdvancedTextEditorV3 from './AdvancedTextEditorV3.vue';
 import { nextTick } from 'vue';
+import { setupScrollToMock } from '../utils/test-utils';
+
+// Mock scrollTo
+setupScrollToMock();
 
 describe('AdvancedTextEditorV3.vue', () => {
   const initialValue = `Line 1
@@ -11,6 +15,7 @@ Line 3`;
   const defaultProps = {
     initialValue,
     title: 'Test Editor',
+    mode: 'advanced' as const,
   };
 
   it('renders initial value correctly', () => {
@@ -22,13 +27,19 @@ Line 3`;
     expect(textarea.element.value).toBe(initialValue);
   });
 
-  it('emits update:content when input changes', async () => {
+  it('emits update:content when closed', async () => {
     const wrapper = mount(AdvancedTextEditorV3, {
       props: defaultProps,
     });
 
     const textarea = wrapper.find('textarea');
     await textarea.setValue('New Content');
+
+    // Should not emit live anymore
+    expect(wrapper.emitted('update:content')).toBeFalsy();
+
+    // Trigger close
+    await wrapper.find('[data-testid="close-button"]').trigger('click');
 
     expect(wrapper.emitted('update:content')).toBeTruthy();
     expect(wrapper.emitted('update:content')![0]).toEqual([{ content: 'New Content' }]);
@@ -319,6 +330,31 @@ Line 3`;
       expect(vm.__testOnly.isMultiEditMode.value).toBe(false);
       expect(wrapper.emitted('close')).toBeFalsy();
       wrapper.unmount();
+    });
+
+    it('toggles between advanced and textarea modes', async () => {
+      const wrapper = mount(AdvancedTextEditorV3, {
+        props: defaultProps,
+      });
+
+      // Initial state (advanced)
+      expect(wrapper.find('.absolute.left-0.w-12').exists()).toBe(true); // Line numbers
+      expect(wrapper.find('textarea').classes()).toContain('pl-16');
+
+      // Toggle to textarea mode
+      const toggleBtn = wrapper.find('[data-testid="toggle-mode-button"]');
+      await toggleBtn.trigger('click');
+
+      expect(wrapper.find('.absolute.left-0.w-12').exists()).toBe(false); // Line numbers hidden
+      expect(wrapper.find('textarea').classes()).toContain('pl-5');
+      expect(wrapper.emitted('update:mode')).toBeTruthy();
+      expect(wrapper.emitted('update:mode')![0]).toEqual([{ mode: 'textarea' }]);
+
+      // Toggle back to advanced mode
+      await toggleBtn.trigger('click');
+      expect(wrapper.find('.absolute.left-0.w-12').exists()).toBe(true);
+      expect(wrapper.find('textarea').classes()).toContain('pl-16');
+      expect(wrapper.emitted('update:mode')![1]).toEqual([{ mode: 'advanced' }]);
     });
   });
 

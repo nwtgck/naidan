@@ -9,6 +9,12 @@ const props = defineProps<{
   steps: number | undefined;
   /** Random seed used for generation */
   seed: number | undefined;
+  /** Image width */
+  width: number | string | undefined;
+  /** Image height */
+  height: number | string | undefined;
+  /** Alignment of the dropdown: 'left' (default) or 'right' */
+  align?: 'left' | 'right';
 }>();
 
 const isOpen = ref(false);
@@ -61,10 +67,10 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative inline-flex" ref="containerRef">
+  <div class="relative inline-flex z-30 overflow-visible" ref="containerRef">
     <button
       @click="toggle"
-      class="flex items-center justify-center p-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors rounded-lg bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 shadow-sm"
+      class="flex items-center justify-center p-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm"
       title="Image Info"
       data-testid="image-info-button"
     >
@@ -73,7 +79,8 @@ defineExpose({
 
     <div
       v-if="isOpen"
-      class="absolute left-0 top-full mt-1 w-64 bg-white/95 dark:bg-gray-800/95 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 p-3 overflow-hidden animate-in fade-in slide-in-from-top-1 backdrop-blur-md"
+      class="absolute top-full mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-[100] p-3 overflow-hidden animate-in fade-in slide-in-from-top-1"
+      :class="align === 'right' ? 'right-0' : 'left-0'"
     >
       <div class="flex flex-col gap-3">
         <!-- Prompt -->
@@ -92,11 +99,15 @@ defineExpose({
 
         <!-- Meta Grid -->
         <div class="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+          <div v-if="width && height" class="flex flex-col">
+            <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Size</span>
+            <span class="text-xs font-mono text-gray-700 dark:text-gray-200">{{ width }} × {{ height }}</span>
+          </div>
           <div v-if="steps !== undefined" class="flex flex-col">
             <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Steps</span>
             <span class="text-xs font-mono text-gray-700 dark:text-gray-200">{{ steps }}</span>
           </div>
-          <div v-if="seed !== undefined" class="flex flex-col">
+          <div v-if="seed !== undefined" class="flex flex-col col-span-2">
             <div class="flex items-center justify-between">
               <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Seed</span>
               <button @click="copySeed" class="text-gray-400 hover:text-blue-500 transition-colors" title="Copy Seed">

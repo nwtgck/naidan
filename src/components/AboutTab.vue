@@ -85,7 +85,7 @@ defineExpose({
         <a
           v-if="!isStandalone"
           href="./naidan-standalone.zip"
-          download="naidan-standalone.zip"
+          :download="'naidan-standalone-v' + appVersion + '.zip'"
           class="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-3xl transition-all group no-underline"
         >
           <div class="p-3 bg-green-100 dark:bg-green-800/50 rounded-2xl text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">

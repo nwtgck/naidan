@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem } from '../models/types';
+import type { ChatGroup, ChatSummary, SidebarItem, ChatSidebarItem } from '../models/types';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -109,10 +109,25 @@ describe('Sidebar Compact View & DND Integrity', () => {
     mockChats.value = [];
     mockCurrentChat.value = null;
     vi.clearAllMocks();
+
+    // Individually defined mocks for scrolling as requested
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollTo = vi.fn().mockImplementation(function(this: HTMLElement, options: any) {
+      if (typeof options.top === 'number') this.scrollTop = options.top;
+    });
+    HTMLElement.prototype.getBoundingClientRect = vi.fn().mockReturnValue({
+      top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0
+    });
+  });
+
+  afterEach(() => {
+    delete (HTMLElement.prototype as any).scrollIntoView;
+    delete (HTMLElement.prototype as any).scrollTo;
+    delete (HTMLElement.prototype as any).getBoundingClientRect;
   });
 
   it('initially shows only 5 items in a group with 7 items', async () => {
-    const groupItems: SidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
+    const groupItems: ChatSidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
       chat: { id: `c${i}`, title: `Chat ${i}`, updatedAt: 0, groupId: 'g1' }
@@ -143,7 +158,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
   });
 
   it('shows all items when "Show more" is clicked', async () => {
-    const groupItems: SidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
+    const groupItems: ChatSidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
       chat: { id: `c${i}`, title: `Chat ${i}`, updatedAt: 0, groupId: 'g1' }
@@ -173,7 +188,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
   });
 
   it('maintains full list integrity when reordering items in compact view', async () => {
-    const groupItems: SidebarItem[] = Array.from({ length: 10 }, (_, i) => ({
+    const groupItems: ChatSidebarItem[] = Array.from({ length: 10 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
       chat: { id: `c${i}`, title: `Chat ${i}`, updatedAt: 0, groupId: 'g1' }
@@ -219,7 +234,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
   });
 
   it('resets expansion state when group is collapsed', async () => {
-    const groupItems: SidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
+    const groupItems: ChatSidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
       chat: { id: `c${i}`, title: `Chat ${i}`, updatedAt: 0, groupId: 'g1' }
@@ -261,7 +276,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
   });
 
   it('handles keyboard navigation: ArrowRight on expand button expands and selects 6th item', async () => {
-    const groupItems: SidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
+    const groupItems: ChatSidebarItem[] = Array.from({ length: 7 }, (_, i) => ({
       id: `chat-${i}`,
       type: 'chat',
       chat: { id: `c${i}`, title: `Chat ${i}`, updatedAt: 0, groupId: 'g1' }
@@ -307,7 +322,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
   });
 
   it('handles keyboard navigation: ArrowLeft on chat item jumps to group header', async () => {
-    const groupItems: SidebarItem[] = [{
+    const groupItems: ChatSidebarItem[] = [{
       id: 'chat-0',
       type: 'chat',
       chat: { id: 'c0', title: 'Chat 0', updatedAt: 0, groupId: 'g1' }

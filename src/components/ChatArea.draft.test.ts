@@ -7,6 +7,9 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '../composables/useChatDraft';
 
 
+import { setupScrollToMock } from '../utils/test-utils';
+
+
 // Mock router
 const router = createRouter({
   history: createWebHistory(),
@@ -89,6 +92,7 @@ vi.mock('../composables/useSettings', () => ({
 describe('ChatArea Draft Maintenance', () => {
   let wrapper: VueWrapper<any>;
   beforeEach(() => {
+    setupScrollToMock();
     const { clearAllDrafts } = useChatDraft();
     clearAllDrafts();
     mockCurrentChat.value = {

@@ -44,7 +44,7 @@ const {
   getSelectedImageModel,
 } = chatStore;
 
-const { setActiveFocusArea, activeFocusArea } = useLayout();
+const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
 
 const props = defineProps<{
   autoSendPrompt?: string;
@@ -60,7 +60,7 @@ const emit = defineEmits<{
   (e: 'auto-sent'): void;
   (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void;
   (e: 'update:isAnimatingHeight', value: boolean): void;
-  (e: 'scroll-to-bottom'): void;
+  (e: 'scroll-to-bottom', force?: boolean): void;
 }>();
 
 const isFocused = ref(false);
@@ -195,6 +195,10 @@ function closeAdvancedEditor() {
 
 function handleAdvancedEditorUpdate({ content: newContent }: { content: string }) {
   input.value = newContent;
+}
+
+function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea' }) {
+  setPreferredEditorMode({ mode });
 }
 
 const attachments = ref<Attachment[]>([]);
@@ -341,7 +345,8 @@ function applySuggestion(text: string) {
   });
 }
 
-function adjustTextareaHeight() {
+function adjustTextareaHeight(forceOrEvent?: boolean | Event) {
+  const force = typeof forceOrEvent === 'boolean' ? forceOrEvent : false;
   if (textareaRef.value) {
     const target = textareaRef.value;
 
@@ -375,7 +380,7 @@ function adjustTextareaHeight() {
     target.style.overflowY = (isMaximized.value ? currentScrollHeight > finalHeight : currentScrollHeight > maxSixLinesHeight) ? 'auto' : 'hidden';
 
     if (!isAnimatingHeight.value) {
-      nextTick(() => emit('scroll-to-bottom'));
+      nextTick(() => emit('scroll-to-bottom', force));
     }
   }
 }
@@ -596,7 +601,6 @@ watch(
       isMaximized.value = false;
       fetchModels();
       nextTick(() => {
-        scrollToBottom();
         const currentVis = props.visibility;
         switch (currentVis) {
         case 'active':
@@ -644,8 +648,7 @@ onMounted(async () => {
   }
 
   nextTick(() => {
-    scrollToBottom();
-    adjustTextareaHeight(); // Call adjustTextareaHeight on mount
+    adjustTextareaHeight(false); // Call adjustTextareaHeight on mount without forcing scroll
     if (currentChat.value) {
       focusInput();
     }
@@ -723,6 +726,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
     attachments,
     editingAttachmentId,
     editingAttachment,
+    openAdvancedEditor,
+    handleAdvancedEditorModeUpdate,
   }, });
 </script>
 
@@ -914,7 +919,9 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           <AdvancedTextEditor
             :initial-value="input"
             :title="undefined"
+            :mode="preferredEditorMode"
             @update:content="handleAdvancedEditorUpdate"
+            @update:mode="handleAdvancedEditorModeUpdate"
             @close="closeAdvancedEditor"
           />
         </div>

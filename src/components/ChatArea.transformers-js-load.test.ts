@@ -5,6 +5,7 @@ import ChatArea from './ChatArea.vue';
 import { nextTick, ref } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { transformersJsService } from '../services/transformers-js';
+import { setupScrollToMock } from '../utils/test-utils';
 
 // Mock router
 const router = createRouter({
@@ -108,6 +109,7 @@ describe('Transformers.js Loading Flow in ChatArea', () => {
   let wrapper: VueWrapper<any>;
 
   beforeEach(async () => {
+    setupScrollToMock();
     vi.clearAllMocks();
     mockActiveMessages.value = [
       { id: 'msg-1', role: 'user', content: 'hello', timestamp: Date.now(), replies: { items: [] } },

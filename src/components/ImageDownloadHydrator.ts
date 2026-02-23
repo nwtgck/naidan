@@ -1,6 +1,7 @@
 import { render, h as vueH } from 'vue';
 import ImageDownloadButton from './ImageDownloadButton.vue';
 import ImageInfoDisplay from './ImageInfoDisplay.vue';
+import ImageIndexBadge from './ImageIndexBadge.vue';
 import { detectFormat, embedMetadataInPng, embedMetadataInWebp, UNSUPPORTED } from '../utils/image-metadata';
 import { sanitizeFilename } from '../utils/string';
 import type { StorageService } from '../services/storage';
@@ -141,13 +142,15 @@ export const ImageDownloadHydrator = {
    * Mounts the download button into the portal.
    * Returns a cleanup function.
    */
-  mount({ portal, isSupported, onDownload }: {
+  mount({ portal, isSupported, align, onDownload }: {
     portal: HTMLElement,
     isSupported: boolean,
+    align?: 'left' | 'right',
     onDownload: (payload: { withMetadata: boolean }) => void
   }): () => void {
     const vnode = vueH(ImageDownloadButton, {
       isSupported,
+      align,
       onDownload
     });
 
@@ -162,16 +165,43 @@ export const ImageDownloadHydrator = {
    * Mounts the info display into the portal.
    * Returns a cleanup function.
    */
-  mountInfo({ portal, prompt, steps, seed }: {
+  mountInfo({ portal, prompt, steps, seed, width, height, align }: {
     portal: HTMLElement,
     prompt: string,
     steps: number | undefined,
-    seed: number | undefined
+    seed: number | undefined,
+    width: number | string | undefined,
+    height: number | string | undefined,
+    align?: 'left' | 'right'
   }): () => void {
     const vnode = vueH(ImageInfoDisplay, {
       prompt,
       steps,
-      seed
+      seed,
+      width,
+      height,
+      align
+    });
+
+    render(vnode, portal);
+
+    return () => {
+      render(null, portal);
+    };
+  },
+
+  /**
+   * Mounts the index badge into the portal.
+   * Returns a cleanup function.
+   */
+  mountBadge({ portal, index, total }: {
+    portal: HTMLElement,
+    index: number,
+    total?: number
+  }): () => void {
+    const vnode = vueH(ImageIndexBadge, {
+      index,
+      total
     });
 
     render(vnode, portal);
@@ -181,3 +211,4 @@ export const ImageDownloadHydrator = {
     };
   }
 }
+

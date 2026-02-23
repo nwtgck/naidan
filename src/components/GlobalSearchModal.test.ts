@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import GlobalSearchModal from './GlobalSearchModal.vue';
 import { ref, nextTick } from 'vue';
+import { setupScrollToMock } from '../utils/test-utils';
 
 // --- Mocks ---
 
@@ -97,6 +98,7 @@ window.HTMLElement.prototype.scrollIntoView = vi.fn();
 
 describe('GlobalSearchModal Component', () => {
   beforeEach(() => {
+    setupScrollToMock();
     mockIsSearchOpen.value = true;
     mockQuery.value = '';
     mockChatGroupIds.value = [];

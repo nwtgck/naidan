@@ -7,6 +7,7 @@ const isSidebarOpen = ref(true);
 const isDebugOpen = ref(false);
 const activeFocusArea = ref<FocusArea>('chat');
 const mediaShelfVisibility = ref<MediaShelfVisibility>('hidden');
+const preferredEditorMode = ref<'advanced' | 'textarea'>('advanced');
 
 export function useLayout() {
   const toggleSidebar = () => {
@@ -33,6 +34,10 @@ export function useLayout() {
     mediaShelfVisibility.value = visibility;
   };
 
+  const setPreferredEditorMode = ({ mode }: { mode: 'advanced' | 'textarea' }) => {
+    preferredEditorMode.value = mode;
+  };
+
   const toggleMediaShelf = () => {
     mediaShelfVisibility.value = (() => {
       switch (mediaShelfVisibility.value) {
@@ -57,7 +62,9 @@ export function useLayout() {
     setDebugOpen,
     setActiveFocusArea,
     setMediaShelfVisibility,
+    setPreferredEditorMode,
     toggleMediaShelf,
+    preferredEditorMode,
     __testOnly: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
     },

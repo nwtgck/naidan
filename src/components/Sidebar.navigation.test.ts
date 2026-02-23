@@ -83,6 +83,15 @@ describe('Sidebar Keyboard Navigation', () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
+    // Individually defined mocks for scrolling as requested
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollTo = vi.fn().mockImplementation(function(this: HTMLElement, options: any) {
+      if (typeof options.top === 'number') this.scrollTop = options.top;
+    });
+    HTMLElement.prototype.getBoundingClientRect = vi.fn().mockReturnValue({
+      top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0
+    });
+
     mockActiveFocusArea.value = 'sidebar';
     mockChatGroups.value = [];
     mockChats.value = [
@@ -274,9 +283,8 @@ describe('Sidebar Keyboard Navigation', () => {
   });
 
   it('triggers scrollIntoView when chat is selected', async () => {
-    const scrollMock = vi.fn();
-    const elementMock = { scrollIntoView: scrollMock };
-    vi.spyOn(document, 'querySelector').mockReturnValue(elementMock as any);
+    const scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+    mockChats.value = [{ id: '1', title: 'Chat 1', updatedAt: 0 }];
 
     mockCurrentChat.value = { id: '1' };
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
@@ -284,14 +292,14 @@ describe('Sidebar Keyboard Navigation', () => {
     await nextTick();
     vi.advanceTimersByTime(150);
 
-    expect(scrollMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
-    vi.restoreAllMocks();
+    // scrollIntoViewSafe calls container.scrollTo
+    expect(scrollToSpy).toHaveBeenCalled();
+    scrollToSpy.mockRestore();
   });
 
   it('triggers scrollIntoView when group is selected', async () => {
-    const scrollMock = vi.fn();
-    const elementMock = { scrollIntoView: scrollMock };
-    vi.spyOn(document, 'querySelector').mockReturnValue(elementMock as any);
+    const scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+    mockChatGroups.value = [{ id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }];
 
     mockCurrentChatGroup.value = { id: 'g1' };
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
@@ -299,8 +307,8 @@ describe('Sidebar Keyboard Navigation', () => {
     await nextTick();
     vi.advanceTimersByTime(150);
 
-    expect(scrollMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
-    vi.restoreAllMocks();
+    expect(scrollToSpy).toHaveBeenCalled();
+    scrollToSpy.mockRestore();
   });
 
   it('ignores arrow keys when focus area is NOT sidebar', async () => {

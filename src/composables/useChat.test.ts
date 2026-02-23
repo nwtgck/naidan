@@ -4,7 +4,7 @@ import { useChat, type AddToastOptions } from './useChat';
 import { storageService } from '../services/storage';
 import { OpenAIProvider } from '../services/llm';
 import { reactive, triggerRef } from 'vue';
-import type { Chat, MessageNode, SidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode } from '../models/types';
+import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { findRestorationIndex } from '../utils/chat-tree';
 
@@ -888,7 +888,7 @@ describe('useChat Composable Logic', () => {
       const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [
         { id: 'chat:c1', type: 'chat', chat: c1 },
         { id: 'chat:c2', type: 'chat', chat: c2 },
-      ] as SidebarItem[] };
+      ] as ChatSidebarItem[] };
 
       mockRootItems.length = 0;
       mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 });

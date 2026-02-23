@@ -99,8 +99,8 @@ defineExpose({
 
 <template>
   <div
-    class="shrink-0 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300 ease-in-out relative"
-    :class="isDebugOpen ? 'h-72 overflow-visible z-50' : 'h-0 overflow-hidden z-0'"
+    v-if="isDebugOpen"
+    class="shrink-0 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 relative h-72 overflow-visible z-50"
     data-testid="debug-panel"
   >
     <!-- Toolbar -->

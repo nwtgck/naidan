@@ -38,6 +38,15 @@ describe('Sidebar DND Improvements', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Individually defined mocks for scrolling as requested
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollTo = vi.fn().mockImplementation(function(this: HTMLElement, options: any) {
+      if (typeof options.top === 'number') this.scrollTop = options.top;
+    });
+    HTMLElement.prototype.getBoundingClientRect = vi.fn().mockReturnValue({
+      top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0
+    });
+
     mockChatStore = {
       currentChat: ref(null),
       currentChatGroup: ref(null),
@@ -225,12 +234,10 @@ describe('Sidebar DND Improvements', () => {
     expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
   });
   it('should scroll to active chat item when selected', async () => {
-
     vi.useFakeTimers();
-    const scrollSpy = vi.fn();
-    const querySpy = vi.spyOn(document, 'querySelector').mockReturnValue({
-      scrollIntoView: scrollSpy
-    } as any);
+    const scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+    mockChatStore.chats.value = [{ id: 'chat-scroll-test', title: 'Test', updatedAt: Date.now() }];
+    mockChatStore.sidebarItems.value = [{ type: 'chat', id: 'chat-scroll-test', chat: mockChatStore.chats.value[0] }];
 
     mount(Sidebar, { global: { plugins: [router] } });
     mockChatStore.currentChat.value = { id: 'chat-scroll-test' };
@@ -239,10 +246,10 @@ describe('Sidebar DND Improvements', () => {
     await nextTick(); // await nextTick() inside watcher
     vi.advanceTimersByTime(150); // setTimeout
 
-    expect(querySpy).toHaveBeenCalledWith('[data-testid="sidebar-chat-item-chat-scroll-test"]');
-    expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
+    // scrollIntoViewSafe calls container.scrollTo
+    expect(scrollToSpy).toHaveBeenCalled();
 
-    querySpy.mockRestore();
+    scrollToSpy.mockRestore();
     vi.useRealTimers();
   });
 });
