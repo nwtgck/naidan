@@ -37,6 +37,7 @@ describe('ModelSelector.vue', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    availableModels.value = ['model-a', 'model-b', 'model-c'];
     (useSettings as any).mockReturnValue({
       availableModels,
       isFetchingModels,
@@ -122,6 +123,50 @@ describe('ModelSelector.vue', () => {
     expect(listItems.some(i => i.textContent?.includes('model-a'))).toBe(false);
     expect(listItems.some(i => i.textContent?.includes('model-b'))).toBe(true);
     expect(listItems.some(i => i.textContent?.includes('model-c'))).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it('filters models using space-separated keywords', async () => {
+    availableModels.value = [
+      'anthropic/claude-3-5-sonnet',
+      'openai/gpt-4o',
+      'openai/gpt-3.5-turbo',
+      'google/gemini-1.5-pro'
+    ];
+    const wrapper = mount(ModelSelector, {
+      props: {
+        modelValue: undefined,
+      },
+    });
+
+    await wrapper.get('[data-testid="model-selector-trigger"]').trigger('click');
+
+    const input = document.body.querySelector('input[placeholder="Filter models..."]') as HTMLInputElement;
+
+    // Case 1: "gpt 4" should match "openai/gpt-4o"
+    input.value = 'gpt 4';
+    input.dispatchEvent(new Event('input'));
+    await nextTick();
+
+    let listItems = Array.from(document.body.querySelectorAll('.custom-scrollbar button span.break-all'));
+    expect(listItems.map(i => i.textContent)).toEqual(['openai/gpt-4o']);
+
+    // Case 2: "turbo" should match "openai/gpt-3.5-turbo"
+    input.value = 'turbo';
+    input.dispatchEvent(new Event('input'));
+    await nextTick();
+
+    listItems = Array.from(document.body.querySelectorAll('.custom-scrollbar button span.break-all'));
+    expect(listItems.map(i => i.textContent)).toEqual(['openai/gpt-3.5-turbo']);
+
+    // Case 3: "sonnet anthropic" (out of order) should match "anthropic/claude-3-5-sonnet"
+    input.value = 'sonnet anthropic';
+    input.dispatchEvent(new Event('input'));
+    await nextTick();
+
+    listItems = Array.from(document.body.querySelectorAll('.custom-scrollbar button span.break-all'));
+    expect(listItems.map(i => i.textContent)).toEqual(['anthropic/claude-3-5-sonnet']);
 
     wrapper.unmount();
   });

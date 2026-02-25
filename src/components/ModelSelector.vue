@@ -40,10 +40,23 @@ const modelNameParts = computed(() => {
   };
 });
 
+const searchableModels = computed(() => {
+  return availableModels.value.map(m => ({
+    original: m,
+    lower: m.toLowerCase()
+  }));
+});
+
 const filteredModels = computed(() => {
-  if (!searchQuery.value) return availableModels.value;
-  const query = searchQuery.value.toLowerCase();
-  return availableModels.value.filter(m => m.toLowerCase().includes(query));
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return availableModels.value;
+
+  const keywords = q.split(/[\s\u3000]+/).filter(k => !!k);
+  if (keywords.length === 0) return availableModels.value;
+
+  return searchableModels.value
+    .filter(item => keywords.every(kw => item.lower.includes(kw)))
+    .map(item => item.original);
 });
 
 const isOpen = ref(false);
