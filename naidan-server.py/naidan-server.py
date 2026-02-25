@@ -175,6 +175,13 @@ class NaidanHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self._send_cors_headers()
         self._send_csp_headers()
+        
+        # Inform the frontend about the reverse proxy configuration via a cookie.
+        # This allows OnboardingModal to suggest the correct endpoint automatically.
+        if self.proxies:
+            prefix = self.proxies[0][0]
+            self.send_header("Set-Cookie", f"reverse_proxy_path={prefix}; Path=/; SameSite=Lax")
+            
         self.end_headers()
         self.wfile.write(content)
 
