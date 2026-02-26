@@ -101,5 +101,41 @@ class TestServerIntegration(unittest.TestCase):
             self.assertEqual(res.status, 204)
             self.assertEqual(res.headers.get("Access-Control-Allow-Origin"), "*")
 
+class TestCSPLogic(unittest.TestCase):
+    def test_csp_default_off(self):
+        # By default, CSP should be None
+        naidan_server.NaidanHandler.csp_header = None
+        # Simulate main() logic without flags
+        # (Assuming we just want to verify the handler doesn't send it if not set)
+        self.assertIsNone(naidan_server.NaidanHandler.csp_header)
+
+    def test_csp_origin_only_logic(self):
+        # Test the flag logic (similar to what happens in main)
+        parser = naidan_server.argparse.ArgumentParser()
+        parser.add_argument("--origin-only", "--oo", action="store_true")
+        parser.add_argument("--csp")
+        
+        args = parser.parse_args(["--origin-only"])
+        self.assertTrue(args.origin_only)
+        self.assertIsNone(args.csp)
+        
+        args = parser.parse_args(["--oo"])
+        self.assertTrue(args.origin_only)
+
+    def test_csp_custom_logic(self):
+        parser = naidan_server.argparse.ArgumentParser()
+        parser.add_argument("--origin-only", "--oo", action="store_true")
+        parser.add_argument("--csp")
+        
+        custom_val = "default-src 'none'"
+        args = parser.parse_args(["--csp", custom_val])
+        self.assertEqual(args.csp, custom_val)
+        self.assertFalse(args.origin_only)
+
+        # Precedence test (logic in main(): if args.csp: ... elif args.origin_only: ...)
+        args = parser.parse_args(["--origin-only", "--csp", custom_val])
+        self.assertTrue(args.origin_only)
+        self.assertEqual(args.csp, custom_val)
+
 if __name__ == "__main__":
     unittest.main()

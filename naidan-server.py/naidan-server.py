@@ -199,10 +199,10 @@ def main():
     parser.add_argument("--host", default="127.0.0.1", help="Host (default: 127.0.0.1)")
     parser.add_argument("-r", "--reverse-proxy", action="append", help="e.g., /myapi:localhost:11434")
     parser.add_argument("--allow-origin", action="append", help="Enable CORS for specific origin(s)")
+    parser.add_argument("--origin-only", "--oo", action="store_true", help="Restrict all connections to this server's origin only via CSP.")
+    parser.add_argument("--csp", help="Set a custom Content-Security-Policy header.")
     
     args = parser.parse_args()
-    if args.reverse_proxy:
-        parser.epilog = "Note: Reverse proxying automatically enables a strong Content-Security-Policy (CSP)."
 
     try:
         zip_path = Path(args.hosted_zip) if args.hosted_zip else find_latest_zip()
@@ -216,6 +216,13 @@ def main():
             NaidanHandler.proxies.append((prefix, target))
             logger.info(f"Reverse Proxy: {prefix} -> {target}")
         
+        if not args.origin_only and not args.csp:
+            logger.info("Hint: Use --origin-only (or --oo) if you want to restrict all connections to this origin for stronger security.")
+        
+    if args.csp:
+        NaidanHandler.csp_header = args.csp
+        logger.info(f"Security: Custom CSP enabled: {NaidanHandler.csp_header}")
+    elif args.origin_only:
         NaidanHandler.csp_header = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
@@ -225,7 +232,7 @@ def main():
             "connect-src 'self'; "
             "frame-ancestors 'none'; form-action 'none';"
         )
-        logger.info(f"Security: CSP enabled for reverse proxy: {NaidanHandler.csp_header}")
+        logger.info(f"Security: Origin-only mode enabled (CSP: {NaidanHandler.csp_header})")
 
     NaidanHandler.allow_origins = args.allow_origin or []
 
