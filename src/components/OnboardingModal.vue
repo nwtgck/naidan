@@ -21,10 +21,43 @@ const TransformersJsManager = defineAsyncComponentAndLoadOnMounted(() => import(
 import { transformersJsService } from '../services/transformers-js';
 import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2, FlaskConical } from 'lucide-vue-next';
 import { naturalSort } from '../utils/string';
+import { detectOllama } from '../utils/ollama-detection';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
 const { setActiveFocusArea } = useLayout();
 
+const DEFAULT_TYPE = Symbol('default');
+const selectedType = ref<EndpointType | typeof DEFAULT_TYPE>(onboardingDraft.value?.type || DEFAULT_TYPE);
+
+const effectiveType = computed<EndpointType>(() => {
+  if (selectedType.value === DEFAULT_TYPE) return 'openai';
+  return selectedType.value;
+});
+
+/**
+ * Gets the initial URL for the endpoint.
+ * Prioritizes the user's current session draft, then falls back to the
+ * reverse proxy path provided by naidan-server via Cookie.
+ */
+const getDefaultCustomUrl = () => {
+  if (onboardingDraft.value?.url) return onboardingDraft.value.url;
+
+  // Read reverse proxy info from naidan-server via cookie.
+  const cookieValue = document.cookie
+    .split('; ')
+    .find(row => row.startsWith('reverse_proxy_path='))
+    ?.split('=')[1];
+
+  if (!cookieValue) return '';
+
+  const path = decodeURIComponent(cookieValue);
+  // If the path is relative (starts with /), join it with the current origin.
+  // This ensures a valid absolute URL like "http://localhost:5536/myapi".
+  if (path.startsWith('/')) {
+    return window.location.origin + path;
+  }
+  return path;
+};
 const show = computed(() => initialized.value && !isOnboardingDismissed.value);
 
 watch(show, (val) => {
@@ -35,10 +68,8 @@ watch(show, (val) => {
   }
 }, { immediate: true });
 
-const selectedType = ref<EndpointType>(onboardingDraft.value?.type || 'openai');
-
 const isTransformersJs = computed(() => {
-  const type = selectedType.value;
+  const type = effectiveType.value;
   switch (type) {
   case 'transformers_js':
     return true;
@@ -54,10 +85,22 @@ const isTransformersJs = computed(() => {
 
 // Reactive sync with transformersJsService
 let unsubscribe: (() => void) | null = null;
-onMounted(() => {
+onMounted(async () => {
+  // Trigger auto-detection immediately if a URL is present from the cookie/draft
+  // but the type is still the default.
+  if (selectedType.value === DEFAULT_TYPE && customUrl.value && isLocalhost(customUrl.value)) {
+    const normalized = getNormalizedUrl();
+    if (normalized) {
+      const isOllama = await detectOllama({ url: normalized, headers: customHeaders.value });
+      if (isOllama) {
+        selectedType.value = 'ollama';
+      }
+    }
+  }
+
   unsubscribe = transformersJsService.subscribe(() => {
     const state = transformersJsService.getState();
-    const type = selectedType.value;
+    const type = effectiveType.value;
     switch (type) {
     case 'transformers_js':
       if (state.activeModelId) {
@@ -80,7 +123,7 @@ onUnmounted(() => {
 });
 
 // Auto-load existing model when switching to transformers_js
-watch(selectedType, async (newType) => {
+watch(effectiveType, async (newType) => {
   switch (newType) {
   case 'transformers_js': {
     const cached = await transformersJsService.listCachedModels();
@@ -110,7 +153,7 @@ watch(selectedType, async (newType) => {
   }
 });
 
-const customUrl = ref(onboardingDraft.value?.url || '');
+const customUrl = ref(getDefaultCustomUrl());
 const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers ? JSON.parse(JSON.stringify(onboardingDraft.value.headers)) : []);
 const isTesting = ref(false);
 const error = ref<string | null>(null);
@@ -156,17 +199,35 @@ function isLocalhost(url: string | undefined) {
 }
 
 // Auto-fetch for localhost or transformers_js when URL/Type changes
-watch([selectedType, customUrl], ([type, url]) => {
+watch([selectedType, customUrl], async ([_type, url]) => {
   error.value = null;
+
+  // Auto-detect Ollama if URL is localhost and type is still default
+  if (_type === DEFAULT_TYPE && url && isLocalhost(url)) {
+    const normalized = getNormalizedUrl();
+    if (normalized) {
+      const isOllama = await detectOllama({ url: normalized, headers: customHeaders.value });
+      if (isOllama) {
+        selectedType.value = 'ollama';
+        // After auto-detection, we STOP here.
+        // We never want to trigger handleConnect automatically because it jumps to the next page.
+        return;
+      }
+    }
+  }
+
+  const currentEffectiveType = effectiveType.value;
   const isAutoFetch = (() => {
-    switch (type) {
+    switch (currentEffectiveType) {
     case 'transformers_js':
       return true;
     case 'openai':
     case 'ollama':
-      return isLocalhost(url);
+      // Never auto-fetch for server endpoints to prevent surprising UI transitions (jumping to Step 2).
+      // The user must click "Check Connection" manually.
+      return false;
     default: {
-      const _ex: never = type;
+      const _ex: never = currentEffectiveType;
       return _ex;
     }
     }
@@ -176,7 +237,6 @@ watch([selectedType, customUrl], ([type, url]) => {
     handleConnect();
   }
 });
-
 function selectPreset(preset: typeof ENDPOINT_PRESETS[number]) {
   selectedType.value = preset.type;
   customUrl.value = preset.url;
@@ -195,7 +255,6 @@ function handleCancelConnect() {
 
 async function handleConnect() {
   const url = getNormalizedUrl();
-  const type = selectedType.value;
 
   if (!url && !isTransformersJs.value) {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
@@ -207,8 +266,20 @@ async function handleConnect() {
   abortController = new AbortController();
 
   try {
+    // We've moved primary auto-detection to the watcher for a better UX,
+    // but if we're still in DEFAULT_TYPE when connecting, we do a quick check.
+    const normalizedUrl = url || '';
+    if (selectedType.value === DEFAULT_TYPE && isLocalhost(normalizedUrl) && normalizedUrl) {
+      const isOllama = await detectOllama({ url: normalizedUrl, headers: customHeaders.value });
+      if (isOllama) {
+        selectedType.value = 'ollama';
+        // The watcher will handle the update, but we continue here with Ollama.
+      }
+    }
+
     let provider: LLMProvider;
-    switch (type) {
+    // We use effectiveType.value which is guaranteed to be EndpointType
+    switch (effectiveType.value) {
     case 'openai':
       provider = new OpenAIProvider({ endpoint: url || '', headers: customHeaders.value });
       break;
@@ -219,7 +290,7 @@ async function handleConnect() {
       provider = new TransformersJsProvider();
       break;
     default: {
-      const _ex: never = type;
+      const _ex: never = effectiveType.value;
       throw new Error(`Unsupported endpoint type: ${_ex}`);
     }
     }
@@ -246,7 +317,7 @@ async function handleConnect() {
 async function handleClose() {
   setOnboardingDraft({
     url: customUrl.value,
-    type: selectedType.value,
+    type: effectiveType.value,
     headers: customHeaders.value,
     models: availableModels.value,
     selectedModel: selectedModel.value,
@@ -256,7 +327,7 @@ async function handleClose() {
 
 async function handleFinish() {
   const url = getNormalizedUrl();
-  const type = selectedType.value;
+  const type = effectiveType.value;
 
   if (!url && !isTransformersJs.value) {
     error.value = 'Please enter a valid URL (e.g., localhost:11434)';
@@ -284,7 +355,10 @@ async function handleFinish() {
 
 defineExpose({
   __testOnly: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    selectedType,
+    effectiveType,
+    availableModels,
+    handleConnect,
   }
 });
 </script>
@@ -340,15 +414,19 @@ defineExpose({
                     <button
                       @click="selectedType = 'openai'; availableModels = []"
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap text-gray-400"
+                      :class="effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : ''"
                     >OpenAI-compatible</button>
 
                     <button
                       @click="selectedType = 'ollama'; availableModels = []"
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors text-gray-400"
+                      :class="effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : ''"
                     >Ollama</button>
 
                     <button
-                      class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400"
+                      @click="selectedType = 'transformers_js'; availableModels = []"
+                      class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
+                      :class="effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-purple-600 dark:text-purple-400' : 'text-gray-400'"
                     >Transformers.js</button>
                   </div>
                 </div>
@@ -396,21 +474,21 @@ defineExpose({
                   <label class="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Endpoint Configuration</label>
                   <div class="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-100 dark:border-gray-700 w-fit">
                     <button
-                      @click="selectedType = 'openai'"
+                      @click="selectedType = 'openai'; availableModels = []"
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors whitespace-nowrap"
-                      :class="selectedType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
+                      :class="effectiveType === 'openai' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                     >OpenAI-compatible</button>
 
                     <button
-                      @click="selectedType = 'ollama'"
+                      @click="selectedType = 'ollama'; availableModels = []"
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-colors"
-                      :class="selectedType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
+                      :class="effectiveType === 'ollama' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400'"
                     >Ollama</button>
 
                     <button
-                      @click="selectedType = 'transformers_js'"
+                      @click="selectedType = 'transformers_js'; availableModels = []"
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1"
-                      :class="isTransformersJs ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600'"
+                      :class="effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600'"
                     >
                       <FlaskConical class="w-2.5 h-2.5" />
                       Transformers.js

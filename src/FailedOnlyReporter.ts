@@ -143,6 +143,11 @@ export default class FailedOnlyReporter implements Reporter {
     }
     this.endReported = true
 
+    if (files.length === 0 && this.total === 0 && errors.length === 0) {
+      this.vitest.logger.log('\nNo test files found. Please check if the file paths are correct.')
+      return
+    }
+
     for (const file of files) {
       const result = file.result || file.task?.result
       if (!result) {
@@ -183,9 +188,9 @@ export default class FailedOnlyReporter implements Reporter {
       }
     }
 
+    let unhandledErrorsCount = 0
     for (const error of errors) {
-      this.failed++
-      this.total++
+      unhandledErrorsCount++
       if (!this.headerPrinted) {
         this.vitest.logger.log('\nFAILED TESTS:')
         this.headerPrinted = true
@@ -193,6 +198,14 @@ export default class FailedOnlyReporter implements Reporter {
       await this.printFailure({ name: 'Global Error', errors: [error] })
     }
 
-    this.vitest.logger.log(`\nTests: ${this.passed} passed, ${this.failed} failed, ${this.total} total`)
+    if (this.total === 0 && this.passed === 0 && this.failed === 0 && unhandledErrorsCount === 0) {
+      this.vitest.logger.log('\nNo tests found')
+    } else {
+      let summary = `\nTests: ${this.passed} passed, ${this.failed} failed, ${this.total} total`
+      if (unhandledErrorsCount > 0) {
+        summary += `\nErrors: ${unhandledErrorsCount} errors`
+      }
+      this.vitest.logger.log(summary)
+    }
   }
 }

@@ -42,7 +42,7 @@ interface LicenseDependency {
  * Plugin to manually Gzip WASM files in the output directory and delete originals.
  * Replacing vite-plugin-compression per user request.
  */
-const manualGzipWasmPlugin = (outDir: string) => ({
+const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
   name: 'manual-gzip-wasm-plugin',
   async closeBundle() {
     console.log('  \u231B Compressing WASM files to .gz...');
@@ -166,10 +166,20 @@ export default defineConfig(({ mode }) => {
           ].filter((x): x is Exclude<typeof x, false | null | undefined> => !!x) as unknown as never,
         },
       }),
-      !isStandalone && manualGzipWasmPlugin(outDir),
+      !isStandalone && manualGzipWasmPlugin({ outDir }),
       // Standalone: Inline scripts for file:// support, then Zip the result
-      isStandalone && iifeInlinePlugin(outDir),
-      isStandalone && zipPackagerPlugin(outDir),
+      isStandalone && iifeInlinePlugin({ outDir }),
+      isStandalone && zipPackagerPlugin({
+        outDir,
+        zipFileName: 'naidan-standalone.zip',
+        folderName: `naidan-standalone-${pkg.version}`,
+      }),
+      // Hosted: Zip the hosted build output
+      isHosted && zipPackagerPlugin({
+        outDir,
+        zipFileName: 'naidan-hosted.zip',
+        folderName: `naidan-hosted-${pkg.version}`,
+      }),
       // Hosted: Copy the previously generated Zip into the hosted output
       !isStandalone && copyZipPlugin(),
     ].filter((p): p is import('vite').PluginOption => !!p),
@@ -217,19 +227,23 @@ function addDirectoryToZip(zip: JSZip, basePath: string, relativePath = '') {
 }
 
 /**
- * Plugin to zip the standalone build output
+ * Plugin to zip the build output
  */
-const zipPackagerPlugin = (outDir: string) => ({
-  name: 'zip-packager-plugin',
+const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
+  outDir: string,
+  zipFileName: string,
+  folderName: string,
+}) => ({
+  name: `zip-packager-plugin-${zipFileName}`,
   async closeBundle() {
-    console.log('  \u231B Creating standalone zip package...')
+    console.log(`  \u231B Creating ${zipFileName} package...`)
     const distDir = path.resolve(__dirname, outDir)
-    const zipPath = path.resolve(__dirname, 'dist/naidan-standalone.zip')
+    const zipPath = path.resolve(__dirname, `dist/${zipFileName}`)
 
     if (!fs.existsSync(distDir)) return
 
     const zip = new JSZip()
-    const folder = zip.folder('naidan-standalone')
+    const folder = zip.folder(folderName)
     if (folder) {
       addDirectoryToZip(folder, distDir)
       folder.file('VERSION.txt', pkg.version)
@@ -246,7 +260,7 @@ const zipPackagerPlugin = (outDir: string) => ({
     if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true })
 
     fs.writeFileSync(zipPath, content)
-    console.log(`  \u2713 Created standalone package: ${zipPath}`)
+    console.log(`  \u2713 Created package: ${zipPath}`)
   },
 })
 
@@ -277,7 +291,7 @@ const copyZipPlugin = () => ({
  * 1. ES modules (type="module") are restricted by CORS/Module security on local files.
  * 2. IIFE format combined with inlining allows the app to run as a truly standalone file.
  */
-const iifeInlinePlugin = (outDir: string) => ({
+const iifeInlinePlugin = ({ outDir }: { outDir: string }) => ({
   name: 'iife-inline-plugin',
   async closeBundle() {
     const distDir = path.resolve(__dirname, outDir)

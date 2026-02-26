@@ -186,7 +186,7 @@ watch(
 );
 
 // ChatGPT-style shortcut for New Chat: Ctrl+Shift+O (Cmd+Shift+O on Mac)
-onKeyStroke(['o', 'O', 'k', 'K', 'e', 'E'], async (e) => {
+onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (e) => {
   // New Chat
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'o' || e.key === 'O')) {
     e.preventDefault();
@@ -214,8 +214,9 @@ onKeyStroke(['o', 'O', 'k', 'K', 'e', 'E'], async (e) => {
     useGlobalSearch().toggleSearch();
   }
 
-  // Recent Chats (Cmd+E)
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+  // Recent Chats (Cmd+P)
+  // NOTE: Overriding Ctrl+P (Print) is a compromise to provide a convenient shortcut for Recent Chats.
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
     e.preventDefault();
     toggleRecent();
   }

@@ -31,6 +31,17 @@ jobs:
         if: ${{ !cancelled() && steps.npm_install.outcome == 'success' }}
         run: npm run test
 
+  test_python_server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Python server tests (Isolated)
+        run: |
+          cd naidan-server.py
+          ./run_test.sh
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -208,18 +219,11 @@ jobs:
         id: get_tag
         run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
-      - name: Create naidan-hosted.zip with tag
+      - name: Rename zips with tag for release
         run: |
           TAG=${{ steps.get_tag.outputs.TAG_NAME }}
-          mkdir -p temp_zip_dir/naidan-hosted-${TAG}
-          cp -r dist/hosted/. temp_zip_dir/naidan-hosted-${TAG}/
-          cd temp_zip_dir
-          zip -r ../dist/naidan-hosted-${TAG}.zip naidan-hosted-${TAG}
-          cd ..
-          rm -rf temp_zip_dir
-
-      - name: Rename naidan-standalone.zip with tag
-        run: mv dist/naidan-standalone.zip dist/naidan-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
+          mv dist/naidan-standalone.zip dist/naidan-standalone-${TAG}.zip
+          mv dist/naidan-hosted.zip dist/naidan-hosted-${TAG}.zip
 
       - name: Upload extra assets to GitHub Release
         uses: softprops/action-gh-release@v2

@@ -32,6 +32,22 @@ vi.mock('./composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
 
+const mockAddRecentChat = vi.fn();
+const mockToggleRecent = vi.fn();
+const mockCloseRecent = vi.fn();
+const mockIsRecentOpen = ref(false);
+const mockRecentChats = ref([]);
+
+vi.mock('./composables/useRecentChats', () => ({
+  useRecentChats: () => ({
+    addRecentChat: mockAddRecentChat,
+    toggleRecent: mockToggleRecent,
+    closeRecent: mockCloseRecent,
+    isRecentOpen: mockIsRecentOpen,
+    recentChats: mockRecentChats,
+  }),
+}));
+
 vi.mock('./composables/useLayout', () => ({
   useLayout: vi.fn(),
 }));
@@ -587,6 +603,26 @@ describe('App', () => {
       systemPrompt: undefined
     });
     expect(mockRouterPush).toHaveBeenCalledWith('/chat/mac-chat-id');
+  });
+
+  it('triggers toggleRecent on Ctrl+P', async () => {
+    // Reset the mock before use
+    mockToggleRecent.mockReset();
+
+    // Re-mount App to apply the new mock
+    mountApp();
+    await flushPromises();
+
+    // Simulate Ctrl+P
+    const event = new KeyboardEvent('keydown', {
+      key: 'p',
+      ctrlKey: true,
+      bubbles: true,
+    });
+    window.dispatchEvent(event);
+
+    await nextTick();
+    expect(mockToggleRecent).toHaveBeenCalled();
   });
 
   it('shows CustomDialog with danger variant for confirm button when requested', async () => {

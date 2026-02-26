@@ -188,10 +188,7 @@ describe('MessageItem Image Generation', () => {
       // Open via the toggle button
       const toggle = wrapper.find('[data-testid="download-gen-image-dropdown-toggle"]');
       if (toggle.exists()) {
-        await toggle.trigger('mouseenter');
-      } else {
-        // Fallback for older modes if any
-        await wrapper.find('.naidan-generated-image').trigger('mouseenter');
+        await toggle.trigger('click');
       }
       await nextTick();
       metaOption = wrapper.find('[data-testid="download-with-metadata-option"]');

@@ -5,9 +5,11 @@ import OnboardingModal from './OnboardingModal.vue';
 import ThemeToggle from './ThemeToggle.vue';
 import { useSettings } from '../composables/useSettings';
 import { useTheme } from '../composables/useTheme';
+import { useToast } from '../composables/useToast';
 import { Settings } from 'lucide-vue-next';
 import * as llm from '../services/llm';
 import { type EndpointType } from '../models/types';
+import { detectOllama } from '../utils/ollama-detection';
 
 // Mock the services.
 vi.mock('../services/llm', () => {
@@ -16,6 +18,11 @@ vi.mock('../services/llm', () => {
     OllamaProvider: vi.fn(),
   };
 });
+
+// Mock the utilities
+vi.mock('../utils/ollama-detection', () => ({
+  detectOllama: vi.fn(),
+}));
 
 // Mock the composables
 vi.mock('../composables/useSettings', () => ({ useSettings: vi.fn() }));
@@ -41,6 +48,7 @@ describe('OnboardingModal.vue', () => {
     vi.clearAllMocks();
     mockIsOnboardingDismissed.value = false;
     mockOnboardingDraft.value = null;
+    document.cookie = 'reverse_proxy_path=; Max-Age=0'; // Clear the cookie
     (useSettings as unknown as Mock).mockReturnValue({
       settings: mockSettings,
       save: mockSave,
@@ -61,6 +69,10 @@ describe('OnboardingModal.vue', () => {
     (useTheme as unknown as Mock).mockReturnValue({
       themeMode: { value: 'system' },
       setTheme: vi.fn(),
+    });
+
+    (useToast as unknown as Mock).mockReturnValue({
+      addToast: vi.fn(),
     });
 
     listModelsMock.mockResolvedValue(['model-1']);
@@ -383,6 +395,67 @@ describe('OnboardingModal.vue', () => {
       mockIsOnboardingDismissed.value = true;
       await flushPromises();
       expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+    });
+  });
+
+  describe('Auto-detection & UI Behavior', () => {
+    it('detects Ollama automatically on mount if localhost URL is provided via cookie', async () => {
+      // Set cookie and mock origin
+      document.cookie = 'reverse_proxy_path=/api';
+      vi.stubGlobal('location', { origin: 'http://localhost:5536' });
+      vi.mocked(detectOllama).mockResolvedValue(true);
+
+      const wrapper = mount(OnboardingModal);
+      await flushPromises();
+
+      const { effectiveType } = (wrapper.vm as any).__testOnly;
+      expect(effectiveType.value).toBe('ollama');
+      expect(vi.mocked(detectOllama)).toHaveBeenCalled();
+
+      // Should NOT have connected automatically
+      expect(listModelsMock).not.toHaveBeenCalled();
+    });
+
+    it('switches to Ollama type on manual localhost input but does NOT auto-connect', async () => {
+      vi.mocked(detectOllama).mockResolvedValue(true);
+      const wrapper = mount(OnboardingModal);
+      const { effectiveType, availableModels } = (wrapper.vm as any).__testOnly;
+
+      // Simulate user typing localhost URL
+      await wrapper.find('input').setValue('http://localhost:11434');
+
+      await flushPromises();
+      await nextTick();
+
+      expect(effectiveType.value).toBe('ollama');
+      // Ensure we are still in Step 1 (models list is empty)
+      expect(availableModels.value.length).toBe(0);
+      expect(listModelsMock).not.toHaveBeenCalled();
+    });
+
+    it('triggers auto-fetch automatically for Transformers.js', async () => {
+      const wrapper = mount(OnboardingModal);
+      const { selectedType, effectiveType } = (wrapper.vm as any).__testOnly;
+
+      // Manually set selectedType to simulate clicking the button
+      selectedType.value = 'transformers_js';
+
+      await flushPromises();
+      await nextTick();
+
+      expect(effectiveType.value).toBe('transformers_js');
+    });
+
+    it('remains on OpenAI type if detection fails on localhost', async () => {
+      vi.mocked(detectOllama).mockResolvedValue(false);
+      const wrapper = mount(OnboardingModal);
+      const { effectiveType } = (wrapper.vm as any).__testOnly;
+
+      await wrapper.find('input').setValue('http://localhost:11434');
+      await flushPromises();
+      await nextTick();
+
+      expect(effectiveType.value).toBe('openai');
     });
   });
 });
