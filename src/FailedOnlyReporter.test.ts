@@ -120,4 +120,45 @@ describe('FailedOnlyReporter', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Transform failed'))
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('0 passed, 1 failed, 1 total'))
   })
+
+  it('should log a message when no test files are found', async () => {
+    const reporter = new FailedOnlyReporter()
+    const logSpy = vi.fn()
+    const mockVitest = {
+      logger: {
+        log: logSpy,
+      }
+    } as any
+
+    reporter.onInit(mockVitest)
+
+    await reporter.onFinished([], [])
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No test files found. Please check if the file paths are correct.'))
+  })
+
+  it('should log unhandled errors in the summary', async () => {
+    const reporter = new FailedOnlyReporter()
+    const logSpy = vi.fn()
+    const mockVitest = {
+      logger: {
+        log: logSpy,
+      }
+    } as any
+
+    reporter.onInit(mockVitest)
+
+    const mockUnhandledError = {
+      message: 'Unhandled Rejection',
+      stack: 'at some-file.ts:1:1'
+    } as any
+
+    await reporter.onFinished([], [mockUnhandledError])
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'))
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Global Error'))
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Unhandled Rejection'))
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Tests: 0 passed, 0 failed, 0 total'))
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Errors: 1 errors'))
+  })
 })
