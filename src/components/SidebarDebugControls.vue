@@ -88,7 +88,7 @@ defineExpose({
               <History class="w-4 h-4" />
               <span>Recent Chats</span>
             </div>
-            <kbd class="hidden group-hover:inline-block px-1 py-0.5 text-[9px] font-sans font-medium text-gray-400 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Ctrl+E</kbd>
+            <kbd class="hidden group-hover:inline-block px-1 py-0.5 text-[9px] font-sans font-medium text-gray-400 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Ctrl+P</kbd>
           </button>
           <button
             @click="handleOpenOPFS"
