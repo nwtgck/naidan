@@ -734,8 +734,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 <template>
   <div
     v-if="currentChat"
-    class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out will-change-transform"
-    :class="visibility === 'submerged' ? 'translate-y-[calc(100%-32px)] sm:translate-y-[calc(100%-40px)]' : 'translate-y-0'"
+    class="absolute bottom-0 left-0 right-0 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-3 sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out will-change-transform"
+    :class="visibility === 'submerged' ? 'translate-y-[calc(100%-32px-env(safe-area-inset-bottom))] sm:translate-y-[calc(100%-40px-env(safe-area-inset-bottom))]' : 'translate-y-0'"
   >
     <!-- Glass Zone behind the input card (Full width blur) -->
     <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': visibility === 'submerged' }"></div>

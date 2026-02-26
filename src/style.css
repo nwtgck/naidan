@@ -9,9 +9,29 @@
     padding: 0;
     height: 100%;
     font-size: 1.125rem;
-    overscroll-behavior: none;
+    overscroll-behavior-y: none; /* Prevent pull-to-refresh */
+    -webkit-tap-highlight-color: transparent; /* Remove blue flash on tap */
+    -webkit-touch-callout: none; /* Disable default context menu on long press */
     @apply bg-gray-50 text-gray-900 antialiased transition-colors duration-300;
   }
+
+  /* Allow text selection only where needed */
+  .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  
+  /* Disable selection for UI buttons by default to feel more like an app */
+  button, .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Prevent accidental zooming while tapping fast */
+  button, input, textarea {
+    touch-action: manipulation;
+  }
+
   
   html.dark, html.dark body {
     @apply bg-gray-950 text-gray-100;
