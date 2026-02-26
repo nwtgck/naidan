@@ -13,26 +13,10 @@ const props = defineProps<{
 
 const isOpen = ref(false);
 const dropdownRef = ref<HTMLElement | null>(null);
-let closeTimer: number | null = null;
 
 function toggleDropdown(e: Event) {
   e.stopPropagation();
   isOpen.value = !isOpen.value;
-}
-
-function openDropdown() {
-  if (closeTimer) {
-    clearTimeout(closeTimer);
-    closeTimer = null;
-  }
-  isOpen.value = true;
-}
-
-function closeDropdown() {
-  closeTimer = window.setTimeout(() => {
-    isOpen.value = false;
-    closeTimer = null;
-  }, 150); // Small delay to prevent flickering
 }
 
 function handleDownload(meta: boolean, e: Event) {
@@ -53,7 +37,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleClickOutside);
-  if (closeTimer) clearTimeout(closeTimer);
 });
 
 
@@ -68,7 +51,6 @@ defineExpose({
   <div
     class="relative inline-flex shadow-sm border border-gray-200 dark:border-gray-700 rounded-lg overflow-visible bg-white dark:bg-gray-800 z-30"
     ref="dropdownRef"
-    @mouseleave="closeDropdown"
   >
     <!-- Main Button (Standard Download) -->
     <button
@@ -83,7 +65,6 @@ defineExpose({
     <!-- Split Divider & Dropdown Toggle -->
     <button
       @click="toggleDropdown"
-      @mouseenter="openDropdown"
       class="px-1 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 border-l border-gray-200 dark:border-gray-700 transition-colors rounded-r-lg flex items-center justify-center"
       title="More options"
       data-testid="download-gen-image-dropdown-toggle"
