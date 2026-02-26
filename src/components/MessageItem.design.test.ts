@@ -49,31 +49,45 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
     expect(content).toContain('animation: thinking-sweep 0.9s linear infinite;');
   });
 
-  it('expands from button to full width area when clicked', async () => {
+  it('is always full width but changes height based on expansion', async () => {
     const message = createMessage('<think>Thinking process content</think>Final response');
     const wrapper = mount(MessageThinking, { props: { message } });
 
     const container = wrapper.find('[data-testid="toggle-thinking"]');
 
-    // Initially it should be a small inline button
-    expect(container.classes()).toContain('inline-flex');
-    expect(container.classes()).not.toContain('w-full');
+    // Initially it should be full width (no longer inline-flex)
+    expect(container.classes()).toContain('w-full');
     expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(false);
 
     // Click to expand
     await container.trigger('click');
 
-    // Now it should be a full width area
+    // Now it should be expanded (full height, content visible)
     expect(container.classes()).toContain('w-full');
-    expect(container.classes()).not.toContain('inline-flex');
-    expect(container.classes()).toContain('rounded-2xl'); // Should grow more rounded
+    expect(container.classes()).toContain('rounded-2xl');
     expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="thinking-content"]').text()).toBe('Thinking process content');
 
     // Click to collapse
     await container.trigger('click');
-    expect(container.classes()).toContain('inline-flex');
+    expect(container.classes()).toContain('w-full');
     expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(false);
+  });
+
+  it('shows a fixed-height streaming view when thinking is active but collapsed', async () => {
+    // Message with unclosed <think> tag
+    const message = createMessage('<think>Ongoing streaming thoughts...');
+    const wrapper = mount(MessageThinking, { props: { message } });
+
+    const container = wrapper.find('[data-testid="toggle-thinking"]');
+
+    // Mode should be 'collapsed-active'
+    expect(container.classes()).toContain('max-h-32');
+    expect(container.classes()).toContain('overflow-hidden');
+
+    // Content should be visible even when collapsed if active
+    expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="thinking-content"]').classes()).toContain('mask-fade-top');
   });
 
   it('maintains the thinking border during expansion if thinking is active', async () => {

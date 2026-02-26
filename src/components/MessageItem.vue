@@ -830,8 +830,6 @@ watch(mermaidMode, async () => {
   }
 });
 
-// MOVE_MARKER_START: MessageThinking_Script_1// MOVE_MARKER_END: MessageThinking_Script_1
-
 const displayContent = computed(() => {
   let content = props.message.content;
 
@@ -890,7 +888,6 @@ const isUser = computed(() => {
   }
   }
 });
-// MOVE_MARKER_START: MessageThinking_Script_2// MOVE_MARKER_END: MessageThinking_Script_2
 const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content));
 
 function formatSize(bytes?: number): string {
@@ -904,9 +901,6 @@ function formatSize(bytes?: number): string {
   }
   return `${size.toFixed(1)} ${units[unitIndex]}`;
 }
-
-// MOVE_MARKER_START: MessageThinking_Script_3// MOVE_MARKER_END: MessageThinking_Script_3
-
 
 defineExpose({
   __testOnly: {
@@ -980,9 +974,7 @@ defineExpose({
         </div>
       </div>
 
-      <!-- MOVE_MARKER_START: MessageThinking -->
       <MessageThinking :message="message" />
-      <!-- MOVE_MARKER_END: MessageThinking -->
 
       <!-- Content -->
       <div v-if="isEditing" class="mt-1" data-testid="edit-mode">
@@ -1237,8 +1229,6 @@ defineExpose({
 </template>
 
 <style scoped>
-/* MOVE_MARKER_START: MessageThinking_Style *//* MOVE_MARKER_END: MessageThinking_Style */
-
 /* Dropdown Transition */
 .dropdown-enter-active,
 .dropdown-leave-active {
