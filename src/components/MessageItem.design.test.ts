@@ -2,6 +2,7 @@ import { generateId } from '../utils/id';
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
+import MessageThinking from './MessageThinking.vue';
 import type { MessageNode } from '../models/types';
 import fs from 'fs';
 import path from 'path';
@@ -23,9 +24,9 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
     expect(border.exists()).toBe(true);
   });
 
-  it('contains the dynamic thinking border CSS requirements in the style block', () => {
+  it('contains the dynamic thinking border CSS requirements in the style block of MessageThinking', () => {
     // We read the file directly to ensure the specific animation and design parameters are preserved
-    const filePath = path.resolve(__dirname, 'MessageItem.vue');
+    const filePath = path.resolve(__dirname, 'MessageThinking.vue');
     const content = fs.readFileSync(filePath, 'utf-8');
 
     // Check for key traits of the energetic thinking animation:
@@ -50,7 +51,7 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
 
   it('expands from button to full width area when clicked', async () => {
     const message = createMessage('<think>Thinking process content</think>Final response');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageThinking, { props: { message } });
 
     const container = wrapper.find('[data-testid="toggle-thinking"]');
 
