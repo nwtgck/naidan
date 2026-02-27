@@ -296,7 +296,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     expect(tabB.streaming.value).toBe(true);
 
     // 3. Tab B requests an abort
-    tabB.abortChat();
+    tabB.abortChat({ chatId: undefined });
 
     await vi.advanceTimersByTimeAsync(1000);
     await sendPromise;
@@ -341,7 +341,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     expect(tab2.isTaskRunning(chat2!.id)).toBe(true);
 
     // 5. Tab 1 requests abort for chat2 (which is running in Tab 2)
-    tab1.abortChat(chat2!.id);
+    tab1.abortChat({ chatId: chat2!.id });
     await vi.advanceTimersByTimeAsync(200);
     await p2;
 
@@ -352,7 +352,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
 
     // Cleanup p1
-    tab1.abortChat(chat1!.id);
+    tab1.abortChat({ chatId: chat1!.id });
     await vi.advanceTimersByTimeAsync(200);
     await p1;
   });

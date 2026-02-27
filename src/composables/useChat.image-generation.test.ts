@@ -148,7 +148,7 @@ describe('useChat Image Generation', () => {
     } as any;
     chatStore.registerLiveInstance(chat);
 
-    await chatStore.generateChatTitle('chat-title-test');
+    await chatStore.generateChatTitle({ chatId: 'chat-title-test', signal: undefined });
 
     expect(mockOllamaChat).toHaveBeenCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([

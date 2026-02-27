@@ -54,6 +54,7 @@ const {
   resolvedSettings,
   isProcessing,
   getSortedImageModels,
+  abortTitleGeneration,
 } = chatStore;
 
 const availableImageModels = computed(() => {
@@ -65,6 +66,17 @@ type ChatInputVisibility = 'submerged' | 'peeking' | 'active';
 const inputVisibility = ref<ChatInputVisibility>('active');
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
+const ignoreTitleHover = ref(false);
+
+function handleTitleAction() {
+  if (!currentChat.value) return;
+  if (generatingTitle.value) {
+    abortTitleGeneration({ chatId: currentChat.value.id });
+  } else {
+    ignoreTitleHover.value = true;
+    chatStore.generateChatTitle({ chatId: currentChat.value.id, signal: undefined });
+  }
+}
 
 function handleDragOver(event: DragEvent) {
   event.preventDefault();
@@ -373,14 +385,27 @@ watch(
               <h2 class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button
                 v-if="activeMessages.length > 0"
-                @click="currentChat && chatStore.generateChatTitle(currentChat.id)"
-                class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50"
-                :class="{ 'animate-spin': generatingTitle }"
-                :disabled="generatingTitle || isCurrentChatStreaming"
-                title="Regenerate Title"
+                @click="handleTitleAction"
+                @mouseleave="ignoreTitleHover = false"
+                class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50 group/title"
+                :disabled="isCurrentChatStreaming"
+                :title="generatingTitle ? 'Stop Title Generation' : 'Regenerate Title'"
                 data-testid="regenerate-title-button"
               >
-                <RefreshCw class="w-3.5 h-3.5" />
+                <div class="relative w-3.5 h-3.5 flex items-center justify-center">
+                  <RefreshCw
+                    class="w-full h-full transition-all"
+                    :class="{
+                      'animate-spin': generatingTitle,
+                      'group-hover/title:opacity-0 group-hover/title:scale-75': generatingTitle && !ignoreTitleHover
+                    }"
+                  />
+                  <X
+                    v-if="generatingTitle"
+                    class="w-3.5 h-3.5 absolute opacity-0 transition-all text-red-500 scale-75"
+                    :class="{ 'group-hover/title:opacity-100 group-hover/title:scale-100': !ignoreTitleHover }"
+                  />
+                </div>
               </button>
             </div>
 
@@ -591,7 +616,7 @@ watch(
               @edit="handleEdit"
               @switch-version="handleSwitchVersion"
               @regenerate="handleRegenerate"
-              @abort="chatStore.abortChat()"
+              @abort="chatStore.abortChat({ chatId: undefined })"
             />
 
             <!-- Global Transformers.js Loading Indicator in the scroll flow -->

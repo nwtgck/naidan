@@ -50,6 +50,8 @@ vi.mock('../composables/useChat', () => ({
     availableModels: ref([]),
     fetchingModels: ref(false),
     generatingTitle: ref(false),
+    generateChatTitle: vi.fn(),
+    abortTitleGeneration: vi.fn(),
     chatGroups: ref([]),
     resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
     inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),

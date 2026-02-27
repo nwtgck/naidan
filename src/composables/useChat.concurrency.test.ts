@@ -539,7 +539,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     // 3. Abort CURRENT (Chat B)
     await new Promise(r => setTimeout(r, 50));
-    abortChat();
+    abortChat({ chatId: undefined });
     await sendB;
     // Wait for B to be aborted and cleared
     await vi.waitUntil(() => !activeGenerations.has(chatBId));

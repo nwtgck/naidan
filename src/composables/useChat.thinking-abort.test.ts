@@ -92,7 +92,7 @@ describe('useChat Thinking Abort', () => {
     expect(assistantMsg.content).toBe('<think>I am thinking...');
 
     // Abort it
-    abortChat(chat.id);
+    abortChat({ chatId: chat.id });
 
     // Wait for the abort to be processed (content updated)
     await vi.waitUntil(() => assistantMsg.content.includes('[Generation Aborted]'));

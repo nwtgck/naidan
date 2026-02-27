@@ -235,7 +235,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     await vi.waitUntil(() => isProcessing(chatId));
 
     // 4. Abort the chat
-    abortChat(chatId);
+    abortChat({ chatId: chatId });
 
     await genPromise;
     await vi.waitUntil(() => !isProcessing(chatId));
