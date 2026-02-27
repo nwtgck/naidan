@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick, watch, onUnmounted } from 'vue';
+import BlockMarkdownRenderer from './block-markdown/BlockMarkdownRenderer.vue';
 import { Marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import createDOMPurify from 'dompurify';
@@ -1031,7 +1032,10 @@ defineExpose({
       </div>
       <div v-else>
         <!-- Content Display (Always shown if present) -->
+        <BlockMarkdownRenderer v-if="displayContent" :content="displayContent" />
+        <!--
         <div v-if="displayContent" ref="contentRef" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
+        -->
 
         <!-- AI Image Synthesis Loader (Componentized) -->
         <ImageConjuringLoader
