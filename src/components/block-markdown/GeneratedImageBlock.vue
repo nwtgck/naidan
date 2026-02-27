@@ -2,7 +2,12 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { GeneratedImageBlockSchema, getDisplayDimensions } from '../../utils/image-generation';
 import { storageService } from '../../services/storage';
-import { Download, Info, Image as ImageIcon, AlertTriangle } from 'lucide-vue-next';
+import { Image as ImageIcon, AlertTriangle } from 'lucide-vue-next';
+import ImageDownloadButton from '../ImageDownloadButton.vue';
+import ImageInfoDisplay from '../ImageInfoDisplay.vue';
+import { ImageDownloadHydrator } from '../ImageDownloadHydrator';
+import { useImagePreview } from '../../composables/useImagePreview';
+import { useGlobalEvents } from '../../composables/useGlobalEvents';
 
 const props = defineProps<{
   json: string;
@@ -14,16 +19,20 @@ const parsed = computed(() => {
     const result = GeneratedImageBlockSchema.safeParse(data);
     if (result.success) return result.data;
     console.error('Invalid generated image block:', result.error);
-    return null;
+    return undefined;
   } catch (e) {
     console.error('Failed to parse generated image JSON:', e);
-    return null;
+    return undefined;
   }
 });
 
-const imageUrl = ref<string | null>(null);
+const imageUrl = ref<string | undefined>(undefined);
 const loading = ref(true);
-const error = ref<string | null>(null);
+const error = ref<string | undefined>(undefined);
+const isSupported = ref(false);
+
+const { openPreview } = useImagePreview();
+const { addErrorEvent } = useGlobalEvents();
 
 const displayDims = computed(() => {
   if (!parsed.value) return { width: 300, height: 300 };
@@ -39,13 +48,14 @@ async function loadImage() {
   if (!parsed.value) return;
 
   loading.value = true;
-  error.value = null;
+  error.value = undefined;
 
   try {
     const blob = await storageService.getFile(parsed.value.binaryObjectId);
     if (blob) {
       if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
       imageUrl.value = URL.createObjectURL(blob);
+      isSupported.value = await ImageDownloadHydrator.detectSupport(blob);
     } else {
       error.value = 'Image not found in storage';
     }
@@ -64,16 +74,34 @@ onUnmounted(() => {
   if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
 });
 
-function handleDownload() {
-  if (!imageUrl.value || !parsed.value) return;
+async function handlePreview() {
+  if (!parsed.value) return;
+  const obj = await storageService.getBinaryObject({ binaryObjectId: parsed.value.binaryObjectId });
+  if (obj) {
+    openPreview({
+      objects: [obj],
+      initialId: parsed.value.binaryObjectId
+    });
+  }
+}
 
-  const link = document.createElement('a');
-  link.href = imageUrl.value;
-  const prompt = parsed.value.prompt || 'generated-image';
-  link.download = `generated-${prompt.slice(0, 20).replace(/\W/g, '-')}.png`; // Simplified
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
+  if (!parsed.value) return;
+
+  await ImageDownloadHydrator.download({
+    id: parsed.value.binaryObjectId,
+    prompt: parsed.value.prompt || '',
+    steps: parsed.value.steps,
+    seed: parsed.value.seed,
+    model: undefined, // Model info not directly available in the block JSON currently
+    withMetadata,
+    storageService,
+    onError: (err) => addErrorEvent({
+      source: 'GeneratedImageBlock:Download',
+      message: 'Failed to embed metadata in image.',
+      details: err instanceof Error ? err.message : String(err),
+    })
+  });
 }
 
 defineExpose({
@@ -86,52 +114,59 @@ defineExpose({
 <template>
   <div
     v-if="parsed"
-    class="naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700"
-    :style="{ width: `${displayDims.width}px`, aspectRatio: `${displayDims.width}/${displayDims.height}` }"
+    class="naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl overflow-visible"
   >
     <!-- Image -->
     <img
       v-if="imageUrl"
       :src="imageUrl"
-      class="w-full h-full object-cover"
-      alt="Generated Image"
+      @click="handlePreview"
+      :width="displayDims.width"
+      :height="displayDims.height"
+      class="naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity"
+      alt="generated image"
     />
 
     <!-- Loading Skeleton -->
-    <div v-else-if="loading" class="absolute inset-0 flex items-center justify-center animate-pulse">
+    <div
+      v-else-if="loading"
+      class="naidan-image-skeleton flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0 rounded-xl"
+      :style="{ width: `${displayDims.width}px`, maxWidth: '100%', aspectRatio: `${displayDims.width} / ${displayDims.height}` }"
+    >
       <ImageIcon class="w-8 h-8 text-gray-400" />
     </div>
 
     <!-- Error -->
-    <div v-else-if="error" class="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-gray-50 dark:bg-gray-800 text-red-500">
+    <div
+      v-else-if="error"
+      class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs flex flex-col items-center justify-center"
+      :style="{ width: `${displayDims.width}px`, maxWidth: '100%', aspectRatio: `${displayDims.width} / ${displayDims.height}` }"
+    >
       <AlertTriangle class="w-6 h-6 mb-2" />
-      <span class="text-xs">{{ error }}</span>
+      <span>{{ error }}</span>
     </div>
 
     <!-- Overlays (only if loaded) -->
     <template v-if="imageUrl">
       <!-- Info Badge (Top Left) -->
-      <div class="absolute top-2 left-2 p-1.5 bg-black/60 backdrop-blur-md rounded-lg text-white opacity-0 group-hover/gen-img:opacity-100 transition-opacity">
-        <Info class="w-3.5 h-3.5" />
-        <!-- Tooltip could be added here -->
+      <div class="absolute top-2 left-2 z-30 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all overflow-visible">
+        <ImageInfoDisplay
+          :prompt="parsed.prompt || ''"
+          :steps="parsed.steps"
+          :seed="parsed.seed"
+          :width="parsed.width"
+          :height="parsed.height"
+          align="left"
+        />
       </div>
 
       <!-- Download Button (Top Right) -->
-      <button
-        @click="handleDownload"
-        class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg text-gray-700 dark:text-gray-200 shadow-sm opacity-0 group-hover/gen-img:opacity-100 transition-opacity hover:bg-white dark:hover:bg-gray-700"
-        title="Download"
-      >
-        <Download class="w-4 h-4" />
-      </button>
-
-      <!-- Tech Details (Bottom) -->
-      <div class="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-black/80 to-transparent text-white text-[10px] opacity-0 group-hover/gen-img:opacity-100 transition-opacity">
-        <div class="truncate font-medium">{{ parsed.prompt }}</div>
-        <div class="opacity-70 flex items-center gap-2">
-          <span v-if="parsed.steps">{{ parsed.steps }} steps</span>
-          <span v-if="parsed.seed">Seed: {{ parsed.seed }}</span>
-        </div>
+      <div class="absolute top-2 right-2 z-30 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all overflow-visible">
+        <ImageDownloadButton
+          :is-supported="isSupported"
+          align="right"
+          @download="handleDownload"
+        />
       </div>
     </template>
   </div>
