@@ -23,6 +23,7 @@ const isTable = computed(() => props.token.type === 'table');
 const isHtml = computed(() => props.token.type === 'html');
 const isHr = computed(() => props.token.type === 'hr');
 const isSpace = computed(() => props.token.type === 'space');
+const isCheckbox = computed(() => props.token.type === ('checkbox' as string));
 const isText = computed(() => props.token.type === 'text');
 
 
@@ -78,13 +79,13 @@ defineExpose({
     :start="(token as Tokens.List).start || undefined"
   >
     <li v-for="(item, idx) in (token as Tokens.List).items" :key="idx" class="mb-1 text-gray-800 dark:text-gray-300 pl-1">
-      <div class="inline-block align-top">
+      <div class="inline-block align-top w-full">
         <input v-if="item.task" type="checkbox" :checked="item.checked" disabled class="mr-2 mt-1" />
 
         <!-- Render children blocks -->
         <!-- List items contain block tokens (like Paragraph or Text) -->
         <!-- We wrap them in a div if there are multiple, or just render inline if it's a single Text token (tight list) -->
-        <template v-if="item.tokens.length === 1 && item.tokens[0].type === 'text'">
+        <template v-if="item.tokens.length === 1 && item.tokens[0]?.type === 'text'">
           <MarkdownInline :text="(item.tokens[0] as Tokens.Text).text" />
         </template>
         <template v-else>
@@ -142,6 +143,9 @@ defineExpose({
 
   <!-- Space (Ignore to prevent excessive spacing) -->
   <template v-else-if="isSpace"></template>
+
+  <!-- Checkbox (Ignore here as it's handled in the list item logic) -->
+  <template v-else-if="isCheckbox"></template>
 
   <!-- Text (for tight lists or other inline contexts handled as blocks) -->
   <span v-else-if="isText">

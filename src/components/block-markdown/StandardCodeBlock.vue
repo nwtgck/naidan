@@ -8,7 +8,6 @@ const props = defineProps<{
   lang: string;
 }>();
 
-const codeRef = ref<HTMLElement | null>(null);
 const preRef = ref<HTMLElement | null>(null);
 const scrollState = ref({ top: 0, left: 0 });
 

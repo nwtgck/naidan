@@ -230,6 +230,9 @@ export interface Settings {
   heavyContentAlertDismissed?: boolean;
   systemPrompt?: string;
   lmParameters?: LmParameters;
+  experimental?: {
+    markdownRendering?: 'block_markdown';
+  };
 }
 
 export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpointType'> = {

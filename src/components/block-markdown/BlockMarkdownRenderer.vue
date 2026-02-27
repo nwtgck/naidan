@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Marked } from 'marked';
 import { marked } from './useMarkdown'; // Re-use the configured instance
 import BlockMarkdownItem from './BlockMarkdownItem.vue';
 

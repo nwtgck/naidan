@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue';
 import mermaid from 'mermaid';
-import hljs from 'highlight.js';
 import { Check, Copy, Code, Layout, Columns } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -37,20 +36,47 @@ async function render() {
 }
 
 watch(() => props.code, () => {
-  if (mode.value !== 'code') {
+  switch (mode.value) {
+  case 'preview':
+  case 'both':
     render();
+    break;
+  case 'code':
+    break;
+  default: {
+    const _ex: never = mode.value;
+    throw new Error(`Unhandled mode: ${_ex}`);
+  }
   }
 }, { flush: 'post' });
 
 onMounted(() => {
-  if (mode.value !== 'code') {
+  switch (mode.value) {
+  case 'preview':
+  case 'both':
     render();
+    break;
+  case 'code':
+    break;
+  default: {
+    const _ex: never = mode.value;
+    throw new Error(`Unhandled mode: ${_ex}`);
+  }
   }
 });
 
 watch(mode, (newMode) => {
-  if (newMode !== 'code') {
+  switch (newMode) {
+  case 'preview':
+  case 'both':
     nextTick(render);
+    break;
+  case 'code':
+    break;
+  default: {
+    const _ex: never = newMode;
+    throw new Error(`Unhandled mode: ${_ex}`);
+  }
   }
 });
 

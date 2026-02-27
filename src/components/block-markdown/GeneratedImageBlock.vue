@@ -2,8 +2,6 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { GeneratedImageBlockSchema, getDisplayDimensions } from '../../utils/image-generation';
 import { storageService } from '../../services/storage';
-import { ImageDownloadHydrator } from '../ImageDownloadHydrator';
-import ImageIndexBadge from '../ImageIndexBadge.vue';
 import { Download, Info, Image as ImageIcon, AlertTriangle } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -26,7 +24,6 @@ const parsed = computed(() => {
 const imageUrl = ref<string | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const meta = ref<{ isSupported: boolean } | null>(null);
 
 const displayDims = computed(() => {
   if (!parsed.value) return { width: 300, height: 300 };
@@ -49,13 +46,6 @@ async function loadImage() {
     if (blob) {
       if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
       imageUrl.value = URL.createObjectURL(blob);
-
-      // Check metadata support (simulating hydration logic for metadata embedding)
-      // We can use ImageDownloadHydrator static methods if they are exposed,
-      // or just replicate the logic if it's simple.
-      // The original code used ImageDownloadHydrator.prepareContext.
-      // Let's assume we can just check if we can embed metadata.
-      // For now, let's keep it simple: if we have the blob, we can display it.
     } else {
       error.value = 'Image not found in storage';
     }
@@ -79,12 +69,12 @@ function handleDownload() {
 
   const link = document.createElement('a');
   link.href = imageUrl.value;
-  link.download = `generated-${parsed.value.prompt.slice(0, 20).replace(/\W/g, '-')}.png`; // Simplified
+  const prompt = parsed.value.prompt || 'generated-image';
+  link.download = `generated-${prompt.slice(0, 20).replace(/\W/g, '-')}.png`; // Simplified
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
 }
-
 
 defineExpose({
   __testOnly: {
