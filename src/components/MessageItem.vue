@@ -27,7 +27,7 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject, EndpointType } from '../models/types';
-import { User, Bird, GitFork, Pencil, ChevronLeft, ChevronRight, Copy, Check, AlertTriangle, Download, RefreshCw, Loader2, Send, Settings2, XCircle, Square, MoreVertical, History, FileEdit } from 'lucide-vue-next';
+import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
@@ -38,6 +38,7 @@ import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import MessageThinking from './MessageThinking.vue';
+import MessageActions from './MessageActions.vue';
 import { transformersJsService } from '../services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
@@ -83,13 +84,8 @@ const isEditing = ref(false);
 const isAdvancedEditorOpen = ref(false);
 const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
-const copied = ref(false);
 
-import MessageActionsMenu from './MessageActionsMenu.vue';
-
-const showMoreMenu = ref(false);
 const showDiffModal = ref(false);
-const moreActionsTriggerRef = ref<HTMLElement | null>(null);
 
 const transformersStatus = ref(transformersJsService.getState().status);
 let transformersUnsubscribe: (() => void) | null = null;
@@ -444,28 +440,6 @@ function handleClearContent() {
   nextTick(() => {
     textareaRef.value?.focus();
   });
-}
-
-async function handleCopy() {
-  try {
-    await navigator.clipboard.writeText(displayContent.value);
-    copied.value = true;
-    setTimeout(() => {
-      copied.value = false;
-    }, 2000);
-  } catch (err) {
-    console.error('Failed to copy text: ', err);
-  }
-}
-
-async function handleCopyRaw() {
-  try {
-    await navigator.clipboard.writeText(props.message.content);
-    // Use a temporary visual feedback or just close the menu
-    // For now, let's just close the menu which is handled by the click
-  } catch (err) {
-    console.error('Failed to copy raw text: ', err);
-  }
 }
 
 const actionIcons = {
@@ -1112,91 +1086,19 @@ defineExpose({
           <div v-else></div>
 
           <!-- Message Actions -->
-          <div class="flex items-center gap-1">
-            <!-- Speech Controls -->
-            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" show-full-controls />
+          <MessageActions
+            :message="message"
+            :is-image-response="isImageResponse"
+            :is-user="isUser"
+            :speech-text="speechText"
+            :display-content="displayContent"
+            @regenerate="id => emit('regenerate', id)"
+            @edit="(id, content) => emit('edit', id, content)"
+            @fork="id => emit('fork', id)"
+            @enter-edit-mode="isEditing = true"
+            @show-diff="showDiffModal = true"
+          />
 
-            <button
-              v-if="!isUser"
-              @click="emit('regenerate', message.id)"
-              class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              title="Regenerate response"
-              data-testid="regenerate-button"
-            >
-              <RefreshCw class="w-3.5 h-3.5" />
-            </button>
-            <button
-              v-if="isUser"
-              @click="emit('edit', message.id, message.content)"
-              class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              title="Resend message"
-              data-testid="resend-button"
-            >
-              <Send class="w-3.5 h-3.5" />
-            </button>
-            <button
-              @click="handleCopy"
-              class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              :title="copied ? 'Copied!' : 'Copy message'"
-              data-testid="copy-message-button"
-            >
-              <Check v-if="copied" class="w-3.5 h-3.5" />
-              <Copy v-else class="w-3.5 h-3.5" />
-            </button>
-            <button
-              @click="isEditing = true"
-              class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              title="Edit message"
-              data-testid="edit-message-button"
-            >
-              <Pencil class="w-3.5 h-3.5" />
-            </button>
-            <button
-              @click="emit('fork', message.id)"
-              class="flex items-center gap-1.5 px-3 py-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
-              title="Create a new chat branching from this message"
-            >
-              <span class="text-[10px] font-bold uppercase tracking-widest hidden lg:inline">Fork</span>
-              <GitFork class="w-4 h-4" />
-            </button>
-
-            <!-- More Actions Menu -->
-            <div class="relative">
-              <button
-                ref="moreActionsTriggerRef"
-                @click="showMoreMenu = !showMoreMenu"
-                class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                title="More actions"
-                data-testid="message-more-actions-button"
-              >
-                <MoreVertical class="w-3.5 h-3.5" />
-              </button>
-
-              <MessageActionsMenu
-                :is-open="showMoreMenu"
-                :trigger-el="moreActionsTriggerRef"
-                @close="showMoreMenu = false"
-              >
-                <button
-                  @click="handleCopyRaw(); showMoreMenu = false"
-                  class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
-                  data-testid="copy-raw-button"
-                >
-                  <Copy class="w-3.5 h-3.5" />
-                  <span>Copy Raw</span>
-                </button>
-
-                <button
-                  @click="showDiffModal = true; showMoreMenu = false"
-                  class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
-                  data-testid="compare-versions-button"
-                >
-                  <History class="w-3.5 h-3.5" />
-                  <span>Compare Versions</span>
-                </button>
-              </MessageActionsMenu>
-            </div>
-          </div>
         </div>
       </div>
     </div>
