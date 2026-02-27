@@ -25,6 +25,13 @@ const isHr = computed(() => props.token.type === 'hr');
 const isSpace = computed(() => props.token.type === 'space');
 const isCheckbox = computed(() => props.token.type === ('checkbox' as string));
 const isText = computed(() => props.token.type === 'text');
+const isInlineKatex = computed(() => props.token.type === 'katex');
+const isBlockKatex = computed(() => props.token.type === 'blockKatex');
+
+const isTaskList = computed(() => {
+  if (props.token.type !== 'list') return false;
+  return (props.token as Tokens.List).items.some(item => item.task);
+});
 
 
 defineExpose({
@@ -74,33 +81,35 @@ defineExpose({
   <component
     v-else-if="isList"
     :is="(token as Tokens.List).ordered ? 'ol' : 'ul'"
-    class="list-inside mb-4 ml-4"
-    :class="(token as Tokens.List).ordered ? 'list-decimal' : 'list-disc'"
+    class="mb-4"
+    :class="{
+      'list-inside list-decimal ml-4': (token as Tokens.List).ordered,
+      'list-inside list-disc ml-4': !(token as Tokens.List).ordered && !isTaskList,
+      'list-none ml-1': !((token as Tokens.List).ordered) && isTaskList
+    }"
     :start="(token as Tokens.List).start || undefined"
   >
-    <li v-for="(item, idx) in (token as Tokens.List).items" :key="idx" class="mb-1 text-gray-800 dark:text-gray-300 pl-1">
-      <div class="inline-block align-top w-full">
-        <input v-if="item.task" type="checkbox" :checked="item.checked" disabled class="mr-2 mt-1" />
+    <li
+      v-for="(item, idx) in (token as Tokens.List).items"
+      :key="idx"
+      class="mb-1 text-gray-800 dark:text-gray-300"
+      :class="{ 'pl-0': isTaskList, 'pl-1': !isTaskList }"
+    >
+      <div :class="{ 'flex items-start gap-2': item.task }">        <input v-if="item.task" type="checkbox" :checked="item.checked" disabled class="mt-1 flex-shrink-0" />
 
-        <!-- Render children blocks -->
-        <!-- List items contain block tokens (like Paragraph or Text) -->
-        <!-- We wrap them in a div if there are multiple, or just render inline if it's a single Text token (tight list) -->
-        <template v-if="item.tokens.length === 1 && item.tokens[0]?.type === 'text'">
-          <MarkdownInline :text="(item.tokens[0] as Tokens.Text).text" />
-        </template>
-        <template v-else>
-          <!-- If the first token is a paragraph and it's a tight list, we might want to unwrap the p tag? -->
-          <!-- Marked handles loose vs tight by using Text vs Paragraph tokens. -->
-          <!-- If it's Paragraph, our recursive renderer will render <p>. This is correct for loose lists. -->
-          <!-- If it's Text (tight), it will hit the 'isText' case below in recursive call. -->
-          <div class="inline-block w-full align-top">
+        <div :class="{ 'flex-1 min-w-0': item.task }">
+          <!-- Render children blocks -->
+          <template v-if="item.tokens.length === 1">
+            <BlockMarkdownItem :token="(item.tokens[0] as Token)" />
+          </template>
+          <template v-else>
             <BlockMarkdownItem
               v-for="(childToken, cIdx) in item.tokens"
               :key="cIdx"
               :token="childToken"
             />
-          </div>
-        </template>
+          </template>
+        </div>
       </div>
     </li>
   </component>
@@ -147,10 +156,12 @@ defineExpose({
   <!-- Checkbox (Ignore here as it's handled in the list item logic) -->
   <template v-else-if="isCheckbox"></template>
 
+  <!-- KaTeX -->
+  <div v-else-if="isBlockKatex" v-html="(token as any).text" class="my-4 overflow-x-auto"></div>
+  <span v-else-if="isInlineKatex" v-html="(token as any).text"></span>
+
   <!-- Text (for tight lists or other inline contexts handled as blocks) -->
-  <span v-else-if="isText">
-    <MarkdownInline :text="(token as Tokens.Text).text" />
-  </span>
+  <MarkdownInline v-else-if="isText" :text="(token as Tokens.Text).text" />
 
   <!-- Fallback -->
   <div v-else class="text-red-500 text-xs p-2 border border-red-500 rounded my-2">
