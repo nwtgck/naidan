@@ -796,6 +796,80 @@ describe('useChat Composable Logic', () => {
     expect(storageService.updateChatMeta).toHaveBeenCalled();
   });
 
+  it('should only show generatingTitle as true for the current chat', async () => {
+    const { generateChatTitle, __testOnly: { __testOnlySetCurrentChat } } = useChat();
+
+    const chatA = reactive({
+      id: 'chat-A',
+      title: null,
+      root: { items: [{ id: 'm1', role: 'user', content: 'Msg A', replies: { items: [] }, timestamp: 0 }] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any;
+    const chatB = reactive({
+      id: 'chat-B',
+      title: null,
+      root: { items: [{ id: 'm2', role: 'user', content: 'Msg B', replies: { items: [] }, timestamp: 0 }] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any;
+
+    // Start generating title for Chat A
+    __testOnlySetCurrentChat(chatA);
+    mockLlmChat.mockImplementationOnce(async () => {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+
+    const promiseA = generateChatTitle(chatA.id);
+    expect(chatStore.generatingTitle.value).toBe(true);
+
+    // Switch to Chat B (which is not generating)
+    __testOnlySetCurrentChat(chatB);
+    expect(chatStore.generatingTitle.value).toBe(false);
+
+    // Switch back to Chat A
+    __testOnlySetCurrentChat(chatA);
+    expect(chatStore.generatingTitle.value).toBe(true);
+
+    await promiseA;
+    expect(chatStore.generatingTitle.value).toBe(false);
+  });
+
+  it('should show fetchingModels as true for global fetch or current chat fetch', async () => {
+    const { fetchAvailableModels, __testOnly: { __testOnlySetCurrentChat, clearActiveTaskCounts } } = useChat();
+    clearActiveTaskCounts();
+
+    const chatA = reactive({ id: 'chat-A', root: { items: [] } }) as any;
+    const chatB = reactive({ id: 'chat-B', root: { items: [] } }) as any;
+
+    // Mock OpenAIProvider.listModels to be slow
+    const listModelsMock = vi.fn().mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      return ['model1'];
+    });
+    vi.mocked(OpenAIProvider as any).prototype.listModels = listModelsMock;
+
+    // 1. Global fetch
+    const promiseGlobal = fetchAvailableModels();
+    expect(chatStore.fetchingModels.value).toBe(true);
+    await promiseGlobal;
+    expect(chatStore.fetchingModels.value).toBe(false);
+
+    // 2. Chat-specific fetch
+    __testOnlySetCurrentChat(chatA);
+    const promiseA = fetchAvailableModels(chatA.id);
+    expect(chatStore.fetchingModels.value).toBe(true);
+
+    // Switch to Chat B
+    __testOnlySetCurrentChat(chatB);
+    expect(chatStore.fetchingModels.value).toBe(false);
+
+    // Switch back to Chat A
+    __testOnlySetCurrentChat(chatA);
+    expect(chatStore.fetchingModels.value).toBe(true);
+
+    await promiseA;
+    expect(chatStore.fetchingModels.value).toBe(false);
+  });
+
   it('should update the title even if it is already set when generateChatTitle is called', async () => {
     const { generateChatTitle } = useChat();
 

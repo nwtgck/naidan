@@ -33,8 +33,16 @@ const externalGenerations = reactive(new Set<string>());
 const activeTaskCounts = reactive(new Map<string, number>());
 
 const streaming = computed(() => activeGenerations.size > 0 || externalGenerations.size > 0);
-const generatingTitle = computed(() => Array.from(activeTaskCounts.keys()).some(k => k.startsWith('title:')));
-const fetchingModels = computed(() => Array.from(activeTaskCounts.keys()).some(k => k.startsWith('fetch:')));
+const isGeneratingTitle = (chatId: string) => (activeTaskCounts.get('title:' + chatId) || 0) > 0;
+const generatingTitle = computed(() => {
+  if (!_currentChat.value) return false;
+  return isGeneratingTitle(toRaw(_currentChat.value).id);
+});
+const fetchingModels = computed(() => {
+  if ((activeTaskCounts.get('fetch:global') || 0) > 0) return true;
+  if (!_currentChat.value) return false;
+  return (activeTaskCounts.get('fetch:' + toRaw(_currentChat.value).id) || 0) > 0;
+});
 
 const creatingChat = ref(false);
 const availableModels = ref<string[]>([]);
@@ -1675,7 +1683,7 @@ export function useChat() {
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels,
     loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
-    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
+    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle,
     __testOnly: {
       liveChatRegistry,
       activeGenerations,
