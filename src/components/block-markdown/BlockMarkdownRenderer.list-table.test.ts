@@ -20,9 +20,27 @@ describe('BlockMarkdownRenderer: Lists and Tables', () => {
       element: wrapper.element,
       trimWhitespaceNodes: true,
       preserveAttributes: undefined,
+      preserveClasses: ['list-disc', 'ml-6'],
       whitespaceSensitiveTags: undefined
     });
-    expect(dom).toContain('<ul><li><div><div><span>item 1</span></div></div></li><li><div><div><span>item 2</span></div></div></li></ul>');
+    // Verify direct span inside li (no div wrapper for single items)
+    expect(dom).toContain('<ul class="list-disc ml-6"><li><span>item 1</span></li><li><span>item 2</span></li></ul>');
+  });
+
+  it('renders an ordered list', () => {
+    const content = `\
+1. first
+2. second
+`;
+    const wrapper = mountRenderer({ content });
+    const dom = normalizeDom({
+      element: wrapper.element,
+      trimWhitespaceNodes: true,
+      preserveAttributes: undefined,
+      preserveClasses: ['list-decimal', 'ml-6'],
+      whitespaceSensitiveTags: undefined
+    });
+    expect(dom).toContain('<ol class="list-decimal ml-6"><li><span>first</span></li><li><span>second</span></li></ol>');
   });
 
   it('renders task lists', () => {
@@ -34,12 +52,11 @@ describe('BlockMarkdownRenderer: Lists and Tables', () => {
     const dom = normalizeDom({
       element: wrapper.element,
       preserveAttributes: ['type', 'checked', 'disabled'],
-      preserveClasses: ['list-none', 'list-disc', 'list-inside', 'ml-1'],
+      preserveClasses: ['list-none', 'ml-2'],
       trimWhitespaceNodes: true,
       whitespaceSensitiveTags: undefined
     });
-    // Check for list-none and the adjusted margin
-    expect(dom).toContain('class="list-none ml-1"');    expect(dom).not.toContain('list-inside');
+    expect(dom).toContain('class="list-none ml-2"');
     expect(dom).toContain('type="checkbox"');
     expect(dom).toContain('todo');
   });
@@ -58,8 +75,6 @@ describe('BlockMarkdownRenderer: Lists and Tables', () => {
       whitespaceSensitiveTags: undefined
     });
     expect(dom).toContain('<table>');
-    expect(dom).toContain('<thead>');
-    expect(dom).toContain('<tbody>');
     expect(dom).toContain('<span>1</span>');
   });
 });

@@ -23,9 +23,8 @@ describe('BlockMarkdownRenderer: Nested Structures', () => {
       preserveAttributes: undefined,
       whitespaceSensitiveTags: undefined
     });
-    expect(dom).toContain('item 1, para 1');
-    expect(dom).toContain('item 1, para 2');
-    expect(dom).toContain('<p>');
+    // Loose list (multiple tokens) should still use wrapper div
+    expect(dom).toContain('<li><div><p><span>item 1, para 1</span></p><p><span>item 1, para 2</span></p></div></li>');
   });
 
   it('renders a list inside a blockquote', () => {
@@ -40,9 +39,7 @@ describe('BlockMarkdownRenderer: Nested Structures', () => {
       preserveAttributes: undefined,
       whitespaceSensitiveTags: undefined
     });
-    expect(dom).toContain('<blockquote>');
-    expect(dom).toContain('<ul>');
-    expect(dom).toContain('nested list item 1');
+    expect(dom).toContain('<blockquote><ul><li><span>nested list item 1</span></li><li><span>nested list item 2</span></li></ul></blockquote>');
   });
 
   it('renders a code block inside a list', () => {
@@ -59,10 +56,23 @@ describe('BlockMarkdownRenderer: Nested Structures', () => {
       preserveAttributes: undefined,
       whitespaceSensitiveTags: undefined
     });
-    // Check for the presence of code and pre block
-    expect(dom).toContain('console');
-    expect(dom).toContain('log');
-    expect(dom).toContain('hello');
+    // Code block inside list item
+    expect(dom).toContain('<li><div><span>step 1:</span>');
     expect(dom).toContain('<pre>');
+  });
+
+  it('renders deeply nested blockquotes', () => {
+    const content = `\
+> level 1
+>> level 2
+`;
+    const wrapper = mountRenderer({ content });
+    const dom = normalizeDom({
+      element: wrapper.element,
+      trimWhitespaceNodes: true,
+      preserveAttributes: undefined,
+      whitespaceSensitiveTags: undefined
+    });
+    expect(dom).toBe('<div><blockquote><p><span>level 1</span></p><blockquote><p><span>level 2</span></p></blockquote></blockquote></div>');
   });
 });

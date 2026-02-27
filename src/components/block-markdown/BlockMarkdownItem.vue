@@ -83,9 +83,9 @@ defineExpose({
     :is="(token as Tokens.List).ordered ? 'ol' : 'ul'"
     class="mb-4"
     :class="{
-      'list-inside list-decimal ml-4': (token as Tokens.List).ordered,
-      'list-inside list-disc ml-4': !(token as Tokens.List).ordered && !isTaskList,
-      'list-none ml-1': !((token as Tokens.List).ordered) && isTaskList
+      'list-decimal ml-6 !pl-0': (token as Tokens.List).ordered,
+      'list-disc ml-6 !pl-0': !(token as Tokens.List).ordered && !isTaskList,
+      'list-none ml-2 !pl-0': !((token as Tokens.List).ordered) && isTaskList
     }"
     :start="(token as Tokens.List).start || undefined"
   >
@@ -93,24 +93,40 @@ defineExpose({
       v-for="(item, idx) in (token as Tokens.List).items"
       :key="idx"
       class="mb-1 text-gray-800 dark:text-gray-300"
-      :class="{ 'pl-0': isTaskList, 'pl-1': !isTaskList }"
+      :class="{ '!pl-0': isTaskList }"
     >
-      <div :class="{ 'flex items-start gap-2': item.task }">        <input v-if="item.task" type="checkbox" :checked="item.checked" disabled class="mt-1 flex-shrink-0" />
-
-        <div :class="{ 'flex-1 min-w-0': item.task }">
-          <!-- Render children blocks -->
-          <template v-if="item.tokens.length === 1">
-            <BlockMarkdownItem :token="(item.tokens[0] as Token)" />
-          </template>
-          <template v-else>
+      <template v-if="item.task">
+        <div class="flex items-start gap-2">
+          <input type="checkbox" :checked="item.checked" disabled class="mt-1 flex-shrink-0" />
+          <div class="flex-1 min-w-0">
+            <template v-if="item.tokens.length === 1">
+              <BlockMarkdownItem :token="(item.tokens[0] as Token)" />
+            </template>
+            <template v-else>
+              <BlockMarkdownItem
+                v-for="(childToken, cIdx) in item.tokens"
+                :key="cIdx"
+                :token="childToken"
+              />
+            </template>
+          </div>
+        </div>
+      </template>
+      <template v-else>
+        <!-- For normal lists, avoid any wrapper div to prevent line breaks after the bullet -->
+        <template v-if="item.tokens.length === 1">
+          <BlockMarkdownItem :token="(item.tokens[0] as Token)" />
+        </template>
+        <template v-else>
+          <div class="inline-block w-full align-top">
             <BlockMarkdownItem
               v-for="(childToken, cIdx) in item.tokens"
               :key="cIdx"
               :token="childToken"
             />
-          </template>
-        </div>
-      </div>
+          </div>
+        </template>
+      </template>
     </li>
   </component>
 
