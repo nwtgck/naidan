@@ -5,6 +5,7 @@ import ExternalImage from './ExternalImage.vue';
 
 const props = defineProps<{
   text: string;
+  mode: 'markdown' | 'html';
 }>();
 
 interface ImagePart {
@@ -21,13 +22,25 @@ type Part = ImagePart | HtmlPart;
 
 const parts = computed<Part[]>(() => {
   if (!props.text) return [];
-  
-  const rawHtml = marked.parseInline(props.text) as string;
-  const sanitized = sanitizeHtml({ html: rawHtml });
 
+  // Determine if we need to parse as markdown or if it's already HTML.
+  // Using an exhaustive switch for union types as per project standards.
+  const rawHtml = (() => {
+    const m = props.mode;
+    switch (m) {
+    case 'html': return props.text;
+    case 'markdown': return marked.parseInline(props.text) as string;
+    default: {
+      const _ex: never = m;
+      return _ex;
+    }
+    }
+  })();
+
+  const sanitized = sanitizeHtml({ html: rawHtml });
   // Regex to match our custom tag and capture its data-payload attribute
   const tagRegex = /<naidan-external-image\s+data-payload="([^"]+)">\s*<\/naidan-external-image>/g;
-  
+
   const result: Part[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;

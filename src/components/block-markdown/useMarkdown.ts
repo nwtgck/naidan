@@ -19,8 +19,9 @@ export type ExternalImagePayload = z.infer<typeof ExternalImagePayloadSchema>;
 
 const DOMPurify = (() => {
   const t = typeof window;
+  let instance;
   switch (t) {
-  case 'undefined': return createDOMPurify();
+  case 'undefined': instance = createDOMPurify(); break;
   case 'object':
   case 'boolean':
   case 'string':
@@ -28,12 +29,33 @@ const DOMPurify = (() => {
   case 'function':
   case 'symbol':
   case 'bigint':
-    return createDOMPurify(window);
+    instance = createDOMPurify(window); break;
   default: {
     const _ex: never = t;
-    return _ex;
+    instance = _ex;
   }
   }
+
+  // Hook to convert all <img> tags to <naidan-external-image>
+  instance.addHook('afterSanitizeElements', (node) => {
+    // node is a Node, but for <img> we know it's an Element (specifically HTMLImageElement)
+    if (node.nodeName === 'IMG' && node instanceof Element && node.ownerDocument) {
+      const src = node.getAttribute('src');
+      const alt = node.getAttribute('alt') || '';
+      const title = node.getAttribute('title') || null;
+
+      if (src) {
+        const payloadObj: ExternalImagePayload = { href: src, title, text: alt };
+        const payload = btoa(encodeURIComponent(JSON.stringify(payloadObj)));
+
+        const replacement = node.ownerDocument.createElement('naidan-external-image');
+        replacement.setAttribute('data-payload', payload);
+        node.replaceWith(replacement);
+      }
+    }
+  });
+
+  return instance;
 })();
 
 export const marked = new Marked();

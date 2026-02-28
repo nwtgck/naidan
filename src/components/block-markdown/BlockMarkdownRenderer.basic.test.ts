@@ -95,6 +95,15 @@ Hello World
     expect(wrapper.find('img').attributes('src')).toContain('data:image/png;base64');
   });
 
+  it('renders raw HTML <img> tags as ExternalImage placeholders', () => {
+    const wrapper = mountRenderer({ content: `\
+<img src="https://example.com/html-image.png" alt="HTML Alt Text">
+` });
+    // Should be intercepted by DOMPurify hook and rendered via MarkdownInline -> ExternalImage
+    expect(wrapper.find('.naidan-external-image-placeholder').exists()).toBe(true);
+    expect(wrapper.text()).toContain('HTML Alt Text');
+  });
+
   it('renders horizontal rules', () => {
     const wrapper = mountRenderer({ content: `\
 ---

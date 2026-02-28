@@ -46,12 +46,12 @@ defineExpose({
       'text-lg': (token as Tokens.Heading).depth >= 3
     }"
   >
-    <MarkdownInline :text="(token as Tokens.Heading).text" />
+    <MarkdownInline :text="(token as Tokens.Heading).text" mode="markdown" />
   </component>
 
   <!-- Paragraph -->
   <p v-else-if="token.type === 'paragraph'" class="mb-4 last:mb-0 leading-relaxed text-gray-800 dark:text-gray-300">
-    <MarkdownInline :text="(token as Tokens.Paragraph).text" />
+    <MarkdownInline :text="(token as Tokens.Paragraph).text" mode="markdown" />
   </p>
 
   <!-- Blockquote -->
@@ -127,7 +127,7 @@ defineExpose({
             class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
             :style="{ textAlign: (token as Tokens.Table).align[idx] || 'left' }"
           >
-            <MarkdownInline :text="header.text" />
+            <MarkdownInline :text="header.text" mode="markdown" />
           </th>
         </tr>
       </thead>
@@ -139,7 +139,7 @@ defineExpose({
             class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-normal"
             :style="{ textAlign: (token as Tokens.Table).align[cIdx] || 'left' }"
           >
-            <MarkdownInline :text="cell.text" />
+            <MarkdownInline :text="cell.text" mode="markdown" />
           </td>
         </tr>
       </tbody>
@@ -149,7 +149,7 @@ defineExpose({
   <!-- Details -->
   <details v-else-if="token.type === 'details' || token.type === 'detailsInline'" class="my-4 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50/50 dark:bg-gray-800/30">
     <summary v-if="(token as any).summary" class="cursor-pointer font-medium p-1 hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded transition-colors">
-      <MarkdownInline :text="(token as any).summary" />
+      <MarkdownInline :text="(token as any).summary" mode="markdown" />
     </summary>
     <div class="mt-2 pl-4">
       <BlockMarkdownItem
@@ -161,7 +161,9 @@ defineExpose({
   </details>
 
   <!-- HTML -->
-  <div v-else-if="token.type === 'html'" v-html="(token as Tokens.HTML).text" class="my-4"></div>
+  <div v-else-if="token.type === 'html'" class="my-4">
+    <MarkdownInline :text="(token as Tokens.HTML).text" mode="html" />
+  </div>
 
   <!-- HR -->
   <hr v-else-if="token.type === 'hr'" class="my-8 border-t-2 border-gray-100 dark:border-gray-800" />
@@ -195,10 +197,12 @@ defineExpose({
   <MarkdownInline
     v-else-if="token.type === 'text'"
     :text="(token as any).text"
+    mode="markdown"
   />
   <MarkdownInline
     v-else-if="token.type === 'codespan' || token.type === 'del' || token.type === 'em' || token.type === 'strong' || token.type === 'link' || token.type === 'image' || token.type === 'escape'"
     :text="token.raw"
+    mode="markdown"
   />
 
   <!-- Fallback -->
