@@ -13,11 +13,20 @@ class MockWorker {
 vi.stubGlobal('Worker', MockWorker);
 
 // Mock Comlink
-vi.mock('comlink', () => ({
-  wrap: vi.fn(),
-  proxy: vi.fn(x => x),
-  expose: vi.fn(),
-}));
+vi.mock('comlink', () => {
+  const releaseProxy = Symbol('releaseProxy');
+  return {
+    wrap: vi.fn(_worker => {
+      const proxy = {
+        [releaseProxy]: vi.fn(),
+      };
+      return proxy;
+    }),
+    proxy: vi.fn(x => x),
+    expose: vi.fn(),
+    releaseProxy,
+  };
+});
 
 // Helper to create a mock FileSystemDirectoryHandle
 function createMockDir(entries: Record<string, any> = {}) {
@@ -161,9 +170,18 @@ describe('transformersJsService', () => {
       loadModel: vi.fn().mockImplementation(async (_id, cb) => {
         cb({ status: 'progress', progress: 50 });
         return { device: 'webgpu' };
-      })
+      }),
+      prefetchUrls: vi.fn().mockResolvedValue(undefined)
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation((_worker: any) => {
+      // Return a mock object that supports both engine and scanner worker interfaces
+      return Object.assign(mockRemote, {
+        [Comlink.releaseProxy]: vi.fn(),
+        scanModel: vi.fn().mockResolvedValue({
+          files: [{ url: 'https://hf.co/m/model.onnx' }]
+        })
+      });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
 
@@ -176,6 +194,7 @@ describe('transformersJsService', () => {
     await transformersJsService.loadModel('some-model');
 
     expect(mockRemote.loadModel).toHaveBeenCalledWith('some-model', expect.any(Function));
+    expect(mockRemote.prefetchUrls).toHaveBeenCalledWith(['https://hf.co/m/model.onnx'], expect.any(Function));
     expect(transformersJsService.getState().status).toBe('ready');
     expect(transformersJsService.getState().device).toBe('webgpu');
     expect(statuses).toContain('loading');
@@ -188,7 +207,9 @@ describe('transformersJsService', () => {
         setTimeout(() => resolve({ device: 'wasm' }), 100);
       }))
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
 
@@ -212,7 +233,9 @@ describe('transformersJsService', () => {
       generateText: vi.fn().mockResolvedValue(undefined),
       interrupt: vi.fn().mockResolvedValue(undefined)
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
     await transformersJsService.loadModel('some-model');
@@ -253,7 +276,9 @@ describe('transformersJsService', () => {
     const mockRemote = {
       loadModel: vi.fn().mockRejectedValue(new Error('Failed to load'))
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
 

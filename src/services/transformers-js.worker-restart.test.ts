@@ -27,11 +27,21 @@ vi.stubGlobal('navigator', {
 });
 
 // Mock Comlink
-vi.mock('comlink', () => ({
-  wrap: vi.fn(),
-  proxy: vi.fn(x => x),
-  expose: vi.fn(),
-}));
+vi.mock('comlink', () => {
+  const releaseProxy = Symbol('releaseProxy');
+  return {
+    wrap: vi.fn(_worker => {
+      return {
+        [releaseProxy]: vi.fn(),
+        scanModel: vi.fn().mockResolvedValue({ files: [] }),
+        prefetchUrls: vi.fn().mockResolvedValue(undefined),
+      };
+    }),
+    proxy: vi.fn(x => x),
+    expose: vi.fn(),
+    releaseProxy,
+  };
+});
 
 describe('transformersJsService worker restart', () => {
   beforeEach(() => {
@@ -45,7 +55,9 @@ describe('transformersJsService worker restart', () => {
     const mockRemote = {
       loadModel: vi.fn().mockRejectedValue(new Error('RuntimeError: Aborted(). Build with -sASSERTIONS for more info.')),
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     // 2. Import service
     const { transformersJsService } = await import('./transformers-js');
@@ -66,7 +78,9 @@ describe('transformersJsService worker restart', () => {
     const mockRemote = {
       loadModel: vi.fn().mockRejectedValue(new Error('[WebGPU] Kernel "[Add] /model/layers.0/..." failed. Error: Can\'t perform binary op')),
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
     const countBefore = MockWorker.constructorCount;
@@ -84,7 +98,9 @@ describe('transformersJsService worker restart', () => {
       loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
       generateText: vi.fn().mockRejectedValue(new Error('RuntimeError: Aborted()')),
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     // 2. Import service
     const { transformersJsService } = await import('./transformers-js');
@@ -110,7 +126,9 @@ describe('transformersJsService worker restart', () => {
       loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
       generateText: vi.fn().mockRejectedValue(new Error('[WebGPU] Kernel failure during inference')),
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
     await transformersJsService.loadModel('some-model');

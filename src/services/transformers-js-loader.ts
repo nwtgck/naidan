@@ -21,3 +21,14 @@ export function createTransformersWorker(): Worker | null {
     { type: 'module' }
   );
 }
+
+export function createTransformersScannerWorker(): Worker | null {
+  if (typeof __BUILD_MODE_IS_STANDALONE__ !== 'undefined' && __BUILD_MODE_IS_STANDALONE__) {
+    return null;
+  }
+
+  return new Worker(
+    new URL('./transformers-js.scanner.worker.ts', import.meta.url),
+    { type: 'module' }
+  );
+}

@@ -136,7 +136,11 @@ export default tseslint.config(
   },
   {
     // Exception: The worker itself must be allowed to import @huggingface/transformers
-    files: ['src/services/transformers-js.worker.ts'],
+    files: [
+      'src/services/transformers-js.worker.ts',
+      'src/services/transformers-js.scanner.worker.ts',
+      'src/services/transformers-js.types.ts'
+    ],
     rules: {
       'no-restricted-imports': 'off'
     }

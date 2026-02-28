@@ -91,10 +91,19 @@ function createMockFile(size: number) {
 
 describe('transformers-js.worker', () => {
   let mockRoot: any;
+  let originalFetchMock: any;
 
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+
+    originalFetchMock = vi.fn();
+    vi.stubGlobal('fetch', originalFetchMock);
+    global.self = {
+      ...global.self,
+      fetch: originalFetchMock,
+      location: { origin: 'http://localhost:3000' } as any
+    } as any;
 
     mockRoot = createMockDir();
     vi.stubGlobal('navigator', {
@@ -260,20 +269,32 @@ describe('transformers-js.worker', () => {
     }
   });
 
-  describe('Fetch Interceptor', () => {
-    let originalFetchMock: any;
+  it('prefetchUrls should stream files to OPFS and report progress', async () => {
+    const comlink = await import('comlink');
+    await import('./transformers-js.worker');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
 
-    beforeEach(() => {
-      originalFetchMock = vi.fn();
-      // Ensure self.fetch is mockable before importing worker
-      global.fetch = originalFetchMock;
-      if (!global.self) {
-        // @ts-expect-error: Mock global self for worker context
-        global.self = global;
-      }
-      self.fetch = originalFetchMock;
+    const mockResponse = new Response(new Uint8Array([10, 20, 30, 40]), {
+      status: 200,
+      headers: { 'Content-Length': '4' }
     });
+    originalFetchMock.mockResolvedValue(mockResponse);
 
+    const progressUpdates: any[] = [];
+    const progressCallback = (info: any) => progressUpdates.push(info);
+
+    await workerObj.prefetchUrls(['https://huggingface.co/org/repo/model.onnx'], progressCallback);
+
+    expect(originalFetchMock).toHaveBeenCalledWith('https://huggingface.co/org/repo/model.onnx');
+    expect(mockRoot.getDirectoryHandle).toHaveBeenCalledWith('models', { create: true });
+    expect(progressUpdates.length).toBeGreaterThan(0);
+    expect(progressUpdates[0]).toMatchObject({
+      status: 'progress',
+      file: 'model.onnx'
+    });
+  });
+
+  describe('Fetch Interceptor', () => {
     it('should block requests to "user/" models with 404', async () => {
       await import('./transformers-js.worker');
       const interceptedFetch = self.fetch;

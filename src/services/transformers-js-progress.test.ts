@@ -13,11 +13,21 @@ class MockWorker {
 vi.stubGlobal('Worker', MockWorker);
 
 // Mock Comlink
-vi.mock('comlink', () => ({
-  wrap: vi.fn(),
-  proxy: vi.fn(x => x),
-  expose: vi.fn(),
-}));
+vi.mock('comlink', () => {
+  const releaseProxy = Symbol('releaseProxy');
+  return {
+    wrap: vi.fn(_worker => {
+      return {
+        [releaseProxy]: vi.fn(),
+        scanModel: vi.fn().mockResolvedValue({ files: [] }),
+        prefetchUrls: vi.fn().mockResolvedValue(undefined),
+      };
+    }),
+    proxy: vi.fn(x => x),
+    expose: vi.fn(),
+    releaseProxy,
+  };
+});
 
 describe('transformersJsService progress logic', () => {
   beforeEach(async () => {
@@ -47,7 +57,9 @@ describe('transformersJsService progress logic', () => {
         return { device: 'wasm' };
       })
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
 
@@ -77,7 +89,9 @@ describe('transformersJsService progress logic', () => {
         return { device: 'wasm' };
       })
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
 
@@ -118,7 +132,9 @@ describe('transformersJsService progress logic', () => {
         return { device: 'wasm' };
       })
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
 
@@ -160,7 +176,9 @@ describe('transformersJsService progress logic', () => {
         return { device: 'wasm' };
       })
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
 
@@ -190,7 +208,9 @@ describe('transformersJsService progress logic', () => {
         return { device: 'wasm' };
       })
     };
-    (Comlink.wrap as any).mockReturnValue(mockRemote);
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
 
     const { transformersJsService } = await import('./transformers-js');
 
