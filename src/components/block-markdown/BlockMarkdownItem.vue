@@ -147,7 +147,7 @@ defineExpose({
   </div>
 
   <!-- Details -->
-  <details v-else-if="token.type === 'details'" class="my-4 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50/50 dark:bg-gray-800/30">
+  <details v-else-if="token.type === 'details' || token.type === 'detailsInline'" class="my-4 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50/50 dark:bg-gray-800/30">
     <summary v-if="(token as any).summary" class="cursor-pointer font-medium p-1 hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded transition-colors">
       <MarkdownInline :text="(token as any).summary" />
     </summary>
