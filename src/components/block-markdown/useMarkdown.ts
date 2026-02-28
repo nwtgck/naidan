@@ -1,4 +1,4 @@
-import { Marked } from 'marked';
+import { Marked, type Token, type Tokens } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import createDOMPurify from 'dompurify';
 import hljs from 'highlight.js';
@@ -29,6 +29,40 @@ const DOMPurify = (() => {
 // but MessageItem seemed to rely on the default build.
 
 export const marked = new Marked();
+
+// Custom extension for <details> support
+marked.use({
+  extensions: [
+    {
+      name: 'details',
+      level: 'block',
+      start(src) {
+        return src.match(/<details>/)?.index;
+      },
+      tokenizer(src) {
+        const rule = /^<details>([\s\S]*?)<\/details>/;
+        const match = rule.exec(src);
+        if (match) {
+          const raw = match[0];
+          const content = match[1];
+
+          // Extract summary if exists
+          const summaryMatch = /<summary>([\s\S]*?)<\/summary>/.exec(content);
+          const summary = summaryMatch ? summaryMatch[1] : '';
+          const body = summaryMatch ? content.replace(summaryMatch[0], '') : content;
+
+          return {
+            type: 'details',
+            raw,
+            summary,
+            tokens: this.lexer.blockTokens(body.trim(), []),
+          };
+        }
+        return undefined;
+      },
+    },
+  ],
+});
 
 marked.use(markedKatex({
   throwOnError: false,

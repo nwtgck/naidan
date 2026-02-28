@@ -23,7 +23,7 @@ describe('BlockMarkdownRenderer: Token Coverage', () => {
 Just text`;
     const wrapper = mountRenderer({ content });
     const dom = getDom(wrapper);
-    
+
     // def should be ignored, only paragraph should remain
     expect(dom).toContain('<span>Just text</span>');
     expect(dom).not.toContain('http://example.com');
@@ -36,7 +36,7 @@ Line 1
 Line 2`;
     const wrapper = mountRenderer({ content });
     const dom = getDom(wrapper);
-    
+
     expect(dom).toContain('<span>Line 1<br>Line 2</span>');
   });
 
@@ -47,7 +47,7 @@ Line 2`;
 _Emphasized text_`;
     const wrapper = mountRenderer({ content });
     const dom = getDom(wrapper);
-    
+
     expect(dom).toContain('<strong>Strong text</strong>');
     expect(dom).toContain('<em>Emphasized text</em>');
   });
@@ -58,7 +58,7 @@ _Emphasized text_`;
 > 1. List item`;
     const wrapper = mountRenderer({ content });
     const dom = getDom(wrapper);
-    
+
     // Explicitly verify the nesting: Blockquote > Paragraph > Span, and Blockquote > OL > LI > Span
     // Note: tight list items render text directly via MarkdownInline (span) without a wrapper paragraph.
     expect(dom).toContain('<blockquote><p><span>Blockquote</span></p><ol><li><span>List item</span></li></ol></blockquote>');
@@ -69,9 +69,39 @@ _Emphasized text_`;
 ---`;
     const wrapper = mountRenderer({ content });
     const dom = getDom(wrapper);
-    
+
     // hr should be rendered
     expect(dom).toContain('<hr>');
     expect(dom).not.toContain('Unknown token type');
+  });
+
+  it('renders HTML details and summary tags', () => {
+    const content = `\
+<details>
+<summary>Click to expand</summary>
+Content
+</details>`;
+    const wrapper = mountRenderer({ content });
+    const dom = getDom(wrapper);
+
+    expect(dom).toContain('<details><summary><span>Click to expand</span></summary>');
+    expect(dom).toContain('<span>Content</span>');
+  });
+
+  it('handles markdown content inside details tag', () => {
+    const content = `\
+<details>
+<summary>Expand me</summary>
+
+- Item 1
+- Item 2
+
+**Bold**
+</details>`;
+    const wrapper = mountRenderer({ content });
+    const dom = getDom(wrapper);
+
+    // The structure is now correct: items are INSIDE the details tag
+    expect(dom).toContain('<details><summary><span>Expand me</span></summary><div><ul><li><span>Item 1</span></li><li><span>Item 2</span></li></ul><p><span><strong>Bold</strong></span></p></div></details>');
   });
 });
