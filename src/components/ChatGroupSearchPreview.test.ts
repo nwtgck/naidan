@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import GroupSearchPreview from './GroupSearchPreview.vue';
+import ChatGroupSearchPreview from './ChatGroupSearchPreview.vue';
 import { nextTick } from 'vue';
 import { storageService } from '../services/storage';
 
@@ -49,7 +49,7 @@ vi.mock('./SearchPreview.vue', () => ({
 
 // --- Tests ---
 
-describe('GroupSearchPreview Component', () => {
+describe('ChatGroupSearchPreview Component', () => {
   const mockGroupId = 'g1';
   const mockGroupName = 'Work';
 
@@ -63,7 +63,7 @@ describe('GroupSearchPreview Component', () => {
   });
 
   it('should load and filter chats by groupId', async () => {
-    const wrapper = mount(GroupSearchPreview, {
+    const wrapper = mount(ChatGroupSearchPreview, {
       props: { groupId: mockGroupId, groupName: mockGroupName }
     });
 
@@ -77,7 +77,7 @@ describe('GroupSearchPreview Component', () => {
   });
 
   it('should select the first chat by default', async () => {
-    const wrapper = mount(GroupSearchPreview, {
+    const wrapper = mount(ChatGroupSearchPreview, {
       props: { groupId: mockGroupId, groupName: mockGroupName }
     });
 
@@ -89,7 +89,7 @@ describe('GroupSearchPreview Component', () => {
   });
 
   it('should navigate when "Open Chat" button is clicked', async () => {
-    const wrapper = mount(GroupSearchPreview, {
+    const wrapper = mount(ChatGroupSearchPreview, {
       props: { groupId: mockGroupId, groupName: mockGroupName }
     });
 
