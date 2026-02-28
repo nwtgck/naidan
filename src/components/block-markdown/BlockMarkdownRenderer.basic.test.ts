@@ -82,12 +82,17 @@ Hello World
     const wrapper = mountRenderer({ content: `\
 ![Alt text](https://example.com/image.png)
 ` });
-    expect(normalizeDom({
-      element: wrapper.element,
-      preserveAttributes: ['src'],
-      trimWhitespaceNodes: true,
-      whitespaceSensitiveTags: undefined
-    })).toBe('<div><p><span><img src="https://example.com/image.png"></span></p></div>');
+    // Should render the placeholder now for external URLs
+    expect(wrapper.find('.naidan-external-image-placeholder').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Alt text');
+  });
+
+  it('renders internal or data-url images directly', () => {
+    const content = '![Data URL](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==)';
+    const wrapper = mountRenderer({ content });
+
+    expect(wrapper.find('img').exists()).toBe(true);
+    expect(wrapper.find('img').attributes('src')).toContain('data:image/png;base64');
   });
 
   it('renders horizontal rules', () => {

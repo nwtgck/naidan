@@ -8,14 +8,14 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
     const wrapper = mount(BlockMarkdownRenderer, {
       props: { content }
     });
-    
+
     const p = wrapper.find('p');
     expect(p.exists()).toBe(true);
-    
+
     const code = p.find('code');
     expect(code.exists()).toBe(true);
     expect(code.text()).toBe('1 + 2');
-    
+
     // Check if it has the expected base styles from tailwind typography or custom ones
     // We can check classes if we add them, or just verify it's NOT a <pre> tag
     expect(code.element.parentElement?.tagName).not.toBe('PRE');
@@ -26,7 +26,7 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
     const wrapper = mount(BlockMarkdownRenderer, {
       props: { content }
     });
-    
+
     const code = wrapper.find('code');
     expect(code.exists()).toBe(true);
     expect(code.text()).toBe('item code');
@@ -40,7 +40,7 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
     const wrapper = mount(BlockMarkdownRenderer, {
       props: { content }
     });
-    
+
     // In a normal paragraph, it's wrapped in <p>
     const code = wrapper.find('code');
     expect(code.exists()).toBe(true);
@@ -54,7 +54,7 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
     const wrapper = mount(BlockMarkdownRenderer, {
       props: { content }
     });
-    
+
     const code = wrapper.find('code');
     expect(code.exists()).toBe(true);
     expect(code.text()).toBe('1 + 2');
@@ -65,10 +65,10 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
     const wrapper = mount(BlockMarkdownRenderer, {
       props: { content }
     });
-    
+
     const pre = wrapper.find('pre');
     expect(pre.exists()).toBe(true);
-    
+
     const code = pre.find('code');
     expect(code.exists()).toBe(true);
     expect(code.text()).toContain('console.log(1)');
@@ -79,14 +79,14 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
     const wrapper = mount(BlockMarkdownRenderer, {
       props: { content }
     });
-    
+
     const allCodes = wrapper.findAll('code');
     expect(allCodes).toHaveLength(2);
-    
+
     // Inline code (inside a paragraph, no pre)
     const inlineCode = allCodes.find(c => c.element.parentElement?.tagName === 'SPAN' || c.element.parentElement?.tagName === 'P');
     expect(inlineCode?.text()).toBe('inline');
-    
+
     // Block code (inside pre)
     const blockCode = wrapper.find('pre code');
     expect(blockCode.exists()).toBe(true);
