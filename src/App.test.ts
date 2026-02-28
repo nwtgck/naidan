@@ -176,7 +176,7 @@ describe('App', () => {
           `
         },
         OPFSExplorer: true,
-        GroupSettingsPanel: true
+        ChatGroupSettingsPanel: true
       },
     },
   });

@@ -223,6 +223,14 @@ async function restoreDefaults() {
   await saveChanges();
 }
 
+async function setGroupNameFromModelId() {
+  const modelId = localSettings.value.modelId;
+  if (!modelId || !currentChatGroup.value) return;
+
+  const newName = modelId.split('/').pop() || modelId;
+  await chatStore.updateChatGroupMetadata(currentChatGroup.value.id, { name: newName });
+}
+
 
 defineExpose({
   __testOnly: {
@@ -431,7 +439,18 @@ defineExpose({
           </div>
 
           <div class="space-y-2">
-            <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model ID Override</label>
+            <div class="flex items-center justify-between ml-1">
+              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Model ID Override</label>
+              <button
+                v-if="localSettings.modelId"
+                @click="setGroupNameFromModelId"
+                type="button"
+                class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
+                data-testid="group-setting-set-name-from-model"
+              >
+                Set Group Name
+              </button>
+            </div>
             <ModelSelector
               :model-value="localSettings.modelId"
               @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"

@@ -23,6 +23,8 @@ vi.mock('../composables/useChat', () => ({
     streaming: computed(() => mockActiveGenerations.size > 0),
     activeGenerations: mockActiveGenerations,
     generatingTitle: ref(false),
+    generateChatTitle: vi.fn(),
+    abortTitleGeneration: vi.fn(),
     activeMessages: computed(() => []),
     fetchingModels: ref(false),
     fetchAvailableModels: vi.fn(),

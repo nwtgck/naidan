@@ -10,6 +10,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 import Logo from './Logo.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import PWAUpdateNotification from './PWAUpdateNotification.vue';
 const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted(() => import('./SidebarDebugControls.vue'));
 import type { ChatGroup, SidebarItem, ChatSidebarItem } from '../models/types';
 import {
@@ -17,7 +18,7 @@ import {
   Pencil, Folder, FolderPlus,
   ChevronDown, ChevronUp, ChevronRight, Check, X,
   Bot, PanelLeft, SquarePen, Loader2, MoreHorizontal,
-  Search, Ghost
+  Search, Ghost, MessageSquarePlus
 } from 'lucide-vue-next';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupActions.vue'));
@@ -584,7 +585,7 @@ defineExpose({
 <template>
   <div class="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 select-none transition-colors">
     <!-- Header -->
-    <div class="py-2 flex items-center overflow-hidden" :class="isSidebarOpen ? 'justify-between px-4' : 'justify-center px-1'">
+    <div class="pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center overflow-hidden" :class="isSidebarOpen ? 'justify-between px-4' : 'justify-center px-1'">
       <router-link v-if="isSidebarOpen" to="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer overflow-hidden">
         <div class="p-1.5 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 shrink-0">
           <Logo :size="20" />
@@ -614,6 +615,8 @@ defineExpose({
       </button>
     </div>
 
+    <PWAUpdateNotification />
+
     <!-- Actions -->
     <div class="py-2 space-y-2" :class="isSidebarOpen ? 'px-4' : 'px-1'">
       <div class="flex gap-2" :class="{ 'flex-col items-center': !isSidebarOpen }">
@@ -629,6 +632,15 @@ defineExpose({
             <span class="whitespace-nowrap overflow-hidden">New Chat</span>
             <span class="text-[9px] opacity-60 font-normal shrink-0 hidden lg:inline">{{ newChatShortcutText }}</span>
           </template>
+        </button>
+        <button
+          v-if="!isSidebarOpen && (currentChatGroup?.id || currentChat?.groupId)"
+          @click="handleNewChat((currentChatGroup?.id || currentChat?.groupId) ?? undefined)"
+          class="flex items-center justify-center bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-all shadow-sm w-8 h-8"
+          data-testid="new-chat-in-group-button"
+          :title="`New Chat in ${currentChatGroup?.name || 'current group'}`"
+        >
+          <MessageSquarePlus class="w-4 h-4 shrink-0" />
         </button>
         <button
           @click="useGlobalSearch().openSearch()"
@@ -769,7 +781,7 @@ defineExpose({
                       @click.stop="handleNewChat(element.chatGroup.id)"
                       class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
                     >
-                      <SquarePen class="w-3 h-3" /> Add Chat
+                      <MessageSquarePlus class="w-3 h-3" /> Add Chat
                     </button>
 
                     <!-- Smooth height for Show more/less -->
@@ -893,7 +905,7 @@ defineExpose({
     </div>
 
     <!-- Footer -->
-    <div class="border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20" :class="isSidebarOpen ? 'p-2' : 'py-2 px-1'">
+    <div class="border-t border-gray-100 dark:border-gray-800 space-y-3 bg-gray-50/30 dark:bg-black/20" :class="isSidebarOpen ? 'p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]' : 'py-2 px-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))]'">
       <!-- Global Model Selector -->
       <div v-if="isSidebarOpen && (settings.endpointUrl || settings.endpointType === 'transformers_js')" class="px-1 space-y-2 animate-in fade-in duration-300">
         <div class="flex items-center justify-between px-1">

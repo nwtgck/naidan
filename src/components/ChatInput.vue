@@ -734,8 +734,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 <template>
   <div
     v-if="currentChat"
-    class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out will-change-transform"
-    :class="visibility === 'submerged' ? 'translate-y-[calc(100%-32px)] sm:translate-y-[calc(100%-40px)]' : 'translate-y-0'"
+    class="absolute bottom-0 left-0 right-0 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-3 sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out will-change-transform"
+    :class="visibility === 'submerged' ? 'translate-y-[calc(100%-32px-env(safe-area-inset-bottom))] sm:translate-y-[calc(100%-40px-env(safe-area-inset-bottom))]' : 'translate-y-0'"
   >
     <!-- Glass Zone behind the input card (Full width blur) -->
     <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': visibility === 'submerged' }"></div>
@@ -791,7 +791,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @click="setActiveFocusArea('chat')"
         @keydown.enter.ctrl.prevent="handleSend"
         @keydown.enter.meta.prevent="handleSend"
-        @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat() : null"
+        @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat({ chatId: undefined }) : null"
         placeholder="Type a message..."
         class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
@@ -885,7 +885,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         </div>
 
         <button
-          @click="isCurrentChatStreaming ? chatStore.abortChat() : handleSend()"
+          @click="isCurrentChatStreaming ? chatStore.abortChat({ chatId: undefined }) : handleSend()"
           :disabled="!isCurrentChatStreaming && !input.trim() && attachments.length === 0"
           class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
           :title="isCurrentChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"

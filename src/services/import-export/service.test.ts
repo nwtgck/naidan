@@ -54,6 +54,7 @@ describe('ImportExportService', () => {
     storageType: 'local',
     autoTitleEnabled: true,
     providerProfiles: [],
+    experimental: undefined,
     ...overrides
   });
 

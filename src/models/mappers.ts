@@ -515,7 +515,7 @@ export const buildSidebarItemsFromHierarchy = (
 };
 
 export const settingsToDomain = (dto: SettingsDto): Settings => {
-  const { endpoint, providerProfiles, storageType, ...rest } = dto;
+  const { endpoint, providerProfiles, storageType, experimental, ...rest } = dto;
 
   const endpointInfo = (() => {
     switch (endpoint.type) {
@@ -571,13 +571,16 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
         ...pEndpointInfo,
       };
     }) ?? [],
+    experimental: experimental ? {
+      markdownRendering: experimental.markdownRendering ?? undefined
+    } : undefined,
   };
 };
 
 export const settingsToDto = (domain: Settings): SettingsDto => {
   const {
     endpointType, endpointUrl, endpointHttpHeaders,
-    storageType, providerProfiles, ...rest
+    storageType, providerProfiles, experimental, ...rest
   } = domain;
 
   return {
@@ -603,6 +606,9 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
         }),
       };
     }),
+    experimental: experimental ? {
+      markdownRendering: experimental.markdownRendering ?? undefined
+    } : undefined,
   };
 };
 

@@ -29,6 +29,9 @@ describe('ChatArea Design Specifications', () => {
       activeMessages: ref([]),
       availableModels: ref([]),
       fetchingModels: ref(false),
+      generatingTitle: ref(false),
+      generateChatTitle: vi.fn(),
+      abortTitleGeneration: vi.fn(),
       fetchAvailableModels: vi.fn(),
       saveChat: vi.fn(),
       resolvedSettings: ref({

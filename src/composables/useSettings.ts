@@ -319,6 +319,26 @@ export function useSettings() {
     _searchContextSize.value = size;
   }
 
+  async function toggleMarkdownRendering() {
+    const current = _settings.value.experimental?.markdownRendering;
+    const nextValue = (() => {
+      switch (current) {
+      case 'block_markdown': return undefined;
+      case undefined: return 'block_markdown' as const;
+      default: {
+        const _ex: never = current;
+        return _ex;
+      }
+      }
+    })();
+
+    const newExperimental = {
+      ...(_settings.value.experimental || {}),
+      markdownRendering: nextValue,
+    };
+
+    await save({ experimental: newExperimental });
+  }
   function __testOnlySetSettings(newSettings: Settings) {
     _settings.value = JSON.parse(JSON.stringify(newSettings));
   }
@@ -360,6 +380,7 @@ export function useSettings() {
     setHeavyContentAlertDismissed,
     setSearchPreviewMode,
     setSearchContextSize,
+    toggleMarkdownRendering,
     __testOnly: {
       __testOnlyReset,
       __testOnlySetSettings,

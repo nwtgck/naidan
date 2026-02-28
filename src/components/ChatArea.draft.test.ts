@@ -57,6 +57,7 @@ vi.mock('../composables/useChat', () => ({
     generatingTitle: ref(false),
     fetchAvailableModels: vi.fn(),
     generateChatTitle: vi.fn(),
+    abortTitleGeneration: vi.fn(),
     forkChat: vi.fn(),
     isTaskRunning: vi.fn().mockReturnValue(false),
     isProcessing: vi.fn().mockReturnValue(false),

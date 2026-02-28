@@ -1,15 +1,29 @@
 <script setup lang="ts">
 import { useSampleChat } from '../composables/useSampleChat';
 import { useConfirm } from '../composables/useConfirm';
+import { useSettings } from '../composables/useSettings';
+import { usePWAUpdate } from '../composables/usePWAUpdate';
 import { storageService } from '../services/storage';
-import { Cpu, FlaskConical, AlertTriangle, Trash2 } from 'lucide-vue-next';
+import { Cpu, FlaskConical, AlertTriangle, Trash2, Zap, RefreshCw } from 'lucide-vue-next';
 
 defineProps<{
   storageType: string;
 }>();
 
+const { settings, toggleMarkdownRendering } = useSettings();
 const { createSampleChat } = useSampleChat();
 const { showConfirm } = useConfirm();
+const { needRefresh, setNeedRefresh } = usePWAUpdate();
+
+function togglePWAUpdate() {
+  setNeedRefresh({
+    refresh: !needRefresh.value,
+    handler: !needRefresh.value ? async () => {
+      console.log('PWA Update triggered via Developer Tab');
+      window.location.reload();
+    } : undefined
+  });
+}
 
 async function handleResetData() {
   const confirmed = await showConfirm({
@@ -42,6 +56,27 @@ defineExpose({
 
       <div class="space-y-8">
         <div class="space-y-4">
+          <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">Experimental Features</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <button
+              @click="toggleMarkdownRendering"
+              class="flex items-center gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
+              :class="{ 'ring-2 ring-blue-500/20 border-blue-500/50 bg-blue-50/30 dark:bg-blue-900/10': settings.experimental?.markdownRendering === 'block_markdown' }"
+              data-testid="toggle-block-renderer-button"
+            >
+              <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+                <Zap class="w-4 h-4" :class="settings.experimental?.markdownRendering === 'block_markdown' ? 'text-blue-500 animate-pulse' : 'text-gray-400'" />
+              </div>
+              <div class="flex flex-col">
+                <span class="text-sm font-bold">Block Markdown Renderer</span>
+                <span class="text-[10px] font-medium text-gray-500">{{ settings.experimental?.markdownRendering === 'block_markdown' ? 'Currently Active' : 'Enable experimental renderer' }}</span>
+              </div>
+            </button>
+          </div>
+          <p class="text-[11px] font-medium text-gray-400 ml-1">Enables the new incremental block renderer. Faster updates and preserves text selection during streaming.</p>
+        </div>
+
+        <div class="space-y-4">
           <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">Debug & Testing</h3>
           <div class="flex flex-col sm:flex-row gap-4">
             <button
@@ -54,6 +89,29 @@ defineExpose({
             </button>
           </div>
           <p class="text-[11px] font-medium text-gray-400 ml-1">Adds a sample conversation with complex structures to verify rendering.</p>
+        </div>
+
+        <div class="space-y-4">
+          <button
+            @click="togglePWAUpdate"
+            class="w-full flex items-center justify-between px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
+            :class="{ 'ring-2 ring-emerald-500/20 border-emerald-500/50 bg-emerald-50/30 dark:bg-emerald-900/10': needRefresh }"
+            data-testid="toggle-pwa-update-button"
+          >
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+                <RefreshCw class="w-4 h-4" :class="needRefresh ? 'text-emerald-500 animate-spin-slow' : 'text-gray-400'" />
+              </div>
+              <div class="flex flex-col">
+                <span class="text-sm font-bold">Simulate PWA Update</span>
+                <span class="text-[10px] font-medium text-gray-500">Toggle update notification for testing</span>
+              </div>
+            </div>
+            <div v-if="needRefresh" class="flex h-2 w-2 relative">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </div>
+          </button>
         </div>
 
         <div class="pt-8 border-t border-gray-100 dark:border-gray-800 space-y-5">
@@ -84,3 +142,14 @@ defineExpose({
     </section>
   </div>
 </template>
+
+<style scoped>
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+</style>

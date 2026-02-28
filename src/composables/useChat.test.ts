@@ -787,13 +787,87 @@ describe('useChat Composable Logic', () => {
       params.onChunk(' Title');
     });
 
-    const promise = generateChatTitle(chatObj.id);
+    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
     await promise;
     expect(chatStore.generatingTitle.value).toBe(false);
 
     expect(chatObj.title).toBe('Paris Title');
     expect(storageService.updateChatMeta).toHaveBeenCalled();
+  });
+
+  it('should only show generatingTitle as true for the current chat', async () => {
+    const { generateChatTitle, __testOnly: { __testOnlySetCurrentChat } } = useChat();
+
+    const chatA = reactive({
+      id: 'chat-A',
+      title: null,
+      root: { items: [{ id: 'm1', role: 'user', content: 'Msg A', replies: { items: [] }, timestamp: 0 }] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any;
+    const chatB = reactive({
+      id: 'chat-B',
+      title: null,
+      root: { items: [{ id: 'm2', role: 'user', content: 'Msg B', replies: { items: [] }, timestamp: 0 }] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any;
+
+    // Start generating title for Chat A
+    __testOnlySetCurrentChat(chatA);
+    mockLlmChat.mockImplementationOnce(async () => {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+
+    const promiseA = generateChatTitle({ chatId: chatA.id, signal: undefined });
+    expect(chatStore.generatingTitle.value).toBe(true);
+
+    // Switch to Chat B (which is not generating)
+    __testOnlySetCurrentChat(chatB);
+    expect(chatStore.generatingTitle.value).toBe(false);
+
+    // Switch back to Chat A
+    __testOnlySetCurrentChat(chatA);
+    expect(chatStore.generatingTitle.value).toBe(true);
+
+    await promiseA;
+    expect(chatStore.generatingTitle.value).toBe(false);
+  });
+
+  it('should show fetchingModels as true for global fetch or current chat fetch', async () => {
+    const { fetchAvailableModels, __testOnly: { __testOnlySetCurrentChat, clearActiveTaskCounts } } = useChat();
+    clearActiveTaskCounts();
+
+    const chatA = reactive({ id: 'chat-A', root: { items: [] } }) as any;
+    const chatB = reactive({ id: 'chat-B', root: { items: [] } }) as any;
+
+    // Mock OpenAIProvider.listModels to be slow
+    const listModelsMock = vi.fn().mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      return ['model1'];
+    });
+    vi.mocked(OpenAIProvider as any).prototype.listModels = listModelsMock;
+
+    // 1. Global fetch
+    const promiseGlobal = fetchAvailableModels();
+    expect(chatStore.fetchingModels.value).toBe(true);
+    await promiseGlobal;
+    expect(chatStore.fetchingModels.value).toBe(false);
+
+    // 2. Chat-specific fetch
+    __testOnlySetCurrentChat(chatA);
+    const promiseA = fetchAvailableModels(chatA.id);
+    expect(chatStore.fetchingModels.value).toBe(true);
+
+    // Switch to Chat B
+    __testOnlySetCurrentChat(chatB);
+    expect(chatStore.fetchingModels.value).toBe(false);
+
+    // Switch back to Chat A
+    __testOnlySetCurrentChat(chatA);
+    expect(chatStore.fetchingModels.value).toBe(true);
+
+    await promiseA;
+    expect(chatStore.fetchingModels.value).toBe(false);
   });
 
   it('should update the title even if it is already set when generateChatTitle is called', async () => {
@@ -815,10 +889,53 @@ describe('useChat Composable Logic', () => {
     });
 
     chatObj.title = null; // Clear title to allow auto-generation to proceed
-    await generateChatTitle(chatObj.id);
+    await generateChatTitle({ chatId: chatObj.id, signal: undefined });
 
     expect(chatObj.title).toBe('New Better Title');
     expect(storageService.updateChatMeta).toHaveBeenCalled();
+  });
+
+  it('should allow aborting title generation', async () => {
+    const { generateChatTitle, abortTitleGeneration, __testOnly: { __testOnlySetCurrentChat } } = useChat();
+
+    const m1: MessageNode = { id: 'm1', role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
+    const chatObj = reactive<Chat>({
+      id: 'chat-abort-test',
+      title: null,
+      root: { items: [m1] },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    });
+    __testOnlySetCurrentChat(chatObj as any);
+
+    let wasAborted = false;
+    mockLlmChat.mockImplementationOnce(async (params: { signal?: AbortSignal }) => {
+      try {
+        await new Promise((_resolve, reject) => {
+          params.signal?.addEventListener('abort', () => {
+            reject(new Error('Aborted'));
+          });
+        });
+      } catch (e) {
+        if ((e as Error).message === 'Aborted') wasAborted = true;
+        throw e;
+      }
+    });
+
+    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined });
+    expect(chatStore.generatingTitle.value).toBe(true);
+
+    abortTitleGeneration({ chatId: chatObj.id });
+
+    try {
+      await promise;
+    } catch (e) {
+      // expected
+    }
+
+    expect(wasAborted).toBe(true);
+    expect(chatStore.generatingTitle.value).toBe(false);
   });
 
   it('should set currentChat to loaded chat in openChat, or null if not found', async () => {

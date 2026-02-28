@@ -29,12 +29,21 @@ const _currentChatGroup = ref<ChatGroup | null>(null);
 
 const liveChatRegistry = reactive(new Map<string, Chat>());
 const activeGenerations = reactive(new Map<string, { controller: AbortController, chat: Chat }>)
+const activeTitleGenerations = reactive(new Map<string, AbortController>());
 const externalGenerations = reactive(new Set<string>());
 const activeTaskCounts = reactive(new Map<string, number>());
 
 const streaming = computed(() => activeGenerations.size > 0 || externalGenerations.size > 0);
-const generatingTitle = computed(() => Array.from(activeTaskCounts.keys()).some(k => k.startsWith('title:')));
-const fetchingModels = computed(() => Array.from(activeTaskCounts.keys()).some(k => k.startsWith('fetch:')));
+const isGeneratingTitle = ({ chatId }: { chatId: string }) => (activeTaskCounts.get('title:' + chatId) || 0) > 0;
+const generatingTitle = computed(() => {
+  if (!_currentChat.value) return false;
+  return isGeneratingTitle({ chatId: toRaw(_currentChat.value).id });
+});
+const fetchingModels = computed(() => {
+  if ((activeTaskCounts.get('fetch:global') || 0) > 0) return true;
+  if (!_currentChat.value) return false;
+  return (activeTaskCounts.get('fetch:' + toRaw(_currentChat.value).id) || 0) > 0;
+});
 
 const creatingChat = ref(false);
 const availableModels = ref<string[]>([]);
@@ -940,7 +949,7 @@ export function useChat() {
       mutableChat.updatedAt = Date.now();
 
       if (mutableChat.title === null && resolved.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
-        await generateChatTitle(mutableChat.id, controller.signal);
+        await generateChatTitle({ chatId: mutableChat.id, signal: controller.signal });
       }
     } catch (e) {
       // Close thinking tag if open
@@ -1122,7 +1131,7 @@ export function useChat() {
     if (!_currentChat.value) return;
     const chatId = toRaw(_currentChat.value).id;
     if (isProcessing(chatId)) {
-      abortChat(chatId);
+      abortChat({ chatId });
       // Wait for the task to actually stop and decTask to be called
       while (isProcessing(chatId)) {
         await new Promise(r => setTimeout(r, 10));
@@ -1152,12 +1161,21 @@ export function useChat() {
     }
   };
 
-  const generateChatTitle = async (chatId?: string, signal?: AbortSignal) => {
+  const generateChatTitle = async ({ chatId, signal }: { chatId: string | undefined, signal: AbortSignal | undefined }) => {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return;
     const mutableChat = getLiveChat(target);
     const taskId = mutableChat.id;
     const titleAtStart = mutableChat.title;
+
+    // Abort existing title generation for this chat if any
+    if (activeTitleGenerations.has(taskId)) {
+      activeTitleGenerations.get(taskId)?.abort();
+    }
+
+    const controller = new AbortController();
+    activeTitleGenerations.set(taskId, controller);
+
     incTask(taskId, 'title');
     registerLiveInstance(mutableChat);
     try {
@@ -1219,13 +1237,16 @@ export function useChat() {
         { role: 'user', content: `Message content to summarize: "${content.slice(0, 1000)}"` },
       ];
 
+      // Combine signals if both exist
+      const combinedSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+
       await titleProvider.chat({
         messages: promptMsgs,
         model: titleGenModel,
         onChunk: (chunk: string) => {
           generatedTitle += chunk;
         },
-        signal
+        signal: combinedSignal
       });
 
       const finalTitle = cleanGeneratedTitle(generatedTitle);
@@ -1243,10 +1264,21 @@ export function useChat() {
       }
     } finally {
       decTask(taskId, 'title');
+      if (activeTitleGenerations.get(taskId) === controller) {
+        activeTitleGenerations.delete(taskId);
+      }
     }
   };
 
-  const abortChat = (chatId?: string) => {
+  const abortTitleGeneration = ({ chatId }: { chatId: string | undefined }) => {
+    const id = chatId || (_currentChat.value ? toRaw(_currentChat.value).id : null);
+    if (id && activeTitleGenerations.has(id)) {
+      activeTitleGenerations.get(id)?.abort();
+      activeTitleGenerations.delete(id);
+    }
+  };
+
+  const abortChat = ({ chatId }: { chatId: string | undefined }) => {
     const id = chatId || (_currentChat.value ? toRaw(_currentChat.value).id : null);
     if (id) {
       if (activeGenerations.has(id)) {
@@ -1256,6 +1288,8 @@ export function useChat() {
       } else if (externalGenerations.has(id)) {
         storageService.notify({ type: 'chat_content_generation', id, status: 'abort_request', timestamp: Date.now() });
       }
+      // Also abort title generation for this chat
+      abortTitleGeneration({ chatId: id });
     }
   };
 
@@ -1306,7 +1340,7 @@ export function useChat() {
     if (!_currentChat.value) return;
     const chatId = toRaw(_currentChat.value).id;
     if (isProcessing(chatId)) {
-      abortChat(chatId);
+      abortChat({ chatId });
       // Wait for the task to actually stop and decTask to be called
       while (isProcessing(chatId)) {
         await new Promise(r => setTimeout(r, 10));
@@ -1674,8 +1708,8 @@ export function useChat() {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, updateChatMeta, updateChatContent, moveChatToGroup,
-    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup,
+    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle,
     __testOnly: {
       liveChatRegistry,
       activeGenerations,

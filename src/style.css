@@ -9,9 +9,29 @@
     padding: 0;
     height: 100%;
     font-size: 1.125rem;
-    overscroll-behavior: none;
+    overscroll-behavior-y: none; /* Prevent pull-to-refresh */
+    -webkit-tap-highlight-color: transparent; /* Remove blue flash on tap */
+    -webkit-touch-callout: none; /* Disable default context menu on long press */
     @apply bg-gray-50 text-gray-900 antialiased transition-colors duration-300;
   }
+
+  /* Allow text selection only where needed */
+  .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  
+  /* Disable selection for UI buttons by default to feel more like an app */
+  button, .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Prevent accidental zooming while tapping fast */
+  button, input, textarea {
+    touch-action: manipulation;
+  }
+
   
   html.dark, html.dark body {
     @apply bg-gray-950 text-gray-100;
@@ -20,6 +40,22 @@
   #app {
     height: 100%;
   }
+}
+
+/* Inline code styling */
+.prose code {
+  @apply bg-gray-100 dark:bg-gray-800/80 text-gray-900 dark:text-gray-200 px-1.5 py-0.5 rounded-md font-mono text-[0.9em] border border-gray-200 dark:border-gray-700 mx-0.5;
+}
+
+/* Ensure code inside pre (block code) doesn't inherit inline styles if not explicitly overridden by StandardCodeBlock */
+.prose pre code {
+  @apply bg-transparent p-0 border-none mx-0 text-[1em] font-mono leading-relaxed;
+}
+
+/* Remove default backticks added by tailwind typography */
+.prose code::before,
+.prose code::after {
+  content: "" !important;
 }
 
 /* Mermaid display modes support */

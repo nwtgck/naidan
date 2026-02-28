@@ -32,6 +32,7 @@ vi.mock('../composables/useChat', () => ({
     updateChatModel: vi.fn(),
     saveChat: vi.fn(),
     generateChatTitle: vi.fn(),
+    abortTitleGeneration: vi.fn(),
     toggleDebug: vi.fn(),
     getSiblings: vi.fn().mockReturnValue([]),
     moveChatToGroup: vi.fn(),

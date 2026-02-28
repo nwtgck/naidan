@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import GroupSettingsPanel from './GroupSettingsPanel.vue';
+import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { ref, nextTick, reactive, toRef } from 'vue';
 import type { ChatGroup } from '../models/types';
 
@@ -75,7 +75,7 @@ vi.mock('../composables/useGlobalSearch', () => ({
   }),
 }));
 
-describe('GroupSettingsPanel.vue', () => {
+describe('ChatGroupSettingsPanel.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.assign(mockGroup, {
@@ -100,7 +100,7 @@ describe('GroupSettingsPanel.vue', () => {
     // Customize group to have an endpoint so URL input/error exists
     mockGroup.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
 
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
     await wrapper.find('[data-testid="refresh-btn"]').trigger('click');
     await nextTick();
@@ -110,12 +110,12 @@ describe('GroupSettingsPanel.vue', () => {
   });
 
   it('renders the group name in the header', () => {
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     expect(wrapper.find('h2').text()).toContain('Test Group Settings');
   });
 
   it('shows the "Active Overrides" badge only when overrides are present', async () => {
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
     expect(wrapper.text()).not.toContain('Active Overrides');
 
@@ -129,7 +129,7 @@ describe('GroupSettingsPanel.vue', () => {
     mockGroup.autoTitleEnabled = undefined;
     mockGroup.titleModelId = undefined;
 
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await flushPromises();
 
     // Set an endpoint with URL
@@ -146,7 +146,7 @@ describe('GroupSettingsPanel.vue', () => {
   });
 
   it('toggles endpoint customization via select', async () => {
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
     // Initially showing global default (Inherit)
     // URL input should NOT exist because local endpoint is undefined and global is openai (but local still undefined)
@@ -169,21 +169,21 @@ describe('GroupSettingsPanel.vue', () => {
   it('hides endpoint URL when effective type is transformers_js', async () => {
     // 1. Local override is transformers_js
     mockGroup.endpoint = { type: 'transformers_js', url: '' };
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
     expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(false);
 
     // 2. Local is undefined (global inherit), and global is transformers_js
     mockGroup.endpoint = undefined;
     mockSettings.endpointType = 'transformers_js';
-    const wrapper2 = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper2 = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
     expect(wrapper2.find('[data-testid="group-setting-url-input"]').exists()).toBe(false);
   });
 
   it('shows upsell component when effective type is transformers_js', async () => {
     mockSettings.endpointType = 'openai'; // Start with openai
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await flushPromises();
     await vi.dynamicImportSettled();
 
@@ -198,7 +198,7 @@ describe('GroupSettingsPanel.vue', () => {
   });
 
   it('updates system prompt behavior correctly', async () => {
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
     // Click Append
     const appendBtn = wrapper.findAll('button').find(b => b.text() === 'Append');
@@ -219,7 +219,7 @@ describe('GroupSettingsPanel.vue', () => {
 
   it('clears system prompt override when clicking Inherit button', async () => {
     mockGroup.systemPrompt = { content: 'group prompt', behavior: 'override' };
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
     // Ensure textarea exists initially
@@ -242,7 +242,7 @@ describe('GroupSettingsPanel.vue', () => {
   });
 
   it('displays correct resolution status for system prompt', async () => {
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
     const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
 
@@ -258,7 +258,7 @@ describe('GroupSettingsPanel.vue', () => {
   });
 
   it('calls updateChatGroupMetadata when settings change', async () => {
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
     // First click Override to show the textarea
@@ -280,7 +280,7 @@ describe('GroupSettingsPanel.vue', () => {
     mockGroup.modelId = 'overridden';
     mockGroup.systemPrompt = { content: 'prompt', behavior: 'override' };
 
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await wrapper.find('[data-testid="group-setting-restore-defaults"]').trigger('click');
 
     expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
@@ -296,7 +296,7 @@ describe('GroupSettingsPanel.vue', () => {
     mockFetchAvailableModels.mockResolvedValue(['model-10', 'model-2', 'model-1']);
     mockGroup.endpoint = { type: 'ollama', url: 'http://localhost:11434' };
 
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
     // Trigger fetch via refresh button
     await wrapper.find('[data-testid="refresh-btn"]').trigger('click');
@@ -311,7 +311,7 @@ describe('GroupSettingsPanel.vue', () => {
     mockGroup.modelId = 'old-model';
     mockGroup.endpoint = { type: 'openai', url: 'http://localhost:1234' };
 
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await flushPromises();
 
     // Mock fetchAvailableModels to return models NOT including 'old-model'
@@ -328,7 +328,7 @@ describe('GroupSettingsPanel.vue', () => {
   });
 
   it('sets active focus area to chat-group-settings on click or focus', async () => {
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
     await wrapper.trigger('click');
     expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-group-settings');
@@ -339,12 +339,27 @@ describe('GroupSettingsPanel.vue', () => {
   });
 
   it('triggers global search when clicking search button', async () => {
-    const wrapper = mount(GroupSettingsPanel, { global: { stubs: globalStubs } });
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
 
     const searchBtn = wrapper.findAll('button').find(b => b.text().includes('Search Group'));
     await searchBtn?.trigger('click');
 
     expect(mockOpenSearch).toHaveBeenCalledWith({ groupIds: [mockGroup.id] });
+  });
+
+  it('updates group name from model ID when the button is clicked', async () => {
+    mockGroup.modelId = 'provider/my-model:latest';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+
+    const setNameBtn = wrapper.find('[data-testid="group-setting-set-name-from-model"]');
+    expect(setNameBtn.exists()).toBe(true);
+
+    await setNameBtn.trigger('click');
+
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+      name: 'my-model:latest'
+    }));
   });
 });

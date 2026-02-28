@@ -24,6 +24,7 @@ const mockFetchingModels = ref(false);
 const mockGeneratingTitle = ref(false);
 const mockFetchAvailableModels = vi.fn();
 const mockGenerateChatTitle = vi.fn();
+const mockAbortTitleGeneration = vi.fn();
 const mockActiveGenerations = reactive(new Map());
 const mockCurrentChat = ref<Chat | null>({
   id: '1',
@@ -78,6 +79,8 @@ vi.mock('../composables/useChat', () => ({
     generatingTitle: mockGeneratingTitle,
     fetchAvailableModels: mockFetchAvailableModels,
     generateChatTitle: mockGenerateChatTitle,
+    abortTitleGeneration: mockAbortTitleGeneration,
+    isGeneratingTitle: vi.fn(({ chatId: _chatId }) => mockGeneratingTitle.value),
     forkChat: vi.fn().mockResolvedValue('new-id'),
     openChatGroup: mockOpenChatGroup,
     moveChatToGroup: mockMoveChatToGroup,
@@ -330,10 +333,10 @@ describe('ChatArea UI States', () => {
     expect(btn.exists()).toBe(true);
 
     await btn.trigger('click');
-    expect(mockGenerateChatTitle).toHaveBeenCalled();
+    expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: '1', signal: undefined });
   });
 
-  it('should spin and disable the regenerate title button while generatingTitle is true', async () => {
+  it('should call abortTitleGeneration when clicked while generating', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGeneratingTitle.value = true;
     wrapper = mount(ChatArea, {
@@ -341,8 +344,51 @@ describe('ChatArea UI States', () => {
     });
 
     const btn = wrapper.find('[data-testid="regenerate-title-button"]');
-    expect(btn.classes()).toContain('animate-spin');
-    expect((btn.element as HTMLButtonElement).disabled).toBe(true);
+    await btn.trigger('click');
+    expect(mockAbortTitleGeneration).toHaveBeenCalledWith({ chatId: '1' });
+  });
+
+  it('should ignore title hover state immediately after starting generation until mouseleave', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGeneratingTitle.value = false;
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
+
+    // 1. Click to start generation
+    await btn.trigger('click');
+    expect(mockGenerateChatTitle).toHaveBeenCalled();
+
+    // Simulate generation starting in store
+    mockGeneratingTitle.value = true;
+    await nextTick();
+
+    // 2. Even if we are "hovering" (implied after click), the X should be hidden by ignoreTitleHover logic
+    const xIcon = btn.find('svg.text-red-500'); // This is the X icon
+    expect(xIcon.classes()).not.toContain('group-hover/title:opacity-100');
+
+    // 3. Trigger mouseleave
+    await btn.trigger('mouseleave');
+    await nextTick();
+
+    // 4. Now the X should be eligible to show on hover
+    expect(xIcon.classes()).toContain('group-hover/title:opacity-100');
+  });
+
+  it('should spin but NOT disable the regenerate title button while generatingTitle is true (to allow aborting)', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGeneratingTitle.value = true;
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
+    const icon = btn.find('svg'); // RefreshCw is an SVG
+    expect(icon.classes()).toContain('animate-spin');
+    // It should NOT be disabled because we want to allow aborting
+    expect((btn.element as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('should hide the chat inspector when debug mode is disabled', async () => {

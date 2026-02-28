@@ -13,7 +13,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 import { scrollIntoViewSafe } from '../utils/dom';
 
 const SearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./SearchPreview.vue'));
-const GroupSearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./GroupSearchPreview.vue'));
+const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupSearchPreview.vue'));
 
 const router = useRouter();
 const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
@@ -704,7 +704,7 @@ defineExpose({
                ]">
             <template v-if="shouldLoadPreview">
               <template v-if="deferredSelectedItem?.type === 'chat_group'">
-                <GroupSearchPreview
+                <ChatGroupSearchPreview
                   ref="groupPreviewRef"
                   :groupId="(deferredSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).groupId"
                   :groupName="(deferredSelectedItem.item as Extract<SearchResultItem, { type: 'chat_group' }>).name"

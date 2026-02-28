@@ -96,6 +96,8 @@ vi.mock('lucide-vue-next', () => {
     Monitor: mockIcon,
     HardDrive: mockIcon,
     Package: mockIcon,
+    Ghost: mockIcon,
+    MessageSquarePlus: mockIcon,
   };
 });
 

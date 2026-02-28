@@ -2,7 +2,7 @@
 import { watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useChat } from '../../composables/useChat';
-import GroupSettingsPanel from '../../components/GroupSettingsPanel.vue';
+import ChatGroupSettingsPanel from '../../components/ChatGroupSettingsPanel.vue';
 
 const route = useRoute();
 const chatStore = useChat();
@@ -32,6 +32,6 @@ defineExpose({
 
 <template>
   <div class="h-full flex flex-col overflow-hidden bg-[#fcfcfd] dark:bg-gray-900 transition-colors">
-    <GroupSettingsPanel />
+    <ChatGroupSettingsPanel />
   </div>
 </template>

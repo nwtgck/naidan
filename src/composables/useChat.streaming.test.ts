@@ -117,7 +117,7 @@ describe('useChat Streaming State Logic', () => {
 
     expect(streaming.value).toBe(true);
 
-    abortChat();
+    abortChat({ chatId: undefined });
     resolveGen!();
 
     // sendMessage itself might not throw because it backgrounds generation,

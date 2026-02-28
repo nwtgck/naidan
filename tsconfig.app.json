@@ -32,7 +32,7 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
 
-    "types": ["node", "unplugin-vue-router/client"],
+    "types": ["node", "unplugin-vue-router/client", "vite-plugin-pwa/client", "vite-plugin-pwa/vue"],
     "paths": {
       "~/*": ["./src/*"]
     }

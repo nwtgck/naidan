@@ -30,7 +30,7 @@ const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./Chat
 import {
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon
+  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap
 } from 'lucide-vue-next';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { hasChatOverrides } from '../utils/chat-settings-resolver';
@@ -38,6 +38,7 @@ import { scrollIntoViewSafe } from '../utils/dom';
 
 
 const chatStore = useChat();
+const { settings, toggleMarkdownRendering } = useSettings();
 const { state: previewState, closePreview } = useImagePreview(true);
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
@@ -54,6 +55,7 @@ const {
   resolvedSettings,
   isProcessing,
   getSortedImageModels,
+  abortTitleGeneration,
 } = chatStore;
 
 const availableImageModels = computed(() => {
@@ -65,6 +67,17 @@ type ChatInputVisibility = 'submerged' | 'peeking' | 'active';
 const inputVisibility = ref<ChatInputVisibility>('active');
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
+const ignoreTitleHover = ref(false);
+
+function handleTitleAction() {
+  if (!currentChat.value) return;
+  if (generatingTitle.value) {
+    abortTitleGeneration({ chatId: currentChat.value.id });
+  } else {
+    ignoreTitleHover.value = true;
+    chatStore.generateChatTitle({ chatId: currentChat.value.id, signal: undefined });
+  }
+}
 
 function handleDragOver(event: DragEvent) {
   event.preventDefault();
@@ -373,14 +386,27 @@ watch(
               <h2 class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button
                 v-if="activeMessages.length > 0"
-                @click="currentChat && chatStore.generateChatTitle(currentChat.id)"
-                class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50"
-                :class="{ 'animate-spin': generatingTitle }"
-                :disabled="generatingTitle || isCurrentChatStreaming"
-                title="Regenerate Title"
+                @click="handleTitleAction"
+                @mouseleave="ignoreTitleHover = false"
+                class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50 group/title"
+                :disabled="isCurrentChatStreaming"
+                :title="generatingTitle ? 'Stop Title Generation' : 'Regenerate Title'"
                 data-testid="regenerate-title-button"
               >
-                <RefreshCw class="w-3.5 h-3.5" />
+                <div class="relative w-3.5 h-3.5 flex items-center justify-center">
+                  <RefreshCw
+                    class="w-full h-full transition-all"
+                    :class="{
+                      'animate-spin': generatingTitle,
+                      'group-hover/title:opacity-0 group-hover/title:scale-75': generatingTitle && !ignoreTitleHover
+                    }"
+                  />
+                  <X
+                    v-if="generatingTitle"
+                    class="w-3.5 h-3.5 absolute opacity-0 transition-all text-red-500 scale-75"
+                    :class="{ 'group-hover/title:opacity-100 group-hover/title:scale-100': !ignoreTitleHover }"
+                  />
+                </div>
               </button>
             </div>
 
@@ -544,6 +570,19 @@ watch(
               <Bug class="w-4 h-4" />
               <span>Debug Mode</span>
             </button>
+            <div class="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
+            <button
+              @click="toggleMarkdownRendering(); showMoreMenu = false"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
+              :class="settings.experimental?.markdownRendering === 'block_markdown'
+                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
+              "
+              data-testid="toggle-experimental-renderer-menu"
+            >
+              <Zap class="w-4 h-4" :class="{ 'animate-pulse': settings.experimental?.markdownRendering === 'block_markdown' }" />
+              <span>Block Renderer (Exp)</span>
+            </button>
           </div>
         </Transition>
       </div>
@@ -591,7 +630,7 @@ watch(
               @edit="handleEdit"
               @switch-version="handleSwitchVersion"
               @regenerate="handleRegenerate"
-              @abort="chatStore.abortChat()"
+              @abort="chatStore.abortChat({ chatId: undefined })"
             />
 
             <!-- Global Transformers.js Loading Indicator in the scroll flow -->

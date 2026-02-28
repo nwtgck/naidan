@@ -51,6 +51,7 @@ vi.mock('../composables/useChat', () => ({
     generatingTitle: ref(false),
     fetchAvailableModels: mockFetchAvailableModels,
     generateChatTitle: vi.fn(),
+    abortTitleGeneration: vi.fn(),
     forkChat: vi.fn().mockResolvedValue('new-id'),
     openChatGroup: vi.fn(),
     moveChatToGroup: vi.fn(),

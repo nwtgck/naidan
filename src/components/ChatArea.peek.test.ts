@@ -33,6 +33,8 @@ vi.mock('../composables/useChat', () => ({
     availableModels: ref([]),
     fetchingModels: ref(false),
     generatingTitle: ref(false),
+    generateChatTitle: vi.fn(),
+    abortTitleGeneration: vi.fn(),
     streaming: ref(false),
     activeMessages: ref([]),
     isProcessing: vi.fn().mockReturnValue(false),
