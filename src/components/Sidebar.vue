@@ -18,7 +18,7 @@ import {
   Pencil, Folder, FolderPlus,
   ChevronDown, ChevronUp, ChevronRight, Check, X,
   Bot, PanelLeft, SquarePen, Loader2, MoreHorizontal,
-  Search, Ghost
+  Search, Ghost, MessageSquarePlus
 } from 'lucide-vue-next';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupActions.vue'));
@@ -634,6 +634,15 @@ defineExpose({
           </template>
         </button>
         <button
+          v-if="!isSidebarOpen && (currentChatGroup?.id || currentChat?.groupId)"
+          @click="handleNewChat((currentChatGroup?.id || currentChat?.groupId) ?? undefined)"
+          class="flex items-center justify-center bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-all shadow-sm w-8 h-8"
+          data-testid="new-chat-in-group-button"
+          :title="`New Chat in ${currentChatGroup?.name || 'current group'}`"
+        >
+          <MessageSquarePlus class="w-4 h-4 shrink-0" />
+        </button>
+        <button
           @click="useGlobalSearch().openSearch()"
           class="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
           :class="isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0'"
@@ -772,7 +781,7 @@ defineExpose({
                       @click.stop="handleNewChat(element.chatGroup.id)"
                       class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
                     >
-                      <SquarePen class="w-3 h-3" /> Add Chat
+                      <MessageSquarePlus class="w-3 h-3" /> Add Chat
                     </button>
 
                     <!-- Smooth height for Show more/less -->

@@ -23,7 +23,7 @@ vi.mock('../composables/useLayout', () => ({
 }));
 
 vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
+  useChat: vi.fn(() => ({
     currentChat: ref(null),
     currentChatGroup: ref(null),
     streaming: ref(false),
@@ -34,10 +34,11 @@ vi.mock('../composables/useChat', () => ({
     loadChats: vi.fn(),
     openChat: vi.fn(),
     openChatGroup: vi.fn(),
+    createNewChat: vi.fn(),
     isTaskRunning: vi.fn().mockReturnValue(false),
     isProcessing: vi.fn().mockReturnValue(false),
     abortChat: vi.fn(),
-  }),
+  })),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -46,6 +47,7 @@ vi.mock('../composables/useSettings', () => ({
     availableModels: ref([]),
     isFetchingModels: ref(false),
     save: vi.fn(),
+    updateGlobalModel: vi.fn(),
   }),
 }));
 
@@ -148,5 +150,71 @@ describe('Sidebar Collapse Functionality', () => {
     const settingsBtn = wrapper.find('button[title="Settings"]');
     expect(settingsBtn.classes()).toContain('w-8');
     expect(settingsBtn.classes()).toContain('h-8');
+  });
+
+  it('shows "New Chat in Group" button when collapsed and a group is active', async () => {
+    isSidebarOpen.value = false;
+    const currentChat = ref({ id: '1', groupId: 'group1' });
+    const currentChatGroup = ref(null);
+
+    // Mock useChat for this specific test
+    const { useChat } = await import('../composables/useChat');
+    (useChat as any).mockReturnValue({
+      currentChat,
+      currentChatGroup,
+      streaming: ref(false),
+      activeGenerations: reactive(new Map()),
+      chatGroups: ref([{ id: 'group1', name: 'Test Group' }]),
+      chats: ref([{ id: '1', title: 'Test Chat', groupId: 'group1' }]),
+      sidebarItems: ref([]),
+      loadChats: vi.fn(),
+      createNewChat: vi.fn(),
+      openChat: vi.fn(),
+      openChatGroup: vi.fn(),
+      isTaskRunning: vi.fn().mockReturnValue(false),
+      isProcessing: vi.fn().mockReturnValue(false),
+    });
+
+    const wrapper = mount(Sidebar, {
+      global: { plugins: [router], stubs: { 'lucide-vue-next': true, 'Logo': true } },
+    });
+    await nextTick();
+
+    const groupBtn = wrapper.find('[data-testid="new-chat-in-group-button"]');
+    expect(groupBtn.exists()).toBe(true);
+
+    await groupBtn.trigger('click');
+    const { createNewChat } = useChat();
+    expect(createNewChat).toHaveBeenCalledWith(expect.objectContaining({ groupId: 'group1' }));
+  });
+
+  it('hides "New Chat in Group" button when sidebar is open', async () => {
+    isSidebarOpen.value = true;
+    const currentChat = ref({ id: '1', groupId: 'group1' });
+
+    const { useChat } = await import('../composables/useChat');
+    (useChat as any).mockReturnValue({
+      currentChat,
+      currentChatGroup: ref(null),
+      streaming: ref(false),
+      activeGenerations: reactive(new Map()),
+      chatGroups: ref([{ id: 'group1', name: 'Test Group' }]),
+      chats: ref([{ id: '1', title: 'Test Chat', groupId: 'group1' }]),
+      sidebarItems: ref([]),
+      loadChats: vi.fn(),
+      createNewChat: vi.fn(),
+      openChat: vi.fn(),
+      openChatGroup: vi.fn(),
+      isTaskRunning: vi.fn().mockReturnValue(false),
+      isProcessing: vi.fn().mockReturnValue(false),
+    });
+
+    const wrapper = mount(Sidebar, {
+      global: { plugins: [router], stubs: { 'lucide-vue-next': true, 'Logo': true } },
+    });
+    await nextTick();
+
+    const groupBtn = wrapper.find('[data-testid="new-chat-in-group-button"]');
+    expect(groupBtn.exists()).toBe(false);
   });
 });
