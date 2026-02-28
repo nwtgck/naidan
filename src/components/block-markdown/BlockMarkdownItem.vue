@@ -14,20 +14,6 @@ const props = defineProps<{
   token: Token;
 }>();
 
-const isCode = computed(() => props.token.type === 'code');
-const isHeading = computed(() => props.token.type === 'heading');
-const isParagraph = computed(() => props.token.type === 'paragraph');
-const isList = computed(() => props.token.type === 'list');
-const isBlockquote = computed(() => props.token.type === 'blockquote');
-const isTable = computed(() => props.token.type === 'table');
-const isHtml = computed(() => props.token.type === 'html');
-const isHr = computed(() => props.token.type === 'hr');
-const isSpace = computed(() => props.token.type === 'space');
-const isCheckbox = computed(() => props.token.type === ('checkbox' as string));
-const isText = computed(() => props.token.type === 'text');
-const isInlineKatex = computed(() => props.token.type === 'katex');
-const isBlockKatex = computed(() => props.token.type === 'blockKatex');
-
 const isTaskList = computed(() => {
   if (props.token.type !== 'list') return false;
   return (props.token as Tokens.List).items.some(item => item.task);
@@ -44,14 +30,14 @@ defineExpose({
 <template>
   <!-- Code Block -->
   <CodeBlockWrapper
-    v-if="isCode"
+    v-if="token.type === 'code'"
     :code="(token as Tokens.Code).text"
     :lang="(token as Tokens.Code).lang || ''"
   />
 
   <!-- Heading -->
   <component
-    v-else-if="isHeading"
+    v-else-if="token.type === 'heading'"
     :is="`h${(token as Tokens.Heading).depth}`"
     class="font-bold my-4 scroll-mt-20 text-gray-900 dark:text-gray-100"
     :class="{
@@ -64,12 +50,12 @@ defineExpose({
   </component>
 
   <!-- Paragraph -->
-  <p v-else-if="isParagraph" class="mb-4 last:mb-0 leading-relaxed text-gray-800 dark:text-gray-300">
+  <p v-else-if="token.type === 'paragraph'" class="mb-4 last:mb-0 leading-relaxed text-gray-800 dark:text-gray-300">
     <MarkdownInline :text="(token as Tokens.Paragraph).text" />
   </p>
 
   <!-- Blockquote -->
-  <blockquote v-else-if="isBlockquote" class="border-l-4 border-gray-300 dark:border-gray-600 pl-4 my-4 italic text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/30 py-1 pr-2 rounded-r">
+  <blockquote v-else-if="token.type === 'blockquote'" class="border-l-4 border-gray-300 dark:border-gray-600 pl-4 my-4 italic text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/30 py-1 pr-2 rounded-r">
     <BlockMarkdownItem
       v-for="(childToken, idx) in (token as Tokens.Blockquote).tokens"
       :key="idx"
@@ -79,7 +65,7 @@ defineExpose({
 
   <!-- List -->
   <component
-    v-else-if="isList"
+    v-else-if="token.type === 'list'"
     :is="(token as Tokens.List).ordered ? 'ol' : 'ul'"
     class="mb-4"
     :class="{
@@ -131,7 +117,7 @@ defineExpose({
   </component>
 
   <!-- Table -->
-  <div v-else-if="isTable" class="overflow-x-auto my-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+  <div v-else-if="token.type === 'table'" class="overflow-x-auto my-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
     <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
       <thead class="bg-gray-50 dark:bg-gray-800">
         <tr>
@@ -161,23 +147,23 @@ defineExpose({
   </div>
 
   <!-- HTML -->
-  <div v-else-if="isHtml" v-html="(token as Tokens.HTML).text" class="my-4"></div>
+  <div v-else-if="token.type === 'html'" v-html="(token as Tokens.HTML).text" class="my-4"></div>
 
   <!-- HR -->
-  <hr v-else-if="isHr" class="my-8 border-t-2 border-gray-100 dark:border-gray-800" />
+  <hr v-else-if="token.type === 'hr'" class="my-8 border-t-2 border-gray-100 dark:border-gray-800" />
 
   <!-- Space (Ignore to prevent excessive spacing) -->
-  <template v-else-if="isSpace"></template>
+  <template v-else-if="token.type === 'space'"></template>
 
   <!-- Checkbox (Ignore here as it's handled in the list item logic) -->
-  <template v-else-if="isCheckbox"></template>
+  <template v-else-if="(token.type as string) === 'checkbox'"></template>
 
   <!-- KaTeX -->
-  <div v-else-if="isBlockKatex" v-html="(token as any).text" class="my-4 overflow-x-auto"></div>
-  <span v-else-if="isInlineKatex" v-html="(token as any).text"></span>
+  <div v-else-if="token.type === 'blockKatex'" v-html="(token as any).text" class="my-4 overflow-x-auto"></div>
+  <span v-else-if="token.type === 'katex'" v-html="(token as any).text"></span>
 
   <!-- Text (for tight lists or other inline contexts handled as blocks) -->
-  <MarkdownInline v-else-if="isText" :text="(token as Tokens.Text).text" />
+  <MarkdownInline v-else-if="token.type === 'text'" :text="(token as Tokens.Text).text" />
 
   <!-- Fallback -->
   <div v-else class="text-red-500 text-xs p-2 border border-red-500 rounded my-2">
