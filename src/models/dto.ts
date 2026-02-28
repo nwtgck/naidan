@@ -248,6 +248,12 @@ export const SettingsSchemaDto = z.object({
   heavyContentAlertDismissed: z.boolean().optional(),
   systemPrompt: z.string().optional(),
   lmParameters: LmParametersSchemaDto.optional(),
+  experimental: z.union([
+    z.object({
+      markdownRendering: z.union([z.literal('block_markdown'), z.undefined()]),
+    }),
+    z.undefined(),
+  ]),
 });
 export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick, watch, onUnmounted } from 'vue';
+import BlockMarkdownRenderer from './block-markdown/BlockMarkdownRenderer.vue';
 import { Marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import createDOMPurify from 'dompurify';
@@ -47,6 +48,7 @@ const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./
 import { useImagePreview } from '../composables/useImagePreview';
 import { useChat } from '../composables/useChat';
 import { useLayout } from '../composables/useLayout';
+import { useSettings } from '../composables/useSettings';
 import {
   isImageGenerationPending,
   isImageGenerationProcessed,
@@ -114,6 +116,7 @@ const metadataSupportCache = new Map<string, boolean>();
 const { openPreview } = useImagePreview();
 const { imageProgressMap } = useChat();
 const { preferredEditorMode, setPreferredEditorMode } = useLayout();
+const { settings } = useSettings();
 
 function openAdvancedEditor() {
   isAdvancedEditorOpen.value = true;
@@ -1031,7 +1034,19 @@ defineExpose({
       </div>
       <div v-else>
         <!-- Content Display (Always shown if present) -->
-        <div v-if="displayContent" ref="contentRef" class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed" v-html="parsedContent" data-testid="message-content"></div>
+        <template v-if="displayContent">
+          <BlockMarkdownRenderer
+            v-if="settings.experimental?.markdownRendering === 'block_markdown'"
+            :content="displayContent"
+          />
+          <div
+            v-else
+            ref="contentRef"
+            class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed"
+            v-html="parsedContent"
+            data-testid="message-content"
+          ></div>
+        </template>
 
         <!-- AI Image Synthesis Loader (Componentized) -->
         <ImageConjuringLoader

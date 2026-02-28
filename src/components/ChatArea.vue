@@ -30,7 +30,7 @@ const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./Chat
 import {
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon
+  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap
 } from 'lucide-vue-next';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { hasChatOverrides } from '../utils/chat-settings-resolver';
@@ -38,6 +38,7 @@ import { scrollIntoViewSafe } from '../utils/dom';
 
 
 const chatStore = useChat();
+const { settings, toggleMarkdownRendering } = useSettings();
 const { state: previewState, closePreview } = useImagePreview(true);
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
@@ -568,6 +569,19 @@ watch(
             >
               <Bug class="w-4 h-4" />
               <span>Debug Mode</span>
+            </button>
+            <div class="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
+            <button
+              @click="toggleMarkdownRendering(); showMoreMenu = false"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
+              :class="settings.experimental?.markdownRendering === 'block_markdown'
+                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
+              "
+              data-testid="toggle-experimental-renderer-menu"
+            >
+              <Zap class="w-4 h-4" :class="{ 'animate-pulse': settings.experimental?.markdownRendering === 'block_markdown' }" />
+              <span>Block Renderer (Exp)</span>
             </button>
           </div>
         </Transition>
