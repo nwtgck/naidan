@@ -193,8 +193,12 @@ defineExpose({
 
   <!-- Text / Inline elements (for tight lists or other inline contexts handled as blocks) -->
   <MarkdownInline
-    v-else-if="token.type === 'text' || token.type === 'codespan' || token.type === 'del' || token.type === 'em' || token.type === 'strong' || token.type === 'link' || token.type === 'image' || token.type === 'escape'"
-    :text="(token as any).text || (token as any).raw"
+    v-else-if="token.type === 'text'"
+    :text="(token as any).text"
+  />
+  <MarkdownInline
+    v-else-if="token.type === 'codespan' || token.type === 'del' || token.type === 'em' || token.type === 'strong' || token.type === 'link' || token.type === 'image' || token.type === 'escape'"
+    :text="token.raw"
   />
 
   <!-- Fallback -->

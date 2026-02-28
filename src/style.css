@@ -42,6 +42,22 @@
   }
 }
 
+/* Inline code styling */
+.prose code {
+  @apply bg-gray-100 dark:bg-gray-800/80 text-gray-900 dark:text-gray-200 px-1.5 py-0.5 rounded-md font-mono text-[0.9em] border border-gray-200 dark:border-gray-700 mx-0.5;
+}
+
+/* Ensure code inside pre (block code) doesn't inherit inline styles if not explicitly overridden by StandardCodeBlock */
+.prose pre code {
+  @apply bg-transparent p-0 border-none mx-0 text-[1em] font-mono leading-relaxed;
+}
+
+/* Remove default backticks added by tailwind typography */
+.prose code::before,
+.prose code::after {
+  content: "" !important;
+}
+
 /* Mermaid display modes support */
 .mermaid-block {
   @apply my-4 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 relative;

@@ -77,7 +77,7 @@ defineExpose({
       class="!m-0 !p-4 !bg-transparent overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent"
     ><code
       ref="codeRef"
-      class="!bg-transparent !p-0 !border-none text-sm font-mono leading-relaxed text-gray-200"
+      class="!bg-transparent !p-0 !border-none !text-sm font-mono leading-relaxed !text-gray-200"
       v-html="highlightedCode"
     ></code></pre>
   </div>
