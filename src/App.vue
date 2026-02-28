@@ -18,6 +18,10 @@ import { useGlobalSearch } from './composables/useGlobalSearch';
 import { useRecentChats } from './composables/useRecentChats';
 import type { EndpointType } from './models/types';
 
+// PWA manager (only for hosted mode)
+const PWAManager = __BUILD_MODE_IS_HOSTED__
+  ? defineAsyncComponentAndLoadOnMounted(() => import('./components/PWAManager.vue'))
+  : undefined;
 // Lazily load components that are not visible on initial mount, but prefetch them when idle.
 const SettingsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/SettingsModal.vue'));
 const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/GlobalSearchModal.vue'));
@@ -263,6 +267,7 @@ defineExpose({
     <RecentChatsModal />
 
     <ToastContainer />
+    <PWAManager v-if="PWAManager" />
 
     <!-- Global Custom Confirm Dialog -->
     <CustomDialog

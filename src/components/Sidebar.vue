@@ -10,6 +10,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 import Logo from './Logo.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import PWAUpdateNotification from './PWAUpdateNotification.vue';
 const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted(() => import('./SidebarDebugControls.vue'));
 import type { ChatGroup, SidebarItem, ChatSidebarItem } from '../models/types';
 import {
@@ -613,6 +614,8 @@ defineExpose({
         <PanelLeft class="w-5 h-5" />
       </button>
     </div>
+
+    <PWAUpdateNotification />
 
     <!-- Actions -->
     <div class="py-2 space-y-2" :class="isSidebarOpen ? 'px-4' : 'px-1'">

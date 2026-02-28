@@ -13,6 +13,7 @@ import JSZip from 'jszip'
 import pkg from './package.json'
 import license from 'rollup-plugin-license'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // Ensure src/assets/licenses.json exists even in a fresh clone (it's gitignored)
 // This prevents Vite from failing during import analysis in tests.
@@ -182,6 +183,33 @@ export default defineConfig(({ mode }) => {
       }),
       // Hosted: Copy the previously generated Zip into the hosted output
       !isStandalone && copyZipPlugin(),
+      !isStandalone && VitePWA({
+        registerType: 'prompt',
+        includeAssets: ['favicon.svg', 'naidan-standalone.zip'],
+        manifest: {
+          name: 'Naidan',
+          short_name: 'Naidan',
+          description: 'A privacy-focused, local-first AI interface',
+          theme_color: '#030712',
+          background_color: '#030712',
+          icons: [
+            {
+              src: 'favicon.svg',
+              sizes: 'any',
+              type: 'image/svg+xml',
+              purpose: 'any maskable'
+            }
+          ]
+        },
+        workbox: {
+          // Cache all assets to ensure offline support for future extensions (onnx, gguf, zstd, etc.)
+          // We use '**/*' to avoid missing any critical files as per Murphy's Law.
+          globPatterns: ['**/*'],
+          // Exclude source maps to save user bandwidth and storage.
+          globIgnores: ['**/*.map'],
+          maximumFileSizeToCacheInBytes: 100 * 1024 * 1024,
+        }
+      }),
     ].filter((p): p is import('vite').PluginOption => !!p),
     build: {
       outDir,
