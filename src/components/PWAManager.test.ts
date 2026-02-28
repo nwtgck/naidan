@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import PWAManager from './PWAManager.vue';
 import { usePWAUpdate } from '../composables/usePWAUpdate';
-import { useToast } from '../composables/useToast';
+import { useGlobalEvents } from '../composables/useGlobalEvents';
 
 // 1. Mock the virtual module
 vi.mock('virtual:pwa-register/vue', () => ({
@@ -17,9 +17,9 @@ vi.mock('../composables/usePWAUpdate', () => ({
   usePWAUpdate: vi.fn(),
 }));
 
-// 3. Mock useToast
-vi.mock('../composables/useToast', () => ({
-  useToast: vi.fn(),
+// 3. Mock useGlobalEvents
+vi.mock('../composables/useGlobalEvents', () => ({
+  useGlobalEvents: vi.fn(),
 }));
 
 describe('PWAManager', () => {
@@ -27,7 +27,7 @@ describe('PWAManager', () => {
   const needRefresh = ref(false);
   const updateServiceWorker = vi.fn();
   const setNeedRefresh = vi.fn();
-  const addToast = vi.fn();
+  const addInfoEvent = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -44,24 +44,22 @@ describe('PWAManager', () => {
       setNeedRefresh,
     });
 
-    (useToast as any).mockReturnValue({
-      addToast,
+    (useGlobalEvents as any).mockReturnValue({
+      addInfoEvent,
     });
   });
 
-  it('adds a toast when offlineReady becomes true', async () => {
+  it('adds an info event when offlineReady becomes true', async () => {
     mount(PWAManager);
     offlineReady.value = true;
 
-    // Watchers are async, but in Vitest with Vue they trigger on nextTick or similar
-    // We wait for watcher
     await vi.waitFor(() => {
-      expect(addToast).toHaveBeenCalledWith(expect.objectContaining({
+      expect(addInfoEvent).toHaveBeenCalledWith({
+        source: 'PWA',
         message: 'App ready to work offline',
-      }));
+      });
     });
   });
-
   it('updates the PWAUpdate store when needRefresh becomes true', async () => {
     mount(PWAManager);
     needRefresh.value = true;

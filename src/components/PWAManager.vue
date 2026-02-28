@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { watch } from 'vue';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
-import { useToast } from '../composables/useToast';
 import { usePWAUpdate } from '../composables/usePWAUpdate';
+import { useGlobalEvents } from '../composables/useGlobalEvents';
 
 const {
   offlineReady,
@@ -10,14 +10,14 @@ const {
   updateServiceWorker,
 } = useRegisterSW();
 
-const { addToast } = useToast();
 const { setNeedRefresh } = usePWAUpdate();
+const { addInfoEvent } = useGlobalEvents();
 
 watch(offlineReady, (ready) => {
   if (ready) {
-    addToast({
+    addInfoEvent({
+      source: 'PWA',
       message: 'App ready to work offline',
-      duration: 5000,
     });
   }
 });
