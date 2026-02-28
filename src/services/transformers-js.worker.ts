@@ -13,15 +13,9 @@ import {
 import type { ChatMessage, LmParameters } from '../models/types';
 import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker } from './transformers-js.types';
 import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '../utils/gpt-oss-harmony';
+import { urlToPath, writeToOpfs } from './transformers-js.utils';
 
 type ModelOutput = Record<string, unknown>;
-
-/**
- * Interface to extend FileSystemFileHandle with the non-standard createWritable method.
- */
-interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
-  createWritable(): Promise<FileSystemWritableFileStream>;
-}
 
 /**
  * Internal interface for properties found on Transformers.js model instances
@@ -137,70 +131,6 @@ if (env.backends.onnx.wasm) {
 // Reduce log verbosity for performance
 env.backends.onnx.logLevel = 'error';
 
-function urlToPath(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    const pathParts = parsed.pathname.split('/').filter(p => !!p);
-
-    const isLocalOrigin = parsed.origin === self.location.origin ||
-                          parsed.hostname === 'localhost' ||
-                          parsed.hostname === '127.0.0.1';
-
-    if (isLocalOrigin) {
-      const first = pathParts[0];
-      if (first === 'user' || first === 'local' || first === 'models') {
-        let startIndex = 0;
-        switch (first) {
-        case 'models':
-          startIndex++;
-          break;
-        case 'user':
-        case 'local':
-          break;
-        default: {
-          const _ex: never = first;
-          throw new Error(`Unhandled path part: ${_ex}`);
-        }
-        }        if (pathParts[startIndex] === 'user' || pathParts[startIndex] === 'local') startIndex++;
-
-        const cleanParts = pathParts.slice(startIndex);
-        const resolved = `models/user/${cleanParts.join('/')}`;
-        console.log(`[urlToPath] Local matched: ${url} -> ${resolved}`);
-        return resolved;
-      }
-      console.log(`[urlToPath] Local ignored: ${url}`);
-      return null;
-    }
-
-    const resolved = `models/${parsed.hostname}/${pathParts.join('/')}`;
-    console.log(`[urlToPath] Remote matched: ${url} -> ${resolved}`);
-    return resolved;
-  } catch {
-    const parts = url.split('/').filter(p => !!p);
-    const first = parts[0];
-    if (first === 'user' || first === 'local' || first === 'models') {
-      let startIndex = 0;
-      switch (first) {
-      case 'models':
-        startIndex++;
-        break;
-      case 'user':
-      case 'local':
-        break;
-      default: {
-        const _ex: never = first;
-        throw new Error(`Unhandled path part: ${_ex}`);
-      }
-      }      if (parts[startIndex] === 'user' || parts[startIndex] === 'local') startIndex++;
-      const resolved = `models/user/${parts.slice(startIndex).join('/')}`;
-      console.log(`[urlToPath] Relative matched: ${url} -> ${resolved}`);
-      return resolved;
-    }
-    console.log(`[urlToPath] Not a model path: ${url}`);
-    return null;
-  }
-}
-
 /**
  * Custom cache implementation that uses OPFS inside Worker.
  */
@@ -209,7 +139,7 @@ const opfsCache = {
     const urlString = typeof request === 'string' ? request : request.url;
     if (typeof request !== 'string' && request.method && request.method !== 'GET') return undefined;
 
-    const path = urlToPath(urlString);
+    const path = urlToPath({ url: urlString });
     if (!path) return undefined;
 
     const pathParts = path.split('/');
@@ -252,7 +182,7 @@ const opfsCache = {
 
   async put(request: string | Request, response: Response): Promise<void> {
     const urlString = typeof request === 'string' ? request : request.url;
-    const path = urlToPath(urlString);
+    const path = urlToPath({ url: urlString });
     if (!path) return;
 
     if (response.status !== 200) {
@@ -267,33 +197,10 @@ const opfsCache = {
       throw new Error(msg);
     }
 
-    const pathParts = path.split('/');
-    const fileName = pathParts.pop()!;
-
     try {
-      const root = await navigator.storage.getDirectory();
-      let currentDir = root;
-      for (const part of pathParts) {
-        if (!part) continue;
-        currentDir = await currentDir.getDirectoryHandle(part, { create: true });
-      }
-
-      const fileHandle = await currentDir.getFileHandle(fileName, { create: true });
-      if ('createWritable' in fileHandle) {
-        console.log(`[opfsCache] WRITING: ${path}...`);
-        const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
-        if (response.body) {
-          await response.body.pipeTo(writable);
-        } else {
-          const buffer = await response.arrayBuffer();
-          await writable.write(buffer);
-          await writable.close();
-        }
-
-        // Create completion marker after successful write/close
-        await currentDir.getFileHandle(`.${fileName}.complete`, { create: true });
-        console.log(`[opfsCache] COMPLETED: ${path}`);
-      }
+      console.log(`[opfsCache] WRITING: ${path}...`);
+      await writeToOpfs({ path, response });
+      console.log(`[opfsCache] COMPLETED: ${path}`);
     } catch (err) {
       console.error(`[opfsCache] FAILED TO SAVE: ${path}:`, err);
       throw err;
@@ -341,6 +248,77 @@ const transformersJsWorker: ITransformersJsWorker = {
     });
     await tempModel.dispose();
     console.log('[transformersJsWorker] Download complete and model disposed.');
+  },
+
+  /**
+   * Directly downloads model files to OPFS via streaming fetch, bypassing
+   * transformers.js's internal loader to prevent Out-of-Memory (OOM) errors
+   * for large assets. This is called after the scanner has identified
+   * all necessary URLs.
+   */
+  async prefetchUrls(urls: string[], progressCallback: (x: ProgressInfo) => void): Promise<void> {
+    console.log(`[transformersJsWorker] Starting prefetch of ${urls.length} URLs.`);
+
+    for (const url of urls) {
+      const path = urlToPath({ url });
+      if (!path) continue;
+
+      // Check if already in cache and complete
+      try {
+        const pathParts = path.split('/');
+        const fileName = pathParts.pop()!;
+        const root = await navigator.storage.getDirectory();
+        let currentDir = root;
+        for (const part of pathParts) {
+          if (!part) continue;
+          currentDir = await currentDir.getDirectoryHandle(part, { create: false });
+        }
+        await currentDir.getFileHandle(`.${fileName}.complete`, { create: false });
+        console.debug(`[transformersJsWorker] Already cached: ${path}`);
+        continue;
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== 'NotFoundError') {
+          console.warn(`[transformersJsWorker] Unexpected error checking cache for ${path}:`, err);
+        }
+        // Not cached or incomplete, proceed to fetch
+      }
+
+      console.log(`[transformersJsWorker] Prefetching: ${url}`);
+      try {
+        const response = await originalFetch(url);
+        if (!response.ok) {
+          console.warn(`[transformersJsWorker] Failed to fetch ${url}: ${response.statusText}`);
+          continue;
+        }
+
+        const contentLength = response.headers.get('content-length');
+        const total = contentLength ? parseInt(contentLength, 10) : undefined;
+        let loaded = 0;
+
+        // Create a custom stream to track progress
+        const transformStream = new TransformStream({
+          transform(chunk, controller) {
+            loaded += chunk.length;
+            progressCallback({
+              status: 'progress',
+              file: url.split('/').pop(),
+              loaded,
+              total
+            });
+            controller.enqueue(chunk);
+          }
+        });
+
+        const progressResponse = new Response(response.body?.pipeThrough(transformStream), {
+          headers: response.headers
+        });
+
+        await writeToOpfs({ path, response: progressResponse });
+        console.log(`[transformersJsWorker] Prefetched and saved: ${path}`);
+      } catch (err) {
+        console.error(`[transformersJsWorker] Prefetch failed for ${url}:`, err);
+      }
+    }
   },
 
   async loadModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult> {

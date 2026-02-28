@@ -1,7 +1,7 @@
 import * as Comlink from 'comlink';
 import type { ChatMessage, LmParameters } from '../models/types';
-import { createTransformersWorker } from './transformers-js-loader';
-import type { ITransformersJsWorker, ProgressInfo } from './transformers-js.types';
+import { createTransformersWorker, createTransformersScannerWorker } from './transformers-js-loader';
+import type { ITransformersJsWorker, ITransformersJsScannerWorker, ProgressInfo, ScanTask } from './transformers-js.types';
 
 /**
  * Interface for FileSystemFileHandle with createWritable() method.
@@ -178,6 +178,52 @@ function isFatalError(msg: string): boolean {
          m.includes('protobuf parsing failed') ||
          m.includes('allocation failed') ||
          m.includes('out of memory');
+}
+
+/**
+ * Common pre-download logic using the scanner and prefetcher.
+ */
+async function preDownloadModel({ modelId, remote, progress_callback }: {
+  modelId: string,
+  remote: Comlink.Remote<ITransformersJsWorker>,
+  progress_callback: (info: ProgressInfo) => void
+}) {
+  const sw = createTransformersScannerWorker();
+  if (!sw) return;
+
+  const scannerRemote = Comlink.wrap<ITransformersJsScannerWorker>(sw);
+
+  try {
+    let cleanModelId = modelId;
+    if (cleanModelId.startsWith('hf.co/')) cleanModelId = cleanModelId.substring(6);
+    else if (cleanModelId.startsWith('https://huggingface.co/')) cleanModelId = cleanModelId.substring(23);
+
+    const isLocal = cleanModelId.startsWith('user/');
+    if (isLocal) return;
+
+    // 1. Scan for URLs
+    const tasks: ScanTask[] = [
+      { type: 'tokenizer', modelId: cleanModelId, options: {} },
+      { type: 'causal-lm', modelId: cleanModelId, options: { dtype: 'q4f16', device: 'wasm' } }
+    ];
+    console.log(`[transformersJsService] Scanning model for URLs: ${modelId}`);
+    const { files } = await scannerRemote.scanModel({ tasks });
+
+    // 2. Prefetch URLs via main worker (which has OPFS access and streaming)
+    if (files.length > 0) {
+      const urls = files.map(f => f.url);
+      console.log(`[transformersJsService] Scanned URLs:`, urls);
+      await remote.prefetchUrls(urls, progress_callback);
+    }
+  } catch (err) {
+    console.warn(`[transformersJsService] Pre-download scan/prefetch failed:`, err);
+    // We don't throw here to avoid a complete failure if just the scanner/prefetcher has an issue,
+    // as the original loadModel/downloadModel will still attempt to run normally.
+  } finally {
+    // Release and terminate scanner worker to reclaim memory
+    scannerRemote[Comlink.releaseProxy]();
+    sw.terminate();
+  }
 }
 
 export const transformersJsService = {
@@ -487,7 +533,8 @@ export const transformersJsService = {
     }
 
     try {
-      if (!remote) throw new Error('Worker not initialized');      // 1. Check cache FIRST before changing status to avoid UI flicker
+      if (!remote) throw new Error('Worker not initialized');
+      // 1. Check cache FIRST before changing status to avoid UI flicker
       const cached = await this.listCachedModels();
       const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
       const isLocal = modelId.startsWith('user/');
@@ -517,6 +564,9 @@ export const transformersJsService = {
           lastProgressNotify = now;
         }
       });
+
+      // 3. Pre-download using scanner/prefetcher to avoid OOM in transformers.js
+      await preDownloadModel({ modelId, remote, progress_callback });
 
       const result = await remote.loadModel(modelId, progress_callback);
       currentDevice = result.device;
@@ -585,6 +635,10 @@ export const transformersJsService = {
         }
       });
 
+      // 1. Pre-download using scanner/prefetcher
+      await preDownloadModel({ modelId, remote, progress_callback });
+
+      // 2. Finalize with standard downloadModel (to ensure tokenizer and any missed files are handled)
       await remote.downloadModel(modelId, progress_callback);
 
       loadingStatus = 'idle';

@@ -8,3 +8,7 @@
 export function createTransformersWorker(): Worker | null {
   return null;
 }
+
+export function createTransformersScannerWorker(): Worker | null {
+  return null;
+}
