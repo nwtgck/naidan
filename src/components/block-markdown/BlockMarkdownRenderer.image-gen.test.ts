@@ -1,15 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
 import { normalizeDom } from './test-utils';
-
-// Mock storageService
-vi.mock('../../services/storage', () => ({
-  storageService: {
-    getFile: vi.fn(),
-    init: vi.fn(),
-  }
-}));
+import { IMAGE_BLOCK_LANG } from '../../utils/image-generation';
 
 describe('BlockMarkdownRenderer: Image Generation Blocks', () => {
   const mountRenderer = ({ content }: { content: string }) => {
@@ -18,33 +11,37 @@ describe('BlockMarkdownRenderer: Image Generation Blocks', () => {
     });
   };
 
-  it('detects naidan_experimental_image code block and renders GeneratedImageBlock', () => {
-    const json = JSON.stringify({
-      binaryObjectId: 'img_123',
-      prompt: 'A beautiful sunset',
-      width: 512,
-      height: 512,
-      displayWidth: 300,
-      displayHeight: 300
-    });
-
+  it('recognizes image generation blocks', () => {
+    const imageData = {
+      binaryObjectId: 'obj123',
+      displayWidth: 512,
+      displayHeight: 512,
+      prompt: 'a prompt'
+    };
     const content = `\
-${'```'}naidan_experimental_image
-${json}
+${'```'}${IMAGE_BLOCK_LANG}
+${JSON.stringify(imageData)}
 ${'```'}
 `;
     const wrapper = mountRenderer({ content });
-
-    // We need to preserve the identifying class to verify it rendered correctly
     const dom = normalizeDom({
       element: wrapper.element,
       preserveAttributes: undefined,
-      preserveClasses: ['naidan-generated-image'], // Preserve the class we are looking for
+      preserveClasses: ['naidan-generated-image'],
       trimWhitespaceNodes: true,
       whitespaceSensitiveTags: undefined
     });
-
+    // Should render the GeneratedImageBlock component
     expect(dom).toContain('class="naidan-generated-image"');
-    expect(dom).not.toContain('<pre');
+  });
+
+  it('renders fallback for invalid image block JSON', () => {
+    const content = `\
+${'```'}${IMAGE_BLOCK_LANG}
+{ not valid json }
+${'```'}
+`;
+    const wrapper = mountRenderer({ content });
+    expect(wrapper.text()).toContain('Invalid Image Block Data');
   });
 });

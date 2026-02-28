@@ -68,20 +68,3 @@ export function normalizeDom({
 
   return (result as Element)?.outerHTML || '';
 }
-
-/**
- * Removes common leading indentation from a multi-line string.
- * Useful for writing readable indented Markdown in tests.
- */
-export function dedent({ text }: { text: string }): string {
-  const lines = text.split('\n');
-  if (lines.length > 0 && lines[0]?.trim() === '') lines.shift();
-  if (lines.length === 0) return '';
-
-  const firstLine = lines[0];
-  const match = firstLine ? firstLine.match(/^\s*/) : null;
-  const indent = match ? match[0].length : 0;
-  return lines
-    .map(line => line.startsWith(' '.repeat(indent)) ? line.slice(indent) : line.trimStart())
-    .join('\n');
-}
