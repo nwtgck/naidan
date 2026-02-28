@@ -347,4 +347,19 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     expect(mockOpenSearch).toHaveBeenCalledWith({ groupIds: [mockGroup.id] });
   });
+
+  it('updates group name from model ID when the button is clicked', async () => {
+    mockGroup.modelId = 'provider/my-model:latest';
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await flushPromises();
+
+    const setNameBtn = wrapper.find('[data-testid="group-setting-set-name-from-model"]');
+    expect(setNameBtn.exists()).toBe(true);
+
+    await setNameBtn.trigger('click');
+
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+      name: 'my-model:latest'
+    }));
+  });
 });
