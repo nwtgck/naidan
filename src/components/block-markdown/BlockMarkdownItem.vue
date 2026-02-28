@@ -152,18 +152,36 @@ defineExpose({
   <!-- HR -->
   <hr v-else-if="token.type === 'hr'" class="my-8 border-t-2 border-gray-100 dark:border-gray-800" />
 
+  <!-- BR -->
+  <br v-else-if="token.type === 'br'" />
+
   <!-- Space (Ignore to prevent excessive spacing) -->
   <template v-else-if="token.type === 'space'"></template>
 
+  <!-- Def (Reference definitions - ignore as they don't produce output) -->
+  <template v-else-if="token.type === 'def'"></template>
+
   <!-- Checkbox (Ignore here as it's handled in the list item logic) -->
   <template v-else-if="(token.type as string) === 'checkbox'"></template>
+
+  <!-- List Item (Fallback for nested tokens) -->
+  <template v-else-if="token.type === 'list_item'">
+    <BlockMarkdownItem
+      v-for="(childToken, idx) in (token as Tokens.ListItem).tokens"
+      :key="idx"
+      :token="childToken"
+    />
+  </template>
 
   <!-- KaTeX -->
   <div v-else-if="token.type === 'blockKatex'" v-html="(token as any).text" class="my-4 overflow-x-auto"></div>
   <span v-else-if="token.type === 'katex'" v-html="(token as any).text"></span>
 
-  <!-- Text (for tight lists or other inline contexts handled as blocks) -->
-  <MarkdownInline v-else-if="token.type === 'text'" :text="(token as Tokens.Text).text" />
+  <!-- Text / Inline elements (for tight lists or other inline contexts handled as blocks) -->
+  <MarkdownInline
+    v-else-if="token.type === 'text' || token.type === 'codespan' || token.type === 'del' || token.type === 'em' || token.type === 'strong' || token.type === 'link' || token.type === 'image' || token.type === 'escape'"
+    :text="(token as any).text || (token as any).raw"
+  />
 
   <!-- Fallback -->
   <div v-else class="text-red-500 text-xs p-2 border border-red-500 rounded my-2">

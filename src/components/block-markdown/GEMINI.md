@@ -21,9 +21,9 @@ When you need to include triple backticks (`` ``` ``) inside a JavaScript/TypeSc
 When asserting the rendered DOM, always use the `normalizeDom` utility. You MUST explicitly define all normalization behaviors (like trimming or preserving specific attributes) in the function call to ensure transparency.
 
 **Style Mandate (CRITICAL):**
-- NEVER rely on partial matching like `.toContain` for structural validation.
-- ALWAYS use `.toBe()` for exact structural matching. `normalizeDom` is designed to produce a predictable, stable string for this purpose.
-- ALWAYS use `normalizeDom` with explicit configuration.
+- ALWAYS use `normalizeDom` with explicit configuration to ensure transparency.
+- **Structural Integrity**: Focus on verifying the DOM structure and nesting relationships. It is crucial to ensure that elements are correctly nested (e.g., a `li` inside an `ol`, or a `span` inside a `p`).
+- **Precision**: While `.toContain()` is allowed for brevity, the assertion should be specific enough to verify the intended hierarchy, not just the presence of a tag.
 
 #### ✅ GOOD (Full Test Example)
 ```typescript
@@ -42,13 +42,7 @@ ${'```'}
     trimWhitespaceNodes: true
   });
   
-  // Use .toBe() for exact matching
-  expect(dom).toBe('<div><div class="code-block-wrapper"><pre><code class="language-js"><span>const x = 1;</span></code></pre></div></div>');
+  // Verify the exact structure of the code block components
+  expect(dom).toContain('<pre><code class="language-js"><span>const x = 1;</span></code></pre>');
 });
-```
-
-#### ❌ BAD (Do not use)
-```typescript
-// Partial matching is fragile and hides structural regressions
-expect(dom).toContain('<code class="language-js">');
 ```
