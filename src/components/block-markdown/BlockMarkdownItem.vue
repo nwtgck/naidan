@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { Token, Tokens } from 'marked';
+import { marked, sanitizeHtml } from './useMarkdown'; // sanitizeHtml を追加
 import CodeBlockWrapper from './CodeBlockWrapper.vue';
 import MarkdownInline from './MarkdownInline.vue';
 import BlockMarkdownItem from './BlockMarkdownItem.vue';
@@ -193,8 +194,8 @@ defineExpose({
   </template>
 
   <!-- KaTeX -->
-  <div v-else-if="token.type === 'blockKatex'" v-html="(token as any).text" class="my-4 overflow-x-auto"></div>
-  <span v-else-if="token.type === 'katex'" v-html="(token as any).text"></span>
+  <div v-else-if="token.type === 'blockKatex'" v-html="sanitizeHtml({ html: marked.parse(token.raw) as string })" class="my-4 overflow-x-auto"></div>
+  <span v-else-if="token.type === 'katex' || token.type === 'inlineKatex'" v-html="sanitizeHtml({ html: marked.parseInline(token.raw) as string })"></span>
 
   <!-- Text / Inline elements (for tight lists or other inline contexts handled as blocks) -->
   <MarkdownInline

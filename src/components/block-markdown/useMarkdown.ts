@@ -80,6 +80,7 @@ marked.use({
 marked.use(markedKatex({
   throwOnError: false,
   output: 'html',
+  nonStandard: true, // Allow $$...$$ to be treated as display math even if not in a block context
 }));
 
 export const sanitizeHtml = ({ html }: { html: string }): string => {
