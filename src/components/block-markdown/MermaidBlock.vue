@@ -131,12 +131,11 @@ defineExpose({
 
       <button
         @click="copyCode"
-        class="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+        class="p-1.5 rounded-md transition-all text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+        :title="copied ? 'Copied' : 'Copy Source'"
       >
-        <Check v-if="copied" class="w-3.5 h-3.5 text-green-500" />
-        <Copy v-else class="w-3.5 h-3.5" />
-        <span v-if="copied" class="text-green-500">Copied</span>
-        <span v-else>Copy Source</span>
+        <Check v-if="copied" class="w-4 h-4 text-green-500" />
+        <Copy v-else class="w-4 h-4" />
       </button>
     </div>
 

@@ -53,7 +53,36 @@ ${'```'}
       await copyButton.trigger('click');
       // Verify clipboard content (no trailing newline in the source string)
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('console.log(1);');
-      expect(wrapper.text()).toContain('Copied');
+
+      // Verify the button title changes to 'Copied'
+      expect(copyButton.attributes('title')).toBe('Copied');
+    });
+
+    it('toggles line wrap when wrap button is clicked', async () => {
+      const content = `\
+${'```'}js
+console.log("this is a very long line that should potentially wrap if the setting is enabled");
+${'```'}
+`;
+      const wrapper = mountRenderer({ content });
+      const wrapButton = wrapper.find('button[title="Toggle line wrap"]');
+      expect(wrapButton.exists()).toBe(true);
+
+      const pre = wrapper.find('pre');
+
+      // Initially should be whitespace-pre (default)
+      expect(pre.classes()).toContain('whitespace-pre');
+      expect(pre.classes()).not.toContain('whitespace-pre-wrap');
+
+      // Click to enable wrap
+      await wrapButton.trigger('click');
+      expect(pre.classes()).toContain('whitespace-pre-wrap');
+      expect(pre.classes()).not.toContain('whitespace-pre');
+
+      // Click to disable wrap
+      await wrapButton.trigger('click');
+      expect(pre.classes()).toContain('whitespace-pre');
+      expect(pre.classes()).not.toContain('whitespace-pre-wrap');
     });
   });
 
@@ -84,11 +113,11 @@ graph TD; A-->B;
 ${'```'}
 `;
       const wrapper = mountRenderer({ content });
-      // Find the "Copy Source" button using the title or text
-      const copyButton = wrapper.findAll('button').find(b => b.text().includes('Copy Source'));
-      expect(copyButton?.exists()).toBe(true);
+      // Find the "Copy Source" button using the title
+      const copyButton = wrapper.find('button[title="Copy Source"]');
+      expect(copyButton.exists()).toBe(true);
 
-      await copyButton?.trigger('click');
+      await copyButton.trigger('click');
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('graph TD; A-->B;');
     });
   });
