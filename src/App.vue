@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, defineAsyncComponent } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useChat } from './composables/useChat';
@@ -8,7 +8,13 @@ import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
 import { useOPFSExplorer } from './composables/useOPFSExplorer';
 import { useTheme } from './composables/useTheme';
+import { usePrint } from './composables/usePrint';
 import Sidebar from './components/Sidebar.vue';
+
+// Async components for print mode to keep initial bundle small.
+const PrintView = defineAsyncComponent(() => import('./components/PrintView.vue'));
+const ChatPrintContent = defineAsyncComponent(() => import('./components/ChatPrintContent.vue'));
+
 // IMPORTANT: OnboardingModal is imported synchronously to ensure a smooth first-time user experience.
 import OnboardingModal from './components/OnboardingModal.vue';
 import ToastContainer from './components/ToastContainer.vue';
@@ -34,6 +40,7 @@ const chatStore = useChat();
 const settingsStore = useSettings();
 const { addRecentChat, toggleRecent } = useRecentChats();
 const { isSidebarOpen, isDebugOpen } = useLayout();
+const { activePrintMode } = usePrint();
 const router = useRouter();
 const route = useRoute();
 
@@ -300,6 +307,11 @@ defineExpose({
 
     <OPFSExplorer v-model="isOPFSOpen" />
   </div>
+
+  <!-- Print-only Layer: Conditionally rendered only when activePrintMode is set. -->
+  <PrintView v-if="activePrintMode !== undefined">
+    <ChatPrintContent v-if="activePrintMode === 'chat'" />
+  </PrintView>
 </template>
 
 <style scoped>
@@ -344,4 +356,3 @@ defineExpose({
   border-top-width: 0;
 }
 </style>
-

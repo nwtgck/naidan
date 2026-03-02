@@ -30,8 +30,10 @@ const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./Chat
 import {
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap
+  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap,
+  Printer
 } from 'lucide-vue-next';
+import { printElement } from '../utils/print';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { hasChatOverrides } from '../utils/chat-settings-resolver';
 import { scrollIntoViewSafe } from '../utils/dom';
@@ -166,6 +168,15 @@ function exportChat() {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(link.href);
+}
+
+function handlePrint() {
+  if (currentChat.value) {
+    printElement({
+      title: currentChat.value.title || 'Chat',
+      mode: 'chat'
+    });
+  }
 }
 
 function scrollToBottom(force = true) {
@@ -540,6 +551,15 @@ watch(
             class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-top-right"
             @mouseleave="showMoreMenu = false"
           >
+            <button
+              @click="handlePrint(); showMoreMenu = false"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-green-600 dark:hover:text-green-400"
+              title="Open print dialog (can be used to Save as PDF)"
+              data-testid="print-chat-button"
+            >
+              <Printer class="w-4 h-4" />
+              <span>Print</span>
+            </button>
             <button
               @click="() => { if(currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); showMoreMenu = false; }"
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
