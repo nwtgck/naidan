@@ -122,7 +122,7 @@ export class LocalStorageProvider extends IStorageProvider {
     try {
       const meta = ChatMetaSchemaDto.parse(JSON.parse(rawMeta));
       const content = ChatContentSchemaDto.parse(JSON.parse(rawContent));
-      const chat = chatToDomain({ ...meta, ...content });
+      const chat = chatToDomain({ ...meta, ...content, messages: undefined });
 
       // Resolve groupId from hierarchy
       const hierarchy = await this.loadHierarchy();

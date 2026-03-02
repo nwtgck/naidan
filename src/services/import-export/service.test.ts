@@ -50,11 +50,16 @@ describe('ImportExportService', () => {
   });
 
   const createValidSettingsDto = (overrides: Partial<SettingsDto> = {}): SettingsDto => ({
-    endpoint: { type: 'ollama', url: 'http://localhost:11434' },
+    endpoint: { type: 'ollama', url: 'http://localhost:11434', httpHeaders: undefined },
     storageType: 'local',
     autoTitleEnabled: true,
     providerProfiles: [],
     experimental: undefined,
+    defaultModelId: undefined,
+    titleModelId: undefined,
+    heavyContentAlertDismissed: undefined,
+    systemPrompt: undefined,
+    lmParameters: undefined,
     ...overrides
   });
 
@@ -64,6 +69,15 @@ describe('ImportExportService', () => {
     updatedAt: 1000,
     createdAt: 1000,
     debugEnabled: false,
+    currentLeafId: undefined,
+    endpoint: undefined,
+    modelId: undefined,
+    autoTitleEnabled: undefined,
+    titleModelId: undefined,
+    originChatId: undefined,
+    originMessageId: undefined,
+    systemPrompt: undefined,
+    lmParameters: undefined,
     ...overrides
   });
 
@@ -385,12 +399,23 @@ describe('ImportExportService', () => {
       const zip = new JSZip();
       zip.file('export-manifest.json', '{}');
 
-      const groupDto: ChatGroupDto = { id: UUID_G1, name: 'General', updatedAt: 1000, isCollapsed: false };
+      const groupDto: ChatGroupDto = {
+        id: UUID_G1,
+        name: 'General',
+        updatedAt: 1000,
+        isCollapsed: false,
+        endpoint: undefined,
+        modelId: undefined,
+        autoTitleEnabled: undefined,
+        titleModelId: undefined,
+        systemPrompt: undefined,
+        lmParameters: undefined,
+      };
       zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify(groupDto));
 
       const chatMeta = createValidChatMetaDto({ id: UUID_C1, title: 'Old Title' });
       zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
-      zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
+      zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] }, currentLeafId: undefined }));
 
       await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
         data: { mode: 'append', chatTitlePrefix: '[Chat] ', chatGroupNamePrefix: '[Group] ' },
@@ -454,7 +479,14 @@ describe('ImportExportService', () => {
       const zip = new JSZip();
       zip.file('export-manifest.json', '{}');
       zip.file('settings.json', JSON.stringify(createValidSettingsDto({
-        lmParameters: { temperature: 0.1, stop: ['ZIP'] }
+        lmParameters: {
+          temperature: 0.1,
+          stop: ['ZIP'],
+          topP: undefined,
+          maxCompletionTokens: undefined,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+        }
       })));
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });

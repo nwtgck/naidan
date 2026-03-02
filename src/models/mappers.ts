@@ -14,6 +14,7 @@ import type {
   HierarchyDto,
   ChatContentDto,
   BinaryObjectDto,
+  LmParametersDto,
 } from './dto';
 import type {
   Role,
@@ -36,6 +37,7 @@ import type {
   HierarchyNode,
   HierarchyChatGroupNode,
   BinaryObject,
+  LmParameters,
 } from './types';
 
 export const roleToDomain = (dto: RoleDto): Role => {
@@ -193,8 +195,22 @@ export const chatGroupToDto = (domain: ChatGroup): ChatGroupDto => ({
   autoTitleEnabled: domain.autoTitleEnabled,
   titleModelId: domain.titleModelId,
   systemPrompt: domain.systemPrompt,
-  lmParameters: domain.lmParameters,
+  lmParameters: lmParametersToDto(domain.lmParameters),
 });
+
+export const lmParametersToDto = (
+  domain: LmParameters | undefined
+): LmParametersDto | undefined => {
+  if (!domain) return undefined;
+  return {
+    temperature: domain.temperature,
+    topP: domain.topP,
+    maxCompletionTokens: domain.maxCompletionTokens,
+    presencePenalty: domain.presencePenalty,
+    frequencyPenalty: domain.frequencyPenalty,
+    stop: domain.stop,
+  };
+};
 
 export const endpointToDto = (endpoint: Endpoint): EndpointDto => {
   const type = endpoint.type;
@@ -414,7 +430,8 @@ export const chatMetaToDto = (domain: ChatMeta): ChatMetaDto => ({
   originChatId: domain.originChatId,
   originMessageId: domain.originMessageId,
   systemPrompt: domain.systemPrompt,
-  lmParameters: domain.lmParameters,
+  lmParameters: lmParametersToDto(domain.lmParameters),
+  currentLeafId: domain.currentLeafId,
 });
 
 export const chatContentToDto = (domain: ChatContent): ChatContentDto => ({
@@ -453,7 +470,8 @@ export const chatToDto = (domain: Chat): ChatDto => {
     originChatId,
     originMessageId,
     systemPrompt,
-    lmParameters,
+    lmParameters: lmParametersToDto(lmParameters),
+    messages: undefined,
   };
 };
 
@@ -584,12 +602,14 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
   } = domain;
 
   return {
-    ...rest,
     endpoint: endpointToDto({
       type: endpointType,
       url: endpointUrl,
       httpHeaders: endpointHttpHeaders,
     }),
+    defaultModelId: rest.defaultModelId,
+    titleModelId: rest.titleModelId,
+    autoTitleEnabled: rest.autoTitleEnabled,
     storageType: storageType as StorageTypeDto,
     providerProfiles: (providerProfiles || []).map(p => {
       const {
@@ -598,14 +618,22 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
       } = p;
 
       return {
-        ...pRest,
+        id: pRest.id,
+        name: pRest.name,
         endpoint: endpointToDto({
           type: pType,
           url: pUrl,
           httpHeaders: pHeaders,
         }),
+        defaultModelId: pRest.defaultModelId,
+        titleModelId: pRest.titleModelId,
+        systemPrompt: pRest.systemPrompt,
+        lmParameters: lmParametersToDto(pRest.lmParameters),
       };
     }),
+    heavyContentAlertDismissed: rest.heavyContentAlertDismissed,
+    systemPrompt: rest.systemPrompt,
+    lmParameters: lmParametersToDto(rest.lmParameters),
     experimental: experimental ? {
       markdownRendering: experimental.markdownRendering ?? undefined
     } : undefined,
