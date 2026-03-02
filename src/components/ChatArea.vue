@@ -369,8 +369,8 @@ watch(
     </div>
 
     <!-- Header -->
-    <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-2 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
-      <div class="flex items-center gap-3 overflow-hidden min-h-[38px]">
+    <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-1.5 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
+      <div class="flex items-center gap-3 overflow-hidden min-h-[34px]">
         <div class="flex flex-col overflow-hidden">
           <template v-if="currentChat">
             <div class="flex items-center gap-2">
@@ -383,7 +383,7 @@ watch(
               >
                 <ArrowUp class="w-4 h-4" />
               </button>
-              <h2 class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
+              <h2 class="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button
                 v-if="activeMessages.length > 0"
                 @click="handleTitleAction"
@@ -418,7 +418,7 @@ watch(
               data-testid="model-trigger"
             >
               <div
-                class="px-2 py-0.5 rounded-full text-[10px] font-bold transition-all flex items-center gap-1.5"
+                class="px-2 py-0.5 rounded-full text-[9px] font-bold transition-all flex items-center gap-1.5"
                 :class="showChatSettings
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200'"
@@ -430,7 +430,7 @@ watch(
               </div>
               <div
                 v-if="currentChat && hasChatOverrides({ chat: currentChat })"
-                class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"
+                class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"
                 title="Custom overrides active"
                 data-testid="custom-overrides-indicator"
               ></div>
@@ -442,18 +442,18 @@ watch(
         </div>
       </div>
 
-      <div class="flex items-center gap-1 relative">
-        <div v-if="currentChat" class="flex items-center gap-1">
+      <div class="flex items-center gap-0.5 relative">
+        <div v-if="currentChat" class="flex items-center gap-0.5">
           <!-- Move to Group Dropdown -->
           <div class="relative">
             <button
               @click="showMoveMenu = !showMoveMenu"
-              class="p-2 rounded-xl transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
+              class="p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
               :class="showMoveMenu ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'"
               title="Move to Group"
               data-testid="move-to-group-button"
             >
-              <FolderInput class="w-5 h-5" />
+              <FolderInput class="w-4.5 h-4.5" />
             </button>
 
             <Transition name="dropdown">
@@ -499,37 +499,37 @@ watch(
           <button
             v-if="activeMessages.length > 0"
             @click="handleForkLastMessage"
-            class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+            class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             title="Fork Chat from last message"
             data-testid="fork-chat-button"
           >
-            <GitFork class="w-5 h-5" />
+            <GitFork class="w-4.5 h-4.5" />
           </button>
 
           <button
             @click="showHistoryModal = true"
-            class="p-2 rounded-xl transition-all text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 group/hammer"
+            class="p-1.5 rounded-lg transition-all text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 group/hammer"
             title="Super Edit (Full History Manipulation)"
             data-testid="super-edit-button"
           >
-            <Hammer class="w-5 h-5 group-hover/hammer:-rotate-12 transition-all" />
+            <Hammer class="w-4.5 h-4.5 group-hover/hammer:-rotate-12 transition-all" />
           </button>
 
           <button
             @click="exportChat"
-            class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+            class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             title="Export Chat"
           >
-            <Download class="w-5 h-5" />
+            <Download class="w-4.5 h-4.5" />
           </button>
 
           <button
             @click="showMoreMenu = !showMoreMenu"
-            class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             title="More Actions"
             data-testid="more-actions-button"
           >
-            <MoreVertical class="w-5 h-5" />
+            <MoreVertical class="w-4.5 h-4.5" />
           </button>
         </div>
 
