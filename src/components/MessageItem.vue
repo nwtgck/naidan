@@ -28,7 +28,7 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject, EndpointType } from '../models/types';
-import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit } from 'lucide-vue-next';
+import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit, MoreHorizontal } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
@@ -40,6 +40,7 @@ import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import MessageThinking from './MessageThinking.vue';
 import MessageActions from './MessageActions.vue';
+import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '../services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
@@ -84,6 +85,7 @@ const emit = defineEmits<{
 
 const isEditing = ref(false);
 const isAdvancedEditorOpen = ref(false);
+const showExtensions = ref(false);
 const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
@@ -903,8 +905,15 @@ defineExpose({
         <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
         <template v-else>
           <span>{{ message.modelId || 'Assistant' }}</span>
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1 group/msg-header-tools">
             <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
+
+            <!-- Header Extensions Slot (Seamless transition) -->
+            <div v-if="showExtensions" class="flex items-center gap-1 mx-1 animate-in slide-in-from-left-1 fade-in duration-200">
+              <SpeechLanguageSelector :message-id="message.id" :content="speechText" is-mini align="down" />
+              <!-- Future tools here -->
+            </div>
+
             <button
               v-if="isGenerating"
               @click="emit('abort')"
@@ -913,6 +922,17 @@ defineExpose({
               data-testid="message-abort-button"
             >
               <Square class="w-3 h-3" />
+            </button>
+
+            <!-- Generic More Button (Absolute Right Anchor for Header) -->
+            <button
+              v-if="!isImageResponse && !isImageGenerationPending(message.content)"
+              @click="showExtensions = !showExtensions"
+              class="p-1 rounded-lg transition-colors"
+              :class="showExtensions ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
+              title="More Message Tools"
+            >
+              <MoreHorizontal class="w-3.5 h-3.5" />
             </button>
           </div>
         </template>
@@ -1106,6 +1126,7 @@ defineExpose({
             :is-image-response="isImageResponse"
             :is-user="isUser"
             :is-generating="isGenerating"
+            v-model:show-extensions="showExtensions"
             :speech-text="speechText"
             :display-content="displayContent"
             @regenerate="id => emit('regenerate', id)"

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { GitFork, Pencil, Copy, Check, RefreshCw, Send, MoreVertical, History } from 'lucide-vue-next';
+import { GitFork, Pencil, Copy, Check, RefreshCw, Send, MoreVertical, History, MoreHorizontal } from 'lucide-vue-next';
 import type { MessageNode } from '../models/types';
 import { isImageGenerationPending } from '../utils/image-generation';
 import SpeechControl from './SpeechControl.vue';
 import MessageActionsMenu from './MessageActionsMenu.vue';
+import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 
 const props = defineProps<{
   message: MessageNode;
@@ -13,6 +14,7 @@ const props = defineProps<{
   isGenerating: boolean;
   speechText: string;
   displayContent: string;
+  showExtensions: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -21,6 +23,7 @@ const emit = defineEmits<{
   (e: 'fork', messageId: string): void;
   (e: 'enter-edit-mode'): void;
   (e: 'show-diff'): void;
+  (e: 'update:showExtensions', val: boolean): void;
 }>();
 
 const copied = ref(false);
@@ -57,7 +60,23 @@ defineExpose({
 </script>
 
 <template>
-  <div class="flex items-center gap-1">
+  <div class="flex items-center gap-1 group/msg-footer-tools">
+    <!-- Generic More Button (Left Anchor for Footer) -->
+    <button
+      @click="emit('update:showExtensions', !showExtensions)"
+      class="p-1.5 rounded-md transition-colors"
+      :class="showExtensions ? 'text-blue-600 bg-blue-100/50 dark:bg-blue-800/50' : 'text-blue-600/40 dark:text-blue-400/40 hover:text-blue-600'"
+      title="More Message Tools"
+    >
+      <MoreHorizontal class="w-3.5 h-3.5" />
+    </button>
+
+    <!-- Footer Extensions Slot (Seamless transition) -->
+    <div v-if="showExtensions" class="flex items-center gap-1 mx-1 animate-in slide-in-from-right-1 fade-in duration-200">
+      <SpeechLanguageSelector :message-id="message.id" :content="speechText" align="up" />
+      <!-- Future tools here -->
+    </div>
+
     <!-- Speech Controls -->
     <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" :is-generating="isGenerating" show-full-controls />
 

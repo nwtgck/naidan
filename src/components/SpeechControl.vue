@@ -28,7 +28,8 @@ function handleToggleSpeech() {
     webSpeechService.speak({
       text: props.content,
       messageId: props.messageId,
-      isFinal: !props.isGenerating
+      isFinal: !props.isGenerating,
+      lang: webSpeechService.state.preferredLang
     });
   }
 }
@@ -41,31 +42,50 @@ function handleRestartSpeech() {
   webSpeechService.speak({
     text: props.content,
     messageId: props.messageId,
-    isFinal: !props.isGenerating
+    isFinal: !props.isGenerating,
+    lang: webSpeechService.state.preferredLang
   });
 }
 
-// Watch for content updates during streaming
-watch(() => props.content, (newContent) => {
-  if (isPlaying.value) {
-    webSpeechService.speak({
-      text: newContent,
-      messageId: props.messageId,
-      isFinal: false
-    });
+// Watch for global language changes to restart if currently playing
+watch(() => webSpeechService.state.preferredLang, () => {
+  if (isSpeechActive.value) {
+    handleRestartSpeech();
   }
 });
 
+// Watch for content updates during streaming
+watch(() => props.content, (newContent) => {
+  // Direct state check to be absolutely sure
+  const state = webSpeechService.state;
+  const isCurrentlyPlaying = state.status === 'playing' || state.status === 'waiting';
+  const isThisActive = state.activeMessageId === props.messageId;
+
+  if (isCurrentlyPlaying && isThisActive) {
+    webSpeechService.speak({
+      text: newContent,
+      messageId: props.messageId,
+      isFinal: false,
+      lang: state.preferredLang
+    });
+  }
+}, { immediate: false });
+
 // Watch for generation completion to flush remaining text
 watch(() => props.isGenerating, (isGenerating) => {
-  if (!isGenerating && isPlaying.value) {
+  const state = webSpeechService.state;
+  const isCurrentlyPlaying = state.status === 'playing' || state.status === 'waiting';
+  const isThisActive = state.activeMessageId === props.messageId;
+
+  if (!isGenerating && isCurrentlyPlaying && isThisActive) {
     webSpeechService.speak({
       text: props.content,
       messageId: props.messageId,
-      isFinal: true
+      isFinal: true,
+      lang: state.preferredLang
     });
   }
-});
+}, { immediate: false });
 
 
 defineExpose({
@@ -76,55 +96,29 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="isSupported && !isHidden" class="flex items-center" :class="{ 'gap-1': isSpeechActive && showFullControls }">
-    <!-- Flat Toggle Button (Shown when inactive OR when full controls are not requested) -->
-    <button
-      v-if="!isSpeechActive || !showFullControls"
-      @click.stop="handleToggleSpeech"
-      class="rounded-lg transition-colors p-1"
-      :class="[
-        isSpeechActive
-          ? 'text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20'
-          : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50/50 dark:hover:bg-gray-800/50'
-      ]"
-      :title="isPaused ? 'Resume reading' : (isPlaying ? 'Pause reading' : 'Read aloud')"
-      data-testid="speech-toggle-mini"
-    >
-      <Pause v-if="isPlaying" class="w-3 h-3" />
-      <Volume2 v-else class="w-3 h-3" />
-    </button>
+  <div v-if="isSupported && !isHidden" class="flex items-center gap-0.5">
+    <!-- Mini View (Header) -->
+    <template v-if="!isSpeechActive || !showFullControls">
+      <button
+        @click.stop="handleToggleSpeech"
+        class="p-1 rounded-lg text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100/50 dark:hover:bg-gray-800/50 transition-colors"
+        :title="isPaused ? 'Resume' : 'Read aloud'"
+        data-testid="speech-toggle-mini"
+      >
 
-    <!-- Expanded Control Panel (Only when active AND full controls are requested) -->
-    <div
-      v-else
-      class="flex items-center gap-0.5 bg-blue-50/50 dark:bg-blue-900/20 rounded-lg border border-blue-100/50 dark:border-blue-800/30 p-0.5 animate-in fade-in zoom-in-95 duration-200"
-      @click.stop
-    >
-      <button
-        @click="handleRestartSpeech"
-        class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-md transition-colors"
-        title="Restart from beginning"
-        data-testid="speech-restart-button"
-      >
-        <RotateCcw class="w-3 h-3" />
-      </button>
-      <button
-        @click="handleStopSpeech"
-        class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-red-500 dark:hover:text-red-400 rounded-md transition-colors"
-        title="Stop reading"
-        data-testid="speech-stop-button"
-      >
-        <Square class="w-3 h-3" />
-      </button>
-      <button
-        @click="handleToggleSpeech"
-        class="p-1.5 rounded-md transition-colors text-blue-600 dark:text-blue-400 hover:bg-blue-100/50 dark:hover:bg-blue-800/50"
-        :title="isPaused ? 'Resume reading' : 'Pause reading'"
-        data-testid="speech-toggle-button"
-      >
         <Pause v-if="isPlaying" class="w-3.5 h-3.5" />
         <Volume2 v-else class="w-3.5 h-3.5" />
       </button>
-    </div>
+    </template>
+
+    <!-- Full View (Footer) -->
+    <template v-else>
+      <button @click="handleRestartSpeech" class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-md" title="Restart"><RotateCcw class="w-3.5 h-3.5" /></button>
+      <button @click="handleStopSpeech" class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-red-500 dark:hover:text-red-400 rounded-md" title="Stop"><Square class="w-3.5 h-3.5" /></button>
+      <button @click="handleToggleSpeech" class="p-1.5 rounded-md transition-colors text-blue-600 dark:text-blue-400 hover:bg-blue-100/50 dark:hover:bg-blue-800/50" :title="isPaused ? 'Resume' : 'Pause'">
+        <Pause v-if="isPlaying && webSpeechService.state.status !== 'waiting'" class="w-4 h-4" />
+        <Volume2 v-else class="w-4 h-4" />
+      </button>
+    </template>
   </div>
 </template>
