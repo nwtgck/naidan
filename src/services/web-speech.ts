@@ -6,7 +6,7 @@
  */
 import { reactive } from 'vue';
 
-export type WebSpeechStatus = 'inactive' | 'playing' | 'paused';
+export type WebSpeechStatus = 'inactive' | 'playing' | 'paused' | 'waiting';
 
 export interface WebSpeechState {
   status: WebSpeechStatus;
@@ -17,6 +17,7 @@ class WebSpeechService {
   private synth: SpeechSynthesis | null = typeof window !== 'undefined' ? window.speechSynthesis : null;
   private currentUtterance: SpeechSynthesisUtterance | null = null;
   private readPointer = 0;
+  private isExpectingMore = false;
 
   public readonly state = reactive<WebSpeechState>({
     status: 'inactive',
@@ -38,6 +39,7 @@ class WebSpeechService {
     switch (status) {
     case 'playing':
     case 'paused':
+    case 'waiting':
       this.state.activeMessageId = messageId || this.state.activeMessageId;
       break;
     case 'inactive':
@@ -81,8 +83,9 @@ class WebSpeechService {
   /**
    * Main entry point for speaking. Handles both new messages and streaming updates.
    */
-  public speak({ text, messageId, isFinal = true }: { text: string; messageId: string; isFinal?: boolean }) {
+  public speak({ text, messageId, isFinal }: { text: string; messageId: string; isFinal: boolean }) {
     if (!this.synth) return;
+    this.isExpectingMore = !isFinal;
 
     // 1. Resume if it was just paused
     if (this.state.activeMessageId === messageId && this.state.status === 'paused') {
@@ -92,26 +95,44 @@ class WebSpeechService {
     }
 
     // 2. Incremental update if it's already playing the same message
-    if (this.state.activeMessageId === messageId && this.state.status === 'playing') {
-      this.enqueueStreamingPart({ text, messageId, isFinal });
+    if (this.state.activeMessageId === messageId && (this.state.status === 'playing' || this.state.status === 'waiting')) {
+      const queued = this.enqueueStreamingPart({ text, messageId, isFinal });
+      if (!queued && isFinal) {
+        // If nothing was queued and it's final, we are done
+        this.updateState({ status: 'inactive' });
+      } else if (!queued && !isFinal && this.state.status !== 'playing') {
+        // If nothing was queued and we expect more, ensure we are in waiting state if not playing
+        this.updateState({ status: 'waiting' });
+      }
       return;
     }
 
     // 3. Start fresh for a new message or restart
     this.stop();
     this.readPointer = 0;
-    this.enqueueStreamingPart({ text, messageId, isFinal });
+    this.isExpectingMore = !isFinal; // restore after stop()
+    const queued = this.enqueueStreamingPart({ text, messageId, isFinal });
+    if (!queued) {
+      if (isFinal) {
+        this.updateState({ status: 'inactive' });
+      } else {
+        this.updateState({ status: 'waiting', messageId });
+      }
+    }
   }
 
-  private enqueueStreamingPart({ text, messageId, isFinal }: { text: string; messageId: string; isFinal: boolean }) {
-    if (!this.synth) return;
+  /**
+   * Returns true if an utterance was actually queued.
+   */
+  private enqueueStreamingPart({ text, messageId, isFinal }: { text: string; messageId: string; isFinal: boolean }): boolean {
+    if (!this.synth) return false;
 
     const fullCleanedText = this.prepareText({ text });
-    if (!fullCleanedText) return;
+    if (!fullCleanedText) return false;
 
     // Get the part we haven't queued yet
     const pendingText = fullCleanedText.slice(this.readPointer);
-    if (!pendingText) return;
+    if (!pendingText) return false;
 
     let textToQueue = '';
 
@@ -132,11 +153,11 @@ class WebSpeechService {
         this.readPointer += endOfLastSentence;
       } else {
         // No complete sentence yet, wait for more content
-        return;
+        return false;
       }
     }
 
-    if (!textToQueue.trim()) return;
+    if (!textToQueue.trim()) return false;
 
     const utterance = new SpeechSynthesisUtterance(textToQueue);
     utterance.lang = this.detectLanguage({ text });
@@ -151,8 +172,12 @@ class WebSpeechService {
         // Check if there's absolutely nothing left in the synth queue
         // Note: synth.pending doesn't always work reliably, so we rely on status logic
         if (!this.synth?.pending) {
-          this.updateState({ status: 'inactive' });
-          this.currentUtterance = null;
+          if (this.isExpectingMore) {
+            this.updateState({ status: 'waiting' });
+          } else {
+            this.updateState({ status: 'inactive' });
+            this.currentUtterance = null;
+          }
         }
       }
     };
@@ -167,6 +192,7 @@ class WebSpeechService {
     };
 
     this.synth.speak(utterance);
+    return true;
   }
 
   public pause() {
@@ -179,6 +205,7 @@ class WebSpeechService {
     if (!this.synth) return;
     this.synth.cancel();
     this.readPointer = 0;
+    this.isExpectingMore = false;
     this.updateState({ status: 'inactive' });
     this.currentUtterance = null;
   }

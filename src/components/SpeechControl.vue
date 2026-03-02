@@ -7,12 +7,13 @@ import { isImageGenerationPending, isImageGenerationProcessed } from '../utils/i
 const props = defineProps<{
   messageId: string;
   content: string;
+  isGenerating?: boolean;
   showFullControls?: boolean;
 }>();
 
 const isSupported = webSpeechService.isSupported();
 const isThisMessageActive = computed(() => webSpeechService.state.activeMessageId === props.messageId);
-const isPlaying = computed(() => isThisMessageActive.value && webSpeechService.state.status === 'playing');
+const isPlaying = computed(() => isThisMessageActive.value && (webSpeechService.state.status === 'playing' || webSpeechService.state.status === 'waiting'));
 const isPaused = computed(() => isThisMessageActive.value && webSpeechService.state.status === 'paused');
 const isSpeechActive = computed(() => isThisMessageActive.value && webSpeechService.state.status !== 'inactive');
 
@@ -21,10 +22,14 @@ const isHidden = computed(() => {
 });
 
 function handleToggleSpeech() {
-  if (isPlaying.value) {
+  if (isPlaying.value && webSpeechService.state.status !== 'waiting') {
     webSpeechService.pause();
   } else {
-    webSpeechService.speak({ text: props.content, messageId: props.messageId });
+    webSpeechService.speak({
+      text: props.content,
+      messageId: props.messageId,
+      isFinal: !props.isGenerating
+    });
   }
 }
 
@@ -33,7 +38,11 @@ function handleStopSpeech() {
 }
 
 function handleRestartSpeech() {
-  webSpeechService.speak({ text: props.content, messageId: props.messageId });
+  webSpeechService.speak({
+    text: props.content,
+    messageId: props.messageId,
+    isFinal: !props.isGenerating
+  });
 }
 
 // Watch for content updates during streaming
@@ -43,6 +52,17 @@ watch(() => props.content, (newContent) => {
       text: newContent,
       messageId: props.messageId,
       isFinal: false
+    });
+  }
+});
+
+// Watch for generation completion to flush remaining text
+watch(() => props.isGenerating, (isGenerating) => {
+  if (!isGenerating && isPlaying.value) {
+    webSpeechService.speak({
+      text: props.content,
+      messageId: props.messageId,
+      isFinal: true
     });
   }
 });

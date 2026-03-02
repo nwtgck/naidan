@@ -46,7 +46,7 @@ describe('MessageItem Speech Controls', () => {
     // Click header toggle
     await wrapper.findAll('[data-testid="speech-toggle-mini"]')[0]!.trigger('click');
 
-    expect(speakSpy).toHaveBeenCalledWith({ text: 'Hello', messageId: message.id });
+    expect(speakSpy).toHaveBeenCalledWith({ text: 'Hello', messageId: message.id, isFinal: true });
   });
 
   it('shows control group when speech is active in footer', async () => {
@@ -88,7 +88,7 @@ describe('MessageItem Speech Controls', () => {
 
     // Click resume on full panel
     await wrapper.find('[data-testid="speech-toggle-button"]').trigger('click');
-    expect(speakSpy).toHaveBeenCalledWith({ text: 'Hello', messageId: message.id });
+    expect(speakSpy).toHaveBeenCalledWith({ text: 'Hello', messageId: message.id, isFinal: true });
   });
 
   it('stops speech when stop button is clicked', async () => {
@@ -116,6 +116,6 @@ describe('MessageItem Speech Controls', () => {
     await nextTick();
 
     await wrapper.find('[data-testid="speech-restart-button"]').trigger('click');
-    expect(speakSpy).toHaveBeenCalledWith({ text: 'Hello', messageId: message.id });
+    expect(speakSpy).toHaveBeenCalledWith({ text: 'Hello', messageId: message.id, isFinal: true });
   });
 });

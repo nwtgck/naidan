@@ -10,6 +10,7 @@ const props = defineProps<{
   message: MessageNode;
   isImageResponse: boolean;
   isUser: boolean;
+  isGenerating: boolean;
   speechText: string;
   displayContent: string;
 }>();
@@ -58,7 +59,7 @@ defineExpose({
 <template>
   <div class="flex items-center gap-1">
     <!-- Speech Controls -->
-    <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" show-full-controls />
+    <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" :is-generating="isGenerating" show-full-controls />
 
     <button
       v-if="!isUser"

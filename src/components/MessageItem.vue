@@ -904,7 +904,7 @@ defineExpose({
         <template v-else>
           <span>{{ message.modelId || 'Assistant' }}</span>
           <div class="flex items-center gap-1">
-            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" />
+            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
             <button
               v-if="isGenerating"
               @click="emit('abort')"
@@ -1105,6 +1105,7 @@ defineExpose({
             :message="message"
             :is-image-response="isImageResponse"
             :is-user="isUser"
+            :is-generating="isGenerating"
             :speech-text="speechText"
             :display-content="displayContent"
             @regenerate="id => emit('regenerate', id)"
