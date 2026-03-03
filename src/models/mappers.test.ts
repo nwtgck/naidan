@@ -13,9 +13,15 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       timestamp: 100,
       attachments: undefined,
       thinking: undefined,
+      error: undefined,
       modelId: undefined,
       lmParameters: {
         temperature: 0.7,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
         reasoning: { effort: 'low' }
       },
       replies: { items: [] }
@@ -41,8 +47,15 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       timestamp: 200,
       attachments: undefined,
       thinking: 'Thinking...',
+      error: undefined,
       modelId: 'gpt-4',
       lmParameters: {
+        temperature: undefined,
+        topP: undefined,
+        maxCompletionTokens: undefined,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
         reasoning: { effort: 'high' }
       },
       replies: { items: [] }
@@ -68,6 +81,7 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       timestamp: 50,
       attachments: undefined,
       thinking: undefined,
+      error: undefined,
       modelId: undefined,
       lmParameters: undefined,
       replies: { items: [] }
@@ -88,7 +102,15 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
 
 describe('LmParameters Mapping', () => {
   it('should handle undefined reasoning in DTO by providing default reasoning object in domain', () => {
-    const domain = lmParametersToDomain({ temperature: 0.5 });
+    const domain = lmParametersToDomain({
+      temperature: 0.5,
+      topP: undefined,
+      maxCompletionTokens: undefined,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: undefined
+    });
     expect(domain.temperature).toBe(0.5);
     expect(domain.reasoning).toBeDefined();
     expect(domain.reasoning.effort).toBeUndefined();
@@ -96,7 +118,15 @@ describe('LmParameters Mapping', () => {
 
   it('should preserve reasoning effort through bidirectional mapping', () => {
     const original = { effort: 'medium' as const };
-    const dto = lmParametersToDto({ temperature: 1.0, reasoning: original });
+    const dto = lmParametersToDto({
+      temperature: 1.0,
+      topP: undefined,
+      maxCompletionTokens: undefined,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: original
+    });
     expect(dto?.reasoning?.effort).toBe('medium');
 
     const backToDomain = lmParametersToDomain(dto);

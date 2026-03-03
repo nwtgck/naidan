@@ -19,7 +19,7 @@ import {
   ChevronDown, ChevronUp, Edit2, FileEdit
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
-import type { Attachment, Chat } from '../models/types';
+import type { Attachment, Chat, LmParameters } from '../models/types';
 
 const chatStore = useChat();
 const reasoningStore = useReasoning();
@@ -532,9 +532,9 @@ async function handleSend() {
   }
 
   // Use resolvedSettings if available (correctly inherits), otherwise fallback to currentChat's own parameters
-  const lmParameters = toRaw(chatStore.resolvedSettings?.value?.lmParameters || currentChat.value?.lmParameters || {});
+  const lmParameters = toRaw(chatStore.resolvedSettings?.value?.lmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
 
-  const success = await chatStore.sendMessage(text, undefined, currentAttachments, undefined, lmParameters);
+  const success = await chatStore.sendMessage(text, undefined, currentAttachments, undefined, lmParameters as LmParameters);
 
   if (success) {
     if (currentChat.value?.id === sendingChatId) {

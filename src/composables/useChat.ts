@@ -1,6 +1,6 @@
 import { generateId } from '../utils/id';
 import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } from 'vue';
-import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters } from '../models/types';
+import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider, UNKNOWN_STEPS, type LLMProvider } from '../services/llm';
 import { TransformersJsProvider } from '../services/transformers-js-provider';
@@ -1501,7 +1501,7 @@ export function useChat() {
     return chat?.lmParameters?.reasoning?.effort;
   };
 
-  const updateReasoningEffort = async ({ chatId, effort }: { chatId: string, effort: Chat['lmParameters']['reasoning']['effort'] }) => {
+  const updateReasoningEffort = async ({ chatId, effort }: { chatId: string, effort: Reasoning['effort'] }) => {
     const chat = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
     if (!chat) return;
 

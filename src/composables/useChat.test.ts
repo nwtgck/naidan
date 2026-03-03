@@ -3,10 +3,10 @@ import { flushPromises } from '@vue/test-utils';
 import { useChat, type AddToastOptions } from './useChat';
 import { storageService } from '../services/storage';
 import { OpenAIProvider } from '../services/llm';
-import { reactive, triggerRef } from 'vue';
+import { reactive, triggerRef, toRaw } from 'vue';
 import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
-import { findRestorationIndex, findParentInBranch } from '../utils/chat-tree';
+import { findRestorationIndex } from '../utils/chat-tree';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
@@ -651,7 +651,7 @@ describe('useChat Composable Logic', () => {
     // In some mock environments, the recursive tree might be flat or detached.
     // Let's try to get the User message ID.
     // We know it's the first message sent in this clean chat.
-    const liveChat = getLiveChat(currentChat.value!);
+    const liveChat = getLiveChat(toRaw(currentChat.value!) as Chat);
     const userMsgId = liveChat.root.items[0]?.id;
 
     if (!userMsgId) {
