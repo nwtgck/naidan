@@ -813,7 +813,7 @@ export function useChat() {
     });
   };
 
-  const generateResponse = async (chat: Chat | Readonly<Chat>, assistantId: string) => {
+  const generateResponse = async (chat: Chat | Readonly<Chat>, assistantId: string, lmParameters?: LmParameters) => {
     const mutableChat = getLiveChat(chat);
     const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
     if (!assistantNode) throw new Error('Assistant node not found');
@@ -829,6 +829,13 @@ export function useChat() {
     const type = resolved.endpointType;
     const url = resolved.endpointUrl;
     const resolvedModel = assistantNode.modelId || resolved.modelId;
+
+    const finalLmParameters = lmParameters || resolved.lmParameters;
+
+    if (assistantNode.role === 'assistant') {
+      assistantNode.lmParameters = finalLmParameters;
+      assistantNode.modelId = resolvedModel;
+    }
 
     const parentNode = findParentInBranch(mutableChat.root.items, assistantId);
     const imageRequest = parentNode ? parseImageRequest(parentNode.content) : null;
@@ -940,7 +947,7 @@ export function useChat() {
             }
           }
         },
-        parameters: resolved.lmParameters,
+        parameters: finalLmParameters,
         signal: controller.signal
       });
 
@@ -998,7 +1005,7 @@ export function useChat() {
     }
   };
 
-  const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = [], chatTarget?: Chat | Readonly<Chat>): Promise<boolean> => {
+  const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = [], chatTarget?: Chat | Readonly<Chat>, lmParameters?: LmParameters): Promise<boolean> => {
     const target = chatTarget || _currentChat.value;
     if (!target) return false;
     const rawTarget = toRaw(target);
@@ -1094,7 +1101,15 @@ export function useChat() {
 
       }
 
-      const userMsg: MessageNode = { id: generateId(), role: 'user', content: finalContent, attachments: processedAttachments.length > 0 ? processedAttachments : undefined, timestamp: Date.now(), replies: { items: [] }, };
+      const userMsg: MessageNode = {
+        id: generateId(),
+        role: 'user',
+        content: finalContent,
+        attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
+        timestamp: Date.now(),
+        replies: { items: [] },
+        lmParameters
+      };
 
       const assistantContent = isImgMode
         ? createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING
@@ -1120,7 +1135,7 @@ export function useChat() {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
       });
-      generateResponse(chat, assistantMsg.id).catch(e => console.error('Background generation failed:', e));
+      generateResponse(chat, assistantMsg.id, lmParameters).catch(e => console.error('Background generation failed:', e));
       return true;
     } finally {
       decTask(chat.id, 'process');
@@ -1155,7 +1170,7 @@ export function useChat() {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
       });
-      generateResponse(chat, newAssistantMsg.id).catch(e => console.error('Background generation failed:', e));
+      generateResponse(chat, newAssistantMsg.id, failedNode.lmParameters).catch(e => console.error('Background generation failed:', e));
     } finally {
       decTask(chat.id, 'process');
     }
@@ -1246,6 +1261,7 @@ export function useChat() {
         onChunk: (chunk: string) => {
           generatedTitle += chunk;
         },
+        parameters: undefined,
         signal: combinedSignal
       });
 
@@ -1336,7 +1352,7 @@ export function useChat() {
     } finally { /* No explicit unregister here */ }
   };
 
-  const editMessage = async (messageId: string, newContent: string) => {
+  const editMessage = async (messageId: string, newContent: string, lmParameters?: LmParameters) => {
     if (!_currentChat.value) return;
     const chatId = toRaw(_currentChat.value).id;
     if (isProcessing(chatId)) {
@@ -1363,7 +1379,7 @@ export function useChat() {
     case 'user':
     case 'system': {
       const parent = findParentInBranch(chat.root.items, messageId);
-      await sendMessage(newContent, parent ? parent.id : null, node.attachments, chat);
+      await sendMessage(newContent, parent ? parent.id : null, node.attachments, chat, lmParameters);
       break;
     }
     default: {

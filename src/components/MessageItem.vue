@@ -27,8 +27,8 @@ const DOMPurify = (() => {
 })();
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
-import type { MessageNode, BinaryObject, EndpointType } from '../models/types';
-import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit, MoreHorizontal } from 'lucide-vue-next';
+import type { MessageNode, BinaryObject, EndpointType, LmParameters } from '../models/types';
+import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
@@ -44,10 +44,12 @@ import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '../services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
+const ReasoningSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ReasoningSettings.vue'));
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted(() => import('./MessageDiffModal.vue'));
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
 import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '../composables/useImagePreview';
 import { useChat } from '../composables/useChat';
+import { useReasoning } from '../composables/useReasoning';
 import { useLayout } from '../composables/useLayout';
 import { useSettings } from '../composables/useSettings';
 import {
@@ -77,7 +79,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'fork', messageId: string): void;
-  (e: 'edit', messageId: string, newContent: string): void;
+  (e: 'edit', messageId: string, newContent: string, lmParameters?: LmParameters): void;
   (e: 'switch-version', messageId: string): void;
   (e: 'regenerate', messageId: string): void;
   (e: 'abort'): void;
@@ -117,9 +119,12 @@ let pendingHydration = false;
 const metadataSupportCache = new Map<string, boolean>();
 
 const { openPreview } = useImagePreview();
-const { imageProgressMap } = useChat();
+const { imageProgressMap, currentChat } = useChat();
+const { getReasoningEffort } = useReasoning();
 const { preferredEditorMode, setPreferredEditorMode } = useLayout();
 const { settings } = useSettings();
+
+const editReasoningEffort = ref<Reasoning['effort']>(undefined);
 
 function openAdvancedEditor() {
   isAdvancedEditorOpen.value = true;
@@ -375,10 +380,16 @@ watch(isEditing, (editing) => {
   if (editing) {
     editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
 
+    // Initialize reasoning effort from message if available, otherwise from current chat
+    if (props.message.role === 'user' && props.message.lmParameters?.reasoning) {
+      editReasoningEffort.value = props.message.lmParameters.reasoning.effort;
+    } else if (currentChat.value) {
+      editReasoningEffort.value = getReasoningEffort({ chatId: currentChat.value.id });
+    }
+
     // Initialize image generation settings if it's an image request
     if (isImageRequestMsg.value) {
       editImageMode.value = true;
-      showImageSettings.value = true;
       const parsed = parseImageRequest(props.message.content);
       if (parsed) {
         editImageParams.value = {
@@ -393,8 +404,10 @@ watch(isEditing, (editing) => {
       }
     } else {
       editImageMode.value = false;
-      showImageSettings.value = false;
     }
+
+    // Auto-open tools if either image mode or non-default reasoning is active
+    showImageSettings.value = editImageMode.value || editReasoningEffort.value !== undefined;
 
     nextTick(() => {
       if (textareaRef.value) {
@@ -435,7 +448,11 @@ function handleSaveEdit() {
       });
       finalContent = marker + '\n' + finalContent;
     }
-    emit('edit', props.message.id, finalContent);
+    const lmParameters: LmParameters = {
+      ...settings.value.lmParameters,
+      reasoning: { effort: editReasoningEffort.value }
+    };
+    emit('edit', props.message.id, finalContent, lmParameters);
   }
   isEditing.value = false;
 }
@@ -872,6 +889,46 @@ const isUser = computed(() => {
   }
   }
 });
+
+const reasoningEffortLabel = computed(() => {
+  if (props.message.role !== 'assistant') return undefined;
+  const effort = props.message.lmParameters?.reasoning?.effort;
+  if (effort === undefined) return undefined;
+
+  switch (effort) {
+  case 'none':
+    return 'OFF';
+  case 'low':
+  case 'medium':
+  case 'high':
+    return 'ON';
+  default: {
+    const _ex: never = effort;
+    return _ex;
+  }
+  }
+});
+
+const reasoningEffortTooltip = computed(() => {
+  const effort = props.message.role === 'assistant' ? props.message.lmParameters?.reasoning?.effort : undefined;
+  if (effort === undefined) return undefined;
+
+  switch (effort) {
+  case 'none':
+    return 'Think: Disabled';
+  case 'low':
+  case 'medium':
+  case 'high': {
+    const label = effort.charAt(0).toUpperCase() + effort.slice(1);
+    return `Think: ${label} Effort\n(Note: Specific effort levels may be ignored by some models)`;
+  }
+  default: {
+    const _ex: never = effort;
+    return _ex;
+  }
+  }
+});
+
 const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content));
 
 function formatSize(bytes?: number): string {
@@ -910,6 +967,14 @@ defineExpose({
         <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
         <template v-else>
           <span>{{ message.modelId || 'Assistant' }}</span>
+          <div
+            v-if="reasoningEffortLabel"
+            class="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded-md text-[8px] font-mono text-gray-500 dark:text-gray-400 leading-none cursor-help"
+            :title="reasoningEffortTooltip"
+          >
+            <Brain class="w-2.5 h-2.5" />
+            <span>{{ reasoningEffortLabel }}</span>
+          </div>
           <div class="flex items-center gap-1 group/msg-header-tools">
             <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
 
@@ -994,10 +1059,10 @@ defineExpose({
           <div class="flex items-center justify-between px-3 pb-3">
             <div class="flex items-center gap-1">
               <button
-                v-if="canGenerateImage"
+                v-if="canGenerateImage || true"
                 @click="showImageSettings = !showImageSettings"
                 class="p-2 rounded-xl transition-colors"
-                :class="showImageSettings || editImageMode ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'"
+                :class="showImageSettings || editImageMode || editReasoningEffort !== undefined ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'"
                 title="Tools"
                 data-testid="toggle-edit-image-mode"
               >
@@ -1036,6 +1101,10 @@ defineExpose({
             <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
               Options/Tools
             </div>
+            <ReasoningSettings
+              :selected-effort="editReasoningEffort"
+              @update:effort="e => editReasoningEffort = e"
+            />
             <ImageGenerationSettings
               :can-generate-image="canGenerateImage ?? false"
               :is-processing="isProcessing ?? false"

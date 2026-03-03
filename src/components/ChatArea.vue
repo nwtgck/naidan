@@ -18,6 +18,7 @@ import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
 import { useBinaryActions } from '../composables/useBinaryActions';
+import type { LmParameters } from '../models/types';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
@@ -236,8 +237,8 @@ const canGenerateImage = computed(() => {
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
 
-async function handleEdit(messageId: string, newContent: string) {
-  await chatStore.editMessage(messageId, newContent);
+async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
+  await chatStore.editMessage(messageId, newContent, lmParameters);
 }
 
 async function handleRegenerate(messageId: string) {
@@ -647,7 +648,7 @@ watch(
               :available-image-models="availableImageModels"
               :endpoint-type="resolvedSettings?.endpointType"
               @fork="handleFork"
-              @edit="handleEdit"
+              @edit="(id, content, params) => handleEdit(id, content, params)"
               @switch-version="handleSwitchVersion"
               @regenerate="handleRegenerate"
               @abort="chatStore.abortChat({ chatId: undefined })"

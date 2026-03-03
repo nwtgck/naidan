@@ -34,6 +34,7 @@ const OpenAIModelsSchema = z.object({
 
 const OllamaChatChunkSchema = z.object({
   message: z.object({
+    role: z.string().optional(),
     content: z.string().nullable().optional(),
     thinking: z.string().nullable().optional(),
   }).optional(),
@@ -85,6 +86,7 @@ interface OpenAICompletionRequest {
   presence_penalty?: number;
   frequency_penalty?: number;
   stop?: string[];
+  reasoning_effort?: 'none' | 'low' | 'medium' | 'high';
 }
 
 export class OpenAIProvider implements LLMProvider {
@@ -120,6 +122,7 @@ export class OpenAIProvider implements LLMProvider {
       if (parameters.presencePenalty !== undefined) body.presence_penalty = parameters.presencePenalty;
       if (parameters.frequencyPenalty !== undefined) body.frequency_penalty = parameters.frequencyPenalty;
       if (parameters.stop !== undefined) body.stop = parameters.stop;
+      if (parameters.reasoning?.effort !== undefined) body.reasoning_effort = parameters.reasoning.effort;
     }
 
     let response: Response;
@@ -242,17 +245,12 @@ export class OpenAIProvider implements LLMProvider {
   }
 }
 
-interface OllamaMessage {
-  role: string;
-  content: string;
-  images?: string[];
-}
-
 interface OllamaChatRequest {
   model: string;
   messages: OllamaMessage[];
   stream: boolean;
   options?: Record<string, unknown>;
+  think?: boolean | 'low' | 'medium' | 'high';
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -350,6 +348,10 @@ export class OllamaProvider implements LLMProvider {
       if (Object.keys(options).length > 0) {
         body.options = options;
       }
+
+      if (parameters.reasoning?.effort !== undefined) {
+        body.think = parameters.reasoning.effort === 'none' ? false : parameters.reasoning.effort;
+      }
     }
 
     let response: Response;
@@ -378,6 +380,36 @@ export class OllamaProvider implements LLMProvider {
         throw new Error(message);
       }
       throw e;
+    }
+
+    // Handle model not supporting specific effort levels
+    if (!response.ok && typeof body.think === 'string') {
+      let isRetryable = false;
+      try {
+        const errorJson = await response.clone().json();
+        const errorMsg = errorJson.error || JSON.stringify(errorJson);
+        if (errorMsg.includes('think value') && errorMsg.includes('is not supported')) {
+          isRetryable = true;
+        }
+      } catch (e) { /* ignore */ }
+
+      if (isRetryable) {
+        body.think = true; // Fallback to basic thinking
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: [
+              ['Content-Type', 'application/json'],
+              ...(headers || []),
+            ],
+            body: JSON.stringify(body),
+            signal,
+          });
+        } catch (e) {
+          // Re-throw if retry fetch fails
+          throw e;
+        }
+      }
     }
 
     if (!response.ok) {
