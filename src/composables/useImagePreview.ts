@@ -6,6 +6,10 @@ interface PreviewState {
   initialId: string;
 }
 
+export type ContextualPreviewHandler = ({ id }: { id: string }) => Promise<void>;
+
+export const MESSAGE_CONTEXTUAL_PREVIEW_KEY: InjectionKey<ContextualPreviewHandler> = Symbol('MessageContextualPreview');
+
 const PREVIEW_KEY: InjectionKey<{
   state: Ref<PreviewState | null>;
   openPreview: (payload: PreviewState) => void;

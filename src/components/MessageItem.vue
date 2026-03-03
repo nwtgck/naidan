@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick, watch, onUnmounted } from 'vue';
+import { computed, ref, onMounted, nextTick, watch, onUnmounted, provide } from 'vue';
 import BlockMarkdownRenderer from './block-markdown/BlockMarkdownRenderer.vue';
 import { Marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
@@ -46,7 +46,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted(() => import('./MessageDiffModal.vue'));
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
-import { useImagePreview } from '../composables/useImagePreview';
+import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '../composables/useImagePreview';
 import { useChat } from '../composables/useChat';
 import { useLayout } from '../composables/useLayout';
 import { useSettings } from '../composables/useSettings';
@@ -136,7 +136,7 @@ function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea
   setPreferredEditorMode({ mode });
 }
 
-async function handlePreviewImage(id: string) {
+async function handlePreviewImage({ id }: { id: string }) {
   // To support next/prev navigation, we'd ideally pass all images in this chat or message.
   // For now, let's at least try to fetch metadata for the clicked one.
   const obj = await storageService.getBinaryObject({ binaryObjectId: id });
@@ -165,6 +165,8 @@ async function handlePreviewImage(id: string) {
     });
   }
 }
+
+provide(MESSAGE_CONTEXTUAL_PREVIEW_KEY, handlePreviewImage);
 
 async function loadAttachments() {
   if (!props.message.attachments) return;
@@ -263,7 +265,7 @@ async function loadGeneratedImages() {
             url: urlObj,
             width: displayWidth,
             height: displayHeight,
-            onPreview: () => handlePreviewImage(id)
+            onPreview: () => handlePreviewImage({ id })
           });
 
           const skeleton = htmlEl.querySelector('.naidan-image-skeleton');
@@ -684,7 +686,7 @@ onMounted(() => {
     if (genImg) {
       const block = genImg.closest('.naidan-generated-image') as HTMLElement;
       const id = block?.dataset.id;
-      if (id) handlePreviewImage(id);
+      if (id) handlePreviewImage({ id });
       return;
     }
 
@@ -946,7 +948,7 @@ defineExpose({
           <template v-if="att.status !== 'missing' && attachmentUrls[att.id]">
             <img
               :src="attachmentUrls[att.id]"
-              @click="handlePreviewImage(att.binaryObjectId)"
+              @click="handlePreviewImage({ id: att.binaryObjectId })"
               class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
             />
             <div v-if="message.attachments.length > 1" class="absolute bottom-2 left-2 z-10">

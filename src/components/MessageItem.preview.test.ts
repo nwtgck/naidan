@@ -21,6 +21,7 @@ vi.mock('../composables/useImagePreview', () => ({
     openPreview: mockOpenPreview,
     closePreview: vi.fn(),
   })),
+  MESSAGE_CONTEXTUAL_PREVIEW_KEY: Symbol('MessageContextualPreview'),
 }));
 
 // Mock URL.createObjectURL
