@@ -76,7 +76,7 @@ describe('ChatToolsMenu', () => {
     await vi.dynamicImportSettled();
 
     // Teleported to body
-    expect(document.body.textContent).toContain('Experimental Tools');
+    expect(document.body.textContent).toContain('Options/Tools');
 
     await button.trigger('click');
     await flushPromises();

@@ -95,6 +95,7 @@ const transformersStatus = ref(transformersJsService.getState().status);
 let transformersUnsubscribe: (() => void) | null = null;
 
 const isImageRequestMsg = computed(() => isImageRequest(props.message.content));
+const showImageSettings = ref(false);
 const editImageMode = ref(false);
 const editImageParams = ref({
   width: 512,
@@ -377,6 +378,7 @@ watch(isEditing, (editing) => {
     // Initialize image generation settings if it's an image request
     if (isImageRequestMsg.value) {
       editImageMode.value = true;
+      showImageSettings.value = true;
       const parsed = parseImageRequest(props.message.content);
       if (parsed) {
         editImageParams.value = {
@@ -391,6 +393,7 @@ watch(isEditing, (editing) => {
       }
     } else {
       editImageMode.value = false;
+      showImageSettings.value = false;
     }
 
     nextTick(() => {
@@ -992,9 +995,9 @@ defineExpose({
             <div class="flex items-center gap-1">
               <button
                 v-if="canGenerateImage"
-                @click="editImageMode = !editImageMode"
+                @click="showImageSettings = !showImageSettings"
                 class="p-2 rounded-xl transition-colors"
-                :class="editImageMode ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'"
+                :class="showImageSettings || editImageMode ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'"
                 title="Tools"
                 data-testid="toggle-edit-image-mode"
               >
@@ -1029,7 +1032,10 @@ defineExpose({
           </div>
 
           <!-- Inline Experimental Tools (if active) -->
-          <div v-if="editImageMode" class="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 py-1" data-testid="embedded-experimental-tools">
+          <div v-if="showImageSettings" class="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 py-1" data-testid="embedded-experimental-tools">
+            <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
+              Options/Tools
+            </div>
             <ImageGenerationSettings
               :can-generate-image="canGenerateImage ?? false"
               :is-processing="isProcessing ?? false"
@@ -1042,7 +1048,6 @@ defineExpose({
               :selected-persist-as="editImageParams.persistAs"
               :available-image-models="availableImageModels ?? []"
               :selected-image-model="editImageParams.model"
-              :show-header="true"
               @toggle-image-mode="editImageMode = !editImageMode"
               @update:resolution="(w, h) => { editImageParams.width = w; editImageParams.height = h; }"
               @update:count="c => editImageParams.count = c"

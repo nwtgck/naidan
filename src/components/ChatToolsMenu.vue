@@ -171,9 +171,11 @@ defineExpose({
           ]"
           data-testid="chat-tools-dropdown"
         >
+          <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
+            Options/Tools
+          </div>
           <ImageGenerationSettings
             v-bind="props"
-            show-header
             @toggle-image-mode="emit('toggle-image-mode')"
             @update:resolution="(w, h) => emit('update:resolution', w, h)"
             @update:count="c => emit('update:count', c)"
