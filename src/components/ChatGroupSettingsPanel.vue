@@ -81,6 +81,13 @@ onMounted(() => {
 // Sync if currentChatGroup changes while open (e.g. from another tab or property update)
 watch(currentChatGroup, syncLocalWithCurrent, { deep: true });
 
+// Deep watch for lmParameters specifically to update UI when settings are saved or changed
+watch(() => currentChatGroup.value?.lmParameters, (newParams) => {
+  if (newParams) {
+    localSettings.value.lmParameters = JSON.parse(JSON.stringify(newParams));
+  }
+}, { deep: true });
+
 const hasActiveOverrides = computed(() => {
   return hasGroupOverrides({ group: localSettings.value });
 });

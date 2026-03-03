@@ -51,6 +51,10 @@ const mockChatStore = {
   chatGroups: ref([]),
   toggleDebug: vi.fn(),
   abortChat: vi.fn(),
+  getReasoningEffort: vi.fn(),
+  updateReasoningEffort: vi.fn(),
+  updateChatSettings: vi.fn(),
+  getLiveChat: vi.fn().mockImplementation((c) => c),
 };
 
 vi.mock('../composables/useChat', () => ({

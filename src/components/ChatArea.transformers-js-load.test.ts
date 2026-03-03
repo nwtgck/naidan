@@ -94,6 +94,10 @@ vi.mock('../composables/useChat', () => ({
     generatingTitle: ref(false),
     fetchAvailableModels: vi.fn(),
     fetchingModels: ref(false),
+    getReasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    updateChatSettings: vi.fn(),
+    getLiveChat: vi.fn().mockImplementation((c) => c),
   }),
 }));
 

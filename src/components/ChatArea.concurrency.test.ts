@@ -58,6 +58,10 @@ vi.mock('../composables/useChat', () => ({
     imageCountMap: ref({}),
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
+    getReasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    updateChatSettings: vi.fn(),
+    getLiveChat: vi.fn().mockImplementation((c) => c),
   }),
 }));
 
@@ -165,6 +169,10 @@ describe('ChatArea Concurrency Button State', () => {
       imageCountMap: ref({}),
       imagePersistAsMap: ref({}),
       imageModelOverrideMap: ref({}),
+      getReasoningEffort: vi.fn(),
+      updateReasoningEffort: vi.fn(),
+      updateChatSettings: vi.fn(),
+      getLiveChat: vi.fn().mockImplementation((c) => c),
     } as any);
 
     const wrapper = mount(ChatArea, {

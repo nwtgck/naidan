@@ -25,6 +25,9 @@ vi.mock('./composables/useChat', () => ({
     currentChatGroup: ref(null),
     chats: mockChats,
     chatGroups: mockChatGroups,
+    getReasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    getLiveChat: vi.fn().mockImplementation((c) => c),
   }),
 }));
 

@@ -67,19 +67,25 @@ vi.mock('../composables/useChat', () => ({
     fetchAvailableModels: vi.fn(),
     sendMessage: mockSendMessage,
     updateChatSettings: mockUpdateChatSettings,
-  }),
-}));
-
-vi.mock('../composables/useReasoning', () => ({
-  useReasoning: () => ({
-    getReasoningEffort: vi.fn((args: { chatId: string }) => {
-      // Return effort from currentChat if available to simulate integration
-      if (mockCurrentChat.value?.id === args.chatId) {
+    getReasoningEffort: vi.fn(({ chatId }) => {
+      if (mockCurrentChat.value?.id === chatId) {
         return mockCurrentChat.value.lmParameters?.reasoning?.effort;
       }
       return undefined;
     }),
-    updateReasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(({ chatId, effort }) => {
+      if (mockCurrentChat.value?.id === chatId) {
+        mockCurrentChat.value.lmParameters = {
+          ...(mockCurrentChat.value.lmParameters || {}),
+          reasoning: { effort }
+        };
+        mockUpdateChatSettings(chatId, { lmParameters: mockCurrentChat.value.lmParameters });
+      }
+    }),
+    getLiveChat: vi.fn().mockImplementation((c) => {
+      if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
+      return c;
+    }),
   }),
 }));
 

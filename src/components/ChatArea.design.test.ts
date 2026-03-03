@@ -61,6 +61,10 @@ describe('ChatArea Design Specifications', () => {
       imageCountMap: ref({}),
       imagePersistAsMap: ref({}),
       imageModelOverrideMap: ref({}),
+      getReasoningEffort: vi.fn(),
+      updateReasoningEffort: vi.fn(),
+      updateChatSettings: vi.fn(),
+      getLiveChat: vi.fn().mockImplementation((c) => c),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),

@@ -77,6 +77,10 @@ vi.mock('../composables/useChat', () => ({
     imageCountMap: ref({}),
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
+    getReasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    updateChatSettings: vi.fn(),
+    getLiveChat: vi.fn().mockImplementation((c) => c),
   }),
 }));
 

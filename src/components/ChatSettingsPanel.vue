@@ -83,6 +83,13 @@ onMounted(() => {
 // Sync if currentChat changes while open (e.g. from another tab)
 watch(() => currentChat.value?.id, syncLocalWithCurrent);
 
+// Deep watch for lmParameters to keep UI in sync with changes from ChatInput (like Reasoning)
+watch(() => currentChat.value?.lmParameters, (newParams) => {
+  if (newParams) {
+    localSettings.value.lmParameters = JSON.parse(JSON.stringify(newParams));
+  }
+}, { deep: true });
+
 watch(() => props.show, (show) => {
   if (show) {
     setActiveFocusArea('chat-settings');

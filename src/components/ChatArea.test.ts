@@ -39,6 +39,19 @@ const mockCurrentChat = ref<Chat | null>({
 });
 const mockActiveMessages = ref<MessageNode[]>([]);
 
+const mockGetLiveChat = vi.fn().mockImplementation((chat) => {
+  if (mockCurrentChat.value && mockCurrentChat.value.id === (chat.id || chat)) {
+    return mockCurrentChat.value;
+  }
+  return chat;
+});
+
+const mockUpdateChatSettings = vi.fn().mockImplementation((id, updates) => {
+  if (mockCurrentChat.value && mockCurrentChat.value.id === id) {
+    Object.assign(mockCurrentChat.value, updates);
+  }
+});
+
 const mockOpenChatGroup = vi.fn();
 const mockMoveChatToGroup = vi.fn();
 const mockUpdateChatModel = vi.fn().mockImplementation((id, modelId) => {
@@ -84,6 +97,8 @@ vi.mock('../composables/useChat', () => ({
     forkChat: vi.fn().mockResolvedValue('new-id'),
     openChatGroup: mockOpenChatGroup,
     moveChatToGroup: mockMoveChatToGroup,
+    getLiveChat: mockGetLiveChat,
+    updateChatSettings: mockUpdateChatSettings,
     isTaskRunning: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
     isProcessing: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
     isImageMode: vi.fn(() => false),
@@ -106,6 +121,18 @@ vi.mock('../composables/useChat', () => ({
     imageCountMap: ref({}),
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
+    getReasoningEffort: vi.fn(({ chatId }) => {
+      if (mockCurrentChat.value && mockCurrentChat.value.id === chatId) {
+        return mockCurrentChat.value.lmParameters?.reasoning?.effort;
+      }
+      return undefined;
+    }),
+    updateReasoningEffort: vi.fn(({ chatId, effort }) => {
+      if (mockCurrentChat.value && mockCurrentChat.value.id === chatId) {
+        const lmParameters = { ...(mockCurrentChat.value.lmParameters || {}), reasoning: { effort } };
+        mockCurrentChat.value.lmParameters = lmParameters;
+      }
+    }),
   }),
 }));
 
@@ -1664,5 +1691,59 @@ describe('ChatArea Model Selection', () => {
 
     expect(mockSendMessage).toHaveBeenCalledWith('automatic message', undefined, [], undefined, expect.anything());
     expect(wrapper.emitted('auto-sent')).toBeTruthy();
+  });
+
+  it('should sync reasoning effort between tools menu and settings panel in real-time', async () => {
+    wrapper = mount(ChatArea, {
+      global: {
+        plugins: [router],
+        stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true }
+      },
+    });
+    await flushPromises();
+
+    // 1. Initial state
+    mockCurrentChat.value = {
+      id: '1',
+      title: 'Test Chat',
+      root: { items: [] },
+      lmParameters: { reasoning: { effort: undefined } },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    } as Chat;
+    await nextTick();
+
+    // 2. Open tools menu and change reasoning effort
+    const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
+    expect(toolsMenu.exists()).toBe(true);
+    await toolsMenu.vm.$emit('update:reasoning-effort', 'high');
+    await nextTick();
+
+    // Verify currentChat was updated via the updateChatSettings call from ChatInput
+    expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('high');
+
+    // 3. Open Settings Panel
+    const settingsBtn = wrapper.find('button[data-testid="model-trigger"]');
+    await settingsBtn.trigger('click');
+    await nextTick();
+
+    const settingsPanel = wrapper.findComponent({ name: 'ChatSettingsPanel' });
+    expect(settingsPanel.exists()).toBe(true);
+
+    // Verify Settings Panel UI is synced
+    const reasoningSettings = settingsPanel.findComponent({ name: 'ReasoningSettings' });
+    expect(reasoningSettings.exists()).toBe(true);
+    expect(reasoningSettings.props('selectedEffort')).toBe('high');
+
+    // 4. Change reasoning effort in Settings Panel
+    await reasoningSettings.vm.$emit('update:effort', 'low');
+    await nextTick();
+
+    // Verify currentChat was updated via the panel's save mechanism
+    expect(mockCurrentChat.value.lmParameters?.reasoning?.effort).toBe('low');
+
+    // 5. Verify Tools Menu UI is also synced
+    expect(toolsMenu.props('selectedReasoningEffort')).toBe('low');
   });
 });
