@@ -645,15 +645,15 @@ describe('useChat Composable Logic', () => {
     // 1. Send first message with default params
     await sendMessage('Hello', null);
     await flushPromises();
-    
+
     const newParams = { reasoning: { effort: 'low' as const } };
-    
+
     // In some mock environments, the recursive tree might be flat or detached.
-    // Let's try to get the User message ID. 
+    // Let's try to get the User message ID.
     // We know it's the first message sent in this clean chat.
     const liveChat = getLiveChat(currentChat.value!);
     const userMsgId = liveChat.root.items[0]?.id;
-    
+
     if (!userMsgId) {
       // Fallback: if root is empty, something is wrong with sendMessage mock synchronization
       // but we can still test the logic by manually inserting a node
@@ -665,7 +665,7 @@ describe('useChat Composable Logic', () => {
       // 2. Edit the message with NEW lmParameters
       await editMessage(userMsgId, 'Updated Hello', newParams);
     }
-    
+
     await flushPromises();
 
     // 3. Verify that the resulting generation used the NEW parameters

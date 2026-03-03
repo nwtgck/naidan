@@ -186,4 +186,65 @@ describe('ChatArea Group Inheritance UI', () => {
     expect(wrapper.find('[data-testid="model-trigger"]').text()).toContain('new-group-model (Group)');
     expect(wrapper.find('[data-testid="model-trigger"]').text()).not.toContain('(Global)');
   });
+
+  it('should pass inherited reasoning effort to sendMessage when not overridden at chat level', async () => {
+    const mockSendMessage = vi.fn().mockResolvedValue(true);
+    // Use an inline spy to verify sendMessage arguments
+    vi.spyOn(await import('../composables/useChat'), 'useChat').mockReturnValue({
+      currentChat: mockCurrentChat,
+      chatGroups: mockChatGroups,
+      resolvedSettings: mockResolvedSettings,
+      inheritedSettings: mockInheritedSettings,
+      activeMessages: ref([]),
+      availableModels: ref([]),
+      fetchingModels: ref(false),
+      sendMessage: mockSendMessage,
+      isTaskRunning: vi.fn().mockReturnValue(false),
+      isProcessing: vi.fn().mockReturnValue(false),
+      getReasoningEffort: vi.fn(() => undefined), // No chat override
+      updateReasoningEffort: vi.fn(),
+      updateChatSettings: vi.fn(),
+      getLiveChat: vi.fn().mockImplementation((c) => c),
+      isImageMode: vi.fn(() => false),
+      getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+      getCount: vi.fn(() => 1),
+      getPersistAs: vi.fn(() => 'original'),
+      getSteps: vi.fn(() => undefined),
+      getSeed: vi.fn(() => undefined),
+      getSelectedImageModel: vi.fn(),
+
+      getSortedImageModels: vi.fn(() => []),
+      fetchAvailableModels: vi.fn(),
+
+    } as any);
+
+    // 1. Setup Group-level reasoning effort
+    mockResolvedSettings.value = {
+      modelId: 'm',
+      lmParameters: { reasoning: { effort: 'medium' } },
+      sources: { modelId: 'global' }
+    };
+
+    const wrapper = mount(ChatArea, {
+      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
+    });
+    await nextTick();
+
+    // 2. Send a message
+    const textarea = wrapper.find('[data-testid="chat-input"]');
+    await textarea.setValue('Hello');
+    await wrapper.find('[data-testid="send-button"]').trigger('click');
+
+    // 3. Verify sendMessage was called with 'medium' (inherited from resolvedSettings)
+    // BUG: Currently it will be called with undefined because ChatInput overrides it manually
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      'Hello',
+      undefined,
+      [],
+      undefined,
+      expect.objectContaining({
+        reasoning: { effort: 'medium' }
+      })
+    );
+  });
 });

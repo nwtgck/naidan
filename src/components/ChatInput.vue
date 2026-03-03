@@ -531,10 +531,8 @@ async function handleSend() {
     isMaximized.value = false; // Reset maximized state immediately
   }
 
-  const lmParameters = {
-    ...toRaw(inheritedSettings.value?.lmParameters || {}),
-    reasoning: { effort: selectedReasoningEffort.value }
-  };
+  // Use resolvedSettings if available (correctly inherits), otherwise fallback to currentChat's own parameters
+  const lmParameters = toRaw(chatStore.resolvedSettings?.value?.lmParameters || currentChat.value?.lmParameters || {});
 
   const success = await chatStore.sendMessage(text, undefined, currentAttachments, undefined, lmParameters);
 

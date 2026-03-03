@@ -33,7 +33,7 @@ vi.mock('../composables/useChat', () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: ref(null),
     chatGroups: mockChatGroups,
-    resolvedSettings: mockResolvedSettings,
+    resolvedSettings: mockResolvedSettings.value || ref({ lmParameters: { reasoning: { effort: undefined } } }),
     inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
     updateChatModel: vi.fn(),

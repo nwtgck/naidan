@@ -73,6 +73,9 @@ export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSetti
     ...(globalSettings.lmParameters || {}),
     ...(group?.lmParameters || {}),
     ...(chat.lmParameters || {}),
+    reasoning: {
+      effort: chat.lmParameters?.reasoning?.effort ?? group?.lmParameters?.reasoning?.effort ?? globalSettings.lmParameters?.reasoning?.effort
+    }
   } as LmParameters;
 
   return {

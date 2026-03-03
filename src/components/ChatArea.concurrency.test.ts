@@ -32,7 +32,7 @@ vi.mock('../composables/useChat', () => ({
     saveChat: vi.fn(),
     moveChatToGroup: vi.fn(),
     chatGroups: ref([]),
-    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    resolvedSettings: ref({ lmParameters: { reasoning: { effort: undefined } }, modelId: 'm1', sources: { modelId: 'global' } }),
     inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
     availableModels: ref([]),
     isTaskRunning: vi.fn((id: string) => mockActiveGenerations.has(id)),
