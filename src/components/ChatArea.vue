@@ -33,7 +33,7 @@ import {
   Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap,
   Printer
 } from 'lucide-vue-next';
-import { printElement } from '../utils/print';
+import { usePrint } from '../composables/usePrint';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { hasChatOverrides } from '../utils/chat-settings-resolver';
 import { scrollIntoViewSafe } from '../utils/dom';
@@ -172,7 +172,7 @@ function exportChat() {
 
 function handlePrint() {
   if (currentChat.value) {
-    printElement({
+    usePrint().print({
       title: currentChat.value.title || 'Chat',
       mode: 'chat'
     });
