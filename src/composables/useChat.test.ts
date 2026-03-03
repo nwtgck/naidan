@@ -244,12 +244,15 @@ describe('useChat Composable Logic', () => {
     const att: Attachment = { id: 'a1', binaryObjectId: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
     const m1: MessageNode = {
       id: 'm1',
-      role: 'assistant',
+      role: 'user',
       content: 'Msg 1',
       attachments: [att],
-      modelId: 'special-model',
+      modelId: undefined,
+      thinking: undefined,
+      error: undefined,
       replies: { items: [] },
-      timestamp: 0
+      timestamp: 0,
+      lmParameters: { reasoning: { effort: undefined } }
     };
 
     const mockChat: Chat = {
@@ -284,12 +287,15 @@ describe('useChat Composable Logic', () => {
     const att: Attachment = { id: 'a1', binaryObjectId: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
     const m1: MessageNode = {
       id: 'm1',
-      role: 'assistant',
+      role: 'user',
       content: 'Original Content',
       attachments: [att],
-      modelId: 'm1',
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
       replies: { items: [] },
-      timestamp: 0
+      timestamp: 0,
+      lmParameters: { reasoning: { effort: undefined } }
     };
 
     __testOnlySetCurrentChat(reactive({

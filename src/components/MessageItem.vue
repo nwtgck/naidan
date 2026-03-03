@@ -27,7 +27,7 @@ const DOMPurify = (() => {
 })();
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
-import type { MessageNode, BinaryObject, EndpointType, LmParameters } from '../models/types';
+import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '../models/types';
 import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
@@ -450,6 +450,7 @@ function handleSaveEdit() {
     }
     const lmParameters: LmParameters = {
       ...settings.value.lmParameters,
+      stop: settings.value.lmParameters?.stop ? [...settings.value.lmParameters.stop] : undefined,
       reasoning: { effort: editReasoningEffort.value }
     };
     emit('edit', props.message.id, finalContent, lmParameters);
@@ -877,15 +878,16 @@ watch(parsedContent, () => {
   loadGeneratedImages();
 }, { immediate: true });
 
-const isUser = computed(() => {
-  switch (props.message.role) {
+const isUser = computed((): boolean => {
+  const node = props.message;
+  switch (node.role) {
   case 'user': return true;
   case 'assistant':
   case 'system':
     return false;
   default: {
-    const _ex: never = props.message.role;
-    return _ex;
+    const _ex: never = node;
+    return (_ex as { role: string }).role === 'user';
   }
   }
 });

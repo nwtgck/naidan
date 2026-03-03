@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { ref, nextTick } from 'vue';
+import type { Reasoning } from '../models/types';
 
 // Mock @vueuse/core for positioning tests
 const mockBounding = {
@@ -29,6 +30,7 @@ describe('ChatToolsMenu', () => {
     canGenerateImage: true,
     isProcessing: false,
     isImageMode: false,
+    isThinkActive: false,
     selectedWidth: 512,
     selectedHeight: 512,
     selectedCount: 1,
@@ -36,7 +38,8 @@ describe('ChatToolsMenu', () => {
     selectedSeed: undefined,
     selectedPersistAs: 'original' as const,
     availableImageModels: ['model-1', 'model-2'],
-    selectedImageModel: 'model-1'
+    selectedImageModel: 'model-1',
+    selectedReasoningEffort: undefined as Reasoning['effort'],
   };
 
   let wrapper: VueWrapper<any>;

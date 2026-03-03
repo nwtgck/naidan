@@ -204,7 +204,7 @@ export function useImageGeneration() {
     if (!target) return;
     const mutableChat = target;
     const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
-    if (!assistantNode) return;
+    if (assistantNode?.role !== 'assistant') return;
 
     // Prioritize the model requested in the sentinel (for regeneration/history)
     // Fallback to the currently selected model or the first available one

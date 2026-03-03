@@ -245,6 +245,12 @@ export class OpenAIProvider implements LLMProvider {
   }
 }
 
+interface OllamaMessage {
+  role: string;
+  content: string;
+  images?: string[];
+}
+
 interface OllamaChatRequest {
   model: string;
   messages: OllamaMessage[];

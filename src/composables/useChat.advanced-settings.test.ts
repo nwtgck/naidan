@@ -63,6 +63,7 @@ describe('useChat Advanced Settings Resolution', () => {
       lmParameters: {
         temperature: 0.7,
         maxCompletionTokens: 1000,
+        reasoning: { effort: undefined },
       },
     });
 
@@ -143,6 +144,7 @@ describe('useChat Advanced Settings Resolution', () => {
           temperature: 0.1,
           topP: 0.9,
           maxCompletionTokens: 100, // Will be overridden by chat
+          reasoning: { effort: undefined },
         },
         // Profile should be ignored at runtime
         providerProfiles: [{
@@ -153,6 +155,7 @@ describe('useChat Advanced Settings Resolution', () => {
           lmParameters: {
             temperature: 0.5,
             presencePenalty: 1.0,
+            reasoning: { effort: undefined },
           },
         } as any],
       });
@@ -161,6 +164,7 @@ describe('useChat Advanced Settings Resolution', () => {
         lmParameters: {
           maxCompletionTokens: 500,
           frequencyPenalty: 0.5,
+          reasoning: { effort: undefined },
         }
       });
 
@@ -181,7 +185,7 @@ describe('useChat Advanced Settings Resolution', () => {
 
   describe('Stop Sequences Handling', () => {
     it('passes stop sequences as array', async () => {
-      await updateChatSettings(currentChat.value!.id, { lmParameters: { stop: ['\n', 'User:'] } });
+      await updateChatSettings(currentChat.value!.id, { lmParameters: { stop: ['\n', 'User:'], reasoning: { effort: undefined } } });
       await sendMessage('Hi');
       const callParams = mockOpenAIChat.mock.calls[0]![0];
       const params = callParams.parameters;

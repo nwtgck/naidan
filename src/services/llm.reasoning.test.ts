@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OllamaProvider, OpenAIProvider } from './llm';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
 
 // Mock useGlobalEvents
 vi.mock('../composables/useGlobalEvents', () => ({
@@ -204,7 +203,7 @@ describe('LLM Providers Reasoning', () => {
 
     it('should retry with think: true when model does not support string effort level', async () => {
       const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-      
+
       const mockErrorResponse = {
         ok: false,
         status: 400,
@@ -244,7 +243,7 @@ describe('LLM Providers Reasoning', () => {
 
     it('should FAIL and NOT retry if the fallback request (think: true) also fails', async () => {
       const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-      
+
       const mockErrorResponse1 = {
         ok: false,
         status: 400,
@@ -280,7 +279,7 @@ describe('LLM Providers Reasoning', () => {
 
     it('should NOT fallback to think: true when original think was false (Off)', async () => {
       const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-      
+
       const mockErrorResponse = {
         ok: false,
         status: 400,
@@ -306,7 +305,7 @@ describe('LLM Providers Reasoning', () => {
 
     it('should NOT fallback when parameters is missing (title gen)', async () => {
       const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-      
+
       const mockErrorResponse = {
         ok: false,
         status: 400,
@@ -330,7 +329,7 @@ describe('LLM Providers Reasoning', () => {
 
     it('should NOT retry when error message does not match "not supported"', async () => {
       const provider = new OllamaProvider({ endpoint: 'http://localhost:11434' });
-      
+
       const mockErrorResponse = {
         ok: false,
         status: 400,

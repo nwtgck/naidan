@@ -486,6 +486,7 @@ describe('ImportExportService', () => {
           maxCompletionTokens: undefined,
           presencePenalty: undefined,
           frequencyPenalty: undefined,
+          reasoning: undefined,
         }
       })));
 

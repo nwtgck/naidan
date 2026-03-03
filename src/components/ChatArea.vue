@@ -146,13 +146,14 @@ function exportChat() {
 
   activeMessages.value.forEach(msg => {
     const role = (() => {
-      switch (msg.role) {
+      const node = msg;
+      switch (node.role) {
       case 'user': return 'User';
       case 'assistant': return 'AI';
       case 'system': return 'System';
       default: {
-        const _ex: never = msg.role;
-        return _ex;
+        const _ex: never = node;
+        return (_ex as { role: string }).role;
       }
       }
     })();

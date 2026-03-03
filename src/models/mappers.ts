@@ -19,6 +19,9 @@ import type {
 import type {
   Role,
   MessageNode,
+  AssistantMessageNode,
+  UserMessageNode,
+  SystemMessageNode,
   MessageBranch,
   Chat,
   ChatGroup,
@@ -336,13 +339,18 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
       ...common,
       role: 'user',
       attachments: dto.attachments?.map(attachmentToDomain),
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
       lmParameters: lmParametersToDomain(dto.lmParameters),
     };
   case 'assistant':
     return {
       ...common,
       role: 'assistant',
+      attachments: undefined,
       thinking: dto.thinking,
+      error: dto.error,
       modelId: dto.modelId,
       lmParameters: lmParametersToDomain(dto.lmParameters),
     };
@@ -350,6 +358,11 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
     return {
       ...common,
       role: 'system',
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
     };
   default: {
     const _ex: never = dto;
@@ -374,13 +387,18 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       ...common,
       role: 'user',
       attachments: domain.attachments?.map(attachmentToDto),
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
       lmParameters: lmParametersToDto(domain.lmParameters),
     };
   case 'assistant':
     return {
       ...common,
       role: 'assistant',
+      attachments: undefined,
       thinking: domain.thinking,
+      error: domain.error,
       modelId: domain.modelId,
       lmParameters: lmParametersToDto(domain.lmParameters),
     };
@@ -388,6 +406,11 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
     return {
       ...common,
       role: 'system',
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
     };
   default: {
     const _ex: never = domain;
@@ -419,6 +442,7 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
       return {
         ...common,
         role: 'assistant',
+        attachments: undefined,
         thinking: m.thinking,
         modelId: m.modelId,
         lmParameters: { reasoning: { effort: undefined } },
@@ -429,11 +453,19 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
         ...common,
         role: 'user',
         attachments: [],
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
       } as UserMessageNode;
     }
     return {
       ...common,
       role: 'system',
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
     } as SystemMessageNode;
   });
 

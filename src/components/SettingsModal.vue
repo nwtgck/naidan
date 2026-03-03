@@ -87,7 +87,10 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
       await chatStore.createChatGroup(item.newName, {
         modelId: item.matchedModelId,
         systemPrompt: item.recipe.systemPrompt,
-        lmParameters: item.recipe.lmParameters,
+        lmParameters: item.recipe.lmParameters ? {
+          ...item.recipe.lmParameters,
+          reasoning: { effort: item.recipe.lmParameters.reasoning?.effort }
+        } : { reasoning: { effort: undefined } },
       });
     }
 

@@ -63,6 +63,13 @@ onMounted(() => {
 watch(() => props.selectedEffort, () => {
   nextTick(() => updateSlider());
 });
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>
@@ -74,7 +81,7 @@ watch(() => props.selectedEffort, () => {
 
     <!-- Segmented Control Container -->
     <div class="relative flex p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
-      
+
       <!-- Animated Slider Background -->
       <div
         class="absolute top-0.5 bottom-0.5 bg-white dark:bg-gray-700 rounded-md border border-gray-200 dark:border-gray-600 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"

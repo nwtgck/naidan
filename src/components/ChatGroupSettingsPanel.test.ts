@@ -13,7 +13,7 @@ const mockGroup = reactive<ChatGroup>({
   endpoint: undefined,
   modelId: undefined,
   systemPrompt: undefined,
-  lmParameters: {},
+  lmParameters: { reasoning: { effort: undefined } },
 });
 
 const mockSettings = reactive({
@@ -86,7 +86,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       autoTitleEnabled: undefined,
       titleModelId: undefined,
       systemPrompt: undefined,
-      lmParameters: {},
+      lmParameters: { reasoning: { effort: undefined } },
     });
     // Default global settings
     mockSettings.endpointType = 'openai';

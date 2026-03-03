@@ -164,6 +164,9 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       content: z.string(),
       attachments: orUndefined(z.array(AttachmentSchemaDto)),
       timestamp: z.number(),
+      thinking: z.undefined(),
+      error: z.undefined(),
+      modelId: z.undefined(),
       lmParameters: orUndefined(LmParametersSchemaDto),
       replies: MessageBranchSchemaDto,
     }),
@@ -171,8 +174,10 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       id: z.string(),
       role: z.literal('assistant'),
       content: z.string(),
+      attachments: z.undefined(),
       timestamp: z.number(),
       thinking: orUndefined(z.string()),
+      error: orUndefined(z.string()),
       modelId: orUndefined(z.string()),
       lmParameters: orUndefined(LmParametersSchemaDto),
       replies: MessageBranchSchemaDto,
@@ -181,7 +186,12 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       id: z.string(),
       role: z.literal('system'),
       content: z.string(),
+      attachments: z.undefined(),
       timestamp: z.number(),
+      thinking: z.undefined(),
+      error: z.undefined(),
+      modelId: z.undefined(),
+      lmParameters: z.undefined(),
       replies: MessageBranchSchemaDto,
     }),
   ])
@@ -204,16 +214,26 @@ export type MessageNodeDto =
   | (MessageNodeCommonDto & {
       role: 'user';
       attachments: AttachmentDto[] | undefined;
+      thinking: undefined;
+      error: undefined;
+      modelId: undefined;
       lmParameters: LmParametersDto | undefined;
     })
   | (MessageNodeCommonDto & {
       role: 'assistant';
+      attachments: undefined;
       thinking: string | undefined;
+      error: string | undefined;
       modelId: string | undefined;
       lmParameters: LmParametersDto | undefined;
     })
   | (MessageNodeCommonDto & {
       role: 'system';
+      attachments: undefined;
+      thinking: undefined;
+      error: undefined;
+      modelId: undefined;
+      lmParameters: undefined;
     });
 
 /**

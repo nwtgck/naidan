@@ -1,6 +1,6 @@
 import { generateId } from './id';
 import { toRaw } from 'vue';
-import type { MessageNode, SidebarItem, Chat } from '../models/types';
+import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat } from '../models/types';
 
 export function fileToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -97,16 +97,50 @@ export interface HistoryItem {
 }
 
 export function createBranchFromMessages(messages: HistoryItem[]): MessageNode[] {
-  const nodes: MessageNode[] = messages.map(m => ({
-    id: generateId(),
-    role: m.role,
-    content: m.content,
-    timestamp: Date.now(),
-    modelId: m.modelId,
-    thinking: m.thinking,
-    attachments: m.attachments,
-    replies: { items: [] },
-  }));
+  const nodes: MessageNode[] = messages.map(m => {
+    const common = {
+      id: generateId(),
+      content: m.content,
+      timestamp: Date.now(),
+      replies: { items: [] }
+    };
+    switch (m.role) {
+    case 'user':
+      return {
+        ...common,
+        role: 'user',
+        attachments: m.attachments || [],
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: { reasoning: { effort: undefined } }
+      } as UserMessageNode;
+    case 'assistant':
+      return {
+        ...common,
+        role: 'assistant',
+        attachments: undefined,
+        thinking: m.thinking,
+        error: undefined,
+        modelId: m.modelId,
+        lmParameters: { reasoning: { effort: undefined } }
+      } as AssistantMessageNode;
+    case 'system':
+      return {
+        ...common,
+        role: 'system',
+        attachments: undefined,
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: undefined,
+      } as SystemMessageNode;
+    default: {
+      const _ex: never = m.role;
+      throw new Error(`Unhandled role: ${_ex}`);
+    }
+    }
+  });
 
   for (let i = 0; i < nodes.length - 1; i++) {
     nodes[i]!.replies.items.push(nodes[i + 1]!);

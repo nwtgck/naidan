@@ -69,11 +69,15 @@ export type MessageNodeBase = {
 export type UserMessageNode = MessageNodeBase & {
   role: 'user';
   attachments?: Attachment[];
+  thinking?: undefined;
+  error?: undefined;
+  modelId?: undefined;
   lmParameters?: LmParameters;
 };
 
 export type AssistantMessageNode = MessageNodeBase & {
   role: 'assistant';
+  attachments?: undefined;
   thinking?: string;
   error?: string;
   modelId?: string;
@@ -82,6 +86,11 @@ export type AssistantMessageNode = MessageNodeBase & {
 
 export type SystemMessageNode = MessageNodeBase & {
   role: 'system';
+  attachments?: undefined;
+  thinking?: undefined;
+  error?: undefined;
+  modelId?: undefined;
+  lmParameters?: undefined;
 };
 
 export type MessageNode = UserMessageNode | AssistantMessageNode | SystemMessageNode;
