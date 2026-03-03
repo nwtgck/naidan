@@ -159,12 +159,16 @@ function updateSeed(seed: number | 'browser_random' | undefined) {
 }
 
 const selectedReasoningEffort = computed(() => {
-  return currentChat.value ? reasoningStore.getReasoningEffort({ chatId: currentChat.value.id }) : undefined;
+  return currentChat.value?.lmParameters?.reasoning?.effort;
 });
 
 function updateReasoningEffort({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) {
   if (currentChat.value) {
-    reasoningStore.updateReasoningEffort({ chatId: currentChat.value.id, effort });
+    const newParams = {
+      ...(currentChat.value.lmParameters || {}),
+      reasoning: { effort }
+    };
+    chatStore.updateChatSettings(currentChat.value.id, { lmParameters: newParams });
   }
 }
 

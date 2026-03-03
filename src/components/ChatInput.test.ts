@@ -42,6 +42,7 @@ vi.mock('./ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', templa
 // Mock composables
 const mockCurrentChat = ref<any>({ id: 'chat-1', modelId: 'model-1' });
 const mockSendMessage = vi.fn();
+const mockUpdateChatSettings = vi.fn();
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -65,6 +66,20 @@ vi.mock('../composables/useChat', () => ({
     getSelectedImageModel: vi.fn(),
     fetchAvailableModels: vi.fn(),
     sendMessage: mockSendMessage,
+    updateChatSettings: mockUpdateChatSettings,
+  }),
+}));
+
+vi.mock('../composables/useReasoning', () => ({
+  useReasoning: () => ({
+    getReasoningEffort: vi.fn((args: { chatId: string }) => {
+      // Return effort from currentChat if available to simulate integration
+      if (mockCurrentChat.value?.id === args.chatId) {
+        return mockCurrentChat.value.lmParameters?.reasoning?.effort;
+      }
+      return undefined;
+    }),
+    updateReasoningEffort: vi.fn(),
   }),
 }));
 
@@ -241,5 +256,30 @@ describe('ChatInput Integration', () => {
     }
 
     expect(mockSetPreferredEditorMode).toHaveBeenCalledWith({ mode: 'textarea' });
+  });
+
+  it('should persist reasoning effort when updated via tools menu', async () => {
+    const wrapper = getWrapper();
+    const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
+    expect(toolsMenu.exists()).toBe(true);
+
+    // Update currentChat to have initial lmParameters
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      modelId: 'model-1',
+      lmParameters: { reasoning: { effort: undefined } }
+    };
+    await nextTick();
+
+    // Trigger update event from tools menu
+    await (toolsMenu.vm as any).$emit('update:reasoning-effort', 'high');
+    await nextTick();
+
+    // Verify updateChatSettings was called correctly
+    expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      lmParameters: expect.objectContaining({
+        reasoning: { effort: 'high' }
+      })
+    }));
   });
 });
