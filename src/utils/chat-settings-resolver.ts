@@ -110,7 +110,10 @@ export function hasChatOverrides({ chat }: {
     chat.autoTitleEnabled !== undefined ||
     chat.titleModelId ||
     chat.systemPrompt ||
-    (chat.lmParameters && Object.keys(chat.lmParameters).length > 0)
+    (chat.lmParameters && Object.entries(chat.lmParameters).some(([key, value]) => {
+      if (key === 'reasoning') return (value as any)?.effort !== undefined;
+      return value !== undefined;
+    }))
   );
 }
 
@@ -137,6 +140,9 @@ export function hasGroupOverrides({ group }: {
     group.autoTitleEnabled !== undefined ||
     group.titleModelId ||
     group.systemPrompt ||
-    (group.lmParameters && Object.keys(group.lmParameters).length > 0)
+    (group.lmParameters && Object.entries(group.lmParameters).some(([key, value]) => {
+      if (key === 'reasoning') return (value as any)?.effort !== undefined;
+      return value !== undefined;
+    }))
   );
 }

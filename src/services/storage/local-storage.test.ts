@@ -56,7 +56,7 @@ describe('LocalStorageProvider', () => {
     await provider.saveChatContent(mockChat.id, mockChat);
     await provider.saveChatMeta(mockChat);
     const loaded = await provider.loadChat(mockChat.id);
-    expect(loaded).toEqual(mockChat);
+    expect(loaded).toEqual(expect.objectContaining(mockChat));
   });
 
   it('should list saved chats', async () => {

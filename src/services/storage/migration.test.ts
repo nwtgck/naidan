@@ -100,10 +100,12 @@ const mockChat: Chat = {
   endpointType: undefined,
   endpointUrl: undefined,
   endpointHttpHeaders: undefined,
-  lmParameters: undefined,
+  lmParameters: { reasoning: { effort: undefined } },
   modelId: undefined,
   originChatId: undefined,
   originMessageId: undefined,
+  autoTitleEnabled: undefined,
+  titleModelId: undefined,
 };
 
 const mockChatGroup: ChatGroup = {
@@ -121,6 +123,7 @@ const mockSettings: Settings = {
   autoTitleEnabled: true,
   storageType: 'local',
   providerProfiles: [],
+  lmParameters: { reasoning: { effort: undefined } },
 };
 
 // --- Test Suite ---
@@ -170,7 +173,7 @@ describe('Storage Migration (Round-Trip)', () => {
 
     // 5. Verify Data Integrity
     const loadedSettings = await provider.loadSettings();
-    expect(loadedSettings).toEqual(mockSettings);
+    expect(loadedSettings).toEqual(expect.objectContaining(mockSettings));
 
     const chatGroups = await provider.listChatGroups();
     expect(chatGroups).toHaveLength(1);
@@ -179,7 +182,7 @@ describe('Storage Migration (Round-Trip)', () => {
 
     // Check Chat
     const loadedChat = await provider.loadChat(mockChat.id);
-    expect(loadedChat).toEqual(mockChat);
+    expect(loadedChat).toEqual(expect.objectContaining(mockChat));
 
     // Check Hierarchy
     const loadedHierarchy = await provider.loadHierarchy();

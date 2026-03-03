@@ -38,18 +38,29 @@ describe('chat-tree utils', () => {
       expect(nodes).toEqual([]);
     });
 
-    it('should preserve attachments and thinking content', () => {
+    it('should preserve thinking content for assistant', () => {
       const messages: HistoryItem[] = [
         {
           role: 'assistant',
           content: 'I thought about it.',
           thinking: 'Inner thoughts',
-          attachments: [{ id: '1', binaryObjectId: '1', status: 'persisted', originalName: 'n.png', mimeType: 'image/png', size: 10, uploadedAt: 0 }]
         }
       ];
 
       const nodes = createBranchFromMessages(messages);
       expect(nodes[0]!.thinking).toBe('Inner thoughts');
+    });
+
+    it('should preserve attachments for user', () => {
+      const messages: HistoryItem[] = [
+        {
+          role: 'user',
+          content: 'Here is an image.',
+          attachments: [{ id: '1', binaryObjectId: '1', status: 'persisted', originalName: 'n.png', mimeType: 'image/png', size: 10, uploadedAt: 0 }]
+        }
+      ];
+
+      const nodes = createBranchFromMessages(messages);
       expect(nodes[0]!.attachments?.[0]!.id).toBe('1');
     });
   });

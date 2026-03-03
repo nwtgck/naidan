@@ -177,6 +177,7 @@ describe('useChat Advanced Settings Resolution', () => {
         topP: 0.9,                // From Global
         maxCompletionTokens: 500, // From Chat
         frequencyPenalty: 0.5,    // From Chat
+        reasoning: { effort: undefined },
         // presencePenalty: 1.0 from Profile should be missing
       });
       expect(params.presencePenalty).toBeUndefined();

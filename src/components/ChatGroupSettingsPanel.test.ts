@@ -13,7 +13,7 @@ const mockGroup = reactive<ChatGroup>({
   endpoint: undefined,
   modelId: undefined,
   systemPrompt: undefined,
-  lmParameters: { reasoning: { effort: undefined } },
+  lmParameters: undefined,
 });
 
 const mockSettings = reactive({

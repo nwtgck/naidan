@@ -1662,7 +1662,7 @@ describe('ChatArea Model Selection', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockSendMessage).toHaveBeenCalledWith('automatic message', undefined, []);
+    expect(mockSendMessage).toHaveBeenCalledWith('automatic message', undefined, [], undefined, expect.anything());
     expect(wrapper.emitted('auto-sent')).toBeTruthy();
   });
 });

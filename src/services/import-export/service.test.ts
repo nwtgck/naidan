@@ -351,10 +351,10 @@ describe('ImportExportService', () => {
       const content = {
         root: {
           items: [{
-            id: UUID_M1, role: 'user', content: 'hello', timestamp: now,
+            id: UUID_M1, role: 'assistant', content: 'hello', timestamp: now,
             replies: {
               items: [{
-                id: UUID_M2, role: 'assistant', content: 'response', timestamp: now + 100,
+                id: UUID_M2, role: 'user', content: 'response', timestamp: now + 100,
                 attachments: [{
                   id: UUID_A1, binaryObjectId: UUID_A1, name: 'img.png', status: 'persisted'
                 }],
@@ -509,7 +509,8 @@ describe('ImportExportService', () => {
       expect(result).toEqual(expect.objectContaining({
         lmParameters: {
           temperature: 0.1,
-          stop: ['ZIP']
+          stop: ['ZIP'],
+          reasoning: { effort: undefined }
         }
       }));
     });

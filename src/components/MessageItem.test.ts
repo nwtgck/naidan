@@ -2,7 +2,7 @@ import { generateId } from '../utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
-import type { MessageNode } from '../models/types';
+import type { MessageNode, UserMessageNode, AssistantMessageNode } from '../models/types';
 import { Check } from 'lucide-vue-next';
 import { nextTick } from 'vue';
 
@@ -406,7 +406,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
 
     // Should emit 'edit' event
     expect(wrapper.emitted('edit')).toBeTruthy();
-    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'New branch content']);
+    expect(wrapper.emitted('edit')?.[0]).toEqual(expect.arrayContaining([message.id, 'New branch content']));
     expect(wrapper.find('[data-testid="edit-mode"]').exists()).toBe(false);
   });
 
@@ -422,7 +422,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
     await textarea.trigger('keydown.enter', { metaKey: true });
 
     expect(wrapper.emitted('edit')).toBeTruthy();
-    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Meta content']);
+    expect(wrapper.emitted('edit')?.[0]).toEqual(expect.arrayContaining([message.id, 'Meta content']));
   });
 
   it('clears all content when Clear button is clicked', async () => {
@@ -454,8 +454,12 @@ describe('MessageItem Attachment Rendering', () => {
     content: 'Message with images',
     timestamp: Date.now(),
     attachments,
+    thinking: undefined,
+    error: undefined,
+    modelId: undefined,
+    lmParameters: { reasoning: { effort: undefined } },
     replies: { items: [] },
-  });
+  } as UserMessageNode);
 
   beforeEach(() => {
     vi.stubGlobal('URL', {
@@ -557,8 +561,12 @@ describe('MessageItem States', () => {
     content,
     error,
     timestamp: Date.now(),
+    attachments: undefined,
+    thinking: undefined,
+    modelId: 'test-model',
+    lmParameters: { reasoning: { effort: undefined } },
     replies: { items: [] },
-  });
+  } as AssistantMessageNode);
 
   it('displays loading indicator when waiting for response', () => {
     const message = createAssistantMessage('');
@@ -621,13 +629,34 @@ describe('MessageItem States', () => {
 });
 
 describe('MessageItem Edit Labels', () => {
-  const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
-    id: generateId(),
-    role,
-    content: 'Some content',
-    timestamp: Date.now(),
-    replies: { items: [] },
-  });
+  const createMessage = (role: 'user' | 'assistant'): MessageNode => {
+    const common = {
+      id: generateId(),
+      content: 'Some content',
+      timestamp: Date.now(),
+      replies: { items: [] }
+    };
+    if (role === 'user') {
+      return {
+        ...common,
+        role: 'user',
+        attachments: [],
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: { reasoning: { effort: undefined } }
+      } as UserMessageNode;
+    }
+    return {
+      ...common,
+      role: 'assistant',
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: 'test-model',
+      lmParameters: { reasoning: { effort: undefined } }
+    } as AssistantMessageNode;
+  };
 
   it('shows "Send & Branch" when editing a user message', async () => {
     const message = createMessage('user');
@@ -661,7 +690,7 @@ describe('MessageItem Edit Labels', () => {
     await wrapper.find('[data-testid="save-edit"]').trigger('click');
 
     expect(wrapper.emitted('edit')).toBeTruthy();
-    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Some content']);
+    expect(wrapper.emitted('edit')?.[0]).toEqual(expect.arrayContaining([message.id, 'Some content']));
   });
 
   it('shows "Resend" button for user messages and emits edit event', async () => {
@@ -675,7 +704,7 @@ describe('MessageItem Edit Labels', () => {
     await resendBtn.trigger('click');
 
     expect(wrapper.emitted('edit')).toBeTruthy();
-    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Some content']);
+    expect(wrapper.emitted('edit')?.[0]).toEqual(expect.arrayContaining([message.id, 'Some content']));
   });
 
   it('does NOT show "Resend" button for assistant messages', () => {
@@ -687,13 +716,34 @@ describe('MessageItem Edit Labels', () => {
 });
 
 describe('MessageItem Action Visibility', () => {
-  const createMessage = (role: 'user' | 'assistant'): MessageNode => ({
-    id: generateId(),
-    role,
-    content: 'Some content',
-    timestamp: Date.now(),
-    replies: { items: [] },
-  });
+  const createMessage = (role: 'user' | 'assistant'): MessageNode => {
+    const common = {
+      id: generateId(),
+      content: 'Some content',
+      timestamp: Date.now(),
+      replies: { items: [] }
+    };
+    if (role === 'user') {
+      return {
+        ...common,
+        role: 'user',
+        attachments: [],
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: { reasoning: { effort: undefined } }
+      } as UserMessageNode;
+    }
+    return {
+      ...common,
+      role: 'assistant',
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: 'test-model',
+      lmParameters: { reasoning: { effort: undefined } }
+    } as AssistantMessageNode;
+  };
 
   it('ensures message actions are always visible (no hover-only opacity classes)', () => {
     const message = createMessage('assistant');

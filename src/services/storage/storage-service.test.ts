@@ -218,9 +218,15 @@ describe('StorageService Migration', () => {
       root: {
         items: [{
           id: 'msg-1',
+          role: 'user',
+          content: 'msg 1',
+          timestamp: Date.now(),
           replies: {
             items: [{
               id: 'msg-2',
+              role: 'user',
+              content: 'msg 2',
+              timestamp: Date.now(),
               attachments: [{
                 id: 'att-nested',
                 binaryObjectId: 'bin-nested',
