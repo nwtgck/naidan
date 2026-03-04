@@ -708,6 +708,24 @@ describe('MessageItem Edit Labels', () => {
     expect(wrapper.emitted('edit')?.[0]).toEqual(expect.arrayContaining([message.id, 'Some content']));
   });
 
+  it('preserves lmParameters when resending a user message', async () => {
+    const lmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' as const } };
+    const message: UserMessageNode = {
+      id: generateId(),
+      role: 'user',
+      content: 'Original content',
+      timestamp: Date.now(),
+      replies: { items: [] },
+      lmParameters
+    };
+    const wrapper = mount(MessageItem, { props: { message } });
+
+    await wrapper.find('[data-testid="resend-button"]').trigger('click');
+
+    expect(wrapper.emitted('edit')).toBeTruthy();
+    expect(wrapper.emitted('edit')?.[0]).toEqual([message.id, 'Original content', lmParameters]);
+  });
+
   it('does NOT show "Resend" button for assistant messages', () => {
     const message = createMessage('assistant');
     const wrapper = mount(MessageItem, { props: { message } });

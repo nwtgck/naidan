@@ -80,7 +80,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'fork', messageId: string): void;
-  (e: 'edit', messageId: string, newContent: string, lmParameters?: LmParameters): void;
+  (e: 'edit', messageId: string, newContent: string, lmParameters: LmParameters | undefined): void;
   (e: 'switch-version', messageId: string): void;
   (e: 'regenerate', messageId: string): void;
   (e: 'abort'): void;
@@ -1235,7 +1235,7 @@ defineExpose({
             :speech-text="speechText"
             :display-content="displayContent"
             @regenerate="id => emit('regenerate', id)"
-            @edit="(id, content) => emit('edit', id, content)"
+            @edit="(id, content, params) => emit('edit', id, content, params)"
             @fork="id => emit('fork', id)"
             @enter-edit-mode="isEditing = true"
             @show-diff="showDiffModal = true"

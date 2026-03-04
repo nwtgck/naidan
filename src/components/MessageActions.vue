@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { GitFork, Pencil, Copy, Check, RefreshCw, Send, MoreVertical, History, MoreHorizontal } from 'lucide-vue-next';
-import type { MessageNode } from '../models/types';
+import type { MessageNode, LmParameters } from '../models/types';
 import { isImageGenerationPending } from '../utils/image-generation';
 import SpeechControl from './SpeechControl.vue';
 import MessageActionsMenu from './MessageActionsMenu.vue';
@@ -19,7 +19,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'regenerate', messageId: string): void;
-  (e: 'edit', messageId: string, content: string): void;
+  (e: 'edit', messageId: string, content: string, lmParameters: LmParameters | undefined): void;
   (e: 'fork', messageId: string): void;
   (e: 'enter-edit-mode'): void;
   (e: 'show-diff'): void;
@@ -91,7 +91,7 @@ defineExpose({
     </button>
     <button
       v-if="isUser"
-      @click="emit('edit', message.id, message.content)"
+      @click="emit('edit', message.id, message.content, message.lmParameters)"
       class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
       title="Resend message"
       data-testid="resend-button"
