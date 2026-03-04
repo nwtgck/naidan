@@ -151,13 +151,17 @@ describe('MessageItem Edit Image Generation', () => {
 
     const toggleButton = wrapper.find('[data-testid="toggle-edit-image-mode"]');
 
-    // Toggle image mode on
+    // Show image settings panel
     await toggleButton.trigger('click');
     await nextTick();
     await flushPromises();
 
     const settings = wrapper.findComponent({ name: 'ImageGenerationSettings' });
     expect(settings.exists()).toBe(true);
+
+    // Enable image mode via the settings component
+    await settings.vm.$emit('toggle-image-mode');
+    await nextTick();
 
     await wrapper.find('[data-testid="save-edit"]').trigger('click');
 
@@ -183,16 +187,14 @@ describe('MessageItem Edit Image Generation', () => {
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
     await nextTick();
-
-    const toggleButton = wrapper.find('[data-testid="toggle-edit-image-mode"]');
-
-    // Toggle image mode off
-    await toggleButton.trigger('click');
-    await nextTick();
     await flushPromises();
 
     const settings = wrapper.findComponent({ name: 'ImageGenerationSettings' });
-    expect(settings.exists()).toBe(false);
+    expect(settings.exists()).toBe(true);
+
+    // Disable image mode via the settings component
+    await settings.vm.$emit('toggle-image-mode');
+    await nextTick();
 
     await wrapper.find('[data-testid="save-edit"]').trigger('click');
 
@@ -228,6 +230,45 @@ describe('MessageItem Edit Image Generation', () => {
     await nextTick();
     await flushPromises();
     expect(wrapper.find('[data-testid="embedded-experimental-tools"]').exists()).toBe(false);
+  });
+
+  it('shows only the toggle button when tools are opened, then settings when toggle is clicked', async () => {
+    const message = createMessage('Regular text');
+    const wrapper = mount(MessageItem, {
+      props: { message, canGenerateImage: true },
+      global: {
+        stubs: {
+          ImageGenerationSettings: {
+            name: 'ImageGenerationSettings',
+            template: `
+              <div data-testid="mock-image-settings">
+                <button v-if="!isImageMode" @click="$emit('toggle-image-mode')" data-testid="mock-create-image-btn">Create Image</button>
+                <div v-else data-testid="mock-full-settings">Full Settings</div>
+              </div>
+            `,
+            props: ['isImageMode']
+          }
+        }
+      }
+    });
+
+    await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+    await nextTick();
+
+    // Open tools
+    await wrapper.find('[data-testid="toggle-edit-image-mode"]').trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="embedded-experimental-tools"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="mock-create-image-btn"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="mock-full-settings"]').exists()).toBe(false);
+
+    // Click "Create Image" inside the settings
+    const createBtn = wrapper.find('[data-testid="mock-create-image-btn"]');
+    await createBtn.trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="mock-full-settings"]').exists()).toBe(true);
   });
 
   it('maintains intentional leading whitespace for regular messages', async () => {

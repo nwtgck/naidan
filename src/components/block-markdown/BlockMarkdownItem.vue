@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { Token, Tokens } from 'marked';
+import { marked, sanitizeHtml } from './useMarkdown'; // Added sanitizeHtml
 import CodeBlockWrapper from './CodeBlockWrapper.vue';
 import MarkdownInline from './MarkdownInline.vue';
 import BlockMarkdownItem from './BlockMarkdownItem.vue';
@@ -117,26 +118,30 @@ defineExpose({
   </component>
 
   <!-- Table -->
-  <div v-else-if="token.type === 'table'" class="overflow-x-auto my-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-      <thead class="bg-gray-50 dark:bg-gray-800">
-        <tr>
+  <div v-else-if="token.type === 'table'" class="not-prose overflow-x-auto my-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-950/20">
+    <table class="min-w-full border-collapse">
+      <thead>
+        <tr class="bg-gray-100/50 dark:bg-gray-800/50">
           <th
             v-for="(header, idx) in (token as Tokens.Table).header"
             :key="idx"
-            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+            class="px-3 py-2 text-left text-[11px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700"
             :style="{ textAlign: (token as Tokens.Table).align[idx] || 'left' }"
           >
             <MarkdownInline :text="header.text" mode="markdown" />
           </th>
         </tr>
       </thead>
-      <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
-        <tr v-for="(row, rIdx) in (token as Tokens.Table).rows" :key="rIdx" class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+      <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+        <tr
+          v-for="(row, rIdx) in (token as Tokens.Table).rows"
+          :key="rIdx"
+          class="hover:bg-gray-50/80 dark:hover:bg-gray-800/30 transition-colors"
+        >
           <td
             v-for="(cell, cIdx) in row"
             :key="cIdx"
-            class="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-normal"
+            class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 whitespace-normal leading-snug"
             :style="{ textAlign: (token as Tokens.Table).align[cIdx] || 'left' }"
           >
             <MarkdownInline :text="cell.text" mode="markdown" />
@@ -145,7 +150,6 @@ defineExpose({
       </tbody>
     </table>
   </div>
-
   <!-- Details -->
   <details v-else-if="token.type === 'details' || token.type === 'detailsInline'" class="my-4 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50/50 dark:bg-gray-800/30">
     <summary v-if="(token as any).summary" class="cursor-pointer font-medium p-1 hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded transition-colors">
@@ -190,8 +194,8 @@ defineExpose({
   </template>
 
   <!-- KaTeX -->
-  <div v-else-if="token.type === 'blockKatex'" v-html="(token as any).text" class="my-4 overflow-x-auto"></div>
-  <span v-else-if="token.type === 'katex'" v-html="(token as any).text"></span>
+  <div v-else-if="token.type === 'blockKatex'" v-html="sanitizeHtml({ html: marked.parse(token.raw) as string })" class="my-4 overflow-x-auto"></div>
+  <span v-else-if="token.type === 'katex' || token.type === 'inlineKatex'" v-html="sanitizeHtml({ html: marked.parseInline(token.raw) as string })"></span>
 
   <!-- Text / Inline elements (for tight lists or other inline contexts handled as blocks) -->
   <MarkdownInline

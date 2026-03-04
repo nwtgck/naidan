@@ -82,12 +82,15 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
     const container = wrapper.find('[data-testid="toggle-thinking"]');
 
     // Mode should be 'collapsed-active'
-    expect(container.classes()).toContain('max-h-32');
+    expect(container.classes()).toContain('h-32');
     expect(container.classes()).toContain('overflow-hidden');
 
     // Content should be visible even when collapsed if active
-    expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="thinking-content"]').classes()).toContain('mask-fade-top');
+    const content = wrapper.find('[data-testid="thinking-content"]');
+    expect(content.exists()).toBe(true);
+    expect(content.classes()).toContain('h-20');
+    expect(content.classes()).toContain('mask-fade-top');
+    expect(content.classes()).toContain('pt-2');
   });
 
   it('maintains the thinking border during expansion if thinking is active', async () => {

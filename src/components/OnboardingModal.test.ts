@@ -8,6 +8,7 @@ import { useTheme } from '../composables/useTheme';
 import { useToast } from '../composables/useToast';
 import { Settings } from 'lucide-vue-next';
 import * as llm from '../services/llm';
+import { TransformersJsProvider } from '../services/transformers-js-provider';
 import { type EndpointType } from '../models/types';
 import { detectOllama } from '../utils/ollama-detection';
 
@@ -18,6 +19,10 @@ vi.mock('../services/llm', () => {
     OllamaProvider: vi.fn(),
   };
 });
+
+vi.mock('../services/transformers-js-provider', () => ({
+  TransformersJsProvider: vi.fn(),
+}));
 
 // Mock the utilities
 vi.mock('../utils/ollama-detection', () => ({
@@ -81,6 +86,9 @@ describe('OnboardingModal.vue', () => {
       return { listModels: listModelsMock };
     });
     (llm.OllamaProvider as unknown as Mock).mockImplementation(function() {
+      return { listModels: listModelsMock };
+    });
+    (TransformersJsProvider as unknown as Mock).mockImplementation(function() {
       return { listModels: listModelsMock };
     });
   });
@@ -187,6 +195,7 @@ describe('OnboardingModal.vue', () => {
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
       endpointUrl: 'http://api.openai.com',
       defaultModelId: 'model-1',
+      titleModelId: 'model-1',
     }));
     expect(mockOnboardingDraft.value).toBe(null); // Draft cleared on success
     expect(mockIsOnboardingDismissed.value).toBe(true);
@@ -456,6 +465,28 @@ describe('OnboardingModal.vue', () => {
       await nextTick();
 
       expect(effectiveType.value).toBe('openai');
+    });
+
+    it('saves titleModelId as undefined when finishing onboarding with transformers_js', async () => {
+      listModelsMock.mockResolvedValue(['Xenova/gpt2']);
+      const wrapper = mount(OnboardingModal);
+      const { selectedType } = (wrapper.vm as any).__testOnly;
+
+      // 1. Select Transformers.js
+      selectedType.value = 'transformers_js';
+      await flushPromises();
+      await nextTick();
+
+      // 2. Click "Get Started" (handleFinish)
+      const finishBtn = wrapper.findAll('button').find(b => b.text().includes('Get Started'));
+      await finishBtn?.trigger('click');
+      await flushPromises();
+
+      expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
+        endpointType: 'transformers_js',
+        defaultModelId: 'Xenova/gpt2',
+        titleModelId: undefined,
+      }));
     });
   });
 });

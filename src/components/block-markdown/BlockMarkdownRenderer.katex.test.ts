@@ -24,7 +24,7 @@ describe('BlockMarkdownRenderer: KaTeX Rendering', () => {
     expect(dom).toContain('class="katex"');
   });
 
-  it.todo('renders block math', () => {
+  it('renders block math', () => {
     // Ensure empty lines around $$ for reliable block detection
     const content = `\
 Some text
@@ -45,5 +45,26 @@ More text
     });
     // With proper spacing, marked-katex-extension should trigger
     expect(dom).toContain('class="katex-display"');
+  });
+
+  it('renders block math even when followed by text on the same line (mixed line)', () => {
+    const content = `\
+$$x = {-b \\pm \\sqrt{b^2-4ac} \\over 2a}$$ hoge
+$$x = {-b \\pm \\sqrt{b^2-4ac} \\over 2a}$$
+`;
+    const wrapper = mountRenderer({ content });
+    const html = wrapper.html();
+
+    // Count occurrences of katex-display.
+    // The first line might be treated as inline or block depending on marked-katex-extension's behavior for "$$ ... $$ text".
+    // If it's at the start of the line, marked-katex-extension often treats it as block math.
+    const displayMathCount = (html.match(/katex-display/g) || []).length;
+
+    // We expect at least the second one to be a block.
+    // If the first one is also a block (despite 'hoge'), it should be 2.
+    // If it fails to render at all, it would be 0 or 1.
+    expect(displayMathCount).toBeGreaterThanOrEqual(1);
+    expect(html).not.toContain('$$');
+    expect(html).toContain('hoge');
   });
 });

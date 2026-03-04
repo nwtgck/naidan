@@ -342,7 +342,21 @@ async function handleFinish() {
       endpointUrl: url || undefined,
       endpointHttpHeaders: customHeaders.value.length > 0 ? customHeaders.value : undefined,
       defaultModelId: selectedModel.value || undefined,
-      titleModelId: selectedModel.value || undefined,
+      // Transformers.js currently supports only one active model at a time.
+      // We set titleModelId to undefined to prevent the main model from being unloaded during title generation.
+      titleModelId: (() => {
+        switch (type) {
+        case 'transformers_js':
+          return undefined;
+        case 'openai':
+        case 'ollama':
+          return selectedModel.value || undefined;
+        default: {
+          const _ex: never = type;
+          return _ex;
+        }
+        }
+      })(),
     });
 
     setOnboardingDraft(null);

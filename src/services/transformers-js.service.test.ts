@@ -241,7 +241,7 @@ describe('transformersJsService', () => {
     await transformersJsService.loadModel('some-model');
 
     const controller = new AbortController();
-    const genPromise = transformersJsService.generateText([], () => {}, {}, controller.signal);
+    const genPromise = transformersJsService.generateText([], () => {}, { reasoning: { effort: undefined } }, controller.signal);
 
     controller.abort();
     await genPromise;

@@ -14,10 +14,14 @@ import type {
   HierarchyDto,
   ChatContentDto,
   BinaryObjectDto,
+  LmParametersDto,
 } from './dto';
 import type {
   Role,
   MessageNode,
+  AssistantMessageNode,
+  UserMessageNode,
+  SystemMessageNode,
   MessageBranch,
   Chat,
   ChatGroup,
@@ -36,6 +40,7 @@ import type {
   HierarchyNode,
   HierarchyChatGroupNode,
   BinaryObject,
+  LmParameters,
 } from './types';
 
 export const roleToDomain = (dto: RoleDto): Role => {
@@ -110,7 +115,7 @@ export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
     }
   })() : undefined,
   systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
-  lmParameters: dto.lmParameters,
+  lmParameters: lmParametersToDomain(dto.lmParameters),
   autoTitleEnabled: dto.autoTitleEnabled,
   titleModelId: dto.titleModelId,
   currentLeafId: dto.currentLeafId,
@@ -179,7 +184,7 @@ export const chatGroupToDomain = (
     autoTitleEnabled: dto.autoTitleEnabled,
     titleModelId: dto.titleModelId,
     systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
-    lmParameters: dto.lmParameters,
+    lmParameters: lmParametersToDomain(dto.lmParameters),
   };
 };
 
@@ -193,8 +198,52 @@ export const chatGroupToDto = (domain: ChatGroup): ChatGroupDto => ({
   autoTitleEnabled: domain.autoTitleEnabled,
   titleModelId: domain.titleModelId,
   systemPrompt: domain.systemPrompt,
-  lmParameters: domain.lmParameters,
+  lmParameters: lmParametersToDto(domain.lmParameters),
 });
+
+export const lmParametersToDomain = (
+  dto: LmParametersDto | undefined
+): LmParameters => {
+  if (!dto) {
+    return {
+      temperature: undefined,
+      topP: undefined,
+      maxCompletionTokens: undefined,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: { effort: undefined },
+    };
+  }
+  return {
+    temperature: dto.temperature,
+    topP: dto.topP,
+    maxCompletionTokens: dto.maxCompletionTokens,
+    presencePenalty: dto.presencePenalty,
+    frequencyPenalty: dto.frequencyPenalty,
+    stop: dto.stop,
+    reasoning: {
+      effort: dto.reasoning?.effort,
+    },
+  };
+};
+
+export const lmParametersToDto = (
+  domain: LmParameters | undefined
+): LmParametersDto | undefined => {
+  if (!domain) return undefined;
+  return {
+    temperature: domain.temperature,
+    topP: domain.topP,
+    maxCompletionTokens: domain.maxCompletionTokens,
+    presencePenalty: domain.presencePenalty,
+    frequencyPenalty: domain.frequencyPenalty,
+    stop: domain.stop,
+    reasoning: domain.reasoning ? {
+      effort: domain.reasoning.effort,
+    } : undefined,
+  };
+};
 
 export const endpointToDto = (endpoint: Endpoint): EndpointDto => {
   const type = endpoint.type;
@@ -274,31 +323,101 @@ const attachmentToDto = (domain: Attachment): AttachmentDto => {
   };
 };
 
-export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => ({
-  id: dto.id,
-  role: roleToDomain(dto.role),
-  content: dto.content,
-  attachments: dto.attachments?.map(attachmentToDomain),
-  timestamp: dto.timestamp,
-  thinking: dto.thinking,
-  modelId: dto.modelId,
-  replies: {
-    items: dto.replies.items.map(messageNodeToDomain),
-  },
-});
+export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
+  const common = {
+    id: dto.id,
+    content: dto.content,
+    timestamp: dto.timestamp,
+    replies: {
+      items: dto.replies.items.map(messageNodeToDomain),
+    },
+  };
 
-export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => ({
-  id: domain.id,
-  role: domain.role as RoleDto,
-  content: domain.content,
-  attachments: domain.attachments?.map(attachmentToDto),
-  timestamp: domain.timestamp,
-  thinking: domain.thinking,
-  modelId: domain.modelId,
-  replies: {
-    items: domain.replies.items.map(messageNodeToDto),
-  },
-});
+  switch (dto.role) {
+  case 'user':
+    return {
+      ...common,
+      role: 'user',
+      attachments: dto.attachments?.map(attachmentToDomain),
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: lmParametersToDomain(dto.lmParameters),
+    };
+  case 'assistant':
+    return {
+      ...common,
+      role: 'assistant',
+      attachments: undefined,
+      thinking: dto.thinking,
+      error: dto.error,
+      modelId: dto.modelId,
+      lmParameters: lmParametersToDomain(dto.lmParameters),
+    };
+  case 'system':
+    return {
+      ...common,
+      role: 'system',
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+    };
+  default: {
+    const _ex: never = dto;
+    throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+  }
+  }
+};
+
+export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
+  const common = {
+    id: domain.id,
+    content: domain.content,
+    timestamp: domain.timestamp,
+    replies: {
+      items: domain.replies.items.map(messageNodeToDto),
+    },
+  };
+
+  switch (domain.role) {
+  case 'user':
+    return {
+      ...common,
+      role: 'user',
+      attachments: domain.attachments?.map(attachmentToDto),
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: lmParametersToDto(domain.lmParameters),
+    };
+  case 'assistant':
+    return {
+      ...common,
+      role: 'assistant',
+      attachments: undefined,
+      thinking: domain.thinking,
+      error: domain.error,
+      modelId: domain.modelId,
+      lmParameters: lmParametersToDto(domain.lmParameters),
+    };
+  case 'system':
+    return {
+      ...common,
+      role: 'system',
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+    };
+  default: {
+    const _ex: never = domain;
+    throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+  }
+  }
+};
 
 interface LegacyMessage {
   id: string;
@@ -312,15 +431,66 @@ interface LegacyMessage {
 function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
   if (!messages || messages.length === 0) return { items: [] };
   const legacyMsgs = messages as LegacyMessage[];
-  const nodes: MessageNode[] = legacyMsgs.map(m => ({
-    id: m.id,
-    role: m.role,
-    content: m.content,
-    timestamp: m.timestamp,
-    thinking: m.thinking,
-    modelId: m.modelId,
-    replies: { items: [] },
-  }));
+  const nodes: MessageNode[] = legacyMsgs.map(m => {
+    const common = {
+      id: m.id,
+      content: m.content,
+      timestamp: m.timestamp,
+      replies: { items: [] },
+    };
+    switch (m.role) {
+    case 'assistant':
+      return {
+        ...common,
+        role: 'assistant',
+        attachments: undefined,
+        thinking: m.thinking,
+        modelId: m.modelId,
+        lmParameters: {
+          temperature: undefined,
+          topP: undefined,
+          maxCompletionTokens: undefined,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined }
+        },
+      } as AssistantMessageNode;
+    case 'user':
+      return {
+        ...common,
+        role: 'user',
+        attachments: [],
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: {
+          temperature: undefined,
+          topP: undefined,
+          maxCompletionTokens: undefined,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined }
+        },
+      } as UserMessageNode;
+    case 'system':
+      return {
+        ...common,
+        role: 'system',
+        attachments: undefined,
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: undefined,
+      } as SystemMessageNode;
+    default: {
+      const _ex: never = m.role;
+      throw new Error(`Unhandled role: ${_ex}`);
+    }
+    }
+  });
+
   for (let i = 0; i < nodes.length - 1; i++) {
     const current = nodes[i];
     const next = nodes[i+1];
@@ -391,7 +561,7 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     originChatId,
     originMessageId,
     systemPrompt: systemPrompt as SystemPrompt | undefined,
-    lmParameters,
+    lmParameters: lmParametersToDomain(lmParameters),
   };
 };
 
@@ -414,7 +584,8 @@ export const chatMetaToDto = (domain: ChatMeta): ChatMetaDto => ({
   originChatId: domain.originChatId,
   originMessageId: domain.originMessageId,
   systemPrompt: domain.systemPrompt,
-  lmParameters: domain.lmParameters,
+  lmParameters: lmParametersToDto(domain.lmParameters),
+  currentLeafId: domain.currentLeafId,
 });
 
 export const chatContentToDto = (domain: ChatContent): ChatContentDto => ({
@@ -453,7 +624,8 @@ export const chatToDto = (domain: Chat): ChatDto => {
     originChatId,
     originMessageId,
     systemPrompt,
-    lmParameters,
+    lmParameters: lmParametersToDto(lmParameters),
+    messages: undefined,
   };
 };
 
@@ -569,8 +741,10 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
       return {
         ...pRest,
         ...pEndpointInfo,
+        lmParameters: lmParametersToDomain(pRest.lmParameters),
       };
     }) ?? [],
+    lmParameters: lmParametersToDomain(rest.lmParameters),
     experimental: experimental ? {
       markdownRendering: experimental.markdownRendering ?? undefined
     } : undefined,
@@ -584,12 +758,14 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
   } = domain;
 
   return {
-    ...rest,
     endpoint: endpointToDto({
       type: endpointType,
       url: endpointUrl,
       httpHeaders: endpointHttpHeaders,
     }),
+    defaultModelId: rest.defaultModelId,
+    titleModelId: rest.titleModelId,
+    autoTitleEnabled: rest.autoTitleEnabled,
     storageType: storageType as StorageTypeDto,
     providerProfiles: (providerProfiles || []).map(p => {
       const {
@@ -598,14 +774,22 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
       } = p;
 
       return {
-        ...pRest,
+        id: pRest.id,
+        name: pRest.name,
         endpoint: endpointToDto({
           type: pType,
           url: pUrl,
           httpHeaders: pHeaders,
         }),
+        defaultModelId: pRest.defaultModelId,
+        titleModelId: pRest.titleModelId,
+        systemPrompt: pRest.systemPrompt,
+        lmParameters: lmParametersToDto(pRest.lmParameters),
       };
     }),
+    heavyContentAlertDismissed: rest.heavyContentAlertDismissed,
+    systemPrompt: rest.systemPrompt,
+    lmParameters: lmParametersToDto(rest.lmParameters),
     experimental: experimental ? {
       markdownRendering: experimental.markdownRendering ?? undefined
     } : undefined,

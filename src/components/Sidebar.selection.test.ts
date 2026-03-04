@@ -35,6 +35,9 @@ vi.mock('../composables/useChat', () => ({
     isTaskRunning: vi.fn().mockReturnValue(false),
     isProcessing: vi.fn().mockReturnValue(false),
     persistSidebarStructure: vi.fn(),
+    getReasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    getLiveChat: vi.fn().mockImplementation((c) => c),
   }),
 }));
 

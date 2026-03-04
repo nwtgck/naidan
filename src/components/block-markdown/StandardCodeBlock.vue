@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUpdate, onUpdated } from 'vue';
 import { highlightCode } from './useMarkdown';
-import { Check, Copy, Terminal } from 'lucide-vue-next';
+import { Check, Copy, Terminal, WrapText } from 'lucide-vue-next';
+import { useCodeBlockSettings } from '../../composables/useCodeBlockSettings';
 
 const props = defineProps<{
   code: string;
   lang: string;
 }>();
+
+const { isLineWrapEnabled, toggleLineWrap } = useCodeBlockSettings();
 
 const preRef = ref<HTMLElement | null>(null);
 const scrollState = ref({ top: 0, left: 0 });
@@ -61,20 +64,30 @@ defineExpose({
         <Terminal class="w-3 h-3 opacity-50" />
         <span class="font-mono font-medium">{{ lang || 'text' }}</span>
       </div>
-      <button
-        @click="copyCode"
-        class="flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer opacity-0 group-hover/code:opacity-100 focus:opacity-100"
-        :class="{ '!opacity-100 text-green-400': copied }"
-        title="Copy code"
-      >
-        <Check v-if="copied" class="w-3.5 h-3.5" />
-        <Copy v-else class="w-3.5 h-3.5" />
-        <span>{{ copied ? 'Copied' : 'Copy' }}</span>
-      </button>
+      <div class="flex items-center gap-2.5">
+        <button
+          @click="toggleLineWrap"
+          class="flex items-center hover:text-white transition-colors cursor-pointer"
+          :class="isLineWrapEnabled ? 'text-indigo-400' : 'text-gray-400'"
+          title="Toggle line wrap"
+        >
+          <WrapText class="w-3.5 h-3.5" />
+        </button>
+        <button
+          @click="copyCode"
+          class="flex items-center hover:text-white transition-colors cursor-pointer"
+          :class="copied ? 'text-green-400' : 'text-gray-400'"
+          :title="copied ? 'Copied' : 'Copy code'"
+        >
+          <Check v-if="copied" class="w-3.5 h-3.5" />
+          <Copy v-else class="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
     <pre
       ref="preRef"
-      class="!m-0 !p-4 !bg-transparent overflow-x-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent"
+      class="!m-0 !p-4 !bg-transparent scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent"
+      :class="isLineWrapEnabled ? 'whitespace-pre-wrap break-words overflow-x-hidden' : 'whitespace-pre overflow-x-auto'"
     ><code
       ref="codeRef"
       class="!bg-transparent !p-0 !border-none !text-sm font-mono leading-relaxed !text-gray-200"

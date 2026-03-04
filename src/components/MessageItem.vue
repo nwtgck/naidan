@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, nextTick, watch, onUnmounted } from 'vue';
+import { computed, ref, onMounted, nextTick, watch, onUnmounted, provide } from 'vue';
 import BlockMarkdownRenderer from './block-markdown/BlockMarkdownRenderer.vue';
 import { Marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
@@ -27,8 +27,8 @@ const DOMPurify = (() => {
 })();
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
-import type { MessageNode, BinaryObject, EndpointType } from '../models/types';
-import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit } from 'lucide-vue-next';
+import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '../models/types';
+import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
@@ -40,13 +40,16 @@ import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import MessageThinking from './MessageThinking.vue';
 import MessageActions from './MessageActions.vue';
+import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '../services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
+const ReasoningSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ReasoningSettings.vue'));
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted(() => import('./MessageDiffModal.vue'));
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
-import { useImagePreview } from '../composables/useImagePreview';
+import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '../composables/useImagePreview';
 import { useChat } from '../composables/useChat';
+import { useReasoning } from '../composables/useReasoning';
 import { useLayout } from '../composables/useLayout';
 import { useSettings } from '../composables/useSettings';
 import {
@@ -76,7 +79,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'fork', messageId: string): void;
-  (e: 'edit', messageId: string, newContent: string): void;
+  (e: 'edit', messageId: string, newContent: string, lmParameters?: LmParameters): void;
   (e: 'switch-version', messageId: string): void;
   (e: 'regenerate', messageId: string): void;
   (e: 'abort'): void;
@@ -84,6 +87,7 @@ const emit = defineEmits<{
 
 const isEditing = ref(false);
 const isAdvancedEditorOpen = ref(false);
+const showExtensions = ref(false);
 const editContent = ref(props.message.content.trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
@@ -93,6 +97,7 @@ const transformersStatus = ref(transformersJsService.getState().status);
 let transformersUnsubscribe: (() => void) | null = null;
 
 const isImageRequestMsg = computed(() => isImageRequest(props.message.content));
+const showImageSettings = ref(false);
 const editImageMode = ref(false);
 const editImageParams = ref({
   width: 512,
@@ -114,9 +119,12 @@ let pendingHydration = false;
 const metadataSupportCache = new Map<string, boolean>();
 
 const { openPreview } = useImagePreview();
-const { imageProgressMap } = useChat();
+const { imageProgressMap, currentChat } = useChat();
+const { getReasoningEffort } = useReasoning();
 const { preferredEditorMode, setPreferredEditorMode } = useLayout();
 const { settings } = useSettings();
+
+const editReasoningEffort = ref<Reasoning['effort']>(undefined);
 
 function openAdvancedEditor() {
   isAdvancedEditorOpen.value = true;
@@ -134,7 +142,7 @@ function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea
   setPreferredEditorMode({ mode });
 }
 
-async function handlePreviewImage(id: string) {
+async function handlePreviewImage({ id }: { id: string }) {
   // To support next/prev navigation, we'd ideally pass all images in this chat or message.
   // For now, let's at least try to fetch metadata for the clicked one.
   const obj = await storageService.getBinaryObject({ binaryObjectId: id });
@@ -163,6 +171,8 @@ async function handlePreviewImage(id: string) {
     });
   }
 }
+
+provide(MESSAGE_CONTEXTUAL_PREVIEW_KEY, handlePreviewImage);
 
 async function loadAttachments() {
   if (!props.message.attachments) return;
@@ -261,7 +271,7 @@ async function loadGeneratedImages() {
             url: urlObj,
             width: displayWidth,
             height: displayHeight,
-            onPreview: () => handlePreviewImage(id)
+            onPreview: () => handlePreviewImage({ id })
           });
 
           const skeleton = htmlEl.querySelector('.naidan-image-skeleton');
@@ -370,6 +380,13 @@ watch(isEditing, (editing) => {
   if (editing) {
     editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
 
+    // Initialize reasoning effort from message if available, otherwise from current chat
+    if (props.message.role === 'user' && props.message.lmParameters?.reasoning) {
+      editReasoningEffort.value = props.message.lmParameters.reasoning.effort;
+    } else if (currentChat.value) {
+      editReasoningEffort.value = getReasoningEffort({ chatId: currentChat.value.id });
+    }
+
     // Initialize image generation settings if it's an image request
     if (isImageRequestMsg.value) {
       editImageMode.value = true;
@@ -388,6 +405,9 @@ watch(isEditing, (editing) => {
     } else {
       editImageMode.value = false;
     }
+
+    // Auto-open tools if either image mode or non-default reasoning is active
+    showImageSettings.value = editImageMode.value || editReasoningEffort.value !== undefined;
 
     nextTick(() => {
       if (textareaRef.value) {
@@ -428,7 +448,12 @@ function handleSaveEdit() {
       });
       finalContent = marker + '\n' + finalContent;
     }
-    emit('edit', props.message.id, finalContent);
+    const lmParameters: LmParameters = {
+      ...settings.value.lmParameters,
+      stop: settings.value.lmParameters?.stop ? [...settings.value.lmParameters.stop] : undefined,
+      reasoning: { effort: editReasoningEffort.value }
+    };
+    emit('edit', props.message.id, finalContent, lmParameters);
   }
   isEditing.value = false;
 }
@@ -682,7 +707,7 @@ onMounted(() => {
     if (genImg) {
       const block = genImg.closest('.naidan-generated-image') as HTMLElement;
       const id = block?.dataset.id;
-      if (id) handlePreviewImage(id);
+      if (id) handlePreviewImage({ id });
       return;
     }
 
@@ -853,18 +878,84 @@ watch(parsedContent, () => {
   loadGeneratedImages();
 }, { immediate: true });
 
-const isUser = computed(() => {
-  switch (props.message.role) {
+const isUser = computed((): boolean => {
+  const node = props.message;
+  switch (node.role) {
   case 'user': return true;
   case 'assistant':
   case 'system':
     return false;
   default: {
-    const _ex: never = props.message.role;
+    const _ex: never = node;
+    return (_ex as { role: string }).role === 'user';
+  }
+  }
+});
+
+const reasoningEffortLabel = computed(() => {
+  const effort = (() => {
+    switch (props.message.role) {
+    case 'assistant':
+      return props.message.lmParameters?.reasoning?.effort;
+    case 'user':
+    case 'system':
+      return undefined;
+    default: {
+      const _ex: never = props.message;
+      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+    }
+    }
+  })();
+
+  if (effort === undefined) return undefined;
+
+  switch (effort) {
+  case 'none':
+    return 'Off';
+  case 'low':
+  case 'medium':
+  case 'high':
+    return 'Think';
+  default: {
+    const _ex: never = effort;
     return _ex;
   }
   }
 });
+
+const reasoningEffortTooltip = computed(() => {
+  const effort = (() => {
+    switch (props.message.role) {
+    case 'assistant':
+      return props.message.lmParameters?.reasoning?.effort;
+    case 'user':
+    case 'system':
+      return undefined;
+    default: {
+      const _ex: never = props.message;
+      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+    }
+    }
+  })();
+
+  if (effort === undefined) return undefined;
+
+  switch (effort) {
+  case 'none':
+    return 'Think: Disabled';
+  case 'low':
+  case 'medium':
+  case 'high': {
+    const label = effort.charAt(0).toUpperCase() + effort.slice(1);
+    return `Think: ${label} Effort\n(Note: Specific effort levels may be ignored by some models)`;
+  }
+  default: {
+    const _ex: never = effort;
+    return _ex;
+  }
+  }
+});
+
 const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content));
 
 function formatSize(bytes?: number): string {
@@ -903,8 +994,24 @@ defineExpose({
         <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
         <template v-else>
           <span>{{ message.modelId || 'Assistant' }}</span>
-          <div class="flex items-center gap-1">
-            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" />
+          <div
+            v-if="reasoningEffortLabel"
+            class="flex items-center gap-1 ml-1 text-[8px] font-mono text-gray-400 dark:text-gray-500 leading-none cursor-help"
+            :title="reasoningEffortTooltip"
+            data-testid="reasoning-effort-badge"
+          >
+            <Brain class="w-2.5 h-2.5" />
+            <span>{{ reasoningEffortLabel }}</span>
+          </div>
+          <div class="flex items-center gap-1 group/msg-header-tools">
+            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
+
+            <!-- Header Extensions Slot (Seamless transition) -->
+            <div v-if="showExtensions" class="flex items-center gap-1 mx-1 animate-in slide-in-from-left-1 fade-in duration-200">
+              <SpeechLanguageSelector :message-id="message.id" :content="speechText" is-mini align="down" />
+              <!-- Future tools here -->
+            </div>
+
             <button
               v-if="isGenerating"
               @click="emit('abort')"
@@ -913,6 +1020,17 @@ defineExpose({
               data-testid="message-abort-button"
             >
               <Square class="w-3 h-3" />
+            </button>
+
+            <!-- Generic More Button (Absolute Right Anchor for Header) -->
+            <button
+              v-if="!isImageResponse && !isImageGenerationPending(message.content)"
+              @click="showExtensions = !showExtensions"
+              class="p-1 rounded-lg transition-colors"
+              :class="showExtensions ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
+              title="More Message Tools"
+            >
+              <MoreHorizontal class="w-3.5 h-3.5" />
             </button>
           </div>
         </template>
@@ -926,7 +1044,7 @@ defineExpose({
           <template v-if="att.status !== 'missing' && attachmentUrls[att.id]">
             <img
               :src="attachmentUrls[att.id]"
-              @click="handlePreviewImage(att.binaryObjectId)"
+              @click="handlePreviewImage({ id: att.binaryObjectId })"
               class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
             />
             <div v-if="message.attachments.length > 1" class="absolute bottom-2 left-2 z-10">
@@ -969,10 +1087,10 @@ defineExpose({
           <div class="flex items-center justify-between px-3 pb-3">
             <div class="flex items-center gap-1">
               <button
-                v-if="canGenerateImage"
-                @click="editImageMode = !editImageMode"
+                v-if="canGenerateImage || true"
+                @click="showImageSettings = !showImageSettings"
                 class="p-2 rounded-xl transition-colors"
-                :class="editImageMode ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'"
+                :class="showImageSettings || editImageMode || editReasoningEffort !== undefined ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'"
                 title="Tools"
                 data-testid="toggle-edit-image-mode"
               >
@@ -1007,7 +1125,14 @@ defineExpose({
           </div>
 
           <!-- Inline Experimental Tools (if active) -->
-          <div v-if="editImageMode" class="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 py-1" data-testid="embedded-experimental-tools">
+          <div v-if="showImageSettings" class="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 py-1" data-testid="embedded-experimental-tools">
+            <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
+              Options/Tools
+            </div>
+            <ReasoningSettings
+              :selected-effort="editReasoningEffort"
+              @update:effort="e => editReasoningEffort = e"
+            />
             <ImageGenerationSettings
               :can-generate-image="canGenerateImage ?? false"
               :is-processing="isProcessing ?? false"
@@ -1020,7 +1145,6 @@ defineExpose({
               :selected-persist-as="editImageParams.persistAs"
               :available-image-models="availableImageModels ?? []"
               :selected-image-model="editImageParams.model"
-              :show-header="true"
               @toggle-image-mode="editImageMode = !editImageMode"
               @update:resolution="(w, h) => { editImageParams.width = w; editImageParams.height = h; }"
               @update:count="c => editImageParams.count = c"
@@ -1081,7 +1205,7 @@ defineExpose({
 
         <div class="mt-3 flex items-center justify-between min-h-[28px]">
           <!-- Version Paging -->
-          <div v-if="versionInfo" class="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700" data-testid="version-paging">
+          <div v-if="versionInfo" class="message-version-paging flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700" data-testid="version-paging">
             <button
               @click="versionInfo.prevId && emit('switch-version', versionInfo.prevId)"
               :disabled="!versionInfo.hasPrev"
@@ -1105,6 +1229,8 @@ defineExpose({
             :message="message"
             :is-image-response="isImageResponse"
             :is-user="isUser"
+            :is-generating="isGenerating"
+            v-model:show-extensions="showExtensions"
             :speech-text="speechText"
             :display-content="displayContent"
             @regenerate="id => emit('regenerate', id)"

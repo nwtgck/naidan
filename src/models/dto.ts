@@ -1,7 +1,17 @@
 /**
  * DTO (Data Transfer Objects) Definitions
+ *
+ * NOTE: Prefer explicit keys with undefined union over .optional().
+ * This ensures that when adding new properties, all call sites are forced to acknowledge them,
+ * reducing the risk of missing updates. Alternatively, use .default() if a sensible default exists.
  */
 import { z } from 'zod';
+
+/**
+ * Returns a union of the given schema and z.undefined().
+ * Used to force explicit keys in objects (key: T | undefined) instead of optional keys (key?: T).
+ */
+const orUndefined = <T extends z.ZodTypeAny>(schema: T) => z.union([schema, z.undefined()]);
 
 export const RoleSchemaDto = z.enum(['user', 'assistant', 'system']);
 export type RoleDto = z.infer<typeof RoleSchemaDto>;
@@ -15,7 +25,7 @@ export type HttpHeaderDto = z.infer<typeof HttpHeaderSchemaDto>;
 export const HttpEndpointSchemaDto = z.object({
   type: z.enum(['openai', 'ollama']),
   url: z.string(),
-  httpHeaders: z.array(HttpHeaderSchemaDto).optional(),
+  httpHeaders: orUndefined(z.array(HttpHeaderSchemaDto)),
 });
 
 export const TransformersJsEndpointSchemaDto = z.object({
@@ -32,13 +42,22 @@ export type EndpointTypeDto = EndpointDto['type'];
 
 // --- Language Model Parameters ---
 
+export const ReasoningEffortSchemaDto = z.enum(['none', 'low', 'medium', 'high']);
+export type ReasoningEffortDto = z.infer<typeof ReasoningEffortSchemaDto>;
+
+export const ReasoningSchemaDto = z.object({
+  effort: orUndefined(ReasoningEffortSchemaDto),
+});
+export type ReasoningDto = z.infer<typeof ReasoningSchemaDto>;
+
 export const LmParametersSchemaDto = z.object({
-  temperature: z.number().optional(),
-  topP: z.number().optional(),
-  maxCompletionTokens: z.number().optional(),
-  presencePenalty: z.number().optional(),
-  frequencyPenalty: z.number().optional(),
-  stop: z.array(z.string()).optional(),
+  temperature: orUndefined(z.number()),
+  topP: orUndefined(z.number()),
+  maxCompletionTokens: orUndefined(z.number()),
+  presencePenalty: orUndefined(z.number()),
+  frequencyPenalty: orUndefined(z.number()),
+  stop: orUndefined(z.array(z.string())),
+  reasoning: orUndefined(ReasoningSchemaDto),
 });
 export type LmParametersDto = z.infer<typeof LmParametersSchemaDto>;
 
@@ -62,12 +81,12 @@ export const ChatGroupSchemaDto = z.object({
   updatedAt: z.number(),
   isCollapsed: z.boolean().default(false),
 
-  endpoint: EndpointSchemaDto.optional(),
-  modelId: z.string().optional(),
-  autoTitleEnabled: z.boolean().optional(),
-  titleModelId: z.string().optional(),
-  systemPrompt: SystemPromptSchemaDto.optional(),
-  lmParameters: LmParametersSchemaDto.optional(),
+  endpoint: orUndefined(EndpointSchemaDto),
+  modelId: orUndefined(z.string()),
+  autoTitleEnabled: orUndefined(z.boolean()),
+  titleModelId: orUndefined(z.string()),
+  systemPrompt: orUndefined(SystemPromptSchemaDto),
+  lmParameters: orUndefined(LmParametersSchemaDto),
 });
 export type ChatGroupDto = z.infer<typeof ChatGroupSchemaDto>;
 
@@ -102,7 +121,7 @@ export const BinaryObjectSchemaDto = z.object({
   mimeType: z.string(),
   size: z.number(),
   createdAt: z.number(),
-  name: z.string().optional(),
+  name: orUndefined(z.string()),
 });
 export type BinaryObjectDto = z.infer<typeof BinaryObjectSchemaDto>;
 
@@ -137,33 +156,85 @@ export const AttachmentSchemaDto = z.union([
 ]);
 export type AttachmentDto = z.infer<typeof AttachmentSchemaDto>;
 
-export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() => z.object({
-  id: z.string(),
-  role: RoleSchemaDto,
-  content: z.string(),
-  attachments: z.array(AttachmentSchemaDto).optional(),
-  timestamp: z.number(),
-  thinking: z.string().optional(),
-  modelId: z.string().optional(),
-  replies: MessageBranchSchemaDto,
-}));
+export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
+  z.discriminatedUnion('role', [
+    z.object({
+      id: z.string(),
+      role: z.literal('user'),
+      content: z.string(),
+      attachments: orUndefined(z.array(AttachmentSchemaDto)),
+      timestamp: z.number(),
+      thinking: z.undefined(),
+      error: z.undefined(),
+      modelId: z.undefined(),
+      lmParameters: orUndefined(LmParametersSchemaDto),
+      replies: MessageBranchSchemaDto,
+    }),
+    z.object({
+      id: z.string(),
+      role: z.literal('assistant'),
+      content: z.string(),
+      attachments: z.undefined(),
+      timestamp: z.number(),
+      thinking: orUndefined(z.string()),
+      error: orUndefined(z.string()),
+      modelId: orUndefined(z.string()),
+      lmParameters: orUndefined(LmParametersSchemaDto),
+      replies: MessageBranchSchemaDto,
+    }),
+    z.object({
+      id: z.string(),
+      role: z.literal('system'),
+      content: z.string(),
+      attachments: z.undefined(),
+      timestamp: z.number(),
+      thinking: z.undefined(),
+      error: z.undefined(),
+      modelId: z.undefined(),
+      lmParameters: z.undefined(),
+      replies: MessageBranchSchemaDto,
+    }),
+  ])
+);
 
 export const MessageBranchSchemaDto = z.object({
   items: z.array(MessageNodeSchemaDto),
 });
 
-export type MessageNodeDto = {
+type MessageNodeCommonDto = {
   id: string;
-  role: RoleDto;
   content: string;
-  attachments?: AttachmentDto[];
   timestamp: number;
-  thinking?: string;
-  modelId?: string;
   replies: {
     items: MessageNodeDto[];
   };
 };
+
+export type MessageNodeDto =
+  | (MessageNodeCommonDto & {
+      role: 'user';
+      attachments: AttachmentDto[] | undefined;
+      thinking: undefined;
+      error: undefined;
+      modelId: undefined;
+      lmParameters: LmParametersDto | undefined;
+    })
+  | (MessageNodeCommonDto & {
+      role: 'assistant';
+      attachments: undefined;
+      thinking: string | undefined;
+      error: string | undefined;
+      modelId: string | undefined;
+      lmParameters: LmParametersDto | undefined;
+    })
+  | (MessageNodeCommonDto & {
+      role: 'system';
+      attachments: undefined;
+      thinking: undefined;
+      error: undefined;
+      modelId: undefined;
+      lmParameters: undefined;
+    });
 
 /**
  * Chat Metadata
@@ -172,20 +243,20 @@ export type MessageNodeDto = {
 export const ChatMetaSchemaDto = z.object({
   id: z.string(),
   title: z.string().nullable(),
-  currentLeafId: z.string().optional(),
+  currentLeafId: orUndefined(z.string()),
   updatedAt: z.number(),
   createdAt: z.number(),
   debugEnabled: z.boolean().optional().default(false),
 
-  endpoint: EndpointSchemaDto.optional(),
-  modelId: z.string().optional(),
-  autoTitleEnabled: z.boolean().optional(),
-  titleModelId: z.string().optional(),
-  originChatId: z.string().optional(),
-  originMessageId: z.string().optional(),
+  endpoint: orUndefined(EndpointSchemaDto),
+  modelId: orUndefined(z.string()),
+  autoTitleEnabled: orUndefined(z.boolean()),
+  titleModelId: orUndefined(z.string()),
+  originChatId: orUndefined(z.string()),
+  originMessageId: orUndefined(z.string()),
 
-  systemPrompt: SystemPromptSchemaDto.optional(),
-  lmParameters: LmParametersSchemaDto.optional(),
+  systemPrompt: orUndefined(SystemPromptSchemaDto),
+  lmParameters: orUndefined(LmParametersSchemaDto),
 });
 
 export type ChatMetaDto = z.infer<typeof ChatMetaSchemaDto>;
@@ -206,7 +277,7 @@ export type ChatMetaIndexDto = z.infer<typeof ChatMetaIndexSchemaDto>;
  */
 export const ChatContentSchemaDto = z.object({
   root: MessageBranchSchemaDto,
-  currentLeafId: z.string().optional(),
+  currentLeafId: orUndefined(z.string()),
 });
 
 export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
@@ -216,11 +287,11 @@ export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
  * Used for memory handling and migration (full data export).
  */
 export const ChatSchemaDto = ChatMetaSchemaDto.extend({
-  root: MessageBranchSchemaDto.optional(),
-  currentLeafId: z.string().optional(),
+  root: orUndefined(MessageBranchSchemaDto),
+  currentLeafId: orUndefined(z.string()),
 
   // Legacy support field
-  messages: z.array(z.unknown()).optional(),
+  messages: orUndefined(z.array(z.unknown())),
 });
 
 export type ChatDto = z.infer<typeof ChatSchemaDto>;
@@ -231,23 +302,23 @@ export const ProviderProfileSchemaDto = z.object({
   id: z.string(),
   name: z.string(),
   endpoint: EndpointSchemaDto,
-  defaultModelId: z.string().optional(),
-  titleModelId: z.string().optional(),
-  systemPrompt: z.string().optional(),
-  lmParameters: LmParametersSchemaDto.optional(),
+  defaultModelId: orUndefined(z.string()),
+  titleModelId: orUndefined(z.string()),
+  systemPrompt: orUndefined(z.string()),
+  lmParameters: orUndefined(LmParametersSchemaDto),
 });
 export type ProviderProfileDto = z.infer<typeof ProviderProfileSchemaDto>;
 
 export const SettingsSchemaDto = z.object({
   endpoint: EndpointSchemaDto,
-  defaultModelId: z.string().optional(),
-  titleModelId: z.string().optional(),
+  defaultModelId: orUndefined(z.string()),
+  titleModelId: orUndefined(z.string()),
   autoTitleEnabled: z.boolean().default(true),
   storageType: StorageTypeSchemaDto,
-  providerProfiles: z.array(ProviderProfileSchemaDto).optional().default([]),
-  heavyContentAlertDismissed: z.boolean().optional(),
-  systemPrompt: z.string().optional(),
-  lmParameters: LmParametersSchemaDto.optional(),
+  providerProfiles: z.array(ProviderProfileSchemaDto).default([]),
+  heavyContentAlertDismissed: orUndefined(z.boolean()),
+  systemPrompt: orUndefined(z.string()),
+  lmParameters: orUndefined(LmParametersSchemaDto),
   experimental: z.union([
     z.object({
       markdownRendering: z.union([z.literal('block_markdown'), z.undefined()]),

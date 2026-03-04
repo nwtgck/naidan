@@ -18,6 +18,7 @@ import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
 import { useBinaryActions } from '../composables/useBinaryActions';
+import type { LmParameters } from '../models/types';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
@@ -30,8 +31,10 @@ const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./Chat
 import {
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap
+  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap,
+  Printer
 } from 'lucide-vue-next';
+import { usePrint } from '../composables/usePrint';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { hasChatOverrides } from '../utils/chat-settings-resolver';
 import { scrollIntoViewSafe } from '../utils/dom';
@@ -143,13 +146,14 @@ function exportChat() {
 
   activeMessages.value.forEach(msg => {
     const role = (() => {
-      switch (msg.role) {
+      const node = msg;
+      switch (node.role) {
       case 'user': return 'User';
       case 'assistant': return 'AI';
       case 'system': return 'System';
       default: {
-        const _ex: never = msg.role;
-        return _ex;
+        const _ex: never = node;
+        return (_ex as { role: string }).role;
       }
       }
     })();
@@ -166,6 +170,15 @@ function exportChat() {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(link.href);
+}
+
+function handlePrint() {
+  if (currentChat.value) {
+    usePrint().print({
+      title: currentChat.value.title || 'Chat',
+      mode: 'chat'
+    });
+  }
 }
 
 function scrollToBottom(force = true) {
@@ -225,8 +238,8 @@ const canGenerateImage = computed(() => {
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
 
-async function handleEdit(messageId: string, newContent: string) {
-  await chatStore.editMessage(messageId, newContent);
+async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
+  await chatStore.editMessage(messageId, newContent, lmParameters);
 }
 
 async function handleRegenerate(messageId: string) {
@@ -369,8 +382,8 @@ watch(
     </div>
 
     <!-- Header -->
-    <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-2 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
-      <div class="flex items-center gap-3 overflow-hidden min-h-[38px]">
+    <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-1.5 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
+      <div class="flex items-center gap-3 overflow-hidden min-h-[34px]">
         <div class="flex flex-col overflow-hidden">
           <template v-if="currentChat">
             <div class="flex items-center gap-2">
@@ -383,7 +396,7 @@ watch(
               >
                 <ArrowUp class="w-4 h-4" />
               </button>
-              <h2 class="text-sm sm:text-base font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
+              <h2 class="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button
                 v-if="activeMessages.length > 0"
                 @click="handleTitleAction"
@@ -418,7 +431,7 @@ watch(
               data-testid="model-trigger"
             >
               <div
-                class="px-2 py-0.5 rounded-full text-[10px] font-bold transition-all flex items-center gap-1.5"
+                class="px-2 py-0.5 rounded-full text-[9px] font-bold transition-all flex items-center gap-1.5"
                 :class="showChatSettings
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200'"
@@ -430,7 +443,7 @@ watch(
               </div>
               <div
                 v-if="currentChat && hasChatOverrides({ chat: currentChat })"
-                class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"
+                class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"
                 title="Custom overrides active"
                 data-testid="custom-overrides-indicator"
               ></div>
@@ -442,18 +455,18 @@ watch(
         </div>
       </div>
 
-      <div class="flex items-center gap-1 relative">
-        <div v-if="currentChat" class="flex items-center gap-1">
+      <div class="flex items-center gap-0.5 relative">
+        <div v-if="currentChat" class="flex items-center gap-0.5">
           <!-- Move to Group Dropdown -->
           <div class="relative">
             <button
               @click="showMoveMenu = !showMoveMenu"
-              class="p-2 rounded-xl transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
+              class="p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
               :class="showMoveMenu ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'"
               title="Move to Group"
               data-testid="move-to-group-button"
             >
-              <FolderInput class="w-5 h-5" />
+              <FolderInput class="w-4.5 h-4.5" />
             </button>
 
             <Transition name="dropdown">
@@ -499,37 +512,37 @@ watch(
           <button
             v-if="activeMessages.length > 0"
             @click="handleForkLastMessage"
-            class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+            class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             title="Fork Chat from last message"
             data-testid="fork-chat-button"
           >
-            <GitFork class="w-5 h-5" />
+            <GitFork class="w-4.5 h-4.5" />
           </button>
 
           <button
             @click="showHistoryModal = true"
-            class="p-2 rounded-xl transition-all text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 group/hammer"
+            class="p-1.5 rounded-lg transition-all text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 group/hammer"
             title="Super Edit (Full History Manipulation)"
             data-testid="super-edit-button"
           >
-            <Hammer class="w-5 h-5 group-hover/hammer:-rotate-12 transition-all" />
+            <Hammer class="w-4.5 h-4.5 group-hover/hammer:-rotate-12 transition-all" />
           </button>
 
           <button
             @click="exportChat"
-            class="p-2 rounded-xl transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+            class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             title="Export Chat"
           >
-            <Download class="w-5 h-5" />
+            <Download class="w-4.5 h-4.5" />
           </button>
 
           <button
             @click="showMoreMenu = !showMoreMenu"
-            class="p-2 rounded-xl text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             title="More Actions"
             data-testid="more-actions-button"
           >
-            <MoreVertical class="w-5 h-5" />
+            <MoreVertical class="w-4.5 h-4.5" />
           </button>
         </div>
 
@@ -540,6 +553,15 @@ watch(
             class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-top-right"
             @mouseleave="showMoreMenu = false"
           >
+            <button
+              @click="handlePrint(); showMoreMenu = false"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-green-600 dark:hover:text-green-400"
+              title="Open print dialog (can be used to Save as PDF)"
+              data-testid="print-chat-button"
+            >
+              <Printer class="w-4 h-4" />
+              <span>Print</span>
+            </button>
             <button
               @click="() => { if(currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); showMoreMenu = false; }"
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
@@ -627,7 +649,7 @@ watch(
               :available-image-models="availableImageModels"
               :endpoint-type="resolvedSettings?.endpointType"
               @fork="handleFork"
-              @edit="handleEdit"
+              @edit="(id, content, params) => handleEdit(id, content, params)"
               @switch-version="handleSwitchVersion"
               @regenerate="handleRegenerate"
               @abort="chatStore.abortChat({ chatId: undefined })"

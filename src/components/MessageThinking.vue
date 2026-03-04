@@ -79,7 +79,7 @@ defineExpose({
       :class="[
         /* Shape & Size */
         mode === 'expanded' ? 'p-5 rounded-2xl min-h-[100px]' : '',
-        mode === 'collapsed-active' ? 'p-4 rounded-xl max-h-32 overflow-hidden' : '',
+        mode === 'collapsed-active' ? 'p-4 rounded-xl h-32 overflow-hidden' : '',
         mode === 'collapsed-finished' ? 'px-3 py-1.5 rounded-xl' : '',
 
         'cursor-pointer',
@@ -123,7 +123,7 @@ defineExpose({
         v-if="mode === 'expanded' || mode === 'collapsed-active'"
         class="relative z-20 text-gray-600 dark:text-gray-400 text-[11px] font-mono whitespace-pre-wrap leading-relaxed animate-in fade-in slide-in-from-top-1 duration-200 scroll-smooth"
         :class="[
-          mode === 'collapsed-active' ? 'max-h-20 overflow-y-auto no-scrollbar mask-fade-top' : ''
+          mode === 'collapsed-active' ? 'h-20 overflow-y-auto no-scrollbar mask-fade-top pt-2' : ''
         ]"
         data-testid="thinking-content"
       >
@@ -193,8 +193,8 @@ defineExpose({
 
 /* Fades the top of the content in collapsed-active mode to emphasize "newest at bottom" */
 .mask-fade-top {
-  mask-image: linear-gradient(to bottom, transparent, black 40%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent, black 40%);
+  mask-image: linear-gradient(to bottom, transparent 0px, black 16px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0px, black 16px);
 }
 
 .no-scrollbar::-webkit-scrollbar {

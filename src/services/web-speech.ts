@@ -6,27 +6,39 @@
  */
 import { reactive } from 'vue';
 
-export type WebSpeechStatus = 'inactive' | 'playing' | 'paused';
+export type WebSpeechStatus = 'inactive' | 'playing' | 'paused' | 'waiting';
+
+export type SpeechLanguage = 'auto' | 'en-US' | 'ja-JP' | 'ko-KR' | 'zh-CN' | 'ru-RU' | 'es-ES' | 'fr-FR' | 'de-DE';
 
 export interface WebSpeechState {
   status: WebSpeechStatus;
   activeMessageId: string | null;
+  detectedLang: string | null;
+  preferredLang: SpeechLanguage;
 }
 
 class WebSpeechService {
   private synth: SpeechSynthesis | null = typeof window !== 'undefined' ? window.speechSynthesis : null;
   private currentUtterance: SpeechSynthesisUtterance | null = null;
   private readPointer = 0;
+  private isExpectingMore = false;
+  private lastDetectedMessageId: string | null = null;
 
   public readonly state = reactive<WebSpeechState>({
     status: 'inactive',
     activeMessageId: null,
+    detectedLang: null,
+    preferredLang: 'auto',
   });
 
   constructor() {
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', () => this.stop());
     }
+  }
+
+  public setPreferredLang({ lang }: { lang: SpeechLanguage }) {
+    this.state.preferredLang = lang;
   }
 
   public isSupported(): boolean {
@@ -38,6 +50,7 @@ class WebSpeechService {
     switch (status) {
     case 'playing':
     case 'paused':
+    case 'waiting':
       this.state.activeMessageId = messageId || this.state.activeMessageId;
       break;
     case 'inactive':
@@ -50,16 +63,34 @@ class WebSpeechService {
     }
   }
 
-  private detectLanguage({ text }: { text: string }): string {
+  private detectLanguage({ text, messageId }: { text: string; messageId: string }): string {
+    // If we already detected the language for this message, reuse it
+    if (this.lastDetectedMessageId === messageId && this.state.detectedLang) {
+      return this.state.detectedLang;
+    }
+
     const cleanText = text.replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '');
-    if (/[\u3040-\u309f\u30a0-\u30ff]/.test(cleanText)) return 'ja-JP';
-    if (/[\uac00-\ud7af\u1100-\u11ff]/.test(cleanText)) return 'ko-KR';
-    if (/[\u4e00-\u9faf]/.test(cleanText)) return 'zh-CN';
-    if (/[\u0400-\u04ff]/.test(cleanText)) return 'ru-RU';
-    if (/[áéíóúüñ¿¡]/i.test(cleanText)) return 'es-ES';
-    if (/[àâçéèêëîïôûùüÿœæ]/i.test(cleanText)) return 'fr-FR';
-    if (/[äöüß]/i.test(cleanText)) return 'de-DE';
-    return 'en-US';
+    let lang = 'en-US';
+    if (/[\u3040-\u309f\u30a0-\u30ff]/.test(cleanText)) lang = 'ja-JP';
+    else if (/[\uac00-\ud7af\u1100-\u11ff]/.test(cleanText)) lang = 'ko-KR';
+    else if (/[\u4e00-\u9faf]/.test(cleanText)) lang = 'zh-CN';
+    else if (/[\u0400-\u04ff]/.test(cleanText)) lang = 'ru-RU';
+    else if (/[áéíóúüñ¿¡]/i.test(cleanText)) lang = 'es-ES';
+    else if (/[àâçéèêëîïôûùüÿœæ]/i.test(cleanText)) lang = 'fr-FR';
+    else if (/[äöüß]/i.test(cleanText)) lang = 'de-DE';
+
+    this.lastDetectedMessageId = messageId;
+    this.state.detectedLang = lang;
+    return lang;
+  }
+
+  /**
+   * Manually trigger a fresh detection for a message, bypassing cache.
+   */
+  public redetectLanguage({ text, messageId }: { text: string; messageId: string }): string {
+    this.lastDetectedMessageId = null;
+    this.state.detectedLang = null;
+    return this.detectLanguage({ text, messageId });
   }
 
   private prepareText({ text }: { text: string }): string {
@@ -81,9 +112,31 @@ class WebSpeechService {
   /**
    * Main entry point for speaking. Handles both new messages and streaming updates.
    */
-  public speak({ text, messageId, isFinal = true }: { text: string; messageId: string; isFinal?: boolean }) {
+  public speak({ text, messageId, isFinal, lang }: { text: string; messageId: string; isFinal: boolean; lang: SpeechLanguage }) {
     if (!this.synth) return;
+    this.isExpectingMore = !isFinal;
 
+    const resolvedLang = (() => {
+      switch (lang) {
+      case 'auto':
+        return (this.lastDetectedMessageId === messageId && this.state.detectedLang)
+          ? this.state.detectedLang
+          : this.detectLanguage({ text, messageId });
+      case 'en-US':
+      case 'ja-JP':
+      case 'ko-KR':
+      case 'zh-CN':
+      case 'ru-RU':
+      case 'es-ES':
+      case 'fr-FR':
+      case 'de-DE':
+        return lang;
+      default: {
+        const _ex: never = lang;
+        return _ex;
+      }
+      }
+    })();
     // 1. Resume if it was just paused
     if (this.state.activeMessageId === messageId && this.state.status === 'paused') {
       this.synth.resume();
@@ -92,26 +145,44 @@ class WebSpeechService {
     }
 
     // 2. Incremental update if it's already playing the same message
-    if (this.state.activeMessageId === messageId && this.state.status === 'playing') {
-      this.enqueueStreamingPart({ text, messageId, isFinal });
+    if (this.state.activeMessageId === messageId && (this.state.status === 'playing' || this.state.status === 'waiting')) {
+      const queued = this.enqueueStreamingPart({ text, messageId, isFinal, resolvedLang });
+      if (!queued && isFinal) {
+        // If nothing was queued and it's final, we are done
+        this.updateState({ status: 'inactive' });
+      } else if (!queued && !isFinal && this.state.status !== 'playing') {
+        // If nothing was queued and we expect more, ensure we are in waiting state if not playing
+        this.updateState({ status: 'waiting' });
+      }
       return;
     }
 
     // 3. Start fresh for a new message or restart
     this.stop();
     this.readPointer = 0;
-    this.enqueueStreamingPart({ text, messageId, isFinal });
+    this.isExpectingMore = !isFinal; // restore after stop()
+    const queued = this.enqueueStreamingPart({ text, messageId, isFinal, resolvedLang });
+    if (!queued) {
+      if (isFinal) {
+        this.updateState({ status: 'inactive' });
+      } else {
+        this.updateState({ status: 'waiting', messageId });
+      }
+    }
   }
 
-  private enqueueStreamingPart({ text, messageId, isFinal }: { text: string; messageId: string; isFinal: boolean }) {
-    if (!this.synth) return;
+  /**
+   * Returns true if an utterance was actually queued.
+   */
+  private enqueueStreamingPart({ text, messageId, isFinal, resolvedLang }: { text: string; messageId: string; isFinal: boolean; resolvedLang: string }): boolean {
+    if (!this.synth) return false;
 
     const fullCleanedText = this.prepareText({ text });
-    if (!fullCleanedText) return;
+    if (!fullCleanedText) return false;
 
     // Get the part we haven't queued yet
     const pendingText = fullCleanedText.slice(this.readPointer);
-    if (!pendingText) return;
+    if (!pendingText) return false;
 
     let textToQueue = '';
 
@@ -132,14 +203,14 @@ class WebSpeechService {
         this.readPointer += endOfLastSentence;
       } else {
         // No complete sentence yet, wait for more content
-        return;
+        return false;
       }
     }
 
-    if (!textToQueue.trim()) return;
+    if (!textToQueue.trim()) return false;
 
     const utterance = new SpeechSynthesisUtterance(textToQueue);
-    utterance.lang = this.detectLanguage({ text });
+    utterance.lang = resolvedLang;
 
     utterance.onstart = () => {
       this.updateState({ status: 'playing', messageId });
@@ -151,8 +222,12 @@ class WebSpeechService {
         // Check if there's absolutely nothing left in the synth queue
         // Note: synth.pending doesn't always work reliably, so we rely on status logic
         if (!this.synth?.pending) {
-          this.updateState({ status: 'inactive' });
-          this.currentUtterance = null;
+          if (this.isExpectingMore) {
+            this.updateState({ status: 'waiting' });
+          } else {
+            this.updateState({ status: 'inactive' });
+            this.currentUtterance = null;
+          }
         }
       }
     };
@@ -167,6 +242,7 @@ class WebSpeechService {
     };
 
     this.synth.speak(utterance);
+    return true;
   }
 
   public pause() {
@@ -179,7 +255,8 @@ class WebSpeechService {
     if (!this.synth) return;
     this.synth.cancel();
     this.readPointer = 0;
-    this.updateState({ status: 'inactive' });
+    this.isExpectingMore = false;
+    this.updateState({ status: 'inactive', messageId: null });
     this.currentUtterance = null;
   }
 }

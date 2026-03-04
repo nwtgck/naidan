@@ -12,14 +12,19 @@ export type Role = 'user' | 'assistant' | 'system';
 export type StorageType = 'local' | 'opfs' | 'memory';
 export type EndpointType = 'openai' | 'ollama' | 'transformers_js';
 
-export interface LmParameters {
+export type Reasoning = {
+  effort: 'none' | 'low' | 'medium' | 'high' | undefined;
+};
+
+export type LmParameters = {
   temperature?: number;
   topP?: number;
   maxCompletionTokens?: number;
   presencePenalty?: number;
   frequencyPenalty?: number;
   stop?: string[];
-}
+  reasoning: Reasoning;
+};
 
 export type SystemPrompt =
   | { behavior: 'override'; content: string | null }
@@ -54,21 +59,45 @@ export type Attachment =
   | (AttachmentBase & { status: 'memory'; blob: Blob })
   | (AttachmentBase & { status: 'missing' });
 
-export interface MessageNode {
+export type MessageNodeBase = {
   id: string;
-  role: Role;
   content: string;
-  attachments?: Attachment[];
   timestamp: number;
+  replies: MessageBranch;
+};
+
+export type UserMessageNode = MessageNodeBase & {
+  role: 'user';
+  attachments?: Attachment[];
+  thinking?: undefined;
+  error?: undefined;
+  modelId?: undefined;
+  lmParameters?: LmParameters;
+};
+
+export type AssistantMessageNode = MessageNodeBase & {
+  role: 'assistant';
+  attachments?: undefined;
   thinking?: string;
   error?: string;
   modelId?: string;
-  replies: MessageBranch;
-}
+  lmParameters?: LmParameters;
+};
 
-export interface MessageBranch {
+export type SystemMessageNode = MessageNodeBase & {
+  role: 'system';
+  attachments?: undefined;
+  thinking?: undefined;
+  error?: undefined;
+  modelId?: undefined;
+  lmParameters?: undefined;
+};
+
+export type MessageNode = UserMessageNode | AssistantMessageNode | SystemMessageNode;
+
+export type MessageBranch = {
   items: MessageNode[];
-}
+};
 
 export interface Chat {
   id: string;

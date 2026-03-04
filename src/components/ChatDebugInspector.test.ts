@@ -4,7 +4,7 @@ import ChatDebugInspector from './ChatDebugInspector.vue';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import { nextTick } from 'vue';
 import { Network } from 'lucide-vue-next';
-import type { MessageNode, Chat } from '../models/types';
+import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '../models/types';
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
@@ -59,13 +59,57 @@ Object.assign(navigator, {
 });
 
 describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
-  const createNode = (id: string, role: 'user' | 'assistant' | 'system', content: string, replies: MessageNode[] = []): MessageNode => ({
-    id,
-    role,
-    content,
-    timestamp: Date.now(),
-    replies: { items: replies }
-  });
+  const createNode = (
+    id: string,
+    role: 'user' | 'assistant' | 'system',
+    content: string,
+    replies: MessageNode[] = [],
+    extra: {
+      modelId?: string,
+      thinking?: string,
+      error?: string,
+      attachments?: any[],
+      lmParameters?: LmParameters
+    } = {}
+  ): MessageNode => {
+    const common = { id, content, timestamp: Date.now(), replies: { items: replies } };
+    switch (role) {
+    case 'user':
+      return {
+        ...common,
+        role: 'user',
+        attachments: extra.attachments || [],
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: extra.lmParameters || { reasoning: { effort: undefined } }
+      } as UserMessageNode;
+    case 'assistant':
+      return {
+        ...common,
+        role: 'assistant',
+        attachments: undefined,
+        thinking: extra.thinking,
+        error: extra.error,
+        modelId: extra.modelId || 'test-model',
+        lmParameters: extra.lmParameters || { reasoning: { effort: undefined } }
+      } as AssistantMessageNode;
+    case 'system':
+      return {
+        ...common,
+        role: 'system',
+        attachments: undefined,
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: undefined,
+      } as SystemMessageNode;
+    default: {
+      const _ex: never = role;
+      throw new Error(`Unhandled role: ${_ex}`);
+    }
+    }
+  };
 
   const createMockChat = (rootItems: MessageNode[] = []): Chat => ({
     id: 'chat-1',
@@ -235,8 +279,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 8: ModelID Display', async () => {
-    const node = createNode('A', 'assistant', 'Response');
-    const nodeWithModel = { ...node, modelId: 'gpt-4o' };
+    const nodeWithModel = createNode('A', 'assistant', 'Response', [], { modelId: 'gpt-4o' });
     const activeMessages = [nodeWithModel];
 
     const chat = createMockChat(activeMessages);
@@ -249,16 +292,17 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 9: Attachment Event Handling', async () => {
-    const node = createNode('A', 'user', 'A');
-    const nodeWithAtt = { ...node, attachments: [{
-      id: 'att-1',
-      binaryObjectId: 'obj-1',
-      originalName: 'test.png',
-      mimeType: 'image/png',
-      size: 100,
-      uploadedAt: Date.now(),
-      status: 'persisted' as const
-    }] };
+    const nodeWithAtt = createNode('A', 'user', 'A', [], {
+      attachments: [{
+        id: 'att-1',
+        binaryObjectId: 'obj-1',
+        originalName: 'test.png',
+        mimeType: 'image/png',
+        size: 100,
+        uploadedAt: Date.now(),
+        status: 'persisted' as const
+      }]
+    });
     const activeMessages = [nodeWithAtt];
 
     const chat = createMockChat(activeMessages);
@@ -272,12 +316,10 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   });
 
   it('Scenario 10: Thinking and Error Display', async () => {
-    const node = createNode('A', 'assistant', 'Final Content');
-    const nodeWithDetails = {
-      ...node,
+    const nodeWithDetails = createNode('A', 'assistant', 'Final Content', [], {
       thinking: 'Analyzing the request...',
       error: 'Simulated API Timeout'
-    };
+    });
     const activeMessages = [nodeWithDetails];
     const chat = createMockChat(activeMessages);
     const wrapper = mountInspector(chat, activeMessages);

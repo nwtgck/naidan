@@ -22,7 +22,6 @@ import {
   chatContentToDto,
   chatContentToDomain,
   buildSidebarItemsFromHierarchy,
-  binaryObjectToDomain,
 } from '../../models/mappers';
 import { IStorageProvider } from './interface';
 
@@ -104,7 +103,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     try {
       const meta = ChatMetaSchemaDto.parse(rawMeta);
       const content = ChatContentSchemaDto.parse(rawContent);
-      const chat = chatToDomain({ ...meta, ...content });
+      const chat = chatToDomain({ ...meta, ...content, messages: undefined });
 
       // Resolve groupId from hierarchy
       const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
@@ -282,7 +281,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async *listBinaryObjects(): AsyncIterable<BinaryObject> {
     for (const { meta } of this.binaryObjects.values()) {
-      yield binaryObjectToDomain(meta);
+      yield meta;
     }
   }
 

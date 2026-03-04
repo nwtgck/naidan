@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { GitFork, Pencil, Copy, Check, RefreshCw, Send, MoreVertical, History } from 'lucide-vue-next';
+import { GitFork, Pencil, Copy, Check, RefreshCw, Send, MoreVertical, History, MoreHorizontal } from 'lucide-vue-next';
 import type { MessageNode } from '../models/types';
 import { isImageGenerationPending } from '../utils/image-generation';
 import SpeechControl from './SpeechControl.vue';
 import MessageActionsMenu from './MessageActionsMenu.vue';
+import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 
 const props = defineProps<{
   message: MessageNode;
   isImageResponse: boolean;
   isUser: boolean;
+  isGenerating: boolean;
   speechText: string;
   displayContent: string;
+  showExtensions: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -20,6 +23,7 @@ const emit = defineEmits<{
   (e: 'fork', messageId: string): void;
   (e: 'enter-edit-mode'): void;
   (e: 'show-diff'): void;
+  (e: 'update:showExtensions', val: boolean): void;
 }>();
 
 const copied = ref(false);
@@ -56,9 +60,25 @@ defineExpose({
 </script>
 
 <template>
-  <div class="flex items-center gap-1">
+  <div class="flex items-center gap-1 group/msg-footer-tools">
+    <!-- Generic More Button (Left Anchor for Footer) -->
+    <button
+      @click="emit('update:showExtensions', !showExtensions)"
+      class="p-1.5 rounded-md transition-colors"
+      :class="showExtensions ? 'text-blue-600 bg-blue-100/50 dark:bg-blue-800/50' : 'text-blue-600/40 dark:text-blue-400/40 hover:text-blue-600'"
+      title="More Message Tools"
+    >
+      <MoreHorizontal class="w-3.5 h-3.5" />
+    </button>
+
+    <!-- Footer Extensions Slot (Seamless transition) -->
+    <div v-if="showExtensions" class="flex items-center gap-1 mx-1 animate-in slide-in-from-right-1 fade-in duration-200">
+      <SpeechLanguageSelector :message-id="message.id" :content="speechText" align="up" />
+      <!-- Future tools here -->
+    </div>
+
     <!-- Speech Controls -->
-    <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" show-full-controls />
+    <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" :is-generating="isGenerating" show-full-controls />
 
     <button
       v-if="!isUser"
@@ -95,14 +115,6 @@ defineExpose({
     >
       <Pencil class="w-3.5 h-3.5" />
     </button>
-    <button
-      @click="emit('fork', message.id)"
-      class="flex items-center gap-1.5 px-3 py-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
-      title="Create a new chat branching from this message"
-    >
-      <span class="text-[10px] font-bold uppercase tracking-widest hidden lg:inline">Fork</span>
-      <GitFork class="w-4 h-4" />
-    </button>
 
     <!-- More Actions Menu -->
     <div class="relative">
@@ -121,6 +133,15 @@ defineExpose({
         :trigger-el="moreActionsTriggerRef"
         @close="showMoreMenu = false"
       >
+        <button
+          @click="emit('fork', message.id); showMoreMenu = false"
+          class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+          data-testid="fork-message-button"
+        >
+          <GitFork class="w-3.5 h-3.5" />
+          <span>Fork Chat</span>
+        </button>
+
         <button
           @click="handleCopyRaw(); showMoreMenu = false"
           class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"

@@ -571,7 +571,7 @@ export class ImportExportService {
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
-            yield { type: 'chat' as const, data: { ...meta, ...content } };
+            yield { type: 'chat' as const, data: { ...meta, ...content, messages: undefined } };
           } catch (e) { /* Ignore */ }
         }
       }
@@ -715,7 +715,7 @@ export class ImportExportService {
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
-            const dto: ChatDto = { ...meta, ...content };
+            const dto: ChatDto = { ...meta, ...content, messages: undefined };
             const process = (node: MessageNodeDto) => {
               node.id = generateId();
               if (node.attachments) {

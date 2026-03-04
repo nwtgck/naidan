@@ -25,7 +25,8 @@ vi.mock('../../composables/useGlobalEvents', () => ({
 vi.mock('../../composables/useImagePreview', () => ({
   useImagePreview: vi.fn().mockReturnValue({
     openPreview: vi.fn(),
-  })
+  }),
+  MESSAGE_CONTEXTUAL_PREVIEW_KEY: Symbol('MessageContextualPreview'),
 }));
 
 describe('GeneratedImageBlock', () => {
@@ -154,6 +155,32 @@ describe('GeneratedImageBlock', () => {
       objects: [mockBinaryObj],
       initialId: binaryObjectId
     });
+  });
+
+  it('calls contextual preview handler when provided', async () => {
+    const mockContextualPreview = vi.fn();
+    const { MESSAGE_CONTEXTUAL_PREVIEW_KEY } = await import('../../composables/useImagePreview');
+
+    vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
+
+    const wrapper = mount(GeneratedImageBlock, {
+      props: { json },
+      global: {
+        provide: {
+          [MESSAGE_CONTEXTUAL_PREVIEW_KEY as any]: mockContextualPreview
+        }
+      }
+    });
+
+    await flushPromises();
+    await nextTick();
+
+    const img = wrapper.find('img.naidan-clickable-img');
+    await img.trigger('click');
+
+    expect(mockContextualPreview).toHaveBeenCalledWith({ id: binaryObjectId });
+    const { openPreview } = useImagePreview();
+    expect(openPreview).not.toHaveBeenCalled();
   });
 
   it('detects metadata support and passes it to download button', async () => {

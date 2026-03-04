@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { GeneratedImageBlockSchema, getDisplayDimensions } from '../../utils/image-generation';
 import { storageService } from '../../services/storage';
 import { Image as ImageIcon, AlertTriangle } from 'lucide-vue-next';
 import ImageDownloadButton from '../ImageDownloadButton.vue';
 import ImageInfoDisplay from '../ImageInfoDisplay.vue';
 import { ImageDownloadHydrator } from '../ImageDownloadHydrator';
-import { useImagePreview } from '../../composables/useImagePreview';
+import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '../../composables/useImagePreview';
 import { useGlobalEvents } from '../../composables/useGlobalEvents';
 
 const props = defineProps<{
@@ -32,6 +32,7 @@ const error = ref<string | undefined>(undefined);
 const isSupported = ref(false);
 
 const { openPreview } = useImagePreview();
+const handleContextualPreview = inject(MESSAGE_CONTEXTUAL_PREVIEW_KEY, null);
 const { addErrorEvent } = useGlobalEvents();
 
 const displayDims = computed(() => {
@@ -76,6 +77,12 @@ onUnmounted(() => {
 
 async function handlePreview() {
   if (!parsed.value) return;
+
+  if (handleContextualPreview) {
+    await handleContextualPreview({ id: parsed.value.binaryObjectId });
+    return;
+  }
+
   const obj = await storageService.getBinaryObject({ binaryObjectId: parsed.value.binaryObjectId });
   if (obj) {
     openPreview({
@@ -115,6 +122,7 @@ defineExpose({
   <div
     v-if="parsed"
     class="naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl overflow-visible"
+    :data-id="parsed.binaryObjectId"
   >
     <!-- Image -->
     <img

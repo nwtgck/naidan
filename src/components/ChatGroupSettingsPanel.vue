@@ -13,6 +13,7 @@ import { useGlobalSearch } from '../composables/useGlobalSearch';
 
 // IMPORTANT: ModelSelector is used for immediate model override feedback and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import ReasoningSettings from './ReasoningSettings.vue';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./LmParametersEditor.vue'));
@@ -79,6 +80,13 @@ onMounted(() => {
 
 // Sync if currentChatGroup changes while open (e.g. from another tab or property update)
 watch(currentChatGroup, syncLocalWithCurrent, { deep: true });
+
+// Deep watch for lmParameters specifically to update UI when settings are saved or changed
+watch(() => currentChatGroup.value?.lmParameters, (newParams) => {
+  if (newParams) {
+    localSettings.value.lmParameters = JSON.parse(JSON.stringify(newParams));
+  }
+}, { deep: true });
 
 const hasActiveOverrides = computed(() => {
   return hasGroupOverrides({ group: localSettings.value });
@@ -438,29 +446,42 @@ defineExpose({
             <div v-else class="text-[10px] text-gray-400 italic ml-1">No custom headers.</div>
           </div>
 
-          <div class="space-y-2">
-            <div class="flex items-center justify-between ml-1">
-              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Model ID Override</label>
-              <button
-                v-if="localSettings.modelId"
-                @click="setGroupNameFromModelId"
-                type="button"
-                class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
-                data-testid="group-setting-set-name-from-model"
-              >
-                Set Group Name
-              </button>
+          <div class="space-y-4">
+            <div class="space-y-2">
+              <div class="flex items-center justify-between ml-1">
+                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Model ID Override</label>
+                <button
+                  v-if="localSettings.modelId"
+                  @click="setGroupNameFromModelId"
+                  type="button"
+                  class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
+                  data-testid="group-setting-set-name-from-model"
+                >
+                  Set Group Name
+                </button>
+              </div>
+              <ModelSelector
+                :model-value="localSettings.modelId"
+                @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
+                :loading="fetchingModels"
+                :models="sortedGroupModels"
+                :placeholder="'Global (' + (settings.defaultModelId || 'None') + ')'"
+                :allow-clear="true"
+                @refresh="fetchModels"
+                data-testid="group-setting-model-select"
+              />
             </div>
-            <ModelSelector
-              :model-value="localSettings.modelId"
-              @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
-              :loading="fetchingModels"
-              :models="sortedGroupModels"
-              :placeholder="'Global (' + (settings.defaultModelId || 'None') + ')'"
-              :allow-clear="true"
-              @refresh="fetchModels"
-              data-testid="group-setting-model-select"
-            />
+
+            <div class="p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl">
+              <ReasoningSettings
+                :selected-effort="localSettings.lmParameters?.reasoning?.effort"
+                @update:effort="effort => {
+                  const params = { ...(localSettings.lmParameters || {}), reasoning: { effort } };
+                  localSettings.lmParameters = params;
+                  saveChanges();
+                }"
+              />
+            </div>
             <TransformersJsUpsell :show="effectiveEndpointType === 'transformers_js'" />
           </div>
         </div>

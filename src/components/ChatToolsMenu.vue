@@ -6,11 +6,13 @@ import { useElementBounding, useWindowSize } from '@vueuse/core';
 
 // Lazily load image generation settings as it's only visible when the tools menu is opened, but prefetch it when idle.
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
+const ReasoningSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ReasoningSettings.vue'));
 
 const props = withDefaults(defineProps<{
   canGenerateImage: boolean;
   isProcessing: boolean;
   isImageMode: boolean;
+  isThinkActive: boolean;
   selectedWidth: number;
   selectedHeight: number;
   selectedCount: number;
@@ -19,6 +21,7 @@ const props = withDefaults(defineProps<{
   selectedPersistAs: 'original' | 'webp' | 'jpeg' | 'png';
   availableImageModels: string[];
   selectedImageModel: string | undefined;
+  selectedReasoningEffort: 'none' | 'low' | 'medium' | 'high' | undefined;
   direction?: 'up' | 'down';
 }>(), {
   direction: 'up'
@@ -32,6 +35,7 @@ const emit = defineEmits<{
   (e: 'update:seed', seed: number | 'browser_random' | undefined): void;
   (e: 'update:persist-as', format: 'original' | 'webp' | 'jpeg' | 'png'): void;
   (e: 'update:model', modelId: string): void;
+  (e: 'update:reasoning-effort', effort: 'none' | 'low' | 'medium' | 'high' | undefined): void;
 }>();
 
 const showMenu = ref(false);
@@ -150,8 +154,8 @@ defineExpose({
       @click="showMenu = !showMenu"
       class="p-2 rounded-xl transition-colors"
       :class="[
-        showMenu || isImageMode ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800',
-        isImageMode && !showMenu ? 'ring-2 ring-blue-500/20' : ''
+        showMenu || isImageMode || isThinkActive ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800',
+        (isImageMode || isThinkActive) && !showMenu ? 'ring-2 ring-blue-500/20' : ''
       ]"
       title="Tools"
       data-testid="chat-tools-button"
@@ -171,9 +175,15 @@ defineExpose({
           ]"
           data-testid="chat-tools-dropdown"
         >
+          <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
+            Options/Tools
+          </div>
+          <ReasoningSettings
+            :selected-effort="selectedReasoningEffort"
+            @update:effort="e => emit('update:reasoning-effort', e)"
+          />
           <ImageGenerationSettings
             v-bind="props"
-            show-header
             @toggle-image-mode="emit('toggle-image-mode')"
             @update:resolution="(w, h) => emit('update:resolution', w, h)"
             @update:count="c => emit('update:count', c)"

@@ -33,7 +33,7 @@ vi.mock('../composables/useChat', () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: ref(null),
     chatGroups: mockChatGroups,
-    resolvedSettings: mockResolvedSettings,
+    resolvedSettings: mockResolvedSettings.value || ref({ lmParameters: { reasoning: { effort: undefined } } }),
     inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
     updateChatModel: vi.fn(),
@@ -77,6 +77,10 @@ vi.mock('../composables/useChat', () => ({
     imageCountMap: ref({}),
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
+    getReasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    updateChatSettings: vi.fn(),
+    getLiveChat: vi.fn().mockImplementation((c) => c),
   }),
 }));
 
@@ -148,7 +152,7 @@ describe('ChatArea Auto-send', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockSendMessage).toHaveBeenCalledWith('hello', undefined, []);
+    expect(mockSendMessage).toHaveBeenCalledWith('hello', undefined, [], undefined, expect.anything());
     expect(wrapper.emitted('auto-sent')).toBeTruthy();
   });
 
@@ -188,6 +192,6 @@ describe('ChatArea Auto-send', () => {
     await nextTick();
 
     // If it returns early, mockSendMessage won't be called
-    expect(mockSendMessage).toHaveBeenCalledWith('hello', undefined, []);
+    expect(mockSendMessage).toHaveBeenCalledWith('hello', undefined, [], undefined, expect.anything());
   });
 });
