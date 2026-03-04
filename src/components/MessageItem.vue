@@ -911,11 +911,11 @@ const reasoningEffortLabel = computed(() => {
 
   switch (effort) {
   case 'none':
-    return 'OFF';
+    return 'Off';
   case 'low':
   case 'medium':
   case 'high':
-    return 'ON';
+    return 'Think';
   default: {
     const _ex: never = effort;
     return _ex;
@@ -996,7 +996,7 @@ defineExpose({
           <span>{{ message.modelId || 'Assistant' }}</span>
           <div
             v-if="reasoningEffortLabel"
-            class="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded-md text-[8px] font-mono text-gray-500 dark:text-gray-400 leading-none cursor-help"
+            class="flex items-center gap-1 ml-1 text-[8px] font-mono text-gray-400 dark:text-gray-500 leading-none cursor-help"
             :title="reasoningEffortTooltip"
             data-testid="reasoning-effort-badge"
           >

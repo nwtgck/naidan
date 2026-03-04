@@ -842,7 +842,7 @@ describe('MessageItem Abort Button', () => {
   });
 
   describe('Reasoning Effort Badge', () => {
-    it('shows "ON" badge and correct tooltip for low/medium/high effort', () => {
+    it('shows "Think" badge and correct tooltip for low/medium/high effort', () => {
       const message = {
         id: 'msg-1',
         role: 'assistant',
@@ -856,11 +856,11 @@ describe('MessageItem Abort Button', () => {
       const badge = wrapper.find('[data-testid="reasoning-effort-badge"]');
 
       expect(badge.exists()).toBe(true);
-      expect(badge.text()).toBe('ON');
+      expect(badge.text()).toBe('Think');
       expect(badge.attributes('title')).toContain('Think: Medium Effort');
     });
 
-    it('shows "OFF" badge and correct tooltip for "none" effort', () => {
+    it('shows "Off" badge and correct tooltip for "none" effort', () => {
       const message = {
         id: 'msg-1',
         role: 'assistant',
@@ -874,7 +874,7 @@ describe('MessageItem Abort Button', () => {
       const badge = wrapper.find('[data-testid="reasoning-effort-badge"]');
 
       expect(badge.exists()).toBe(true);
-      expect(badge.text()).toBe('OFF');
+      expect(badge.text()).toBe('Off');
       expect(badge.attributes('title')).toBe('Think: Disabled');
     });
 
