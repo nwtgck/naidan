@@ -165,7 +165,6 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       attachments: orUndefined(z.array(AttachmentSchemaDto)),
       timestamp: z.number(),
       thinking: z.undefined(),
-      error: z.undefined(),
       modelId: z.undefined(),
       lmParameters: orUndefined(LmParametersSchemaDto),
       replies: MessageBranchSchemaDto,
@@ -177,7 +176,6 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       attachments: z.undefined(),
       timestamp: z.number(),
       thinking: orUndefined(z.string()),
-      error: orUndefined(z.string()),
       modelId: orUndefined(z.string()),
       lmParameters: orUndefined(LmParametersSchemaDto),
       replies: MessageBranchSchemaDto,
@@ -189,7 +187,6 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       attachments: z.undefined(),
       timestamp: z.number(),
       thinking: z.undefined(),
-      error: z.undefined(),
       modelId: z.undefined(),
       lmParameters: z.undefined(),
       replies: MessageBranchSchemaDto,
@@ -215,7 +212,6 @@ export type MessageNodeDto =
       role: 'user';
       attachments: AttachmentDto[] | undefined;
       thinking: undefined;
-      error: undefined;
       modelId: undefined;
       lmParameters: LmParametersDto | undefined;
     })
@@ -223,7 +219,6 @@ export type MessageNodeDto =
       role: 'assistant';
       attachments: undefined;
       thinking: string | undefined;
-      error: string | undefined;
       modelId: string | undefined;
       lmParameters: LmParametersDto | undefined;
     })
@@ -231,7 +226,6 @@ export type MessageNodeDto =
       role: 'system';
       attachments: undefined;
       thinking: undefined;
-      error: undefined;
       modelId: undefined;
       lmParameters: undefined;
     });
