@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 import RecipeExportModal from './RecipeExportModal.vue';
 
 describe('RecipeExportModal.vue', () => {
@@ -14,7 +15,7 @@ describe('RecipeExportModal.vue', () => {
     isOpen: true,
     groupName: 'Test Group',
     systemPrompt: { content: 'System instruction', behavior: 'override' as const },
-    lmParameters: { temperature: 0.7, reasoning: { effort: undefined } },
+    lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.7, reasoning: { effort: undefined } },
     initialModelId: 'llama3:8b'
   };
 

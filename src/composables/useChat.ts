@@ -1,6 +1,7 @@
 import { generateId } from '../utils/id';
 import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } from 'vue';
 import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 import { storageService } from '../services/storage';
 import { OpenAIProvider, OllamaProvider, UNKNOWN_STEPS, type LLMProvider } from '../services/llm';
 import { TransformersJsProvider } from '../services/transformers-js-provider';
@@ -1120,7 +1121,7 @@ export function useChat() {
         thinking: undefined,
         error: undefined,
         modelId: undefined,
-        lmParameters: lmParameters || { reasoning: { effort: undefined } }
+        lmParameters: lmParameters || EMPTY_LM_PARAMETERS
       };
 
       const assistantContent = isImgMode
@@ -1137,7 +1138,7 @@ export function useChat() {
         attachments: undefined,
         thinking: undefined,
         error: undefined,
-        lmParameters: lmParameters || { reasoning: { effort: undefined } }
+        lmParameters: lmParameters || EMPTY_LM_PARAMETERS
       };
       userMsg.replies.items.push(assistantMsg);
 
@@ -1194,7 +1195,7 @@ export function useChat() {
         attachments: undefined,
         thinking: undefined,
         error: undefined,
-        lmParameters: failedNode.lmParameters || { reasoning: { effort: undefined } }
+        lmParameters: failedNode.lmParameters || EMPTY_LM_PARAMETERS
       };
       parent.replies.items.push(newAssistantMsg);
       chat.currentLeafId = newAssistantMsg.id;
@@ -1449,7 +1450,7 @@ export function useChat() {
         replies: { items: [] },
         thinking: undefined,
         error: undefined,
-        lmParameters: node.lmParameters || { reasoning: { effort: undefined } }
+        lmParameters: node.lmParameters || EMPTY_LM_PARAMETERS
       };
       const parent = findParentInBranch(chat.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);
@@ -1517,7 +1518,7 @@ export function useChat() {
     if (!chat) return;
 
     const lmParameters = {
-      ...(chat.lmParameters || {}),
+      ...(chat.lmParameters || EMPTY_LM_PARAMETERS),
       reasoning: { effort }
     };
 

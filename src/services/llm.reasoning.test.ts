@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OllamaProvider, OpenAIProvider } from './llm';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 
 // Mock useGlobalEvents
 vi.mock('../composables/useGlobalEvents', () => ({
@@ -32,6 +33,7 @@ describe('LLM Providers Reasoning', () => {
         model: 'gpt-4o',
         onChunk: () => {},
         parameters: {
+          ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: 'medium' },
         },
       });
@@ -61,6 +63,7 @@ describe('LLM Providers Reasoning', () => {
         model: 'gpt-4o',
         onChunk: () => {},
         parameters: {
+          ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: undefined },
         },
       });
@@ -112,6 +115,7 @@ describe('LLM Providers Reasoning', () => {
         model: 'qwen3.5',
         onChunk: () => {},
         parameters: {
+          ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: 'medium' },
         },
       });
@@ -141,6 +145,7 @@ describe('LLM Providers Reasoning', () => {
         model: 'qwen3.5',
         onChunk: () => {},
         parameters: {
+          ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: 'none' },
         },
       });
@@ -170,6 +175,7 @@ describe('LLM Providers Reasoning', () => {
         model: 'qwen3.5',
         onChunk: () => {},
         parameters: {
+          ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: undefined },
         },
       });
@@ -231,6 +237,7 @@ describe('LLM Providers Reasoning', () => {
         model: 'qwen3.5',
         onChunk: () => {},
         parameters: {
+          ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: 'medium' },
         },
       });
@@ -270,6 +277,7 @@ describe('LLM Providers Reasoning', () => {
         model: 'qwen3.5',
         onChunk: () => {},
         parameters: {
+          ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: 'medium' },
         },
       })).rejects.toThrow('Ollama API Error (500): Crash');
@@ -296,6 +304,7 @@ describe('LLM Providers Reasoning', () => {
         model: 'qwen3.5',
         onChunk: () => {},
         parameters: {
+          ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: 'none' },
         },
       })).rejects.toThrow('Ollama API Error (400)');
@@ -346,6 +355,7 @@ describe('LLM Providers Reasoning', () => {
         model: 'qwen3.5',
         onChunk: () => {},
         parameters: {
+          ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: 'medium' },
         },
       })).rejects.toThrow('Ollama API Error (400)');

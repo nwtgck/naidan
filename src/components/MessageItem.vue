@@ -28,6 +28,7 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
@@ -449,7 +450,7 @@ function handleSaveEdit() {
       finalContent = marker + '\n' + finalContent;
     }
     const lmParameters: LmParameters = {
-      ...settings.value.lmParameters,
+      ...(settings.value.lmParameters || EMPTY_LM_PARAMETERS),
       stop: settings.value.lmParameters?.stop ? [...settings.value.lmParameters.stop] : undefined,
       reasoning: { effort: editReasoningEffort.value }
     };

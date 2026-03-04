@@ -14,6 +14,7 @@ const router = createRouter({
 });
 
 import type { MessageNode, Chat } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 
 // Mock dependencies
 const mockSendMessage = vi.fn().mockResolvedValue(true);
@@ -34,6 +35,7 @@ const mockCurrentChat = ref<Chat | null>({
   debugEnabled: false,
   originChatId: undefined as string | undefined,
   modelId: undefined as string | undefined,
+  lmParameters: EMPTY_LM_PARAMETERS,
   createdAt: Date.now(),
   updatedAt: Date.now(),
 });
@@ -129,7 +131,7 @@ vi.mock('../composables/useChat', () => ({
     }),
     updateReasoningEffort: vi.fn(({ chatId, effort }) => {
       if (mockCurrentChat.value && mockCurrentChat.value.id === chatId) {
-        const lmParameters = { ...(mockCurrentChat.value.lmParameters || {}), reasoning: { effort } };
+        const lmParameters = { ...(mockCurrentChat.value.lmParameters || EMPTY_LM_PARAMETERS), reasoning: { effort } };
         mockCurrentChat.value.lmParameters = lmParameters;
       }
     }),
@@ -1707,7 +1709,7 @@ describe('ChatArea Model Selection', () => {
       id: '1',
       title: 'Test Chat',
       root: { items: [] },
-      lmParameters: { reasoning: { effort: undefined } },
+      lmParameters: EMPTY_LM_PARAMETERS,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,

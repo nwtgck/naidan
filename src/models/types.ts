@@ -17,13 +17,28 @@ export type Reasoning = {
 };
 
 export type LmParameters = {
-  temperature?: number;
-  topP?: number;
-  maxCompletionTokens?: number;
-  presencePenalty?: number;
-  frequencyPenalty?: number;
-  stop?: string[];
+  temperature: number | undefined;
+  topP: number | undefined;
+  maxCompletionTokens: number | undefined;
+  presencePenalty: number | undefined;
+  frequencyPenalty: number | undefined;
+  stop: string[] | undefined;
   reasoning: Reasoning;
+};
+
+/**
+ * Not named 'DEFAULT' because 'DEFAULT' usually implies specific fallback values
+ * (e.g., temperature: 0.7), whereas this object represents a purely 'EMPTY' state
+ * where all optional fields are explicitly initialized as 'undefined'.
+ */
+export const EMPTY_LM_PARAMETERS: LmParameters = {
+  temperature: undefined,
+  topP: undefined,
+  maxCompletionTokens: undefined,
+  presencePenalty: undefined,
+  frequencyPenalty: undefined,
+  stop: undefined,
+  reasoning: { effort: undefined },
 };
 
 export type SystemPrompt =

@@ -1,4 +1,5 @@
 import type { Chat, ChatGroup, EndpointType, LmParameters, Reasoning, SystemPrompt } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 
 export interface ResolvableLmParameters {
   temperature?: number;
@@ -70,14 +71,17 @@ export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSetti
     }
   }
 
-  const lmParameters = {
-    ...(globalSettings.lmParameters || {}),
-    ...(group?.lmParameters || {}),
-    ...(chat.lmParameters || {}),
-    reasoning: {
-      effort: chat.lmParameters?.reasoning?.effort ?? group?.lmParameters?.reasoning?.effort ?? globalSettings.lmParameters?.reasoning?.effort
-    }
-  } as LmParameters;
+  const lmParameters: LmParameters = {
+    ...EMPTY_LM_PARAMETERS,
+    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning }
+  };
+
+  [globalSettings.lmParameters, group?.lmParameters, chat.lmParameters].forEach(src => {
+    if (!src) return;
+    const { reasoning, ...rest } = src;
+    Object.assign(lmParameters, Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== undefined)));
+    if (reasoning?.effort !== undefined) lmParameters.reasoning.effort = reasoning.effort;
+  });
 
   return {
     endpointType, endpointUrl, endpointHttpHeaders, modelId, autoTitleEnabled, titleModelId, systemPromptMessages: systemPrompts, lmParameters,

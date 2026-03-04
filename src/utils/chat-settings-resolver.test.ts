@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveChatSettings, hasChatOverrides, hasGroupOverrides, type ResolvableSettings } from './chat-settings-resolver';
 import type { Chat, ChatGroup } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 
 describe('resolveChatSettings - System Prompt Edge Cases', () => {
   const globalSettings: ResolvableSettings = {
@@ -197,6 +198,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     const globalSettings: ResolvableSettings = {
       endpointType: 'openai',
       lmParameters: {
+        ...EMPTY_LM_PARAMETERS,
         temperature: 0.7,
         reasoning: { effort: undefined }
       }
@@ -209,6 +211,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       updatedAt: Date.now(),
       items: [],
       lmParameters: {
+        ...EMPTY_LM_PARAMETERS,
         reasoning: { effort: 'high' }
       }
     };
@@ -224,6 +227,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         ...baseChat,
         groupId: 'group-1',
         lmParameters: {
+          ...EMPTY_LM_PARAMETERS,
           temperature: 0.5,
           reasoning: { effort: undefined } // Inherit from parent
         }
@@ -239,6 +243,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         ...baseChat,
         groupId: 'group-1',
         lmParameters: {
+          ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: 'low' }
         }
       };

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { reactive } from 'vue';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 
 // Mock storage
 vi.mock('../services/storage', () => ({
@@ -62,6 +63,7 @@ describe('useChat Advanced Settings Resolution', () => {
       providerProfiles: [],
       systemPrompt: 'Global Default Prompt',
       lmParameters: {
+        ...EMPTY_LM_PARAMETERS,
         temperature: 0.7,
         maxCompletionTokens: 1000,
         reasoning: { effort: undefined },
@@ -142,6 +144,7 @@ describe('useChat Advanced Settings Resolution', () => {
       __testOnlySetSettings({
         ...JSON.parse(JSON.stringify(settings.value)),
         lmParameters: {
+          ...EMPTY_LM_PARAMETERS,
           temperature: 0.1,
           topP: 0.9,
           maxCompletionTokens: 100, // Will be overridden by chat
@@ -154,6 +157,7 @@ describe('useChat Advanced Settings Resolution', () => {
           endpointType: 'openai',
           endpointUrl: 'http://global-openai',
           lmParameters: {
+            ...EMPTY_LM_PARAMETERS,
             temperature: 0.5,
             presencePenalty: 1.0,
             reasoning: { effort: undefined },
@@ -163,6 +167,7 @@ describe('useChat Advanced Settings Resolution', () => {
 
       await updateChatSettings(currentChat.value!.id, {
         lmParameters: {
+          ...EMPTY_LM_PARAMETERS,
           maxCompletionTokens: 500,
           frequencyPenalty: 0.5,
           reasoning: { effort: undefined },
@@ -187,7 +192,7 @@ describe('useChat Advanced Settings Resolution', () => {
 
   describe('Stop Sequences Handling', () => {
     it('passes stop sequences as array', async () => {
-      await updateChatSettings(currentChat.value!.id, { lmParameters: { stop: ['\n', 'User:'], reasoning: { effort: undefined } } });
+      await updateChatSettings(currentChat.value!.id, { lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['\n', 'User:'], reasoning: { effort: undefined } } });
       await sendMessage('Hi');
       const callParams = mockOpenAIChat.mock.calls[0]![0];
       const params = callParams.parameters;
@@ -207,6 +212,7 @@ describe('useChat Advanced Settings Resolution', () => {
       const chatAObj = {
         ...chatA!,
         lmParameters: {
+          ...EMPTY_LM_PARAMETERS,
           temperature: 0.1,
           reasoning: { effort: 'high' as const }
         }
