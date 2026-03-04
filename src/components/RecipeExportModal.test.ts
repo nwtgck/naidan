@@ -14,7 +14,7 @@ describe('RecipeExportModal.vue', () => {
     isOpen: true,
     groupName: 'Test Group',
     systemPrompt: { content: 'System instruction', behavior: 'override' as const },
-    lmParameters: { temperature: 0.7 },
+    lmParameters: { temperature: 0.7, reasoning: { effort: undefined } },
     initialModelId: 'llama3:8b'
   };
 

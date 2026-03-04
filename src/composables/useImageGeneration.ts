@@ -205,6 +205,17 @@ export function useImageGeneration() {
     const mutableChat = target;
     const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
     if (!assistantNode) return;
+    switch (assistantNode.role) {
+    case 'assistant':
+      break;
+    case 'user':
+    case 'system':
+      return;
+    default: {
+      const _ex: never = assistantNode;
+      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+    }
+    }
 
     // Prioritize the model requested in the sentinel (for regeneration/history)
     // Fallback to the currently selected model or the first available one

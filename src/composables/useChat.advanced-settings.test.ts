@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { reactive } from 'vue';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 
@@ -63,6 +64,7 @@ describe('useChat Advanced Settings Resolution', () => {
       lmParameters: {
         temperature: 0.7,
         maxCompletionTokens: 1000,
+        reasoning: { effort: undefined },
       },
     });
 
@@ -143,6 +145,7 @@ describe('useChat Advanced Settings Resolution', () => {
           temperature: 0.1,
           topP: 0.9,
           maxCompletionTokens: 100, // Will be overridden by chat
+          reasoning: { effort: undefined },
         },
         // Profile should be ignored at runtime
         providerProfiles: [{
@@ -153,6 +156,7 @@ describe('useChat Advanced Settings Resolution', () => {
           lmParameters: {
             temperature: 0.5,
             presencePenalty: 1.0,
+            reasoning: { effort: undefined },
           },
         } as any],
       });
@@ -161,6 +165,7 @@ describe('useChat Advanced Settings Resolution', () => {
         lmParameters: {
           maxCompletionTokens: 500,
           frequencyPenalty: 0.5,
+          reasoning: { effort: undefined },
         }
       });
 
@@ -173,6 +178,7 @@ describe('useChat Advanced Settings Resolution', () => {
         topP: 0.9,                // From Global
         maxCompletionTokens: 500, // From Chat
         frequencyPenalty: 0.5,    // From Chat
+        reasoning: { effort: undefined },
         // presencePenalty: 1.0 from Profile should be missing
       });
       expect(params.presencePenalty).toBeUndefined();
@@ -181,11 +187,45 @@ describe('useChat Advanced Settings Resolution', () => {
 
   describe('Stop Sequences Handling', () => {
     it('passes stop sequences as array', async () => {
-      await updateChatSettings(currentChat.value!.id, { lmParameters: { stop: ['\n', 'User:'] } });
+      await updateChatSettings(currentChat.value!.id, { lmParameters: { stop: ['\n', 'User:'], reasoning: { effort: undefined } } });
       await sendMessage('Hi');
       const callParams = mockOpenAIChat.mock.calls[0]![0];
       const params = callParams.parameters;
       expect(params.stop).toEqual(['\n', 'User:']);
+    });
+  });
+
+  describe('Chat Independence', () => {
+    const { __testOnly: { __testOnlySetCurrentChat } } = useChat();
+
+    it('should NOT leak lmParameters from Chat A to Chat B when switching', async () => {
+      // 1. Create Chat A and set custom params
+      const chatA = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+      await openChat(chatA!.id);
+
+      // Update with reasoning effort
+      const chatAObj = {
+        ...chatA!,
+        lmParameters: {
+          temperature: 0.1,
+          reasoning: { effort: 'high' as const }
+        }
+      };
+      __testOnlySetCurrentChat(reactive(chatAObj) as any);
+
+      expect(currentChat.value?.lmParameters?.temperature).toBe(0.1);
+      expect(currentChat.value?.lmParameters?.reasoning?.effort).toBe('high');
+
+      // 2. Create Chat B
+      const chatB = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+
+      // Once we open B, it should be clean
+      await openChat(chatB!.id);
+
+      // Verify Chat B uses defaults (global settings), not Chat A's values
+      expect(currentChat.value?.lmParameters?.temperature).toBeUndefined();
+      expect(currentChat.value?.lmParameters?.reasoning?.effort).toBeUndefined();
+      expect(currentChat.value?.id).toBe(chatB!.id);
     });
   });
 });

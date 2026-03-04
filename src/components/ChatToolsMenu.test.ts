@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { ref, nextTick } from 'vue';
+import type { Reasoning } from '../models/types';
 
 // Mock @vueuse/core for positioning tests
 const mockBounding = {
@@ -29,6 +30,7 @@ describe('ChatToolsMenu', () => {
     canGenerateImage: true,
     isProcessing: false,
     isImageMode: false,
+    isThinkActive: false,
     selectedWidth: 512,
     selectedHeight: 512,
     selectedCount: 1,
@@ -36,7 +38,8 @@ describe('ChatToolsMenu', () => {
     selectedSeed: undefined,
     selectedPersistAs: 'original' as const,
     availableImageModels: ['model-1', 'model-2'],
-    selectedImageModel: 'model-1'
+    selectedImageModel: 'model-1',
+    selectedReasoningEffort: undefined as Reasoning['effort'],
   };
 
   let wrapper: VueWrapper<any>;
@@ -257,6 +260,33 @@ describe('ChatToolsMenu', () => {
     await vi.dynamicImportSettled();
 
     expect(document.body.textContent).toContain('No tools available for this provider');
+  });
+
+  describe('Reasoning Effort Integration', () => {
+    it('shows highlighing on the gear icon when isThinkActive is true', async () => {
+      wrapper = mount(ChatToolsMenu, {
+        props: { ...defaultProps, isThinkActive: true }
+      });
+      const button = wrapper.find('[data-testid="chat-tools-button"]');
+      expect(button.classes()).toContain('text-blue-600');
+      expect(button.classes()).toContain('ring-2');
+    });
+
+    it('emits update:reasoning-effort when a value is selected in ReasoningSettings', async () => {
+      wrapper = mount(ChatToolsMenu, {
+        props: defaultProps,
+        attachTo: document.body
+      });
+      await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
+
+      const reasoningSettings = wrapper.findComponent({ name: 'ReasoningSettings' });
+      expect(reasoningSettings.exists()).toBe(true);
+
+      await reasoningSettings.vm.$emit('update:effort', 'high');
+      expect(wrapper.emitted('update:reasoning-effort')).toEqual([['high']]);
+    });
   });
 
   describe('Adaptive Positioning Features', () => {

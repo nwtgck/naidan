@@ -11,8 +11,18 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: LmParameters): void;
 }>();
 
-const params = computed({
-  get: () => props.modelValue || {},
+const defaultParams: LmParameters = {
+  temperature: undefined,
+  topP: undefined,
+  maxCompletionTokens: undefined,
+  presencePenalty: undefined,
+  frequencyPenalty: undefined,
+  stop: undefined,
+  reasoning: { effort: undefined }
+};
+
+const params = computed<LmParameters>({
+  get: () => ({ ...defaultParams, ...props.modelValue }),
   set: (val) => emit('update:modelValue', val)
 });
 
@@ -27,11 +37,53 @@ watch(() => params.value.stop, (newVal) => {
 }, { immediate: true });
 
 function updateParam<K extends keyof LmParameters>(key: K, value: LmParameters[K]) {
-  const newParams = { ...params.value };
+  const newParams: LmParameters = { ...params.value };
   if (value === undefined || value === null || (value as unknown) === '' || (typeof value === 'number' && isNaN(value))) {
-    delete newParams[key];
+    switch (key) {
+    case 'reasoning':
+      newParams.reasoning = { effort: undefined };
+      break;
+    case 'temperature':
+    case 'topP':
+    case 'maxCompletionTokens':
+    case 'presencePenalty':
+    case 'frequencyPenalty':
+    case 'stop':
+      delete newParams[key];
+      break;
+    default: {
+      const _ex: never = key;
+      throw new Error(`Unhandled parameter key: ${_ex}`);
+    }
+    }
   } else {
-    newParams[key] = value;
+    switch (key) {
+    case 'reasoning':
+      newParams.reasoning = value as LmParameters['reasoning'];
+      break;
+    case 'temperature':
+      newParams.temperature = value as LmParameters['temperature'];
+      break;
+    case 'topP':
+      newParams.topP = value as LmParameters['topP'];
+      break;
+    case 'maxCompletionTokens':
+      newParams.maxCompletionTokens = value as LmParameters['maxCompletionTokens'];
+      break;
+    case 'presencePenalty':
+      newParams.presencePenalty = value as LmParameters['presencePenalty'];
+      break;
+    case 'frequencyPenalty':
+      newParams.frequencyPenalty = value as LmParameters['frequencyPenalty'];
+      break;
+    case 'stop':
+      newParams.stop = value as LmParameters['stop'];
+      break;
+    default: {
+      const _ex: never = key;
+      throw new Error(`Unhandled parameter key: ${_ex}`);
+    }
+    }
   }
   params.value = newParams;
 }
@@ -57,12 +109,28 @@ function handleStopInput(value: string) {
 }
 
 function reset() {
-  params.value = {};
+  params.value = { ...defaultParams };
   stopSequencesRaw.value = '';
   stopJsonError.value = null;
 }
 
-const isOverridden = (key: keyof LmParameters) => params.value[key] !== undefined;
+const isOverridden = (key: keyof LmParameters) => {
+  switch (key) {
+  case 'reasoning':
+    return params.value.reasoning.effort !== undefined;
+  case 'temperature':
+  case 'topP':
+  case 'maxCompletionTokens':
+  case 'presencePenalty':
+  case 'frequencyPenalty':
+  case 'stop':
+    return params.value[key] !== undefined;
+  default: {
+    const _ex: never = key;
+    throw new Error(`Unhandled parameter key: ${_ex}`);
+  }
+  }
+};
 
 
 
@@ -83,7 +151,7 @@ defineExpose({
         </span>
       </div>
       <button
-        v-if="Object.keys(params).length > 0"
+        v-if="Object.values(params).some(v => v !== undefined)"
         @click="reset"
         class="text-[10px] font-bold text-gray-400 hover:text-blue-500 flex items-center gap-1 transition-colors"
       >

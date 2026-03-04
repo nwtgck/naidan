@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { Token, Tokens } from 'marked';
-import { marked, sanitizeHtml } from './useMarkdown'; // sanitizeHtml を追加
+import { marked, sanitizeHtml } from './useMarkdown'; // Added sanitizeHtml
 import CodeBlockWrapper from './CodeBlockWrapper.vue';
 import MarkdownInline from './MarkdownInline.vue';
 import BlockMarkdownItem from './BlockMarkdownItem.vue';

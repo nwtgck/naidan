@@ -32,7 +32,7 @@ vi.mock('../composables/useChat', () => ({
     saveChat: vi.fn(),
     moveChatToGroup: vi.fn(),
     chatGroups: ref([]),
-    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    resolvedSettings: ref({ lmParameters: { reasoning: { effort: undefined } }, modelId: 'm1', sources: { modelId: 'global' } }),
     inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
     availableModels: ref([]),
     isTaskRunning: vi.fn((id: string) => mockActiveGenerations.has(id)),
@@ -58,6 +58,10 @@ vi.mock('../composables/useChat', () => ({
     imageCountMap: ref({}),
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
+    getReasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    updateChatSettings: vi.fn(),
+    getLiveChat: vi.fn().mockImplementation((c) => c),
   }),
 }));
 
@@ -165,6 +169,10 @@ describe('ChatArea Concurrency Button State', () => {
       imageCountMap: ref({}),
       imagePersistAsMap: ref({}),
       imageModelOverrideMap: ref({}),
+      getReasoningEffort: vi.fn(),
+      updateReasoningEffort: vi.fn(),
+      updateChatSettings: vi.fn(),
+      getLiveChat: vi.fn().mockImplementation((c) => c),
     } as any);
 
     const wrapper = mount(ChatArea, {
@@ -190,6 +198,6 @@ describe('ChatArea Concurrency Button State', () => {
     await sendButton.trigger('click');
 
     // Expectation that will fail if bug exists
-    expect(mockSendMessage).toHaveBeenCalledWith('Hello from Chat B', undefined, []);
+    expect(mockSendMessage).toHaveBeenCalledWith('Hello from Chat B', undefined, [], undefined, expect.anything());
   });
 });

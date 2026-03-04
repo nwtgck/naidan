@@ -1,4 +1,4 @@
-import type { Chat, ChatGroup, EndpointType, LmParameters, SystemPrompt } from '../models/types';
+import type { Chat, ChatGroup, EndpointType, LmParameters, Reasoning, SystemPrompt } from '../models/types';
 
 export interface ResolvableLmParameters {
   temperature?: number;
@@ -7,6 +7,7 @@ export interface ResolvableLmParameters {
   presencePenalty?: number;
   frequencyPenalty?: number;
   stop?: readonly string[];
+  reasoning: Reasoning;
 }
 
 export interface ResolvableSettings {
@@ -73,6 +74,9 @@ export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSetti
     ...(globalSettings.lmParameters || {}),
     ...(group?.lmParameters || {}),
     ...(chat.lmParameters || {}),
+    reasoning: {
+      effort: chat.lmParameters?.reasoning?.effort ?? group?.lmParameters?.reasoning?.effort ?? globalSettings.lmParameters?.reasoning?.effort
+    }
   } as LmParameters;
 
   return {
@@ -110,7 +114,23 @@ export function hasChatOverrides({ chat }: {
     chat.autoTitleEnabled !== undefined ||
     chat.titleModelId ||
     chat.systemPrompt ||
-    (chat.lmParameters && Object.keys(chat.lmParameters).length > 0)
+    (chat.lmParameters && (Object.keys(chat.lmParameters) as (keyof ResolvableLmParameters)[]).some(key => {
+      switch (key) {
+      case 'reasoning':
+        return chat.lmParameters!.reasoning.effort !== undefined;
+      case 'temperature':
+      case 'topP':
+      case 'maxCompletionTokens':
+      case 'presencePenalty':
+      case 'frequencyPenalty':
+      case 'stop':
+        return chat.lmParameters![key] !== undefined;
+      default: {
+        const _ex: never = key;
+        throw new Error(`Unhandled parameter key: ${_ex}`);
+      }
+      }
+    }))
   );
 }
 
@@ -137,6 +157,22 @@ export function hasGroupOverrides({ group }: {
     group.autoTitleEnabled !== undefined ||
     group.titleModelId ||
     group.systemPrompt ||
-    (group.lmParameters && Object.keys(group.lmParameters).length > 0)
+    (group.lmParameters && (Object.keys(group.lmParameters) as (keyof ResolvableLmParameters)[]).some(key => {
+      switch (key) {
+      case 'reasoning':
+        return group.lmParameters!.reasoning.effort !== undefined;
+      case 'temperature':
+      case 'topP':
+      case 'maxCompletionTokens':
+      case 'presencePenalty':
+      case 'frequencyPenalty':
+      case 'stop':
+        return group.lmParameters![key] !== undefined;
+      default: {
+        const _ex: never = key;
+        throw new Error(`Unhandled parameter key: ${_ex}`);
+      }
+      }
+    }))
   );
 }

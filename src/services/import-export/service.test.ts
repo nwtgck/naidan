@@ -351,10 +351,10 @@ describe('ImportExportService', () => {
       const content = {
         root: {
           items: [{
-            id: UUID_M1, role: 'user', content: 'hello', timestamp: now,
+            id: UUID_M1, role: 'assistant', content: 'hello', timestamp: now,
             replies: {
               items: [{
-                id: UUID_M2, role: 'assistant', content: 'response', timestamp: now + 100,
+                id: UUID_M2, role: 'user', content: 'response', timestamp: now + 100,
                 attachments: [{
                   id: UUID_A1, binaryObjectId: UUID_A1, name: 'img.png', status: 'persisted'
                 }],
@@ -486,6 +486,7 @@ describe('ImportExportService', () => {
           maxCompletionTokens: undefined,
           presencePenalty: undefined,
           frequencyPenalty: undefined,
+          reasoning: undefined,
         }
       })));
 
@@ -508,9 +509,41 @@ describe('ImportExportService', () => {
       expect(result).toEqual(expect.objectContaining({
         lmParameters: {
           temperature: 0.1,
-          stop: ['ZIP']
+          stop: ['ZIP'],
+          reasoning: { effort: undefined }
         }
       }));
+    });
+
+    it('correctly imports reasoning effort in lmParameters', async () => {
+      const zip = new JSZip();
+      zip.file('export-manifest.json', '{}');
+      zip.file('settings.json', JSON.stringify(createValidSettingsDto({
+        lmParameters: {
+          temperature: 0.7,
+          reasoning: { effort: 'high' }
+        } as any
+      })));
+
+      mockStorage.loadSettings.mockResolvedValue(createValidSettingsDto({
+        lmParameters: { reasoning: { effort: undefined } } as any
+      }) as any);
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const config: ImportConfig = {
+        data: { mode: 'replace' },
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'replace', providerProfiles: 'none' }
+      };
+
+      await service.executeImport(zipBlob, config);
+
+      expect(mockStorage.updateSettings).toHaveBeenCalled();
+      const updater = mockStorage.updateSettings.mock.calls[0]![0];
+      const result = await updater(await mockStorage.loadSettings());
+      expect(result.lmParameters).toEqual({
+        temperature: 0.7,
+        reasoning: { effort: 'high' }
+      });
     });
 
     it('regenerates IDs for provider profiles when using append strategy', async () => {

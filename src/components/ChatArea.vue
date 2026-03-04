@@ -18,6 +18,7 @@ import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
 import { useImagePreview } from '../composables/useImagePreview';
 import { useBinaryActions } from '../composables/useBinaryActions';
+import type { LmParameters } from '../models/types';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
@@ -145,13 +146,14 @@ function exportChat() {
 
   activeMessages.value.forEach(msg => {
     const role = (() => {
-      switch (msg.role) {
+      const node = msg;
+      switch (node.role) {
       case 'user': return 'User';
       case 'assistant': return 'AI';
       case 'system': return 'System';
       default: {
-        const _ex: never = msg.role;
-        return _ex;
+        const _ex: never = node;
+        return (_ex as { role: string }).role;
       }
       }
     })();
@@ -236,8 +238,8 @@ const canGenerateImage = computed(() => {
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
 
-async function handleEdit(messageId: string, newContent: string) {
-  await chatStore.editMessage(messageId, newContent);
+async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
+  await chatStore.editMessage(messageId, newContent, lmParameters);
 }
 
 async function handleRegenerate(messageId: string) {
@@ -647,7 +649,7 @@ watch(
               :available-image-models="availableImageModels"
               :endpoint-type="resolvedSettings?.endpointType"
               @fork="handleFork"
-              @edit="handleEdit"
+              @edit="(id, content, params) => handleEdit(id, content, params)"
               @switch-version="handleSwitchVersion"
               @regenerate="handleRegenerate"
               @abort="chatStore.abortChat({ chatId: undefined })"

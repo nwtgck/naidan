@@ -58,6 +58,10 @@ vi.mock('../composables/useChat', () => ({
     getSelectedImageModel: vi.fn(),
     getSortedImageModels: vi.fn(() => []),
     moveChatToGroup: vi.fn(),
+    getReasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    updateChatSettings: vi.fn(),
+    getLiveChat: vi.fn().mockImplementation((c) => c),
   }),
 }));
 

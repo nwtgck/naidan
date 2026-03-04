@@ -11,6 +11,9 @@ export const RecipeLmParametersSchema = z.object({
   presencePenalty: z.number().optional(),
   frequencyPenalty: z.number().optional(),
   stop: z.array(z.string()).optional(),
+  reasoning: z.object({
+    effort: z.enum(['none', 'low', 'medium', 'high']).optional(),
+  }).optional(),
 });
 
 /**

@@ -11,6 +11,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 
 // IMPORTANT: ModelSelector is used for immediate model override feedback and should not flicker.
 import ModelSelector from './ModelSelector.vue';
+import ReasoningSettings from './ReasoningSettings.vue';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./LmParametersEditor.vue'));
@@ -81,6 +82,13 @@ onMounted(() => {
 
 // Sync if currentChat changes while open (e.g. from another tab)
 watch(() => currentChat.value?.id, syncLocalWithCurrent);
+
+// Deep watch for lmParameters to keep UI in sync with changes from ChatInput (like Reasoning)
+watch(() => currentChat.value?.lmParameters, (newParams) => {
+  if (newParams) {
+    localSettings.value.lmParameters = JSON.parse(JSON.stringify(newParams));
+  }
+}, { deep: true });
 
 watch(() => props.show, (show) => {
   if (show) {
@@ -403,18 +411,31 @@ defineExpose({
               <div v-else class="text-[10px] text-gray-400 italic ml-1">No custom headers.</div>
             </div>
 
-            <div class="space-y-2">
-              <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
-              <ModelSelector
-                :model-value="localSettings.modelId"
-                @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
-                :models="sortedAvailableModels"
-                :loading="fetchingModels"
-                :placeholder="formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId)"
-                :allow-clear="true"
-                @refresh="fetchModels"
-                data-testid="chat-setting-model-select"
-              />
+            <div class="space-y-4">
+              <div class="space-y-2">
+                <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
+                <ModelSelector
+                  :model-value="localSettings.modelId"
+                  @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
+                  :models="sortedAvailableModels"
+                  :loading="fetchingModels"
+                  :placeholder="formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId)"
+                  :allow-clear="true"
+                  @refresh="fetchModels"
+                  data-testid="chat-setting-model-select"
+                />
+              </div>
+
+              <div class="p-4 bg-gray-50/50 dark:bg-gray-800/20 border border-gray-100 dark:border-gray-700/50 rounded-2xl">
+                <ReasoningSettings
+                  :selected-effort="localSettings.lmParameters?.reasoning?.effort"
+                  @update:effort="effort => {
+                    const params = { ...(localSettings.lmParameters || {}), reasoning: { effort } };
+                    localSettings.lmParameters = params;
+                    saveChanges();
+                  }"
+                />
+              </div>
               <TransformersJsUpsell :show="effectiveEndpointType === 'transformers_js'" />
             </div>
           </div>

@@ -42,6 +42,14 @@ export type EndpointTypeDto = EndpointDto['type'];
 
 // --- Language Model Parameters ---
 
+export const ReasoningEffortSchemaDto = z.enum(['none', 'low', 'medium', 'high']);
+export type ReasoningEffortDto = z.infer<typeof ReasoningEffortSchemaDto>;
+
+export const ReasoningSchemaDto = z.object({
+  effort: orUndefined(ReasoningEffortSchemaDto),
+});
+export type ReasoningDto = z.infer<typeof ReasoningSchemaDto>;
+
 export const LmParametersSchemaDto = z.object({
   temperature: orUndefined(z.number()),
   topP: orUndefined(z.number()),
@@ -49,6 +57,7 @@ export const LmParametersSchemaDto = z.object({
   presencePenalty: orUndefined(z.number()),
   frequencyPenalty: orUndefined(z.number()),
   stop: orUndefined(z.array(z.string())),
+  reasoning: orUndefined(ReasoningSchemaDto),
 });
 export type LmParametersDto = z.infer<typeof LmParametersSchemaDto>;
 
@@ -147,33 +156,85 @@ export const AttachmentSchemaDto = z.union([
 ]);
 export type AttachmentDto = z.infer<typeof AttachmentSchemaDto>;
 
-export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() => z.object({
-  id: z.string(),
-  role: RoleSchemaDto,
-  content: z.string(),
-  attachments: orUndefined(z.array(AttachmentSchemaDto)),
-  timestamp: z.number(),
-  thinking: orUndefined(z.string()),
-  modelId: orUndefined(z.string()),
-  replies: MessageBranchSchemaDto,
-}));
+export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
+  z.discriminatedUnion('role', [
+    z.object({
+      id: z.string(),
+      role: z.literal('user'),
+      content: z.string(),
+      attachments: orUndefined(z.array(AttachmentSchemaDto)),
+      timestamp: z.number(),
+      thinking: z.undefined(),
+      error: z.undefined(),
+      modelId: z.undefined(),
+      lmParameters: orUndefined(LmParametersSchemaDto),
+      replies: MessageBranchSchemaDto,
+    }),
+    z.object({
+      id: z.string(),
+      role: z.literal('assistant'),
+      content: z.string(),
+      attachments: z.undefined(),
+      timestamp: z.number(),
+      thinking: orUndefined(z.string()),
+      error: orUndefined(z.string()),
+      modelId: orUndefined(z.string()),
+      lmParameters: orUndefined(LmParametersSchemaDto),
+      replies: MessageBranchSchemaDto,
+    }),
+    z.object({
+      id: z.string(),
+      role: z.literal('system'),
+      content: z.string(),
+      attachments: z.undefined(),
+      timestamp: z.number(),
+      thinking: z.undefined(),
+      error: z.undefined(),
+      modelId: z.undefined(),
+      lmParameters: z.undefined(),
+      replies: MessageBranchSchemaDto,
+    }),
+  ])
+);
 
 export const MessageBranchSchemaDto = z.object({
   items: z.array(MessageNodeSchemaDto),
 });
 
-export type MessageNodeDto = {
+type MessageNodeCommonDto = {
   id: string;
-  role: RoleDto;
   content: string;
-  attachments: AttachmentDto[] | undefined;
   timestamp: number;
-  thinking: string | undefined;
-  modelId: string | undefined;
   replies: {
     items: MessageNodeDto[];
   };
 };
+
+export type MessageNodeDto =
+  | (MessageNodeCommonDto & {
+      role: 'user';
+      attachments: AttachmentDto[] | undefined;
+      thinking: undefined;
+      error: undefined;
+      modelId: undefined;
+      lmParameters: LmParametersDto | undefined;
+    })
+  | (MessageNodeCommonDto & {
+      role: 'assistant';
+      attachments: undefined;
+      thinking: string | undefined;
+      error: string | undefined;
+      modelId: string | undefined;
+      lmParameters: LmParametersDto | undefined;
+    })
+  | (MessageNodeCommonDto & {
+      role: 'system';
+      attachments: undefined;
+      thinking: undefined;
+      error: undefined;
+      modelId: undefined;
+      lmParameters: undefined;
+    });
 
 /**
  * Chat Metadata

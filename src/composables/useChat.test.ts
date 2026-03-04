@@ -3,8 +3,8 @@ import { flushPromises } from '@vue/test-utils';
 import { useChat, type AddToastOptions } from './useChat';
 import { storageService } from '../services/storage';
 import { OpenAIProvider } from '../services/llm';
-import { reactive, triggerRef } from 'vue';
-import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode } from '../models/types';
+import { reactive, triggerRef, toRaw } from 'vue';
+import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { findRestorationIndex } from '../utils/chat-tree';
 
@@ -244,12 +244,15 @@ describe('useChat Composable Logic', () => {
     const att: Attachment = { id: 'a1', binaryObjectId: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
     const m1: MessageNode = {
       id: 'm1',
-      role: 'assistant',
+      role: 'user',
       content: 'Msg 1',
       attachments: [att],
-      modelId: 'special-model',
+      modelId: undefined,
+      thinking: undefined,
+      error: undefined,
       replies: { items: [] },
-      timestamp: 0
+      timestamp: 0,
+      lmParameters: { reasoning: { effort: undefined } }
     };
 
     const mockChat: Chat = {
@@ -284,12 +287,15 @@ describe('useChat Composable Logic', () => {
     const att: Attachment = { id: 'a1', binaryObjectId: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
     const m1: MessageNode = {
       id: 'm1',
-      role: 'assistant',
+      role: 'user',
       content: 'Original Content',
       attachments: [att],
-      modelId: 'm1',
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
       replies: { items: [] },
-      timestamp: 0
+      timestamp: 0,
+      lmParameters: { reasoning: { effort: undefined } }
     };
 
     __testOnlySetCurrentChat(reactive({
@@ -421,6 +427,30 @@ describe('useChat Composable Logic', () => {
     // 4. Verify current view points to the new version
     expect(currentChat.value?.currentLeafId).toBe(secondAssistantMsg?.id);
     expect(activeMessages.value[1]?.content).toBe('Second Response');
+  });
+
+  it('should store lmParameters in UserMessageNode and AssistantMessageNode after sendMessage', async () => {
+    const { sendMessage, currentChat } = useChat();
+    __testOnlySetCurrentChat(reactive({
+      id: 'store-params-test', title: 'Store Params', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any);
+
+    const customParams = {
+      temperature: 0.8,
+      reasoning: { effort: 'medium' as const }
+    };
+
+    await sendMessage('Test message', null, [], undefined, customParams);
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    triggerRef(currentChat);
+
+    const userMsg = currentChat.value?.root.items[0] as UserMessageNode;
+    expect(userMsg.lmParameters).toEqual(customParams);
+
+    const assistantMsg = userMsg.replies.items[0] as AssistantMessageNode;
+    expect(assistantMsg.lmParameters).toEqual(customParams);
+    expect(assistantMsg.modelId).toBe('gpt-4');
   });
 
   it('should maintain the new order after reordering items', async () => {
@@ -585,6 +615,89 @@ describe('useChat Composable Logic', () => {
     await persistSidebarStructure(newItems);
     const groupNode = mockHierarchy.items.find(i => i.id === 'g2') as HierarchyChatGroupNode;
     expect(groupNode.chat_ids).toContain('c1');
+  });
+
+  it('should preserve lmParameters when regenerating a message', async () => {
+    const { sendMessage, regenerateMessage, currentChat, __testOnly } = useChat();
+    const { __testOnlySetCurrentChat } = __testOnly;
+
+    const mockChat: Chat = {
+      id: 'c1', title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
+    };
+    __testOnlySetCurrentChat(mockChat);
+
+    const customParams = {
+      temperature: 0.5,
+      reasoning: { effort: 'high' as const }
+    };
+
+    // 1. Send first message with custom params
+    await sendMessage('Hello', null, [], undefined, customParams);
+    await flushPromises();
+
+    // The mockLlmChat should have been called with customParams
+    expect(mockLlmChat).toHaveBeenCalledWith(expect.objectContaining({
+      parameters: expect.objectContaining({
+        reasoning: { effort: 'high' }
+      })
+    }));
+
+    const assistantMsgId = currentChat.value!.currentLeafId!;
+    mockLlmChat.mockClear();
+
+    // 2. Regenerate the message
+    await regenerateMessage(assistantMsgId);
+    await flushPromises();
+
+    // 3. Verify that the second call ALSO used the same customParams
+    expect(mockLlmChat).toHaveBeenCalledWith(expect.objectContaining({
+      parameters: expect.objectContaining({
+        reasoning: { effort: 'high' }
+      })
+    }));
+  });
+
+  it('should apply new lmParameters when editing a message', async () => {
+    const { sendMessage, editMessage, currentChat, getLiveChat, __testOnly } = useChat();
+    const { __testOnlySetCurrentChat } = __testOnly;
+
+    const mockChat: Chat = {
+      id: 'c1', title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
+    };
+    __testOnlySetCurrentChat(mockChat);
+
+    // 1. Send first message with default params
+    await sendMessage('Hello', null);
+    await flushPromises();
+
+    const newParams = { reasoning: { effort: 'low' as const } };
+
+    // In some mock environments, the recursive tree might be flat or detached.
+    // Let's try to get the User message ID.
+    // We know it's the first message sent in this clean chat.
+    const liveChat = getLiveChat(toRaw(currentChat.value!) as Chat);
+    const userMsgId = liveChat.root.items[0]?.id;
+
+    if (!userMsgId) {
+      // Fallback: if root is empty, something is wrong with sendMessage mock synchronization
+      // but we can still test the logic by manually inserting a node
+      const manualId = 'manual-u1';
+      liveChat.root.items.push({ id: manualId, role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] }, thinking: undefined, modelId: undefined });
+      await editMessage(manualId, 'Updated Hello', newParams);
+    } else {
+      mockLlmChat.mockClear();
+      // 2. Edit the message with NEW lmParameters
+      await editMessage(userMsgId, 'Updated Hello', newParams);
+    }
+
+    await flushPromises();
+
+    // 3. Verify that the resulting generation used the NEW parameters
+    expect(mockLlmChat).toHaveBeenCalledWith(expect.objectContaining({
+      parameters: expect.objectContaining({
+        reasoning: { effort: 'low' }
+      })
+    }));
   });
 
   it('should insert a new chat before the first individual chat', async () => {

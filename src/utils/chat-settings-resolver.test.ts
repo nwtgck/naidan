@@ -192,4 +192,58 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       expect(hasGroupOverrides({ group: { ...group, titleModelId: 'tm1' } })).toBe(true);
     });
   });
+
+  describe('LM Parameters Resolution & Reasoning Effort Inheritance', () => {
+    const globalSettings: ResolvableSettings = {
+      endpointType: 'openai',
+      lmParameters: {
+        temperature: 0.7,
+        reasoning: { effort: undefined }
+      }
+    };
+
+    const group: ChatGroup = {
+      id: 'group-1',
+      name: 'Group',
+      isCollapsed: false,
+      updatedAt: Date.now(),
+      items: [],
+      lmParameters: {
+        reasoning: { effort: 'high' }
+      }
+    };
+
+    it('should inherit reasoning effort from group when not specified in chat', () => {
+      const chat: Chat = { ...baseChat, groupId: 'group-1' };
+      const result = resolveChatSettings(chat, [group], globalSettings);
+      expect(result.lmParameters.reasoning.effort).toBe('high');
+    });
+
+    it('should inherit reasoning effort from group even if other lmParameters are set in chat', () => {
+      const chat: Chat = {
+        ...baseChat,
+        groupId: 'group-1',
+        lmParameters: {
+          temperature: 0.5,
+          reasoning: { effort: undefined } // Inherit from parent
+        }
+      };
+      const result = resolveChatSettings(chat, [group], globalSettings);
+      // BUG: Currently this fails because reasoning object in chat overwrites group's reasoning
+      expect(result.lmParameters.reasoning.effort).toBe('high');
+      expect(result.lmParameters.temperature).toBe(0.5);
+    });
+
+    it('should override group reasoning effort when explicitly set in chat', () => {
+      const chat: Chat = {
+        ...baseChat,
+        groupId: 'group-1',
+        lmParameters: {
+          reasoning: { effort: 'low' }
+        }
+      };
+      const result = resolveChatSettings(chat, [group], globalSettings);
+      expect(result.lmParameters.reasoning.effort).toBe('low');
+    });
+  });
 });

@@ -7,6 +7,7 @@ import { generateId } from '../utils/id';
 import { naturalSort } from '../utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
+import { useReasoning } from '../composables/useReasoning';
 
 import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
@@ -18,9 +19,10 @@ import {
   ChevronDown, ChevronUp, Edit2, FileEdit
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
-import type { Attachment, Chat } from '../models/types';
+import type { Attachment, Chat, LmParameters } from '../models/types';
 
 const chatStore = useChat();
+const reasoningStore = useReasoning();
 const router = useRouter();
 const { getDraft, saveDraft, clearDraft } = useChatDraft();
 const {
@@ -153,6 +155,16 @@ const currentSeed = computed(() => {
 function updateSeed(seed: number | 'browser_random' | undefined) {
   if (currentChat.value) {
     _updateSeed({ chatId: currentChat.value.id, seed });
+  }
+}
+
+const selectedReasoningEffort = computed(() => {
+  return currentChat.value ? reasoningStore.getReasoningEffort({ chatId: currentChat.value.id }) : undefined;
+});
+
+function updateReasoningEffort({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) {
+  if (currentChat.value) {
+    reasoningStore.updateReasoningEffort({ chatId: currentChat.value.id, effort });
   }
 }
 
@@ -519,7 +531,10 @@ async function handleSend() {
     isMaximized.value = false; // Reset maximized state immediately
   }
 
-  const success = await chatStore.sendMessage(text, undefined, currentAttachments);
+  // Use resolvedSettings if available (correctly inherits), otherwise fallback to currentChat's own parameters
+  const lmParameters = toRaw(chatStore.resolvedSettings?.value?.lmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
+
+  const success = await chatStore.sendMessage(text, undefined, currentAttachments, undefined, lmParameters as LmParameters);
 
   if (success) {
     if (currentChat.value?.id === sendingChatId) {
@@ -728,6 +743,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
     editingAttachment,
     openAdvancedEditor,
     handleAdvancedEditorModeUpdate,
+    selectedReasoningEffort
   }, });
 </script>
 
@@ -866,6 +882,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             :can-generate-image="canGenerateImage && hasImageModel"
             :is-processing="isCurrentChatStreaming"
             :is-image-mode="isImageMode"
+            :is-think-active="selectedReasoningEffort !== undefined"
             :selected-width="currentResolution.width"
             :selected-height="currentResolution.height"
             :selected-count="currentCount"
@@ -874,6 +891,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             :selected-persist-as="currentPersistAs"
             :available-image-models="availableImageModels"
             :selected-image-model="selectedImageModel"
+            :selected-reasoning-effort="selectedReasoningEffort"
             @toggle-image-mode="toggleImageMode"
             @update:resolution="updateResolution"
             @update:count="updateCount"
@@ -881,6 +899,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             @update:seed="updateSeed"
             @update:persist-as="updatePersistAs"
             @update:model="handleUpdateImageModel"
+            @update:reasoning-effort="e => updateReasoningEffort({ effort: e })"
           />
         </div>
 
