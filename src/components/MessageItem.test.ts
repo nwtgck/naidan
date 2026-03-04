@@ -840,6 +840,102 @@ describe('MessageItem Abort Button', () => {
     expect(cls).toContain('hover:text-red-500');
     expect(cls).not.toContain('animate-pulse');
   });
+
+  describe('Reasoning Effort Badge', () => {
+    it('shows "ON" badge and correct tooltip for low/medium/high effort', () => {
+      const message = {
+        id: 'msg-1',
+        role: 'assistant',
+        content: 'Hello',
+        lmParameters: { reasoning: { effort: 'medium' } },
+        timestamp: Date.now(),
+        replies: { items: [] },
+      } as AssistantMessageNode;
+
+      const wrapper = mount(MessageItem, { props: { message } });
+      const badge = wrapper.find('[data-testid="reasoning-effort-badge"]');
+
+      expect(badge.exists()).toBe(true);
+      expect(badge.text()).toBe('ON');
+      expect(badge.attributes('title')).toContain('Think: Medium Effort');
+    });
+
+    it('shows "OFF" badge and correct tooltip for "none" effort', () => {
+      const message = {
+        id: 'msg-1',
+        role: 'assistant',
+        content: 'Hello',
+        lmParameters: { reasoning: { effort: 'none' } },
+        timestamp: Date.now(),
+        replies: { items: [] },
+      } as AssistantMessageNode;
+
+      const wrapper = mount(MessageItem, { props: { message } });
+      const badge = wrapper.find('[data-testid="reasoning-effort-badge"]');
+
+      expect(badge.exists()).toBe(true);
+      expect(badge.text()).toBe('OFF');
+      expect(badge.attributes('title')).toBe('Think: Disabled');
+    });
+
+    it('hides badge when effort is undefined (Default)', () => {
+      const message = {
+        id: 'msg-1',
+        role: 'assistant',
+        content: 'Hello',
+        lmParameters: { reasoning: { effort: undefined } },
+        timestamp: Date.now(),
+        replies: { items: [] },
+      } as AssistantMessageNode;
+
+      const wrapper = mount(MessageItem, { props: { message } });
+      const badge = wrapper.find('[data-testid="reasoning-effort-badge"]');
+
+      expect(badge.exists()).toBe(false);
+    });
+  });
+
+  describe('MessageItem Edit Mode Auto-Expansion', () => {
+    it('should auto-expand tools panel when editing a message with non-default reasoning effort', async () => {
+      const message = {
+        id: 'msg-1',
+        role: 'user',
+        content: 'Hello',
+        lmParameters: { reasoning: { effort: 'high' } },
+        timestamp: Date.now(),
+        replies: { items: [] },
+      } as UserMessageNode;
+
+      const wrapper = mount(MessageItem, { props: { message } });
+
+      // Enter edit mode
+      await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+      await nextTick();
+      await nextTick(); // Second tick for watcher side-effects
+
+      // Verify that embedded tools are visible
+      expect(wrapper.find('[data-testid="embedded-experimental-tools"]').exists()).toBe(true);
+    });
+
+    it('should NOT auto-expand tools panel when editing a message with default reasoning effort', async () => {
+      const message = {
+        id: 'msg-1',
+        role: 'user',
+        content: 'Hello',
+        lmParameters: { reasoning: { effort: undefined } },
+        timestamp: Date.now(),
+        replies: { items: [] },
+      } as UserMessageNode;
+
+      const wrapper = mount(MessageItem, { props: { message } });
+
+      await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
+      await nextTick();
+      await nextTick();
+
+      expect(wrapper.find('[data-testid="embedded-experimental-tools"]').exists()).toBe(false);
+    });
+  });
 });
 
 describe('MessageItem Actions Menu', () => {

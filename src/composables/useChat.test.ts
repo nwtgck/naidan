@@ -4,7 +4,7 @@ import { useChat, type AddToastOptions } from './useChat';
 import { storageService } from '../services/storage';
 import { OpenAIProvider } from '../services/llm';
 import { reactive, triggerRef, toRaw } from 'vue';
-import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode } from '../models/types';
+import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { findRestorationIndex } from '../utils/chat-tree';
 
@@ -427,6 +427,30 @@ describe('useChat Composable Logic', () => {
     // 4. Verify current view points to the new version
     expect(currentChat.value?.currentLeafId).toBe(secondAssistantMsg?.id);
     expect(activeMessages.value[1]?.content).toBe('Second Response');
+  });
+
+  it('should store lmParameters in UserMessageNode and AssistantMessageNode after sendMessage', async () => {
+    const { sendMessage, currentChat } = useChat();
+    __testOnlySetCurrentChat(reactive({
+      id: 'store-params-test', title: 'Store Params', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any);
+
+    const customParams = {
+      temperature: 0.8,
+      reasoning: { effort: 'medium' as const }
+    };
+
+    await sendMessage('Test message', null, [], undefined, customParams);
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    triggerRef(currentChat);
+
+    const userMsg = currentChat.value?.root.items[0] as UserMessageNode;
+    expect(userMsg.lmParameters).toEqual(customParams);
+
+    const assistantMsg = userMsg.replies.items[0] as AssistantMessageNode;
+    expect(assistantMsg.lmParameters).toEqual(customParams);
+    expect(assistantMsg.modelId).toBe('gpt-4');
   });
 
   it('should maintain the new order after reordering items', async () => {

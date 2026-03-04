@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { reactive } from 'vue';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 
@@ -191,6 +192,40 @@ describe('useChat Advanced Settings Resolution', () => {
       const callParams = mockOpenAIChat.mock.calls[0]![0];
       const params = callParams.parameters;
       expect(params.stop).toEqual(['\n', 'User:']);
+    });
+  });
+
+  describe('Chat Independence', () => {
+    const { __testOnly: { __testOnlySetCurrentChat } } = useChat();
+
+    it('should NOT leak lmParameters from Chat A to Chat B when switching', async () => {
+      // 1. Create Chat A and set custom params
+      const chatA = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+      await openChat(chatA!.id);
+
+      // Update with reasoning effort
+      const chatAObj = {
+        ...chatA!,
+        lmParameters: {
+          temperature: 0.1,
+          reasoning: { effort: 'high' as const }
+        }
+      };
+      __testOnlySetCurrentChat(reactive(chatAObj) as any);
+
+      expect(currentChat.value?.lmParameters?.temperature).toBe(0.1);
+      expect(currentChat.value?.lmParameters?.reasoning?.effort).toBe('high');
+
+      // 2. Create Chat B
+      const chatB = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+
+      // Once we open B, it should be clean
+      await openChat(chatB!.id);
+
+      // Verify Chat B uses defaults (global settings), not Chat A's values
+      expect(currentChat.value?.lmParameters?.temperature).toBeUndefined();
+      expect(currentChat.value?.lmParameters?.reasoning?.effort).toBeUndefined();
+      expect(currentChat.value?.id).toBe(chatB!.id);
     });
   });
 });

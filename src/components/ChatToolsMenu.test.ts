@@ -262,6 +262,33 @@ describe('ChatToolsMenu', () => {
     expect(document.body.textContent).toContain('No tools available for this provider');
   });
 
+  describe('Reasoning Effort Integration', () => {
+    it('shows highlighing on the gear icon when isThinkActive is true', async () => {
+      wrapper = mount(ChatToolsMenu, {
+        props: { ...defaultProps, isThinkActive: true }
+      });
+      const button = wrapper.find('[data-testid="chat-tools-button"]');
+      expect(button.classes()).toContain('text-blue-600');
+      expect(button.classes()).toContain('ring-2');
+    });
+
+    it('emits update:reasoning-effort when a value is selected in ReasoningSettings', async () => {
+      wrapper = mount(ChatToolsMenu, {
+        props: defaultProps,
+        attachTo: document.body
+      });
+      await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+      await flushPromises();
+      await vi.dynamicImportSettled();
+
+      const reasoningSettings = wrapper.findComponent({ name: 'ReasoningSettings' });
+      expect(reasoningSettings.exists()).toBe(true);
+
+      await reasoningSettings.vm.$emit('update:effort', 'high');
+      expect(wrapper.emitted('update:reasoning-effort')).toEqual([['high']]);
+    });
+  });
+
   describe('Adaptive Positioning Features', () => {
     it('shifts left if the menu would overflow the right edge', async () => {
       // Trigger near the right edge (window width 1024, menu width 256)

@@ -998,6 +998,7 @@ defineExpose({
             v-if="reasoningEffortLabel"
             class="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded-md text-[8px] font-mono text-gray-500 dark:text-gray-400 leading-none cursor-help"
             :title="reasoningEffortTooltip"
+            data-testid="reasoning-effort-badge"
           >
             <Brain class="w-2.5 h-2.5" />
             <span>{{ reasoningEffortLabel }}</span>

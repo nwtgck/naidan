@@ -44,6 +44,28 @@ const mockCurrentChat = ref<any>({ id: 'chat-1', modelId: 'model-1' });
 const mockSendMessage = vi.fn();
 const mockUpdateChatSettings = vi.fn();
 
+const mockReasoningStore = {
+  getReasoningEffort: vi.fn(({ chatId }) => {
+    if (mockCurrentChat.value?.id === chatId) {
+      return mockCurrentChat.value.lmParameters?.reasoning?.effort;
+    }
+    return undefined;
+  }),
+  updateReasoningEffort: vi.fn(({ chatId, effort }) => {
+    if (mockCurrentChat.value?.id === chatId) {
+      mockCurrentChat.value.lmParameters = {
+        ...(mockCurrentChat.value.lmParameters || {}),
+        reasoning: { effort }
+      };
+      mockUpdateChatSettings(chatId, { lmParameters: mockCurrentChat.value.lmParameters });
+    }
+  }),
+};
+
+vi.mock('../composables/useReasoning', () => ({
+  useReasoning: () => mockReasoningStore,
+}));
+
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
@@ -67,21 +89,6 @@ vi.mock('../composables/useChat', () => ({
     fetchAvailableModels: vi.fn(),
     sendMessage: mockSendMessage,
     updateChatSettings: mockUpdateChatSettings,
-    getReasoningEffort: vi.fn(({ chatId }) => {
-      if (mockCurrentChat.value?.id === chatId) {
-        return mockCurrentChat.value.lmParameters?.reasoning?.effort;
-      }
-      return undefined;
-    }),
-    updateReasoningEffort: vi.fn(({ chatId, effort }) => {
-      if (mockCurrentChat.value?.id === chatId) {
-        mockCurrentChat.value.lmParameters = {
-          ...(mockCurrentChat.value.lmParameters || {}),
-          reasoning: { effort }
-        };
-        mockUpdateChatSettings(chatId, { lmParameters: mockCurrentChat.value.lmParameters });
-      }
-    }),
     getLiveChat: vi.fn().mockImplementation((c) => {
       if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
       return c;
@@ -89,21 +96,72 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+const mockDraft = ref<any>({ input: '', attachments: [], attachmentUrls: {} });
 vi.mock('../composables/useChatDraft', () => ({
   useChatDraft: () => ({
-    getDraft: vi.fn(() => ({ input: '', attachments: [], attachmentUrls: {} })),
+    getDraft: vi.fn(() => mockDraft.value),
     saveDraft: vi.fn(),
     clearDraft: vi.fn(),
     revokeAll: vi.fn(),
   }),
 }));
 
+const mockIsImageMode = ref(false);
+const mockPreferredEditorMode = ref('advanced');
 const mockSetPreferredEditorMode = vi.fn();
+
+const mockChatStore = {
+  currentChat: mockCurrentChat,
+  availableModels: ref([]),
+  inheritedSettings: ref(null),
+  fetchingModels: ref(false),
+  isImageMode: vi.fn(() => mockIsImageMode.value),
+  toggleImageMode: vi.fn(),
+  getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+  updateResolution: vi.fn(),
+  getCount: vi.fn(() => 1),
+  updateCount: vi.fn(),
+  getSteps: vi.fn(() => undefined),
+  updateSteps: vi.fn(),
+  getSeed: vi.fn(() => 'browser_random'),
+  updateSeed: vi.fn(),
+  getPersistAs: vi.fn(() => 'original'),
+  updatePersistAs: vi.fn(),
+  setImageModel: vi.fn(),
+  getSelectedImageModel: vi.fn(),
+  fetchAvailableModels: vi.fn(),
+  sendMessage: mockSendMessage,
+  updateChatSettings: mockUpdateChatSettings,
+  getReasoningEffort: vi.fn(({ chatId }) => {
+    if (mockCurrentChat.value?.id === chatId) {
+      return mockCurrentChat.value.lmParameters?.reasoning?.effort;
+    }
+    return undefined;
+  }),
+  updateReasoningEffort: vi.fn(({ chatId, effort }) => {
+    if (mockCurrentChat.value?.id === chatId) {
+      mockCurrentChat.value.lmParameters = {
+        ...(mockCurrentChat.value.lmParameters || {}),
+        reasoning: { effort }
+      };
+      mockUpdateChatSettings(chatId, { lmParameters: mockCurrentChat.value.lmParameters });
+    }
+  }),
+  getLiveChat: vi.fn().mockImplementation((c) => {
+    if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
+    return c;
+  }),
+};
+
+vi.mock('../composables/useChat', () => ({
+  useChat: () => mockChatStore,
+}));
+
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     activeFocusArea: ref('chat'),
     setActiveFocusArea: vi.fn(),
-    preferredEditorMode: ref('advanced'),
+    preferredEditorMode: mockPreferredEditorMode,
     setPreferredEditorMode: mockSetPreferredEditorMode,
   }),
 }));
@@ -287,5 +345,26 @@ describe('ChatInput Integration', () => {
         reasoning: { effort: 'high' }
       })
     }));
+  });
+
+  it('should reflect reasoning effort from the current chat when switching', async () => {
+    // 1. Set Chat 1 to 'low'
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      lmParameters: { reasoning: { effort: 'low' } }
+    };
+    const wrapper = getWrapper();
+    await nextTick();
+    expect(wrapper.vm.__testOnly.selectedReasoningEffort.value).toBe('low');
+
+    // 2. Switch to Chat 2 which has 'high'
+    mockCurrentChat.value = {
+      id: 'chat-2',
+      lmParameters: { reasoning: { effort: 'high' } }
+    };
+    await nextTick();
+
+    // Verify it reflects the NEW chat's state
+    expect(wrapper.vm.__testOnly.selectedReasoningEffort.value).toBe('high');
   });
 });

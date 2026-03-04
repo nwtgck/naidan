@@ -743,6 +743,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
     editingAttachment,
     openAdvancedEditor,
     handleAdvancedEditorModeUpdate,
+    selectedReasoningEffort
   }, });
 </script>
 
