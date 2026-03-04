@@ -999,4 +999,25 @@ describe('MessageItem Actions Menu', () => {
 
     wrapper.unmount();
   });
+
+  it('emits fork event when "Fork Chat" is clicked in the more actions menu', async () => {
+    const message = createMessage('Hello');
+    const wrapper = mount(MessageItem, { props: { message }, attachTo: document.body });
+
+    // Open menu
+    await wrapper.find('[data-testid="message-more-actions-button"]').trigger('click');
+    await nextTick();
+
+    const forkBtn = document.body.querySelector('[data-testid="fork-message-button"]');
+    expect(forkBtn).toBeTruthy();
+
+    await (forkBtn as HTMLButtonElement).click();
+    await nextTick();
+
+    // Check if 'fork' event is emitted
+    expect(wrapper.emitted('fork')).toBeTruthy();
+    expect(wrapper.emitted('fork')?.[0]).toEqual([message.id]);
+
+    wrapper.unmount();
+  });
 });

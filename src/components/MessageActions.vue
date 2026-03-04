@@ -115,14 +115,6 @@ defineExpose({
     >
       <Pencil class="w-3.5 h-3.5" />
     </button>
-    <button
-      @click="emit('fork', message.id)"
-      class="flex items-center gap-1.5 px-3 py-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
-      title="Create a new chat branching from this message"
-    >
-      <span class="text-[10px] font-bold uppercase tracking-widest hidden lg:inline">Fork</span>
-      <GitFork class="w-4 h-4" />
-    </button>
 
     <!-- More Actions Menu -->
     <div class="relative">
@@ -141,6 +133,15 @@ defineExpose({
         :trigger-el="moreActionsTriggerRef"
         @close="showMoreMenu = false"
       >
+        <button
+          @click="emit('fork', message.id); showMoreMenu = false"
+          class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+          data-testid="fork-message-button"
+        >
+          <GitFork class="w-3.5 h-3.5" />
+          <span>Fork Chat</span>
+        </button>
+
         <button
           @click="handleCopyRaw(); showMoreMenu = false"
           class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
