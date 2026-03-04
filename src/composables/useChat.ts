@@ -816,7 +816,18 @@ export function useChat() {
   const generateResponse = async (chat: Chat | Readonly<Chat>, assistantId: string, lmParameters?: LmParameters) => {
     const mutableChat = getLiveChat(chat);
     const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
-    if (assistantNode?.role !== 'assistant') throw new Error('Assistant node not found or invalid role');
+    if (!assistantNode) throw new Error('Assistant node not found');
+    switch (assistantNode.role) {
+    case 'assistant':
+      break;
+    case 'user':
+    case 'system':
+      throw new Error('Invalid role for generation target');
+    default: {
+      const _ex: never = assistantNode;
+      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+    }
+    }
     assistantNode.error = undefined;
     if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
 

@@ -438,17 +438,25 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
       timestamp: m.timestamp,
       replies: { items: [] },
     };
-    if (m.role === 'assistant') {
+    switch (m.role) {
+    case 'assistant':
       return {
         ...common,
         role: 'assistant',
         attachments: undefined,
         thinking: m.thinking,
         modelId: m.modelId,
-        lmParameters: { reasoning: { effort: undefined } },
+        lmParameters: {
+          temperature: undefined,
+          topP: undefined,
+          maxCompletionTokens: undefined,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined }
+        },
       } as AssistantMessageNode;
-    }
-    if (m.role === 'user') {
+    case 'user':
       return {
         ...common,
         role: 'user',
@@ -456,17 +464,31 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
         thinking: undefined,
         error: undefined,
         modelId: undefined,
+        lmParameters: {
+          temperature: undefined,
+          topP: undefined,
+          maxCompletionTokens: undefined,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined }
+        },
       } as UserMessageNode;
+    case 'system':
+      return {
+        ...common,
+        role: 'system',
+        attachments: undefined,
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: undefined,
+      } as SystemMessageNode;
+    default: {
+      const _ex: never = m.role;
+      throw new Error(`Unhandled role: ${_ex}`);
     }
-    return {
-      ...common,
-      role: 'system',
-      attachments: undefined,
-      thinking: undefined,
-      error: undefined,
-      modelId: undefined,
-      lmParameters: undefined,
-    } as SystemMessageNode;
+    }
   });
 
   for (let i = 0; i < nodes.length - 1; i++) {

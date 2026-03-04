@@ -114,9 +114,22 @@ export function hasChatOverrides({ chat }: {
     chat.autoTitleEnabled !== undefined ||
     chat.titleModelId ||
     chat.systemPrompt ||
-    (chat.lmParameters && Object.entries(chat.lmParameters).some(([key, value]) => {
-      if (key === 'reasoning') return (value as any)?.effort !== undefined;
-      return value !== undefined;
+    (chat.lmParameters && (Object.keys(chat.lmParameters) as (keyof ResolvableLmParameters)[]).some(key => {
+      switch (key) {
+      case 'reasoning':
+        return chat.lmParameters!.reasoning.effort !== undefined;
+      case 'temperature':
+      case 'topP':
+      case 'maxCompletionTokens':
+      case 'presencePenalty':
+      case 'frequencyPenalty':
+      case 'stop':
+        return chat.lmParameters![key] !== undefined;
+      default: {
+        const _ex: never = key;
+        throw new Error(`Unhandled parameter key: ${_ex}`);
+      }
+      }
     }))
   );
 }
@@ -144,9 +157,22 @@ export function hasGroupOverrides({ group }: {
     group.autoTitleEnabled !== undefined ||
     group.titleModelId ||
     group.systemPrompt ||
-    (group.lmParameters && Object.entries(group.lmParameters).some(([key, value]) => {
-      if (key === 'reasoning') return (value as any)?.effort !== undefined;
-      return value !== undefined;
+    (group.lmParameters && (Object.keys(group.lmParameters) as (keyof ResolvableLmParameters)[]).some(key => {
+      switch (key) {
+      case 'reasoning':
+        return group.lmParameters!.reasoning.effort !== undefined;
+      case 'temperature':
+      case 'topP':
+      case 'maxCompletionTokens':
+      case 'presencePenalty':
+      case 'frequencyPenalty':
+      case 'stop':
+        return group.lmParameters![key] !== undefined;
+      default: {
+        const _ex: never = key;
+        throw new Error(`Unhandled parameter key: ${_ex}`);
+      }
+      }
     }))
   );
 }

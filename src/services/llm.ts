@@ -356,7 +356,21 @@ export class OllamaProvider implements LLMProvider {
       }
 
       if (parameters.reasoning?.effort !== undefined) {
-        body.think = parameters.reasoning.effort === 'none' ? false : parameters.reasoning.effort;
+        const effort = parameters.reasoning.effort;
+        switch (effort) {
+        case 'none':
+          body.think = false;
+          break;
+        case 'low':
+        case 'medium':
+        case 'high':
+          body.think = effort;
+          break;
+        default: {
+          const _ex: never = effort;
+          throw new Error(`Unhandled reasoning effort: ${_ex}`);
+        }
+        }
       }
     }
 
@@ -401,20 +415,15 @@ export class OllamaProvider implements LLMProvider {
 
       if (isRetryable) {
         body.think = true; // Fallback to basic thinking
-        try {
-          response = await fetch(url, {
-            method: 'POST',
-            headers: [
-              ['Content-Type', 'application/json'],
-              ...(headers || []),
-            ],
-            body: JSON.stringify(body),
-            signal,
-          });
-        } catch (e) {
-          // Re-throw if retry fetch fails
-          throw e;
-        }
+        response = await fetch(url, {
+          method: 'POST',
+          headers: [
+            ['Content-Type', 'application/json'],
+            ...(headers || []),
+          ],
+          body: JSON.stringify(body),
+          signal,
+        });
       }
     }
 

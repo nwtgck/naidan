@@ -893,8 +893,20 @@ const isUser = computed((): boolean => {
 });
 
 const reasoningEffortLabel = computed(() => {
-  if (props.message.role !== 'assistant') return undefined;
-  const effort = props.message.lmParameters?.reasoning?.effort;
+  const effort = (() => {
+    switch (props.message.role) {
+    case 'assistant':
+      return props.message.lmParameters?.reasoning?.effort;
+    case 'user':
+    case 'system':
+      return undefined;
+    default: {
+      const _ex: never = props.message;
+      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+    }
+    }
+  })();
+
   if (effort === undefined) return undefined;
 
   switch (effort) {
@@ -912,7 +924,20 @@ const reasoningEffortLabel = computed(() => {
 });
 
 const reasoningEffortTooltip = computed(() => {
-  const effort = props.message.role === 'assistant' ? props.message.lmParameters?.reasoning?.effort : undefined;
+  const effort = (() => {
+    switch (props.message.role) {
+    case 'assistant':
+      return props.message.lmParameters?.reasoning?.effort;
+    case 'user':
+    case 'system':
+      return undefined;
+    default: {
+      const _ex: never = props.message;
+      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+    }
+    }
+  })();
+
   if (effort === undefined) return undefined;
 
   switch (effort) {
