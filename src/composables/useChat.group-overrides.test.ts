@@ -3,6 +3,7 @@ import { useChat } from './useChat';
 import { storageService } from '../services/storage';
 import { reactive, nextTick } from 'vue';
 import type { Chat, ChatGroup, SidebarItem } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 
 // Mock storage
 const mockRootItems: SidebarItem[] = [];
@@ -34,7 +35,7 @@ vi.mock('./useSettings', () => ({
         endpointUrl: 'http://global-url',
         defaultModelId: 'global-model',
         systemPrompt: 'Global Prompt',
-        lmParameters: { temperature: 0.7 },
+        lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.7 },
       }
     },
     isOnboardingDismissed: { value: true },
@@ -77,14 +78,14 @@ describe('useChat Group Overrides Resolution', () => {
       isCollapsed: false,
       modelId: 'group-model',
       systemPrompt: { content: 'Group Prompt', behavior: 'override' },
-      lmParameters: { temperature: 0.5, reasoning: { effort: undefined } },
+      lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.5, reasoning: { effort: undefined } },
     };
 
     const chat: Chat = reactive({
       id: 'c1',
       title: 'Chat 1',
       groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: { reasoning: { effort: undefined } } }] },
+      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'chat-model',
       createdAt: 0,
       updatedAt: 0,
@@ -130,7 +131,7 @@ describe('useChat Group Overrides Resolution', () => {
       id: 'c1',
       title: 'Chat 1',
       groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: { reasoning: { effort: undefined } } }] },
+      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'base-model',
       createdAt: 0,
       updatedAt: 0,
@@ -174,7 +175,7 @@ describe('useChat Group Overrides Resolution', () => {
       id: 'c1',
       title: 'Chat 1',
       groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: { reasoning: { effort: undefined } } }] },
+      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: '',
       createdAt: 0,
       updatedAt: 0,
@@ -228,7 +229,7 @@ describe('useChat Group Overrides Resolution', () => {
       id: 'c1',
       title: 'Chat 1',
       groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: { reasoning: { effort: undefined } } }] },
+      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'some-model',
       createdAt: 0,
       updatedAt: 0,
@@ -256,18 +257,18 @@ describe('useChat Group Overrides Resolution', () => {
     // Global: temperature: 0.7
     const group: ChatGroup = {
       id: 'g1', name: 'G', items: [], updatedAt: 0, isCollapsed: false,
-      lmParameters: { topP: 0.5, temperature: 0.9, reasoning: { effort: undefined } }, // Overrides Global temp
+      lmParameters: { ...EMPTY_LM_PARAMETERS, topP: 0.5, temperature: 0.9, reasoning: { effort: undefined } }, // Overrides Global temp
     };
     const chat: Chat = reactive({
       id: 'c1',
       title: 'Chat 1',
       groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: { reasoning: { effort: undefined } } }] },
+      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'm1',
       createdAt: 0,
       updatedAt: 0,
       debugEnabled: false,
-      lmParameters: { maxCompletionTokens: 100, temperature: 0.1, reasoning: { effort: undefined } }, // Overrides Group temp
+      lmParameters: { ...EMPTY_LM_PARAMETERS, maxCompletionTokens: 100, temperature: 0.1, reasoning: { effort: undefined } }, // Overrides Group temp
     });
 
     chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
@@ -300,7 +301,7 @@ describe('useChat Group Overrides Resolution', () => {
       id: 'c1',
       title: 'Chat 1',
       groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: { reasoning: { effort: undefined } } }] },
+      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'm1',
       createdAt: 0,
       updatedAt: 0,
@@ -328,7 +329,7 @@ describe('useChat Group Overrides Resolution', () => {
       id: 'c1',
       title: 'Chat 1',
       groupId: null, // Initially no group
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: { reasoning: { effort: undefined } } }] },
+      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: '', createdAt: 0, updatedAt: 0, debugEnabled: false,
     });
 
@@ -387,7 +388,7 @@ describe('useChat Group Overrides Resolution', () => {
       id: 'c1',
       title: 'Chat 1',
       groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: { reasoning: { effort: undefined } } }] },
+      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'some-model',
       createdAt: 0,
       updatedAt: 0,

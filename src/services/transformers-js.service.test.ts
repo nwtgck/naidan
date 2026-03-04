@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 import * as Comlink from 'comlink';
 
 // Mock Worker class
@@ -241,7 +242,7 @@ describe('transformersJsService', () => {
     await transformersJsService.loadModel('some-model');
 
     const controller = new AbortController();
-    const genPromise = transformersJsService.generateText([], () => {}, { reasoning: { effort: undefined } }, controller.signal);
+    const genPromise = transformersJsService.generateText([], () => {}, EMPTY_LM_PARAMETERS, controller.signal);
 
     controller.abort();
     await genPromise;

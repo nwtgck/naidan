@@ -13,7 +13,6 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       timestamp: 100,
       attachments: undefined,
       thinking: undefined,
-      error: undefined,
       modelId: undefined,
       lmParameters: {
         temperature: 0.7,
@@ -47,7 +46,6 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       timestamp: 200,
       attachments: undefined,
       thinking: 'Thinking...',
-      error: undefined,
       modelId: 'gpt-4',
       lmParameters: {
         temperature: undefined,
@@ -81,7 +79,6 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       timestamp: 50,
       attachments: undefined,
       thinking: undefined,
-      error: undefined,
       modelId: undefined,
       lmParameters: undefined,
       replies: { items: [] }

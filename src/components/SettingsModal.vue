@@ -6,6 +6,7 @@ import { useSettings } from '../composables/useSettings';
 import { useChat } from '../composables/useChat';
 import { useToast } from '../composables/useToast';
 import type { Settings } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 import { ChatGroupRecipeSchema } from '../models/recipe';
 import type { ChatGroupRecipe } from '../models/recipe';
 import { parseConcatenatedJson } from '../utils/json-stream-parser';
@@ -88,9 +89,10 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
         modelId: item.matchedModelId,
         systemPrompt: item.recipe.systemPrompt,
         lmParameters: item.recipe.lmParameters ? {
+          ...EMPTY_LM_PARAMETERS,
           ...item.recipe.lmParameters,
           reasoning: { effort: item.recipe.lmParameters.reasoning?.effort }
-        } : { reasoning: { effort: undefined } },
+        } : EMPTY_LM_PARAMETERS,
       });
     }
 

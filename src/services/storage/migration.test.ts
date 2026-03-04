@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { Chat, ChatGroup, Settings } from '../../models/types';
+import { EMPTY_LM_PARAMETERS } from '../../models/types';
 import type { MigrationChunkDto } from '../../models/dto';
 
 // --- Mocks for OPFS ---
@@ -100,7 +101,7 @@ const mockChat: Chat = {
   endpointType: undefined,
   endpointUrl: undefined,
   endpointHttpHeaders: undefined,
-  lmParameters: { reasoning: { effort: undefined } },
+  lmParameters: EMPTY_LM_PARAMETERS,
   modelId: undefined,
   originChatId: undefined,
   originMessageId: undefined,
@@ -123,7 +124,7 @@ const mockSettings: Settings = {
   autoTitleEnabled: true,
   storageType: 'local',
   providerProfiles: [],
-  lmParameters: { reasoning: { effort: undefined } },
+  lmParameters: EMPTY_LM_PARAMETERS,
 };
 
 // --- Test Suite ---

@@ -350,7 +350,7 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
       role: 'assistant',
       attachments: undefined,
       thinking: dto.thinking,
-      error: dto.error,
+      error: undefined,
       modelId: dto.modelId,
       lmParameters: lmParametersToDomain(dto.lmParameters),
     };
@@ -388,7 +388,6 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       role: 'user',
       attachments: domain.attachments?.map(attachmentToDto),
       thinking: undefined,
-      error: undefined,
       modelId: undefined,
       lmParameters: lmParametersToDto(domain.lmParameters),
     };
@@ -398,7 +397,6 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       role: 'assistant',
       attachments: undefined,
       thinking: domain.thinking,
-      error: domain.error,
       modelId: domain.modelId,
       lmParameters: lmParametersToDto(domain.lmParameters),
     };
@@ -408,7 +406,6 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       role: 'system',
       attachments: undefined,
       thinking: undefined,
-      error: undefined,
       modelId: undefined,
       lmParameters: undefined,
     };

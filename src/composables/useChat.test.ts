@@ -5,6 +5,7 @@ import { storageService } from '../services/storage';
 import { OpenAIProvider } from '../services/llm';
 import { reactive, triggerRef, toRaw } from 'vue';
 import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { findRestorationIndex } from '../utils/chat-tree';
 
@@ -252,7 +253,7 @@ describe('useChat Composable Logic', () => {
       error: undefined,
       replies: { items: [] },
       timestamp: 0,
-      lmParameters: { reasoning: { effort: undefined } }
+      lmParameters: EMPTY_LM_PARAMETERS
     };
 
     const mockChat: Chat = {
@@ -295,7 +296,7 @@ describe('useChat Composable Logic', () => {
       modelId: undefined,
       replies: { items: [] },
       timestamp: 0,
-      lmParameters: { reasoning: { effort: undefined } }
+      lmParameters: EMPTY_LM_PARAMETERS
     };
 
     __testOnlySetCurrentChat(reactive({
@@ -437,6 +438,7 @@ describe('useChat Composable Logic', () => {
     }) as any);
 
     const customParams = {
+      ...EMPTY_LM_PARAMETERS,
       temperature: 0.8,
       reasoning: { effort: 'medium' as const }
     };
@@ -627,6 +629,7 @@ describe('useChat Composable Logic', () => {
     __testOnlySetCurrentChat(mockChat);
 
     const customParams = {
+      ...EMPTY_LM_PARAMETERS,
       temperature: 0.5,
       reasoning: { effort: 'high' as const }
     };
@@ -670,7 +673,7 @@ describe('useChat Composable Logic', () => {
     await sendMessage('Hello', null);
     await flushPromises();
 
-    const newParams = { reasoning: { effort: 'low' as const } };
+    const newParams = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' as const } };
 
     // In some mock environments, the recursive tree might be flat or detached.
     // Let's try to get the User message ID.

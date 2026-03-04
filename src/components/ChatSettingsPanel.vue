@@ -20,6 +20,7 @@ const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('
 
 import { ENDPOINT_PRESETS } from '../models/constants';
 import type { Chat } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 import { naturalSort } from '../utils/string';
 import { hasChatOverrides } from '../utils/chat-settings-resolver';
 
@@ -430,7 +431,7 @@ defineExpose({
                 <ReasoningSettings
                   :selected-effort="localSettings.lmParameters?.reasoning?.effort"
                   @update:effort="effort => {
-                    const params = { ...(localSettings.lmParameters || {}), reasoning: { effort } };
+                    const params = { ...(localSettings.lmParameters || EMPTY_LM_PARAMETERS), reasoning: { effort } };
                     localSettings.lmParameters = params;
                     saveChanges();
                   }"

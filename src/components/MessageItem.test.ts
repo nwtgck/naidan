@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode, UserMessageNode, AssistantMessageNode } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '../models/types';
 import { Check } from 'lucide-vue-next';
 import { nextTick } from 'vue';
 
@@ -457,7 +458,7 @@ describe('MessageItem Attachment Rendering', () => {
     thinking: undefined,
     error: undefined,
     modelId: undefined,
-    lmParameters: { reasoning: { effort: undefined } },
+    lmParameters: EMPTY_LM_PARAMETERS,
     replies: { items: [] },
   } as UserMessageNode);
 
@@ -564,7 +565,7 @@ describe('MessageItem States', () => {
     attachments: undefined,
     thinking: undefined,
     modelId: 'test-model',
-    lmParameters: { reasoning: { effort: undefined } },
+    lmParameters: EMPTY_LM_PARAMETERS,
     replies: { items: [] },
   } as AssistantMessageNode);
 
@@ -644,7 +645,7 @@ describe('MessageItem Edit Labels', () => {
         thinking: undefined,
         error: undefined,
         modelId: undefined,
-        lmParameters: { reasoning: { effort: undefined } }
+        lmParameters: EMPTY_LM_PARAMETERS
       } as UserMessageNode;
     }
     return {
@@ -654,7 +655,7 @@ describe('MessageItem Edit Labels', () => {
       thinking: undefined,
       error: undefined,
       modelId: 'test-model',
-      lmParameters: { reasoning: { effort: undefined } }
+      lmParameters: EMPTY_LM_PARAMETERS
     } as AssistantMessageNode;
   };
 
@@ -731,7 +732,7 @@ describe('MessageItem Action Visibility', () => {
         thinking: undefined,
         error: undefined,
         modelId: undefined,
-        lmParameters: { reasoning: { effort: undefined } }
+        lmParameters: EMPTY_LM_PARAMETERS
       } as UserMessageNode;
     }
     return {
@@ -741,7 +742,7 @@ describe('MessageItem Action Visibility', () => {
       thinking: undefined,
       error: undefined,
       modelId: 'test-model',
-      lmParameters: { reasoning: { effort: undefined } }
+      lmParameters: EMPTY_LM_PARAMETERS
     } as AssistantMessageNode;
   };
 
@@ -847,7 +848,7 @@ describe('MessageItem Abort Button', () => {
         id: 'msg-1',
         role: 'assistant',
         content: 'Hello',
-        lmParameters: { reasoning: { effort: 'medium' } },
+        lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } },
         timestamp: Date.now(),
         replies: { items: [] },
       } as AssistantMessageNode;
@@ -865,7 +866,7 @@ describe('MessageItem Abort Button', () => {
         id: 'msg-1',
         role: 'assistant',
         content: 'Hello',
-        lmParameters: { reasoning: { effort: 'none' } },
+        lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } },
         timestamp: Date.now(),
         replies: { items: [] },
       } as AssistantMessageNode;
@@ -883,7 +884,7 @@ describe('MessageItem Abort Button', () => {
         id: 'msg-1',
         role: 'assistant',
         content: 'Hello',
-        lmParameters: { reasoning: { effort: undefined } },
+        lmParameters: EMPTY_LM_PARAMETERS,
         timestamp: Date.now(),
         replies: { items: [] },
       } as AssistantMessageNode;
@@ -901,7 +902,7 @@ describe('MessageItem Abort Button', () => {
         id: 'msg-1',
         role: 'user',
         content: 'Hello',
-        lmParameters: { reasoning: { effort: 'high' } },
+        lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
         timestamp: Date.now(),
         replies: { items: [] },
       } as UserMessageNode;
@@ -922,7 +923,7 @@ describe('MessageItem Abort Button', () => {
         id: 'msg-1',
         role: 'user',
         content: 'Hello',
-        lmParameters: { reasoning: { effort: undefined } },
+        lmParameters: EMPTY_LM_PARAMETERS,
         timestamp: Date.now(),
         replies: { items: [] },
       } as UserMessageNode;
