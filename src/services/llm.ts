@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { zodToJsonSchema } from '../utils/llm-tools';
 import type { LmParameters, ChatMessage, MultimodalContent } from '../models/types';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
-import type { Tool } from './tools/types';
+import type { Tool, ToolExecutionResult } from './tools/types';
 
 const { addErrorEvent } = useGlobalEvents();
 
@@ -83,7 +83,8 @@ export interface LLMProvider {
     onChunk: (chunk: string) => void;
     parameters?: LmParameters;
     tools?: Tool[];
-    onToolCall?: (params: { toolName: string; args: unknown }) => void;
+    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
+    onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
     signal?: AbortSignal;
   }): Promise<void>;
 
@@ -119,10 +120,11 @@ export class OpenAIProvider implements LLMProvider {
     onChunk: (chunk: string) => void;
     parameters?: LmParameters;
     tools?: Tool[];
-    onToolCall?: (params: { toolName: string; args: unknown }) => void;
+    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
+    onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, onToolCall, signal } = params;
+    const { messages, model, onChunk, parameters, tools, onToolCall, onToolResult, signal } = params;
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
 
@@ -278,9 +280,10 @@ export class OpenAIProvider implements LLMProvider {
           }
 
           if (tool && parsedArgs !== undefined) {
-            onToolCall?.({ toolName: tool.name, args: parsedArgs });
+            onToolCall?.({ id: tc.id, toolName: tool.name, args: parsedArgs });
             try {
               const executionResult = await tool.execute({ args: parsedArgs });
+              onToolResult?.({ id: tc.id, result: executionResult });
               switch (executionResult.status) {
               case 'success':
                 result = executionResult.content;
@@ -294,10 +297,14 @@ export class OpenAIProvider implements LLMProvider {
               }
               }
             } catch (e) {
-              result = `Error: Tool execution failed unexpectedly: ${e instanceof Error ? e.message : String(e)}`;
+              const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
+              onToolResult?.({ id: tc.id, result: errorResult });
+              result = `Error: Tool execution failed unexpectedly: ${errorResult.message}`;
             }
           } else if (!tool) {
-            result = `Error: Tool "${tc.function.name}" not found.`;
+            const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
+            onToolResult?.({ id: tc.id, result: errorResult });
+            result = errorResult.message;
           } else {
             // result already set by parse catch block if parsedArgs is undefined
             result = result! || 'Error: Unknown failure.';
@@ -411,10 +418,11 @@ export class OllamaProvider implements LLMProvider {
     onChunk: (chunk: string) => void;
     parameters?: LmParameters;
     tools?: Tool[];
-    onToolCall?: (params: { toolName: string; args: unknown }) => void;
+    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
+    onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, onToolCall, signal } = params;
+    const { messages, model, onChunk, parameters, tools, onToolCall, onToolResult, signal } = params;
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
 
@@ -684,9 +692,10 @@ export class OllamaProvider implements LLMProvider {
           }
 
           if (tool && args !== undefined) {
-            onToolCall?.({ toolName: tool.name, args });
+            onToolCall?.({ id: tc.id, toolName: tool.name, args });
             try {
               const executionResult = await tool.execute({ args });
+              onToolResult?.({ id: tc.id, result: executionResult });
               switch (executionResult.status) {
               case 'success':
                 result = executionResult.content;
@@ -700,14 +709,17 @@ export class OllamaProvider implements LLMProvider {
               }
               }
             } catch (e) {
-              result = `Error: Tool execution failed unexpectedly: ${e instanceof Error ? e.message : String(e)}`;
+              const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
+              onToolResult?.({ id: tc.id, result: errorResult });
+              result = `Error: Tool execution failed unexpectedly: ${errorResult.message}`;
             }
           } else if (!tool) {
-            result = `Error: Tool "${tc.function.name}" not found.`;
+            const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
+            onToolResult?.({ id: tc.id, result: errorResult });
+            result = errorResult.message;
           } else {
             result = result! || 'Error: Unknown failure.';
           }
-
           currentMessages.push({
             role: 'tool',
             tool_call_id: tc.id,

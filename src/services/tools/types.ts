@@ -21,6 +21,21 @@ export type ToolExecutionResult =
   | { status: 'success'; content: string }
   | { status: 'error'; code: ToolErrorCode; message: string };
 
+/**
+ * Represents a tool call event during a chat generation.
+ * This is kept in memory only and not persisted.
+ */
+export type ToolCallRecord = {
+  id: string;
+  toolName: string;
+  args: unknown;
+  timestamp: number;
+} & (
+  | { status: 'running' }
+  | { status: 'success'; result: { content: string } }
+  | { status: 'error'; error: { message: string } }
+);
+
 export interface Tool {
   name: string;
   description: string;

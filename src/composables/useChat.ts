@@ -940,18 +940,40 @@ export function useChat() {
 
       let lastSave = 0;
       let isSaving = false;
-      const { enabledToolNames, handleToolCall, clearToolExecutionStatus } = useChatTools();
+      const { enabledToolNames, addToolCall, updateToolCall, clearToolCallsForMessage } = useChatTools();
       const enabledTools = ALL_TOOLS.filter(t => enabledToolNames.value.includes(t.name));
+
+      // Clear previous tool calls for this message (e.g. on regenerate)
+      clearToolCallsForMessage({ messageId: assistantId });
 
       await provider.chat({
         messages: finalMessages,
         model: resolvedModel,
         tools: enabledTools.length > 0 ? enabledTools : undefined,
-        onToolCall: (params: { toolName: string; args: unknown }) => {
-          handleToolCall(params);
+        onToolCall: (params: { id: string; toolName: string; args: unknown }) => {
+          addToolCall({
+            messageId: assistantId,
+            toolCall: {
+              id: params.id,
+              toolName: params.toolName,
+              args: params.args,
+              timestamp: Date.now(),
+              status: 'running'
+            }
+          });
+        },
+        onToolResult: (params: { id: string; result: ToolExecutionResult }) => {
+          const update = params.result.status === 'success'
+            ? { status: 'success' as const, result: { content: params.result.content } }
+            : { status: 'error' as const, error: { message: params.result.message } };
+
+          updateToolCall({
+            messageId: assistantId,
+            toolCallId: params.id,
+            update
+          });
         },
         onChunk: async (chunk: string) => {
-          clearToolExecutionStatus();
           assistantNode.content += chunk;
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
             triggerRef(_currentChat);

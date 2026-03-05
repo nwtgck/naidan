@@ -1,7 +1,8 @@
 import { ref, computed } from 'vue';
+import type { ToolCallRecord } from '../services/tools/types';
 
 const _enabledToolNames = ref<Set<string>>(new Set());
-const _toolExecutionStatus = ref<string | null>(null);
+const _messageToolCalls = ref<Map<string, ToolCallRecord[]>>(new Map());
 
 export function useChatTools() {
   const isToolEnabled = ({ name }: { name: string }) => {
@@ -18,30 +19,54 @@ export function useChatTools() {
 
   const enabledToolNames = computed(() => Array.from(_enabledToolNames.value));
 
-  const toolExecutionStatus = computed(() => _toolExecutionStatus.value);
-
-  const handleToolCall = ({ toolName, args }: { toolName: string; args: unknown }) => {
-    if (toolName === 'calculator') {
-      const expression = (args as { expression?: string })?.expression || '...';
-      _toolExecutionStatus.value = `Calculating: ${expression}...`;
-    } else {
-      _toolExecutionStatus.value = `Using tool: ${toolName}...`;
-    }
+  const getToolCallsForMessage = ({ messageId }: { messageId: string }) => {
+    return _messageToolCalls.value.get(messageId) || [];
   };
 
-  const clearToolExecutionStatus = () => {
-    _toolExecutionStatus.value = null;
+  const addToolCall = ({ messageId, toolCall }: { messageId: string; toolCall: ToolCallRecord }) => {
+    const current = _messageToolCalls.value.get(messageId) || [];
+    if (current.some(c => c.id === toolCall.id)) return;
+
+    const nextMap = new Map(_messageToolCalls.value);
+    nextMap.set(messageId, [...current, toolCall]);
+    _messageToolCalls.value = nextMap;
+  };
+
+  const updateToolCall = ({ messageId, toolCallId, update }: {
+    messageId: string;
+    toolCallId: string;
+    update: | { status: 'success'; result: { content: string } } | { status: 'error'; error: { message: string } }
+  }) => {
+    const current = _messageToolCalls.value.get(messageId);
+    if (!current) return;
+
+    const idx = current.findIndex(c => c.id === toolCallId);
+    if (idx === -1) return;
+
+    const updatedCalls = [...current];
+    updatedCalls[idx] = { ...updatedCalls[idx]!, ...update };
+
+    const nextMap = new Map(_messageToolCalls.value);
+    nextMap.set(messageId, updatedCalls);
+    _messageToolCalls.value = nextMap;
+  };
+
+  const clearToolCallsForMessage = ({ messageId }: { messageId: string }) => {
+    const nextMap = new Map(_messageToolCalls.value);
+    nextMap.delete(messageId);
+    _messageToolCalls.value = nextMap;
   };
 
   return {
     isToolEnabled,
     toggleTool,
     enabledToolNames,
-    toolExecutionStatus,
-    handleToolCall,
-    clearToolExecutionStatus,
+    getToolCallsForMessage,
+    addToolCall,
+    updateToolCall,
+    clearToolCallsForMessage,
     __testOnly: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      _messageToolCalls,
     },
   };
 }
