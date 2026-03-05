@@ -32,16 +32,19 @@ import {
   Paperclip, X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
   Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap,
-  Printer
+  Printer, Link
 } from 'lucide-vue-next';
 import { usePrint } from '../composables/usePrint';
 import { useGlobalSearch } from '../composables/useGlobalSearch';
 import { hasChatOverrides } from '../utils/chat-settings-resolver';
 import { scrollIntoViewSafe } from '../utils/dom';
+import { generateChatShareURL } from '../services/import-export/chat-url-share';
+import { useToast } from '../composables/useToast';
 
 
 const chatStore = useChat();
 const { settings, toggleMarkdownRendering } = useSettings();
+const { addToast } = useToast();
 const { state: previewState, closePreview } = useImagePreview(true);
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
@@ -170,6 +173,24 @@ function exportChat() {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(link.href);
+}
+
+async function shareAsURL() {
+  if (!currentChat.value) return;
+
+  try {
+    const url = await generateChatShareURL({ chatId: currentChat.value.id });
+    await navigator.clipboard.writeText(url);
+    addToast({
+      message: 'Share URL copied to clipboard!',
+      duration: 3000
+    });
+  } catch (err) {
+    addToast({
+      message: `Failed to generate share URL: ${err instanceof Error ? err.message : String(err)}`,
+      duration: 5000
+    });
+  }
 }
 
 function handlePrint() {
@@ -531,7 +552,8 @@ watch(
           <button
             @click="exportChat"
             class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-            title="Export Chat"
+            title="Export as Markdown"
+            data-testid="export-markdown-button"
           >
             <Download class="w-4.5 h-4.5" />
           </button>
@@ -565,6 +587,7 @@ watch(
             <button
               @click="() => { if(currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); showMoreMenu = false; }"
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
+              data-testid="search-in-chat-button"
             >
               <Search class="w-4 h-4" />
               <span>Search in Chat</span>
@@ -582,12 +605,22 @@ watch(
               <span>Media Gallery</span>
             </button>
             <button
+              @click="shareAsURL(); showMoreMenu = false"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+              title="Copy a shareable URL containing this chat"
+              data-testid="export-url-button"
+            >
+              <Link class="w-4 h-4" />
+              <span>Export as URL</span>
+            </button>
+            <button
               @click="chatStore.toggleDebug(); showMoreMenu = false"
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
               :class="currentChat?.debugEnabled
                 ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
                 : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
               "
+              data-testid="toggle-debug-button"
             >
               <Bug class="w-4 h-4" />
               <span>Debug Mode</span>

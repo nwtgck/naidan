@@ -158,6 +158,29 @@ vi.mock('mermaid', () => ({
 
 
 
+const { mockAddToast, mockGenerateChatShareURL } = vi.hoisted(() => ({
+  mockAddToast: vi.fn(),
+  mockGenerateChatShareURL: vi.fn(),
+}));
+
+vi.mock('../composables/useToast', () => ({
+  useToast: () => ({
+    addToast: mockAddToast,
+  }),
+}));
+
+vi.mock('../services/import-export/chat-url-share', () => ({
+  generateChatShareURL: mockGenerateChatShareURL,
+}));
+
+// Mock navigator.clipboard
+Object.defineProperty(navigator, 'clipboard', {
+  value: {
+    writeText: vi.fn().mockResolvedValue(undefined),
+  },
+  configurable: true,
+});
+
 let wrapper: VueWrapper<any> | null = null;
 
 function resetMocks() {
@@ -434,7 +457,7 @@ describe('ChatArea UI States', () => {
       global: { plugins: [router] },
     });
 
-    expect(wrapper.find('button[title="Export Chat"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="export-markdown-button"]').exists()).toBe(true);
     expect(wrapper.find('button[title="Chat Settings & Model Override"]').exists()).toBe(true);
     expect(wrapper.find('button[title="More Actions"]').exists()).toBe(true);
   });
@@ -864,7 +887,7 @@ describe('ChatArea Export Functionality', () => {
 
     await nextTick(); // Ensure component is rendered and mocks are applied
 
-    const exportButton = wrapper.find('button[title="Export Chat"]');
+    const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     expect(exportButton.exists()).toBe(true);
     await exportButton.trigger('click');
 
@@ -899,7 +922,7 @@ describe('ChatArea Export Functionality', () => {
     await nextTick();
 
     // Header (and export button) should not exist if currentChat is null
-    const exportButton = wrapper.find('button[title="Export Chat"]');
+    const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     expect(exportButton.exists()).toBe(false);
 
     expect(URL.createObjectURL).not.toHaveBeenCalled();
@@ -928,7 +951,7 @@ describe('ChatArea Export Functionality', () => {
 
     await nextTick();
 
-    const exportButton = wrapper.find('button[title="Export Chat"]');
+    const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     await exportButton.trigger('click');
 
     // Just verify the calls happened
@@ -964,7 +987,7 @@ describe('ChatArea Export Functionality', () => {
 
     await nextTick();
 
-    const exportButton = wrapper.find('button[title="Export Chat"]');
+    const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     await exportButton.trigger('click');
 
     expect(URL.createObjectURL).toHaveBeenCalled();
@@ -976,6 +999,32 @@ describe('ChatArea Export Functionality', () => {
 
     const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
     expect(link.download).toBe('Chat with no messages.txt');
+  });
+
+  it('should export chat as URL', async () => {
+    const mockUrl = 'http://localhost/#/?data-zip=mock-base64';
+    mockGenerateChatShareURL.mockResolvedValue(mockUrl);
+
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await nextTick();
+
+    // Open more menu
+    const moreBtn = wrapper.find('[data-testid="more-actions-button"]');
+    await moreBtn.trigger('click');
+
+    const exportUrlBtn = wrapper.find('[data-testid="export-url-button"]');
+    expect(exportUrlBtn.exists()).toBe(true);
+    await exportUrlBtn.trigger('click');
+
+    expect(mockGenerateChatShareURL).toHaveBeenCalledWith({ chatId: '1' });
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockUrl);
+    expect(mockAddToast).toHaveBeenCalledWith({
+      message: 'Share URL copied to clipboard!',
+      duration: 3000
+    });
   });
 });
 
