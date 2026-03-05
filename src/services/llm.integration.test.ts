@@ -205,6 +205,27 @@ describe('LLM Providers Integration Tests', () => {
       }
     });
 
+    it('should be resilient to extra fields in OpenAI response', async () => {
+      await startServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('data: {"choices":[{"delta":{"content":"A"}}], "extra": "garbage", "usage": {"tokens": 10}}\n\n');
+        res.end('data: [DONE]\n\n');
+      });
+
+      const provider = new OpenAIProvider({ endpoint: baseUrl });
+      let result = '';
+      await provider.chat({
+        messages: [],
+        model: 'any',
+        onChunk: (chunk) => {
+          result += chunk;
+        }
+      });
+
+      expect(result).toBe('A');
+      expect(errorCount.value).toBe(0);
+    });
+
     it('should handle invalid chunk structure in OpenAI chat', async () => {
       await startServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -227,6 +248,21 @@ describe('LLM Providers Integration Tests', () => {
       expect(errorCount.value).toBe(1);
     });
 
+    it('should handle stop parameter correctly', async () => {
+      await startServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.end('data: [DONE]\n\n');
+      });
+
+      const provider = new OpenAIProvider({ endpoint: baseUrl });
+
+      // Array version
+      await provider.chat({
+        messages: [], model: 'm', onChunk: () => {},
+        parameters: { ...EMPTY_LM_PARAMETERS, stop: ['A', 'B'] }
+      });
+      expect(capturedRequests[0]!.body.stop).toEqual(['A', 'B']);
+    });
     it('should handle complex parameters in chat request', async () => {
       await startServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -331,6 +367,30 @@ describe('LLM Providers Integration Tests', () => {
       });
 
       expect(result).toBe('Cleaner');
+    });
+
+    it('should handle SSE data prefix being split across chunks', async () => {
+      await startServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('d');
+        res.write('a');
+        res.write('t');
+        res.write('a');
+        res.write(': {"choices":[{"delta":{"content":"Fragmented"}}]}\n\n');
+        res.end('data: [DONE]\n\n');
+      });
+
+      const provider = new OpenAIProvider({ endpoint: baseUrl });
+      let result = '';
+      await provider.chat({
+        messages: [],
+        model: 'any',
+        onChunk: (chunk) => {
+          result += chunk;
+        }
+      });
+
+      expect(result).toBe('Fragmented');
     });
 
     it('should handle split SSE data lines and split JSON across chunks', async () => {
@@ -880,6 +940,43 @@ describe('LLM Providers Integration Tests', () => {
       // OllamaChatChunkSchema uses .optional() for message, so it actually validates {}
       // But if it's completely wrong, it might fail depending on exact schema.
       // Current OllamaChatChunkSchema is very permissive (all optional).
+    });
+
+    it('should retry without specific effort but preserve other options', async () => {
+      let callCount = 0;
+      await startServer((_req, res) => {
+        callCount++;
+        if (callCount === 1) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'think value "high" is not supported' }));
+        } else {
+          res.writeHead(200);
+          res.end(JSON.stringify({ message: { content: 'OK' }, done: true }) + '\n');
+        }
+      });
+
+      const provider = new OllamaProvider({ endpoint: baseUrl });
+      await provider.chat({
+        messages: [],
+        model: 'm',
+        onChunk: () => {},
+        parameters: {
+          ...EMPTY_LM_PARAMETERS,
+          temperature: 0.1,
+          stop: ['QED'],
+          reasoning: { effort: 'high' }
+        }
+      });
+
+      expect(capturedRequests).toHaveLength(2);
+      // First attempt
+      expect(capturedRequests[0]!.body.think).toBe('high');
+      expect(capturedRequests[0]!.body.options.temperature).toBe(0.1);
+      expect(capturedRequests[0]!.body.options.stop).toEqual(['QED']);
+      // Second attempt (retry)
+      expect(capturedRequests[1]!.body.think).toBe(true);
+      expect(capturedRequests[1]!.body.options.temperature).toBe(0.1);
+      expect(capturedRequests[1]!.body.options.stop).toEqual(['QED']);
     });
 
     it('should respect AbortSignal in listModels', async () => {
