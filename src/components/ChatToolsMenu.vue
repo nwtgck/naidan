@@ -7,6 +7,7 @@ import { useElementBounding, useWindowSize } from '@vueuse/core';
 // Lazily load image generation settings as it's only visible when the tools menu is opened, but prefetch it when idle.
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
 const ReasoningSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ReasoningSettings.vue'));
+const LmToolsSettings = defineAsyncComponentAndLoadOnMounted(() => import('./LmToolsSettings.vue'));
 
 const props = withDefaults(defineProps<{
   canGenerateImage: boolean;
@@ -178,6 +179,7 @@ defineExpose({
           <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
             Options/Tools
           </div>
+          <LmToolsSettings />
           <ReasoningSettings
             :selected-effort="selectedReasoningEffort"
             @update:effort="e => emit('update:reasoning-effort', e)"

@@ -24,6 +24,9 @@ import {
   type ImageRequestParams
 } from '../utils/image-generation';
 
+import { useChatTools } from './useChatTools';
+import { ALL_TOOLS } from '../services/tools/registry';
+
 const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
 const _currentChatGroup = ref<ChatGroup | null>(null);
@@ -937,10 +940,18 @@ export function useChat() {
 
       let lastSave = 0;
       let isSaving = false;
+      const { enabledToolNames, handleToolCall, clearToolExecutionStatus } = useChatTools();
+      const enabledTools = ALL_TOOLS.filter(t => enabledToolNames.value.includes(t.name));
+
       await provider.chat({
         messages: finalMessages,
         model: resolvedModel,
+        tools: enabledTools.length > 0 ? enabledTools : undefined,
+        onToolCall: (params: { toolName: string; args: unknown }) => {
+          handleToolCall(params);
+        },
         onChunk: async (chunk: string) => {
+          clearToolExecutionStatus();
           assistantNode.content += chunk;
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
             triggerRef(_currentChat);

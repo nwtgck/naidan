@@ -40,9 +40,11 @@ import { hasChatOverrides } from '../utils/chat-settings-resolver';
 import { scrollIntoViewSafe } from '../utils/dom';
 import { generateChatShareURL } from '../services/import-export/chat-url-share';
 import { useToast } from '../composables/useToast';
+import { useChatTools } from '../composables/useChatTools';
 
 
 const chatStore = useChat();
+const { toolExecutionStatus } = useChatTools();
 const { settings, toggleMarkdownRendering } = useSettings();
 const { addToast } = useToast();
 const { state: previewState, closePreview } = useImagePreview(true);
@@ -687,6 +689,20 @@ watch(
               @regenerate="handleRegenerate"
               @abort="chatStore.abortChat({ chatId: undefined })"
             />
+
+            <!-- Tool Execution Status -->
+            <div
+              v-if="toolExecutionStatus"
+              class="flex items-center gap-2.5 p-3.5 mx-2 mb-4 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 dark:from-blue-900/10 dark:to-indigo-900/10 border border-blue-100/50 dark:border-blue-800/20 rounded-2xl animate-in slide-in-from-bottom-2 duration-300"
+              data-testid="tool-execution-status"
+            >
+              <div class="p-1.5 bg-white dark:bg-blue-900/40 rounded-lg shadow-sm">
+                <Hammer class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 animate-bounce" />
+              </div>
+              <span class="text-[10px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-widest animate-pulse">
+                {{ toolExecutionStatus }}
+              </span>
+            </div>
 
             <!-- Global Transformers.js Loading Indicator in the scroll flow -->
             <TransformersJsLoadingIndicator

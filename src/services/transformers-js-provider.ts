@@ -8,6 +8,8 @@ export class TransformersJsProvider implements LLMProvider {
     model: string;
     onChunk: (chunk: string) => void;
     parameters?: LmParameters;
+    tools?: Tool[];
+    onToolCall?: (params: { toolName: string; args: unknown }) => void;
     signal?: AbortSignal;
   }): Promise<void> {
     const { messages, model, onChunk, parameters, signal } = params;
