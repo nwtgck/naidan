@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
+import { useSettings } from '../composables/useSettings';
 
 // --- Mocks must come BEFORE imports that use them ---
+
+// Mock useSettings
+vi.mock('../composables/useSettings', () => ({
+  useSettings: vi.fn(),
+}));
 
 // Mock storage service
 vi.mock('../services/storage', () => ({
@@ -60,6 +66,10 @@ describe('MessageItem Image Generation', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    (useSettings as any).mockReturnValue({
+      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
+    });
 
     // Reset storage service mocks for each test
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));

@@ -5,7 +5,12 @@ import MessageItem from './MessageItem.vue';
 import type { MessageNode, UserMessageNode, AssistantMessageNode } from '../models/types';
 import { EMPTY_LM_PARAMETERS } from '../models/types';
 import { Check } from 'lucide-vue-next';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
+import { useSettings } from '../composables/useSettings';
+
+vi.mock('../composables/useSettings', () => ({
+  useSettings: vi.fn(),
+}));
 
 describe('MessageItem Rendering', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): MessageNode => ({
@@ -14,6 +19,13 @@ describe('MessageItem Rendering', () => {
     content,
     timestamp: Date.now(),
     replies: { items: [] },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (useSettings as any).mockReturnValue({
+      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
+    });
   });
 
   it('renders basic markdown correctly', () => {

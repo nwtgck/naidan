@@ -1,7 +1,13 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { ref } from 'vue';
 import MessageItem from './MessageItem.vue';
 import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_RESPONSE_PREFIX } from '../utils/image-generation';
+import { useSettings } from '../composables/useSettings';
+
+vi.mock('../composables/useSettings', () => ({
+  useSettings: vi.fn(),
+}));
 
 describe('MessageItem Image Generation Progress', () => {
   const createMessage = (content: string) => ({
@@ -10,6 +16,13 @@ describe('MessageItem Image Generation Progress', () => {
     content,
     timestamp: Date.now(),
     replies: { items: [] }
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (useSettings as any).mockReturnValue({
+      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
+    });
   });
 
   it('shows progress when response marker is present in assistant message', async () => {

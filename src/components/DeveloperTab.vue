@@ -80,19 +80,19 @@ defineExpose({
             <button
               @click="toggleMarkdownRendering"
               class="flex items-center gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
-              :class="{ 'ring-2 ring-blue-500/20 border-blue-500/50 bg-blue-50/30 dark:bg-blue-900/10': settings.experimental?.markdownRendering === 'block_markdown' }"
+              :class="{ 'ring-2 ring-blue-500/20 border-blue-500/50 bg-blue-50/30 dark:bg-blue-900/10': !settings.experimental || settings.experimental.markdownRendering === 'block_markdown' }"
               data-testid="toggle-block-renderer-button"
             >
               <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
-                <Zap class="w-4 h-4" :class="settings.experimental?.markdownRendering === 'block_markdown' ? 'text-blue-500 animate-pulse' : 'text-gray-400'" />
+                <Zap class="w-4 h-4" :class="(!settings.experimental || settings.experimental.markdownRendering === 'block_markdown') ? 'text-blue-500 animate-pulse' : 'text-gray-400'" />
               </div>
               <div class="flex flex-col">
                 <span class="text-sm font-bold">Block Markdown Renderer</span>
-                <span class="text-[10px] font-medium text-gray-500">{{ settings.experimental?.markdownRendering === 'block_markdown' ? 'Currently Active' : 'Enable experimental renderer' }}</span>
+                <span class="text-[10px] font-medium text-gray-500">{{ (!settings.experimental || settings.experimental.markdownRendering === 'block_markdown') ? 'Currently Active' : 'Switch to Block Renderer' }}</span>
               </div>
             </button>
           </div>
-          <p class="text-[11px] font-medium text-gray-400 ml-1">Enables the new incremental block renderer. Faster updates and preserves text selection during streaming.</p>
+          <p class="text-[11px] font-medium text-gray-400 ml-1">Enables the new incremental block renderer. Faster updates and preserves text selection during streaming. Use Monolithic HTML as a fallback for legacy support.</p>
         </div>
 
         <div class="space-y-4">

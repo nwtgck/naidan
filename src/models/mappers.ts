@@ -743,7 +743,7 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
     }) ?? [],
     lmParameters: lmParametersToDomain(rest.lmParameters),
     experimental: experimental ? {
-      markdownRendering: experimental.markdownRendering ?? undefined
+      markdownRendering: experimental.markdownRendering ?? 'block_markdown'
     } : undefined,
   };
 };
@@ -788,7 +788,7 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
     systemPrompt: rest.systemPrompt,
     lmParameters: lmParametersToDto(rest.lmParameters),
     experimental: experimental ? {
-      markdownRendering: experimental.markdownRendering ?? undefined
+      markdownRendering: experimental.markdownRendering
     } : undefined,
   };
 };

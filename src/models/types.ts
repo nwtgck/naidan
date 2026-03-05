@@ -275,7 +275,7 @@ export interface Settings {
   systemPrompt?: string;
   lmParameters?: LmParameters;
   experimental?: {
-    markdownRendering?: 'block_markdown';
+    markdownRendering: 'block_markdown' | 'monolithic_html';
   };
 }
 

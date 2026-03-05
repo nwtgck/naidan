@@ -629,14 +629,14 @@ watch(
             <button
               @click="toggleMarkdownRendering(); showMoreMenu = false"
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-              :class="settings.experimental?.markdownRendering === 'block_markdown'
+              :class="!settings.experimental || settings.experimental.markdownRendering === 'block_markdown'
                 ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
                 : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
               "
               data-testid="toggle-experimental-renderer-menu"
             >
-              <Zap class="w-4 h-4" :class="{ 'animate-pulse': settings.experimental?.markdownRendering === 'block_markdown' }" />
-              <span>Block Renderer (Exp)</span>
+              <Zap class="w-4 h-4" :class="{ 'animate-pulse': !settings.experimental || settings.experimental.markdownRendering === 'block_markdown' }" />
+              <span>Block Renderer</span>
             </button>
           </div>
         </Transition>

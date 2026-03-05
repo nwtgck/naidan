@@ -1161,7 +1161,7 @@ defineExpose({
         <!-- Content Display (Always shown if present) -->
         <template v-if="displayContent">
           <BlockMarkdownRenderer
-            v-if="settings.experimental?.markdownRendering === 'block_markdown'"
+            v-if="!settings.experimental || settings.experimental.markdownRendering === 'block_markdown'"
             :content="displayContent"
           />
           <div

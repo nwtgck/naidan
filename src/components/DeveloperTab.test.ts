@@ -41,7 +41,7 @@ describe('DeveloperTab', () => {
     });
 
     (useSettings as any).mockReturnValue({
-      settings: ref({ experimental: { markdownRendering: 'standard' } }),
+      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
       toggleMarkdownRendering,
     });
 

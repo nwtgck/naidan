@@ -315,7 +315,7 @@ export const SettingsSchemaDto = z.object({
   lmParameters: orUndefined(LmParametersSchemaDto),
   experimental: z.union([
     z.object({
-      markdownRendering: z.union([z.literal('block_markdown'), z.undefined()]),
+      markdownRendering: z.union([z.literal('block_markdown'), z.literal('monolithic_html'), z.undefined()]),
     }),
     z.undefined(),
   ]),
