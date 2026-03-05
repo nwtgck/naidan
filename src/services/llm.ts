@@ -222,7 +222,9 @@ export class OpenAIProvider implements LLMProvider {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      const accumulatedToolCalls: (import('../models/types').ToolCall | undefined)[] = [];
+      const accumulatedToolCalls: Map<string, import('../models/types').ToolCall> = new Map();
+      // Track the current active ID for each index to detect sequential calls on the same index
+      const indexToCurrentIdMap: Map<number, string> = new Map();
       let fullContent = '';
       let isThinking = false;
 
@@ -275,23 +277,27 @@ export class OpenAIProvider implements LLMProvider {
 
             if (delta.tool_calls) {
               for (const tc of delta.tool_calls) {
-                if (!accumulatedToolCalls[tc.index]) {
-                  accumulatedToolCalls[tc.index] = {
-                    id: tc.id || '',
+                if (tc.id) {
+                  indexToCurrentIdMap.set(tc.index, tc.id);
+                }
+                const currentId = indexToCurrentIdMap.get(tc.index) || `index_${tc.index}`;
+                // Using composite key ensures different IDs at the same index are handled separately
+                const key = `${tc.index}_${currentId}`;
+
+                if (!accumulatedToolCalls.has(key)) {
+                  accumulatedToolCalls.set(key, {
+                    id: tc.id || currentId,
                     type: 'function',
                     function: { name: '', arguments: '' }
-                  };
+                  });
                 }
-                const record = accumulatedToolCalls[tc.index]!;
+                const record = accumulatedToolCalls.get(key)!;
                 if (tc.function?.name) {
-                  // Some providers repeat the full name in every chunk instead of sending deltas.
-                  // If the new name is identical to what we have, skip appending.
                   if (record.function.name !== tc.function.name) {
                     record.function.name += tc.function.name;
                   }
                 }
                 if (tc.function?.arguments) {
-                  // Similarly for arguments, avoid double-appending if the full string is repeated.
                   if (record.function.arguments !== tc.function.arguments) {
                     record.function.arguments += tc.function.arguments;
                   }
@@ -309,8 +315,7 @@ export class OpenAIProvider implements LLMProvider {
         }
       }
 
-      // Filter out empty slots in accumulatedToolCalls if any
-      const toolCalls = accumulatedToolCalls.filter((tc): tc is import('../models/types').ToolCall => !!tc && !!tc.function.name);
+      const toolCalls = Array.from(accumulatedToolCalls.values()).filter(tc => !!tc.function.name);
 
       if (toolCalls.length > 0) {
         // Execute tools and loop

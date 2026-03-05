@@ -568,4 +568,51 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     const toolMsg = secondReqBody.messages.find(m => m.role === 'tool');
     expect(toolMsg.content).toContain('Failed to parse tool arguments');
   });
+
+  it('should separate tool calls with same index but different IDs (sequential index fix)', async () => {
+    const mockTool: Tool = {
+      name: 'calc',
+      description: 'Calc',
+      parametersSchema: z.object({ e: z.string() }),
+      execute: vi.fn().mockImplementation(async ({ args }) => ({ status: 'success', content: `res_${(args as any).e}` })),
+    };
+
+    serverInstance = await startMockServer({
+      handler: (_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        if (serverInstance?.capturedRequests.length === 1) {
+          // Sequential calls sharing index 0 but having different IDs
+          res.write('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"calc","arguments":"{\\"e\\":\\"1+1\\"}"}}]}}]}\n\n');
+          res.write('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_2","function":{"name":"calc","arguments":"{\\"e\\":\\"2+2\\"}"}}]}}]}\n\n');
+          res.write('data: [DONE]\n\n');
+        } else {
+          res.write('data: {"choices":[{"delta":{"content":"Done"}}]}\n\n');
+          res.write('data: [DONE]\n\n');
+        }
+        res.end();
+      }
+    });
+
+    const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
+    await provider.chat({
+      messages: [],
+      model: 'gpt-4',
+      onChunk: vi.fn(),
+      tools: [mockTool],
+    });
+
+    // Should have executed the tool TWICE with correct separate arguments
+    expect(mockTool.execute).toHaveBeenCalledTimes(2);
+    expect(mockTool.execute).toHaveBeenNthCalledWith(1, expect.objectContaining({ args: { e: '1+1' } }));
+    expect(mockTool.execute).toHaveBeenNthCalledWith(2, expect.objectContaining({ args: { e: '2+2' } }));
+
+    // Verify the second request to LLM contains TWO separate tool results with their respective IDs
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
+    const toolMessages = secondReqBody.messages.filter(m => m.role === 'tool');
+    expect(toolMessages).toHaveLength(2);
+    expect(toolMessages[0].tool_call_id).toBe('call_1');
+    expect(toolMessages[0].content).toBe('res_1+1');
+    expect(toolMessages[1].tool_call_id).toBe('call_2');
+    expect(toolMessages[1].content).toBe('res_2+2');
+  });
 });
