@@ -260,11 +260,11 @@ export class OpenAIProvider implements LLMProvider {
       // Filter out empty slots in accumulatedToolCalls if any
       const toolCalls = accumulatedToolCalls.filter(tc => tc && tc.function.name);
 
-      if (toolCalls.length > 0 && !hasSentChunk) {
+      if (toolCalls.length > 0) {
         // Execute tools and loop
         currentMessages.push({
           role: 'assistant',
-          content: null,
+          content: fullContent || null,
           tool_calls: toolCalls
         });
 
@@ -280,9 +280,12 @@ export class OpenAIProvider implements LLMProvider {
           }
 
           if (tool && parsedArgs !== undefined) {
-            onToolCall?.({ id: tc.id, toolName: tool.name, args: parsedArgs });
             try {
-              const executionResult = await tool.execute({ args: parsedArgs });
+              // Perform common strict validation here to enforce strictness globally
+              const validatedArgs = tool.parametersSchema.strict().parse(parsedArgs);
+
+              onToolCall?.({ id: tc.id, toolName: tool.name, args: validatedArgs });
+              const executionResult = await tool.execute({ args: validatedArgs });
               onToolResult?.({ id: tc.id, result: executionResult });
               switch (executionResult.status) {
               case 'success':
@@ -297,9 +300,12 @@ export class OpenAIProvider implements LLMProvider {
               }
               }
             } catch (e) {
-              const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
+              const errorResult: ToolExecutionResult = e instanceof z.ZodError
+                ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
+                : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
+
               onToolResult?.({ id: tc.id, result: errorResult });
-              result = `Error: Tool execution failed unexpectedly: ${errorResult.message}`;
+              result = `Error: ${errorResult.message}`;
             }
           } else if (!tool) {
             const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
@@ -602,7 +608,7 @@ export class OllamaProvider implements LLMProvider {
 
       let isThinking = false;
       const accumulatedToolCalls: any[] = [];
-      let hasSentChunk = false;
+      let fullContent = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -630,7 +636,7 @@ export class OllamaProvider implements LLMProvider {
 
             const content = validated.message?.content || '';
             if (content) {
-              hasSentChunk = true;
+              fullContent += content;
               if (isThinking) {
                 onChunk('</think>');
                 isThinking = false;
@@ -669,10 +675,10 @@ export class OllamaProvider implements LLMProvider {
         }
       }
 
-      if (accumulatedToolCalls.length > 0 && !hasSentChunk) {
+      if (accumulatedToolCalls.length > 0) {
         currentMessages.push({
           role: 'assistant',
-          content: '',
+          content: fullContent,
           tool_calls: accumulatedToolCalls
         });
 
@@ -692,9 +698,12 @@ export class OllamaProvider implements LLMProvider {
           }
 
           if (tool && args !== undefined) {
-            onToolCall?.({ id: tc.id, toolName: tool.name, args });
             try {
-              const executionResult = await tool.execute({ args });
+              // Perform common strict validation here to enforce strictness globally
+              const validatedArgs = tool.parametersSchema.strict().parse(args);
+
+              onToolCall?.({ id: tc.id, toolName: tool.name, args: validatedArgs });
+              const executionResult = await tool.execute({ args: validatedArgs });
               onToolResult?.({ id: tc.id, result: executionResult });
               switch (executionResult.status) {
               case 'success':
@@ -709,11 +718,15 @@ export class OllamaProvider implements LLMProvider {
               }
               }
             } catch (e) {
-              const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
+              const errorResult: ToolExecutionResult = e instanceof z.ZodError
+                ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
+                : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
+
               onToolResult?.({ id: tc.id, result: errorResult });
-              result = `Error: Tool execution failed unexpectedly: ${errorResult.message}`;
+              result = `Error: ${errorResult.message}`;
             }
           } else if (!tool) {
+
             const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
             onToolResult?.({ id: tc.id, result: errorResult });
             result = errorResult.message;

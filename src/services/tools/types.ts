@@ -39,7 +39,7 @@ export type ToolCallRecord = {
 export interface Tool {
   name: string;
   description: string;
-  parametersSchema: z.ZodTypeAny;
+  parametersSchema: z.AnyZodObject;
 
   /**
    * Execute the tool with the given arguments.

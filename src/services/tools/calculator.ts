@@ -22,13 +22,6 @@ export class CalculatorTool implements Tool {
         content: String(result),
       };
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return {
-          status: 'error',
-          code: 'invalid_arguments',
-          message: `Invalid arguments: ${error.message}`,
-        };
-      }
       // Calculation errors should be communicated to the LLM.
       return {
         status: 'error',

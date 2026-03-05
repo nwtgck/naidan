@@ -16,7 +16,12 @@ export function zodToJsonSchema({ schema }: { schema: z.ZodTypeAny }): unknown {
       throw new Error('zodToJsonSchema function not found in module');
     }
 
-    const res = fn(schema) as any;
+    // Force strict mode so LLM doesn't send hallucinated parameters
+    const schemaToConvert = (schema as any)._def?.typeName === 'ZodObject'
+      ? (schema as any).strict()
+      : schema;
+
+    const res = fn(schemaToConvert, { target: 'openApi3' }) as any;
     if (res && typeof res === 'object') {
       const { $schema, ...rest } = res;
       return rest;
@@ -27,3 +32,4 @@ export function zodToJsonSchema({ schema }: { schema: z.ZodTypeAny }): unknown {
     return {};
   }
 }
+
