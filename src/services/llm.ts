@@ -673,14 +673,23 @@ export class OllamaProvider implements LLMProvider {
 
             if (validated.message?.tool_calls) {
               for (const tc of validated.message.tool_calls) {
+                let parsedArgs: unknown;
+                if (typeof tc.function.arguments === 'string') {
+                  try {
+                    parsedArgs = JSON.parse(tc.function.arguments);
+                  } catch {
+                    parsedArgs = tc.function.arguments;
+                  }
+                } else {
+                  parsedArgs = tc.function.arguments;
+                }
+
                 accumulatedToolCalls.push({
                   id: tc.id || '',
                   type: 'function',
                   function: {
                     name: tc.function.name,
-                    arguments: typeof tc.function.arguments === 'string'
-                      ? tc.function.arguments
-                      : JSON.stringify(tc.function.arguments)
+                    arguments: parsedArgs as any
                   }
                 });
               }

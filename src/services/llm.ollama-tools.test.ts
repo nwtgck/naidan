@@ -262,4 +262,47 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     await expect(chatPromise).rejects.toThrow();
     expect(serverInstance!.capturedRequests).toHaveLength(1);
   });
+
+  it('should send tool arguments as plain objects in the subsequent request (regression fix)', async () => {
+    const mockTool: Tool = {
+      name: 't',
+      description: 'T',
+      parametersSchema: z.object({ a: z.number() }),
+      execute: vi.fn().mockResolvedValue({ status: 'success', content: 'ok' }),
+    };
+
+    serverInstance = await startMockServer({
+      handler: (_req, res) => {
+        res.writeHead(200);
+        if (serverInstance?.capturedRequests.length === 1) {
+          // Send arguments as a STRING from "Ollama" (common in some versions/models)
+          res.write(JSON.stringify({
+            message: { 
+              tool_calls: [{ id: 'c1', function: { name: 't', arguments: '{"a": 123}' } }] 
+            },
+            done: true
+          }) + '\n');
+        } else {
+          res.write(JSON.stringify({ done: true }) + '\n');
+        }
+        res.end();
+      }
+    });
+
+    const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
+    await provider.chat({
+      messages: [],
+      model: 'llama3',
+      onChunk: vi.fn(),
+      tools: [mockTool],
+    });
+
+    expect(serverInstance!.capturedRequests).toHaveLength(2);
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
+    
+    // CRITICAL: The arguments sent BACK to Ollama must be an OBJECT, not a string
+    const sentToolCall = secondReqBody.messages[0].tool_calls[0];
+    expect(typeof sentToolCall.function.arguments).toBe('object');
+    expect(sentToolCall.function.arguments).toEqual({ a: 123 });
+  });
 });
