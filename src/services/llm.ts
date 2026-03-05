@@ -132,6 +132,8 @@ export class OpenAIProvider implements LLMProvider {
     const currentMessages: any[] = [...messages];
 
     while (true) {
+      if (signal?.aborted) throw new Error('Generation aborted');
+
       const body: OpenAICompletionRequest = {
         model,
         messages: currentMessages,
@@ -269,6 +271,8 @@ export class OpenAIProvider implements LLMProvider {
         });
 
         for (const tc of toolCalls) {
+          if (signal?.aborted) throw new Error('Generation aborted');
+
           const tool = tools?.find(t => t.name === tc.function.name);
           let result: string;
           let parsedArgs: unknown;
@@ -281,11 +285,16 @@ export class OpenAIProvider implements LLMProvider {
 
           if (tool && parsedArgs !== undefined) {
             try {
+              if (signal?.aborted) throw new Error('Generation aborted');
+
               // Perform common strict validation here to enforce strictness globally
               const validatedArgs = tool.parametersSchema.strict().parse(parsedArgs);
 
               onToolCall?.({ id: tc.id, toolName: tool.name, args: validatedArgs });
-              const executionResult = await tool.execute({ args: validatedArgs });
+              const executionResult = await tool.execute({ args: validatedArgs, signal });
+
+              if (signal?.aborted) throw new Error('Generation aborted');
+
               onToolResult?.({ id: tc.id, result: executionResult });
               switch (executionResult.status) {
               case 'success':
@@ -300,6 +309,8 @@ export class OpenAIProvider implements LLMProvider {
               }
               }
             } catch (e) {
+              if (e instanceof Error && e.message === 'Generation aborted') throw e;
+
               const errorResult: ToolExecutionResult = e instanceof z.ZodError
                 ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
                 : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
@@ -307,6 +318,7 @@ export class OpenAIProvider implements LLMProvider {
               onToolResult?.({ id: tc.id, result: errorResult });
               result = `Error: ${errorResult.message}`;
             }
+
           } else if (!tool) {
             const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
             onToolResult?.({ id: tc.id, result: errorResult });
@@ -435,6 +447,8 @@ export class OllamaProvider implements LLMProvider {
     const currentMessages = [...messages];
 
     while (true) {
+      if (signal?.aborted) throw new Error('Generation aborted');
+
       // Transform messages to Ollama format
       const ollamaMessages: OllamaMessage[] = currentMessages.map(m => {
         const contentType = typeof m.content;
@@ -683,6 +697,8 @@ export class OllamaProvider implements LLMProvider {
         });
 
         for (const tc of accumulatedToolCalls) {
+          if (signal?.aborted) throw new Error('Generation aborted');
+
           const tool = tools?.find(t => t.name === tc.function.name);
           let result: string;
           let args: unknown;
@@ -699,11 +715,16 @@ export class OllamaProvider implements LLMProvider {
 
           if (tool && args !== undefined) {
             try {
+              if (signal?.aborted) throw new Error('Generation aborted');
+
               // Perform common strict validation here to enforce strictness globally
               const validatedArgs = tool.parametersSchema.strict().parse(args);
 
               onToolCall?.({ id: tc.id, toolName: tool.name, args: validatedArgs });
-              const executionResult = await tool.execute({ args: validatedArgs });
+              const executionResult = await tool.execute({ args: validatedArgs, signal });
+
+              if (signal?.aborted) throw new Error('Generation aborted');
+
               onToolResult?.({ id: tc.id, result: executionResult });
               switch (executionResult.status) {
               case 'success':

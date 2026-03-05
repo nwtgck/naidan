@@ -45,5 +45,5 @@ export interface Tool {
    * Execute the tool with the given arguments.
    * The arguments are guaranteed to be validated against the parametersSchema before execution.
    */
-  execute(params: { args: unknown }): Promise<ToolExecutionResult>;
+  execute(params: { args: unknown; signal?: AbortSignal }): Promise<ToolExecutionResult>;
 }

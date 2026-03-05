@@ -13,8 +13,9 @@ export class CalculatorTool implements Tool {
   description = 'Evaluate mathematical expressions using mathjs.';
   parametersSchema = CalculatorArgsSchema;
 
-  async execute({ args }: { args: unknown }): Promise<ToolExecutionResult> {
+  async execute({ args, signal }: { args: unknown; signal?: AbortSignal }): Promise<ToolExecutionResult> {
     try {
+      if (signal?.aborted) throw new Error('Generation aborted');
       const validated = CalculatorArgsSchema.parse(args);
       const result = evaluate(validated.expression);
       return {
