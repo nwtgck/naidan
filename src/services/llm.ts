@@ -22,6 +22,8 @@ const OpenAIChatChunkSchema = z.object({
   choices: z.array(z.object({
     delta: z.object({
       content: z.string().nullable().optional(),
+      reasoning: z.string().nullable().optional(),
+      reasoning_content: z.string().nullable().optional(),
       tool_calls: z.array(z.object({
         index: z.number(),
         id: z.string().optional(),
@@ -222,10 +224,18 @@ export class OpenAIProvider implements LLMProvider {
 
       const accumulatedToolCalls: (import('../models/types').ToolCall | undefined)[] = [];
       let fullContent = '';
+      let isThinking = false;
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          if (isThinking) {
+            onChunk('</think>');
+            fullContent += '</think>';
+            isThinking = false;
+          }
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -242,7 +252,23 @@ export class OpenAIProvider implements LLMProvider {
             const delta = validated.choices[0]?.delta;
             if (!delta) continue;
 
+            const reasoning = delta.reasoning || delta.reasoning_content;
+            if (reasoning) {
+              if (!isThinking) {
+                onChunk('<think>');
+                fullContent += '<think>';
+                isThinking = true;
+              }
+              fullContent += reasoning;
+              onChunk(reasoning);
+            }
+
             if (delta.content) {
+              if (isThinking) {
+                onChunk('</think>');
+                fullContent += '</think>';
+                isThinking = false;
+              }
               fullContent += delta.content;
               onChunk(delta.content);
             }
@@ -671,18 +697,21 @@ export class OllamaProvider implements LLMProvider {
             if (thinking) {
               if (!isThinking) {
                 onChunk('<think>');
+                fullContent += '<think>';
                 isThinking = true;
               }
+              fullContent += thinking;
               onChunk(thinking);
             }
 
             const content = validated.message?.content || '';
             if (content) {
-              fullContent += content;
               if (isThinking) {
                 onChunk('</think>');
+                fullContent += '</think>';
                 isThinking = false;
               }
+              fullContent += content;
               onChunk(content);
             }
 
@@ -713,6 +742,7 @@ export class OllamaProvider implements LLMProvider {
             if (validated.done) {
               if (isThinking) {
                 onChunk('</think>');
+                fullContent += '</think>';
                 isThinking = false;
               }
               break;
