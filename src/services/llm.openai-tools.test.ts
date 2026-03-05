@@ -452,4 +452,120 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     expect(secondReqBody.messages[1].content).toBe('GOOD');
     expect(secondReqBody.messages[2].content).toContain('BAD');
   });
+
+  it('should send non-empty tool parameters schema to the LLM', async () => {
+    const mockTool: Tool = {
+      name: 't',
+      description: 'T',
+      parametersSchema: z.object({ arg1: z.string().describe('DESC') }),
+      execute: vi.fn(),
+    };
+
+    serverInstance = await startMockServer({
+      handler: (_req, res) => {
+        res.writeHead(200);
+        res.write('data: {"choices":[{"delta":{"content":"Done"}}]}\n\n');
+        res.write('data: [DONE]\n\n');
+        res.end();
+      }
+    });
+
+    const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
+    await provider.chat({
+      messages: [],
+      model: 'gpt-4',
+      onChunk: vi.fn(),
+      tools: [mockTool],
+    });
+
+    const firstReqBody = serverInstance!.capturedRequests[0]!.body as any;
+    const toolDef = firstReqBody.tools[0].function;
+    expect(toolDef.name).toBe('t');
+
+    // CRITICAL: Parameters must NOT be empty
+    expect(toolDef.parameters).toHaveProperty('type', 'object');
+    expect(toolDef.parameters).toHaveProperty('properties');
+    expect(toolDef.parameters.properties).toHaveProperty('arg1');
+    expect(toolDef.parameters.properties.arg1).toHaveProperty('description', 'DESC');
+  });
+
+  it('should handle redundant full-string deltas in tool calls (duplication fix)', async () => {
+    const mockTool: Tool = {
+      name: 'calc',
+      description: 'Calc',
+      parametersSchema: z.object({ e: z.string() }),
+      execute: vi.fn().mockResolvedValue({ status: 'success', content: '4' }),
+    };
+
+    serverInstance = await startMockServer({
+      handler: (_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        if (serverInstance?.capturedRequests.length === 1) {
+          // Provider repeats FULL name and FULL arguments in every chunk
+          const payloads = [
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"calc"}}]}}]}\n\n',
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"calc","arguments":"{\\"e\\":\\"2+2\\"}"}}]}}]}\n\n',
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"calc","arguments":"{\\"e\\":\\"2+2\\"}"}}]}}]}\n\n', // Repeated
+            'data: [DONE]\n\n'
+          ];
+          payloads.forEach(p => res.write(p));
+        } else {
+          res.write('data: {"choices":[{"delta":{"content":"Done"}}]}\n\n');
+          res.write('data: [DONE]\n\n');
+        }
+        res.end();
+      }
+    });
+
+    const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
+    await provider.chat({
+      messages: [],
+      model: 'gpt-4',
+      onChunk: vi.fn(),
+      tools: [mockTool],
+    });
+
+    // Should NOT have 'calccalc' or '{"e":"2+2"}{"e":"2+2"}'
+    expect(mockTool.execute).toHaveBeenCalledWith({ args: { e: '2+2' } });
+  });
+
+  it('should treat concatenated JSON objects as a parse error and report to LLM (correct protocol enforcement)', async () => {
+    const mockTool: Tool = {
+      name: 'calc',
+      description: 'Calc',
+      parametersSchema: z.object({ e: z.string() }),
+      execute: vi.fn(),
+    };
+
+    serverInstance = await startMockServer({
+      handler: (_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        if (serverInstance?.capturedRequests.length === 1) {
+          // Provider sends TWO different JSON objects concatenated in ONE tool call arguments string (INVALID)
+          res.write('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"calc","arguments":"{\\"e\\":\\"1+1\\"}{\\"e\\":\\"2+2\\"}"}}]}}]}\n\n');
+          res.write('data: [DONE]\n\n');
+        } else {
+          res.write('data: {"choices":[{"delta":{"content":"Format error detected"}}]}\n\n');
+          res.write('data: [DONE]\n\n');
+        }
+        res.end();
+      }
+    });
+
+    const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
+    await provider.chat({
+      messages: [],
+      model: 'gpt-4',
+      onChunk: vi.fn(),
+      tools: [mockTool],
+    });
+
+    // Should NOT have executed the tool
+    expect(mockTool.execute).not.toHaveBeenCalled();
+
+    // Verify the second request to LLM contains the parse error message
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
+    const toolMsg = secondReqBody.messages.find(m => m.role === 'tool');
+    expect(toolMsg.content).toContain('Failed to parse tool arguments');
+  });
 });

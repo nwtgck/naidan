@@ -277,8 +277,8 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
         if (serverInstance?.capturedRequests.length === 1) {
           // Send arguments as a STRING from "Ollama" (common in some versions/models)
           res.write(JSON.stringify({
-            message: { 
-              tool_calls: [{ id: 'c1', function: { name: 't', arguments: '{"a": 123}' } }] 
+            message: {
+              tool_calls: [{ id: 'c1', function: { name: 't', arguments: '{"a": 123}' } }]
             },
             done: true
           }) + '\n');
@@ -299,7 +299,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
 
     expect(serverInstance!.capturedRequests).toHaveLength(2);
     const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
-    
+
     // CRITICAL: The arguments sent BACK to Ollama must be an OBJECT, not a string
     const sentToolCall = secondReqBody.messages[0].tool_calls[0];
     expect(typeof sentToolCall.function.arguments).toBe('object');

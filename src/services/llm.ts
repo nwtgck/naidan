@@ -257,8 +257,19 @@ export class OpenAIProvider implements LLMProvider {
                   };
                 }
                 const record = accumulatedToolCalls[tc.index]!;
-                if (tc.function?.name) record.function.name += tc.function.name;
-                if (tc.function?.arguments) record.function.arguments += tc.function.arguments;
+                if (tc.function?.name) {
+                  // Some providers repeat the full name in every chunk instead of sending deltas.
+                  // If the new name is identical to what we have, skip appending.
+                  if (record.function.name !== tc.function.name) {
+                    record.function.name += tc.function.name;
+                  }
+                }
+                if (tc.function?.arguments) {
+                  // Similarly for arguments, avoid double-appending if the full string is repeated.
+                  if (record.function.arguments !== tc.function.arguments) {
+                    record.function.arguments += tc.function.arguments;
+                  }
+                }
                 if (tc.id) record.id = tc.id;
               }
             }
@@ -290,10 +301,14 @@ export class OpenAIProvider implements LLMProvider {
           let result: string;
           let parsedArgs: unknown;
 
-          try {
-            parsedArgs = JSON.parse(tc.function.arguments);
-          } catch (e) {
-            result = `Error: Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`;
+          if (typeof tc.function.arguments === 'string') {
+            try {
+              parsedArgs = JSON.parse(tc.function.arguments);
+            } catch (e) {
+              result = `Error: Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`;
+            }
+          } else {
+            parsedArgs = tc.function.arguments;
           }
 
           if (tool && parsedArgs !== undefined) {
@@ -689,7 +704,7 @@ export class OllamaProvider implements LLMProvider {
                   type: 'function',
                   function: {
                     name: tc.function.name,
-                    arguments: parsedArgs as any
+                    arguments: parsedArgs as Record<string, unknown>
                   }
                 });
               }
