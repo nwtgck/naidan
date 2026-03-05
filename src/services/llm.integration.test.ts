@@ -5,17 +5,45 @@ import http from 'http';
 import type { AddressInfo } from 'net';
 
 describe('LLM Providers Integration Tests', () => {
-  let server: http.Server;
+  let server: http.Server | null = null;
   let baseUrl: string;
   const { errorCount, clearEvents, events } = useGlobalEvents();
 
+  let capturedRequests: {
+    url?: string;
+    method?: string;
+    headers: http.IncomingHttpHeaders;
+    body?: any;
+  }[] = [];
+
   // Helper to start a mock server
-  const startServer = (handler: http.RequestListener) => {
+  const startServer = (handler: (req: http.IncomingMessage, res: http.ServerResponse) => void) => {
     return new Promise<void>((resolve) => {
-      server = http.createServer(handler);
+      server = http.createServer((req, res) => {
+        let body = '';
+        req.on('data', (chunk) => {
+          body += chunk;
+        });
+        req.on('end', () => {
+          const captured: any = {
+            url: req.url,
+            method: req.method,
+            headers: req.headers,
+          };
+          if (body) {
+            try {
+              captured.body = JSON.parse(body);
+            } catch {
+              captured.body = body;
+            }
+          }
+          capturedRequests.push(captured);
+          handler(req, res);
+        });
+      });
       server.listen(0, '127.0.0.1', () => {
-        const { port } = server.address() as AddressInfo;
-        baseUrl = `http://127.0.0.1:${port}`;
+        const addr = server?.address() as AddressInfo;
+        baseUrl = `http://127.0.0.1:${addr.port}`;
         resolve();
       });
     });
@@ -23,20 +51,19 @@ describe('LLM Providers Integration Tests', () => {
 
   beforeEach(() => {
     clearEvents();
+    capturedRequests = [];
+    server = null;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (server) {
-      server.close();
+      await new Promise(r => server!.close(r));
     }
   });
 
   describe('OpenAIProvider', () => {
     it('should handle a full streaming conversation', async () => {
-      await startServer((req, res) => {
-        expect(req.url).toBe('/v1/chat/completions');
-        expect(req.method).toBe('POST');
-
+      await startServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.write('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n');
         res.write('data: {"choices":[{"delta":{"content":" world"}}]}\n\n');
@@ -56,11 +83,12 @@ describe('LLM Providers Integration Tests', () => {
 
       expect(result).toBe('Hello world');
       expect(errorCount.value).toBe(0);
+      expect(capturedRequests[0]!.url).toBe('/v1/chat/completions');
+      expect(capturedRequests[0]!.method).toBe('POST');
     });
 
     it('should normalize endpoint URL by removing trailing slash', async () => {
-      await startServer((req, res) => {
-        expect(req.url).toBe('/chat/completions');
+      await startServer((_req, res) => {
         res.writeHead(200);
         res.end('data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n\n');
       });
@@ -71,6 +99,7 @@ describe('LLM Providers Integration Tests', () => {
         model: 'any',
         onChunk: () => {}
       });
+      expect(capturedRequests[0]!.url).toBe('/chat/completions');
     });
 
     it('should handle API errors with JSON bodies', async () => {
@@ -118,8 +147,7 @@ describe('LLM Providers Integration Tests', () => {
     });
 
     it('should include Authorization header if provided', async () => {
-      await startServer((req, res) => {
-        expect(req.headers['authorization']).toBe('Bearer test-token');
+      await startServer((_req, res) => {
         res.writeHead(200);
         res.end('data: [DONE]\n\n');
       });
@@ -133,6 +161,7 @@ describe('LLM Providers Integration Tests', () => {
         model: 'any',
         onChunk: () => {}
       });
+      expect(capturedRequests[0]!.headers['authorization']).toBe('Bearer test-token');
     });
 
     it('should handle listModels API error with JSON message', async () => {
@@ -154,6 +183,26 @@ describe('LLM Providers Integration Tests', () => {
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       await expect(provider.listModels({})).rejects.toThrow();
+    });
+
+    it('should handle various HTTP error status codes correctly in listModels', async () => {
+      const errorCodes = [401, 429, 500];
+      for (const code of errorCodes) {
+        clearEvents();
+        await startServer((_req, res) => {
+          res.writeHead(code);
+          res.end(JSON.stringify({ error: { message: `Err ${code}` } }));
+        });
+
+        const provider = new OpenAIProvider({ endpoint: baseUrl });
+        await expect(provider.listModels({})).rejects.toThrow(new RegExp(`${code}`));
+
+        expect(capturedRequests[0]!.url).toBe('/models');
+
+        await new Promise(r => server!.close(r));
+        server = null;
+        capturedRequests = [];
+      }
     });
 
     it('should handle invalid chunk structure in OpenAI chat', async () => {
@@ -179,17 +228,9 @@ describe('LLM Providers Integration Tests', () => {
     });
 
     it('should handle complex parameters in chat request', async () => {
-      let receivedBody: any;
-      await startServer((req, res) => {
-        let body = '';
-        req.on('data', chunk => {
-          body += chunk;
-        });
-        req.on('end', () => {
-          receivedBody = JSON.parse(body);
-          res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-          res.end('data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n\n');
-        });
+      await startServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.end('data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n\n');
       });
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
@@ -208,7 +249,7 @@ describe('LLM Providers Integration Tests', () => {
         }
       });
 
-      expect(receivedBody).toEqual({
+      expect(capturedRequests[0]!.body).toEqual({
         model: 'test-model',
         messages: [],
         stream: true,
@@ -390,8 +431,7 @@ describe('LLM Providers Integration Tests', () => {
     });
 
     it('should normalize endpoint URL by removing trailing slash', async () => {
-      await startServer((req, res) => {
-        expect(req.url).toBe('/api/chat');
+      await startServer((_req, res) => {
         res.writeHead(200);
         res.end(JSON.stringify({ done: true }) + '\n');
       });
@@ -402,6 +442,7 @@ describe('LLM Providers Integration Tests', () => {
         model: 'any',
         onChunk: () => {}
       });
+      expect(capturedRequests[0]!.url).toBe('/api/chat');
     });
 
     it('should handle split NDJSON chunks', async () => {
@@ -453,17 +494,9 @@ describe('LLM Providers Integration Tests', () => {
     });
 
     it('should handle multimodal content conversion', async () => {
-      let receivedBody: any;
-      await startServer((req, res) => {
-        let body = '';
-        req.on('data', chunk => {
-          body += chunk;
-        });
-        req.on('end', () => {
-          receivedBody = JSON.parse(body);
-          res.writeHead(200);
-          res.end(JSON.stringify({ done: true }) + '\n');
-        });
+      await startServer((_req, res) => {
+        res.writeHead(200);
+        res.end(JSON.stringify({ done: true }) + '\n');
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
@@ -479,23 +512,15 @@ describe('LLM Providers Integration Tests', () => {
         onChunk: () => {}
       });
 
-      expect(receivedBody.messages[0].content).toBe('Analyze this image:');
-      expect(receivedBody.messages[0].images).toHaveLength(1);
-      expect(receivedBody.messages[0].images[0]).toBe('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BfAQJAAgtOXYgAAAAASUVORK5CYII=');
+      expect(capturedRequests[0]!.body.messages[0].content).toBe('Analyze this image:');
+      expect(capturedRequests[0]!.body.messages[0].images).toHaveLength(1);
+      expect(capturedRequests[0]!.body.messages[0].images[0]).toBe('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BfAQJAAgtOXYgAAAAASUVORK5CYII=');
     });
 
     it('should handle multiple images in multimodal content', async () => {
-      let receivedBody: any;
-      await startServer((req, res) => {
-        let body = '';
-        req.on('data', chunk => {
-          body += chunk;
-        });
-        req.on('end', () => {
-          receivedBody = JSON.parse(body);
-          res.writeHead(200);
-          res.end(JSON.stringify({ done: true }) + '\n');
-        });
+      await startServer((_req, res) => {
+        res.writeHead(200);
+        res.end(JSON.stringify({ done: true }) + '\n');
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
@@ -511,21 +536,13 @@ describe('LLM Providers Integration Tests', () => {
         onChunk: () => {}
       });
 
-      expect(receivedBody.messages[0].images).toEqual(['AAA', 'BBB']);
+      expect(capturedRequests[0]!.body.messages[0].images).toEqual(['AAA', 'BBB']);
     });
 
     it('should handle multiple text parts in multimodal content', async () => {
-      let receivedBody: any;
-      await startServer((req, res) => {
-        let body = '';
-        req.on('data', chunk => {
-          body += chunk;
-        });
-        req.on('end', () => {
-          receivedBody = JSON.parse(body);
-          res.writeHead(200);
-          res.end(JSON.stringify({ done: true }) + '\n');
-        });
+      await startServer((_req, res) => {
+        res.writeHead(200);
+        res.end(JSON.stringify({ done: true }) + '\n');
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
@@ -541,21 +558,13 @@ describe('LLM Providers Integration Tests', () => {
         onChunk: () => {}
       });
 
-      expect(receivedBody.messages[0].content).toBe('Part 1. Part 2.');
+      expect(capturedRequests[0]!.body.messages[0].content).toBe('Part 1. Part 2.');
     });
 
     it('should handle all Ollama parameters', async () => {
-      let receivedBody: any;
-      await startServer((req, res) => {
-        let body = '';
-        req.on('data', chunk => {
-          body += chunk;
-        });
-        req.on('end', () => {
-          receivedBody = JSON.parse(body);
-          res.writeHead(200);
-          res.end(JSON.stringify({ done: true }) + '\n');
-        });
+      await startServer((_req, res) => {
+        res.writeHead(200);
+        res.end(JSON.stringify({ done: true }) + '\n');
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
@@ -574,7 +583,7 @@ describe('LLM Providers Integration Tests', () => {
         }
       });
 
-      expect(receivedBody.options).toEqual({
+      expect(capturedRequests[0]!.body.options).toEqual({
         temperature: 0.5,
         top_p: 0.8,
         num_predict: 50,
@@ -582,7 +591,7 @@ describe('LLM Providers Integration Tests', () => {
         frequency_penalty: 0.2,
         stop: ['END']
       });
-      expect(receivedBody.think).toBe(false);
+      expect(capturedRequests[0]!.body.think).toBe(false);
     });
 
     it('should retry without specific effort if Ollama reports it is not supported', async () => {
@@ -614,6 +623,9 @@ describe('LLM Providers Integration Tests', () => {
 
       expect(callCount).toBe(2);
       expect(result).toBe('Recovered');
+      expect(capturedRequests).toHaveLength(2);
+      expect(capturedRequests[0]!.body.think).toBe('high');
+      expect(capturedRequests[1]!.body.think).toBe(true);
     });
 
     it('should NOT retry on other 400 errors even with reasoning', async () => {
@@ -782,9 +794,7 @@ describe('LLM Providers Integration Tests', () => {
     });
 
     it('should include custom headers in all Ollama methods', async () => {
-      let lastHeaders: any;
-      await startServer((req, res) => {
-        lastHeaders = req.headers;
+      await startServer((_req, res) => {
         res.writeHead(200);
         res.end(JSON.stringify({ done: true, models: [], image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BfAQJAAgtOXYgAAAAASUVORK5CYII=' }) + '\n');
       });
@@ -795,15 +805,15 @@ describe('LLM Providers Integration Tests', () => {
       });
 
       await provider.chat({ messages: [], model: 'm', onChunk: () => {} });
-      expect(lastHeaders['x-test']).toBe('Ollama');
+      expect(capturedRequests[0]!.headers['x-test']).toBe('Ollama');
 
       await provider.listModels({});
-      expect(lastHeaders['x-test']).toBe('Ollama');
+      expect(capturedRequests[1]!.headers['x-test']).toBe('Ollama');
 
       await provider.generateImage({
         prompt: 'p', model: 'm', width: 1, height: 1, steps: 1, seed: 1, images: [], onProgress: () => {}, signal: undefined
       });
-      expect(lastHeaders['x-test']).toBe('Ollama');
+      expect(capturedRequests[2]!.headers['x-test']).toBe('Ollama');
     });
 
     it('should handle listModels API error with JSON message', async () => {
@@ -825,6 +835,26 @@ describe('LLM Providers Integration Tests', () => {
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
       await expect(provider.listModels({})).rejects.toThrow();
+    });
+
+    it('should handle various HTTP error status codes correctly in listModels', async () => {
+      const errorCodes = [401, 404, 500];
+      for (const code of errorCodes) {
+        clearEvents();
+        await startServer((_req, res) => {
+          res.writeHead(code);
+          res.end(JSON.stringify({ error: `Err ${code}` }));
+        });
+
+        const provider = new OllamaProvider({ endpoint: baseUrl });
+        await expect(provider.listModels({})).rejects.toThrow(new RegExp(`${code}`));
+
+        expect(capturedRequests[0]!.url).toBe('/api/tags');
+
+        await new Promise(r => server!.close(r));
+        server = null;
+        capturedRequests = [];
+      }
     });
 
     it('should handle invalid Ollama chat chunk structure', async () => {
@@ -867,6 +897,26 @@ describe('LLM Providers Integration Tests', () => {
       controller.abort();
       await expect(promise).rejects.toThrow();
     });
+
+    it('should include OLLAMA_ORIGINS hint when fetch fails on file:// protocol', async () => {
+      const { vi } = await import('vitest');
+      const originalLocation = global.location;
+      Object.defineProperty(global, 'location', {
+        value: { protocol: 'file:' },
+        writable: true,
+        configurable: true,
+      });
+
+      // Mock fetch to fail immediately
+      const fetchMock = vi.fn().mockRejectedValue(new Error('Failed to fetch'));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const provider = new OllamaProvider({ endpoint: 'http://any.local' });
+      await expect(provider.listModels({})).rejects.toThrow(/OLLAMA_ORIGINS='\*'/);
+
+      Object.defineProperty(global, 'location', { value: originalLocation });
+      vi.unstubAllGlobals();
+    }, 500);
   });
 });
 
