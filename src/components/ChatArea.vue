@@ -40,7 +40,6 @@ import { hasChatOverrides } from '../utils/chat-settings-resolver';
 import { scrollIntoViewSafe } from '../utils/dom';
 import { generateChatShareURL } from '../services/import-export/chat-url-share';
 import { useToast } from '../composables/useToast';
-import { useChatTools } from '../composables/useChatTools';
 
 
 const chatStore = useChat();

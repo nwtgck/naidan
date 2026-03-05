@@ -26,6 +26,7 @@ import {
 
 import { useChatTools } from './useChatTools';
 import { ALL_TOOLS } from '../services/tools/registry';
+import type { ToolExecutionResult } from '../services/tools/types';
 
 const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
@@ -963,9 +964,18 @@ export function useChat() {
           });
         },
         onToolResult: (params: { id: string; result: ToolExecutionResult }) => {
-          const update = params.result.status === 'success'
-            ? { status: 'success' as const, result: { content: params.result.content } }
-            : { status: 'error' as const, error: { message: params.result.message } };
+          const update = (() => {
+            switch (params.result.status) {
+            case 'success':
+              return { status: 'success' as const, result: { content: params.result.content } };
+            case 'error':
+              return { status: 'error' as const, error: { message: params.result.message } };
+            default: {
+              const _ex: never = params.result;
+              throw new Error(`Unhandled tool execution status: ${(_ex as { status: string }).status}`);
+            }
+            }
+          })();
 
           updateToolCall({
             messageId: assistantId,

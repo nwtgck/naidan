@@ -5,7 +5,7 @@ export interface CapturedRequest {
   url?: string;
   method?: string;
   headers: http.IncomingHttpHeaders;
-  body?: any;
+  body?: unknown;
 }
 
 /**

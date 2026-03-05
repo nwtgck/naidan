@@ -69,8 +69,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     expect(onToolCall).toHaveBeenCalledWith({ id: 'call_1', toolName: 'get_weather', args: { location: 'Tokyo' } });
     expect(onToolResult).toHaveBeenCalledWith({ id: 'call_1', result: { status: 'success', content: 'Sunny, 25C' } });
 
-    expect(serverInstance.capturedRequests).toHaveLength(2);
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    expect(serverInstance!.capturedRequests).toHaveLength(2);
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages).toHaveLength(3);
     expect(secondReqBody.messages[2]).toEqual({
       role: 'tool',
@@ -154,7 +154,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     expect(result).toBe('Thinking... Done.');
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages).toHaveLength(2);
     expect(secondReqBody.messages[0]).toEqual({
       role: 'assistant',
@@ -198,7 +198,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     expect(mockTool.execute).not.toHaveBeenCalled();
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('Invalid arguments');
   });
 
@@ -231,7 +231,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
       tools: [mockTool],
     });
 
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('Error [execution_failed]: Something went wrong');
   });
 
@@ -264,7 +264,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
       tools: [mockTool],
     });
 
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('Failed to parse tool arguments');
   });
 
@@ -297,7 +297,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
       tools: [mockTool],
     });
 
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('KABOOM');
   });
 
@@ -323,7 +323,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
       tools: [], // No tools
     });
 
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('not found');
   });
 
@@ -368,7 +368,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
 
     await expect(chatPromise).rejects.toThrow();
     // Should NOT have made a second request to LLM
-    expect(serverInstance.capturedRequests).toHaveLength(1);
+    expect(serverInstance!.capturedRequests).toHaveLength(1);
   });
 
   it('should handle multiple tool calls in one response', async () => {
@@ -403,7 +403,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
       tools: [mockTool],
     });
 
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages).toHaveLength(3);
     expect(secondReqBody.messages[1].content).toBe('2');
     expect(secondReqBody.messages[2].content).toBe('20');
@@ -447,7 +447,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
       tools: [successTool, failTool],
     });
 
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages).toHaveLength(3);
     expect(secondReqBody.messages[1].content).toBe('GOOD');
     expect(secondReqBody.messages[2].content).toContain('BAD');

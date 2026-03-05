@@ -72,8 +72,8 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     expect(mockTool.execute).toHaveBeenCalledWith({ args: { location: 'London' } });
     expect(onToolCall).toHaveBeenCalledWith({ id: 'c1', toolName: 'get_weather', args: { location: 'London' } });
 
-    expect(serverInstance.capturedRequests).toHaveLength(2);
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    expect(serverInstance!.capturedRequests).toHaveLength(2);
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages).toHaveLength(3);
     expect(secondReqBody.messages[2]).toEqual({
       role: 'tool',
@@ -115,7 +115,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     });
 
     expect(result).toBe('Wait... Done.');
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[0].content).toBe('Wait... ');
   });
 
@@ -185,7 +185,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     });
 
     expect(mockTool.execute).not.toHaveBeenCalled();
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('Invalid arguments');
   });
 
@@ -217,7 +217,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
       tools: [mockTool],
     });
 
-    const secondReqBody = serverInstance.capturedRequests[1].body;
+    const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     expect(secondReqBody.messages[1].content).toContain('BOOM');
   });
 
@@ -260,6 +260,6 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     });
 
     await expect(chatPromise).rejects.toThrow();
-    expect(serverInstance.capturedRequests).toHaveLength(1);
+    expect(serverInstance!.capturedRequests).toHaveLength(1);
   });
 });

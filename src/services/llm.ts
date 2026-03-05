@@ -48,7 +48,13 @@ const OllamaChatChunkSchema = z.object({
     role: z.string().optional(),
     content: z.string().nullable().optional(),
     thinking: z.string().nullable().optional(),
-    tool_calls: z.any().optional(),
+    tool_calls: z.array(z.object({
+      id: z.string().optional(),
+      function: z.object({
+        name: z.string(),
+        arguments: z.union([z.string(), z.record(z.string(), z.any())]),
+      }),
+    })).optional(),
   }).optional(),
   done: z.boolean().optional(),
 });
@@ -102,6 +108,14 @@ interface OpenAICompletionRequest {
   frequency_penalty?: number;
   stop?: string[];
   reasoning_effort?: 'none' | 'low' | 'medium' | 'high';
+  tools?: {
+    type: 'function';
+    function: {
+      name: string;
+      description: string;
+      parameters: unknown;
+    };
+  }[];
 }
 
 export class OpenAIProvider implements LLMProvider {
@@ -129,7 +143,7 @@ export class OpenAIProvider implements LLMProvider {
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
 
     // Local copy to manage the conversation loop (tool calls/results)
-    const currentMessages: any[] = [...messages];
+    const currentMessages: ChatMessage[] = [...messages];
 
     while (true) {
       if (signal?.aborted) throw new Error('Generation aborted');
@@ -206,9 +220,8 @@ export class OpenAIProvider implements LLMProvider {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      const accumulatedToolCalls: any[] = [];
+      const accumulatedToolCalls: (import('../models/types').ToolCall | undefined)[] = [];
       let fullContent = '';
-      let hasSentChunk = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -232,7 +245,6 @@ export class OpenAIProvider implements LLMProvider {
             if (delta.content) {
               fullContent += delta.content;
               onChunk(delta.content);
-              hasSentChunk = true;
             }
 
             if (delta.tool_calls) {
@@ -244,9 +256,10 @@ export class OpenAIProvider implements LLMProvider {
                     function: { name: '', arguments: '' }
                   };
                 }
-                if (tc.function?.name) accumulatedToolCalls[tc.index].function.name += tc.function.name;
-                if (tc.function?.arguments) accumulatedToolCalls[tc.index].function.arguments += tc.function.arguments;
-                if (tc.id) accumulatedToolCalls[tc.index].id = tc.id;
+                const record = accumulatedToolCalls[tc.index]!;
+                if (tc.function?.name) record.function.name += tc.function.name;
+                if (tc.function?.arguments) record.function.arguments += tc.function.arguments;
+                if (tc.id) record.id = tc.id;
               }
             }
           } catch (e) {
@@ -260,13 +273,13 @@ export class OpenAIProvider implements LLMProvider {
       }
 
       // Filter out empty slots in accumulatedToolCalls if any
-      const toolCalls = accumulatedToolCalls.filter(tc => tc && tc.function.name);
+      const toolCalls = accumulatedToolCalls.filter((tc): tc is import('../models/types').ToolCall => !!tc && !!tc.function.name);
 
       if (toolCalls.length > 0) {
         // Execute tools and loop
         currentMessages.push({
           role: 'assistant',
-          content: fullContent || null,
+          content: fullContent,
           tool_calls: toolCalls
         });
 
@@ -305,7 +318,7 @@ export class OpenAIProvider implements LLMProvider {
                 break;
               default: {
                 const _ex: never = executionResult;
-                result = `Error: Unhandled tool execution status: ${(_ex as any).status}`;
+                result = `Error: Unhandled tool execution status: ${(_ex as { status: string }).status}`;
               }
               }
             } catch (e) {
@@ -621,7 +634,7 @@ export class OllamaProvider implements LLMProvider {
       let buffer = '';
 
       let isThinking = false;
-      const accumulatedToolCalls: any[] = [];
+      const accumulatedToolCalls: import('../models/types').ToolCall[] = [];
       let fullContent = '';
 
       while (true) {
@@ -660,7 +673,16 @@ export class OllamaProvider implements LLMProvider {
 
             if (validated.message?.tool_calls) {
               for (const tc of validated.message.tool_calls) {
-                accumulatedToolCalls.push(tc);
+                accumulatedToolCalls.push({
+                  id: tc.id || '',
+                  type: 'function',
+                  function: {
+                    name: tc.function.name,
+                    arguments: typeof tc.function.arguments === 'string'
+                      ? tc.function.arguments
+                      : JSON.stringify(tc.function.arguments)
+                  }
+                });
               }
             }
 
@@ -735,7 +757,7 @@ export class OllamaProvider implements LLMProvider {
                 break;
               default: {
                 const _ex: never = executionResult;
-                result = `Error: Unhandled tool execution status: ${(_ex as any).status}`;
+                result = `Error: Unhandled tool execution status: ${(_ex as { status: string }).status}`;
               }
               }
             } catch (e) {

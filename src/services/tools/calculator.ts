@@ -6,8 +6,6 @@ const CalculatorArgsSchema = z.object({
   expression: z.string().describe('The mathematical expression to evaluate (e.g., "2 + 3 * 4", "sqrt(16)", "cos(pi / 2)")'),
 });
 
-type CalculatorArgs = z.infer<typeof CalculatorArgsSchema>;
-
 export class CalculatorTool implements Tool {
   name = 'calculator';
   description = 'Evaluate mathematical expressions using mathjs.';
