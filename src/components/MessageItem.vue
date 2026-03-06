@@ -40,7 +40,7 @@ import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import MessageThinking from './MessageThinking.vue';
-import LmToolCalls from './LmToolCalls.vue';
+import LmToolCallGroup from './LmToolCallGroup.vue';
 import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '../services/transformers-js';
@@ -1078,7 +1078,7 @@ defineExpose({
       <MessageThinking :message="message" />
 
       <!-- Tool Execution Process (In-memory history) -->
-      <LmToolCalls :tool-calls="toolCalls" />
+      <LmToolCallGroup :tool-calls="toolCalls" />
 
       <!-- Content -->
       <div v-if="isEditing" class="mt-1" data-testid="edit-mode">

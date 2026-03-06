@@ -179,11 +179,11 @@ defineExpose({
           <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
             Options/Tools
           </div>
-          <LmToolsSettings />
           <ReasoningSettings
             :selected-effort="selectedReasoningEffort"
             @update:effort="e => emit('update:reasoning-effort', e)"
           />
+          <LmToolsSettings />
           <ImageGenerationSettings
             v-bind="props"
             @toggle-image-mode="emit('toggle-image-mode')"
