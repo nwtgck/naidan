@@ -1,6 +1,7 @@
 import type { LLMProvider } from './llm';
 import type { ChatMessage, LmParameters } from '../models/types';
 import { transformersJsService } from './transformers-js';
+import type { Tool, ToolExecutionResult } from './tools/types';
 
 export class TransformersJsProvider implements LLMProvider {
   async chat(params: {
@@ -8,6 +9,9 @@ export class TransformersJsProvider implements LLMProvider {
     model: string;
     onChunk: (chunk: string) => void;
     parameters?: LmParameters;
+    tools?: Tool[];
+    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
+    onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
     signal?: AbortSignal;
   }): Promise<void> {
     const { messages, model, onChunk, parameters, signal } = params;

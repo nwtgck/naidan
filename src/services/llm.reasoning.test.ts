@@ -95,6 +95,109 @@ describe('LLM Providers Reasoning', () => {
       expect(body.temperature).toBeUndefined();
       expect(body.reasoning_effort).toBeUndefined();
     });
+
+    it('should wrap reasoning tokens in <think> tags', async () => {
+      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1' });
+      const chunks = [
+        'data: {"choices":[{"delta":{"reasoning_content":"Thinking hard"}}]}',
+        'data: {"choices":[{"delta":{"content":"Hello!"}}]}',
+        'data: [DONE]'
+      ];
+      let chunkIndex = 0;
+
+      const mockResponse = {
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi.fn().mockImplementation(async () => {
+              if (chunkIndex >= chunks.length) return { done: true };
+              const value = new TextEncoder().encode(chunks[chunkIndex++] + '\n');
+              return { done: false, value };
+            }),
+          }),
+        },
+      };
+      (global.fetch as any).mockResolvedValue(mockResponse);
+
+      const receivedChunks: string[] = [];
+      await provider.chat({
+        messages: [{ role: 'user', content: 'Hi' }],
+        model: 'gpt-4o',
+        onChunk: (c) => receivedChunks.push(c),
+      });
+
+      expect(receivedChunks).toContain('<think>');
+      expect(receivedChunks).toContain('Thinking hard');
+      expect(receivedChunks).toContain('</think>');
+      expect(receivedChunks).toContain('Hello!');
+      // Verify order
+      const full = receivedChunks.join('');
+      expect(full).toBe('<think>Thinking hard</think>Hello!');
+    });
+
+    it('should support "reasoning" field (Ollama/DeepSeek style)', async () => {
+      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1' });
+      const chunks = [
+        'data: {"choices":[{"delta":{"reasoning":"Alternative field"}}]}',
+        'data: {"choices":[{"delta":{"content":"Done"}}]}',
+        'data: [DONE]'
+      ];
+      let chunkIndex = 0;
+
+      const mockResponse = {
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi.fn().mockImplementation(async () => {
+              if (chunkIndex >= chunks.length) return { done: true };
+              const value = new TextEncoder().encode(chunks[chunkIndex++] + '\n');
+              return { done: false, value };
+            }),
+          }),
+        },
+      };
+      (global.fetch as any).mockResolvedValue(mockResponse);
+
+      const receivedChunks: string[] = [];
+      await provider.chat({
+        messages: [{ role: 'user', content: 'Hi' }],
+        model: 'gpt-4o',
+        onChunk: (c) => receivedChunks.push(c),
+      });
+
+      expect(receivedChunks.join('')).toBe('<think>Alternative field</think>Done');
+    });
+
+    it('should close <think> tag if stream ends abruptly', async () => {
+      const provider = new OpenAIProvider({ endpoint: 'http://localhost:11434/v1' });
+      const chunks = [
+        'data: {"choices":[{"delta":{"reasoning_content":"Unfinished thoughts"}}]}'
+      ];
+      let chunkIndex = 0;
+
+      const mockResponse = {
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi.fn().mockImplementation(async () => {
+              if (chunkIndex >= chunks.length) return { done: true };
+              const value = new TextEncoder().encode(chunks[chunkIndex++] + '\n');
+              return { done: false, value };
+            }),
+          }),
+        },
+      };
+      (global.fetch as any).mockResolvedValue(mockResponse);
+
+      const receivedChunks: string[] = [];
+      await provider.chat({
+        messages: [{ role: 'user', content: 'Hi' }],
+        model: 'gpt-4o',
+        onChunk: (c) => receivedChunks.push(c),
+      });
+
+      expect(receivedChunks.join('')).toBe('<think>Unfinished thoughts</think>');
+    });
   });
 
   describe('OllamaProvider reasoning & retry logic', () => {

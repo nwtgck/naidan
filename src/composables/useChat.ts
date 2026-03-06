@@ -24,6 +24,10 @@ import {
   type ImageRequestParams
 } from '../utils/image-generation';
 
+import { useChatTools } from './useChatTools';
+import { ALL_TOOLS } from '../services/tools/registry';
+import type { ToolExecutionResult } from '../services/tools/types';
+
 const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
 const _currentChatGroup = ref<ChatGroup | null>(null);
@@ -937,9 +941,48 @@ export function useChat() {
 
       let lastSave = 0;
       let isSaving = false;
+      const { enabledToolNames, addToolCall, updateToolCall, clearToolCallsForMessage } = useChatTools();
+      const enabledTools = ALL_TOOLS.filter(t => enabledToolNames.value.includes(t.name));
+
+      // Clear previous tool calls for this message (e.g. on regenerate)
+      clearToolCallsForMessage({ messageId: assistantId });
+
       await provider.chat({
         messages: finalMessages,
         model: resolvedModel,
+        tools: enabledTools.length > 0 ? enabledTools : undefined,
+        onToolCall: (params: { id: string; toolName: string; args: unknown }) => {
+          addToolCall({
+            messageId: assistantId,
+            toolCall: {
+              id: params.id,
+              toolName: params.toolName,
+              args: params.args,
+              timestamp: Date.now(),
+              status: 'running'
+            }
+          });
+        },
+        onToolResult: (params: { id: string; result: ToolExecutionResult }) => {
+          const update = (() => {
+            switch (params.result.status) {
+            case 'success':
+              return { status: 'success' as const, result: { content: params.result.content } };
+            case 'error':
+              return { status: 'error' as const, error: { message: params.result.message } };
+            default: {
+              const _ex: never = params.result;
+              throw new Error(`Unhandled tool execution status: ${(_ex as { status: string }).status}`);
+            }
+            }
+          })();
+
+          updateToolCall({
+            messageId: assistantId,
+            toolCallId: params.id,
+            update
+          });
+        },
         onChunk: async (chunk: string) => {
           assistantNode.content += chunk;
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {

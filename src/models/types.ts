@@ -55,9 +55,20 @@ export type MultimodalContent =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
 
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string | Record<string, unknown>;
+  };
+}
+
 export interface ChatMessage {
   role: string;
   content: string | MultimodalContent[];
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
 }
 
 export interface AttachmentBase {
