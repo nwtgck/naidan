@@ -40,7 +40,6 @@ import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import MessageThinking from './MessageThinking.vue';
-import LmToolCallGroup from './LmToolCallGroup.vue';
 import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '../services/transformers-js';
@@ -51,7 +50,6 @@ const MessageDiffModal = defineAsyncComponentAndLoadOnMounted(() => import('./Me
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
 import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '../composables/useImagePreview';
 import { useChat } from '../composables/useChat';
-import { useChatTools } from '../composables/useChatTools';
 import { useReasoning } from '../composables/useReasoning';
 import { useLayout } from '../composables/useLayout';
 import { useSettings } from '../composables/useSettings';
@@ -123,12 +121,9 @@ const metadataSupportCache = new Map<string, boolean>();
 
 const { openPreview } = useImagePreview();
 const { imageProgressMap, currentChat } = useChat();
-const { getToolCallsForMessage } = useChatTools();
 const { getReasoningEffort } = useReasoning();
 const { preferredEditorMode, setPreferredEditorMode } = useLayout();
 const { settings } = useSettings();
-
-const toolCalls = computed(() => getToolCallsForMessage({ messageId: props.message.id }));
 
 const editReasoningEffort = ref<Reasoning['effort']>(undefined);
 
@@ -890,6 +885,7 @@ const isUser = computed((): boolean => {
   case 'user': return true;
   case 'assistant':
   case 'system':
+  case 'tool':
     return false;
   default: {
     const _ex: never = node;
@@ -905,6 +901,7 @@ const reasoningEffortLabel = computed(() => {
       return props.message.lmParameters?.reasoning?.effort;
     case 'user':
     case 'system':
+    case 'tool':
       return undefined;
     default: {
       const _ex: never = props.message;
@@ -936,6 +933,7 @@ const reasoningEffortTooltip = computed(() => {
       return props.message.lmParameters?.reasoning?.effort;
     case 'user':
     case 'system':
+    case 'tool':
       return undefined;
     default: {
       const _ex: never = props.message;
@@ -1076,9 +1074,6 @@ defineExpose({
       </div>
 
       <MessageThinking :message="message" />
-
-      <!-- Tool Execution Process (In-memory history) -->
-      <LmToolCallGroup :tool-calls="toolCalls" />
 
       <!-- Content -->
       <div v-if="isEditing" class="mt-1" data-testid="edit-mode">

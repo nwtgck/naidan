@@ -3,7 +3,14 @@ import { z } from 'zod';
 /**
  * Error codes for tool execution failures.
  */
-export type ToolErrorCode = 'invalid_arguments' | 'execution_failed' | 'timeout' | 'other';
+export type ToolExecutionErrorCode = 'invalid_arguments' | 'execution_failed' | 'timeout' | 'other';
+
+/**
+ * Result of a tool execution.
+ */
+export type TextOrBinaryObject =
+  | { type: 'text'; text: string }
+  | { type: 'binary_object'; id: string };
 
 /**
  * Result of a tool execution.
@@ -18,8 +25,9 @@ export type ToolErrorCode = 'invalid_arguments' | 'execution_failed' | 'timeout'
  * - Logical failures that the LLM can recover from or explain should be returned as { status: 'error' }.
  */
 export type ToolExecutionResult =
-  | { status: 'success'; content: string }
-  | { status: 'error'; code: ToolErrorCode; message: string };
+  | { status: 'running' }
+  | { status: 'success'; content: TextOrBinaryObject }
+  | { status: 'error'; error: { code: ToolExecutionErrorCode; message: TextOrBinaryObject } };
 
 /**
  * Represents a tool call event during a chat generation.
@@ -32,8 +40,8 @@ export type ToolCallRecord = {
   timestamp: number;
 } & (
   | { status: 'running' }
-  | { status: 'success'; result: { content: string } }
-  | { status: 'error'; error: { message: string } }
+  | { status: 'success'; result: { content: TextOrBinaryObject } }
+  | { status: 'error'; error: { message: TextOrBinaryObject } }
 );
 
 export interface Tool {

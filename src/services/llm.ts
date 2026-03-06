@@ -93,6 +93,7 @@ export interface LLMProvider {
     tools?: Tool[];
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
     onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
+    onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void>;
 
@@ -138,9 +139,10 @@ export class OpenAIProvider implements LLMProvider {
     tools?: Tool[];
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
     onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
+    onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, onToolCall, onToolResult, signal } = params;
+    const { messages, model, onChunk, parameters, tools, onToolCall, onToolResult, onAssistantMessageStart, signal } = params;
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
 
@@ -149,6 +151,8 @@ export class OpenAIProvider implements LLMProvider {
 
     while (true) {
       if (signal?.aborted) throw new Error('Generation aborted');
+
+      onAssistantMessageStart?.();
 
       const body: OpenAICompletionRequest = {
         model,
@@ -497,9 +501,10 @@ export class OllamaProvider implements LLMProvider {
     tools?: Tool[];
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
     onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
+    onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, onToolCall, onToolResult, signal } = params;
+    const { messages, model, onChunk, parameters, tools, onToolCall, onToolResult, onAssistantMessageStart, signal } = params;
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
 
@@ -507,6 +512,8 @@ export class OllamaProvider implements LLMProvider {
 
     while (true) {
       if (signal?.aborted) throw new Error('Generation aborted');
+
+      onAssistantMessageStart?.();
 
       // Transform messages to Ollama format
       const ollamaMessages: OllamaMessage[] = currentMessages.map(m => {

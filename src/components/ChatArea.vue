@@ -9,6 +9,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 // IMPORTANT: MessageItem is the core of the chat experience. We import it synchronously
 // to ensure the chat history displays immediately and smoothly without individual components popping in.
 import MessageItem from './MessageItem.vue';
+import ToolCallGroupItem from './ToolCallGroupItem.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
@@ -55,7 +56,7 @@ const {
 const {
   currentChat,
   generatingTitle,
-  activeMessages,
+  activeDisplayMessages,
   allMessages,
   availableModels,
   resolvedSettings,
@@ -143,24 +144,33 @@ async function handleMoveToGroup(groupId: string | null) {
 }
 
 function exportChat() {
-  if (!currentChat.value || !activeMessages.value) return;
+  if (!currentChat.value || !activeDisplayMessages.value) return;
 
   let markdownContent = `# ${currentChat.value.title || 'New Chat'}\n\n`;
 
-  activeMessages.value.forEach(msg => {
-    const role = (() => {
-      const node = msg;
-      switch (node.role) {
-      case 'user': return 'User';
-      case 'assistant': return 'AI';
-      case 'system': return 'System';
-      default: {
-        const _ex: never = node;
-        return (_ex as { role: string }).role;
-      }
-      }
-    })();
-    markdownContent += `## ${role}:\n${msg.content}\n\n`;
+  activeDisplayMessages.value.forEach(item => {
+    if (item.type === 'message') {
+      const msg = item.node;
+      const role = (() => {
+        switch (msg.role) {
+        case 'user': return 'User';
+        case 'assistant': return 'AI';
+        case 'system': return 'System';
+        case 'tool': return 'Tool';
+        default: {
+          const _ex: never = msg;
+          return (_ex as { role: string }).role;
+        }
+        }
+      })();
+      markdownContent += `## ${role}:\n${msg.content}\n\n`;
+    } else {
+      // Tool group
+      markdownContent += `## Tool Executions:\n`;
+      item.toolCalls.forEach(tc => {
+        markdownContent += `### ${tc.call.function.name}\nArgs: ${tc.call.function.arguments}\nResult: ${tc.result.status === 'success' ? (tc.result.content.type === 'text' ? tc.result.content.text : '[Binary Object]') : (tc.result.error.message.type === 'text' ? tc.result.error.message.text : '[Binary Error]')}\n\n`;
+      });
+    }
   });
 
   const blob = new Blob([markdownContent], { type: 'text/plain;charset=utf-8' });
@@ -279,9 +289,9 @@ async function handleFork(messageId: string) {
 }
 
 function handleForkLastMessage() {
-  const lastMsg = activeMessages.value[activeMessages.value.length - 1];
-  if (lastMsg) {
-    handleFork(lastMsg.id);
+  const lastMsgItem = [...activeDisplayMessages.value].reverse().find(i => i.type === 'message');
+  if (lastMsgItem && lastMsgItem.type === 'message') {
+    handleFork(lastMsgItem.node.id);
   }
 }
 
@@ -292,14 +302,14 @@ function jumpToOrigin() {
 }
 
 async function scrollToLatestUserMessage() {
-  if (!container.value || !activeMessages.value) return;
+  if (!container.value || !activeDisplayMessages.value) return;
 
   // Find last user message
-  const reversed = [...activeMessages.value].reverse();
-  const lastUserMsg = reversed.find(m => m.role === 'user');
+  const reversed = [...activeDisplayMessages.value].reverse();
+  const lastUserMsgItem = reversed.find(i => i.type === 'message' && i.node.role === 'user');
 
-  if (lastUserMsg) {
-    const messageId = lastUserMsg.id;
+  if (lastUserMsgItem && lastUserMsgItem.type === 'message') {
+    const messageId = lastUserMsgItem.node.id;
     // Robustly find the element, waiting up to 5 ticks for DOM to settle
     let el: HTMLElement | null = null;
     for (let i = 0; i < 5; i++) {
@@ -334,7 +344,7 @@ watch(
 );
 
 watch(
-  [() => activeMessages.value.length, () => currentChat.value?.id],
+  [() => activeDisplayMessages.value.length, () => currentChat.value?.id],
   async ([_newLen, newId], [_oldLen, oldId]) => {
     if (newId !== oldId) {
       isInitialLoad.value = true;
@@ -348,39 +358,46 @@ watch(
       return;
     }
 
-    const lastMsg = activeMessages.value[activeMessages.value.length - 1];
-    if (!lastMsg) return;
+    const lastItem = activeDisplayMessages.value[activeDisplayMessages.value.length - 1];
+    if (!lastItem) return;
 
-    const role = lastMsg.role;
-    switch (role) {
-    case 'user':
-      scrollToBottom();
-      break;
-    case 'assistant':
-    case 'system': {
-      if (container.value) {
-        const messageId = lastMsg.id;
-        // Wait a tick for the new element
-        await nextTick();
-        const el = container.value.querySelector(`#message-${messageId}`);
-        if (el instanceof HTMLElement) {
-          scrollIntoViewSafe({
-            container: container.value,
-            element: el,
-            behavior: 'smooth',
-            block: 'start'
-          });
+    if (lastItem.type === 'message') {
+      const role = lastItem.node.role;
+      switch (role) {
+      case 'user':
+        scrollToBottom();
+        break;
+      case 'assistant':
+      case 'system':
+      case 'tool': {
+        if (container.value) {
+          const messageId = lastItem.node.id;
+          // Wait a tick for the new element
+          await nextTick();
+          const el = container.value.querySelector(`#message-${messageId}`);
+          if (el instanceof HTMLElement) {
+            scrollIntoViewSafe({
+              container: container.value,
+              element: el,
+              behavior: 'smooth',
+              block: 'start'
+            });
+          }
         }
+        break;
       }
-      break;
-    }
-    default: {
-      const _ex: never = role;
-      throw new Error(`Unhandled role: ${_ex}`);
-    }
+      default: {
+        const _ex: never = role;
+        throw new Error(`Unhandled role: ${_ex}`);
+      }
+      }
+    } else {
+      // Tool group - auto scroll to it
+      scrollToBottom();
     }
   },
-);</script>
+);
+</script>
 
 <template>
   <div
@@ -668,25 +685,30 @@ watch(
           Select or create a chat to start
         </div>
         <template v-else>
-          <div v-if="activeMessages.length > 0" class="relative p-2">
-            <MessageItem
-              v-for="msg in activeMessages"
-              :id="'message-' + msg.id"
-              :key="msg.id"
-              :chat-id="currentChat!.id"
-              :message="msg"
-              :siblings="chatStore.getSiblings(msg.id)"
-              :can-generate-image="canGenerateImage && hasImageModel"
-              :is-processing="isCurrentChatStreaming"
-              :is-generating="isCurrentChatStreaming && msg.id === currentChat?.currentLeafId"
-              :available-image-models="availableImageModels"
-              :endpoint-type="resolvedSettings?.endpointType"
-              @fork="handleFork"
-              @edit="(id, content, params) => handleEdit(id, content, params)"
-              @switch-version="handleSwitchVersion"
-              @regenerate="handleRegenerate"
-              @abort="chatStore.abortChat({ chatId: undefined })"
-            />
+          <div v-if="activeDisplayMessages.length > 0" class="relative p-2">
+            <template v-for="item in activeDisplayMessages" :key="item.type === 'message' ? item.node.id : item.id">
+              <MessageItem
+                v-if="item.type === 'message'"
+                :id="'message-' + item.node.id"
+                :chat-id="currentChat!.id"
+                :message="item.node"
+                :siblings="chatStore.getSiblings(item.node.id)"
+                :can-generate-image="canGenerateImage && hasImageModel"
+                :is-processing="isCurrentChatStreaming"
+                :is-generating="isCurrentChatStreaming && item.node.id === currentChat?.currentLeafId"
+                :available-image-models="availableImageModels"
+                :endpoint-type="resolvedSettings?.endpointType"
+                @fork="handleFork"
+                @edit="(id, content, params) => handleEdit(id, content, params)"
+                @switch-version="handleSwitchVersion"
+                @regenerate="handleRegenerate"
+                @abort="chatStore.abortChat({ chatId: undefined })"
+              />
+              <ToolCallGroupItem
+                v-else-if="item.type === 'tool_group'"
+                :tool-calls="item.toolCalls"
+              />
+            </template>
 
             <!-- Global Transformers.js Loading Indicator in the scroll flow -->
             <TransformersJsLoadingIndicator

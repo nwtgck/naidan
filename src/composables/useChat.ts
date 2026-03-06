@@ -355,6 +355,70 @@ export function useChat() {
     return getChatBranch(_currentChat.value);
   });
 
+  const activeDisplayMessages = computed<import('../models/types').DisplayMessage[]>(() => {
+    const branch = activeMessages.value;
+    const result: import('../models/types').DisplayMessage[] = [];
+
+    // Track the current assistant node that might have tool calls
+    let lastAssistant: AssistantMessageNode | null = null;
+    let currentToolGroup: import('../models/types').CombinedToolCall[] = [];
+
+    for (const node of branch) {
+      if (node.role === 'assistant') {
+        // If we had a tool group, finish it
+        if (currentToolGroup.length > 0) {
+          result.push({
+            type: 'tool_group',
+            id: currentToolGroup.map(tc => tc.id).join(','),
+            toolCalls: currentToolGroup
+          });
+          currentToolGroup = [];
+        }
+        lastAssistant = node;
+        result.push({ type: 'message', node });
+      } else if (node.role === 'tool') {
+        if (lastAssistant && lastAssistant.toolCalls) {
+          const call = lastAssistant.toolCalls.find(tc => tc.id === node.toolCallId);
+          if (call) {
+            currentToolGroup.push({
+              id: node.toolCallId,
+              nodeId: node.id,
+              call,
+              result: node.result
+            });
+          } else {
+            // Orphaned tool message? Render as standalone message node
+            result.push({ type: 'message', node });
+          }
+        } else {
+          // No assistant found before? Render as standalone message node
+          result.push({ type: 'message', node });
+        }
+      } else {
+        // user, system
+        if (currentToolGroup.length > 0) {
+          result.push({
+            type: 'tool_group',
+            id: currentToolGroup.map(tc => tc.id).join(','),
+            toolCalls: currentToolGroup
+          });
+          currentToolGroup = [];
+        }
+        result.push({ type: 'message', node });
+      }
+    }
+
+    if (currentToolGroup.length > 0) {
+      result.push({
+        type: 'tool_group',
+        id: currentToolGroup.map(tc => tc.id).join(','),
+        toolCalls: currentToolGroup
+      });
+    }
+
+    return result;
+  });
+
   const allMessages = computed(() => {
     if (!_currentChat.value) return [];
     return getAllMessages(_currentChat.value);
@@ -941,50 +1005,98 @@ export function useChat() {
 
       let lastSave = 0;
       let isSaving = false;
-      const { enabledToolNames, addToolCall, updateToolCall, clearToolCallsForMessage } = useChatTools();
+      const { enabledToolNames } = useChatTools();
       const enabledTools = ALL_TOOLS.filter(t => enabledToolNames.value.includes(t.name));
 
-      // Clear previous tool calls for this message (e.g. on regenerate)
-      clearToolCallsForMessage({ messageId: assistantId });
+      let currentAssistantNode = assistantNode;
 
       await provider.chat({
         messages: finalMessages,
         model: resolvedModel,
         tools: enabledTools.length > 0 ? enabledTools : undefined,
-        onToolCall: (params: { id: string; toolName: string; args: unknown }) => {
-          addToolCall({
-            messageId: assistantId,
-            toolCall: {
-              id: params.id,
-              toolName: params.toolName,
-              args: params.args,
+        onAssistantMessageStart: () => {
+          // If the current node already has content or tool calls, it means we're in a new loop
+          // iteration after a tool result, so we need a new assistant node to hold the next response.
+          if (currentAssistantNode.content !== '' || (currentAssistantNode.toolCalls?.length ?? 0) > 0) {
+            const newNode: AssistantMessageNode = {
+              id: generateId(),
+              role: 'assistant',
+              content: '',
               timestamp: Date.now(),
-              status: 'running'
+              modelId: currentAssistantNode.modelId,
+              replies: { items: [] },
+              attachments: undefined,
+              thinking: undefined,
+              error: undefined,
+              lmParameters: currentAssistantNode.lmParameters,
+              toolCalls: undefined,
+              toolCallId: undefined,
+              result: undefined,
+            };
+
+            const currentLeaf = findNodeInBranch(mutableChat.root.items, mutableChat.currentLeafId);
+            if (currentLeaf) {
+              currentLeaf.replies.items.push(newNode);
+              mutableChat.currentLeafId = newNode.id;
+              currentAssistantNode = newNode;
+              triggerRef(_currentChat);
             }
-          });
+          }
+        },
+        onToolCall: (params: { id: string; toolName: string; args: unknown }) => {
+          // 1. Create ToolMessageNode
+          const toolNode: import('../models/types').ToolMessageNode = {
+            id: generateId(),
+            role: 'tool',
+            toolCallId: params.id,
+            result: { status: 'running' },
+            content: undefined,
+            timestamp: Date.now(),
+            replies: { items: [] },
+            attachments: undefined,
+            thinking: undefined,
+            error: undefined,
+            modelId: undefined,
+            lmParameters: undefined,
+            toolCalls: undefined,
+          };
+
+          // 2. Add to current branch
+          const currentLeaf = findNodeInBranch(mutableChat.root.items, mutableChat.currentLeafId);
+          if (currentLeaf) {
+            currentLeaf.replies.items.push(toolNode);
+            mutableChat.currentLeafId = toolNode.id;
+          }
+
+          // 3. Update Assistant node's toolCalls metadata
+          if (!currentAssistantNode.toolCalls) {
+            currentAssistantNode.toolCalls = [];
+          }
+          if (!currentAssistantNode.toolCalls.some(tc => tc.id === params.id)) {
+            currentAssistantNode.toolCalls.push({
+              id: params.id,
+              type: 'function',
+              function: {
+                name: params.toolName,
+                arguments: typeof params.args === 'string' ? params.args : JSON.stringify(params.args)
+              }
+            });
+          }
+
+          triggerRef(_currentChat);
         },
         onToolResult: (params: { id: string; result: ToolExecutionResult }) => {
-          const update = (() => {
-            switch (params.result.status) {
-            case 'success':
-              return { status: 'success' as const, result: { content: params.result.content } };
-            case 'error':
-              return { status: 'error' as const, error: { message: params.result.message } };
-            default: {
-              const _ex: never = params.result;
-              throw new Error(`Unhandled tool execution status: ${(_ex as { status: string }).status}`);
-            }
-            }
-          })();
+          // Find the matching ToolMessageNode in the current branch
+          const history = getChatBranch(mutableChat);
+          const toolNode = history.find(n => n.role === 'tool' && n.toolCallId === params.id) as import('../models/types').ToolMessageNode | undefined;
 
-          updateToolCall({
-            messageId: assistantId,
-            toolCallId: params.id,
-            update
-          });
+          if (toolNode) {
+            toolNode.result = params.result;
+            triggerRef(_currentChat);
+          }
         },
         onChunk: async (chunk: string) => {
-          assistantNode.content += chunk;
+          currentAssistantNode.content += chunk;
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
             triggerRef(_currentChat);
           }
@@ -1164,7 +1276,10 @@ export function useChat() {
         thinking: undefined,
         error: undefined,
         modelId: undefined,
-        lmParameters: lmParameters || EMPTY_LM_PARAMETERS
+        lmParameters: lmParameters || EMPTY_LM_PARAMETERS,
+        toolCalls: undefined,
+        toolCallId: undefined,
+        result: undefined,
       };
 
       const assistantContent = isImgMode
@@ -1181,7 +1296,10 @@ export function useChat() {
         attachments: undefined,
         thinking: undefined,
         error: undefined,
-        lmParameters: lmParameters || EMPTY_LM_PARAMETERS
+        lmParameters: lmParameters || EMPTY_LM_PARAMETERS,
+        toolCalls: undefined,
+        toolCallId: undefined,
+        result: undefined,
       };
       userMsg.replies.items.push(assistantMsg);
 
@@ -1238,7 +1356,10 @@ export function useChat() {
         attachments: undefined,
         thinking: undefined,
         error: undefined,
-        lmParameters: failedNode.lmParameters || EMPTY_LM_PARAMETERS
+        lmParameters: failedNode.lmParameters || EMPTY_LM_PARAMETERS,
+        toolCalls: undefined,
+        toolCallId: undefined,
+        result: undefined,
       };
       parent.replies.items.push(newAssistantMsg);
       chat.currentLeafId = newAssistantMsg.id;
@@ -1406,7 +1527,10 @@ export function useChat() {
           thinking: undefined,
           error: undefined,
           modelId: undefined,
-          lmParameters: n.lmParameters || { reasoning: { effort: undefined } }
+          lmParameters: n.lmParameters || { reasoning: { effort: undefined } },
+          toolCalls: undefined,
+          toolCallId: undefined,
+          result: undefined,
         } as UserMessageNode;
       case 'assistant':
         return {
@@ -1416,7 +1540,10 @@ export function useChat() {
           thinking: n.thinking,
           error: n.error,
           modelId: n.modelId,
-          lmParameters: n.lmParameters || { reasoning: { effort: undefined } }
+          lmParameters: n.lmParameters || { reasoning: { effort: undefined } },
+          toolCalls: n.toolCalls,
+          toolCallId: undefined,
+          result: undefined,
         } as AssistantMessageNode;
       case 'system':
         return {
@@ -1427,7 +1554,24 @@ export function useChat() {
           error: undefined,
           modelId: undefined,
           lmParameters: undefined,
+          toolCalls: undefined,
+          toolCallId: undefined,
+          result: undefined,
         } as SystemMessageNode;
+      case 'tool':
+        return {
+          ...common,
+          role: 'tool',
+          content: undefined,
+          attachments: undefined,
+          thinking: undefined,
+          error: undefined,
+          modelId: undefined,
+          lmParameters: undefined,
+          toolCalls: undefined,
+          toolCallId: n.toolCallId,
+          result: n.result,
+        } as import('../models/types').ToolMessageNode;
       default: {
         const _ex: never = n;
         throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
@@ -1493,7 +1637,10 @@ export function useChat() {
         replies: { items: [] },
         thinking: undefined,
         error: undefined,
-        lmParameters: node.lmParameters || EMPTY_LM_PARAMETERS
+        lmParameters: node.lmParameters || EMPTY_LM_PARAMETERS,
+        toolCalls: undefined,
+        toolCallId: undefined,
+        result: undefined,
       };
       const parent = findParentInBranch(chat.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);
@@ -1869,7 +2016,7 @@ export function useChat() {
   };
 
   return {
-    rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
+    rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, activeDisplayMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
     loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup,

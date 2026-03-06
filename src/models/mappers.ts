@@ -48,6 +48,7 @@ export const roleToDomain = (dto: RoleDto): Role => {
   case 'user': return 'user';
   case 'assistant': return 'assistant';
   case 'system': return 'system';
+  case 'tool': return 'tool';
   default: throw new Error(`Unknown role: ${dto}`);
   }
 };
@@ -338,31 +339,57 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
     return {
       ...common,
       role: 'user',
+      content: dto.content,
       attachments: dto.attachments?.map(attachmentToDomain),
       thinking: undefined,
       error: undefined,
       modelId: undefined,
       lmParameters: lmParametersToDomain(dto.lmParameters),
+      toolCalls: undefined,
+      toolCallId: undefined,
+      result: undefined,
     };
   case 'assistant':
     return {
       ...common,
       role: 'assistant',
+      content: dto.content,
       attachments: undefined,
       thinking: dto.thinking,
       error: undefined,
       modelId: dto.modelId,
       lmParameters: lmParametersToDomain(dto.lmParameters),
+      toolCalls: dto.toolCalls,
+      toolCallId: undefined,
+      result: undefined,
     };
   case 'system':
     return {
       ...common,
       role: 'system',
+      content: dto.content,
       attachments: undefined,
       thinking: undefined,
       error: undefined,
       modelId: undefined,
       lmParameters: undefined,
+      toolCalls: undefined,
+      toolCallId: undefined,
+      result: undefined,
+    };
+  case 'tool':
+    return {
+      ...common,
+      role: 'tool',
+      content: undefined,
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+      toolCalls: undefined,
+      toolCallId: dto.toolCallId,
+      result: dto.result,
     };
   default: {
     const _ex: never = dto;
@@ -386,28 +413,53 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
     return {
       ...common,
       role: 'user',
+      content: domain.content,
       attachments: domain.attachments?.map(attachmentToDto),
       thinking: undefined,
       modelId: undefined,
       lmParameters: lmParametersToDto(domain.lmParameters),
+      toolCalls: undefined,
+      toolCallId: undefined,
+      result: undefined,
     };
   case 'assistant':
     return {
       ...common,
       role: 'assistant',
+      content: domain.content,
       attachments: undefined,
       thinking: domain.thinking,
       modelId: domain.modelId,
       lmParameters: lmParametersToDto(domain.lmParameters),
+      toolCalls: domain.toolCalls,
+      toolCallId: undefined,
+      result: undefined,
     };
   case 'system':
     return {
       ...common,
       role: 'system',
+      content: domain.content,
       attachments: undefined,
       thinking: undefined,
       modelId: undefined,
       lmParameters: undefined,
+      toolCalls: undefined,
+      toolCallId: undefined,
+      result: undefined,
+    };
+  case 'tool':
+    return {
+      ...common,
+      role: 'tool',
+      content: undefined,
+      attachments: undefined,
+      thinking: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+      toolCalls: undefined,
+      toolCallId: domain.toolCallId,
+      result: domain.result,
     };
   default: {
     const _ex: never = domain;
@@ -452,6 +504,9 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
           stop: undefined,
           reasoning: { effort: undefined }
         },
+        toolCalls: undefined,
+        toolCallId: undefined,
+        result: undefined,
       } as AssistantMessageNode;
     case 'user':
       return {
@@ -470,6 +525,9 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
           stop: undefined,
           reasoning: { effort: undefined }
         },
+        toolCalls: undefined,
+        toolCallId: undefined,
+        result: undefined,
       } as UserMessageNode;
     case 'system':
       return {
@@ -480,7 +538,12 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
         error: undefined,
         modelId: undefined,
         lmParameters: undefined,
+        toolCalls: undefined,
+        toolCallId: undefined,
+        result: undefined,
       } as SystemMessageNode;
+    case 'tool':
+      throw new Error('Tool role migration not implemented for legacy messages');
     default: {
       const _ex: never = m.role;
       throw new Error(`Unhandled role: ${_ex}`);

@@ -12,9 +12,10 @@ export class TransformersJsProvider implements LLMProvider {
     tools?: Tool[];
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
     onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
+    onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, signal } = params;
+    const { messages, model, onChunk, parameters, onAssistantMessageStart, signal } = params;
 
     // Auto-load if needed
     const state = transformersJsService.getState();
@@ -39,6 +40,7 @@ export class TransformersJsProvider implements LLMProvider {
       await transformersJsService.loadModel(model);
     }
 
+    onAssistantMessageStart?.();
     await transformersJsService.generateText(messages, onChunk, parameters, signal);
   }
 
