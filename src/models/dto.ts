@@ -171,12 +171,14 @@ export const TextOrBinaryObjectSchemaDto = z.discriminatedUnion('type', [
 ]);
 
 export const ToolExecutionResultSchemaDto = z.discriminatedUnion('status', [
-  z.object({ status: z.literal('running') }),
+  z.object({ toolCallId: z.string(), status: z.literal('running') }),
   z.object({
+    toolCallId: z.string(),
     status: z.literal('success'),
     content: TextOrBinaryObjectSchemaDto,
   }),
   z.object({
+    toolCallId: z.string(),
     status: z.literal('error'),
     error: z.object({
       code: z.enum(['invalid_arguments', 'execution_failed', 'timeout', 'other']),
@@ -197,8 +199,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       modelId: z.undefined(),
       lmParameters: orUndefined(LmParametersSchemaDto),
       toolCalls: z.undefined(),
-      toolCallId: z.undefined(),
-      result: z.undefined(),
+      executionResults: z.undefined(),
       replies: MessageBranchSchemaDto,
     }),
     z.object({
@@ -211,8 +212,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       modelId: orUndefined(z.string()),
       lmParameters: orUndefined(LmParametersSchemaDto),
       toolCalls: orUndefined(z.array(ToolCallSchemaDto)),
-      toolCallId: z.undefined(),
-      result: z.undefined(),
+      executionResults: z.undefined(),
       replies: MessageBranchSchemaDto,
     }),
     z.object({
@@ -225,8 +225,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       modelId: z.undefined(),
       lmParameters: z.undefined(),
       toolCalls: z.undefined(),
-      toolCallId: z.undefined(),
-      result: z.undefined(),
+      executionResults: z.undefined(),
       replies: MessageBranchSchemaDto,
     }),
     z.object({
@@ -239,8 +238,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       modelId: z.undefined(),
       lmParameters: z.undefined(),
       toolCalls: z.undefined(),
-      toolCallId: z.string(),
-      result: ToolExecutionResultSchemaDto,
+      executionResults: z.array(ToolExecutionResultSchemaDto),
       replies: MessageBranchSchemaDto,
     }),
   ])
@@ -268,8 +266,7 @@ export type MessageNodeDto =
       modelId: undefined;
       lmParameters: LmParametersDto | undefined;
       toolCalls: undefined;
-      toolCallId: undefined;
-      result: undefined;
+      executionResults: undefined;
     })
   | (MessageNodeCommonDto & {
       role: 'assistant';
@@ -279,8 +276,7 @@ export type MessageNodeDto =
       modelId: string | undefined;
       lmParameters: LmParametersDto | undefined;
       toolCalls: z.infer<typeof ToolCallSchemaDto>[] | undefined;
-      toolCallId: undefined;
-      result: undefined;
+      executionResults: undefined;
     })
   | (MessageNodeCommonDto & {
       role: 'system';
@@ -290,8 +286,7 @@ export type MessageNodeDto =
       modelId: undefined;
       lmParameters: undefined;
       toolCalls: undefined;
-      toolCallId: undefined;
-      result: undefined;
+      executionResults: undefined;
     })
   | (MessageNodeCommonDto & {
       role: 'tool';
@@ -301,8 +296,7 @@ export type MessageNodeDto =
       modelId: undefined;
       lmParameters: undefined;
       toolCalls: undefined;
-      toolCallId: string;
-      result: z.infer<typeof ToolExecutionResultSchemaDto>;
+      executionResults: z.infer<typeof ToolExecutionResultSchemaDto>[];
     });
 
 /**

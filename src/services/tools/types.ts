@@ -24,10 +24,11 @@ export type TextOrBinaryObject =
  *   (e.g., missing dependencies, internal bugs).
  * - Logical failures that the LLM can recover from or explain should be returned as { status: 'error' }.
  */
-export type ToolExecutionResult =
+export type ToolExecutionResult = { toolCallId: string } & (
   | { status: 'running' }
   | { status: 'success'; content: TextOrBinaryObject }
-  | { status: 'error'; error: { code: ToolExecutionErrorCode; message: TextOrBinaryObject } };
+  | { status: 'error'; error: { code: ToolExecutionErrorCode; message: TextOrBinaryObject } }
+);
 
 /**
  * Represents a tool call event during a chat generation.

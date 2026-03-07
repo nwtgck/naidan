@@ -388,8 +388,7 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      toolCallId: dto.toolCallId,
-      result: dto.result,
+      executionResults: dto.executionResults,
     };
   default: {
     const _ex: never = dto;
@@ -458,8 +457,7 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      toolCallId: domain.toolCallId,
-      result: domain.result,
+      executionResults: domain.executionResults,
     };
   default: {
     const _ex: never = domain;
