@@ -45,10 +45,10 @@ describe('useChatDisplayFlow complex scenario', () => {
           isWaiting: false
         },
         items: [
-          { type: 'message', node: expect.objectContaining({ id: 'a1' }), mode: 'thinking', partContent: 'T1', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'none' } },
-          { type: 'message', node: expect.objectContaining({ id: 'a1' }), mode: 'tool_calls', isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'none' } },
-          { type: 'tool_group', id: 't1', node: expect.objectContaining({ id: 't1' }), toolCalls: [expect.objectContaining({ id: 'tc1' })], flow: { position: 'standalone', nesting: 'none' } },
-          { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'thinking', partContent: 'TM', isFirstInNode: true, isLastInNode: false, isFirstInTurn: false, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'none' } }
+          { type: 'message', node: expect.objectContaining({ id: 'a1' }), mode: 'thinking', partContent: 'T1', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
+          { type: 'message', node: expect.objectContaining({ id: 'a1' }), mode: 'tool_calls', isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'inside-group' } },
+          { type: 'tool_group', id: 't1', node: expect.objectContaining({ id: 't1' }), toolCalls: [expect.objectContaining({ id: 'tc1' })], flow: { position: 'standalone', nesting: 'inside-group' } },
+          { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'thinking', partContent: 'TM', isFirstInNode: true, isLastInNode: false, isFirstInTurn: false, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } }
         ],
         flow: { position: 'start', nesting: 'none' }
       },
@@ -75,9 +75,9 @@ describe('useChatDisplayFlow complex scenario', () => {
           isWaiting: false
         },
         items: [
-          { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'tool_calls', isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'none' } },
-          { type: 'tool_group', id: 'tm', node: expect.objectContaining({ id: 'tm' }), toolCalls: [expect.objectContaining({ id: 'tcm' })], flow: { position: 'standalone', nesting: 'none' } },
-          { type: 'message', node: expect.objectContaining({ id: 'al' }), mode: 'thinking', partContent: 'TL', isFirstInNode: true, isLastInNode: false, isFirstInTurn: false, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'none' } }
+          { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'tool_calls', isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'inside-group' } },
+          { type: 'tool_group', id: 'tm', node: expect.objectContaining({ id: 'tm' }), toolCalls: [expect.objectContaining({ id: 'tcm' })], flow: { position: 'standalone', nesting: 'inside-group' } },
+          { type: 'message', node: expect.objectContaining({ id: 'al' }), mode: 'thinking', partContent: 'TL', isFirstInNode: true, isLastInNode: false, isFirstInTurn: false, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } }
         ],
         flow: { position: 'middle', nesting: 'none' }
       },
@@ -169,11 +169,11 @@ describe('useChatDisplayFlow complex scenario', () => {
     const result = JSON.parse(JSON.stringify(chatFlow.value));
 
     // atoms: a1(T1), a1(C1), a1(T2), a1(TC), t1(TG)
-    // grouped: 
+    // grouped:
     //   message(a1, thinking, T1) -> standalone internal
     //   message(a1, content, C1) -> external (BREAKS)
     //   sequence(a1_T2, a1_TC, t1_TG) -> internal sequence
-    
+
     expect(result).toHaveLength(3);
     expect(result[0].mode).toBe('thinking');
     expect(result[1].mode).toBe('content');

@@ -219,7 +219,14 @@ export function useChatDisplayFlow({
           }
           }
         })();
-        yield { type: 'process_sequence', id, items: [...buffer], flow: { position: 'standalone', nesting: 'none' }, summary: calculateSummary({ stats }), stats };
+
+        // Mark all items in the sequence as nested
+        const nestedItems = buffer.map(item => ({
+          ...item,
+          flow: { ...item.flow, nesting: 'inside-group' as const }
+        }));
+
+        yield { type: 'process_sequence', id, items: nestedItems, flow: { position: 'standalone', nesting: 'none' }, summary: calculateSummary({ stats }), stats };
       } else if (buffer.length === 1) {
         yield buffer[0]!;
       }
