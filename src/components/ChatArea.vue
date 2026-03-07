@@ -400,7 +400,7 @@ async function scrollToLatestUserMessage() {
 
 const isInitialLoad = ref(true);
 const { chatFlow, isThinkingActive, isWaitingResponse } = useChatDisplayFlow({
-  activeDisplayMessages,
+  activeMessages,
   isProcessing: isCurrentChatStreaming
 });
 
@@ -412,7 +412,7 @@ watch(
 );
 
 watch(
-  [() => activeDisplayMessages.value.length, () => currentChat.value?.id],
+  [() => activeMessages.value.length, () => currentChat.value?.id],
   async ([_newLen, newId], [_oldLen, oldId]) => {
     if (newId !== oldId) {
       isInitialLoad.value = true;
@@ -762,8 +762,8 @@ watch(
           Select or create a chat to start
         </div>
         <template v-else>
-          <div v-if="activeDisplayMessages.length > 0" class="relative p-2">
-            <template v-for="flowItem in chatFlow" :key="flowItem.type === 'message' ? flowItem.node.id : flowItem.id">
+          <div v-if="activeMessages.length > 0" class="relative p-2">
+            <template v-for="flowItem in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? `${flowItem.node.id}-${flowItem.mode}` : flowItem.id)">
               <!-- AI Process Sequence (Collapsible Group) -->
               <AssistantProcessSequence
                 v-if="flowItem.type === 'process_sequence'"
@@ -780,6 +780,7 @@ watch(
                       <MessageThinking
                         v-if="lastItem.type === 'message' && isThinkingActive({ item: lastItem })"
                         :message="lastItem.node"
+                        :part-content="lastItem.partContent"
                         no-margin
                       />
                       <!-- Waiting Peek (Initial loading within sequence) -->
@@ -791,7 +792,7 @@ watch(
                   </template>
                 </template>
                 <template #default="{ isExpanded }">
-                  <template v-for="subItem in flowItem.items" :key="subItem.type === 'message' ? subItem.node.id : subItem.id">
+                  <template v-for="subItem in (flowItem.items as ChatFlowItem[])" :key="subItem.type === 'message' ? `${subItem.node.id}-${subItem.mode}` : subItem.id">
                     <MessageItem
                       v-if="subItem.type === 'message' && isExpanded"
                       :id="'message-' + subItem.node.id"
@@ -804,6 +805,11 @@ watch(
                       :available-image-models="availableImageModels"
                       :endpoint-type="resolvedSettings?.endpointType"
                       :flow="subItem.flow"
+                      :mode="subItem.mode"
+                      :part-content="subItem.partContent"
+                      :is-first-in-node="subItem.isFirstInNode"
+                      :is-last-in-node="subItem.isLastInNode"
+                      :is-first-in-turn="subItem.isFirstInTurn"
                       @fork="handleFork"
                       @edit="(id, content, params) => handleEdit(id, content, params)"
                       @switch-version="handleSwitchVersion"
@@ -832,6 +838,11 @@ watch(
                 :available-image-models="availableImageModels"
                 :endpoint-type="resolvedSettings?.endpointType"
                 :flow="flowItem.flow"
+                :mode="flowItem.mode"
+                :part-content="flowItem.partContent"
+                :is-first-in-node="flowItem.isFirstInNode"
+                :is-last-in-node="flowItem.isLastInNode"
+                :is-first-in-turn="flowItem.isFirstInTurn"
                 @fork="handleFork"
                 @edit="(id, content, params) => handleEdit(id, content, params)"
                 @switch-version="handleSwitchVersion"

@@ -28,7 +28,7 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '../models/types';
-import type { FlowMetadata } from '../composables/useChatDisplayFlow';
+import type { FlowMetadata, MessageMode } from '../composables/useChatDisplayFlow';
 import { EMPTY_LM_PARAMETERS } from '../models/types';
 import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
@@ -79,8 +79,17 @@ const props = withDefaults(defineProps<{
   availableImageModels?: string[];
   endpointType?: EndpointType;
   flow?: FlowMetadata;
+  mode?: MessageMode;
+  partContent?: string;
+  isFirstInNode?: boolean;
+  isLastInNode?: boolean;
+  isFirstInTurn?: boolean;
 }>(), {
-  flow: () => ({ position: 'standalone', nesting: 'none' })
+  flow: () => ({ position: 'standalone', nesting: 'none' }),
+  mode: 'content',
+  isFirstInNode: true,
+  isLastInNode: true,
+  isFirstInTurn: false
 });
 
 const emit = defineEmits<{
@@ -839,19 +848,25 @@ watch(mermaidMode, async () => {
 });
 
 const displayContent = computed(() => {
-  let content = props.message.content || '';
-
-  // Remove technical comments (including image request and processed markers)
-  content = stripNaidanSentinels(content);
-
-  // Remove <think> blocks for display
-  const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
-
-  // If we have any content after removing <think>, return it (even if just whitespace)
-  // to signal that we are no longer in "initial loading" state.
-  if (cleanContent.length > 0) return cleanContent;
-
-  return '';
+  const mode = props.mode;
+  switch (mode) {
+  case 'content': {
+    if (props.partContent !== undefined) return props.partContent;
+    let content = props.message.content || '';
+    content = stripNaidanSentinels(content);
+    const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+    if (cleanContent.length > 0) return cleanContent;
+    return '';
+  }
+  case 'thinking':
+  case 'waiting':
+  case 'tool_calls':
+    return '';
+  default: {
+    const _ex: never = mode;
+    return _ex;
+  }
+  }
 });
 
 const isImageResponse = computed(() => isImageGenerationProcessed(props.message.content || ''));
@@ -859,10 +874,23 @@ const isImageResponse = computed(() => isImageGenerationProcessed(props.message.
 const imageStats = computed(() => getImageStats(props.message.content || ''));
 
 const speechText = computed(() => {
-  if (!displayContent.value) return '';
-  if (isImageResponse.value) return 'Image generated.'; // Don't read out HTML tags
-  // For regular messages, strip HTML if we want to be safe, but at least handle images
-  return displayContent.value.replace(/<[^>]*>/g, '');
+  const mode = props.mode;
+  switch (mode) {
+  case 'content': {
+    const text = props.partContent !== undefined ? props.partContent : displayContent.value;
+    if (!text) return '';
+    if (isImageResponse.value) return 'Image generated.';
+    return text.replace(/<[^>]*>/g, '');
+  }
+  case 'thinking':
+  case 'waiting':
+  case 'tool_calls':
+    return '';
+  default: {
+    const _ex: never = mode;
+    return _ex;
+  }
+  }
 });
 
 const parsedContent = computed(() => {
@@ -1006,7 +1034,7 @@ defineExpose({
       }
     ]"
   >
-    <div v-if="showHeader" class="flex items-center gap-3 mb-1">
+    <div v-if="showHeader && isFirstInTurn" class="flex items-center gap-3 mb-1">
       <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
         <User v-if="isUser" class="w-4 h-4 text-gray-500" />
         <Bird v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -1059,8 +1087,8 @@ defineExpose({
     </div>
 
     <div :class="isEditing ? 'overflow-visible' : 'overflow-hidden'">
-      <!-- Attachments -->
-      <div v-if="message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
+      <!-- Attachments (Only shown in the first part of a node if any) -->
+      <div v-if="isFirstInNode && message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
         <div v-for="(att, idx) in message.attachments" :key="att.id" class="relative group/att">
           <template v-if="att.status !== 'missing' && attachmentUrls[att.id]">
             <img
@@ -1090,10 +1118,15 @@ defineExpose({
         </div>
       </div>
 
-      <MessageThinking :message="message" />
+      <MessageThinking
+        v-if="mode === 'thinking'"
+        :message="message"
+        :part-content="partContent"
+      />
 
       <!-- Content -->
       <div v-if="isEditing" class="mt-1" data-testid="edit-mode">
+        <!-- Edit mode remains full-content for now -->
         <div class="border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all overflow-visible">
           <textarea
             ref="textareaRef"
@@ -1194,8 +1227,9 @@ defineExpose({
         </template>
 
         <!-- AI Image Synthesis Loader (Componentized) -->
+        <!-- Only shown in content mode or first part if pending -->
         <ImageConjuringLoader
-          v-if="isImageGenerationPending(message.content || '') && message.role === 'assistant' && !message.error"
+          v-if="mode === 'content' && isImageGenerationPending(message.content || '') && message.role === 'assistant' && !message.error"
           v-bind="getImageGenerationProgress(message.content || '')"
           :current-step="isGenerating && chatId ? imageProgressMap[chatId]?.currentStep : undefined"
           :total-steps="isGenerating && chatId ? imageProgressMap[chatId]?.totalSteps : undefined"
@@ -1203,13 +1237,13 @@ defineExpose({
 
         <!-- Loading State (Initial Wait for regular text) -->
         <AssistantWaitingIndicator
-          v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending(message.content)"
+          v-else-if="mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending(message.content)"
           :is-nested="isNested"
           data-testid="loading-indicator"
         />
 
         <!-- Error State (Appended below content) -->
-        <div v-if="message.error" class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
+        <div v-if="isLastInNode && message.error" class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
           <div class="flex items-center gap-2 font-bold">
             <AlertTriangle class="w-4 h-4" />
             <span>Generation Failed</span>
@@ -1225,7 +1259,7 @@ defineExpose({
           </button>
         </div>
 
-        <div class="mt-3 flex items-center justify-between min-h-[28px]">
+        <div v-if="isLastInNode" class="mt-3 flex items-center justify-between min-h-[28px]">
           <!-- Version Paging -->
           <div v-if="versionInfo" class="message-version-paging flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700" data-testid="version-paging">
             <button

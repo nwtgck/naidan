@@ -6,6 +6,7 @@ import type { MessageNode } from '../models/types';
 const props = defineProps<{
   message: MessageNode;
   noMargin?: boolean;
+  partContent?: string;
 }>();
 
 type ThinkingMode = 'expanded' | 'collapsed-active' | 'collapsed-finished';
@@ -14,6 +15,7 @@ const isUserExpanded = ref(false);
 const thinkingContentRef = ref<HTMLElement | null>(null);
 
 const displayThinking = computed(() => {
+  if (props.partContent !== undefined) return props.partContent;
   if (props.message.thinking) return props.message.thinking;
 
   // Try to extract from content if not yet processed (streaming case)
@@ -24,9 +26,17 @@ const displayThinking = computed(() => {
   return matches.map(m => m[1]?.trim()).filter(Boolean).join('\n\n---\n\n');
 });
 
-const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content || ''));
+const hasThinking = computed(() => props.partContent !== undefined || !!props.message.thinking || /<think>/i.test(props.message.content || ''));
 
 const isThinkingNow = computed(() => {
+  if (props.partContent !== undefined) {
+    // If partContent is provided, we use the mode logic from the flow.
+    // However, for visual consistency (border sweep), we check if thinking tags are currently open in the message content.
+    const content = props.message.content || '';
+    const lastOpen = content.lastIndexOf('<think>');
+    const lastClose = content.lastIndexOf('</think>');
+    return lastOpen > -1 && lastClose < lastOpen;
+  }
   if (props.message.thinking) return false; // Already processed
   const content = props.message.content || '';
   const lastOpen = content.lastIndexOf('<think>');
