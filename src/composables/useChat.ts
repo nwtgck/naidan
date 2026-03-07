@@ -365,14 +365,14 @@ export function useChat() {
         let triggeringAssistant: AssistantMessageNode | null = null;
         for (let j = index - 1; j >= 0; j--) {
           const prev = branch[j];
-          if (prev?.role === 'assistant' && prev.toolCalls?.some(tc => node.executionResults.some(er => er.toolCallId === tc.id))) {
+          if (prev?.role === 'assistant' && prev.toolCalls?.some(tc => node.results.some(er => er.toolCallId === tc.id))) {
             triggeringAssistant = prev;
             break;
           }
         }
 
         if (triggeringAssistant) {
-          const toolCalls: import('../models/types').CombinedToolCall[] = node.executionResults.map(er => {
+          const toolCalls: import('../models/types').CombinedToolCall[] = node.results.map(er => {
             const call = triggeringAssistant!.toolCalls!.find(tc => tc.id === er.toolCallId)!;
             return {
               id: er.toolCallId,
@@ -1052,24 +1052,21 @@ export function useChat() {
                     // If the current node already has content or tool calls, it means we're in a new loop
                     // iteration after a tool result, so we need a new assistant node to hold the next response.
                     if (generationState.currentAssistantNode.content !== '' || (generationState.currentAssistantNode.toolCalls?.length ?? 0) > 0) {
-                      const newNode: AssistantMessageNode = reactive({
-                        id: generateId(),
-                        role: 'assistant',
-                        content: '',
-                        timestamp: Date.now(),
-                        modelId: generationState.currentAssistantNode.modelId,
-                        replies: { items: [] },
-                        attachments: undefined,
-                        thinking: undefined,
-                        error: undefined,
-                        lmParameters: generationState.currentAssistantNode.lmParameters,
-                        toolCalls: undefined,
-                        toolCallId: undefined,
-                        result: undefined,
-                        executionResults: undefined,
-                      });
-          
-                      generationState.currentLeafNode.replies.items.push(newNode);
+                                  const newNode: AssistantMessageNode = reactive({
+                                    id: generateId(),
+                                    role: 'assistant',
+                                    content: '',
+                                    timestamp: Date.now(),
+                                    modelId: generationState.currentAssistantNode.modelId,
+                                    replies: { items: [] },
+                                    attachments: undefined,
+                                    thinking: undefined,
+                                    error: undefined,
+                                    lmParameters: generationState.currentAssistantNode.lmParameters,
+                                    toolCalls: undefined,
+                                    results: undefined,
+                                  });
+                                            generationState.currentLeafNode.replies.items.push(newNode);
                       mutableChat.currentLeafId = newNode.id;
                       generationState.currentAssistantNode = newNode;
                       generationState.currentLeafNode = newNode;
@@ -1079,93 +1076,91 @@ export function useChat() {
                   onToolCall: (params: { id: string; toolName: string; args: unknown }) => {
                     // 1. Ensure ToolMessageNode exists for this turn
                     if (!generationState.currentToolNode) {
-                      const toolNode: import('../models/types').ToolMessageNode = reactive({
-                        id: generateId(),
-                        role: 'tool',
-                        executionResults: [],
-                        content: undefined,
-                        timestamp: Date.now(),
-                        replies: { items: [] },
-                        attachments: undefined,
-                        thinking: undefined,
-                        error: undefined,
-                        modelId: undefined,
-                        lmParameters: undefined,
-                        toolCalls: undefined,
-                        toolCallId: undefined,
-                        result: undefined,
-                      });
-          
-                      // Add to current branch
-                      generationState.currentLeafNode.replies.items.push(toolNode);
-                      mutableChat.currentLeafId = toolNode.id;
-                      generationState.currentLeafNode = toolNode;
-                      generationState.currentToolNode = toolNode;
-                    }
-          
-                    // 2. Add running state to the tool node
-                    if (!generationState.currentToolNode.executionResults.some(er => er.toolCallId === params.id)) {
-                      generationState.currentToolNode.executionResults.push({
-                        toolCallId: params.id,
-                        status: 'running'
-                      });
-                    }
-          
-                    // 3. Update Assistant node's toolCalls metadata
-                    const assistant = generationState.currentAssistantNode;
-                    const currentCalls = assistant.toolCalls || [];
-                    if (!currentCalls.some(tc => tc.id === params.id)) {
-                      assistant.toolCalls = [...currentCalls, {
-                        id: params.id,
-                        type: 'function',
-                        function: {
-                          name: params.toolName,
-                          arguments: typeof params.args === 'string' ? params.args : JSON.stringify(params.args)
-                        }
-                      }];
-                    }
-          
-                    triggerRef(_currentChat);
-                  },
-                  onToolResult: async (params: {
-                    id: string;
-                    result: | { status: 'success'; content: string } | { status: 'error'; code: import('../services/tools/types').ToolExecutionErrorCode; message: string };
-                  }) => {
-                    // Find the tool node containing this toolCallId
-                    const allMessages = getAllMessages(mutableChat);
-                    const toolNode = allMessages.find(n => n.role === 'tool' && n.executionResults.some(er => er.toolCallId === params.id)) as import('../models/types').ToolMessageNode | undefined;
-          
-                    if (toolNode) {
-                      const BINARY_THRESHOLD = 100 * 1024; // 100KB
-                      const processContent = async ({ text, type }: { text: string, type: 'result' | 'error' }): Promise<import('../services/tools/types').TextOrBinaryObject> => {
-                        if (text.length > BINARY_THRESHOLD) {
-                          const blob = new Blob([text], { type: 'text/plain' });
-                          const binaryId = generateId();
-                          await storageService.saveFile(blob, binaryId, `tool_${type}_${params.id}.txt`);
-                          return { type: 'binary_object', id: binaryId };
-                        }
-                        return { type: 'text', text };
-                      };
-          
-                      const index = toolNode.executionResults.findIndex(er => er.toolCallId === params.id);
-                      if (index !== -1) {
-                        if (params.result.status === 'success') {
-                          toolNode.executionResults[index] = {
-                            toolCallId: params.id,
-                            status: 'success',
-                            content: await processContent({ text: params.result.content, type: 'result' })
-                          };
-                        } else {
-                          toolNode.executionResults[index] = {
-                            toolCallId: params.id,
-                            status: 'error',
-                            error: {
-                              code: params.result.code,
-                              message: await processContent({ text: params.result.message, type: 'error' })
-                            }
-                          };
-                        }
-                      }
+                                  const toolNode: import('../models/types').ToolMessageNode = reactive({
+                                    id: generateId(),
+                                    role: 'tool',
+                                    results: [],
+                                    content: undefined,
+                                    timestamp: Date.now(),
+                                    replies: { items: [] },
+                                    attachments: undefined,
+                                    thinking: undefined,
+                                    error: undefined,
+                                    modelId: undefined,
+                                    lmParameters: undefined,
+                                    toolCalls: undefined,
+                                  });
+                                                          // Add to current branch
+                                    generationState.currentLeafNode.replies.items.push(toolNode);
+                                    mutableChat.currentLeafId = toolNode.id;
+                                    generationState.currentLeafNode = toolNode;
+                                    generationState.currentToolNode = toolNode;
+                                  }
+                        
+                                  // 2. Add running state to the tool node
+                                  if (!generationState.currentToolNode.results.some(er => er.toolCallId === params.id)) {
+                                    generationState.currentToolNode.results.push({
+                                      toolCallId: params.id,
+                                      status: 'running'
+                                    });
+                                  }
+                        
+                                  // 3. Update Assistant node's toolCalls metadata
+                                  const assistant = generationState.currentAssistantNode;
+                                  const currentCalls = assistant.toolCalls || [];
+                                  if (!currentCalls.some(tc => tc.id === params.id)) {
+                                    assistant.toolCalls = [...currentCalls, {
+                                      id: params.id,
+                                      type: 'function',
+                                      function: {
+                                        name: params.toolName,
+                                        arguments: typeof params.args === 'string' ? params.args : JSON.stringify(params.args)
+                                      }
+                                    }];
+                                  }
+                        
+                                  triggerRef(_currentChat);
+                                },
+                                onToolResult: async (params: {
+                                  id: string;
+                                  result: | { status: 'success'; content: string } | { status: 'error'; code: import('../services/tools/types').ToolExecutionErrorCode; message: string };
+                                }) => {
+                                  // Find the tool node containing this toolCallId
+                                  const allMessages = getAllMessages(mutableChat);
+                                  const toolNode = allMessages.find(n => n.role === 'tool' && n.results.some(er => er.toolCallId === params.id)) as import('../models/types').ToolMessageNode | undefined;
+                        
+                                  if (toolNode) {
+                                    const BINARY_THRESHOLD = 100 * 1024; // 100KB
+                                    const processContent = async ({ text, type }: { text: string, type: 'result' | 'error' }): Promise<import('../services/tools/types').TextOrBinaryObject> => {
+                                      if (text.length > BINARY_THRESHOLD) {
+                                        const blob = new Blob([text], { type: 'text/plain' });
+                                        const binaryId = generateId();
+                                        await storageService.saveFile(blob, binaryId, `tool_${type}_${params.id}.txt`);
+                                        return { type: 'binary_object', id: binaryId };
+                                      }
+                                      return { type: 'text', text };
+                                    };
+                        
+                                    const index = toolNode.results.findIndex(er => er.toolCallId === params.id);
+                                    if (index !== -1) {
+                                      if (params.result.status === 'success') {
+                                        toolNode.results[index] = {
+                                          toolCallId: params.id,
+                                          status: 'success',
+                                          content: await processContent({ text: params.result.content, type: 'result' })
+                                        };
+                                      } else {
+                                        toolNode.results[index] = {
+                                          toolCallId: params.id,
+                                          status: 'error',
+                                          error: {
+                                            code: params.result.code,
+                                            message: await processContent({ text: params.result.message, type: 'error' })
+                                          }
+                                        };
+                                      }
+                                    }
+                        
                       triggerRef(_currentChat);
                     }
                   },
@@ -1355,8 +1350,7 @@ export function useChat() {
         modelId: undefined,
         lmParameters: lmParameters || EMPTY_LM_PARAMETERS,
         toolCalls: undefined,
-        toolCallId: undefined,
-        result: undefined,
+        results: undefined,
       };
 
       const assistantContent = isImgMode
@@ -1375,8 +1369,7 @@ export function useChat() {
         error: undefined,
         lmParameters: lmParameters || EMPTY_LM_PARAMETERS,
         toolCalls: undefined,
-        toolCallId: undefined,
-        result: undefined,
+        results: undefined,
       };
       userMsg.replies.items.push(assistantMsg);
 
@@ -1435,8 +1428,7 @@ export function useChat() {
         error: undefined,
         lmParameters: failedNode.lmParameters || EMPTY_LM_PARAMETERS,
         toolCalls: undefined,
-        toolCallId: undefined,
-        result: undefined,
+        results: undefined,
       };
       parent.replies.items.push(newAssistantMsg);
       chat.currentLeafId = newAssistantMsg.id;
@@ -1606,8 +1598,7 @@ export function useChat() {
           modelId: undefined,
           lmParameters: n.lmParameters || { reasoning: { effort: undefined } },
           toolCalls: undefined,
-          toolCallId: undefined,
-          result: undefined,
+          results: undefined,
         } as UserMessageNode;
       case 'assistant':
         return {
@@ -1619,8 +1610,7 @@ export function useChat() {
           modelId: n.modelId,
           lmParameters: n.lmParameters || { reasoning: { effort: undefined } },
           toolCalls: n.toolCalls,
-          toolCallId: undefined,
-          result: undefined,
+          results: undefined,
         } as AssistantMessageNode;
       case 'system':
         return {
@@ -1632,8 +1622,7 @@ export function useChat() {
           modelId: undefined,
           lmParameters: undefined,
           toolCalls: undefined,
-          toolCallId: undefined,
-          result: undefined,
+          results: undefined,
         } as SystemMessageNode;
       case 'tool':
         return {
@@ -1646,8 +1635,7 @@ export function useChat() {
           modelId: undefined,
           lmParameters: undefined,
           toolCalls: undefined,
-          toolCallId: n.toolCallId,
-          result: n.result,
+          results: n.results,
         } as import('../models/types').ToolMessageNode;
       default: {
         const _ex: never = n;
@@ -1716,8 +1704,7 @@ export function useChat() {
         error: undefined,
         lmParameters: node.lmParameters || EMPTY_LM_PARAMETERS,
         toolCalls: undefined,
-        toolCallId: undefined,
-        result: undefined,
+        results: undefined,
       };
       const parent = findParentInBranch(chat.root.items, messageId);
       if (parent) parent.replies.items.push(correctedNode);

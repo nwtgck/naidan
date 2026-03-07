@@ -388,7 +388,7 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      executionResults: dto.executionResults,
+      results: dto.results,
     };
   default: {
     const _ex: never = dto;
@@ -457,7 +457,7 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      executionResults: domain.executionResults,
+      results: domain.results,
     };
   default: {
     const _ex: never = domain;
@@ -503,8 +503,7 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
           reasoning: { effort: undefined }
         },
         toolCalls: undefined,
-        toolCallId: undefined,
-        result: undefined,
+        results: undefined,
       } as AssistantMessageNode;
     case 'user':
       return {
@@ -524,8 +523,7 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
           reasoning: { effort: undefined }
         },
         toolCalls: undefined,
-        toolCallId: undefined,
-        result: undefined,
+        results: undefined,
       } as UserMessageNode;
     case 'system':
       return {
@@ -537,8 +535,7 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
         modelId: undefined,
         lmParameters: undefined,
         toolCalls: undefined,
-        toolCallId: undefined,
-        result: undefined,
+        results: undefined,
       } as SystemMessageNode;
     case 'tool':
       throw new Error('Tool role migration not implemented for legacy messages');

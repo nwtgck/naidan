@@ -117,8 +117,7 @@ export function createBranchFromMessages(messages: HistoryItem[]): MessageNode[]
         modelId: undefined,
         lmParameters: EMPTY_LM_PARAMETERS,
         toolCalls: undefined,
-        toolCallId: undefined,
-        result: undefined,
+        results: undefined,
       } as UserMessageNode;
     case 'assistant':
       return {
@@ -130,8 +129,7 @@ export function createBranchFromMessages(messages: HistoryItem[]): MessageNode[]
         modelId: m.modelId,
         lmParameters: EMPTY_LM_PARAMETERS,
         toolCalls: undefined,
-        toolCallId: undefined,
-        result: undefined,
+        results: undefined,
       } as AssistantMessageNode;
     case 'system':
       return {
@@ -143,8 +141,7 @@ export function createBranchFromMessages(messages: HistoryItem[]): MessageNode[]
         modelId: undefined,
         lmParameters: undefined,
         toolCalls: undefined,
-        toolCallId: undefined,
-        result: undefined,
+        results: undefined,
       } as SystemMessageNode;
     default: {
       const _ex: never = m.role;

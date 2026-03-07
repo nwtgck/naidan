@@ -103,7 +103,7 @@ export type UserMessageNode = MessageNodeBase & {
   modelId?: undefined;
   lmParameters?: LmParameters;
   toolCalls?: undefined;
-  executionResults?: undefined;
+  results?: undefined;
 };
 
 export type AssistantMessageNode = MessageNodeBase & {
@@ -115,7 +115,7 @@ export type AssistantMessageNode = MessageNodeBase & {
   modelId?: string;
   lmParameters?: LmParameters;
   toolCalls?: ToolCall[];
-  executionResults?: undefined;
+  results?: undefined;
 };
 
 export type SystemMessageNode = MessageNodeBase & {
@@ -127,7 +127,7 @@ export type SystemMessageNode = MessageNodeBase & {
   modelId?: undefined;
   lmParameters?: undefined;
   toolCalls?: undefined;
-  executionResults?: undefined;
+  results?: undefined;
 };
 
 export type ToolMessageNode = MessageNodeBase & {
@@ -139,7 +139,7 @@ export type ToolMessageNode = MessageNodeBase & {
   modelId: undefined;
   lmParameters: undefined;
   toolCalls: undefined;
-  executionResults: ToolExecutionResult[];
+  results: ToolExecutionResult[];
 };
 
 export type MessageNode = UserMessageNode | AssistantMessageNode | SystemMessageNode | ToolMessageNode;

@@ -199,7 +199,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       modelId: z.undefined(),
       lmParameters: orUndefined(LmParametersSchemaDto),
       toolCalls: z.undefined(),
-      executionResults: z.undefined(),
+      results: z.undefined(),
       replies: MessageBranchSchemaDto,
     }),
     z.object({
@@ -212,7 +212,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       modelId: orUndefined(z.string()),
       lmParameters: orUndefined(LmParametersSchemaDto),
       toolCalls: orUndefined(z.array(ToolCallSchemaDto)),
-      executionResults: z.undefined(),
+      results: z.undefined(),
       replies: MessageBranchSchemaDto,
     }),
     z.object({
@@ -225,7 +225,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       modelId: z.undefined(),
       lmParameters: z.undefined(),
       toolCalls: z.undefined(),
-      executionResults: z.undefined(),
+      results: z.undefined(),
       replies: MessageBranchSchemaDto,
     }),
     z.object({
@@ -238,7 +238,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       modelId: z.undefined(),
       lmParameters: z.undefined(),
       toolCalls: z.undefined(),
-      executionResults: z.array(ToolExecutionResultSchemaDto),
+      results: z.array(ToolExecutionResultSchemaDto),
       replies: MessageBranchSchemaDto,
     }),
   ])
@@ -266,7 +266,7 @@ export type MessageNodeDto =
       modelId: undefined;
       lmParameters: LmParametersDto | undefined;
       toolCalls: undefined;
-      executionResults: undefined;
+      results: undefined;
     })
   | (MessageNodeCommonDto & {
       role: 'assistant';
@@ -276,7 +276,7 @@ export type MessageNodeDto =
       modelId: string | undefined;
       lmParameters: LmParametersDto | undefined;
       toolCalls: z.infer<typeof ToolCallSchemaDto>[] | undefined;
-      executionResults: undefined;
+      results: undefined;
     })
   | (MessageNodeCommonDto & {
       role: 'system';
@@ -286,7 +286,7 @@ export type MessageNodeDto =
       modelId: undefined;
       lmParameters: undefined;
       toolCalls: undefined;
-      executionResults: undefined;
+      results: undefined;
     })
   | (MessageNodeCommonDto & {
       role: 'tool';
@@ -296,7 +296,7 @@ export type MessageNodeDto =
       modelId: undefined;
       lmParameters: undefined;
       toolCalls: undefined;
-      executionResults: z.infer<typeof ToolExecutionResultSchemaDto>[];
+      results: z.infer<typeof ToolExecutionResultSchemaDto>[];
     });
 
 /**
