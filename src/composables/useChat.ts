@@ -900,273 +900,273 @@ export function useChat() {
     const parentNode = findParentInBranch(mutableChat.root.items, assistantId);
     const imageRequest = parentNode ? parseImageRequest(parentNode.content || '') : null;
 
-        try {
-          if (imageRequest) {
-            const { width = 512, height = 512, model, count = 1, persistAs, steps, seed } = imageRequest;
-            const prompt = stripNaidanSentinels(parentNode!.content || '').trim();
-    
-            const images: { blob: Blob }[] = [];
-            if (parentNode?.attachments) {
-              for (const att of parentNode.attachments) {
-                if (att.mimeType.startsWith('image/')) {
-                  let blob: Blob | null = null;
-                  switch (att.status) {
-                  case 'memory':
-                    blob = att.blob || null;
-                    break;
-                  case 'persisted':
-                    blob = await storageService.getFile(att.binaryObjectId);
-                    break;
-                  case 'missing':
-                    blob = null;
-                    break;
-                  default: {
-                    const _ex: never = att;
-                    throw new Error(`Unhandled attachment status: ${_ex}`);
-                  }
-                  }
-                  if (blob) images.push({ blob });
-                }
+    try {
+      if (imageRequest) {
+        const { width = 512, height = 512, model, count = 1, persistAs, steps, seed } = imageRequest;
+        const prompt = stripNaidanSentinels(parentNode!.content || '').trim();
+
+        const images: { blob: Blob }[] = [];
+        if (parentNode?.attachments) {
+          for (const att of parentNode.attachments) {
+            if (att.mimeType.startsWith('image/')) {
+              let blob: Blob | null = null;
+              switch (att.status) {
+              case 'memory':
+                blob = att.blob || null;
+                break;
+              case 'persisted':
+                blob = await storageService.getFile(att.binaryObjectId);
+                break;
+              case 'missing':
+                blob = null;
+                break;
+              default: {
+                const _ex: never = att;
+                throw new Error(`Unhandled attachment status: ${_ex}`);
               }
-            }
-    
-            await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, count, steps, seed, persistAs, images, model, signal: controller.signal });
-            return;
-          }
-    
-          let provider: LLMProvider;
-          switch (type) {
-          case 'openai':
-            provider = new OpenAIProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
-            break;
-          case 'ollama':
-            provider = new OllamaProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
-            break;
-          case 'transformers_js':
-            provider = new (await import('../services/transformers-js-provider')).TransformersJsProvider();
-            break;
-          default: {
-            const _ex: never = type;
-            throw new Error(`Unsupported endpoint type: ${_ex}`);
-          }
-          }
-          const finalMessages: ChatMessage[] = [];
-          resolved.systemPromptMessages.forEach(content => finalMessages.push({ role: 'system', content }));
-    
-                const history = getChatBranch(mutableChat).filter(m => m.id !== assistantId);
-                for (const m of history) {
-                  if (m.role === 'tool') {
-                    for (const result of m.results) {
-                      let toolContent = '';
-                      switch (result.status) {
-                      case 'success': {
-                        if (result.content.type === 'text') {
-                          toolContent = result.content.text;
-                        } else {
-                          const blob = await storageService.getFile(result.content.id);
-                          toolContent = blob ? await blob.text() : '[Error: Binary object missing]';
-                        }
-                        break;
-                      }
-                      case 'error': {
-                        if (result.error.message.type === 'text') {
-                          toolContent = `Error [${result.error.code}]: ${result.error.message.text}`;
-                        } else {
-                          const blob = await storageService.getFile(result.error.message.id);
-                          const detail = blob ? await blob.text() : 'Binary error detail missing';
-                          toolContent = `Error [${result.error.code}]: ${detail}`;
-                        }
-                        break;
-                      }
-                      case 'running':
-                        toolContent = '[Error: Tool still running]';
-                        break;
-                      default: {
-                        const _ex: never = result;
-                        toolContent = `[Error: Unknown tool status: ${(_ex as { status: string }).status}]`;
-                      }
-                      }
-                      finalMessages.push({
-                        role: 'tool',
-                        tool_call_id: result.toolCallId,
-                        content: toolContent
-                      });
-                    }
-                    continue;
-                  }
-          
-                  const msgContent = m.content || '';
-                      if (m.attachments && m.attachments.length > 0) {
-              const contentParts: MultimodalContent[] = [{ type: 'text', text: msgContent }];
-              for (const att of m.attachments) {
-                let blob: Blob | null = null;
-                switch (att.status) {
-                case 'memory':
-                  blob = att.blob;
-                  break;
-                case 'persisted':
-                  blob = await storageService.getFile(att.binaryObjectId);
-                  break;
-                case 'missing':
-                  blob = null;
-                  break;
-                default: {
-                  const _ex: never = att;
-                  throw new Error(`Unhandled attachment status: ${_ex}`);
-                }
-                }
-                if (blob && att.mimeType.startsWith('image/')) {
-                  const b64 = await fileToDataUrl(blob);
-                  contentParts.push({ type: 'image_url', image_url: { url: b64 } });
-                }
               }
-              finalMessages.push({ role: m.role, content: contentParts });
-            } else {
-              finalMessages.push({
-                role: m.role as 'user' | 'assistant' | 'system',
-                content: msgContent,
-                tool_calls: m.role === 'assistant' ? m.toolCalls : undefined
-              });
+              if (blob) images.push({ blob });
             }
           }
-    
-          let lastSave = 0;
-          let isSaving = false;
-          const { enabledToolNames } = useChatTools();
-          const enabledTools = ALL_TOOLS.filter(t => enabledToolNames.value.includes(t.name));
-    
-                      const generationState = {
-                        currentAssistantNode: assistantNode,
-                        currentLeafNode: assistantNode as MessageNode,
-                        currentToolNode: null as import('../models/types').ToolMessageNode | null,
-                      };
-                
-                      await provider.chat({
-                        messages: finalMessages,
-                        model: resolvedModel,
-                        tools: enabledTools.length > 0 ? enabledTools : undefined,
-                        onAssistantMessageStart: () => {
-                          // New iteration: clear tool node reference for the next potential tool turn
-                          generationState.currentToolNode = null;
-                
-                          // If the current node already has content or tool calls, it means we're in a new loop
-                          // iteration after a tool result, so we need a new assistant node to hold the next response.
-                          if (generationState.currentAssistantNode.content !== '' || (generationState.currentAssistantNode.toolCalls?.length ?? 0) > 0) {
-                            const newNode: AssistantMessageNode = reactive({
-                              id: generateId(),
-                              role: 'assistant',
-                              content: '',
-                              timestamp: Date.now(),
-                              modelId: generationState.currentAssistantNode.modelId,
-                              replies: { items: [] },
-                              attachments: undefined,
-                              thinking: undefined,
-                              error: undefined,
-                              lmParameters: generationState.currentAssistantNode.lmParameters,
-                              toolCalls: undefined,
-                              results: undefined,
-                            });
-                
-                            generationState.currentLeafNode.replies.items.push(newNode);
-                            mutableChat.currentLeafId = newNode.id;
-                            generationState.currentAssistantNode = newNode;
-                            generationState.currentLeafNode = newNode;
-                            triggerRef(_currentChat);
-                          }
-                        },
-                        onToolCall: (params: { id: string; toolName: string; args: unknown }) => {
-                          // 1. Ensure ToolMessageNode exists for this turn
-                          if (!generationState.currentToolNode) {
-                            const toolNode: import('../models/types').ToolMessageNode = reactive({
-                              id: generateId(),
-                              role: 'tool',
-                              results: [],
-                              content: undefined,
-                              timestamp: Date.now(),
-                              replies: { items: [] },
-                              attachments: undefined,
-                              thinking: undefined,
-                              error: undefined,
-                              modelId: undefined,
-                              lmParameters: undefined,
-                              toolCalls: undefined,
-                            });
-                
-                            // Add to current branch
-                            generationState.currentLeafNode.replies.items.push(toolNode);
-                            mutableChat.currentLeafId = toolNode.id;
-                            generationState.currentLeafNode = toolNode;
-                            generationState.currentToolNode = toolNode;
-                          }
-                
-                          // 2. Add running state to the tool node
-                          if (!generationState.currentToolNode.results.some(er => er.toolCallId === params.id)) {
-                            generationState.currentToolNode.results.push({
-                              toolCallId: params.id,
-                              status: 'running'
-                            });
-                          }
-                
-                          // 3. Update Assistant node's toolCalls metadata
-                          const assistant = generationState.currentAssistantNode;
-                          const currentCalls = assistant.toolCalls || [];
-                          if (!currentCalls.some(tc => tc.id === params.id)) {
-                            assistant.toolCalls = [...currentCalls, {
-                              id: params.id,
-                              type: 'function',
-                              function: {
-                                name: params.toolName,
-                                arguments: typeof params.args === 'string' ? params.args : JSON.stringify(params.args)
-                              }
-                            }];
-                          }
-                
-                          triggerRef(_currentChat);
-                        },
-                        onToolResult: async (params: {
+        }
+
+        await handleImageGeneration({ chatId: mutableChat.id, assistantId, prompt, width, height, count, steps, seed, persistAs, images, model, signal: controller.signal });
+        return;
+      }
+
+      let provider: LLMProvider;
+      switch (type) {
+      case 'openai':
+        provider = new OpenAIProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
+        break;
+      case 'ollama':
+        provider = new OllamaProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
+        break;
+      case 'transformers_js':
+        provider = new (await import('../services/transformers-js-provider')).TransformersJsProvider();
+        break;
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unsupported endpoint type: ${_ex}`);
+      }
+      }
+      const finalMessages: ChatMessage[] = [];
+      resolved.systemPromptMessages.forEach(content => finalMessages.push({ role: 'system', content }));
+
+      const history = getChatBranch(mutableChat).filter(m => m.id !== assistantId);
+      for (const m of history) {
+        if (m.role === 'tool') {
+          for (const result of m.results) {
+            let toolContent = '';
+            switch (result.status) {
+            case 'success': {
+              if (result.content.type === 'text') {
+                toolContent = result.content.text;
+              } else {
+                const blob = await storageService.getFile(result.content.id);
+                toolContent = blob ? await blob.text() : '[Error: Binary object missing]';
+              }
+              break;
+            }
+            case 'error': {
+              if (result.error.message.type === 'text') {
+                toolContent = `Error [${result.error.code}]: ${result.error.message.text}`;
+              } else {
+                const blob = await storageService.getFile(result.error.message.id);
+                const detail = blob ? await blob.text() : 'Binary error detail missing';
+                toolContent = `Error [${result.error.code}]: ${detail}`;
+              }
+              break;
+            }
+            case 'running':
+              toolContent = '[Error: Tool still running]';
+              break;
+            default: {
+              const _ex: never = result;
+              toolContent = `[Error: Unknown tool status: ${(_ex as { status: string }).status}]`;
+            }
+            }
+            finalMessages.push({
+              role: 'tool',
+              tool_call_id: result.toolCallId,
+              content: toolContent
+            });
+          }
+          continue;
+        }
+
+        const msgContent = m.content || '';
+        if (m.attachments && m.attachments.length > 0) {
+          const contentParts: MultimodalContent[] = [{ type: 'text', text: msgContent }];
+          for (const att of m.attachments) {
+            let blob: Blob | null = null;
+            switch (att.status) {
+            case 'memory':
+              blob = att.blob;
+              break;
+            case 'persisted':
+              blob = await storageService.getFile(att.binaryObjectId);
+              break;
+            case 'missing':
+              blob = null;
+              break;
+            default: {
+              const _ex: never = att;
+              throw new Error(`Unhandled attachment status: ${_ex}`);
+            }
+            }
+            if (blob && att.mimeType.startsWith('image/')) {
+              const b64 = await fileToDataUrl(blob);
+              contentParts.push({ type: 'image_url', image_url: { url: b64 } });
+            }
+          }
+          finalMessages.push({ role: m.role, content: contentParts });
+        } else {
+          finalMessages.push({
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: msgContent,
+            tool_calls: m.role === 'assistant' ? m.toolCalls : undefined
+          });
+        }
+      }
+
+      let lastSave = 0;
+      let isSaving = false;
+      const { enabledToolNames } = useChatTools();
+      const enabledTools = ALL_TOOLS.filter(t => enabledToolNames.value.includes(t.name));
+
+      const generationState = {
+        currentAssistantNode: assistantNode,
+        currentLeafNode: assistantNode as MessageNode,
+        currentToolNode: null as import('../models/types').ToolMessageNode | null,
+      };
+
+      await provider.chat({
+        messages: finalMessages,
+        model: resolvedModel,
+        tools: enabledTools.length > 0 ? enabledTools : undefined,
+        onAssistantMessageStart: () => {
+          // New iteration: clear tool node reference for the next potential tool turn
+          generationState.currentToolNode = null;
+
+          // If the current node already has content or tool calls, it means we're in a new loop
+          // iteration after a tool result, so we need a new assistant node to hold the next response.
+          if (generationState.currentAssistantNode.content !== '' || (generationState.currentAssistantNode.toolCalls?.length ?? 0) > 0) {
+            const newNode: AssistantMessageNode = reactive({
+              id: generateId(),
+              role: 'assistant',
+              content: '',
+              timestamp: Date.now(),
+              modelId: generationState.currentAssistantNode.modelId,
+              replies: { items: [] },
+              attachments: undefined,
+              thinking: undefined,
+              error: undefined,
+              lmParameters: generationState.currentAssistantNode.lmParameters,
+              toolCalls: undefined,
+              results: undefined,
+            });
+
+            generationState.currentLeafNode.replies.items.push(newNode);
+            mutableChat.currentLeafId = newNode.id;
+            generationState.currentAssistantNode = newNode;
+            generationState.currentLeafNode = newNode;
+            triggerRef(_currentChat);
+          }
+        },
+        onToolCall: (params: { id: string; toolName: string; args: unknown }) => {
+          // 1. Ensure ToolMessageNode exists for this turn
+          if (!generationState.currentToolNode) {
+            const toolNode: import('../models/types').ToolMessageNode = reactive({
+              id: generateId(),
+              role: 'tool',
+              results: [],
+              content: undefined,
+              timestamp: Date.now(),
+              replies: { items: [] },
+              attachments: undefined,
+              thinking: undefined,
+              error: undefined,
+              modelId: undefined,
+              lmParameters: undefined,
+              toolCalls: undefined,
+            });
+
+            // Add to current branch
+            generationState.currentLeafNode.replies.items.push(toolNode);
+            mutableChat.currentLeafId = toolNode.id;
+            generationState.currentLeafNode = toolNode;
+            generationState.currentToolNode = toolNode;
+          }
+
+          // 2. Add running state to the tool node
+          if (!generationState.currentToolNode.results.some(er => er.toolCallId === params.id)) {
+            generationState.currentToolNode.results.push({
+              toolCallId: params.id,
+              status: 'running'
+            });
+          }
+
+          // 3. Update Assistant node's toolCalls metadata
+          const assistant = generationState.currentAssistantNode;
+          const currentCalls = assistant.toolCalls || [];
+          if (!currentCalls.some(tc => tc.id === params.id)) {
+            assistant.toolCalls = [...currentCalls, {
+              id: params.id,
+              type: 'function',
+              function: {
+                name: params.toolName,
+                arguments: typeof params.args === 'string' ? params.args : JSON.stringify(params.args)
+              }
+            }];
+          }
+
+          triggerRef(_currentChat);
+        },
+        onToolResult: async (params: {
                           id: string;
                           result: | { status: 'success'; content: string } | { status: 'error'; code: import('../services/tools/types').ToolExecutionErrorCode; message: string };
                         }) => {
-                          // Find the tool node containing this toolCallId
-                          const allMessages = getAllMessages(mutableChat);
-                          const toolNode = allMessages.find(n => n.role === 'tool' && n.results.some(er => er.toolCallId === params.id)) as import('../models/types').ToolMessageNode | undefined;
-                
-                          if (toolNode) {
-                            const BINARY_THRESHOLD = 100 * 1024; // 100KB
-                            const processContent = async ({ text, type }: { text: string, type: 'result' | 'error' }): Promise<import('../services/tools/types').TextOrBinaryObject> => {
-                              if (text.length > BINARY_THRESHOLD) {
-                                const blob = new Blob([text], { type: 'text/plain' });
-                                const binaryId = generateId();
-                                await storageService.saveFile(blob, binaryId, `tool_${type}_${params.id}.txt`);
-                                return { type: 'binary_object', id: binaryId };
-                              }
-                              return { type: 'text', text };
-                            };
-                
-                            const index = toolNode.results.findIndex(er => er.toolCallId === params.id);
-                            if (index !== -1) {
-                              if (params.result.status === 'success') {
-                                toolNode.results[index] = {
-                                  toolCallId: params.id,
-                                  status: 'success',
-                                  content: await processContent({ text: params.result.content, type: 'result' })
-                                };
-                              } else {
-                                toolNode.results[index] = {
-                                  toolCallId: params.id,
-                                  status: 'error',
-                                  error: {
-                                    code: params.result.code,
-                                    message: await processContent({ text: params.result.message, type: 'error' })
-                                  }
-                                };
-                              }
-                            }
-                            triggerRef(_currentChat);
-                          }
-                        },
-                
-                  onChunk: async (chunk: string) => {
+          // Find the tool node containing this toolCallId
+          const allMessages = getAllMessages(mutableChat);
+          const toolNode = allMessages.find(n => n.role === 'tool' && n.results.some(er => er.toolCallId === params.id)) as import('../models/types').ToolMessageNode | undefined;
+
+          if (toolNode) {
+            const BINARY_THRESHOLD = 100 * 1024; // 100KB
+            const processContent = async ({ text, type }: { text: string, type: 'result' | 'error' }): Promise<import('../services/tools/types').TextOrBinaryObject> => {
+              if (text.length > BINARY_THRESHOLD) {
+                const blob = new Blob([text], { type: 'text/plain' });
+                const binaryId = generateId();
+                await storageService.saveFile(blob, binaryId, `tool_${type}_${params.id}.txt`);
+                return { type: 'binary_object', id: binaryId };
+              }
+              return { type: 'text', text };
+            };
+
+            const index = toolNode.results.findIndex(er => er.toolCallId === params.id);
+            if (index !== -1) {
+              if (params.result.status === 'success') {
+                toolNode.results[index] = {
+                  toolCallId: params.id,
+                  status: 'success',
+                  content: await processContent({ text: params.result.content, type: 'result' })
+                };
+              } else {
+                toolNode.results[index] = {
+                  toolCallId: params.id,
+                  status: 'error',
+                  error: {
+                    code: params.result.code,
+                    message: await processContent({ text: params.result.message, type: 'error' })
+                  }
+                };
+              }
+            }
+            triggerRef(_currentChat);
+          }
+        },
+
+        onChunk: async (chunk: string) => {
           generationState.currentAssistantNode.content += chunk;
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
             triggerRef(_currentChat);

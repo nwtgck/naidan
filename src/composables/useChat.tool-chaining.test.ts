@@ -174,7 +174,7 @@ describe('useChat Tool Chaining', () => {
 
     // New structure: user, assistant1 (calls), tool (consolidated), assistant2 (final)
     expect(messages.map(m => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
-    
+
     expect(displayMessages.map(d => d.type)).toEqual(['message', 'message', 'tool_group', 'message']);
 
     const toolGroup = displayMessages[2] as { type: 'tool_group', toolCalls: any[] };
@@ -211,12 +211,12 @@ describe('useChat Tool Chaining', () => {
     await nextTick();
 
     // Add second root item (new thread)
-    await sendMessage('Message 2', null); 
+    await sendMessage('Message 2', null);
     await flushPromises();
     await nextTick();
 
     expect(chat.root.items).toHaveLength(2);
-    
+
     // Last leaf should be in the second thread
     const messages = activeMessages.value;
     expect(messages[0]!.content).toBe('Message 2');

@@ -134,7 +134,7 @@ defineExpose({
             <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
               {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
             </div>
-            
+
             <div v-if="isLoadingBinary" class="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-gray-400">
               <Loader2 class="w-3.5 h-3.5 animate-spin" />
               <span class="text-[10px] font-medium">Loading large result...</span>
@@ -142,7 +142,7 @@ defineExpose({
 
             <template v-else-if="toolCall.result.status === 'success'">
               <div v-if="toolCall.result.content.type === 'text'"
-                class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap"
+                   class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap"
               >
                 {{ toolCall.result.content.text }}
               </div>
@@ -150,7 +150,7 @@ defineExpose({
                 {{ binaryContent }}
               </div>
             </template>
-            
+
             <template v-else-if="toolCall.result.status === 'error'">
               <div class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
                 <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ toolCall.result.error.code }}</div>
