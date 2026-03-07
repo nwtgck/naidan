@@ -358,59 +358,53 @@ export function useChat() {
     const branch = activeMessages.value;
     const result: import('../models/types').DisplayMessage[] = [];
 
-    // Track the current assistant node that might have tool calls
-    let lastAssistant: AssistantMessageNode | null = null;
     let currentToolGroup: import('../models/types').CombinedToolCall[] = [];
 
-    for (const node of branch) {
-      if (node.role === 'assistant') {
-        // If we had a tool group, finish it
-        if (currentToolGroup.length > 0) {
-          result.push({
-            type: 'tool_group',
-            id: currentToolGroup.map(tc => tc.id).join(','),
-            toolCalls: currentToolGroup
-          });
-          currentToolGroup = [];
-        }
-        lastAssistant = node;
-        result.push({ type: 'message', node });
-      } else if (node.role === 'tool') {
-        if (lastAssistant && lastAssistant.toolCalls) {
-          const call = lastAssistant.toolCalls.find(tc => tc.id === node.toolCallId);
-          if (call) {
-            currentToolGroup.push({
-              id: node.toolCallId,
-              nodeId: node.id,
-              call,
-              result: node.result
-            });
-          } else {
-            // Orphaned tool message? Render as standalone message node
-            result.push({ type: 'message', node });
+    branch.forEach((node, index) => {
+      if (node.role === 'tool') {
+        // Find the assistant node that triggered this tool call by searching backwards
+        let triggeringAssistant: AssistantMessageNode | null = null;
+        for (let j = index - 1; j >= 0; j--) {
+          const prev = branch[j];
+          if (prev?.role === 'assistant' && prev.toolCalls?.some(tc => tc.id === node.toolCallId)) {
+            triggeringAssistant = prev;
+            break;
           }
+        }
+
+        if (triggeringAssistant) {
+          const call = triggeringAssistant.toolCalls!.find(tc => tc.id === node.toolCallId)!;
+          currentToolGroup.push({
+            id: node.toolCallId,
+            nodeId: node.id,
+            call,
+            result: node.result
+          });
         } else {
-          // No assistant found before? Render as standalone message node
+          // If no triggering assistant is found, render as a regular message (shouldn't happen with correct tree)
           result.push({ type: 'message', node });
         }
       } else {
-        // user, system
+        // Non-tool node (user, assistant, system)
+        // 1. If we were collecting tool calls, flush them now
         if (currentToolGroup.length > 0) {
           result.push({
             type: 'tool_group',
-            id: currentToolGroup.map(tc => tc.id).join(','),
+            id: currentToolGroup.map(tc => tc.nodeId).join(','),
             toolCalls: currentToolGroup
           });
           currentToolGroup = [];
         }
+        // 2. Push the current node
         result.push({ type: 'message', node });
       }
-    }
+    });
 
+    // Final flush
     if (currentToolGroup.length > 0) {
       result.push({
         type: 'tool_group',
-        id: currentToolGroup.map(tc => tc.id).join(','),
+        id: currentToolGroup.map(tc => tc.nodeId).join(','),
         toolCalls: currentToolGroup
       });
     }
@@ -1053,7 +1047,9 @@ export function useChat() {
       const { enabledToolNames } = useChatTools();
       const enabledTools = ALL_TOOLS.filter(t => enabledToolNames.value.includes(t.name));
 
-      let currentAssistantNode = assistantNode;
+      const generationState = {
+        currentAssistantNode: assistantNode
+      };
 
       await provider.chat({
         messages: finalMessages,
@@ -1062,18 +1058,18 @@ export function useChat() {
         onAssistantMessageStart: () => {
           // If the current node already has content or tool calls, it means we're in a new loop
           // iteration after a tool result, so we need a new assistant node to hold the next response.
-          if (currentAssistantNode.content !== '' || (currentAssistantNode.toolCalls?.length ?? 0) > 0) {
+          if (generationState.currentAssistantNode.content !== '' || (generationState.currentAssistantNode.toolCalls?.length ?? 0) > 0) {
             const newNode: AssistantMessageNode = reactive({
               id: generateId(),
               role: 'assistant',
               content: '',
               timestamp: Date.now(),
-              modelId: currentAssistantNode.modelId,
+              modelId: generationState.currentAssistantNode.modelId,
               replies: { items: [] },
               attachments: undefined,
               thinking: undefined,
               error: undefined,
-              lmParameters: currentAssistantNode.lmParameters,
+              lmParameters: generationState.currentAssistantNode.lmParameters,
               toolCalls: undefined,
               toolCallId: undefined,
               result: undefined,
@@ -1083,7 +1079,7 @@ export function useChat() {
             if (currentLeaf) {
               currentLeaf.replies.items.push(newNode);
               mutableChat.currentLeafId = newNode.id;
-              currentAssistantNode = newNode;
+              generationState.currentAssistantNode = newNode;
               triggerRef(_currentChat);
             }
           }
@@ -1114,18 +1110,17 @@ export function useChat() {
           }
 
           // 3. Update Assistant node's toolCalls metadata
-          if (!currentAssistantNode.toolCalls) {
-            currentAssistantNode.toolCalls = [];
-          }
-          if (!currentAssistantNode.toolCalls.some(tc => tc.id === params.id)) {
-            currentAssistantNode.toolCalls.push({
+          const assistant = generationState.currentAssistantNode;
+          const currentCalls = assistant.toolCalls || [];
+          if (!currentCalls.some(tc => tc.id === params.id)) {
+            assistant.toolCalls = [...currentCalls, {
               id: params.id,
               type: 'function',
               function: {
                 name: params.toolName,
                 arguments: typeof params.args === 'string' ? params.args : JSON.stringify(params.args)
               }
-            });
+            }];
           }
 
           triggerRef(_currentChat);
@@ -1168,7 +1163,7 @@ export function useChat() {
           }
         },
         onChunk: async (chunk: string) => {
-          currentAssistantNode.content += chunk;
+          generationState.currentAssistantNode.content += chunk;
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
             triggerRef(_currentChat);
           }
@@ -1177,7 +1172,10 @@ export function useChat() {
           if (now - lastSave > 500 && !isSaving) {
             isSaving = true;
             try {
-              await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
+              await updateChatContent(mutableChat.id, (current) => {
+                if (!current) throw new Error('Chat content not found');
+                return { ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId };
+              });
               lastSave = Date.now();
             } finally {
               isSaving = false;
