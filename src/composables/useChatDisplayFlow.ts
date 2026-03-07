@@ -39,39 +39,128 @@ export function useChatDisplayFlow({
   isProcessing: ComputedRef<boolean>
 }) {
 
-  const isThinkingActive = ({ item }: { item: any }): boolean => {
-    const node = item.type === 'message' ? item.node : null;
-    if (!node || node.role !== 'assistant') return false;
-    if (node.thinking) return false;
-    const content = node.content || '';
-    const lastOpen = content.lastIndexOf('<think>');
-    const lastClose = content.lastIndexOf('</think>');
-    return lastOpen > -1 && lastClose < lastOpen && isProcessing.value;
+  const isThinkingActive = ({ item }: { item: ChatFlowItem | DisplayMessage }): boolean => {
+    const node = (() => {
+      switch (item.type) {
+      case 'message': return item.node;
+      case 'tool_group': return null;
+      case 'process_sequence': return null;
+      default: {
+        const _ex: never = item;
+        return _ex;
+      }
+      }
+    })();
+    if (!node) return false;
+
+    const role = node.role;
+    switch (role) {
+    case 'assistant': {
+      if (node.thinking) return false;
+      const content = node.content || '';
+      const lastOpen = content.lastIndexOf('<think>');
+      const lastClose = content.lastIndexOf('</think>');
+      return lastOpen > -1 && lastClose < lastOpen && isProcessing.value;
+    }
+    case 'user':
+    case 'system':
+    case 'tool':
+      return false;
+    default: {
+      const _ex: never = role;
+      return _ex;
+    }
+    }
   };
 
-  const isWaitingResponse = ({ item }: { item: any }): boolean => {
-    const node = item.type === 'message' ? item.node : null;
-    if (!node || node.role !== 'assistant') return false;
-    const content = stripNaidanSentinels(node.content || '').trim();
-    return content.length === 0 && !node.thinking && !isThinkingActive({ item }) && isProcessing.value;
+  const isWaitingResponse = ({ item }: { item: ChatFlowItem | DisplayMessage }): boolean => {
+    const node = (() => {
+      switch (item.type) {
+      case 'message': return item.node;
+      case 'tool_group': return null;
+      case 'process_sequence': return null;
+      default: {
+        const _ex: never = item;
+        return _ex;
+      }
+      }
+    })();
+    if (!node) return false;
+
+    const role = node.role;
+    switch (role) {
+    case 'assistant': {
+      const content = stripNaidanSentinels(node.content || '').trim();
+      return content.length === 0 && !node.thinking && !isThinkingActive({ item }) && isProcessing.value;
+    }
+    case 'user':
+    case 'system':
+    case 'tool':
+      return false;
+    default: {
+      const _ex: never = role;
+      return _ex;
+    }
+    }
   };
 
   const isInternal = ({ item }: { item: DisplayMessage }): boolean => {
-    if (item.type === 'tool_group') return true;
-    if (item.type === 'message' && item.node.role === 'assistant') {
-      const content = item.node.content || '';
-      const cleanContent = stripNaidanSentinels(content)
-        .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
-        .trim();
-      return cleanContent.length === 0;
+    switch (item.type) {
+    case 'tool_group': return true;
+    case 'message': {
+      const node = item.node;
+      const role = node.role;
+      switch (role) {
+      case 'assistant': {
+        const content = item.node.content || '';
+        const cleanContent = stripNaidanSentinels(content)
+          .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
+          .trim();
+        return cleanContent.length === 0;
+      }
+      case 'user':
+      case 'system':
+      case 'tool':
+        return false;
+      default: {
+        const _ex: never = role;
+        return _ex;
+      }
+      }
     }
-    return false;
+    default: {
+      const _ex: never = item;
+      return _ex;
+    }
+    }
   };
 
-  const isAI = ({ item }: { item: any }): boolean =>
-    item.type === 'process_sequence' ||
-    item.type === 'tool_group' ||
-    (item.type === 'message' && item.node.role === 'assistant');
+  const isAI = ({ item }: { item: DisplayMessage | { type: 'process_sequence', items: DisplayMessage[] } }): boolean => {
+    const type = item.type;
+    switch (type) {
+    case 'process_sequence':
+    case 'tool_group':
+      return true;
+    case 'message': {
+      const role = item.node.role;
+      switch (role) {
+      case 'assistant': return true;
+      case 'user':
+      case 'system':
+      case 'tool':
+        return false;
+      default: {
+        const _ex: never = role;
+        return _ex;
+      }
+      }
+    }
+    default: {
+      const _ex: never = type;
+      return _ex;
+    }
+    }
+  };
 
   const getStats = ({ items }: { items: DisplayMessage[] }): SequenceStats => {
     let thinkingSteps = 0;
@@ -82,9 +171,12 @@ export function useChatDisplayFlow({
     let isWaiting = false;
 
     items.forEach((item, idx) => {
-      if (item.type === 'message') {
+      switch (item.type) {
+      case 'message': {
         const node = item.node;
-        if (node.role === 'assistant') {
+        const role = node.role;
+        switch (role) {
+        case 'assistant': {
           const hasThink = node.thinking || /<think>/i.test(node.content || '');
           if (hasThink) {
             thinkingSteps++;
@@ -93,13 +185,43 @@ export function useChatDisplayFlow({
           if (idx === items.length - 1 && isWaitingResponse({ item })) {
             isWaiting = true;
           }
+          break;
         }
-      } else if (item.type === 'tool_group') {
+        case 'user':
+        case 'system':
+        case 'tool':
+          break;
+        default: {
+          const _ex: never = role;
+          throw new Error(`Unhandled role: ${_ex}`);
+        }
+        }
+        break;
+      }
+      case 'tool_group': {
         toolCallCount += item.toolCalls.length;
         item.toolCalls.forEach((tc) => {
           toolNames.push(tc.call.function.name);
-          if (tc.result.status === 'running') isCurrentlyToolRunning = true;
+          const status = tc.result.status;
+          switch (status) {
+          case 'running':
+            isCurrentlyToolRunning = true;
+            break;
+          case 'success':
+          case 'error':
+            break;
+          default: {
+            const _ex: never = status;
+            throw new Error(`Unhandled status: ${_ex}`);
+          }
+          }
         });
+        break;
+      }
+      default: {
+        const _ex: never = item;
+        throw new Error(`Unhandled type: ${(_ex as { type: string }).type}`);
+      }
       }
     });
 
@@ -179,7 +301,9 @@ export function useChatDisplayFlow({
         else if (hasNextAI) position = 'start';
       }
 
-      if (item.type === 'process_sequence') {
+      const type = item.type;
+      switch (type) {
+      case 'process_sequence': {
         const subItems: ChatFlowItem[] = item.items.map(sub => ({
           ...sub,
           flow: { position: 'middle', nesting: 'inside-group' }
@@ -189,7 +313,20 @@ export function useChatDisplayFlow({
         const first = subItems[0];
         let id = 'seq-unknown';
         if (first) {
-          id = 'seq-' + (first.type === 'message' ? first.node.id : (first as any).id);
+          const firstType = first.type;
+          switch (firstType) {
+          case 'message':
+            id = 'seq-' + first.node.id;
+            break;
+          case 'tool_group':
+          case 'process_sequence':
+            id = 'seq-' + first.id;
+            break;
+          default: {
+            const _ex: never = firstType;
+            id = 'seq-' + (_ex as { id: string }).id;
+          }
+          }
         }
 
         result.push({
@@ -200,11 +337,20 @@ export function useChatDisplayFlow({
           summary: calculateSummary({ stats }),
           stats
         });
-      } else {
+        break;
+      }
+      case 'message':
+      case 'tool_group': {
         result.push({
           ...item,
           flow: { position, nesting: 'none' }
         } as ChatFlowItem);
+        break;
+      }
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unhandled type: ${(_ex as { type: string }).type}`);
+      }
       }
     }
 

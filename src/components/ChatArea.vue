@@ -17,7 +17,7 @@ import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
-import { useChatDisplayFlow } from '../composables/useChatDisplayFlow';
+import { useChatDisplayFlow, type ChatFlowItem } from '../composables/useChatDisplayFlow';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
@@ -775,16 +775,16 @@ watch(
               >
                 <template #peek>
                   <template v-if="flowItem.type === 'process_sequence' && flowItem.items.length > 0">
-                    <template v-for="lastItem in [flowItem.items[flowItem.items.length - 1]]">
+                    <template v-for="lastItem in ([flowItem.items[flowItem.items.length - 1]] as ChatFlowItem[])" :key="lastItem.type === 'message' ? lastItem.node.id : lastItem.id">
                       <!-- Active Thinking Peek -->
                       <MessageThinking
-                        v-if="lastItem && lastItem.type === 'message' && isThinkingActive({ item: lastItem })"
-                        :message="(lastItem as any).node"
+                        v-if="lastItem.type === 'message' && isThinkingActive({ item: lastItem })"
+                        :message="lastItem.node"
                         no-margin
                       />
                       <!-- Waiting Peek (Initial loading within sequence) -->
                       <AssistantWaitingIndicator
-                        v-else-if="lastItem && lastItem.type === 'message' && isWaitingResponse({ item: lastItem })"
+                        v-else-if="lastItem.type === 'message' && isWaitingResponse({ item: lastItem })"
                         no-padding
                       />
                     </template>
