@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Shapes } from 'lucide-vue-next';
+import { Shapes, Bird } from 'lucide-vue-next';
 import type { CombinedToolCall } from '../models/types';
 import type { FlowMetadata } from '../composables/useChatDisplayFlow';
 import ToolCallItem from './ToolCallItem.vue';
@@ -8,8 +8,10 @@ import ToolCallItem from './ToolCallItem.vue';
 const props = withDefaults(defineProps<{
   toolCalls: CombinedToolCall[];
   flow?: FlowMetadata;
+  isFirstInTurn?: boolean;
 }>(), {
-  flow: () => ({ position: 'standalone', nesting: 'none' })
+  flow: () => ({ position: 'standalone', nesting: 'none' }),
+  isFirstInTurn: false
 });
 
 const isExpanded = ref(false); // Default collapsed for tool execution blocks
@@ -53,6 +55,16 @@ defineExpose({
     ]"
     data-testid="tool-call-group"
   >
+    <!-- Turn Header (Icon + Model ID) -->
+    <div v-if="isFirstInTurn" class="flex items-center gap-3 mb-1 px-5 pt-1 pb-2">
+      <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <Bird class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+      </div>
+      <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
+        <span>Assistant</span>
+      </div>
+    </div>
+
     <div class="px-5" :class="(!isNested && (flow.position === 'standalone' || flow.position === 'end')) ? 'pb-3' : 'pb-2'">      <div
       @click="toggleExpand"
       class="transition-all duration-500 ease-in-out relative group/tool-group w-full cursor-pointer overflow-hidden border shadow-sm"

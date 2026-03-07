@@ -29,13 +29,14 @@ describe('useChatDisplayFlow complex scenario', () => {
         partContent: 'Calc',
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: false,
+        isFirstInTurn: true,
         flow: { position: 'standalone', nesting: 'none' }
       },
       {
         type: 'process_sequence',
         id: 'seq-a1-thinking',
         summary: '2 thinking steps • 1 tool execution • Used c',
+        isFirstInTurn: true,
         stats: {
           thinkingSteps: 2,
           toolCallCount: 1,
@@ -47,8 +48,8 @@ describe('useChatDisplayFlow complex scenario', () => {
         items: [
           { type: 'message', node: expect.objectContaining({ id: 'a1' }), mode: 'thinking', partContent: 'T1', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } },
           { type: 'message', node: expect.objectContaining({ id: 'a1' }), mode: 'tool_calls', isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'inside-group' } },
-          { type: 'tool_group', id: 't1', node: expect.objectContaining({ id: 't1' }), toolCalls: [expect.objectContaining({ id: 'tc1' })], flow: { position: 'standalone', nesting: 'inside-group' } },
-          { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'thinking', partContent: 'TM', isFirstInNode: true, isLastInNode: false, isFirstInTurn: false, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } }
+          { type: 'tool_group', id: 't1', node: expect.objectContaining({ id: 't1' }), toolCalls: [expect.objectContaining({ id: 'tc1' })], flow: { position: 'standalone', nesting: 'inside-group' }, isFirstInTurn: true },
+          { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'thinking', partContent: 'TM', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } }
         ],
         flow: { position: 'start', nesting: 'none' }
       },
@@ -66,6 +67,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         type: 'process_sequence',
         id: 'seq-am-tool_calls',
         summary: '1 thinking step • 1 tool execution • Used c',
+        isFirstInTurn: false,
         stats: {
           thinkingSteps: 1,
           toolCallCount: 1,
@@ -76,8 +78,8 @@ describe('useChatDisplayFlow complex scenario', () => {
         },
         items: [
           { type: 'message', node: expect.objectContaining({ id: 'am' }), mode: 'tool_calls', isFirstInNode: false, isLastInNode: true, isFirstInTurn: false, isCompletedThinking: undefined, flow: { position: 'standalone', nesting: 'inside-group' } },
-          { type: 'tool_group', id: 'tm', node: expect.objectContaining({ id: 'tm' }), toolCalls: [expect.objectContaining({ id: 'tcm' })], flow: { position: 'standalone', nesting: 'inside-group' } },
-          { type: 'message', node: expect.objectContaining({ id: 'al' }), mode: 'thinking', partContent: 'TL', isFirstInNode: true, isLastInNode: false, isFirstInTurn: false, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } }
+          { type: 'tool_group', id: 'tm', node: expect.objectContaining({ id: 'tm' }), toolCalls: [expect.objectContaining({ id: 'tcm' })], flow: { position: 'standalone', nesting: 'inside-group' }, isFirstInTurn: true },
+          { type: 'message', node: expect.objectContaining({ id: 'al' }), mode: 'thinking', partContent: 'TL', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, isCompletedThinking: true, flow: { position: 'standalone', nesting: 'inside-group' } }
         ],
         flow: { position: 'middle', nesting: 'none' }
       },
@@ -117,7 +119,7 @@ describe('useChatDisplayFlow complex scenario', () => {
         partContent: 'Hi',
         isFirstInNode: true,
         isLastInNode: true,
-        isFirstInTurn: false,
+        isFirstInTurn: true,
         flow: { position: 'standalone', nesting: 'none' }
       },
       {

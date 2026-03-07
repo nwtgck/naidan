@@ -17,6 +17,8 @@ export interface FlowMetadata {
   readonly nesting: NestingLevel;
 }
 
+export type MessageMode = 'thinking' | 'content' | 'tool_calls' | 'waiting';
+
 export interface SequenceStats {
   thinkingSteps: number;
   toolCallCount: number;
@@ -26,12 +28,6 @@ export interface SequenceStats {
   isWaiting: boolean;
 }
 
-export type MessageMode = 'thinking' | 'content' | 'tool_calls' | 'waiting';
-
-/**
- * Represents a logical fragment of a message or a tool execution.
- * ChatFlowItems are what actually get rendered in the UI.
- */
 export type ChatFlowItem =
   | {
       type: 'message';
@@ -44,8 +40,8 @@ export type ChatFlowItem =
       isFirstInTurn: boolean;
       isCompletedThinking?: boolean;
     }
-  | { type: 'tool_group'; id: string; toolCalls: CombinedToolCall[]; flow: FlowMetadata; node: MessageNode }
-  | { type: 'process_sequence'; id: string; items: ChatFlowItem[]; flow: FlowMetadata; summary: string; stats: SequenceStats };
+  | { type: 'tool_group'; id: string; toolCalls: CombinedToolCall[]; flow: FlowMetadata; node: MessageNode; isFirstInTurn: boolean }
+  | { type: 'process_sequence'; id: string; items: ChatFlowItem[]; flow: FlowMetadata; summary: string; stats: SequenceStats; isFirstInTurn: boolean };
 
 /**
  * A "ChatFlowAtom" is an atomic unit of a message branch before grouping.
@@ -54,7 +50,7 @@ export type ChatFlowAtom =
   | { type: 'thinking'; node: MessageNode; content: string; isCompleted: boolean; isFirstInNode: boolean; isLastInNode: boolean; isFirstInTurn: boolean }
   | { type: 'content'; node: MessageNode; content: string; isFirstInNode: boolean; isLastInNode: boolean; isFirstInTurn: boolean }
   | { type: 'tool_calls'; node: MessageNode; toolCalls: ToolCall[]; isFirstInNode: boolean; isLastInNode: boolean; isFirstInTurn: boolean }
-  | { type: 'tool_group'; id: string; toolCalls: CombinedToolCall[]; node: MessageNode }
+  | { type: 'tool_group'; id: string; toolCalls: CombinedToolCall[]; node: MessageNode; isFirstInTurn: boolean }
   | { type: 'waiting'; node: MessageNode; isFirstInNode: boolean; isLastInNode: boolean; isFirstInTurn: boolean };
 
 export function useChatDisplayFlow({
@@ -72,7 +68,7 @@ export function useChatDisplayFlow({
     for (let nodeIdx = 0; nodeIdx < nodes.length; nodeIdx++) {
       const node = nodes[nodeIdx]!;
       const rawNode = toRaw(node);
-      const isFirstInTurn = nodeIdx === 0 || nodes[nodeIdx - 1]?.role === 'user';
+      const isFirstInTurn = nodeIdx === 0 || nodes[nodeIdx - 1]?.role !== rawNode.role;
 
       const role = rawNode.role;
       switch (role) {
@@ -84,7 +80,7 @@ export function useChatDisplayFlow({
           content: rawNode.content || '',
           isFirstInNode: true,
           isLastInNode: true,
-          isFirstInTurn: false
+          isFirstInTurn
         };
         break;
 
@@ -163,6 +159,7 @@ export function useChatDisplayFlow({
       }
 
       case 'tool': {
+        const isFirstInTurn = nodeIdx === 0 || nodes[nodeIdx - 1]?.role !== rawNode.role;
         let triggeringAssistant: AssistantMessageNode | null = null;
         for (let j = nodeIdx - 1; j >= 0; j--) {
           const prev = nodes[j];
@@ -175,9 +172,9 @@ export function useChatDisplayFlow({
           const toolCalls: CombinedToolCall[] = rawNode.results.map(er => ({
             id: er.toolCallId, nodeId: rawNode.id, call: triggeringAssistant!.toolCalls!.find(tc => tc.id === er.toolCallId)!, result: er
           }));
-          yield { type: 'tool_group', id: rawNode.id, toolCalls, node };
+          yield { type: 'tool_group', id: rawNode.id, toolCalls, node, isFirstInTurn };
         } else {
-          yield { type: 'content', node, content: '[Tool Results]', isFirstInNode: true, isLastInNode: true, isFirstInTurn: false };
+          yield { type: 'content', node, content: '[Tool Results]', isFirstInNode: true, isLastInNode: true, isFirstInTurn };
         }
         break;
       }
@@ -226,7 +223,7 @@ export function useChatDisplayFlow({
           flow: { ...item.flow, nesting: 'inside-group' as const }
         }));
 
-        yield { type: 'process_sequence', id, items: nestedItems, flow: { position: 'standalone', nesting: 'none' }, summary: calculateSummary({ stats }), stats };
+        yield { type: 'process_sequence', id, items: nestedItems, flow: { position: 'standalone', nesting: 'none' }, summary: calculateSummary({ stats }), stats, isFirstInTurn: first.isFirstInTurn };
       } else if (buffer.length === 1) {
         yield buffer[0]!;
       }
@@ -249,7 +246,7 @@ export function useChatDisplayFlow({
     const type = atom.type;
     switch (type) {
     case 'tool_group':
-      return { type: 'tool_group', id: atom.id, toolCalls: atom.toolCalls, node: atom.node, flow: { position: 'standalone', nesting: 'none' } };
+      return { type: 'tool_group', id: atom.id, toolCalls: atom.toolCalls, node: atom.node, flow: { position: 'standalone', nesting: 'none' }, isFirstInTurn: atom.isFirstInTurn };
     case 'thinking':
     case 'content':
     case 'waiting':

@@ -772,6 +772,7 @@ watch(
                 :flow="flowItem.flow"
                 :summary="flowItem.summary"
                 :stats="flowItem.stats"
+                :is-first-in-turn="flowItem.isFirstInTurn"
               >
                 <template #peek>
                   <template v-if="flowItem.type === 'process_sequence' && flowItem.items.length > 0">
@@ -820,6 +821,7 @@ watch(
                       v-else-if="subItem.type === 'tool_group' && isExpanded"
                       :tool-calls="subItem.toolCalls"
                       :flow="subItem.flow"
+                      :is-first-in-turn="subItem.isFirstInTurn"
                     />
                   </template>
                 </template>
@@ -855,6 +857,7 @@ watch(
                 v-else-if="flowItem.type === 'tool_group'"
                 :tool-calls="flowItem.toolCalls"
                 :flow="flowItem.flow"
+                :is-first-in-turn="flowItem.isFirstInTurn"
               />
             </template>
 

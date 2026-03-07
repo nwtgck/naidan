@@ -86,6 +86,7 @@ const props = withDefaults(defineProps<{
   isFirstInTurn?: boolean;
 }>(), {
   flow: () => ({ position: 'standalone', nesting: 'none' }),
+  isGenerating: false,
   mode: 'content',
   isFirstInNode: true,
   isLastInNode: true,
