@@ -1035,7 +1035,7 @@ defineExpose({
       }
     ]"
   >
-    <div v-if="showHeader && isFirstInTurn" class="flex items-center gap-3 mb-1">
+    <div v-if="showHeader && isFirstInTurn && !isNested" class="flex items-center gap-3 mb-1">
       <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
         <User v-if="isUser" class="w-4 h-4 text-gray-500" />
         <Bird v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />

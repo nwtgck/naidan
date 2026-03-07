@@ -56,7 +56,7 @@ defineExpose({
     data-testid="tool-call-group"
   >
     <!-- Turn Header (Icon + Model ID) -->
-    <div v-if="isFirstInTurn" class="flex items-center gap-3 mb-1 px-5 pt-1 pb-2">
+    <div v-if="isFirstInTurn && !isNested" class="flex items-center gap-3 mb-1 px-5 pt-1 pb-2">
       <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
         <Bird class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
