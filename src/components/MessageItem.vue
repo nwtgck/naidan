@@ -989,12 +989,12 @@ defineExpose({
     v-if="!(isGenerating && (transformersStatus === 'loading' || transformersStatus === 'error') && endpointType === 'transformers_js')"
     ref="messageRef"
     class="flex flex-col gap-2 p-5 group transition-colors"
-    :class="{ 
+    :class="{
       'bg-gray-50/30 dark:bg-gray-800/20': !isUser,
       'border-t border-gray-100 dark:border-gray-800/50': !isUser && !isContinuation,
       'border-b border-gray-100 dark:border-gray-800/50': !isUser && isLastInSequence,
       'pt-2': !isUser && isContinuation,
-      'pb-2': !isUser && !isLastInSequence 
+      'pb-2': !isUser && !isLastInSequence
     }"
   >
     <div v-if="!isContinuation" class="flex items-center gap-3 mb-1">

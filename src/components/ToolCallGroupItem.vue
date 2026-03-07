@@ -21,7 +21,7 @@ const toolNamesDisplay = computed(() => {
   const limit = 3;
   const displayedNames = names.slice(0, limit);
   const remaining = names.length - limit;
-  
+
   let base = `Used ${displayedNames.join(', ')}`;
   if (remaining > 0) {
     base += ` and ${remaining} more`;
@@ -53,8 +53,8 @@ defineExpose({
         class="transition-all duration-500 ease-in-out relative group/tool-group w-full cursor-pointer overflow-hidden border shadow-sm"
         :class="[
           /* Shape & Background */
-          isExpanded 
-            ? 'p-5 rounded-2xl bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner' 
+          isExpanded
+            ? 'p-5 rounded-2xl bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner'
             : 'px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800/50 border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800'
         ]"
       >
@@ -63,8 +63,8 @@ defineExpose({
           class="flex items-center gap-2 text-[10px] font-bold transition-colors tracking-wider relative z-20"
           data-testid="tool-call-group-header"
           :class="[
-            isExpanded 
-              ? 'mb-2 text-blue-600 dark:text-blue-400' 
+            isExpanded
+              ? 'mb-2 text-blue-600 dark:text-blue-400'
               : 'text-gray-500 dark:text-gray-400 group-hover/tool-group:text-blue-600'
           ]"
         >

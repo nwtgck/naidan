@@ -84,7 +84,7 @@ describe('AI Sequence Design', () => {
 
     it('applies border-b only when isLastInSequence is true', () => {
       const message = createAssistantMessage('Hello');
-      
+
       const lastWrapper = mount(MessageItem, {
         props: { message, isLastInSequence: true }
       });
@@ -120,7 +120,7 @@ describe('AI Sequence Design', () => {
 
     it('applies border-b and pb-3 only when isLastInSequence is true', () => {
       const toolCalls = createToolCalls(['search']);
-      
+
       const lastWrapper = mount(ToolCallGroupItem, {
         props: { toolCalls, isLastInSequence: true }
       });
