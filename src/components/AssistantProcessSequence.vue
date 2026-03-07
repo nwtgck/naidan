@@ -92,7 +92,7 @@ defineExpose({
       >
         <!-- Status/Action Icon -->
         <div class="flex-shrink-0">
-          <Loader2 v-if="isProcessing && (stats.isCurrentlyThinking || stats.isCurrentlyToolRunning || stats.isWaiting)" class="w-3 h-3 animate-spin text-blue-500/70" />
+          <Loader2 v-if="isProcessing && (stats.isCurrentlyThinking || stats.isCurrentlyToolRunning || stats.isWaiting)" class="w-3 h-3 animate-spin text-blue-500/70" data-testid="icon-loader" />
           <component :is="isExpanded ? EyeOff : Eye" v-else class="w-3 h-3 transition-transform duration-300" :class="{ 'opacity-60': !isExpanded }" />
         </div>
 
