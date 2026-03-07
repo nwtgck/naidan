@@ -210,6 +210,7 @@ export function useImageGeneration() {
       break;
     case 'user':
     case 'system':
+    case 'tool':
       return;
     default: {
       const _ex: never = assistantNode;

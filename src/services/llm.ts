@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { zodToJsonSchema } from '../utils/llm-tools';
 import type { LmParameters, ChatMessage, MultimodalContent } from '../models/types';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
-import type { Tool, ToolExecutionResult } from './tools/types';
+import type { Tool } from './tools/types';
 
 const { addErrorEvent } = useGlobalEvents();
 
@@ -92,7 +92,10 @@ export interface LLMProvider {
     parameters?: LmParameters;
     tools?: Tool[];
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
+    onToolResult?: (params: {
+      id: string;
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string };
+    }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void>;
@@ -138,7 +141,10 @@ export class OpenAIProvider implements LLMProvider {
     parameters?: LmParameters;
     tools?: Tool[];
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
+    onToolResult?: (params: {
+      id: string;
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string };
+    }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
@@ -374,7 +380,7 @@ export class OpenAIProvider implements LLMProvider {
             } catch (e) {
               if (e instanceof Error && e.message === 'Generation aborted') throw e;
 
-              const errorResult: ToolExecutionResult = e instanceof z.ZodError
+              const errorResult: { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
                 ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
                 : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
 
@@ -383,7 +389,7 @@ export class OpenAIProvider implements LLMProvider {
             }
 
           } else if (!tool) {
-            const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
+            const errorResult: { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
             onToolResult?.({ id: tc.id, result: errorResult });
             result = errorResult.message;
           } else {
@@ -500,7 +506,10 @@ export class OllamaProvider implements LLMProvider {
     parameters?: LmParameters;
     tools?: Tool[];
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolResult?: (params: { id: string; result: ToolExecutionResult }) => void;
+    onToolResult?: (params: {
+      id: string;
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string };
+    }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
@@ -729,23 +738,12 @@ export class OllamaProvider implements LLMProvider {
 
             if (validated.message?.tool_calls) {
               for (const tc of validated.message.tool_calls) {
-                let parsedArgs: unknown;
-                if (typeof tc.function.arguments === 'string') {
-                  try {
-                    parsedArgs = JSON.parse(tc.function.arguments);
-                  } catch {
-                    parsedArgs = tc.function.arguments;
-                  }
-                } else {
-                  parsedArgs = tc.function.arguments;
-                }
-
                 accumulatedToolCalls.push({
                   id: tc.id || '',
                   type: 'function',
                   function: {
                     name: tc.function.name,
-                    arguments: parsedArgs as Record<string, unknown>
+                    arguments: typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments)
                   }
                 });
               }
@@ -827,7 +825,7 @@ export class OllamaProvider implements LLMProvider {
               }
               }
             } catch (e) {
-              const errorResult: ToolExecutionResult = e instanceof z.ZodError
+              const errorResult: { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
                 ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
                 : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
 
@@ -836,7 +834,7 @@ export class OllamaProvider implements LLMProvider {
             }
           } else if (!tool) {
 
-            const errorResult: ToolExecutionResult = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
+            const errorResult: { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
             onToolResult?.({ id: tc.id, result: errorResult });
             result = errorResult.message;
           } else {

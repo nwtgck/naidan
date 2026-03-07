@@ -26,7 +26,6 @@ import {
 
 import { useChatTools } from './useChatTools';
 import { ALL_TOOLS } from '../services/tools/registry';
-import type { ToolExecutionResult } from '../services/tools/types';
 
 const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
@@ -891,6 +890,7 @@ export function useChat() {
       break;
     case 'user':
     case 'system':
+    case 'tool':
       throw new Error('Invalid role for generation target');
     default: {
       const _ex: never = assistantNode;
@@ -916,12 +916,12 @@ export function useChat() {
     assistantNode.modelId = resolvedModel;
 
     const parentNode = findParentInBranch(mutableChat.root.items, assistantId);
-    const imageRequest = parentNode ? parseImageRequest(parentNode.content) : null;
+    const imageRequest = parentNode ? parseImageRequest(parentNode.content || '') : null;
 
     try {
       if (imageRequest) {
         const { width = 512, height = 512, model, count = 1, persistAs, steps, seed } = imageRequest;
-        const prompt = stripNaidanSentinels(parentNode!.content).trim();
+        const prompt = stripNaidanSentinels(parentNode!.content || '').trim();
 
         const images: { blob: Blob }[] = [];
         if (parentNode?.attachments) {
@@ -973,8 +973,49 @@ export function useChat() {
 
       const history = getChatBranch(mutableChat).filter(m => m.id !== assistantId);
       for (const m of history) {
+        if (m.role === 'tool') {
+          let toolContent = '';
+          const result = m.result;
+          switch (result.status) {
+          case 'success': {
+            if (result.content.type === 'text') {
+              toolContent = result.content.text;
+            } else {
+              const blob = await storageService.getFile(result.content.id);
+              toolContent = blob ? await blob.text() : '[Error: Binary object missing]';
+            }
+            break;
+          }
+          case 'error': {
+            if (result.error.message.type === 'text') {
+              toolContent = `Error [${result.error.code}]: ${result.error.message.text}`;
+            } else {
+              const blob = await storageService.getFile(result.error.message.id);
+              const detail = blob ? await blob.text() : 'Binary error detail missing';
+              toolContent = `Error [${result.error.code}]: ${detail}`;
+            }
+            break;
+          }
+          case 'running':
+            toolContent = '[Error: Tool still running]';
+            break;
+          default: {
+            const _ex: never = result;
+            toolContent = `[Error: Unknown tool status: ${(_ex as { status: string }).status}]`;
+          }
+          }
+          finalMessages.push({
+            role: 'tool',
+            tool_call_id: m.toolCallId,
+            content: toolContent
+          });
+          continue;
+        }
+
+        const msgContent = m.content || '';
+
         if (m.attachments && m.attachments.length > 0) {
-          const content: MultimodalContent[] = [{ type: 'text', text: m.content }];
+          const contentParts: MultimodalContent[] = [{ type: 'text', text: msgContent }];
           for (const att of m.attachments) {
             let blob: Blob | null = null;
             switch (att.status) {
@@ -994,12 +1035,16 @@ export function useChat() {
             }
             if (blob && att.mimeType.startsWith('image/')) {
               const b64 = await fileToDataUrl(blob);
-              content.push({ type: 'image_url', image_url: { url: b64 } });
+              contentParts.push({ type: 'image_url', image_url: { url: b64 } });
             }
           }
-          finalMessages.push({ role: m.role, content });
+          finalMessages.push({ role: m.role, content: contentParts });
         } else {
-          finalMessages.push({ role: m.role, content: m.content });
+          finalMessages.push({
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: msgContent,
+            tool_calls: m.role === 'assistant' ? m.toolCalls : undefined
+          });
         }
       }
 
@@ -1034,7 +1079,7 @@ export function useChat() {
               result: undefined,
             };
 
-            const currentLeaf = findNodeInBranch(mutableChat.root.items, mutableChat.currentLeafId);
+            const currentLeaf = findNodeInBranch(mutableChat.root.items, mutableChat.currentLeafId || '');
             if (currentLeaf) {
               currentLeaf.replies.items.push(newNode);
               mutableChat.currentLeafId = newNode.id;
@@ -1062,7 +1107,7 @@ export function useChat() {
           };
 
           // 2. Add to current branch
-          const currentLeaf = findNodeInBranch(mutableChat.root.items, mutableChat.currentLeafId);
+          const currentLeaf = findNodeInBranch(mutableChat.root.items, mutableChat.currentLeafId || '');
           if (currentLeaf) {
             currentLeaf.replies.items.push(toolNode);
             mutableChat.currentLeafId = toolNode.id;
@@ -1085,13 +1130,40 @@ export function useChat() {
 
           triggerRef(_currentChat);
         },
-        onToolResult: (params: { id: string; result: ToolExecutionResult }) => {
+        onToolResult: async (params: {
+          id: string;
+          result: | { status: 'success'; content: string } | { status: 'error'; code: import('../services/tools/types').ToolExecutionErrorCode; message: string };
+        }) => {
           // Find the matching ToolMessageNode in the current branch
           const history = getChatBranch(mutableChat);
           const toolNode = history.find(n => n.role === 'tool' && n.toolCallId === params.id) as import('../models/types').ToolMessageNode | undefined;
 
           if (toolNode) {
-            toolNode.result = params.result;
+            const BINARY_THRESHOLD = 100 * 1024; // 100KB
+            const processContent = async ({ text, type }: { text: string, type: 'result' | 'error' }): Promise<import('../services/tools/types').TextOrBinaryObject> => {
+              if (text.length > BINARY_THRESHOLD) {
+                const blob = new Blob([text], { type: 'text/plain' });
+                const binaryId = generateId();
+                await storageService.saveFile(blob, binaryId, `tool_${type}_${params.id}.txt`);
+                return { type: 'binary_object', id: binaryId };
+              }
+              return { type: 'text', text };
+            };
+
+            if (params.result.status === 'success') {
+              toolNode.result = {
+                status: 'success',
+                content: await processContent({ text: params.result.content, type: 'result' })
+              };
+            } else {
+              toolNode.result = {
+                status: 'error',
+                error: {
+                  code: params.result.code,
+                  message: await processContent({ text: params.result.message, type: 'error' })
+                }
+              };
+            }
             triggerRef(_currentChat);
           }
         },
@@ -1660,6 +1732,8 @@ export function useChat() {
       await sendMessage(newContent, parent ? parent.id : null, undefined, chat, lmParameters);
       break;
     }
+    case 'tool':
+      break;
     default: {
       const _ex: never = node;
       throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);

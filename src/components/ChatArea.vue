@@ -41,6 +41,7 @@ import { hasChatOverrides } from '../utils/chat-settings-resolver';
 import { scrollIntoViewSafe } from '../utils/dom';
 import { generateChatShareURL } from '../services/import-export/chat-url-share';
 import { useToast } from '../composables/useToast';
+import { storageService } from '../services/storage';
 
 
 const chatStore = useChat();
@@ -56,6 +57,7 @@ const {
 const {
   currentChat,
   generatingTitle,
+  activeMessages,
   activeDisplayMessages,
   allMessages,
   availableModels,
@@ -143,12 +145,12 @@ async function handleMoveToGroup(groupId: string | null) {
   showMoveMenu.value = false;
 }
 
-function exportChat() {
+async function exportChat() {
   if (!currentChat.value || !activeDisplayMessages.value) return;
 
   let markdownContent = `# ${currentChat.value.title || 'New Chat'}\n\n`;
 
-  activeDisplayMessages.value.forEach(item => {
+  for (const item of activeDisplayMessages.value) {
     if (item.type === 'message') {
       const msg = item.node;
       const role = (() => {
@@ -167,11 +169,30 @@ function exportChat() {
     } else {
       // Tool group
       markdownContent += `## Tool Executions:\n`;
-      item.toolCalls.forEach(tc => {
-        markdownContent += `### ${tc.call.function.name}\nArgs: ${tc.call.function.arguments}\nResult: ${tc.result.status === 'success' ? (tc.result.content.type === 'text' ? tc.result.content.text : '[Binary Object]') : (tc.result.error.message.type === 'text' ? tc.result.error.message.text : '[Binary Error]')}\n\n`;
-      });
+      for (const tc of item.toolCalls) {
+        let resultStr = '';
+        if (tc.result.status === 'success') {
+          if (tc.result.content.type === 'text') {
+            resultStr = tc.result.content.text;
+          } else {
+            const blob = await storageService.getFile(tc.result.content.id);
+            resultStr = blob ? await blob.text() : '[Error: Binary object missing]';
+          }
+        } else if (tc.result.status === 'error') {
+          if (tc.result.error.message.type === 'text') {
+            resultStr = tc.result.error.message.text;
+          } else {
+            const blob = await storageService.getFile(tc.result.error.message.id);
+            const detail = blob ? await blob.text() : 'Binary error detail missing';
+            resultStr = `Error [${tc.result.error.code}]: ${detail}`;
+          }
+        } else {
+          resultStr = '[Tool Still Running]';
+        }
+        markdownContent += `### ${tc.call.function.name}\nArgs: ${tc.call.function.arguments}\nResult: ${resultStr}\n\n`;
+      }
     }
-  });
+  }
 
   const blob = new Blob([markdownContent], { type: 'text/plain;charset=utf-8' });
   const filename = `${currentChat.value.title || 'new_chat'}.txt`;
@@ -436,7 +457,7 @@ watch(
               </button>
               <h2 class="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button
-                v-if="activeMessages.length > 0"
+                v-if="activeDisplayMessages.length > 0"
                 @click="handleTitleAction"
                 @mouseleave="ignoreTitleHover = false"
                 class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50 group/title"
@@ -548,7 +569,7 @@ watch(
           </div>
 
           <button
-            v-if="activeMessages.length > 0"
+            v-if="activeDisplayMessages.length > 0"
             @click="handleForkLastMessage"
             class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             title="Fork Chat from last message"

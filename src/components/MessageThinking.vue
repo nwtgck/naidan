@@ -16,17 +16,18 @@ const displayThinking = computed(() => {
   if (props.message.thinking) return props.message.thinking;
 
   // Try to extract from content if not yet processed (streaming case)
-  const matches = [...props.message.content.matchAll(/<think>([\s\S]*?)(?:<\/think>|$)/gi)];
+  const msgContent = props.message.content || '';
+  const matches = [...msgContent.matchAll(/<think>([\s\S]*?)(?:<\/think>|$)/gi)];
   if (matches.length === 0) return '';
 
   return matches.map(m => m[1]?.trim()).filter(Boolean).join('\n\n---\n\n');
 });
 
-const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content));
+const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content || ''));
 
 const isThinkingNow = computed(() => {
   if (props.message.thinking) return false; // Already processed
-  const content = props.message.content;
+  const content = props.message.content || '';
   const lastOpen = content.lastIndexOf('<think>');
   const lastClose = content.lastIndexOf('</think>');
   return lastOpen > -1 && lastClose < lastOpen;

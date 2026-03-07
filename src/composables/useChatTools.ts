@@ -35,7 +35,7 @@ export function useChatTools() {
   const updateToolCall = ({ messageId, toolCallId, update }: {
     messageId: string;
     toolCallId: string;
-    update: | { status: 'success'; result: { content: string } } | { status: 'error'; error: { message: string } }
+    update: | { status: 'success'; result: { content: import('../services/tools/types').TextOrBinaryObject } } | { status: 'error'; error: { message: import('../services/tools/types').TextOrBinaryObject } }
   }) => {
     const current = _messageToolCalls.value.get(messageId);
     if (!current) return;

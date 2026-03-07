@@ -1,13 +1,45 @@
 <script setup lang="ts">
-import { Hammer, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, FileText } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { Hammer, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-vue-next';
+import { ref, watch, onMounted } from 'vue';
 import type { CombinedToolCall } from '../models/types';
+import { storageService } from '../services/storage';
 
 const props = defineProps<{
   toolCall: CombinedToolCall;
 }>();
 
 const isExpanded = ref(true);
+const binaryContent = ref<string | null>(null);
+const isLoadingBinary = ref(false);
+
+const resolveBinary = async () => {
+  const result = props.toolCall.result;
+  let binaryId: string | null = null;
+
+  if (result.status === 'success' && result.content.type === 'binary_object') {
+    binaryId = result.content.id;
+  } else if (result.status === 'error' && result.error.message.type === 'binary_object') {
+    binaryId = result.error.message.id;
+  }
+
+  if (binaryId && !binaryContent.value && !isLoadingBinary.value) {
+    isLoadingBinary.value = true;
+    try {
+      const blob = await storageService.getFile(binaryId);
+      if (blob) {
+        binaryContent.value = await blob.text();
+      }
+    } catch (e) {
+      console.error('Failed to load binary tool content:', e);
+      binaryContent.value = '[Error: Failed to load content]';
+    } finally {
+      isLoadingBinary.value = false;
+    }
+  }
+};
+
+watch(() => props.toolCall.result, resolveBinary, { immediate: true });
+onMounted(resolveBinary);
 
 const toggleExpand = () => {
   isExpanded.value = !isExpanded.value;
@@ -103,15 +135,19 @@ defineExpose({
               {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
             </div>
             
-            <template v-if="toolCall.result.status === 'success'">
+            <div v-if="isLoadingBinary" class="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-gray-400">
+              <Loader2 class="w-3.5 h-3.5 animate-spin" />
+              <span class="text-[10px] font-medium">Loading large result...</span>
+            </div>
+
+            <template v-else-if="toolCall.result.status === 'success'">
               <div v-if="toolCall.result.content.type === 'text'"
                 class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap"
               >
                 {{ toolCall.result.content.text }}
               </div>
-              <div v-else class="flex items-center gap-2 p-2 rounded-lg bg-blue-500/5 text-blue-600 dark:text-blue-400 text-[10px]">
-                <FileText class="w-4 h-4" />
-                <span>Binary Object: {{ toolCall.result.content.id }}</span>
+              <div v-else class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                {{ binaryContent }}
               </div>
             </template>
             
@@ -119,10 +155,7 @@ defineExpose({
               <div class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
                 <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ toolCall.result.error.code }}</div>
                 <div v-if="toolCall.result.error.message.type === 'text'" class="whitespace-pre-wrap">{{ toolCall.result.error.message.text }}</div>
-                <div v-else class="flex items-center gap-2">
-                  <FileText class="w-3 h-3" />
-                  <span>Binary Error Detail: {{ toolCall.result.error.message.id }}</span>
-                </div>
+                <div v-else class="whitespace-pre-wrap">{{ binaryContent }}</div>
               </div>
             </template>
           </div>

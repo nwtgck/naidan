@@ -71,6 +71,7 @@ export function getAllMessages(chat: Chat | Readonly<Chat>): MessageNode[] {
 }
 
 export function processThinking(node: MessageNode) {
+  if (node.content === undefined) return;
   const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
   const matches = [...node.content.matchAll(thinkRegex)];
   if (matches.length > 0) {
