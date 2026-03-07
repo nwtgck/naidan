@@ -42,12 +42,12 @@ defineExpose({
     v-if="toolCalls.length > 0"
     class="flex flex-col transition-colors bg-gray-50/30 dark:bg-gray-800/20"
     :class="[
-      !isContinuation ? 'border-t border-gray-100 dark:border-gray-800/50 pt-4' : 'pt-0',
+      !isContinuation ? 'border-t border-gray-100 dark:border-gray-800/50 pt-4' : 'pt-2',
       isLastInSequence ? 'border-b border-gray-100 dark:border-gray-800/50' : ''
     ]"
     data-testid="tool-call-group"
   >
-    <div class="px-5" :class="isLastInSequence ? 'pb-3' : 'pb-1'">
+    <div class="px-5" :class="isLastInSequence ? 'pb-3' : 'pb-2'">
       <div
         @click="toggleExpand"
         class="transition-all duration-500 ease-in-out relative group/tool-group w-full cursor-pointer overflow-hidden border shadow-sm"

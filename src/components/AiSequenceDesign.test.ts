@@ -61,14 +61,14 @@ describe('AI Sequence Design', () => {
       expect(wrapper.find('.flex.items-center.gap-3.mb-1').exists()).toBe(true);
     });
 
-    it('applies pt-0 and removes border-t when isContinuation is true', () => {
+    it('applies pt-2 and removes border-t when isContinuation is true', () => {
       const message = createAssistantMessage('Hello');
       const wrapper = mount(MessageItem, {
         props: { message, isContinuation: true }
       });
 
       const root = wrapper.find('.flex.flex-col');
-      expect(root.classes()).toContain('pt-0');
+      expect(root.classes()).toContain('pt-2');
       expect(root.classes()).not.toContain('border-t');
     });
 
@@ -96,25 +96,25 @@ describe('AI Sequence Design', () => {
       expect(notLastWrapper.find('.flex.flex-col').classes()).not.toContain('border-b');
     });
 
-    it('applies pb-1 when not last in sequence to tighten the gap', () => {
+    it('applies pb-2 when not last in sequence to tighten the gap', () => {
       const message = createAssistantMessage('Hello');
       const wrapper = mount(MessageItem, {
         props: { message, isLastInSequence: false }
       });
 
-      expect(wrapper.find('.flex.flex-col').classes()).toContain('pb-1');
+      expect(wrapper.find('.flex.flex-col').classes()).toContain('pb-2');
     });
   });
 
   describe('ToolCallGroupItem AI Sequence Styling', () => {
-    it('applies pt-0 and removes border-t when isContinuation is true', () => {
+    it('applies pt-2 and removes border-t when isContinuation is true', () => {
       const toolCalls = createToolCalls(['search']);
       const wrapper = mount(ToolCallGroupItem, {
         props: { toolCalls, isContinuation: true }
       });
 
       const root = wrapper.find('[data-testid="tool-call-group"]');
-      expect(root.classes()).toContain('pt-0');
+      expect(root.classes()).toContain('pt-2');
       expect(root.classes()).not.toContain('border-t');
     });
 
@@ -133,7 +133,7 @@ describe('AI Sequence Design', () => {
       });
       const notLastRoot = notLastWrapper.find('[data-testid="tool-call-group"]');
       expect(notLastRoot.classes()).not.toContain('border-b');
-      expect(notLastWrapper.find('.px-5').classes()).toContain('pb-1');
+      expect(notLastWrapper.find('.px-5').classes()).toContain('pb-2');
     });
 
     it('shows repeated tool names in the summary', () => {
