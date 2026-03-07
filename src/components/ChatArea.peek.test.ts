@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatInput from './ChatInput.vue';
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '../models/types';
 
@@ -10,6 +10,8 @@ import { setupScrollToMock } from '../utils/test-utils';
 
 // Mock dependencies
 const mockCurrentChat = ref<Chat | null>(null);
+const mockActiveMessages = ref<any[]>([]);
+const mockActiveDisplayMessages = computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m })));
 
 const mockActiveFocusArea = ref('chat');
 
@@ -36,7 +38,8 @@ vi.mock('../composables/useChat', () => ({
     generateChatTitle: vi.fn(),
     abortTitleGeneration: vi.fn(),
     streaming: ref(false),
-    activeMessages: ref([]),
+    activeMessages: mockActiveMessages,
+    activeDisplayMessages: mockActiveDisplayMessages,
     isProcessing: vi.fn().mockReturnValue(false),
     fetchAvailableModels: vi.fn(),
     getSiblings: vi.fn().mockReturnValue([]),

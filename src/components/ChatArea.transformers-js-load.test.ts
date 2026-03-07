@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
-import { nextTick, ref } from 'vue';
+import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { transformersJsService } from '../services/transformers-js';
 import { setupScrollToMock } from '../utils/test-utils';
@@ -56,6 +56,7 @@ const mockCurrentChat = ref<any>({
   endpointType: 'transformers_js'
 });
 const mockActiveMessages = ref<any[]>([]);
+const mockActiveDisplayMessages = computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m })));
 const mockResolvedSettings = ref<any>({
   endpointType: 'transformers_js',
   modelId: 'm',
@@ -72,6 +73,7 @@ vi.mock('../composables/useChat', () => ({
     availableModels: ref([]),
     isProcessing: vi.fn(() => true),
     activeMessages: mockActiveMessages,
+    activeDisplayMessages: mockActiveDisplayMessages,
     getSiblings: vi.fn().mockReturnValue([]),
     getSortedImageModels: vi.fn(() => []),
     abortChat: vi.fn(),

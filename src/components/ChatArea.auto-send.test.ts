@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
-import { nextTick, ref, reactive } from 'vue';
+import { nextTick, ref, reactive, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 
@@ -24,6 +24,7 @@ const mockAvailableModels = ref<string[]>([]);
 const mockFetchingModels = ref(false);
 const mockCurrentChat = ref<Chat | null>(null);
 const mockActiveMessages = ref<MessageNode[]>([]);
+const mockActiveDisplayMessages = computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m })));
 const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
@@ -42,6 +43,7 @@ vi.mock('../composables/useChat', () => ({
     activeGenerations: reactive(new Map()),
     toggleDebug: vi.fn(),
     activeMessages: mockActiveMessages,
+    activeDisplayMessages: mockActiveDisplayMessages,
     getSiblings: vi.fn().mockReturnValue([]),
     editMessage: vi.fn(),
     switchVersion: vi.fn(),

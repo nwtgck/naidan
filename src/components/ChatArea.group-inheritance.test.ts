@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref, reactive, nextTick } from 'vue';
+import { ref, reactive, nextTick, computed } from 'vue';
 import ChatArea from './ChatArea.vue';
 import ModelSelector from './ModelSelector.vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -15,6 +15,8 @@ const mockCurrentChat = ref<any>(null);
 const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
+const mockActiveMessages = ref<any[]>([]);
+const mockActiveDisplayMessages = computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m })));
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -22,7 +24,8 @@ vi.mock('../composables/useChat', () => ({
     chatGroups: mockChatGroups,
     resolvedSettings: mockResolvedSettings,
     inheritedSettings: mockInheritedSettings,
-    activeMessages: ref([]),
+    activeMessages: mockActiveMessages,
+    activeDisplayMessages: mockActiveDisplayMessages,
     activeGenerations: reactive(new Map()),
     streaming: ref(false),
     generatingTitle: ref(false),
@@ -196,6 +199,7 @@ describe('ChatArea Group Inheritance UI', () => {
       resolvedSettings: mockResolvedSettings,
       inheritedSettings: mockInheritedSettings,
       activeMessages: ref([]),
+      activeDisplayMessages: computed(() => []),
       availableModels: ref([]),
       fetchingModels: ref(false),
       sendMessage: mockSendMessage,

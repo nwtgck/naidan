@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock }
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatInput from './ChatInput.vue';
-import { nextTick, ref, reactive } from 'vue';
+import { nextTick, ref, reactive, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '../composables/useChatDraft';
 import { setupScrollToMock } from '../utils/test-utils';
@@ -40,6 +40,7 @@ const mockCurrentChat = ref<Chat | null>({
   updatedAt: Date.now(),
 });
 const mockActiveMessages = ref<MessageNode[]>([]);
+const mockActiveDisplayMessages = computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m })));
 
 const mockGetLiveChat = vi.fn().mockImplementation((chat) => {
   if (mockCurrentChat.value && mockCurrentChat.value.id === (chat.id || chat)) {
@@ -85,7 +86,7 @@ vi.mock('../composables/useChat', () => ({
       }
     }),
     activeMessages: mockActiveMessages,
-    activeDisplayMessages: computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m }))),
+    activeDisplayMessages: mockActiveDisplayMessages,
     getSiblings: vi.fn().mockReturnValue([]),
     editMessage: vi.fn(),
     switchVersion: vi.fn(),
