@@ -61,6 +61,7 @@ defineExpose({
         <!-- Header -->
         <div
           class="flex items-center gap-2 text-[10px] font-bold transition-colors tracking-wider relative z-20"
+          data-testid="tool-call-group-header"
           :class="[
             isExpanded 
               ? 'mb-2 text-blue-600 dark:text-blue-400' 

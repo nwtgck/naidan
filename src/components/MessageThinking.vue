@@ -108,6 +108,7 @@ defineExpose({
       <!-- Header / Button Content -->
       <div
         class="flex items-center gap-2 text-[10px] font-bold tracking-wider relative z-20 transition-colors"
+        data-testid="thinking-header"
         :class="[
           mode === 'expanded' || mode === 'collapsed-active' ? 'mb-2 text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 group-hover/thinking:text-blue-600',
           isThinkingNow ? 'animate-pulse text-blue-700 dark:text-blue-400' : ''

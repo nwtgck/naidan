@@ -394,6 +394,7 @@ async function scrollToLatestUserMessage() {
   }
 }
 
+const isInitialLoad = ref(true);
 const isAI = (item: any) => item.type === 'tool_group' || (item.type === 'message' && item.node.role === 'assistant');
 
 watch(
