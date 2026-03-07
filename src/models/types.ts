@@ -155,10 +155,6 @@ export interface CombinedToolCall {
   result: ToolExecutionResult;
 }
 
-export type DisplayMessage =
-  | { type: 'message'; node: MessageNode }
-  | { type: 'tool_group'; id: string; toolCalls: CombinedToolCall[] };
-
 export interface Chat {
   id: string;
   title: string | null;

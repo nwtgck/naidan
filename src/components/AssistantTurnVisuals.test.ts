@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { h, computed } from 'vue';
+import { h } from 'vue';
 import MessageItem from './MessageItem.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import ToolCallGroupItem from './ToolCallGroupItem.vue';
@@ -35,7 +35,7 @@ describe('Assistant Turn Visual Logic', () => {
   describe('Header Visibility (Icon + ModelID)', () => {
     it('Pattern 1: Assistant turn starts with a Sequence -> Sequence must show header', () => {
       const node = createBaseNode({ role: 'assistant', modelId: 'test-model' });
-      
+
       const wrapper = mount(AssistantProcessSequence, {
         props: {
           items: [{ type: 'message', node, mode: 'thinking', isFirstInNode: true, isLastInNode: false, isFirstInTurn: true, flow: { position: 'standalone', nesting: 'none' } }],
@@ -67,13 +67,13 @@ describe('Assistant Turn Visual Logic', () => {
 
     it('Pattern 3: Inside a Sequence -> MessageItem must NOT show header even if isFirstInTurn is true', () => {
       const node = createBaseNode({ role: 'assistant' });
-      
+
       const wrapper = mount(MessageItem, {
         props: {
           message: node,
           mode: 'thinking',
-          isFirstInTurn: true, 
-          isNested: true,      
+          isFirstInTurn: true,
+          isNested: true,
           flow: { position: 'standalone', nesting: 'inside-group' }
         }
       });
@@ -83,7 +83,7 @@ describe('Assistant Turn Visual Logic', () => {
 
     it('Pattern 4: Mid-turn Content after a sequence -> MessageItem must NOT show header', () => {
       const node = createBaseNode({ role: 'assistant' });
-      
+
       const wrapper = mount(MessageItem, {
         props: {
           message: node,
@@ -127,7 +127,7 @@ describe('Assistant Turn Visual Logic', () => {
 
       // Click to expand
       await wrapper.find('[data-testid="assistant-process-toggle"]').trigger('click');
-      
+
       expect(wrapper.find('[data-testid="icon-eye-off"]').exists()).toBe(true);
       expect(wrapper.text().toUpperCase()).toContain('LESS');
     });
@@ -136,7 +136,7 @@ describe('Assistant Turn Visual Logic', () => {
       const wrapper = mount(AssistantProcessSequence, {
         props: { items: [], isProcessing: false }
       });
-      
+
       const label = wrapper.find('.group-hover\\/seq\\:opacity-100');
       expect(label.exists()).toBe(true);
       expect(label.element.classList.contains('opacity-0')).toBe(true);
@@ -144,8 +144,8 @@ describe('Assistant Turn Visual Logic', () => {
 
     it('shows Loader icon instead of Eye when processing and thinking', () => {
       const wrapper = mount(AssistantProcessSequence, {
-        props: { 
-          items: [], 
+        props: {
+          items: [],
           isProcessing: true,
           stats: { thinkingSteps: 1, toolCallCount: 0, toolNames: [], isCurrentlyThinking: true, isCurrentlyToolRunning: false, isWaiting: false }
         }
@@ -157,8 +157,8 @@ describe('Assistant Turn Visual Logic', () => {
 
     it('renders the Peek slot when collapsed and processing', () => {
       const wrapper = mount(AssistantProcessSequence, {
-        props: { 
-          items: [], 
+        props: {
+          items: [],
           isProcessing: true,
           stats: { thinkingSteps: 1, toolCallCount: 0, toolNames: [], isCurrentlyThinking: true, isCurrentlyToolRunning: false, isWaiting: false }
         },

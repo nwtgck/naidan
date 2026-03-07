@@ -17,7 +17,6 @@ const router = createRouter({
 const mockActiveGenerations = reactive(new Map());
 const mockCurrentChat = ref<any>(null);
 const mockActiveMessages = ref<any[]>([]);
-const mockActiveDisplayMessages = computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m })));
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -28,7 +27,6 @@ vi.mock('../composables/useChat', () => ({
     generateChatTitle: vi.fn(),
     abortTitleGeneration: vi.fn(),
     activeMessages: mockActiveMessages,
-    activeDisplayMessages: mockActiveDisplayMessages,
     fetchingModels: ref(false),
     fetchAvailableModels: vi.fn(),
     getSiblings: vi.fn().mockReturnValue([]),
@@ -139,7 +137,6 @@ describe('ChatArea Concurrency Button State', () => {
       activeGenerations: mockActiveGenerations,
       generatingTitle: ref(false),
       activeMessages: computed(() => []),
-      activeDisplayMessages: computed(() => []),
       fetchingModels: ref(false),
       fetchAvailableModels: vi.fn(),
       getSiblings: vi.fn().mockReturnValue([]),

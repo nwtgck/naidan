@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { useChat } from './useChat';
 import { storageService } from '../services/storage';
-import { reactive, nextTick } from 'vue';
+import { reactive, nextTick, computed } from 'vue';
 import type { Chat, SidebarItem, Hierarchy } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 
@@ -168,13 +168,23 @@ describe('useChat Tool Chaining', () => {
       console.log('Chat structure:', JSON.stringify(chat.root, (key, value) => key === 'replies' ? { itemsCount: value.items.length } : value, 2));
     }
 
-    const { activeDisplayMessages } = chatStore;
-    const displayMessages = activeDisplayMessages.value;
+    const { useChatDisplayFlow } = await import('./useChatDisplayFlow');
+    const { chatFlow } = useChatDisplayFlow({
+      activeMessages,
+      isProcessing: computed(() => false)
+    });
+    const displayMessages = chatFlow.value;
     console.log('Display messages types:', displayMessages.map(d => d.type));
 
     // New structure: user, assistant1 (calls), tool (consolidated), assistant2 (final)
     expect(messages.map(m => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
 
+    // chatFlow might group things into process_sequence or leave them as standalone.
+    // In this test, we expect: message (user), message (assistant), tool_group, message (assistant)
+    // Actually, useChatDisplayFlow might group assistant + tool + assistant into process_sequence if it thinks they are "internal".
+    // Let's see what yieldGroupedItems does.
+    // tool_group is internal. assistant message is NOT internal unless it's ONLY thinking or tool_calls.
+    
     expect(displayMessages.map(d => d.type)).toEqual(['message', 'message', 'tool_group', 'message']);
 
     const toolGroup = displayMessages[2] as { type: 'tool_group', toolCalls: any[] };

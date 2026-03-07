@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
-import { ref, nextTick, computed } from 'vue';
+import { ref, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '../models/types';
 
@@ -21,7 +21,6 @@ const mockCurrentChat = ref<Chat | null>({
 });
 
 const mockActiveMessages = ref<MessageNode[]>([]);
-const mockActiveDisplayMessages = computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m })));
 
 const mockActiveFocusArea = ref('chat');
 const mockSetActiveFocusArea = vi.fn((area) => {
@@ -50,7 +49,6 @@ vi.mock('../composables/useChat', () => ({
     abortTitleGeneration: vi.fn(),
     streaming: ref(false),
     activeMessages: mockActiveMessages,
-    activeDisplayMessages: mockActiveDisplayMessages,
     isProcessing: vi.fn().mockReturnValue(false),
     fetchAvailableModels: vi.fn(),
     getSiblings: vi.fn().mockReturnValue([]),

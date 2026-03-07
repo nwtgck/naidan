@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatInput from './ChatInput.vue';
-import { ref, isRef, reactive, computed } from 'vue';
+import { ref, isRef, reactive } from 'vue';
 import { useChatDraft } from '../composables/useChatDraft';
 import { setupScrollToMock } from '../utils/test-utils';
 
@@ -13,7 +13,6 @@ const mockCurrentChat = ref({
   root: { items: [] }
 });
 const mockActiveMessages = ref<any[]>([]);
-const mockActiveDisplayMessages = computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m })));
 const mockStreaming = ref(false);
 
 // Mock dependencies
@@ -23,7 +22,6 @@ vi.mock('../composables/useChat', () => ({
     streaming: mockStreaming,
     activeGenerations: reactive(new Map()),
     activeMessages: mockActiveMessages,
-    activeDisplayMessages: mockActiveDisplayMessages,
     availableModels: ref([]),
     fetchingModels: ref(false),
     sendMessage: vi.fn().mockResolvedValue(true),

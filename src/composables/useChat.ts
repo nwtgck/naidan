@@ -354,63 +354,6 @@ export function useChat() {
     return getChatBranch(_currentChat.value);
   });
 
-  const activeDisplayMessages = computed<import('../models/types').DisplayMessage[]>(() => {
-    const branch = activeMessages.value;
-    const result: import('../models/types').DisplayMessage[] = [];
-
-    branch.forEach((node, index) => {
-      const role = node.role;
-      switch (role) {
-      case 'tool': {
-        // Find the assistant node that triggered this tool call by searching backwards
-        // With the new structure, we still need the tool call metadata from the assistant
-        let triggeringAssistant: AssistantMessageNode | null = null;
-        for (let j = index - 1; j >= 0; j--) {
-          const prev = branch[j];
-          if (prev?.role === 'assistant' && prev.toolCalls?.some(tc => node.results.some(er => er.toolCallId === tc.id))) {
-            triggeringAssistant = prev;
-            break;
-          }
-        }
-
-        if (triggeringAssistant) {
-          const toolCalls: import('../models/types').CombinedToolCall[] = node.results.map(er => {
-            const call = triggeringAssistant!.toolCalls!.find(tc => tc.id === er.toolCallId)!;
-            return {
-              id: er.toolCallId,
-              nodeId: node.id,
-              call,
-              result: er
-            };
-          });
-
-          result.push({
-            type: 'tool_group',
-            id: node.id,
-            toolCalls
-          });
-        } else {
-          // Fallback: render as a regular message if no assistant meta found
-          result.push({ type: 'message', node });
-        }
-        break;
-      }
-      case 'user':
-      case 'assistant':
-      case 'system':
-        // Non-tool node (user, assistant, system)
-        result.push({ type: 'message', node });
-        break;
-      default: {
-        const _ex: never = role;
-        throw new Error(`Unhandled role: ${_ex}`);
-      }
-      }
-    });
-
-    return result;
-  });
-
   const allMessages = computed(() => {
     if (!_currentChat.value) return [];
     return getAllMessages(_currentChat.value);
@@ -2149,7 +2092,7 @@ export function useChat() {
   };
 
   return {
-    rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, activeDisplayMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
+    rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
     loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup,

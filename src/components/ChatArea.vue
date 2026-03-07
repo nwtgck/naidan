@@ -62,7 +62,6 @@ const {
   currentChat,
   generatingTitle,
   activeMessages,
-  activeDisplayMessages,
   allMessages,
   availableModels,
   resolvedSettings,
@@ -150,92 +149,100 @@ async function handleMoveToGroup(groupId: string | null) {
 }
 
 async function exportChat() {
-  if (!currentChat.value || !activeDisplayMessages.value) return;
+  if (!currentChat.value || !chatFlow.value) return;
 
   let markdownContent = `# ${currentChat.value.title || 'New Chat'}\n\n`;
 
-  for (const item of activeDisplayMessages.value) {
-    const itemType = item.type;
-    switch (itemType) {
-    case 'message': {
-      const msg = item.node;
-      const role = (() => {
-        const r = msg.role;
-        switch (r) {
-        case 'user': return 'User';
-        case 'assistant': return 'AI';
-        case 'system': return 'System';
-        case 'tool': return 'Tool';
-        default: {
-          const _ex: never = r;
-          return (_ex as string);
-        }
-        }
-      })();
-      markdownContent += `## ${role}:\n${msg.content}\n\n`;
-      break;
-    }
-    case 'tool_group': {
-      markdownContent += `## Tool Executions:\n`;
-      for (const tc of item.toolCalls) {
-        let resultStr = '';
-        const status = tc.result.status;
-        switch (status) {
-        case 'success': {
-          const contentType = tc.result.content.type;
-          switch (contentType) {
-          case 'text':
-            resultStr = tc.result.content.text;
-            break;
-          case 'binary_object': {
-            const blob = await storageService.getFile(tc.result.content.id);
-            resultStr = blob ? await blob.text() : '[Error: Binary object missing]';
-            break;
-          }
+  const processFlowItems = async (items: ChatFlowItem[]) => {
+    for (const item of items) {
+      const itemType = item.type;
+      switch (itemType) {
+      case 'message': {
+        const msg = item.node;
+        const role = (() => {
+          const r = msg.role;
+          switch (r) {
+          case 'user': return 'User';
+          case 'assistant': return 'AI';
+          case 'system': return 'System';
+          case 'tool': return 'Tool';
           default: {
-            const _ex: never = contentType;
-            resultStr = `[Unknown content type: ${_ex}]`;
+            const _ex: never = r;
+            return (_ex as string);
           }
           }
-          break;
-        }
-        case 'error': {
-          const messageType = tc.result.error.message.type;
-          switch (messageType) {
-          case 'text':
-            resultStr = tc.result.error.message.text;
-            break;
-          case 'binary_object': {
-            const blob = await storageService.getFile(tc.result.error.message.id);
-            const detail = blob ? await blob.text() : 'Binary error detail missing';
-            resultStr = `Error [${tc.result.error.code}]: ${detail}`;
-            break;
-          }
-          default: {
-            const _ex: never = messageType;
-            resultStr = `[Unknown error message type: ${_ex}]`;
-          }
-          }
-          break;
-        }
-        case 'running':
-          resultStr = '[Tool Still Running]';
-          break;
-        default: {
-          const _ex: never = status;
-          resultStr = `[Unknown status: ${_ex}]`;
-        }
-        }
-        markdownContent += `### ${tc.call.function.name}\nArgs: ${tc.call.function.arguments}\nResult: ${resultStr}\n\n`;
+        })();
+        markdownContent += `## ${role}:\n${item.mode === 'thinking' ? '[Thought]: ' : ''}${item.partContent || msg.content}\n\n`;
+        break;
       }
-      break;
+      case 'tool_group': {
+        markdownContent += `## Tool Executions:\n`;
+        for (const tc of item.toolCalls) {
+          let resultStr = '';
+          const status = tc.result.status;
+          switch (status) {
+          case 'success': {
+            const contentType = tc.result.content.type;
+            switch (contentType) {
+            case 'text':
+              resultStr = tc.result.content.text;
+              break;
+            case 'binary_object': {
+              const blob = await storageService.getFile(tc.result.content.id);
+              resultStr = blob ? await blob.text() : '[Error: Binary object missing]';
+              break;
+            }
+            default: {
+              const _ex: never = contentType;
+              resultStr = `[Unknown content type: ${_ex}]`;
+            }
+            }
+            break;
+          }
+          case 'error': {
+            const messageType = tc.result.error.message.type;
+            switch (messageType) {
+            case 'text':
+              resultStr = tc.result.error.message.text;
+              break;
+            case 'binary_object': {
+              const blob = await storageService.getFile(tc.result.error.message.id);
+              const detail = blob ? await blob.text() : 'Binary error detail missing';
+              resultStr = `Error [${tc.result.error.code}]: ${detail}`;
+              break;
+            }
+            default: {
+              const _ex: never = messageType;
+              resultStr = `[Unknown error message type: ${_ex}]`;
+            }
+            }
+            break;
+          }
+          case 'running':
+            resultStr = '[Tool Still Running]';
+            break;
+          default: {
+            const _ex: never = status;
+            resultStr = `[Unknown status: ${_ex}]`;
+          }
+          }
+          markdownContent += `### ${tc.call.function.name}\nArgs: ${tc.call.function.arguments}\nResult: ${resultStr}\n\n`;
+        }
+        break;
+      }
+      case 'process_sequence':
+        markdownContent += `## Process Sequence: ${item.summary}\n`;
+        await processFlowItems(item.items);
+        break;
+      default: {
+        const _ex: never = itemType;
+        console.warn(`Unhandled ChatFlowItem type: ${_ex}`);
+      }
+      }
     }
-    default: {
-      const _ex: never = itemType;
-      console.warn(`Unhandled DisplayMessage type: ${_ex}`);
-    }
-    }
-  }
+  };
+
+  await processFlowItems(chatFlow.value);
 
   const blob = new Blob([markdownContent], { type: 'text/plain;charset=utf-8' });
   const filename = `${currentChat.value.title || 'new_chat'}.txt`;
@@ -353,7 +360,20 @@ async function handleFork(messageId: string) {
 }
 
 function handleForkLastMessage() {
-  const lastMsgItem = [...activeDisplayMessages.value].reverse().find(i => i.type === 'message');
+  // We need to find the last message across all potential levels of nesting in chatFlow
+  const findLastMessage = (items: ChatFlowItem[]): ChatFlowItem | null => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]!;
+      if (item.type === 'message') return item;
+      if (item.type === 'process_sequence') {
+        const nested = findLastMessage(item.items);
+        if (nested) return nested;
+      }
+    }
+    return null;
+  };
+
+  const lastMsgItem = findLastMessage(chatFlow.value);
   if (lastMsgItem && lastMsgItem.type === 'message') {
     handleFork(lastMsgItem.node.id);
   }
@@ -366,11 +386,22 @@ function jumpToOrigin() {
 }
 
 async function scrollToLatestUserMessage() {
-  if (!container.value || !activeDisplayMessages.value) return;
+  if (!container.value || !chatFlow.value) return;
 
   // Find last user message
-  const reversed = [...activeDisplayMessages.value].reverse();
-  const lastUserMsgItem = reversed.find(i => i.type === 'message' && i.node.role === 'user');
+  const findLastUserMessage = (items: ChatFlowItem[]): ChatFlowItem | null => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]!;
+      if (item.type === 'message' && item.node.role === 'user') return item;
+      if (item.type === 'process_sequence') {
+        const nested = findLastUserMessage(item.items);
+        if (nested) return nested;
+      }
+    }
+    return null;
+  };
+
+  const lastUserMsgItem = findLastUserMessage(chatFlow.value);
 
   if (lastUserMsgItem && lastUserMsgItem.type === 'message') {
     const messageId = lastUserMsgItem.node.id;
@@ -426,7 +457,7 @@ watch(
       return;
     }
 
-    const lastItem = activeDisplayMessages.value[activeDisplayMessages.value.length - 1];
+    const lastItem = chatFlow.value[chatFlow.value.length - 1];
     if (!lastItem) return;
 
     const itemType = lastItem.type;
@@ -464,12 +495,13 @@ watch(
       break;
     }
     case 'tool_group':
-      // Tool group - auto scroll to it
+    case 'process_sequence':
+      // Auto scroll to new AI items
       scrollToBottom();
       break;
     default: {
       const _ex: never = itemType;
-      throw new Error(`Unhandled DisplayMessage type: ${_ex}`);
+      throw new Error(`Unhandled ChatFlowItem type: ${_ex}`);
     }
     }
   },
@@ -513,7 +545,7 @@ watch(
               </button>
               <h2 class="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button
-                v-if="activeDisplayMessages.length > 0"
+                v-if="activeMessages.length > 0"
                 @click="handleTitleAction"
                 @mouseleave="ignoreTitleHover = false"
                 class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50 group/title"
@@ -625,7 +657,7 @@ watch(
           </div>
 
           <button
-            v-if="activeDisplayMessages.length > 0"
+            v-if="activeMessages.length > 0"
             @click="handleForkLastMessage"
             class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             title="Fork Chat from last message"

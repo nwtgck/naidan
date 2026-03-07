@@ -1,4 +1,4 @@
-import { ref, nextTick, computed } from 'vue';
+import { ref, nextTick } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
@@ -23,13 +23,11 @@ describe('ChatArea Design Specifications', () => {
   beforeEach(() => {
     setupScrollToMock();
     const mockActiveMessages = ref<any[]>([]);
-    const mockActiveDisplayMessages = computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m })));
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref({ id: '1', title: 'Test Chat', modelId: 'gemma3n:e2b' }),
       streaming: ref(false),
       activeGenerations: new Map(),
       activeMessages: mockActiveMessages,
-      activeDisplayMessages: mockActiveDisplayMessages,
       availableModels: ref([]),
       fetchingModels: ref(false),
       generatingTitle: ref(false),
