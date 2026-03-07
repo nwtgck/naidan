@@ -85,6 +85,7 @@ vi.mock('../composables/useChat', () => ({
       }
     }),
     activeMessages: mockActiveMessages,
+    activeDisplayMessages: computed(() => mockActiveMessages.value.map(m => ({ type: 'message', node: m }))),
     getSiblings: vi.fn().mockReturnValue([]),
     editMessage: vi.fn(),
     switchVersion: vi.fn(),

@@ -527,9 +527,28 @@ export class OllamaProvider implements LLMProvider {
       // Transform messages to Ollama format
       const ollamaMessages: OllamaMessage[] = currentMessages.map(m => {
         const contentType = typeof m.content;
+
+        const tool_calls = m.tool_calls?.map(tc => ({
+          id: tc.id,
+          type: tc.type,
+          function: {
+            name: tc.function.name,
+            arguments: (() => {
+              if (typeof tc.function.arguments === 'string') {
+                try {
+                  return JSON.parse(tc.function.arguments);
+                } catch (e) {
+                  return tc.function.arguments;
+                }
+              }
+              return tc.function.arguments;
+            })()
+          }
+        }));
+
         switch (contentType) {
         case 'string':
-          return { role: m.role, content: m.content as string, tool_calls: m.tool_calls, tool_call_id: m.tool_call_id };
+          return { role: m.role, content: m.content as string, tool_calls, tool_call_id: m.tool_call_id };
         case 'object': {
           // Multimodal
           let content = '';
@@ -553,11 +572,11 @@ export class OllamaProvider implements LLMProvider {
               }
             }
           }
-          return { role: m.role, content, images, tool_calls: m.tool_calls, tool_call_id: m.tool_call_id };
+          return { role: m.role, content, images, tool_calls, tool_call_id: m.tool_call_id };
         }
         case 'undefined': {
-          if (m.role === 'assistant' && m.tool_calls) {
-            return { role: m.role, content: '', tool_calls: m.tool_calls, tool_call_id: m.tool_call_id };
+          if (m.role === 'assistant' && tool_calls) {
+            return { role: m.role, content: '', tool_calls, tool_call_id: m.tool_call_id };
           }
           throw new Error(`Unexpected content type for role ${m.role}: ${contentType}`);
         }

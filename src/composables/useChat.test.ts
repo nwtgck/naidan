@@ -86,7 +86,7 @@ describe('useChat Composable Logic', () => {
     // Setup persistence mocks
     vi.mocked(storageService.updateChatMeta).mockResolvedValue(undefined);
     vi.mocked(storageService.updateChatContent).mockImplementation((_id, updater) => {
-      return Promise.resolve(updater(null)) as any;
+      return Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined })) as any;
     });
     vi.mocked(storageService.updateChatGroup).mockResolvedValue(undefined);
 
