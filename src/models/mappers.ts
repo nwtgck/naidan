@@ -346,8 +346,7 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
       modelId: undefined,
       lmParameters: lmParametersToDomain(dto.lmParameters),
       toolCalls: undefined,
-      toolCallId: undefined,
-      result: undefined,
+      results: undefined,
     };
   case 'assistant':
     return {
@@ -360,8 +359,7 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
       modelId: dto.modelId,
       lmParameters: lmParametersToDomain(dto.lmParameters),
       toolCalls: dto.toolCalls,
-      toolCallId: undefined,
-      result: undefined,
+      results: undefined,
     };
   case 'system':
     return {
@@ -374,8 +372,7 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      toolCallId: undefined,
-      result: undefined,
+      results: undefined,
     };
   case 'tool':
     return {
@@ -418,8 +415,7 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       modelId: undefined,
       lmParameters: lmParametersToDto(domain.lmParameters),
       toolCalls: undefined,
-      toolCallId: undefined,
-      result: undefined,
+      results: undefined,
     };
   case 'assistant':
     return {
@@ -431,8 +427,7 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       modelId: domain.modelId,
       lmParameters: lmParametersToDto(domain.lmParameters),
       toolCalls: domain.toolCalls,
-      toolCallId: undefined,
-      result: undefined,
+      results: undefined,
     };
   case 'system':
     return {
@@ -444,8 +439,7 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      toolCallId: undefined,
-      result: undefined,
+      results: undefined,
     };
   case 'tool':
     return {

@@ -2,9 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { useChat } from './useChat';
 import { storageService } from '../services/storage';
-import { OpenAIProvider } from '../services/llm';
-import { reactive, toRaw, nextTick } from 'vue';
-import type { Chat, MessageNode, SidebarItem, Hierarchy } from '../models/types';
+import { reactive, nextTick } from 'vue';
+import type { Chat, SidebarItem, Hierarchy } from '../models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 
 // Mock storage service state
@@ -95,7 +94,7 @@ vi.mock('./useChatTools', () => ({
 describe('useChat Tool Chaining', () => {
   const chatStore = useChat();
   const {
-    activeMessages, sendMessage, isProcessing, __testOnly
+    activeMessages, sendMessage, __testOnly
   } = chatStore;
   const { __testOnlySetCurrentChat } = __testOnly;
 
@@ -104,7 +103,7 @@ describe('useChat Tool Chaining', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     __testOnlySetCurrentChat(null);
-    rootItems.value = [];
+    chatStore.rootItems.value = [];
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
     clearEvents();
@@ -116,8 +115,6 @@ describe('useChat Tool Chaining', () => {
     });
     vi.mocked(storageService.loadHierarchy).mockImplementation(() => Promise.resolve(mockHierarchy));
   });
-
-  const { rootItems } = chatStore;
 
   it('should chain multiple tool calls in the active thread', async () => {
     const chat: Chat = reactive({
@@ -186,9 +183,9 @@ describe('useChat Tool Chaining', () => {
     expect(toolGroup.toolCalls[1].id).toBe('call-2');
 
     // Check tree structure
-    const assistant1 = messages[1];
-    const toolNode = messages[2];
-    const assistant2 = messages[3];
+    const assistant1 = messages[1]!;
+    const toolNode = messages[2]!;
+    const assistant2 = messages[3]!;
 
     expect(assistant1.replies.items).toContain(toolNode);
     expect(toolNode.replies.items).toContain(assistant2);
@@ -222,7 +219,7 @@ describe('useChat Tool Chaining', () => {
     
     // Last leaf should be in the second thread
     const messages = activeMessages.value;
-    expect(messages[0].content).toBe('Message 2');
+    expect(messages[0]!.content).toBe('Message 2');
   });
 });
 
