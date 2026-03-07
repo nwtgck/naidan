@@ -1063,7 +1063,7 @@ export function useChat() {
           // If the current node already has content or tool calls, it means we're in a new loop
           // iteration after a tool result, so we need a new assistant node to hold the next response.
           if (currentAssistantNode.content !== '' || (currentAssistantNode.toolCalls?.length ?? 0) > 0) {
-            const newNode: AssistantMessageNode = {
+            const newNode: AssistantMessageNode = reactive({
               id: generateId(),
               role: 'assistant',
               content: '',
@@ -1077,7 +1077,7 @@ export function useChat() {
               toolCalls: undefined,
               toolCallId: undefined,
               result: undefined,
-            };
+            });
 
             const currentLeaf = findNodeInBranch(mutableChat.root.items, mutableChat.currentLeafId || '');
             if (currentLeaf) {
@@ -1090,7 +1090,7 @@ export function useChat() {
         },
         onToolCall: (params: { id: string; toolName: string; args: unknown }) => {
           // 1. Create ToolMessageNode
-          const toolNode: import('../models/types').ToolMessageNode = {
+          const toolNode: import('../models/types').ToolMessageNode = reactive({
             id: generateId(),
             role: 'tool',
             toolCallId: params.id,
@@ -1104,7 +1104,7 @@ export function useChat() {
             modelId: undefined,
             lmParameters: undefined,
             toolCalls: undefined,
-          };
+          });
 
           // 2. Add to current branch
           const currentLeaf = findNodeInBranch(mutableChat.root.items, mutableChat.currentLeafId || '');
