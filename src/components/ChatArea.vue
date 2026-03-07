@@ -399,9 +399,9 @@ async function scrollToLatestUserMessage() {
 }
 
 const isInitialLoad = ref(true);
-const { chatFlow, isThinkingActive, isWaitingResponse } = useChatDisplayFlow({ 
-  activeDisplayMessages, 
-  isProcessing: isCurrentChatStreaming 
+const { chatFlow, isThinkingActive, isWaitingResponse } = useChatDisplayFlow({
+  activeDisplayMessages,
+  isProcessing: isCurrentChatStreaming
 });
 
 watch(
@@ -777,7 +777,7 @@ watch(
                   <template v-if="flowItem.type === 'process_sequence' && flowItem.items.length > 0">
                     <template v-for="lastItem in [flowItem.items[flowItem.items.length - 1]]">
                       <!-- Active Thinking Peek -->
-                      <MessageThinking 
+                      <MessageThinking
                         v-if="lastItem && lastItem.type === 'message' && isThinkingActive({ item: lastItem })"
                         :message="(lastItem as any).node"
                         no-margin

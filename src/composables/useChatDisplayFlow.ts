@@ -31,18 +31,18 @@ export type ChatFlowItem =
   | { type: 'tool_group'; id: string; toolCalls: CombinedToolCall[]; flow: FlowMetadata }
   | { type: 'process_sequence'; id: string; items: ChatFlowItem[]; flow: FlowMetadata; summary: string; stats: SequenceStats };
 
-export function useChatDisplayFlow({ 
-  activeDisplayMessages, 
-  isProcessing 
-}: { 
-  activeDisplayMessages: ComputedRef<DisplayMessage[]>, 
-  isProcessing: ComputedRef<boolean> 
+export function useChatDisplayFlow({
+  activeDisplayMessages,
+  isProcessing
+}: {
+  activeDisplayMessages: ComputedRef<DisplayMessage[]>,
+  isProcessing: ComputedRef<boolean>
 }) {
-  
+
   const isThinkingActive = ({ item }: { item: any }): boolean => {
     const node = item.type === 'message' ? item.node : null;
     if (!node || node.role !== 'assistant') return false;
-    if (node.thinking) return false; 
+    if (node.thinking) return false;
     const content = node.content || '';
     const lastOpen = content.lastIndexOf('<think>');
     const lastClose = content.lastIndexOf('</think>');
@@ -68,9 +68,9 @@ export function useChatDisplayFlow({
     return false;
   };
 
-  const isAI = ({ item }: { item: any }): boolean => 
-    item.type === 'process_sequence' || 
-    item.type === 'tool_group' || 
+  const isAI = ({ item }: { item: any }): boolean =>
+    item.type === 'process_sequence' ||
+    item.type === 'tool_group' ||
     (item.type === 'message' && item.node.role === 'assistant');
 
   const getStats = ({ items }: { items: DisplayMessage[] }): SequenceStats => {
@@ -108,7 +108,7 @@ export function useChatDisplayFlow({
 
   const calculateSummary = ({ stats }: { stats: SequenceStats }): string => {
     const parts: string[] = [];
-    
+
     if (stats.thinkingSteps > 0) {
       parts.push(`${stats.thinkingSteps} thinking step${stats.thinkingSteps > 1 ? 's' : ''}`);
     }
@@ -116,10 +116,10 @@ export function useChatDisplayFlow({
     if (stats.toolCallCount > 0) {
       parts.push(`${stats.toolCallCount} tool execution${stats.toolCallCount > 1 ? 's' : ''}`);
     }
-    
+
     if (stats.toolNames.length > 0) {
       const limit = 2;
-      const unique = stats.toolNames; 
+      const unique = stats.toolNames;
       const displayed = unique.slice(0, limit);
       let toolStr = `Used ${displayed.join(', ')}`;
       if (unique.length > limit) toolStr += ` and ${unique.length - limit} more`;
@@ -135,7 +135,7 @@ export function useChatDisplayFlow({
 
   const chatFlow = computed<ChatFlowItem[]>(() => {
     const source = activeDisplayMessages.value;
-    
+
     // 1. Group internal processes
     const grouped: (DisplayMessage | { type: 'process_sequence', items: DisplayMessage[] })[] = [];
     let currentGroup: DisplayMessage[] = [];
@@ -184,7 +184,7 @@ export function useChatDisplayFlow({
           ...sub,
           flow: { position: 'middle', nesting: 'inside-group' }
         } as ChatFlowItem));
-        
+
         const stats = getStats({ items: item.items });
         const first = subItems[0];
         let id = 'seq-unknown';
@@ -214,6 +214,9 @@ export function useChatDisplayFlow({
   return {
     chatFlow,
     isThinkingActive,
-    isWaitingResponse
+    isWaitingResponse,
+    __testOnly: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
   };
 }

@@ -8,15 +8,22 @@ withDefaults(defineProps<{
   isNested: false,
   noPadding: false
 });
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>
-  <div 
-    class="flex items-center gap-2 text-gray-400" 
+  <div
+    class="flex items-center gap-2 text-gray-400"
     :class="[
       noPadding ? '' : 'py-2',
       (isNested && !noPadding) ? 'px-5' : ''
-    ]" 
+    ]"
     data-testid="assistant-waiting-indicator"
   >
     <Loader2 class="w-4 h-4 animate-spin" />

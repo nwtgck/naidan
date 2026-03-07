@@ -88,7 +88,7 @@ describe('AI Sequence Design', () => {
 
     it('applies border-b only when position is standalone or end', () => {
       const message = createAssistantMessage('Hello');
-      
+
       const lastWrapper = mount(MessageItem, {
         props: { message, flow: flow('end') }
       });
@@ -135,7 +135,7 @@ describe('AI Sequence Design', () => {
 
     it('applies border-b and pb-3 only when position is standalone or end', () => {
       const toolCalls = createToolCalls(['search']);
-      
+
       const lastWrapper = mount(ToolCallGroupItem, {
         props: { toolCalls, flow: flow('end') }
       });

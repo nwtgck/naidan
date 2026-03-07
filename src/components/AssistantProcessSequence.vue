@@ -41,7 +41,7 @@ defineExpose({
 </script>
 
 <template>
-  <div 
+  <div
     class="assistant-process-sequence flex flex-col transition-all duration-300 bg-gray-50/30 dark:bg-gray-800/20"
     :class="[
       (flow.position === 'standalone' || flow.position === 'start') ? 'border-t border-gray-100 dark:border-gray-800/50 pt-2' : 'pt-0',
@@ -50,18 +50,18 @@ defineExpose({
   >
     <!-- Integrated Container (Pill) -->
     <div class="px-5 py-2">
-      <div 
+      <div
         @click="toggle"
         class="flex flex-col transition-all group/seq shadow-sm overflow-hidden"
         :class="[
-          isExpanded 
-            ? 'bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/30 dark:border-blue-800/20 rounded-2xl' 
+          isExpanded
+            ? 'bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/30 dark:border-blue-800/20 rounded-2xl'
             : 'bg-white dark:bg-gray-800/50 border border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800 rounded-xl cursor-pointer'
         ]"
         data-testid="assistant-process-toggle"
       >
         <!-- Header row inside the pill -->
-        <div 
+        <div
           class="flex items-center gap-3 px-3 py-1.5 transition-colors"
           :class="{ 'border-b border-blue-100/30 dark:border-blue-800/20': isExpanded }"
         >
@@ -79,18 +79,18 @@ defineExpose({
         </div>
 
         <!-- Peek Slot -->
-        <div 
-          v-if="!isExpanded && isProcessing && (stats.isCurrentlyThinking || stats.isWaiting)" 
+        <div
+          v-if="!isExpanded && isProcessing && (stats.isCurrentlyThinking || stats.isWaiting)"
           class="px-3 pb-3 pt-1 animate-in fade-in slide-in-from-top-1 duration-200"
         >
-           <slot name="peek" />
+          <slot name="peek" />
         </div>
       </div>
     </div>
-    
+
     <!-- Expanded Content Area -->
     <div v-if="isExpanded" class="animate-in fade-in slide-in-from-top-1 duration-200">
-       <slot :is-expanded="isExpanded" />
+      <slot :is-expanded="isExpanded" />
     </div>
   </div>
 </template>
