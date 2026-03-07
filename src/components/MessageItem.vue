@@ -76,6 +76,8 @@ const props = defineProps<{
   isGenerating?: boolean;
   availableImageModels?: string[];
   endpointType?: EndpointType;
+  isContinuation?: boolean;
+  isLastInSequence?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -987,9 +989,15 @@ defineExpose({
     v-if="!(isGenerating && (transformersStatus === 'loading' || transformersStatus === 'error') && endpointType === 'transformers_js')"
     ref="messageRef"
     class="flex flex-col gap-2 p-5 group transition-colors"
-    :class="{ 'bg-gray-50/30 dark:bg-gray-800/20 border-y border-gray-100 dark:border-gray-800/50': !isUser }"
+    :class="{ 
+      'bg-gray-50/30 dark:bg-gray-800/20': !isUser,
+      'border-t border-gray-100 dark:border-gray-800/50': !isUser && !isContinuation,
+      'border-b border-gray-100 dark:border-gray-800/50': !isUser && isLastInSequence,
+      'pt-0': !isUser && isContinuation,
+      'pb-1': !isUser && !isLastInSequence 
+    }"
   >
-    <div class="flex items-center gap-3 mb-1">
+    <div v-if="!isContinuation" class="flex items-center gap-3 mb-1">
       <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
         <User v-if="isUser" class="w-4 h-4 text-gray-500" />
         <Bird v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />

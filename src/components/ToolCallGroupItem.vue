@@ -1,18 +1,33 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { Shapes, ChevronDown, ChevronUp } from 'lucide-vue-next';
+import { ref, computed } from 'vue';
+import { Shapes } from 'lucide-vue-next';
 import type { CombinedToolCall } from '../models/types';
 import ToolCallItem from './ToolCallItem.vue';
 
-defineProps<{
+const props = defineProps<{
   toolCalls: CombinedToolCall[];
+  isContinuation?: boolean;
+  isLastInSequence?: boolean;
 }>();
 
-const isExpanded = ref(true); // Default expanded for new tool execution blocks
+const isExpanded = ref(false); // Default collapsed for tool execution blocks
 
 const toggleExpand = () => {
   isExpanded.value = !isExpanded.value;
 };
+
+const toolNamesDisplay = computed(() => {
+  const names = props.toolCalls.map(tc => tc.call.function.name);
+  const limit = 3;
+  const displayedNames = names.slice(0, limit);
+  const remaining = names.length - limit;
+  
+  let base = `Used ${displayedNames.join(', ')}`;
+  if (remaining > 0) {
+    base += ` and ${remaining} more`;
+  }
+  return base;
+});
 
 defineExpose({
   __testOnly: {
@@ -23,53 +38,59 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="toolCalls.length > 0" class="mb-3 max-w-[95%] mx-auto" data-testid="tool-call-group">
-    <div
-      class="border rounded-2xl transition-all duration-300 overflow-hidden"
-      :class="[
-        isExpanded
-          ? 'bg-gray-50/50 dark:bg-gray-800/30 border-gray-200/50 dark:border-gray-700/50 shadow-sm'
-          : 'bg-white dark:bg-gray-800/50 border-gray-100/50 dark:border-gray-800/30 hover:border-gray-200 dark:hover:border-gray-700'
-      ]"
-    >
-      <!-- Header / Toggle -->
+  <div
+    v-if="toolCalls.length > 0"
+    class="flex flex-col transition-colors bg-gray-50/30 dark:bg-gray-800/20"
+    :class="[
+      !isContinuation ? 'border-t border-gray-100 dark:border-gray-800/50 pt-4' : 'pt-0',
+      isLastInSequence ? 'border-b border-gray-100 dark:border-gray-800/50' : ''
+    ]"
+    data-testid="tool-call-group"
+  >
+    <div class="px-5" :class="isLastInSequence ? 'pb-3' : 'pb-1'">
       <div
         @click="toggleExpand"
-        class="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors group/tool-group"
+        class="transition-all duration-500 ease-in-out relative group/tool-group w-full cursor-pointer overflow-hidden border shadow-sm"
+        :class="[
+          /* Shape & Background */
+          isExpanded 
+            ? 'p-5 rounded-2xl bg-gradient-to-br from-blue-50/50 to-sky-50/50 dark:from-blue-950/20 dark:to-sky-950/20 border-blue-100/50 dark:border-blue-800/30 shadow-inner' 
+            : 'px-3 py-1.5 rounded-xl bg-white dark:bg-gray-800/50 border-blue-100/50 dark:border-blue-800/30 hover:border-blue-200 dark:hover:border-blue-800'
+        ]"
       >
-        <div class="flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest transition-colors"
-             :class="isExpanded ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500 group-hover/tool-group:text-blue-600'"
+        <!-- Header -->
+        <div
+          class="flex items-center gap-2 text-[10px] font-bold transition-colors tracking-wider relative z-20"
+          :class="[
+            isExpanded 
+              ? 'mb-2 text-blue-600 dark:text-blue-400' 
+              : 'text-gray-500 dark:text-gray-400 group-hover/tool-group:text-blue-600'
+          ]"
         >
-          <div class="p-1 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
-            <Shapes class="w-4 h-4" />
-          </div>
-          <span>{{ isExpanded ? 'Tool Executions' : `Show Tools (${toolCalls.length})` }}</span>
+          <Shapes class="w-3.5 h-3.5" />
+          <span>{{ isExpanded ? 'Hide Tool Executions' : toolNamesDisplay }}</span>
         </div>
-        <div class="p-1 rounded-lg text-gray-400 group-hover/tool-group:bg-gray-100 dark:group-hover/tool-group:bg-gray-700 group-hover/tool-group:text-gray-600 dark:group-hover/tool-group:text-gray-300 transition-all">
-          <ChevronUp v-if="isExpanded" class="w-4 h-4" />
-          <ChevronDown v-else class="w-4 h-4" />
-        </div>
-      </div>
 
-      <!-- Content -->
-      <Transition
-        enter-active-class="transition-all duration-300 ease-out"
-        leave-active-class="transition-all duration-200 ease-in"
-        enter-from-class="max-h-0 opacity-0"
-        enter-to-class="max-h-[2000px] opacity-100"
-        leave-from-class="max-h-[2000px] opacity-100"
-        leave-to-class="max-h-0 opacity-0"
-      >
-        <div v-if="isExpanded" class="px-4 pb-4 pt-1 border-t border-gray-100/50 dark:border-gray-700/50">
-          <div class="flex flex-col gap-2">
-            <ToolCallItem
-              v-for="tc in toolCalls"
-              :key="tc.nodeId"
-              :tool-call="tc"
-            />
+        <!-- Content -->
+        <Transition
+          enter-active-class="transition-all duration-300 ease-out"
+          leave-active-class="transition-all duration-200 ease-in"
+          enter-from-class="opacity-0 translate-y-[-10px]"
+          enter-to-class="opacity-100 translate-y-0"
+          leave-from-class="opacity-100 translate-y-0"
+          leave-to-class="opacity-0 translate-y-[-10px]"
+        >
+          <div v-if="isExpanded" class="mt-1 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div class="flex flex-col gap-3">
+              <ToolCallItem
+                v-for="tc in toolCalls"
+                :key="tc.nodeId"
+                :tool-call="tc"
+              />
+            </div>
           </div>
-        </div>
-      </Transition>
+        </Transition>
+      </div>
     </div>
   </div>
 </template>

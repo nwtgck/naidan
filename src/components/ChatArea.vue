@@ -394,7 +394,7 @@ async function scrollToLatestUserMessage() {
   }
 }
 
-const isInitialLoad = ref(true);
+const isAI = (item: any) => item.type === 'tool_group' || (item.type === 'message' && item.node.role === 'assistant');
 
 watch(
   () => currentChat.value?.id,
@@ -755,7 +755,7 @@ watch(
         </div>
         <template v-else>
           <div v-if="activeDisplayMessages.length > 0" class="relative p-2">
-            <template v-for="item in activeDisplayMessages" :key="item.type === 'message' ? item.node.id : item.id">
+            <template v-for="(item, idx) in activeDisplayMessages" :key="item.type === 'message' ? item.node.id : item.id">
               <MessageItem
                 v-if="item.type === 'message'"
                 :id="'message-' + item.node.id"
@@ -767,6 +767,8 @@ watch(
                 :is-generating="isCurrentChatStreaming && item.node.id === currentChat?.currentLeafId"
                 :available-image-models="availableImageModels"
                 :endpoint-type="resolvedSettings?.endpointType"
+                :is-continuation="idx > 0 && isAI(activeDisplayMessages[idx-1])"
+                :is-last-in-sequence="idx === activeDisplayMessages.length - 1 || !isAI(activeDisplayMessages[idx+1])"
                 @fork="handleFork"
                 @edit="(id, content, params) => handleEdit(id, content, params)"
                 @switch-version="handleSwitchVersion"
@@ -776,6 +778,8 @@ watch(
               <ToolCallGroupItem
                 v-else-if="item.type === 'tool_group'"
                 :tool-calls="item.toolCalls"
+                :is-continuation="idx > 0 && isAI(activeDisplayMessages[idx-1])"
+                :is-last-in-sequence="idx === activeDisplayMessages.length - 1 || !isAI(activeDisplayMessages[idx+1])"
               />
             </template>
 
