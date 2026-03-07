@@ -359,7 +359,9 @@ export function useChat() {
     const result: import('../models/types').DisplayMessage[] = [];
 
     branch.forEach((node, index) => {
-      if (node.role === 'tool') {
+      const role = node.role;
+      switch (role) {
+      case 'tool': {
         // Find the assistant node that triggered this tool call by searching backwards
         // With the new structure, we still need the tool call metadata from the assistant
         let triggeringAssistant: AssistantMessageNode | null = null;
@@ -391,9 +393,18 @@ export function useChat() {
           // Fallback: render as a regular message if no assistant meta found
           result.push({ type: 'message', node });
         }
-      } else {
+        break;
+      }
+      case 'user':
+      case 'assistant':
+      case 'system':
         // Non-tool node (user, assistant, system)
         result.push({ type: 'message', node });
+        break;
+      default: {
+        const _ex: never = role;
+        throw new Error(`Unhandled role: ${_ex}`);
+      }
       }
     });
 
@@ -955,26 +966,47 @@ export function useChat() {
 
       const history = getChatBranch(mutableChat).filter(m => m.id !== assistantId);
       for (const m of history) {
-        if (m.role === 'tool') {
+        const role = m.role;
+        switch (role) {
+        case 'tool': {
           for (const result of m.results) {
             let toolContent = '';
-            switch (result.status) {
+            const status = result.status;
+            switch (status) {
             case 'success': {
-              if (result.content.type === 'text') {
+              const contentType = result.content.type;
+              switch (contentType) {
+              case 'text':
                 toolContent = result.content.text;
-              } else {
+                break;
+              case 'binary_object': {
                 const blob = await storageService.getFile(result.content.id);
                 toolContent = blob ? await blob.text() : '[Error: Binary object missing]';
+                break;
+              }
+              default: {
+                const _ex: never = contentType;
+                toolContent = `[Error: Unknown content type: ${_ex}]`;
+              }
               }
               break;
             }
             case 'error': {
-              if (result.error.message.type === 'text') {
+              const errorMsgType = result.error.message.type;
+              switch (errorMsgType) {
+              case 'text':
                 toolContent = `Error [${result.error.code}]: ${result.error.message.text}`;
-              } else {
+                break;
+              case 'binary_object': {
                 const blob = await storageService.getFile(result.error.message.id);
                 const detail = blob ? await blob.text() : 'Binary error detail missing';
                 toolContent = `Error [${result.error.code}]: ${detail}`;
+                break;
+              }
+              default: {
+                const _ex: never = errorMsgType;
+                toolContent = `[Error: Unknown error message type: ${_ex}]`;
+              }
               }
               break;
             }
@@ -982,8 +1014,8 @@ export function useChat() {
               toolContent = '[Error: Tool still running]';
               break;
             default: {
-              const _ex: never = result;
-              toolContent = `[Error: Unknown tool status: ${(_ex as { status: string }).status}]`;
+              const _ex: never = status;
+              toolContent = `[Error: Unknown tool status: ${_ex}]`;
             }
             }
             finalMessages.push({
@@ -992,41 +1024,64 @@ export function useChat() {
               content: toolContent
             });
           }
-          continue;
+          break;
         }
-
-        const msgContent = m.content || '';
-        if (m.attachments && m.attachments.length > 0) {
-          const contentParts: MultimodalContent[] = [{ type: 'text', text: msgContent }];
-          for (const att of m.attachments) {
-            let blob: Blob | null = null;
-            switch (att.status) {
-            case 'memory':
-              blob = att.blob;
-              break;
-            case 'persisted':
-              blob = await storageService.getFile(att.binaryObjectId);
-              break;
-            case 'missing':
-              blob = null;
-              break;
-            default: {
-              const _ex: never = att;
-              throw new Error(`Unhandled attachment status: ${_ex}`);
+        case 'user':
+        case 'assistant':
+        case 'system': {
+          const msgContent = m.content || '';
+          if (role === 'user' && m.attachments && m.attachments.length > 0) {
+            const contentParts: MultimodalContent[] = [{ type: 'text', text: msgContent }];
+            for (const att of m.attachments) {
+              let blob: Blob | null = null;
+              const attStatus = att.status;
+              switch (attStatus) {
+              case 'memory':
+                blob = att.blob;
+                break;
+              case 'persisted':
+                blob = await storageService.getFile(att.binaryObjectId);
+                break;
+              case 'missing':
+                blob = null;
+                break;
+              default: {
+                const _ex: never = attStatus;
+                throw new Error(`Unhandled attachment status: ${_ex}`);
+              }
+              }
+              if (blob && att.mimeType.startsWith('image/')) {
+                const b64 = await fileToDataUrl(blob);
+                contentParts.push({ type: 'image_url', image_url: { url: b64 } });
+              }
             }
-            }
-            if (blob && att.mimeType.startsWith('image/')) {
-              const b64 = await fileToDataUrl(blob);
-              contentParts.push({ type: 'image_url', image_url: { url: b64 } });
-            }
+            finalMessages.push({ role: m.role, content: contentParts });
+          } else {
+            const toolCalls = (() => {
+              switch (role) {
+              case 'assistant':
+                return m.toolCalls;
+              case 'user':
+              case 'system':
+                return undefined;
+              default: {
+                const _ex: never = role;
+                throw new Error(`Unhandled role: ${_ex}`);
+              }
+              }
+            })();
+            finalMessages.push({
+              role: m.role as 'user' | 'assistant' | 'system',
+              content: msgContent,
+              tool_calls: toolCalls
+            });
           }
-          finalMessages.push({ role: m.role, content: contentParts });
-        } else {
-          finalMessages.push({
-            role: m.role as 'user' | 'assistant' | 'system',
-            content: msgContent,
-            tool_calls: m.role === 'assistant' ? m.toolCalls : undefined
-          });
+          break;
+        }
+        default: {
+          const _ex: never = role;
+          throw new Error(`Unhandled role: ${_ex}`);
+        }
         }
       }
 
@@ -1145,13 +1200,17 @@ export function useChat() {
 
             const index = toolNode.results.findIndex(er => er.toolCallId === params.id);
             if (index !== -1) {
-              if (params.result.status === 'success') {
+              const status = params.result.status;
+              switch (status) {
+              case 'success': {
                 toolNode.results[index] = {
                   toolCallId: params.id,
                   status: 'success',
                   content: await processContent({ text: params.result.content, type: 'result' })
                 };
-              } else {
+                break;
+              }
+              case 'error': {
                 toolNode.results[index] = {
                   toolCallId: params.id,
                   status: 'error',
@@ -1160,6 +1219,12 @@ export function useChat() {
                     message: await processContent({ text: params.result.message, type: 'error' })
                   }
                 };
+                break;
+              }
+              default: {
+                const _ex: never = status;
+                console.error(`Unhandled tool result status: ${_ex}`);
+              }
               }
             }
             triggerRef(_currentChat);

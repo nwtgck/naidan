@@ -151,46 +151,85 @@ async function exportChat() {
   let markdownContent = `# ${currentChat.value.title || 'New Chat'}\n\n`;
 
   for (const item of activeDisplayMessages.value) {
-    if (item.type === 'message') {
+    const itemType = item.type;
+    switch (itemType) {
+    case 'message': {
       const msg = item.node;
       const role = (() => {
-        switch (msg.role) {
+        const r = msg.role;
+        switch (r) {
         case 'user': return 'User';
         case 'assistant': return 'AI';
         case 'system': return 'System';
         case 'tool': return 'Tool';
         default: {
-          const _ex: never = msg;
-          return (_ex as { role: string }).role;
+          const _ex: never = r;
+          return (_ex as string);
         }
         }
       })();
       markdownContent += `## ${role}:\n${msg.content}\n\n`;
-    } else {
-      // Tool group
+      break;
+    }
+    case 'tool_group': {
       markdownContent += `## Tool Executions:\n`;
       for (const tc of item.toolCalls) {
         let resultStr = '';
-        if (tc.result.status === 'success') {
-          if (tc.result.content.type === 'text') {
+        const status = tc.result.status;
+        switch (status) {
+        case 'success': {
+          const contentType = tc.result.content.type;
+          switch (contentType) {
+          case 'text':
             resultStr = tc.result.content.text;
-          } else {
+            break;
+          case 'binary_object': {
             const blob = await storageService.getFile(tc.result.content.id);
             resultStr = blob ? await blob.text() : '[Error: Binary object missing]';
+            break;
           }
-        } else if (tc.result.status === 'error') {
-          if (tc.result.error.message.type === 'text') {
+          default: {
+            const _ex: never = contentType;
+            resultStr = `[Unknown content type: ${_ex}]`;
+          }
+          }
+          break;
+        }
+        case 'error': {
+          const messageType = tc.result.error.message.type;
+          switch (messageType) {
+          case 'text':
             resultStr = tc.result.error.message.text;
-          } else {
+            break;
+          case 'binary_object': {
             const blob = await storageService.getFile(tc.result.error.message.id);
             const detail = blob ? await blob.text() : 'Binary error detail missing';
             resultStr = `Error [${tc.result.error.code}]: ${detail}`;
+            break;
           }
-        } else {
+          default: {
+            const _ex: never = messageType;
+            resultStr = `[Unknown error message type: ${_ex}]`;
+          }
+          }
+          break;
+        }
+        case 'running':
           resultStr = '[Tool Still Running]';
+          break;
+        default: {
+          const _ex: never = status;
+          resultStr = `[Unknown status: ${_ex}]`;
+        }
         }
         markdownContent += `### ${tc.call.function.name}\nArgs: ${tc.call.function.arguments}\nResult: ${resultStr}\n\n`;
       }
+      break;
+    }
+    default: {
+      const _ex: never = itemType;
+      console.warn(`Unhandled DisplayMessage type: ${_ex}`);
+    }
     }
   }
 
@@ -382,7 +421,9 @@ watch(
     const lastItem = activeDisplayMessages.value[activeDisplayMessages.value.length - 1];
     if (!lastItem) return;
 
-    if (lastItem.type === 'message') {
+    const itemType = lastItem.type;
+    switch (itemType) {
+    case 'message': {
       const role = lastItem.node.role;
       switch (role) {
       case 'user':
@@ -412,9 +453,16 @@ watch(
         throw new Error(`Unhandled role: ${_ex}`);
       }
       }
-    } else {
+      break;
+    }
+    case 'tool_group':
       // Tool group - auto scroll to it
       scrollToBottom();
+      break;
+    default: {
+      const _ex: never = itemType;
+      throw new Error(`Unhandled DisplayMessage type: ${_ex}`);
+    }
     }
   },
 );
