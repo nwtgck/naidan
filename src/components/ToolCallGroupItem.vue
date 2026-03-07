@@ -2,13 +2,15 @@
 import { ref, computed } from 'vue';
 import { Shapes } from 'lucide-vue-next';
 import type { CombinedToolCall } from '../models/types';
+import type { FlowMetadata } from '../composables/useChatDisplayFlow';
 import ToolCallItem from './ToolCallItem.vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   toolCalls: CombinedToolCall[];
-  isContinuation?: boolean;
-  isLastInSequence?: boolean;
-}>();
+  flow?: FlowMetadata;
+}>(), {
+  flow: () => ({ position: 'standalone', nesting: 'none' })
+});
 
 const isExpanded = ref(false); // Default collapsed for tool execution blocks
 
@@ -21,13 +23,15 @@ const toolNamesDisplay = computed(() => {
   const limit = 3;
   const displayedNames = names.slice(0, limit);
   const remaining = names.length - limit;
-
+  
   let base = `Used ${displayedNames.join(', ')}`;
   if (remaining > 0) {
     base += ` and ${remaining} more`;
   }
   return base;
 });
+
+const isNested = computed(() => props.flow.nesting === 'inside-group');
 
 defineExpose({
   __testOnly: {
@@ -40,15 +44,16 @@ defineExpose({
 <template>
   <div
     v-if="toolCalls.length > 0"
-    class="flex flex-col transition-colors bg-gray-50/30 dark:bg-gray-800/20"
+    class="flex flex-col transition-colors"
     :class="[
-      !isContinuation ? 'border-t border-gray-100 dark:border-gray-800/50 pt-4' : 'pt-2',
-      isLastInSequence ? 'border-b border-gray-100 dark:border-gray-800/50' : ''
+      !isNested ? 'bg-gray-50/30 dark:bg-gray-800/20' : '',
+      (!isNested && (flow.position === 'standalone' || flow.position === 'start')) ? 'border-t border-gray-100 dark:border-gray-800/50 pt-4' : 'pt-2',
+      (!isNested && (flow.position === 'standalone' || flow.position === 'end')) ? 'border-b border-gray-100 dark:border-gray-800/50' : '',
+      isNested ? 'pb-2' : ''
     ]"
     data-testid="tool-call-group"
   >
-    <div class="px-5" :class="isLastInSequence ? 'pb-3' : 'pb-2'">
-      <div
+    <div class="px-5" :class="(!isNested && (flow.position === 'standalone' || flow.position === 'end')) ? 'pb-3' : 'pb-2'">      <div
         @click="toggleExpand"
         class="transition-all duration-500 ease-in-out relative group/tool-group w-full cursor-pointer overflow-hidden border shadow-sm"
         :class="[

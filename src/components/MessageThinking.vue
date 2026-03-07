@@ -5,6 +5,7 @@ import type { MessageNode } from '../models/types';
 
 const props = defineProps<{
   message: MessageNode;
+  noMargin?: boolean;
 }>();
 
 type ThinkingMode = 'expanded' | 'collapsed-active' | 'collapsed-finished';
@@ -73,8 +74,7 @@ defineExpose({
 </script>
 
 <template>
-  <!-- Thinking Block -->
-  <div v-if="hasThinking" class="mb-3" data-testid="thinking-block">
+  <div v-if="hasThinking" :class="noMargin ? '' : 'mb-3'" data-testid="thinking-block">
     <div
       class="transition-all duration-500 ease-in-out relative group/thinking w-full"
       :class="[

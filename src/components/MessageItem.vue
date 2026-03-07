@@ -28,6 +28,7 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '../models/types';
+import type { FlowMetadata } from '../composables/useChatDisplayFlow';
 import { EMPTY_LM_PARAMETERS } from '../models/types';
 import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
@@ -40,6 +41,7 @@ import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import MessageThinking from './MessageThinking.vue';
+import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '../services/transformers-js';
@@ -67,7 +69,7 @@ import {
   getImageStats
 } from '../utils/image-generation';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   chatId?: string;
   message: MessageNode;
   siblings?: MessageNode[];
@@ -76,9 +78,10 @@ const props = defineProps<{
   isGenerating?: boolean;
   availableImageModels?: string[];
   endpointType?: EndpointType;
-  isContinuation?: boolean;
-  isLastInSequence?: boolean;
-}>();
+  flow?: FlowMetadata;
+}>(), {
+  flow: () => ({ position: 'standalone', nesting: 'none' })
+});
 
 const emit = defineEmits<{
   (e: 'fork', messageId: string): void;
@@ -976,6 +979,9 @@ function formatSize(bytes?: number): string {
   return `${size.toFixed(1)} ${units[unitIndex]}`;
 }
 
+const showHeader = computed(() => props.flow.position === 'standalone' || props.flow.position === 'start');
+const isNested = computed(() => props.flow.nesting === 'inside-group');
+
 defineExpose({
   __testOnly: {
     openAdvancedEditor,
@@ -988,16 +994,19 @@ defineExpose({
   <div
     v-if="!(isGenerating && (transformersStatus === 'loading' || transformersStatus === 'error') && endpointType === 'transformers_js')"
     ref="messageRef"
-    class="flex flex-col gap-2 p-5 group transition-colors"
-    :class="{
-      'bg-gray-50/30 dark:bg-gray-800/20': !isUser,
-      'border-t border-gray-100 dark:border-gray-800/50': !isUser && !isContinuation,
-      'border-b border-gray-100 dark:border-gray-800/50': !isUser && isLastInSequence,
-      'pt-2': !isUser && isContinuation,
-      'pb-2': !isUser && !isLastInSequence
-    }"
+    class="flex flex-col gap-2 group transition-colors"
+    :class="[
+      isNested ? 'px-5' : 'p-5',
+      {
+        'bg-gray-50/30 dark:bg-gray-800/20': !isUser && !isNested,
+        'border-t border-gray-100 dark:border-gray-800/50': !isUser && !isNested && (flow.position === 'standalone' || flow.position === 'start'),
+        'border-b border-gray-100 dark:border-gray-800/50': !isUser && !isNested && (flow.position === 'standalone' || flow.position === 'end'),
+        'pt-2': !isUser && (isNested || flow.position === 'middle' || flow.position === 'end'),
+        'pb-2': !isUser && (isNested || flow.position === 'start' || flow.position === 'middle')
+      }
+    ]"
   >
-    <div v-if="!isContinuation" class="flex items-center gap-3 mb-1">
+    <div v-if="showHeader" class="flex items-center gap-3 mb-1">
       <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
         <User v-if="isUser" class="w-4 h-4 text-gray-500" />
         <Bird v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -1193,10 +1202,11 @@ defineExpose({
         />
 
         <!-- Loading State (Initial Wait for regular text) -->
-        <div v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending(message.content)" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
-          <Loader2 class="w-4 h-4 animate-spin" />
-          <span class="text-xs font-medium">Waiting for response...</span>
-        </div>
+        <AssistantWaitingIndicator
+          v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending(message.content)"
+          :is-nested="isNested"
+          data-testid="loading-indicator"
+        />
 
         <!-- Error State (Appended below content) -->
         <div v-if="message.error" class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">

@@ -1,5 +1,5 @@
 import { generateId } from '../utils/id';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageThinking from './MessageThinking.vue';
 import type { MessageNode } from '../models/types';

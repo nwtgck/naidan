@@ -10,10 +10,14 @@ import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 // to ensure the chat history displays immediately and smoothly without individual components popping in.
 import MessageItem from './MessageItem.vue';
 import ToolCallGroupItem from './ToolCallGroupItem.vue';
+import MessageThinking from './MessageThinking.vue';
+import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
+import AssistantProcessSequence from './AssistantProcessSequence.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
+import { useChatDisplayFlow } from '../composables/useChatDisplayFlow';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
@@ -395,7 +399,10 @@ async function scrollToLatestUserMessage() {
 }
 
 const isInitialLoad = ref(true);
-const isAI = (item: any) => item.type === 'tool_group' || (item.type === 'message' && item.node.role === 'assistant');
+const { chatFlow, isThinkingActive, isWaitingResponse } = useChatDisplayFlow({ 
+  activeDisplayMessages, 
+  isProcessing: isCurrentChatStreaming 
+});
 
 watch(
   () => currentChat.value?.id,
@@ -756,31 +763,87 @@ watch(
         </div>
         <template v-else>
           <div v-if="activeDisplayMessages.length > 0" class="relative p-2">
-            <template v-for="(item, idx) in activeDisplayMessages" :key="item.type === 'message' ? item.node.id : item.id">
+            <template v-for="flowItem in chatFlow" :key="flowItem.type === 'message' ? flowItem.node.id : flowItem.id">
+              <!-- AI Process Sequence (Collapsible Group) -->
+              <AssistantProcessSequence
+                v-if="flowItem.type === 'process_sequence'"
+                :items="flowItem.items"
+                :is-processing="isCurrentChatStreaming"
+                :flow="flowItem.flow"
+                :summary="flowItem.summary"
+                :stats="flowItem.stats"
+              >
+                <template #peek>
+                  <template v-if="flowItem.type === 'process_sequence' && flowItem.items.length > 0">
+                    <template v-for="lastItem in [flowItem.items[flowItem.items.length - 1]]">
+                      <!-- Active Thinking Peek -->
+                      <MessageThinking 
+                        v-if="lastItem && lastItem.type === 'message' && isThinkingActive({ item: lastItem })"
+                        :message="(lastItem as any).node"
+                        no-margin
+                      />
+                      <!-- Waiting Peek (Initial loading within sequence) -->
+                      <AssistantWaitingIndicator
+                        v-else-if="lastItem && lastItem.type === 'message' && isWaitingResponse({ item: lastItem })"
+                        no-padding
+                      />
+                    </template>
+                  </template>
+                </template>
+                <template #default="{ isExpanded }">
+                  <template v-for="subItem in flowItem.items" :key="subItem.type === 'message' ? subItem.node.id : subItem.id">
+                    <MessageItem
+                      v-if="subItem.type === 'message' && isExpanded"
+                      :id="'message-' + subItem.node.id"
+                      :chat-id="currentChat!.id"
+                      :message="subItem.node"
+                      :siblings="chatStore.getSiblings(subItem.node.id)"
+                      :can-generate-image="canGenerateImage && hasImageModel"
+                      :is-processing="isCurrentChatStreaming"
+                      :is-generating="isCurrentChatStreaming && subItem.node.id === currentChat?.currentLeafId"
+                      :available-image-models="availableImageModels"
+                      :endpoint-type="resolvedSettings?.endpointType"
+                      :flow="subItem.flow"
+                      @fork="handleFork"
+                      @edit="(id, content, params) => handleEdit(id, content, params)"
+                      @switch-version="handleSwitchVersion"
+                      @regenerate="handleRegenerate"
+                      @abort="chatStore.abortChat({ chatId: undefined })"
+                    />
+                    <ToolCallGroupItem
+                      v-else-if="subItem.type === 'tool_group' && isExpanded"
+                      :tool-calls="subItem.toolCalls"
+                      :flow="subItem.flow"
+                    />
+                  </template>
+                </template>
+              </AssistantProcessSequence>
+
+              <!-- Standard Message -->
               <MessageItem
-                v-if="item.type === 'message'"
-                :id="'message-' + item.node.id"
+                v-else-if="flowItem.type === 'message'"
+                :id="'message-' + flowItem.node.id"
                 :chat-id="currentChat!.id"
-                :message="item.node"
-                :siblings="chatStore.getSiblings(item.node.id)"
+                :message="flowItem.node"
+                :siblings="chatStore.getSiblings(flowItem.node.id)"
                 :can-generate-image="canGenerateImage && hasImageModel"
                 :is-processing="isCurrentChatStreaming"
-                :is-generating="isCurrentChatStreaming && item.node.id === currentChat?.currentLeafId"
+                :is-generating="isCurrentChatStreaming && flowItem.node.id === currentChat?.currentLeafId"
                 :available-image-models="availableImageModels"
                 :endpoint-type="resolvedSettings?.endpointType"
-                :is-continuation="idx > 0 && isAI(activeDisplayMessages[idx-1])"
-                :is-last-in-sequence="idx === activeDisplayMessages.length - 1 || !isAI(activeDisplayMessages[idx+1])"
+                :flow="flowItem.flow"
                 @fork="handleFork"
                 @edit="(id, content, params) => handleEdit(id, content, params)"
                 @switch-version="handleSwitchVersion"
                 @regenerate="handleRegenerate"
                 @abort="chatStore.abortChat({ chatId: undefined })"
               />
+
+              <!-- Standalone Tool Group -->
               <ToolCallGroupItem
-                v-else-if="item.type === 'tool_group'"
-                :tool-calls="item.toolCalls"
-                :is-continuation="idx > 0 && isAI(activeDisplayMessages[idx-1])"
-                :is-last-in-sequence="idx === activeDisplayMessages.length - 1 || !isAI(activeDisplayMessages[idx+1])"
+                v-else-if="flowItem.type === 'tool_group'"
+                :tool-calls="flowItem.toolCalls"
+                :flow="flowItem.flow"
               />
             </template>
 
