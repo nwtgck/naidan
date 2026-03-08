@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ref, computed, nextTick } from 'vue';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
-import type { MessageNode } from '../models/types';
+import type { MessageNode, Chat } from '../models/types';
 import { generateId } from '../utils/id';
 
 describe('useChatDisplayFlow', () => {
@@ -33,9 +33,25 @@ describe('useChatDisplayFlow', () => {
   } as MessageNode);
 
   const createFlow = ({ messages, isProcessing = false }: { messages: MessageNode[], isProcessing?: boolean }) => {
-    const activeMessages = computed(() => messages);
-    const isProcessingRef = computed(() => isProcessing);
-    return useChatDisplayFlow({ activeMessages, isProcessing: isProcessingRef });
+    // Mock the hierarchical structure that getChatBranchIterator expects
+    for (let i = 0; i < messages.length - 1; i++) {
+      messages[i]!.replies.items = [messages[i+1]!];
+    }
+
+    const chat = computed<Chat>(() => ({
+      id: 'test-chat',
+      title: 'Test',
+      root: { items: messages.length > 0 ? [messages[0]!] : [] },
+      currentLeafId: messages.length > 0 ? messages[messages.length - 1]!.id : null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false
+    } as Chat));
+
+    return useChatDisplayFlow({
+      chat,
+      isProcessing: () => isProcessing
+    });
   };
 
   it('groups internal processes: thought followed by tool', () => {
@@ -45,11 +61,6 @@ describe('useChatDisplayFlow', () => {
 
     const { chatFlow } = createFlow({ messages: [m1, t1] });
 
-    // Expect:
-    // 1. Atom(thinking) from m1
-    // 2. Atom(tool_calls) from m1
-    // 3. Atom(tool_group) from t1
-    // All grouped into 1 process_sequence
     expect(chatFlow.value).toHaveLength(1);
     const first = chatFlow.value[0];
     expect(first?.type).toBe('process_sequence');
@@ -87,8 +98,6 @@ describe('useChatDisplayFlow', () => {
 
     const { chatFlow } = createFlow({ messages: [user, m1, t1, m2] });
 
-    // items: user(content), m1(thinking), m1(tool_calls), t1(tool_group), m2(content)
-    // grouped: user(msg), sequence(m1_think, m1_tc, t1_tg), m2(msg)
     expect(chatFlow.value).toHaveLength(3);
     expect(chatFlow.value[0]?.flow.position).toBe('standalone');
     expect(chatFlow.value[1]?.flow.position).toBe('start');
@@ -101,18 +110,26 @@ describe('useChatDisplayFlow', () => {
     const messages = ref([m1]);
     const isProcessingRef = ref(true);
 
+    const chat = computed<Chat>(() => ({
+      id: 'test-chat',
+      title: 'Test',
+      root: { items: messages.value.length > 0 ? [messages.value[0]!] : [] },
+      currentLeafId: messages.value.length > 0 ? messages.value[messages.value.length - 1]!.id : null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false
+    } as Chat));
+
     const { chatFlow, isThinkingActive } = useChatDisplayFlow({
-      activeMessages: computed(() => messages.value),
-      isProcessing: computed(() => isProcessingRef.value)
+      chat,
+      isProcessing: () => isProcessingRef.value
     });
 
-    // 1. ACTIVE THINKING: Should NOT be grouped, and isThinkingActive should be true
     expect(chatFlow.value).toHaveLength(1);
     const item = chatFlow.value[0]!;
     expect(item.type).toBe('message');
     expect(isThinkingActive({ item: item as any })).toBe(true);
 
-    // 2. THINKING FINISHED (by closing the tag)
     messages.value[0]!.content = '<think>thought</think>';
     isProcessingRef.value = false;
     await nextTick();
@@ -125,10 +142,6 @@ describe('useChatDisplayFlow', () => {
     const m1 = createAssistantMsg('<think>thought</think>Actual answer');
     const { chatFlow } = createFlow({ messages: [m1] });
 
-    // Expect:
-    // 1. Atom(thinking) - internal
-    // 2. Atom(content) - external
-    // Not grouped because they are 1 internal + 1 external
     expect(chatFlow.value).toHaveLength(2);
     expect(chatFlow.value[0]?.type).toBe('message');
     expect((chatFlow.value[0] as any).mode).toBe('thinking');
@@ -142,12 +155,6 @@ describe('useChatDisplayFlow', () => {
     const t1 = createToolNode('tc1');
 
     const { chatFlow } = createFlow({ messages: [m1, t1] });
-
-    // Expectation:
-    // 1. Atom(Thinking) - Internal
-    // 2. Atom(Content) - External -> BREAKS SEQUENCE
-    // 3. Atom(ToolCalls) - Internal
-    // 4. Atom(ToolGroup) - Internal -> GROUPS WITH ToolCalls
 
     expect(chatFlow.value).toHaveLength(3);
     expect(chatFlow.value[0]?.type).toBe('message'); // Thinking

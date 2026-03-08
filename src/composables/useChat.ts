@@ -1,5 +1,5 @@
 import { generateId } from '../utils/id';
-import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy } from 'vue';
+import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy, type ComputedRef } from 'vue';
 import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning } from '../models/types';
 import { EMPTY_LM_PARAMETERS } from '../models/types';
 import { storageService } from '../services/storage';
@@ -26,6 +26,7 @@ import {
 
 import { useChatTools } from './useChatTools';
 import { ALL_TOOLS } from '../services/tools/registry';
+import { useChatDisplayFlow } from './useChatDisplayFlow';
 
 const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
@@ -2091,12 +2092,22 @@ export function useChat() {
     activeTaskCounts.clear();
   };
 
+  const {
+    chatFlow,
+    isThinkingActive,
+    isWaitingResponse
+  } = useChatDisplayFlow({
+    chat: currentChat as unknown as ComputedRef<Chat | null>,
+    isProcessing: (id) => isProcessing(id)
+  });
+
   return {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
     loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle,
+    chatFlow, isThinkingActive, isWaitingResponse,
     __testOnly: {
       liveChatRegistry,
       activeGenerations,

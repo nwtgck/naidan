@@ -17,7 +17,7 @@ import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
-import { useChatDisplayFlow, type ChatFlowItem } from '../composables/useChatDisplayFlow';
+import type { ChatFlowItem } from '../composables/useChatDisplayFlow';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
@@ -68,6 +68,9 @@ const {
   isProcessing,
   getSortedImageModels,
   abortTitleGeneration,
+  chatFlow,
+  isThinkingActive,
+  isWaitingResponse,
 } = chatStore;
 
 const availableImageModels = computed(() => {
@@ -430,10 +433,6 @@ async function scrollToLatestUserMessage() {
 }
 
 const isInitialLoad = ref(true);
-const { chatFlow, isThinkingActive, isWaitingResponse } = useChatDisplayFlow({
-  activeMessages,
-  isProcessing: isCurrentChatStreaming
-});
 
 watch(
   () => currentChat.value?.id,
@@ -443,7 +442,7 @@ watch(
 );
 
 watch(
-  [() => activeMessages.value.length, () => currentChat.value?.id],
+  [() => chatFlow.value.length, () => currentChat.value?.id],
   async ([_newLen, newId], [_oldLen, oldId]) => {
     if (newId !== oldId) {
       isInitialLoad.value = true;

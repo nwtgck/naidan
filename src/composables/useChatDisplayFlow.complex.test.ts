@@ -1,9 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import { computed } from 'vue';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
-import type { MessageNode } from '../models/types';
+import type { MessageNode, Chat } from '../models/types';
 
 describe('useChatDisplayFlow complex scenario', () => {
+  const createChat = (messages: MessageNode[]) => {
+    // Build tree
+    for (let i = 0; i < messages.length - 1; i++) {
+      messages[i]!.replies.items = [messages[i+1]!];
+    }
+    return computed<Chat>(() => ({
+      id: 'test-chat',
+      title: 'Test',
+      root: { items: messages.length > 0 ? [messages[0]!] : [] },
+      currentLeafId: messages.length > 0 ? messages[messages.length - 1]!.id : null,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false
+    } as Chat));
+  };
+
   it('correctly atomizes and groups the reported complex scenario with full JSON validation', () => {
     const messages: MessageNode[] = [
       { id: 'u1', role: 'user', content: 'Calc', timestamp: 0, replies: { items: [] }, attachments: [], lmParameters: undefined, thinking: undefined, error: undefined, modelId: undefined, toolCalls: undefined, results: undefined } as MessageNode,
@@ -15,8 +31,8 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     const { chatFlow } = useChatDisplayFlow({
-      activeMessages: computed(() => messages),
-      isProcessing: computed(() => false)
+      chat: createChat(messages),
+      isProcessing: () => false
     });
 
     const result = JSON.parse(JSON.stringify(chatFlow.value));
@@ -105,8 +121,8 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     const { chatFlow } = useChatDisplayFlow({
-      activeMessages: computed(() => messages),
-      isProcessing: computed(() => true)
+      chat: createChat(messages),
+      isProcessing: () => true
     });
 
     const result = JSON.parse(JSON.stringify(chatFlow.value));
@@ -164,17 +180,11 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     const { chatFlow } = useChatDisplayFlow({
-      activeMessages: computed(() => messages),
-      isProcessing: computed(() => false)
+      chat: createChat(messages),
+      isProcessing: () => false
     });
 
     const result = JSON.parse(JSON.stringify(chatFlow.value));
-
-    // atoms: a1(T1), a1(C1), a1(T2), a1(TC), t1(TG)
-    // grouped:
-    //   message(a1, thinking, T1) -> standalone internal
-    //   message(a1, content, C1) -> external (BREAKS)
-    //   sequence(a1_T2, a1_TC, t1_TG) -> internal sequence
 
     expect(result).toHaveLength(3);
     expect(result[0].mode).toBe('thinking');
@@ -192,13 +202,12 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     const { chatFlow } = useChatDisplayFlow({
-      activeMessages: computed(() => messages),
-      isProcessing: computed(() => true)
+      chat: createChat(messages),
+      isProcessing: () => true
     });
 
     const result = JSON.parse(JSON.stringify(chatFlow.value));
 
-    // atoms: a1(waiting)
     expect(result).toHaveLength(1);
     expect(result[0].mode).toBe('waiting');
     expect(result[0].isFirstInTurn).toBe(true);
@@ -213,8 +222,8 @@ describe('useChatDisplayFlow complex scenario', () => {
     ];
 
     const { chatFlow } = useChatDisplayFlow({
-      activeMessages: computed(() => messages),
-      isProcessing: computed(() => false)
+      chat: createChat(messages),
+      isProcessing: () => false
     });
 
     const result = JSON.parse(JSON.stringify(chatFlow.value));

@@ -63,6 +63,17 @@ vi.mock('../composables/useChat', () => ({
     updateReasoningEffort: vi.fn(),
     updateChatSettings: vi.fn(),
     getLiveChat: vi.fn().mockImplementation((c) => c),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
   }),
 }));
 
@@ -174,6 +185,9 @@ describe('ChatArea Concurrency Button State', () => {
       updateReasoningEffort: vi.fn(),
       updateChatSettings: vi.fn(),
       getLiveChat: vi.fn().mockImplementation((c) => c),
+      chatFlow: ref([]),
+      isThinkingActive: vi.fn(() => false),
+      isWaitingResponse: vi.fn(() => false),
     } as any);
 
     const wrapper = mount(ChatArea, {

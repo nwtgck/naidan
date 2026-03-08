@@ -170,8 +170,8 @@ describe('useChat Tool Chaining', () => {
 
     const { useChatDisplayFlow } = await import('./useChatDisplayFlow');
     const { chatFlow } = useChatDisplayFlow({
-      activeMessages,
-      isProcessing: computed(() => false)
+      chat: computed(() => chat),
+      isProcessing: () => false
     });
     const displayMessages = chatFlow.value;
     console.log('Display messages types:', displayMessages.map(d => d.type));

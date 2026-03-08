@@ -1,6 +1,7 @@
 import { computed, type ComputedRef, toRaw } from 'vue';
-import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode } from '../models/types';
+import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '../models/types';
 import { stripNaidanSentinels } from '../utils/image-generation';
+import { getChatBranchIterator } from '../utils/chat-tree';
 
 /**
  * Position within a continuous sequence of AI-related items.
@@ -54,30 +55,32 @@ export type ChatFlowAtom =
   | { type: 'waiting'; node: MessageNode; isFirstInNode: boolean; isLastInNode: boolean; isFirstInTurn: boolean };
 
 export function useChatDisplayFlow({
-  activeMessages,
+  chat,
   isProcessing
 }: {
-  activeMessages: ComputedRef<MessageNode[]>,
-  isProcessing: ComputedRef<boolean>
+  chat: ComputedRef<Chat | null>,
+  isProcessing: (chatId: string) => boolean
 }) {
 
   /**
    * Generator that splits a branch of MessageNodes into atoms.
    */
-  function* yieldAtoms({ nodes }: { nodes: MessageNode[] }): Generator<ChatFlowAtom> {
-    for (let nodeIdx = 0; nodeIdx < nodes.length; nodeIdx++) {
-      const node = nodes[nodeIdx]!;
-      const rawNode = toRaw(node);
-      const isFirstInTurn = nodeIdx === 0 || nodes[nodeIdx - 1]?.role !== rawNode.role;
+  function* yieldAtoms({ nodes }: { nodes: Iterable<MessageNode> }): Generator<ChatFlowAtom> {
+    let prevRole: string | undefined;
+    const nodeArray = Array.from(nodes);
 
-      const role = rawNode.role;
+    for (let nodeIdx = 0; nodeIdx < nodeArray.length; nodeIdx++) {
+      const node = nodeArray[nodeIdx]!;
+      const isFirstInTurn = nodeIdx === 0 || prevRole !== node.role;
+
+      const role = node.role;
       switch (role) {
       case 'user':
       case 'system':
         yield {
           type: 'content',
           node,
-          content: rawNode.content || '',
+          content: node.content || '',
           isFirstInNode: true,
           isLastInNode: true,
           isFirstInTurn
@@ -86,16 +89,16 @@ export function useChatDisplayFlow({
 
       case 'assistant': {
         const nodeAtoms: (Exclude<ChatFlowAtom, { type: 'tool_group' }>)[] = [];
-        const content = rawNode.content || '';
+        const content = node.content || '';
 
         // 1. Completed thinking from node property
-        if (rawNode.thinking) {
+        if (node.thinking) {
           nodeAtoms.push({
             type: 'thinking',
             node,
-            content: rawNode.thinking,
+            content: node.thinking,
             isCompleted: true,
-            isFirstInNode: false, // will be set later
+            isFirstInNode: false,
             isLastInNode: false,
             isFirstInTurn: false
           });
@@ -106,12 +109,10 @@ export function useChatDisplayFlow({
         let lastIdx = 0;
         let match;
         while ((match = thinkRegex.exec(content)) !== null) {
-          // Content BEFORE the think block
           const before = content.slice(lastIdx, match.index).trim();
           if (before) {
             nodeAtoms.push({ type: 'content', node, content: before, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
           }
-          // The think block itself
           const thinkContent = match[1]?.trim();
           if (thinkContent) {
             nodeAtoms.push({ type: 'thinking', node, content: thinkContent, isCompleted: true, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
@@ -122,7 +123,8 @@ export function useChatDisplayFlow({
         const remaining = content.slice(lastIdx);
         const lastOpen = remaining.lastIndexOf('<think>');
         const lastClose = remaining.lastIndexOf('</think>');
-        const isActiveThinking = lastOpen > -1 && lastClose < lastOpen && isProcessing.value;
+        const chatVal = chat.value;
+        const isActiveThinking = lastOpen > -1 && lastClose < lastOpen && chatVal && isProcessing(chatVal.id);
 
         if (isActiveThinking) {
           const bodyBefore = remaining.slice(0, lastOpen).trim();
@@ -139,12 +141,12 @@ export function useChatDisplayFlow({
         }
 
         // 3. Tool Calls (Internal)
-        if (rawNode.toolCalls && rawNode.toolCalls.length > 0) {
-          nodeAtoms.push({ type: 'tool_calls', node, toolCalls: rawNode.toolCalls, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
+        if (node.toolCalls && node.toolCalls.length > 0) {
+          nodeAtoms.push({ type: 'tool_calls', node, toolCalls: node.toolCalls, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
         }
 
         // 4. Waiting indicator
-        if (nodeAtoms.length === 0 && isProcessing.value && nodeIdx === nodes.length - 1) {
+        if (nodeAtoms.length === 0 && chatVal && isProcessing(chatVal.id) && nodeIdx === nodeArray.length - 1) {
           nodeAtoms.push({ type: 'waiting', node, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
         }
 
@@ -159,20 +161,20 @@ export function useChatDisplayFlow({
       }
 
       case 'tool': {
-        const isFirstInTurn = nodeIdx === 0 || nodes[nodeIdx - 1]?.role !== rawNode.role;
+        const nodeId = toRaw(node).id;
         let triggeringAssistant: AssistantMessageNode | null = null;
         for (let j = nodeIdx - 1; j >= 0; j--) {
-          const prev = nodes[j];
-          if (prev?.role === 'assistant' && prev.toolCalls?.some(tc => rawNode.results.some(er => er.toolCallId === tc.id))) {
-            triggeringAssistant = prev;
+          const prev = nodeArray[j];
+          if (prev?.role === 'assistant' && prev.toolCalls?.some(tc => node.results.some(er => er.toolCallId === tc.id))) {
+            triggeringAssistant = prev as AssistantMessageNode;
             break;
           }
         }
         if (triggeringAssistant) {
-          const toolCalls: CombinedToolCall[] = rawNode.results.map(er => ({
-            id: er.toolCallId, nodeId: rawNode.id, call: triggeringAssistant!.toolCalls!.find(tc => tc.id === er.toolCallId)!, result: er
+          const toolCalls: CombinedToolCall[] = node.results.map(er => ({
+            id: er.toolCallId, nodeId, call: triggeringAssistant!.toolCalls!.find(tc => tc.id === er.toolCallId)!, result: er
           }));
-          yield { type: 'tool_group', id: rawNode.id, toolCalls, node, isFirstInTurn };
+          yield { type: 'tool_group', id: nodeId, toolCalls, node, isFirstInTurn };
         } else {
           yield { type: 'content', node, content: '[Tool Results]', isFirstInNode: true, isLastInNode: true, isFirstInTurn };
         }
@@ -180,6 +182,7 @@ export function useChatDisplayFlow({
       }
       default: { const _ex: never = role; throw new Error(`Unhandled role: ${_ex}`); }
       }
+      prevRole = role;
     }
   }
 
@@ -191,11 +194,11 @@ export function useChatDisplayFlow({
 
     const isInternal = ({ atom }: { atom: ChatFlowAtom }): boolean => {
       switch (atom.type) {
-      case 'thinking': return atom.isCompleted; // Only completed thinking is hidden
+      case 'thinking': return atom.isCompleted;
       case 'tool_calls':
-      case 'tool_group': return true; // Tools are always hidden
+      case 'tool_group': return true;
       case 'content':
-      case 'waiting': return false; // Body and waiting are always exposed
+      case 'waiting': return false;
       default: { const _ex: never = atom; return _ex; }
       }
     };
@@ -217,7 +220,6 @@ export function useChatDisplayFlow({
           }
         })();
 
-        // Mark all items in the sequence as nested
         const nestedItems = buffer.map(item => ({
           ...item,
           flow: { ...item.flow, nesting: 'inside-group' as const }
@@ -352,7 +354,11 @@ export function useChatDisplayFlow({
   };
 
   const chatFlow = computed<ChatFlowItem[]>(() => {
-    const items = Array.from(yieldGroupedItems({ atomIterator: { [Symbol.iterator]: () => yieldAtoms({ nodes: activeMessages.value }) } }));
+    const chatVal = chat.value;
+    if (!chatVal) return [];
+
+    const atoms = { [Symbol.iterator]: () => yieldAtoms({ nodes: { [Symbol.iterator]: () => getChatBranchIterator({ chat: chatVal }) } }) };
+    const items = Array.from(yieldGroupedItems({ atomIterator: atoms }));
 
     return items.map((item, idx) => {
       const prev = items[idx - 1] || null;
