@@ -13,7 +13,7 @@ import { z } from 'zod';
  */
 const orUndefined = <T extends z.ZodTypeAny>(schema: T) => z.union([schema, z.undefined()]);
 
-export const RoleSchemaDto = z.enum(['user', 'assistant', 'system']);
+export const RoleSchemaDto = z.enum(['user', 'assistant', 'system', 'tool']);
 export type RoleDto = z.infer<typeof RoleSchemaDto>;
 
 export const StorageTypeSchemaDto = z.enum(['local', 'opfs', 'memory']);
@@ -156,6 +156,37 @@ export const AttachmentSchemaDto = z.union([
 ]);
 export type AttachmentDto = z.infer<typeof AttachmentSchemaDto>;
 
+export const ToolCallSchemaDto = z.object({
+  id: z.string(),
+  type: z.literal('function'),
+  function: z.object({
+    name: z.string(),
+    arguments: z.string(),
+  }),
+});
+
+export const TextOrBinaryObjectSchemaDto = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }),
+  z.object({ type: z.literal('binary_object'), id: z.string() }),
+]);
+
+export const ToolExecutionResultSchemaDto = z.discriminatedUnion('status', [
+  z.object({ toolCallId: z.string(), status: z.literal('executing') }),
+  z.object({
+    toolCallId: z.string(),
+    status: z.literal('success'),
+    content: TextOrBinaryObjectSchemaDto,
+  }),
+  z.object({
+    toolCallId: z.string(),
+    status: z.literal('error'),
+    error: z.object({
+      code: z.enum(['invalid_arguments', 'execution_failed', 'timeout', 'other']),
+      message: TextOrBinaryObjectSchemaDto,
+    }),
+  }),
+]);
+
 export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
   z.discriminatedUnion('role', [
     z.object({
@@ -167,6 +198,8 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       thinking: z.undefined(),
       modelId: z.undefined(),
       lmParameters: orUndefined(LmParametersSchemaDto),
+      toolCalls: z.undefined(),
+      results: z.undefined(),
       replies: MessageBranchSchemaDto,
     }),
     z.object({
@@ -178,6 +211,8 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       thinking: orUndefined(z.string()),
       modelId: orUndefined(z.string()),
       lmParameters: orUndefined(LmParametersSchemaDto),
+      toolCalls: orUndefined(z.array(ToolCallSchemaDto)),
+      results: z.undefined(),
       replies: MessageBranchSchemaDto,
     }),
     z.object({
@@ -189,6 +224,21 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       thinking: z.undefined(),
       modelId: z.undefined(),
       lmParameters: z.undefined(),
+      toolCalls: z.undefined(),
+      results: z.undefined(),
+      replies: MessageBranchSchemaDto,
+    }),
+    z.object({
+      id: z.string(),
+      role: z.literal('tool'),
+      content: z.undefined(),
+      attachments: z.undefined(),
+      timestamp: z.number(),
+      thinking: z.undefined(),
+      modelId: z.undefined(),
+      lmParameters: z.undefined(),
+      toolCalls: z.undefined(),
+      results: z.array(ToolExecutionResultSchemaDto),
       replies: MessageBranchSchemaDto,
     }),
   ])
@@ -200,7 +250,7 @@ export const MessageBranchSchemaDto = z.object({
 
 type MessageNodeCommonDto = {
   id: string;
-  content: string;
+  content: string | undefined;
   timestamp: number;
   replies: {
     items: MessageNodeDto[];
@@ -210,24 +260,43 @@ type MessageNodeCommonDto = {
 export type MessageNodeDto =
   | (MessageNodeCommonDto & {
       role: 'user';
+      content: string;
       attachments: AttachmentDto[] | undefined;
       thinking: undefined;
       modelId: undefined;
       lmParameters: LmParametersDto | undefined;
+      toolCalls: undefined;
+      results: undefined;
     })
   | (MessageNodeCommonDto & {
       role: 'assistant';
+      content: string;
       attachments: undefined;
       thinking: string | undefined;
       modelId: string | undefined;
       lmParameters: LmParametersDto | undefined;
+      toolCalls: z.infer<typeof ToolCallSchemaDto>[] | undefined;
+      results: undefined;
     })
   | (MessageNodeCommonDto & {
       role: 'system';
+      content: string;
       attachments: undefined;
       thinking: undefined;
       modelId: undefined;
       lmParameters: undefined;
+      toolCalls: undefined;
+      results: undefined;
+    })
+  | (MessageNodeCommonDto & {
+      role: 'tool';
+      content: undefined;
+      attachments: undefined;
+      thinking: undefined;
+      modelId: undefined;
+      lmParameters: undefined;
+      toolCalls: undefined;
+      results: z.infer<typeof ToolExecutionResultSchemaDto>[];
     });
 
 /**

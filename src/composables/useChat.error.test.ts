@@ -11,7 +11,7 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined }))),
     updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadSettings: vi.fn().mockResolvedValue({}),

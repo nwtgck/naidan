@@ -9,10 +9,15 @@ import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
 // IMPORTANT: MessageItem is the core of the chat experience. We import it synchronously
 // to ensure the chat history displays immediately and smoothly without individual components popping in.
 import MessageItem from './MessageItem.vue';
+import ToolCallGroupItem from './ToolCallGroupItem.vue';
+import MessageThinking from './MessageThinking.vue';
+import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
+import AssistantProcessSequence from './AssistantProcessSequence.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
+import type { ChatFlowItem } from '../composables/useChatDisplayFlow';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
@@ -40,6 +45,7 @@ import { hasChatOverrides } from '../utils/chat-settings-resolver';
 import { scrollIntoViewSafe } from '../utils/dom';
 import { generateChatShareURL } from '../services/import-export/chat-url-share';
 import { useToast } from '../composables/useToast';
+import { storageService } from '../services/storage';
 
 
 const chatStore = useChat();
@@ -62,6 +68,9 @@ const {
   isProcessing,
   getSortedImageModels,
   abortTitleGeneration,
+  chatFlow,
+  isThinkingActive,
+  isWaitingResponse,
 } = chatStore;
 
 const availableImageModels = computed(() => {
@@ -142,26 +151,115 @@ async function handleMoveToGroup(groupId: string | null) {
   showMoveMenu.value = false;
 }
 
-function exportChat() {
-  if (!currentChat.value || !activeMessages.value) return;
+async function exportChat() {
+  if (!currentChat.value || !chatFlow.value) return;
 
   let markdownContent = `# ${currentChat.value.title || 'New Chat'}\n\n`;
 
-  activeMessages.value.forEach(msg => {
-    const role = (() => {
-      const node = msg;
-      switch (node.role) {
-      case 'user': return 'User';
-      case 'assistant': return 'AI';
-      case 'system': return 'System';
+  const processFlowItems = async (items: ChatFlowItem[]) => {
+    for (const item of items) {
+      const itemType = item.type;
+      switch (itemType) {
+      case 'message': {
+        const msg = item.node;
+        const role = (() => {
+          const r = msg.role;
+          switch (r) {
+          case 'user': return 'User';
+          case 'assistant': return 'AI';
+          case 'system': return 'System';
+          case 'tool': return 'Tool';
+          default: {
+            const _ex: never = r;
+            return (_ex as string);
+          }
+          }
+        })();
+        const prefix = (() => {
+          const mode = item.mode;
+          switch (mode) {
+          case 'thinking': return '[Thought]: ';
+          case 'content':
+          case 'tool_calls':
+          case 'waiting':
+            return '';
+          default: {
+            const _ex: never = mode;
+            return _ex;
+          }
+          }
+        })();
+        markdownContent += `## ${role}:\n${prefix}${item.partContent || msg.content}\n\n`;
+        break;
+      }
+      case 'tool_group': {
+        markdownContent += `## Tool Executions:\n`;
+        for (const tc of item.toolCalls) {
+          let resultStr = '';
+          const status = tc.result.status;
+          switch (status) {
+          case 'success': {
+            const contentType = tc.result.content.type;
+            switch (contentType) {
+            case 'text':
+              resultStr = tc.result.content.text;
+              break;
+            case 'binary_object': {
+              const blob = await storageService.getFile(tc.result.content.id);
+              resultStr = blob ? await blob.text() : '[Error: Binary object missing]';
+              break;
+            }
+            default: {
+              const _ex: never = contentType;
+              resultStr = `[Unknown content type: ${_ex}]`;
+            }
+            }
+            break;
+          }
+          case 'error': {
+            const messageType = tc.result.error.message.type;
+            switch (messageType) {
+            case 'text':
+              resultStr = tc.result.error.message.text;
+              break;
+            case 'binary_object': {
+              const blob = await storageService.getFile(tc.result.error.message.id);
+              const detail = blob ? await blob.text() : 'Binary error detail missing';
+              resultStr = `Error [${tc.result.error.code}]: ${detail}`;
+              break;
+            }
+            default: {
+              const _ex: never = messageType;
+              resultStr = `[Unknown error message type: ${_ex}]`;
+            }
+            }
+            break;
+          }
+          case 'executing':
+            resultStr = '[Tool Still Executing]';
+            break;
+          default: {
+            const _ex: never = status;
+            resultStr = `[Unknown status: ${_ex}]`;
+          }
+          }
+          markdownContent += `### ${tc.call.function.name}\nArgs: ${tc.call.function.arguments}\nResult: ${resultStr}\n\n`;
+        }
+        break;
+      }
+      case 'process_sequence':
+        markdownContent += `## Process Sequence: ${item.summary}\n`;
+        await processFlowItems(item.items);
+        break;
       default: {
-        const _ex: never = node;
-        return (_ex as { role: string }).role;
+        const _ex: never = itemType;
+        console.warn(`Unhandled ChatFlowItem type: ${_ex}`);
       }
       }
-    })();
-    markdownContent += `## ${role}:\n${msg.content}\n\n`;
-  });
+    }
+  };
+
+  await processFlowItems(chatFlow.value);
 
   const blob = new Blob([markdownContent], { type: 'text/plain;charset=utf-8' });
   const filename = `${currentChat.value.title || 'new_chat'}.txt`;
@@ -279,9 +377,32 @@ async function handleFork(messageId: string) {
 }
 
 function handleForkLastMessage() {
-  const lastMsg = activeMessages.value[activeMessages.value.length - 1];
-  if (lastMsg) {
-    handleFork(lastMsg.id);
+  // We need to find the last message across all potential levels of nesting in chatFlow
+  const findLastMessage = (items: ChatFlowItem[]): ChatFlowItem | null => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]!;
+      const type = item.type;
+      switch (type) {
+      case 'message': return item;
+      case 'process_sequence': {
+        const nested = findLastMessage(item.items);
+        if (nested) return nested;
+        break;
+      }
+      case 'tool_group':
+        break;
+      default: {
+        const _ex: never = type;
+        return _ex;
+      }
+      }
+    }
+    return null;
+  };
+
+  const lastMsgItem = findLastMessage(chatFlow.value);
+  if (lastMsgItem && lastMsgItem.type === 'message') {
+    handleFork(lastMsgItem.node.id);
   }
 }
 
@@ -292,14 +413,49 @@ function jumpToOrigin() {
 }
 
 async function scrollToLatestUserMessage() {
-  if (!container.value || !activeMessages.value) return;
+  if (!container.value || !chatFlow.value) return;
 
   // Find last user message
-  const reversed = [...activeMessages.value].reverse();
-  const lastUserMsg = reversed.find(m => m.role === 'user');
+  const findLastUserMessage = (items: ChatFlowItem[]): ChatFlowItem | null => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]!;
+      const type = item.type;
+      switch (type) {
+      case 'message': {
+        const role = item.node.role;
+        switch (role) {
+        case 'user': return item;
+        case 'assistant':
+        case 'system':
+        case 'tool':
+          break;
+        default: {
+          const _ex: never = role;
+          return _ex;
+        }
+        }
+        break;
+      }
+      case 'process_sequence': {
+        const nested = findLastUserMessage(item.items);
+        if (nested) return nested;
+        break;
+      }
+      case 'tool_group':
+        break;
+      default: {
+        const _ex: never = type;
+        return _ex;
+      }
+      }
+    }
+    return null;
+  };
 
-  if (lastUserMsg) {
-    const messageId = lastUserMsg.id;
+  const lastUserMsgItem = findLastUserMessage(chatFlow.value);
+
+  if (lastUserMsgItem && lastUserMsgItem.type === 'message') {
+    const messageId = lastUserMsgItem.node.id;
     // Robustly find the element, waiting up to 5 ticks for DOM to settle
     let el: HTMLElement | null = null;
     for (let i = 0; i < 5; i++) {
@@ -334,7 +490,7 @@ watch(
 );
 
 watch(
-  [() => activeMessages.value.length, () => currentChat.value?.id],
+  [() => chatFlow.value.length, () => currentChat.value?.id],
   async ([_newLen, newId], [_oldLen, oldId]) => {
     if (newId !== oldId) {
       isInitialLoad.value = true;
@@ -348,39 +504,56 @@ watch(
       return;
     }
 
-    const lastMsg = activeMessages.value[activeMessages.value.length - 1];
-    if (!lastMsg) return;
+    const lastItem = chatFlow.value[chatFlow.value.length - 1];
+    if (!lastItem) return;
 
-    const role = lastMsg.role;
-    switch (role) {
-    case 'user':
-      scrollToBottom();
-      break;
-    case 'assistant':
-    case 'system': {
-      if (container.value) {
-        const messageId = lastMsg.id;
-        // Wait a tick for the new element
-        await nextTick();
-        const el = container.value.querySelector(`#message-${messageId}`);
-        if (el instanceof HTMLElement) {
-          scrollIntoViewSafe({
-            container: container.value,
-            element: el,
-            behavior: 'smooth',
-            block: 'start'
-          });
+    const itemType = lastItem.type;
+    switch (itemType) {
+    case 'message': {
+      const role = lastItem.node.role;
+      switch (role) {
+      case 'user':
+        scrollToBottom();
+        break;
+      case 'assistant':
+      case 'system':
+      case 'tool': {
+        if (container.value) {
+          const messageId = lastItem.node.id;
+          // Wait a tick for the new element
+          await nextTick();
+          const el = container.value.querySelector(`#message-${messageId}`);
+          if (el instanceof HTMLElement) {
+            scrollIntoViewSafe({
+              container: container.value,
+              element: el,
+              behavior: 'smooth',
+              block: 'start'
+            });
+          }
         }
+        break;
+      }
+      default: {
+        const _ex: never = role;
+        throw new Error(`Unhandled role: ${_ex}`);
+      }
       }
       break;
     }
+    case 'tool_group':
+    case 'process_sequence':
+      // Auto scroll to new AI items
+      scrollToBottom();
+      break;
     default: {
-      const _ex: never = role;
-      throw new Error(`Unhandled role: ${_ex}`);
+      const _ex: never = itemType;
+      throw new Error(`Unhandled ChatFlowItem type: ${_ex}`);
     }
     }
   },
-);</script>
+);
+</script>
 
 <template>
   <div
@@ -669,24 +842,103 @@ watch(
         </div>
         <template v-else>
           <div v-if="activeMessages.length > 0" class="relative p-2">
-            <MessageItem
-              v-for="msg in activeMessages"
-              :id="'message-' + msg.id"
-              :key="msg.id"
-              :chat-id="currentChat!.id"
-              :message="msg"
-              :siblings="chatStore.getSiblings(msg.id)"
-              :can-generate-image="canGenerateImage && hasImageModel"
-              :is-processing="isCurrentChatStreaming"
-              :is-generating="isCurrentChatStreaming && msg.id === currentChat?.currentLeafId"
-              :available-image-models="availableImageModels"
-              :endpoint-type="resolvedSettings?.endpointType"
-              @fork="handleFork"
-              @edit="(id, content, params) => handleEdit(id, content, params)"
-              @switch-version="handleSwitchVersion"
-              @regenerate="handleRegenerate"
-              @abort="chatStore.abortChat({ chatId: undefined })"
-            />
+            <template v-for="flowItem in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? `${flowItem.node.id}-${flowItem.mode}` : flowItem.id)">
+              <!-- AI Process Sequence (Collapsible Group) -->
+              <AssistantProcessSequence
+                v-if="flowItem.type === 'process_sequence'"
+                :items="flowItem.items"
+                :is-processing="isCurrentChatStreaming"
+                :flow="flowItem.flow"
+                :summary="flowItem.summary"
+                :stats="flowItem.stats"
+                :is-first-in-turn="flowItem.isFirstInTurn"
+              >
+                <template #peek>
+                  <template v-if="flowItem.type === 'process_sequence' && flowItem.items.length > 0">
+                    <template v-for="lastItem in ([flowItem.items[flowItem.items.length - 1]] as ChatFlowItem[])" :key="lastItem.type === 'message' ? lastItem.node.id : lastItem.id">
+                      <!-- Active Thinking Peek -->
+                      <MessageThinking
+                        v-if="lastItem.type === 'message' && isThinkingActive({ item: lastItem })"
+                        :message="lastItem.node"
+                        :part-content="lastItem.partContent"
+                        no-margin
+                      />
+                      <!-- Waiting Peek (Initial loading within sequence) -->
+                      <AssistantWaitingIndicator
+                        v-else-if="lastItem.type === 'message' && isWaitingResponse({ item: lastItem })"
+                        no-padding
+                      />
+                    </template>
+                  </template>
+                </template>
+                <template #default="{ isExpanded }">
+                  <template v-for="subItem in (flowItem.items as ChatFlowItem[])" :key="subItem.type === 'message' ? `${subItem.node.id}-${subItem.mode}` : subItem.id">
+                    <MessageItem
+                      v-if="subItem.type === 'message' && isExpanded"
+                      :id="'message-' + subItem.node.id"
+                      :chat-id="currentChat!.id"
+                      :message="subItem.node"
+                      :siblings="chatStore.getSiblings(subItem.node.id)"
+                      :can-generate-image="canGenerateImage && hasImageModel"
+                      :is-processing="isCurrentChatStreaming"
+                      :is-generating="isCurrentChatStreaming && subItem.node.id === currentChat?.currentLeafId"
+                      :available-image-models="availableImageModels"
+                      :endpoint-type="resolvedSettings?.endpointType"
+                      :flow="subItem.flow"
+                      :mode="subItem.mode"
+                      :part-content="subItem.partContent"
+                      :is-first-in-node="subItem.isFirstInNode"
+                      :is-last-in-node="subItem.isLastInNode"
+                      :is-first-in-turn="subItem.isFirstInTurn"
+                      @fork="handleFork"
+                      @edit="(id, content, params) => handleEdit(id, content, params)"
+                      @switch-version="handleSwitchVersion"
+                      @regenerate="handleRegenerate"
+                      @abort="chatStore.abortChat({ chatId: undefined })"
+                    />
+                    <ToolCallGroupItem
+                      v-else-if="subItem.type === 'tool_group' && isExpanded"
+                      :tool-calls="subItem.toolCalls"
+                      :flow="subItem.flow"
+                      :is-first-in-turn="subItem.isFirstInTurn"
+                    />
+                  </template>
+                </template>
+              </AssistantProcessSequence>
+
+              <!-- Standard Message -->
+              <MessageItem
+                v-else-if="flowItem.type === 'message'"
+                :id="'message-' + flowItem.node.id"
+                :chat-id="currentChat!.id"
+                :message="flowItem.node"
+                :siblings="chatStore.getSiblings(flowItem.node.id)"
+                :can-generate-image="canGenerateImage && hasImageModel"
+                :is-processing="isCurrentChatStreaming"
+                :is-generating="isCurrentChatStreaming && flowItem.node.id === currentChat?.currentLeafId"
+                :available-image-models="availableImageModels"
+                :endpoint-type="resolvedSettings?.endpointType"
+                :flow="flowItem.flow"
+                :mode="flowItem.mode"
+                :part-content="flowItem.partContent"
+                :is-first-in-node="flowItem.isFirstInNode"
+                :is-last-in-node="flowItem.isLastInNode"
+                :is-first-in-turn="flowItem.isFirstInTurn"
+                @fork="handleFork"
+                @edit="(id, content, params) => handleEdit(id, content, params)"
+                @switch-version="handleSwitchVersion"
+                @regenerate="handleRegenerate"
+                @abort="chatStore.abortChat({ chatId: undefined })"
+              />
+
+              <!-- Standalone Tool Group -->
+              <ToolCallGroupItem
+                v-else-if="flowItem.type === 'tool_group'"
+                :tool-calls="flowItem.toolCalls"
+                :flow="flowItem.flow"
+                :is-first-in-turn="flowItem.isFirstInTurn"
+              />
+            </template>
 
             <!-- Global Transformers.js Loading Indicator in the scroll flow -->
             <TransformersJsLoadingIndicator

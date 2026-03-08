@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatInput from './ChatInput.vue';
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, computed } from 'vue';
 import { Image, Send } from 'lucide-vue-next';
 
 
@@ -11,11 +11,13 @@ import { setupScrollToMock } from '../utils/test-utils';
 
 // Mock useChat singleton
 const mockIsImageMode = ref(false);
+const mockActiveMessages = ref<any[]>([]);
+
 const mockChatStore = {
   currentChat: ref({ id: 'chat-1', modelId: 'm1', root: { items: [] } }),
   streaming: ref(new Set()),
   generatingTitle: ref(false),
-  activeMessages: ref([]),
+  activeMessages: mockActiveMessages,
   fetchingModels: ref(false),
   availableModels: ref(['m1', 'x/z-image-turbo:v1']),
   resolvedSettings: ref({ endpointType: 'ollama', modelId: 'm1', sources: {} }),
@@ -55,8 +57,18 @@ const mockChatStore = {
   updateReasoningEffort: vi.fn(),
   updateChatSettings: vi.fn(),
   getLiveChat: vi.fn().mockImplementation((c) => c),
+  chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+    type: 'message',
+    node: m,
+    mode: 'content',
+    flow: { position: 'standalone', nesting: 'none' },
+    isFirstInNode: true,
+    isLastInNode: true,
+    isFirstInTurn: true
+  }))),
+  isThinkingActive: vi.fn(() => false),
+  isWaitingResponse: vi.fn(() => false),
 };
-
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(() => mockChatStore)
 }));

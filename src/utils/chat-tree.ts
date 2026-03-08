@@ -30,25 +30,41 @@ export function findParentInBranch(items: MessageNode[], childId: string): Messa
   return null;
 }
 
-export function getChatBranch(chat: Chat | Readonly<Chat>): MessageNode[] {
-  if (chat.root.items.length === 0) return [];
-  const path: MessageNode[] = [];
-  const targetId = chat.currentLeafId;
+export function* getChatBranchIterator({ chat }: { chat: Chat | Readonly<Chat> }): Generator<MessageNode> {
   const items = chat.root.items as MessageNode[];
-  let curr: MessageNode | null = items.find(item =>
-    toRaw(item).id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
-  ) || (items[items.length - 1] as MessageNode) || null;
+  if (items.length === 0) return;
 
-  while (curr) {
-    path.push(curr);
-    if (toRaw(curr).id === targetId) break;
-    const next: MessageNode | undefined = curr.replies.items.find(item =>
-      toRaw(item).id === targetId || findNodeInBranch(item.replies.items, targetId || ''),
-    ) || curr.replies.items[curr.replies.items.length - 1];
-    curr = next || null;
+  const targetId = chat.currentLeafId;
+  const path: MessageNode[] = [];
+
+  function findPath(nodes: MessageNode[], target: string): boolean {
+    for (const node of nodes) {
+      path.push(node);
+      if (toRaw(node).id === target) return true;
+      if (findPath(node.replies.items, target)) return true;
+      path.pop();
+    }
+    return false;
   }
-  return path;
+
+  const found = targetId ? findPath(items, targetId) : false;
+
+  if (!found) {
+    // Fallback: follow the last reply of each node starting from the root
+    path.length = 0;
+    let curr = items[items.length - 1];
+    while (curr) {
+      path.push(curr);
+      const replies = toRaw(curr).replies.items;
+      curr = replies.length > 0 ? replies[replies.length - 1] : undefined;
+    }
+  }
+
+  for (const node of path) {
+    yield node;
+  }
 }
+
 
 export function findDeepestLeaf(node: MessageNode | Readonly<MessageNode>): MessageNode {
   if (node.replies.items.length === 0) return node as MessageNode;
@@ -71,6 +87,7 @@ export function getAllMessages(chat: Chat | Readonly<Chat>): MessageNode[] {
 }
 
 export function processThinking(node: MessageNode) {
+  if (node.content === undefined) return;
   const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
   const matches = [...node.content.matchAll(thinkRegex)];
   if (matches.length > 0) {
@@ -114,7 +131,9 @@ export function createBranchFromMessages(messages: HistoryItem[]): MessageNode[]
         thinking: undefined,
         error: undefined,
         modelId: undefined,
-        lmParameters: EMPTY_LM_PARAMETERS
+        lmParameters: EMPTY_LM_PARAMETERS,
+        toolCalls: undefined,
+        results: undefined,
       } as UserMessageNode;
     case 'assistant':
       return {
@@ -124,7 +143,9 @@ export function createBranchFromMessages(messages: HistoryItem[]): MessageNode[]
         thinking: m.thinking,
         error: undefined,
         modelId: m.modelId,
-        lmParameters: EMPTY_LM_PARAMETERS
+        lmParameters: EMPTY_LM_PARAMETERS,
+        toolCalls: undefined,
+        results: undefined,
       } as AssistantMessageNode;
     case 'system':
       return {
@@ -135,6 +156,8 @@ export function createBranchFromMessages(messages: HistoryItem[]): MessageNode[]
         error: undefined,
         modelId: undefined,
         lmParameters: undefined,
+        toolCalls: undefined,
+        results: undefined,
       } as SystemMessageNode;
     default: {
       const _ex: never = m.role;

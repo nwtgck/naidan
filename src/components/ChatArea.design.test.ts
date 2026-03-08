@@ -1,4 +1,4 @@
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, computed } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
@@ -22,11 +22,12 @@ vi.mock('vue-router', () => ({
 describe('ChatArea Design Specifications', () => {
   beforeEach(() => {
     setupScrollToMock();
+    const mockActiveMessages = ref<any[]>([]);
     (useChat as unknown as Mock).mockReturnValue({
       currentChat: ref({ id: '1', title: 'Test Chat', modelId: 'gemma3n:e2b' }),
       streaming: ref(false),
       activeGenerations: new Map(),
-      activeMessages: ref([]),
+      activeMessages: mockActiveMessages,
       availableModels: ref([]),
       fetchingModels: ref(false),
       generatingTitle: ref(false),
@@ -65,6 +66,17 @@ describe('ChatArea Design Specifications', () => {
       updateReasoningEffort: vi.fn(),
       updateChatSettings: vi.fn(),
       getLiveChat: vi.fn().mockImplementation((c) => c),
+      chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+        type: 'message',
+        node: m,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }))),
+      isThinkingActive: vi.fn(() => false),
+      isWaitingResponse: vi.fn(() => false),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),

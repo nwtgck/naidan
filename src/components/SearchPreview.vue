@@ -3,7 +3,7 @@ import { ref, watch, computed } from 'vue';
 import type { ContentMatch, SearchResultItem } from '../composables/useChatSearch';
 import { GitBranch, Loader2, MessageSquare } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
-import { getChatBranch } from '../utils/chat-tree';
+import { getChatBranchIterator } from '../utils/chat-tree';
 import type { MessageNode, Chat } from '../models/types';
 import { useSettings } from '../composables/useSettings';
 import { UNTITLED_CHAT_TITLE } from '../models/constants';
@@ -39,7 +39,7 @@ async function loadContext() {
         ...fullChat,
         currentLeafId: targetLeafId
       };
-      const branch = getChatBranch(virtualChat);
+      const branch = Array.from(getChatBranchIterator({ chat: virtualChat }));
       branchMessages.value = branch;
 
       if (props.match) {

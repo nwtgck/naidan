@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock }
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatInput from './ChatInput.vue';
-import { nextTick, ref, reactive } from 'vue';
+import { nextTick, ref, reactive, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '../composables/useChatDraft';
 import { setupScrollToMock } from '../utils/test-utils';
@@ -135,6 +135,17 @@ vi.mock('../composables/useChat', () => ({
         mockCurrentChat.value.lmParameters = lmParameters;
       }
     }),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
   }),
 }));
 

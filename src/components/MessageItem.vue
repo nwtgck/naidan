@@ -28,8 +28,9 @@ const DOMPurify = (() => {
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '../models/types';
+import type { FlowMetadata, MessageMode } from '../composables/useChatDisplayFlow';
 import { EMPTY_LM_PARAMETERS } from '../models/types';
-import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Loader2, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
+import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
 import { storageService } from '../services/storage';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
 import { sanitizeFilename } from '../utils/string';
@@ -40,7 +41,7 @@ import ImageConjuringLoader from './ImageConjuringLoader.vue';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import MessageThinking from './MessageThinking.vue';
-import LmToolCallGroup from './LmToolCallGroup.vue';
+import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '../services/transformers-js';
@@ -51,7 +52,6 @@ const MessageDiffModal = defineAsyncComponentAndLoadOnMounted(() => import('./Me
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
 import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '../composables/useImagePreview';
 import { useChat } from '../composables/useChat';
-import { useChatTools } from '../composables/useChatTools';
 import { useReasoning } from '../composables/useReasoning';
 import { useLayout } from '../composables/useLayout';
 import { useSettings } from '../composables/useSettings';
@@ -69,7 +69,7 @@ import {
   getImageStats
 } from '../utils/image-generation';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   chatId?: string;
   message: MessageNode;
   siblings?: MessageNode[];
@@ -78,7 +78,20 @@ const props = defineProps<{
   isGenerating?: boolean;
   availableImageModels?: string[];
   endpointType?: EndpointType;
-}>();
+  flow?: FlowMetadata;
+  mode?: MessageMode;
+  partContent?: string;
+  isFirstInNode?: boolean;
+  isLastInNode?: boolean;
+  isFirstInTurn?: boolean;
+}>(), {
+  flow: () => ({ position: 'standalone', nesting: 'none' }),
+  isGenerating: false,
+  mode: 'content',
+  isFirstInNode: true,
+  isLastInNode: true,
+  isFirstInTurn: false
+});
 
 const emit = defineEmits<{
   (e: 'fork', messageId: string): void;
@@ -91,7 +104,7 @@ const emit = defineEmits<{
 const isEditing = ref(false);
 const isAdvancedEditorOpen = ref(false);
 const showExtensions = ref(false);
-const editContent = ref(props.message.content.trimEnd());
+const editContent = ref((props.message.content || '').trimEnd());
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 const showDiffModal = ref(false);
@@ -99,7 +112,7 @@ const showDiffModal = ref(false);
 const transformersStatus = ref(transformersJsService.getState().status);
 let transformersUnsubscribe: (() => void) | null = null;
 
-const isImageRequestMsg = computed(() => isImageRequest(props.message.content));
+const isImageRequestMsg = computed(() => isImageRequest(props.message.content || ''));
 const showImageSettings = ref(false);
 const editImageMode = ref(false);
 const editImageParams = ref({
@@ -123,12 +136,9 @@ const metadataSupportCache = new Map<string, boolean>();
 
 const { openPreview } = useImagePreview();
 const { imageProgressMap, currentChat } = useChat();
-const { getToolCallsForMessage } = useChatTools();
 const { getReasoningEffort } = useReasoning();
 const { preferredEditorMode, setPreferredEditorMode } = useLayout();
 const { settings } = useSettings();
-
-const toolCalls = computed(() => getToolCallsForMessage({ messageId: props.message.id }));
 
 const editReasoningEffort = ref<Reasoning['effort']>(undefined);
 
@@ -384,7 +394,7 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 // Focus and move cursor to end when editing starts
 watch(isEditing, (editing) => {
   if (editing) {
-    editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
+    editContent.value = stripNaidanSentinels(props.message.content || '').trimEnd();
 
     // Initialize reasoning effort from message if available, otherwise from current chat
     if (props.message.role === 'user' && props.message.lmParameters?.reasoning) {
@@ -396,7 +406,7 @@ watch(isEditing, (editing) => {
     // Initialize image generation settings if it's an image request
     if (isImageRequestMsg.value) {
       editImageMode.value = true;
-      const parsed = parseImageRequest(props.message.content);
+      const parsed = parseImageRequest(props.message.content || '');
       if (parsed) {
         editImageParams.value = {
           width: parsed.width ?? 512,
@@ -465,7 +475,7 @@ function handleSaveEdit() {
 }
 
 function handleCancelEdit() {
-  editContent.value = stripNaidanSentinels(props.message.content).trimEnd();
+  editContent.value = stripNaidanSentinels(props.message.content || '').trimEnd();
   isEditing.value = false;
 }
 
@@ -839,30 +849,49 @@ watch(mermaidMode, async () => {
 });
 
 const displayContent = computed(() => {
-  let content = props.message.content;
-
-  // Remove technical comments (including image request and processed markers)
-  content = stripNaidanSentinels(content);
-
-  // Remove <think> blocks for display
-  const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
-
-  // If we have any content after removing <think>, return it (even if just whitespace)
-  // to signal that we are no longer in "initial loading" state.
-  if (cleanContent.length > 0) return cleanContent;
-
-  return '';
+  const mode = props.mode;
+  switch (mode) {
+  case 'content': {
+    if (props.partContent !== undefined) return props.partContent;
+    let content = props.message.content || '';
+    content = stripNaidanSentinels(content);
+    const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+    if (cleanContent.length > 0) return cleanContent;
+    return '';
+  }
+  case 'thinking':
+  case 'waiting':
+  case 'tool_calls':
+    return '';
+  default: {
+    const _ex: never = mode;
+    return _ex;
+  }
+  }
 });
 
-const isImageResponse = computed(() => isImageGenerationProcessed(props.message.content));
+const isImageResponse = computed(() => isImageGenerationProcessed(props.message.content || ''));
 
-const imageStats = computed(() => getImageStats(props.message.content));
+const imageStats = computed(() => getImageStats(props.message.content || ''));
 
 const speechText = computed(() => {
-  if (!displayContent.value) return '';
-  if (isImageResponse.value) return 'Image generated.'; // Don't read out HTML tags
-  // For regular messages, strip HTML if we want to be safe, but at least handle images
-  return displayContent.value.replace(/<[^>]*>/g, '');
+  const mode = props.mode;
+  switch (mode) {
+  case 'content': {
+    const text = props.partContent !== undefined ? props.partContent : displayContent.value;
+    if (!text) return '';
+    if (isImageResponse.value) return 'Image generated.';
+    return text.replace(/<[^>]*>/g, '');
+  }
+  case 'thinking':
+  case 'waiting':
+  case 'tool_calls':
+    return '';
+  default: {
+    const _ex: never = mode;
+    return _ex;
+  }
+  }
 });
 
 const parsedContent = computed(() => {
@@ -890,6 +919,7 @@ const isUser = computed((): boolean => {
   case 'user': return true;
   case 'assistant':
   case 'system':
+  case 'tool':
     return false;
   default: {
     const _ex: never = node;
@@ -905,6 +935,7 @@ const reasoningEffortLabel = computed(() => {
       return props.message.lmParameters?.reasoning?.effort;
     case 'user':
     case 'system':
+    case 'tool':
       return undefined;
     default: {
       const _ex: never = props.message;
@@ -936,6 +967,7 @@ const reasoningEffortTooltip = computed(() => {
       return props.message.lmParameters?.reasoning?.effort;
     case 'user':
     case 'system':
+    case 'tool':
       return undefined;
     default: {
       const _ex: never = props.message;
@@ -962,7 +994,7 @@ const reasoningEffortTooltip = computed(() => {
   }
 });
 
-const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content));
+const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content || ''));
 
 function formatSize(bytes?: number): string {
   if (bytes === undefined) return '0 B';
@@ -976,6 +1008,9 @@ function formatSize(bytes?: number): string {
   return `${size.toFixed(1)} ${units[unitIndex]}`;
 }
 
+const showHeader = computed(() => props.flow.position === 'standalone' || props.flow.position === 'start');
+const isNested = computed(() => props.flow.nesting === 'inside-group');
+
 defineExpose({
   __testOnly: {
     openAdvancedEditor,
@@ -988,10 +1023,19 @@ defineExpose({
   <div
     v-if="!(isGenerating && (transformersStatus === 'loading' || transformersStatus === 'error') && endpointType === 'transformers_js')"
     ref="messageRef"
-    class="flex flex-col gap-2 p-5 group transition-colors"
-    :class="{ 'bg-gray-50/30 dark:bg-gray-800/20 border-y border-gray-100 dark:border-gray-800/50': !isUser }"
+    class="flex flex-col gap-2 group transition-colors"
+    :class="[
+      isNested ? 'px-5' : 'p-5',
+      {
+        'bg-gray-50/30 dark:bg-gray-800/20': !isUser && !isNested,
+        'border-t border-gray-100 dark:border-gray-800/50': !isUser && !isNested && (flow.position === 'standalone' || flow.position === 'start'),
+        'border-b border-gray-100 dark:border-gray-800/50': !isUser && !isNested && (flow.position === 'standalone' || flow.position === 'end'),
+        'pt-2': !isUser && (isNested || flow.position === 'middle' || flow.position === 'end'),
+        'pb-2': !isUser && (isNested || flow.position === 'start' || flow.position === 'middle')
+      }
+    ]"
   >
-    <div class="flex items-center gap-3 mb-1">
+    <div v-if="showHeader && isFirstInTurn && !isNested" class="flex items-center gap-3 mb-1">
       <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
         <User v-if="isUser" class="w-4 h-4 text-gray-500" />
         <Bird v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -1010,7 +1054,7 @@ defineExpose({
             <span>{{ reasoningEffortLabel }}</span>
           </div>
           <div class="flex items-center gap-1 group/msg-header-tools">
-            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
+            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content || '')" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
 
             <!-- Header Extensions Slot (Seamless transition) -->
             <div v-if="showExtensions" class="flex items-center gap-1 mx-1 animate-in slide-in-from-left-1 fade-in duration-200">
@@ -1030,7 +1074,7 @@ defineExpose({
 
             <!-- Generic More Button (Absolute Right Anchor for Header) -->
             <button
-              v-if="!isImageResponse && !isImageGenerationPending(message.content)"
+              v-if="!isImageResponse && !isImageGenerationPending(message.content || '')"
               @click="showExtensions = !showExtensions"
               class="p-1 rounded-lg transition-colors"
               :class="showExtensions ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
@@ -1044,8 +1088,8 @@ defineExpose({
     </div>
 
     <div :class="isEditing ? 'overflow-visible' : 'overflow-hidden'">
-      <!-- Attachments -->
-      <div v-if="message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
+      <!-- Attachments (Only shown in the first part of a node if any) -->
+      <div v-if="isFirstInNode && message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
         <div v-for="(att, idx) in message.attachments" :key="att.id" class="relative group/att">
           <template v-if="att.status !== 'missing' && attachmentUrls[att.id]">
             <img
@@ -1075,13 +1119,15 @@ defineExpose({
         </div>
       </div>
 
-      <MessageThinking :message="message" />
-
-      <!-- Tool Execution Process (In-memory history) -->
-      <LmToolCallGroup :tool-calls="toolCalls" />
+      <MessageThinking
+        v-if="mode === 'thinking'"
+        :message="message"
+        :part-content="partContent"
+      />
 
       <!-- Content -->
       <div v-if="isEditing" class="mt-1" data-testid="edit-mode">
+        <!-- Edit mode remains full-content for now -->
         <div class="border border-gray-200 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all overflow-visible">
           <textarea
             ref="textareaRef"
@@ -1182,21 +1228,23 @@ defineExpose({
         </template>
 
         <!-- AI Image Synthesis Loader (Componentized) -->
+        <!-- Only shown in content mode or first part if pending -->
         <ImageConjuringLoader
-          v-if="isImageGenerationPending(message.content) && message.role === 'assistant' && !message.error"
-          v-bind="getImageGenerationProgress(message.content)"
+          v-if="mode === 'content' && isImageGenerationPending(message.content || '') && message.role === 'assistant' && !message.error"
+          v-bind="getImageGenerationProgress(message.content || '')"
           :current-step="isGenerating && chatId ? imageProgressMap[chatId]?.currentStep : undefined"
           :total-steps="isGenerating && chatId ? imageProgressMap[chatId]?.totalSteps : undefined"
         />
 
         <!-- Loading State (Initial Wait for regular text) -->
-        <div v-else-if="!displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending(message.content)" class="py-2 flex items-center gap-2 text-gray-400" data-testid="loading-indicator">
-          <Loader2 class="w-4 h-4 animate-spin" />
-          <span class="text-xs font-medium">Waiting for response...</span>
-        </div>
+        <AssistantWaitingIndicator
+          v-else-if="mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending(message.content)"
+          :is-nested="isNested"
+          data-testid="loading-indicator"
+        />
 
         <!-- Error State (Appended below content) -->
-        <div v-if="message.error" class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
+        <div v-if="isLastInNode && message.error" class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
           <div class="flex items-center gap-2 font-bold">
             <AlertTriangle class="w-4 h-4" />
             <span>Generation Failed</span>
@@ -1212,7 +1260,7 @@ defineExpose({
           </button>
         </div>
 
-        <div class="mt-3 flex items-center justify-between min-h-[28px]">
+        <div v-if="isLastInNode" class="mt-3 flex items-center justify-between min-h-[28px]">
           <!-- Version Paging -->
           <div v-if="versionInfo" class="message-version-paging flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700" data-testid="version-paging">
             <button

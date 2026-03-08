@@ -1,7 +1,7 @@
 import { ref, shallowRef } from 'vue';
 import { storageService } from '../services/storage';
 import { searchChatTree, searchLinearBranch, type ContentMatch } from '../utils/chat-search';
-import { getChatBranch } from '../utils/chat-tree';
+import { getChatBranchIterator } from '../utils/chat-tree';
 import { UNTITLED_CHAT_TITLE } from '../models/constants';
 import type { SidebarItem, ChatSummary, ChatGroup } from '../models/types';
 
@@ -224,7 +224,7 @@ export function useChatSearch() {
             switch (scope) {
             case 'current_thread': {
               const fullChat = { ...chat, ...content } as unknown as import('../models/types').Chat;
-              const branch = getChatBranch(fullChat);
+              const branch = Array.from(getChatBranchIterator({ chat: fullChat }));
               matches = searchLinearBranch({
                 branch,
                 query: trimmedQuery,
@@ -235,7 +235,7 @@ export function useChatSearch() {
             }
             case 'all': {
               const fullChat = { ...chat, ...content } as unknown as import('../models/types').Chat;
-              const activeNodes = getChatBranch(fullChat);
+              const activeNodes = Array.from(getChatBranchIterator({ chat: fullChat }));
               const activeBranchIds = new Set(activeNodes.map(n => n.id));
               matches = searchChatTree({
                 root: content.root,

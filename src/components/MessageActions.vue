@@ -44,7 +44,7 @@ async function handleCopy() {
 
 async function handleCopyRaw() {
   try {
-    await navigator.clipboard.writeText(props.message.content);
+    await navigator.clipboard.writeText(props.message.content || '');
     // Use a temporary visual feedback or just close the menu
     // For now, let's just close the menu which is handled by the click
   } catch (err) {
@@ -78,7 +78,7 @@ defineExpose({
     </div>
 
     <!-- Speech Controls -->
-    <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content)" :message-id="message.id" :content="speechText" :is-generating="isGenerating" show-full-controls />
+    <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content || '')" :message-id="message.id" :content="speechText" :is-generating="isGenerating" show-full-controls />
 
     <button
       v-if="!isUser"
@@ -91,7 +91,7 @@ defineExpose({
     </button>
     <button
       v-if="isUser"
-      @click="emit('edit', message.id, message.content, message.lmParameters)"
+      @click="emit('edit', message.id, message.content || '', message.lmParameters)"
       class="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
       title="Resend message"
       data-testid="resend-button"

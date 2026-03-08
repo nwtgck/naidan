@@ -16,6 +16,7 @@ const router = createRouter({
 
 const mockActiveGenerations = reactive(new Map());
 const mockCurrentChat = ref<any>(null);
+const mockActiveMessages = ref<any[]>([]);
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -25,7 +26,7 @@ vi.mock('../composables/useChat', () => ({
     generatingTitle: ref(false),
     generateChatTitle: vi.fn(),
     abortTitleGeneration: vi.fn(),
-    activeMessages: computed(() => []),
+    activeMessages: mockActiveMessages,
     fetchingModels: ref(false),
     fetchAvailableModels: vi.fn(),
     getSiblings: vi.fn().mockReturnValue([]),
@@ -62,6 +63,17 @@ vi.mock('../composables/useChat', () => ({
     updateReasoningEffort: vi.fn(),
     updateChatSettings: vi.fn(),
     getLiveChat: vi.fn().mockImplementation((c) => c),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
   }),
 }));
 
@@ -173,6 +185,9 @@ describe('ChatArea Concurrency Button State', () => {
       updateReasoningEffort: vi.fn(),
       updateChatSettings: vi.fn(),
       getLiveChat: vi.fn().mockImplementation((c) => c),
+      chatFlow: ref([]),
+      isThinkingActive: vi.fn(() => false),
+      isWaitingResponse: vi.fn(() => false),
     } as any);
 
     const wrapper = mount(ChatArea, {
