@@ -11,7 +11,7 @@ import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
 import { useImageGeneration } from './useImageGeneration';
-import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranch, processThinking, createBranchFromMessages, getAllMessages, type HistoryItem } from '../utils/chat-tree';
+import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranchIterator, processThinking, createBranchFromMessages, getAllMessages, type HistoryItem } from '../utils/chat-tree';
 import { resolveChatSettings } from '../utils/chat-settings-resolver';
 import { detectLanguage, getTitleSystemPrompt, cleanGeneratedTitle } from '../utils/title-generator';
 import {
@@ -352,7 +352,7 @@ export function useChat() {
 
   const activeMessages = computed(() => {
     if (!_currentChat.value) return [];
-    return getChatBranch(_currentChat.value);
+    return Array.from(getChatBranchIterator({ chat: _currentChat.value }));
   });
 
   const allMessages = computed(() => {
@@ -908,7 +908,7 @@ export function useChat() {
       const finalMessages: ChatMessage[] = [];
       resolved.systemPromptMessages.forEach(content => finalMessages.push({ role: 'system', content }));
 
-      const history = getChatBranch(mutableChat).filter(m => m.id !== assistantId);
+      const history = Array.from(getChatBranchIterator({ chat: mutableChat })).filter(m => m.id !== assistantId);
       for (const m of history) {
         const role = m.role;
         switch (role) {
@@ -1243,7 +1243,7 @@ export function useChat() {
         }).then(() => loadData()).catch(() => {});
 
         // Request storage persistence after the first assistant response
-        const history = getChatBranch(mutableChat);
+        const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
         const assistantMessages = history.filter(m => m.role === 'assistant');
         if (assistantMessages.length === 1) {
           const { requestPersistence } = useStoragePersistence();
@@ -1477,7 +1477,7 @@ export function useChat() {
       if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') {
         decTask(taskId, 'title'); return;
       }
-      const history = getChatBranch(mutableChat);
+      const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
       const content = stripNaidanSentinels(history[0]?.content || '');
       if (!content || typeof content !== 'string') {
         decTask(taskId, 'title'); return;
@@ -1592,7 +1592,7 @@ export function useChat() {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return null;
     const mutableChat = getLiveChat(target);
-    const path = getChatBranch(mutableChat);
+    const path = Array.from(getChatBranchIterator({ chat: mutableChat }));
     const idx = path.findIndex(m => m.id === messageId);
     if (idx === -1) return null;
     const forkPath = path.slice(0, idx + 1);

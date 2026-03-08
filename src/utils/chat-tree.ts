@@ -65,9 +65,6 @@ export function* getChatBranchIterator({ chat }: { chat: Chat | Readonly<Chat> }
   }
 }
 
-export function getChatBranch(chat: Chat | Readonly<Chat>): MessageNode[] {
-  return Array.from(getChatBranchIterator({ chat }));
-}
 
 export function findDeepestLeaf(node: MessageNode | Readonly<MessageNode>): MessageNode {
   if (node.replies.items.length === 0) return node as MessageNode;

@@ -175,7 +175,21 @@ async function exportChat() {
           }
           }
         })();
-        markdownContent += `## ${role}:\n${item.mode === 'thinking' ? '[Thought]: ' : ''}${item.partContent || msg.content}\n\n`;
+        const prefix = (() => {
+          const mode = item.mode;
+          switch (mode) {
+          case 'thinking': return '[Thought]: ';
+          case 'content':
+          case 'tool_calls':
+          case 'waiting':
+            return '';
+          default: {
+            const _ex: never = mode;
+            return _ex;
+          }
+          }
+        })();
+        markdownContent += `## ${role}:\n${prefix}${item.partContent || msg.content}\n\n`;
         break;
       }
       case 'tool_group': {
@@ -367,10 +381,20 @@ function handleForkLastMessage() {
   const findLastMessage = (items: ChatFlowItem[]): ChatFlowItem | null => {
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i]!;
-      if (item.type === 'message') return item;
-      if (item.type === 'process_sequence') {
+      const type = item.type;
+      switch (type) {
+      case 'message': return item;
+      case 'process_sequence': {
         const nested = findLastMessage(item.items);
         if (nested) return nested;
+        break;
+      }
+      case 'tool_group':
+        break;
+      default: {
+        const _ex: never = type;
+        return _ex;
+      }
       }
     }
     return null;
@@ -395,10 +419,34 @@ async function scrollToLatestUserMessage() {
   const findLastUserMessage = (items: ChatFlowItem[]): ChatFlowItem | null => {
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i]!;
-      if (item.type === 'message' && item.node.role === 'user') return item;
-      if (item.type === 'process_sequence') {
+      const type = item.type;
+      switch (type) {
+      case 'message': {
+        const role = item.node.role;
+        switch (role) {
+        case 'user': return item;
+        case 'assistant':
+        case 'system':
+        case 'tool':
+          break;
+        default: {
+          const _ex: never = role;
+          return _ex;
+        }
+        }
+        break;
+      }
+      case 'process_sequence': {
         const nested = findLastUserMessage(item.items);
         if (nested) return nested;
+        break;
+      }
+      case 'tool_group':
+        break;
+      default: {
+        const _ex: never = type;
+        return _ex;
+      }
       }
     }
     return null;
