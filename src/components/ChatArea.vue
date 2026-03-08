@@ -235,8 +235,8 @@ async function exportChat() {
             }
             break;
           }
-          case 'running':
-            resultStr = '[Tool Still Running]';
+          case 'executing':
+            resultStr = '[Tool Still Executing]';
             break;
           default: {
             const _ex: never = status;

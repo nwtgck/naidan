@@ -25,7 +25,7 @@ export type TextOrBinaryObject =
  * - Logical failures that the LLM can recover from or explain should be returned as { status: 'error' }.
  */
 export type ToolExecutionResult = { toolCallId: string } & (
-  | { status: 'running' }
+  | { status: 'executing' }
   | { status: 'success'; content: TextOrBinaryObject }
   | { status: 'error'; error: { code: ToolExecutionErrorCode; message: TextOrBinaryObject } }
 );
@@ -40,7 +40,7 @@ export type ToolCallRecord = {
   args: unknown;
   timestamp: number;
 } & (
-  | { status: 'running' }
+  | { status: 'executing' }
   | { status: 'success'; result: { content: TextOrBinaryObject } }
   | { status: 'error'; error: { message: TextOrBinaryObject } }
 );

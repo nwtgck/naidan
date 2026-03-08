@@ -72,7 +72,7 @@ defineExpose({
   <div
     class="group/tool border rounded-xl overflow-hidden transition-all duration-300 shadow-sm mb-2 last:mb-0"
     :class="[
-      toolCall.result.status === 'running' ? 'bg-blue-50/20 border-blue-100/30 dark:bg-blue-900/10 dark:border-blue-800/20' : '',
+      toolCall.result.status === 'executing' ? 'bg-blue-50/20 border-blue-100/30 dark:bg-blue-900/10 dark:border-blue-800/20' : '',
       toolCall.result.status === 'success' ? 'bg-white/50 dark:bg-gray-800/30 border-gray-100/50 dark:border-gray-700/30' : '',
       toolCall.result.status === 'error' ? 'bg-red-50/20 border-red-100/30 dark:bg-red-900/10 dark:border-red-800/20' : ''
     ]"
@@ -85,22 +85,22 @@ defineExpose({
     >
       <div class="flex items-center gap-2.5">
         <div class="p-1 rounded-lg" :class="[
-          toolCall.result.status === 'running' ? 'bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : '',
+          toolCall.result.status === 'executing' ? 'bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : '',
           toolCall.result.status === 'success' ? 'bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400' : '',
           toolCall.result.status === 'error' ? 'bg-red-100/50 dark:bg-red-900/30 text-red-600 dark:text-red-400' : ''
         ]">
-          <Hammer v-if="toolCall.result.status === 'running'" class="w-3 h-3 animate-bounce" />
+          <Hammer v-if="toolCall.result.status === 'executing'" class="w-3 h-3 animate-bounce" />
           <CheckCircle2 v-else-if="toolCall.result.status === 'success'" class="w-3 h-3" />
           <AlertCircle v-else class="w-3 h-3" />
         </div>
 
         <div class="flex flex-col">
           <span class="text-[10px] font-bold capitalize tracking-wider" :class="[
-            toolCall.result.status === 'running' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'
+            toolCall.result.status === 'executing' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'
           ]">
             {{ toolCall.call.function.name }}
           </span>
-          <span v-if="toolCall.result.status === 'running'" class="text-[9px] text-blue-600/70 dark:text-blue-400/70 animate-pulse">
+          <span v-if="toolCall.result.status === 'executing'" class="text-[9px] text-blue-600/70 dark:text-blue-400/70 animate-pulse">
             Executing...
           </span>
         </div>
@@ -130,7 +130,7 @@ defineExpose({
           </div>
 
           <!-- Result -->
-          <div v-if="toolCall.result.status !== 'running'">
+          <div v-if="toolCall.result.status !== 'executing'">
             <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
               {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
             </div>

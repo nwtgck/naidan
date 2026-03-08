@@ -954,8 +954,8 @@ export function useChat() {
               }
               break;
             }
-            case 'running':
-              toolContent = '[Error: Tool still running]';
+            case 'executing':
+              toolContent = '[Error: Tool still executing]';
               break;
             default: {
               const _ex: never = status;
@@ -1102,7 +1102,7 @@ export function useChat() {
           if (!generationState.currentToolNode.results.some(er => er.toolCallId === params.id)) {
             generationState.currentToolNode.results.push({
               toolCallId: params.id,
-              status: 'running'
+              status: 'executing'
             });
           }
 

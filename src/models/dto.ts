@@ -171,7 +171,7 @@ export const TextOrBinaryObjectSchemaDto = z.discriminatedUnion('type', [
 ]);
 
 export const ToolExecutionResultSchemaDto = z.discriminatedUnion('status', [
-  z.object({ toolCallId: z.string(), status: z.literal('running') }),
+  z.object({ toolCallId: z.string(), status: z.literal('executing') }),
   z.object({
     toolCallId: z.string(),
     status: z.literal('success'),
