@@ -229,7 +229,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     const { generateResponse, abortChat, isProcessing } = chatStore;
 
     // 2. Start generation
-    const genPromise = generateResponse(chat, assistantId);
+    const genPromise = generateResponse({ chat: chat, assistantId: assistantId });
 
     // 3. Wait for it to be processing
     await vi.waitUntil(() => isProcessing(chatId));

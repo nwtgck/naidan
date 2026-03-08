@@ -818,7 +818,7 @@ export function useChat() {
     });
   };
 
-  const generateResponse = async (chat: Chat | Readonly<Chat>, assistantId: string, lmParameters?: LmParameters) => {
+  const generateResponse = async ({ chat, assistantId, lmParameters }: { chat: Chat | Readonly<Chat>, assistantId: string, lmParameters?: LmParameters }) => {
     const mutableChat = getLiveChat(chat);
     const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
     if (!assistantNode) throw new Error('Assistant node not found');
@@ -1401,7 +1401,7 @@ export function useChat() {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
       });
-      generateResponse(chat, assistantMsg.id, lmParameters).catch(e => console.error('Background generation failed:', e));
+      generateResponse({ chat: chat, assistantId: assistantMsg.id, lmParameters: lmParameters }).catch(e => console.error('Background generation failed:', e));
       return true;
     } finally {
       decTask(chat.id, 'process');
@@ -1449,7 +1449,7 @@ export function useChat() {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
       });
-      generateResponse(chat, newAssistantMsg.id, failedNode.lmParameters).catch(e => console.error('Background generation failed:', e));
+      generateResponse({ chat: chat, assistantId: newAssistantMsg.id, lmParameters: failedNode.lmParameters }).catch(e => console.error('Background generation failed:', e));
     } finally {
       decTask(chat.id, 'process');
     }
