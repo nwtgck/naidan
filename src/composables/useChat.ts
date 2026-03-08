@@ -140,7 +140,7 @@ transformersJsService.subscribeModelList(async () => {
   if (type) {
     switch (type) {
     case 'transformers_js':
-      await fetchAvailableModels(currentChat.value?.id);
+      await fetchAvailableModels({ chatId: currentChat.value?.id, customEndpoint: undefined });
       break;
     case 'openai':
     case 'ollama':
@@ -382,7 +382,7 @@ export function useChat() {
     rootItems.value = await storageService.getSidebarStructure();
   };
 
-  const fetchAvailableModels = async (chatId?: string, customEndpoint?: { type: EndpointType, url: string, headers?: readonly (readonly [string, string])[] }) => {
+  const fetchAvailableModels = async ({ chatId, customEndpoint }: { chatId?: string, customEndpoint?: { type: EndpointType, url: string, headers?: readonly (readonly [string, string])[] } }) => {
     const mutableChat = chatId ? liveChatRegistry.get(chatId) : undefined;
     if (mutableChat) incTask(mutableChat.id, 'fetch');
     else if (!customEndpoint) activeTaskCounts.set('fetch:global', (activeTaskCounts.get('fetch:global') || 0) + 1);
@@ -1272,7 +1272,7 @@ export function useChat() {
       let resolvedModel = chat.modelId || resolved.modelId;
 
       if (url || type === 'transformers_js') {
-        const models = await fetchAvailableModels(chat.id);
+        const models = await fetchAvailableModels({ chatId: chat.id, customEndpoint: undefined });
         if (models.length > 0) {
           const preferredModel = chat.modelId || resolved.modelId;
           if (preferredModel && models.includes(preferredModel)) resolvedModel = preferredModel;
@@ -1281,7 +1281,7 @@ export function useChat() {
       }
 
       if ((!url && type !== 'transformers_js') || !resolvedModel) {
-        const models = await fetchAvailableModels(chat.id);
+        const models = await fetchAvailableModels({ chatId: chat.id, customEndpoint: undefined });
         setOnboardingDraft({ url, type, models, selectedModel: models[0] || '', });
         setIsOnboardingDismissed(false);
         return false;

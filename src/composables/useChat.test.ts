@@ -964,14 +964,14 @@ describe('useChat Composable Logic', () => {
     vi.mocked(OpenAIProvider as any).prototype.listModels = listModelsMock;
 
     // 1. Global fetch
-    const promiseGlobal = fetchAvailableModels();
+    const promiseGlobal = fetchAvailableModels({ chatId: undefined, customEndpoint: undefined });
     expect(chatStore.fetchingModels.value).toBe(true);
     await promiseGlobal;
     expect(chatStore.fetchingModels.value).toBe(false);
 
     // 2. Chat-specific fetch
     __testOnlySetCurrentChat(chatA);
-    const promiseA = fetchAvailableModels(chatA.id);
+    const promiseA = fetchAvailableModels({ chatId: chatA.id });
     expect(chatStore.fetchingModels.value).toBe(true);
 
     // Switch to Chat B
@@ -1076,7 +1076,7 @@ describe('useChat Composable Logic', () => {
     const mockListModels = vi.fn().mockResolvedValue(['new-model']);
     vi.mocked(OpenAIProvider as any).prototype.listModels = mockListModels;
 
-    await fetchAvailableModels('chat-1');
+    await fetchAvailableModels({ chatId: 'chat-1' });
     await flushPromises();
 
     expect(chat.modelId).toBe('');

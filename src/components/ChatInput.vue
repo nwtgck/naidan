@@ -180,7 +180,7 @@ function handleUpdateImageModel(modelId: string) {
 
 async function fetchModels() {
   if (currentChat.value) {
-    await chatStore.fetchAvailableModels(currentChat.value.id);
+    await chatStore.fetchAvailableModels({ chatId: currentChat.value.id });
   }
 }
 

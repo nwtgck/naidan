@@ -156,7 +156,7 @@ async function fetchModels() {
 
     try {
       const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      const models = await chatStore.fetchAvailableModels(undefined, { type, url, headers: mutableHeaders });
+      const models = await chatStore.fetchAvailableModels({ chatId: undefined, customEndpoint: { type, url, headers: mutableHeaders } });
       groupModels.value = models;
       if (models.length === 0) {
         error.value = 'No models found at this endpoint.';
