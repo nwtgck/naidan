@@ -1751,7 +1751,7 @@ describe('ChatArea Model Selection', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockSendMessage).toHaveBeenCalledWith('automatic message', undefined, [], undefined, expect.anything());
+    expect(mockSendMessage).toHaveBeenCalledWith({ content: 'automatic message', parentId: undefined, attachments: [], chatTarget: undefined, lmParameters: expect.anything() });
     expect(wrapper.emitted('auto-sent')).toBeTruthy();
   });
 

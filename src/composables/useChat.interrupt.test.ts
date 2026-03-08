@@ -88,7 +88,7 @@ describe('useChat Interruption', () => {
       onChunk('Second chunk');
     });
 
-    const sendSuccess = await sendMessage('Hello');
+    const sendSuccess = await sendMessage({ content: 'Hello' });
     expect(sendSuccess).toBe(true);
 
     // Wait for it to start streaming
@@ -144,7 +144,7 @@ describe('useChat Interruption', () => {
       onChunk('Second chunk');
     });
 
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
     await vi.waitUntil(() => streaming.value);
 
     const userMsg = chat.root.items[0];

@@ -85,7 +85,7 @@ describe('useChat Streaming State Logic', () => {
       params.onChunk('End');
     });
 
-    const sendPromise = sendMessage('Hello');
+    const sendPromise = sendMessage({ content: 'Hello' });
     await waitForRegistry(chat.id);
 
     expect(streaming.value).toBe(true);
@@ -112,7 +112,7 @@ describe('useChat Streaming State Logic', () => {
       if (signal?.aborted) throw new Error('Aborted');
     });
 
-    const sendPromise = sendMessage('Hello');
+    const sendPromise = sendMessage({ content: 'Hello' });
     await waitForRegistry(chat.id);
 
     expect(streaming.value).toBe(true);

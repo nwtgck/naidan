@@ -122,7 +122,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       });
     });
 
-    const sendResultPromise = sendMessage('First version');
+    const sendResultPromise = sendMessage({ content: 'First version' });
     const signal = await genStarted;
     expect(chatStore.isProcessing(chat.id)).toBe(true);
 

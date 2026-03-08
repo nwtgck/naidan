@@ -152,7 +152,7 @@ describe('useChat Tool Chaining', () => {
       await nextTick();
     });
 
-    await sendMessage('Calculate 1+1 and 2+2');
+    await sendMessage({ content: 'Calculate 1+1 and 2+2' });
 
     // Wait for async generation to complete
     for (let i = 0; i < 20; i++) {
@@ -216,12 +216,12 @@ describe('useChat Tool Chaining', () => {
     __testOnlySetCurrentChat(chat);
 
     // Add first root item
-    await sendMessage('Message 1');
+    await sendMessage({ content: 'Message 1' });
     await flushPromises();
     await nextTick();
 
     // Add second root item (new thread)
-    await sendMessage('Message 2', null);
+    await sendMessage({ content: 'Message 2', parentId: null });
     await flushPromises();
     await nextTick();
 

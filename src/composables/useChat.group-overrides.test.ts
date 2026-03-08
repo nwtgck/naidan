@@ -97,7 +97,7 @@ describe('useChat Group Overrides Resolution', () => {
     mockRootItems.push(...chatStore.rootItems.value);
 
     // Testing sendMessage resolution
-    await chatStore.sendMessage('Hello', null, [], chat);
+    await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     // Verify the LLM was called with resolved settings
@@ -141,7 +141,7 @@ describe('useChat Group Overrides Resolution', () => {
     chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
     mockRootItems.push(...chatStore.rootItems.value);
 
-    await chatStore.sendMessage('Hello', null, [], chat);
+    await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     // Global: "Global Prompt"
@@ -185,7 +185,7 @@ describe('useChat Group Overrides Resolution', () => {
     chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
     mockRootItems.push(...chatStore.rootItems.value);
 
-    await chatStore.sendMessage('Hello', null, [], chat);
+    await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
@@ -239,7 +239,7 @@ describe('useChat Group Overrides Resolution', () => {
     chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
     mockRootItems.push(...chatStore.rootItems.value);
 
-    await chatStore.sendMessage('Hello', null, [], chat);
+    await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
@@ -274,7 +274,7 @@ describe('useChat Group Overrides Resolution', () => {
     chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
     mockRootItems.push(...chatStore.rootItems.value);
 
-    await chatStore.sendMessage('Hi', null, [], chat);
+    await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(
@@ -311,7 +311,7 @@ describe('useChat Group Overrides Resolution', () => {
     chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
     mockRootItems.push(...chatStore.rootItems.value);
 
-    await chatStore.sendMessage('Hi', null, [], chat);
+    await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     const params = mockLlmChat.mock.calls[0]![0];
@@ -340,7 +340,7 @@ describe('useChat Group Overrides Resolution', () => {
     mockRootItems.push(...chatStore.rootItems.value);
 
     // 1. Send message while Chat is NOT in group
-    await chatStore.sendMessage('Hi', null, [], chat);
+    await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockLlmChat).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -356,7 +356,7 @@ describe('useChat Group Overrides Resolution', () => {
     chat.groupId = 'g1';
     await nextTick();
 
-    await chatStore.sendMessage('Hi again', null, [], chat);
+    await chatStore.sendMessage({ content: 'Hi again', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenLastCalledWith(
@@ -398,7 +398,7 @@ describe('useChat Group Overrides Resolution', () => {
     chatStore.rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
     mockRootItems.push(...chatStore.rootItems.value);
 
-    await chatStore.sendMessage('Hello', null, [], chat);
+    await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(mockLlmChat).toHaveBeenCalledWith(

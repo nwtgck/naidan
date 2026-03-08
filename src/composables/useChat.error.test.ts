@@ -69,7 +69,7 @@ describe('useChat Error Handling', () => {
     // Setup failure
     mockChat.mockRejectedValue(new Error('API Error'));
 
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
     // Wait for the background generation task to fail
     await vi.waitUntil(() => !chatStore.streaming.value);
 
@@ -87,7 +87,7 @@ describe('useChat Error Handling', () => {
     // 1. Fail first
     mockChat.mockRejectedValueOnce(new Error('First Fail'));
 
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first fail
     const failedMsg = activeMessages.value.find(m => m.role === 'assistant');
     expect(failedMsg?.error).toBe('First Fail');

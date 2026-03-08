@@ -82,7 +82,7 @@ describe('useChat Thinking Abort', () => {
       });
     });
 
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
 
     // Wait for it to start streaming
     await vi.waitUntil(() => streaming.value);

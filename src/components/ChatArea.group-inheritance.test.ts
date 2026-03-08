@@ -251,14 +251,14 @@ describe('ChatArea Group Inheritance UI', () => {
 
     // 3. Verify sendMessage was called with 'medium' (inherited from resolvedSettings)
     // BUG: Currently it will be called with undefined because ChatInput overrides it manually
-    expect(mockSendMessage).toHaveBeenCalledWith(
-      'Hello',
-      undefined,
-      [],
-      undefined,
-      expect.objectContaining({
+    expect(mockSendMessage).toHaveBeenCalledWith({
+      content: 'Hello',
+      parentId: undefined,
+      attachments: [],
+      chatTarget: undefined,
+      lmParameters: expect.objectContaining({
         reasoning: { effort: 'medium' }
       })
-    );
+    });
   });
 });

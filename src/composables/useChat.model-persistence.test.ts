@@ -87,7 +87,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
     __testOnlySetCurrentChat(chatObj);
 
     // 2. Send first message with default model
-    await sendMessage('Hello with 3.5');
+    await sendMessage({ content: 'Hello with 3.5' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
 
@@ -100,7 +100,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
     await updateChatModel(chatObj.id, 'gpt-4');
 
     // 4. Send second message with new model
-    await sendMessage('Hello with 4');
+    await sendMessage({ content: 'Hello with 4' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
 

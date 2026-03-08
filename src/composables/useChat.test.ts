@@ -121,7 +121,7 @@ describe('useChat Composable Logic', () => {
       id: 'chat-1', title: 'Test', root: { items: [] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any);
-    const sendPromise = sendMessage('Ping');
+    const sendPromise = sendMessage({ content: 'Ping' });
     await new Promise(r => setTimeout(r, 20));
     triggerRef(currentChat);
     expect(['Hello', 'Hello World']).toContain(activeMessages.value[1]?.content);
@@ -148,7 +148,7 @@ describe('useChat Composable Logic', () => {
       params.onChunk(' Finished');
     });
 
-    const result = await sendMessage('Start background generation');
+    const result = await sendMessage({ content: 'Start background generation' });
 
     // Result should be true immediately (after storage commit)
     expect(result).toBe(true);
@@ -334,7 +334,7 @@ describe('useChat Composable Logic', () => {
     mockRootItems.push(...initial);
 
     // 1. Send first message
-    await sendMessage('First version');
+    await sendMessage({ content: 'First version' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
     expect(currentChat.value?.root.items).toHaveLength(1);
@@ -368,7 +368,7 @@ describe('useChat Composable Logic', () => {
     mockRootItems.push(...initial);
 
     // 1. Send first message pair
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
     const userMsg = currentChat.value?.root.items[0];
@@ -400,7 +400,7 @@ describe('useChat Composable Logic', () => {
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
       params.onChunk('First Response');
     });
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first generation to complete
     triggerRef(currentChat);
 
@@ -443,7 +443,7 @@ describe('useChat Composable Logic', () => {
       reasoning: { effort: 'medium' as const }
     };
 
-    await sendMessage('Test message', null, [], undefined, customParams);
+    await sendMessage({ content: 'Test message', parentId: null, attachments: [], chatTarget: undefined, lmParameters: customParams });
     await vi.waitUntil(() => !chatStore.streaming.value);
     triggerRef(currentChat);
 
@@ -635,7 +635,7 @@ describe('useChat Composable Logic', () => {
     };
 
     // 1. Send first message with custom params
-    await sendMessage('Hello', null, [], undefined, customParams);
+    await sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: undefined, lmParameters: customParams });
     await flushPromises();
 
     // The mockLlmChat should have been called with customParams
@@ -670,7 +670,7 @@ describe('useChat Composable Logic', () => {
     __testOnlySetCurrentChat(mockChat);
 
     // 1. Send first message with default params
-    await sendMessage('Hello', null);
+    await sendMessage({ content: 'Hello', parentId: null });
     await flushPromises();
 
     const newParams = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'low' as const } };
@@ -875,8 +875,8 @@ describe('useChat Composable Logic', () => {
       { type: 'chat', id: 'c2' }
     ];
     __testOnlySetCurrentChat(reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any);
-    await sendMessage('Hello');
-    // Note: Position is updated synchronously in sendMessage (create/update meta),
+    await sendMessage({ content: 'Hello' });
+    // Note: Position is updated synchronously in sendMessage({ content: create/update meta }),
     // so we don't necessarily need to wait for streaming to verify position,
     // but waiting ensures clean state.
     await vi.waitUntil(() => !chatStore.streaming.value);

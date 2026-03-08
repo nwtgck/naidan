@@ -163,7 +163,7 @@ describe('ChatArea Auto-send', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockSendMessage).toHaveBeenCalledWith('hello', undefined, [], undefined, expect.anything());
+    expect(mockSendMessage).toHaveBeenCalledWith({ content: 'hello', parentId: undefined, attachments: [], chatTarget: undefined, lmParameters: expect.anything() });
     expect(wrapper.emitted('auto-sent')).toBeTruthy();
   });
 
@@ -203,6 +203,6 @@ describe('ChatArea Auto-send', () => {
     await nextTick();
 
     // If it returns early, mockSendMessage won't be called
-    expect(mockSendMessage).toHaveBeenCalledWith('hello', undefined, [], undefined, expect.anything());
+    expect(mockSendMessage).toHaveBeenCalledWith({ content: 'hello', parentId: undefined, attachments: [], chatTarget: undefined, lmParameters: expect.anything() });
   });
 });

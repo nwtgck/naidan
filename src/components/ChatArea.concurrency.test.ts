@@ -213,6 +213,6 @@ describe('ChatArea Concurrency Button State', () => {
     await sendButton.trigger('click');
 
     // Expectation that will fail if bug exists
-    expect(mockSendMessage).toHaveBeenCalledWith('Hello from Chat B', undefined, [], undefined, expect.anything());
+    expect(mockSendMessage).toHaveBeenCalledWith({ content: 'Hello from Chat B', parentId: undefined, attachments: [], chatTarget: undefined, lmParameters: expect.anything() });
   });
 });

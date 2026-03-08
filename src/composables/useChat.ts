@@ -1253,7 +1253,7 @@ export function useChat() {
     }
   };
 
-  const sendMessage = async (content: string, parentId?: string | null, attachments: Attachment[] = [], chatTarget?: Chat | Readonly<Chat>, lmParameters?: LmParameters): Promise<boolean> => {
+  const sendMessage = async ({ content, parentId, attachments = [], chatTarget, lmParameters }: { content: string, parentId?: string | null, attachments?: Attachment[], chatTarget?: Chat | Readonly<Chat>, lmParameters?: LmParameters }): Promise<boolean> => {
     const target = chatTarget || _currentChat.value;
     if (!target) return false;
     const rawTarget = toRaw(target);
@@ -1727,12 +1727,12 @@ export function useChat() {
     }
     case 'user': {
       const parent = findParentInBranch(chat.root.items, messageId);
-      await sendMessage(newContent, parent ? parent.id : null, node.attachments, chat, lmParameters);
+      await sendMessage({ content: newContent, parentId: parent ? parent.id : null, attachments: node.attachments, chatTarget: chat, lmParameters: lmParameters });
       break;
     }
     case 'system': {
       const parent = findParentInBranch(chat.root.items, messageId);
-      await sendMessage(newContent, parent ? parent.id : null, undefined, chat, lmParameters);
+      await sendMessage({ content: newContent, parentId: parent ? parent.id : null, attachments: undefined, chatTarget: chat, lmParameters: lmParameters });
       break;
     }
     case 'tool':
@@ -1898,7 +1898,7 @@ export function useChat() {
       chatId: toRaw(target).id,
       attachments,
       availableModels: availableModels.value,
-      sendMessage: ({ content, parentId, attachments: atts }) => sendMessage(content, parentId || null, atts)
+      sendMessage: ({ content, parentId, attachments: atts }) => sendMessage({ content: content, parentId: parentId || null, attachments: atts })
     });
   };
 

@@ -82,7 +82,7 @@ describe('useChat Advanced Settings Resolution', () => {
 
   describe('System Prompt Resolution', () => {
     it('uses Global System Prompt when nothing else is set', async () => {
-      await sendMessage('Hi');
+      await sendMessage({ content: 'Hi' });
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
       expect(messages[0]).toEqual({ role: 'system', content: 'Global Default Prompt' });
@@ -100,7 +100,7 @@ describe('useChat Advanced Settings Resolution', () => {
         }],
       });
 
-      await sendMessage('Hi');
+      await sendMessage({ content: 'Hi' });
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
       // Should find Global Default Prompt, NOT Profile Prompt
@@ -110,7 +110,7 @@ describe('useChat Advanced Settings Resolution', () => {
     it('overrides with Chat System Prompt when behavior is override', async () => {
       await updateChatSettings(currentChat.value!.id, { systemPrompt: { content: 'Chat Custom Prompt', behavior: 'override' } });
 
-      await sendMessage('Hi');
+      await sendMessage({ content: 'Hi' });
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
       expect(messages).toHaveLength(2); // System + User
@@ -130,7 +130,7 @@ describe('useChat Advanced Settings Resolution', () => {
       });
       await updateChatSettings(currentChat.value!.id, { systemPrompt: { content: 'Chat Extra Prompt', behavior: 'append' } });
 
-      await sendMessage('Hi');
+      await sendMessage({ content: 'Hi' });
       const params = mockOpenAIChat.mock.calls[0]![0];
       const messages = params.messages;
       // Should find Global Default Prompt + Chat Extra Prompt as separate messages
@@ -174,7 +174,7 @@ describe('useChat Advanced Settings Resolution', () => {
         }
       });
 
-      await sendMessage('Hi');
+      await sendMessage({ content: 'Hi' });
       const callParams = mockOpenAIChat.mock.calls[0]![0];
       const params = callParams.parameters;
 
@@ -193,7 +193,7 @@ describe('useChat Advanced Settings Resolution', () => {
   describe('Stop Sequences Handling', () => {
     it('passes stop sequences as array', async () => {
       await updateChatSettings(currentChat.value!.id, { lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['\n', 'User:'], reasoning: { effort: undefined } } });
-      await sendMessage('Hi');
+      await sendMessage({ content: 'Hi' });
       const callParams = mockOpenAIChat.mock.calls[0]![0];
       const params = callParams.parameters;
       expect(params.stop).toEqual(['\n', 'User:']);
