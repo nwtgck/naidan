@@ -495,6 +495,17 @@ export class ImportExportService {
       applyField(strategies.systemPrompt, newSettingsDomain.systemPrompt, 'systemPrompt');
       applyField(strategies.lmParameters, newSettingsDomain.lmParameters, 'lmParameters');
 
+      // Always merge UI and experimental flags if present in the import
+      if (newSettingsDomain.experimental !== undefined) {
+        finalSettings.experimental = newSettingsDomain.experimental;
+      }
+      if (newSettingsDomain.heavyContentAlertDismissed !== undefined) {
+        finalSettings.heavyContentAlertDismissed = newSettingsDomain.heavyContentAlertDismissed;
+      }
+      if (newSettingsDomain.autoTitleEnabled !== undefined) {
+        finalSettings.autoTitleEnabled = newSettingsDomain.autoTitleEnabled;
+      }
+
       switch (strategies.providerProfiles) {
       case 'replace':
         finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
@@ -691,7 +702,15 @@ export class ImportExportService {
     }
 
     const mergedHierarchy: Hierarchy = { items: [...currentHierarchy.items, ...importedHierarchyItems] };
-    const chatMetas = importedMetas.map(m => chatMetaToDomain(m.dto));
+    const chatMetas = importedMetas.map(({ dto }) => {
+      // Remap fork origin if possible
+      if (dto.originChatId && chatIdMap.has(dto.originChatId)) {
+        dto.originChatId = chatIdMap.get(dto.originChatId)!;
+        // Note: originMessageId remapping is harder as we don't have all messageIdMaps yet.
+        // But we can handle it inside contentStream if we process in a way that allows it.
+      }
+      return chatMetaToDomain(dto);
+    });
     const chatGroups = importedGroupsDto.map(g => chatGroupToDomain(g, mergedHierarchy, chatMetas));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
@@ -716,8 +735,14 @@ export class ImportExportService {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
             const dto: ChatDto = { ...meta, ...content, messages: undefined };
+
+            const messageIdMap = new Map<string, string>();
             const process = (node: MessageNodeDto) => {
-              node.id = generateId();
+              const oldMsgId = node.id;
+              const newMsgId = generateId();
+              messageIdMap.set(oldMsgId, newMsgId);
+              node.id = newMsgId;
+
               if (node.attachments) {
                 node.attachments.forEach(a => {
                   // remap attachment ID (the reference)
@@ -750,6 +775,17 @@ export class ImportExportService {
               if (node.replies?.items) node.replies.items.forEach(process);
             };
             if (dto.root?.items) dto.root.items.forEach(process);
+
+            // Remap currentLeafId using the messageIdMap
+            if (dto.currentLeafId && messageIdMap.has(dto.currentLeafId)) {
+              dto.currentLeafId = messageIdMap.get(dto.currentLeafId);
+            }
+
+            // Remap originMessageId if it refers to a message in this chat
+            if (dto.originMessageId && messageIdMap.has(dto.originMessageId)) {
+              dto.originMessageId = messageIdMap.get(dto.originMessageId);
+            }
+
             yield { type: 'chat' as const, data: dto };
           } catch (e) { /* Ignore */ }
         }

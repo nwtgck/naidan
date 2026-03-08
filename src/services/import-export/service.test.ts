@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 import type { SettingsDto, ChatMetaDto, ChatGroupDto } from '../../models/dto';
 import type { ImportConfig } from './types';
 import type { Mocked } from 'vitest';
-import type { StorageSnapshot } from '../../models/types';
+import type { StorageSnapshot, Settings, ChatMeta } from '../../models/types';
 
 const UUID_G1 = '018d476a-7b3a-73fd-8000-000000000001';
 const UUID_C1 = '018d476a-7b3a-73fd-8000-000000000002';
@@ -63,7 +63,41 @@ describe('ImportExportService', () => {
     ...overrides
   });
 
+  const createValidSettings = (overrides: Partial<Settings> = {}): Settings => ({
+    endpointType: 'ollama',
+    endpointUrl: 'http://localhost:11434',
+    endpointHttpHeaders: undefined,
+    storageType: 'local',
+    autoTitleEnabled: true,
+    providerProfiles: [],
+    experimental: undefined,
+    defaultModelId: undefined,
+    titleModelId: undefined,
+    heavyContentAlertDismissed: undefined,
+    systemPrompt: undefined,
+    lmParameters: undefined,
+    ...overrides
+  });
+
   const createValidChatMetaDto = (overrides: Partial<ChatMetaDto> = {}): ChatMetaDto => ({
+    id: UUID_C1,
+    title: 'Test Chat',
+    updatedAt: 1000,
+    createdAt: 1000,
+    debugEnabled: false,
+    currentLeafId: undefined,
+    endpoint: undefined,
+    modelId: undefined,
+    autoTitleEnabled: undefined,
+    titleModelId: undefined,
+    originChatId: undefined,
+    originMessageId: undefined,
+    systemPrompt: undefined,
+    lmParameters: undefined,
+    ...overrides
+  });
+
+  const createValidChatMeta = (overrides: Partial<ChatMeta> = {}): ChatMeta => ({
     id: UUID_C1,
     title: 'Test Chat',
     updatedAt: 1000,
@@ -255,7 +289,7 @@ describe('ImportExportService', () => {
         structure: {
           settings: {
             endpointType: 'openai',
-            endpointUrl: '',
+            endpointUrl: 'http://localhost:11434',
             autoTitleEnabled: true,
             storageType: 'local',
             providerProfiles: []
@@ -290,6 +324,180 @@ describe('ImportExportService', () => {
       expect(files.some(f => f.includes('chat-contents/'))).toBe(true);
       expect(files.some(f => f.includes('binary-objects/'))).toBe(true);
       expect(files).toContain(`${rootFolder}settings.json`);
+    });
+
+    it('exports complex message attributes (thinking, toolCalls, results)', async () => {
+      const complexChat = {
+        id: UUID_C1,
+        title: 'Complex',
+        updatedAt: 1000,
+        createdAt: 1000,
+        root: {
+          items: [
+            {
+              id: UUID_M1,
+              role: 'assistant',
+              content: 'Result',
+              thinking: 'I am thinking...',
+              modelId: 'gpt-4',
+              toolCalls: [{ id: 'tc-1', type: 'function', function: { name: 'get_weather', arguments: '{}' } }],
+              replies: {
+                items: [{
+                  id: UUID_M2,
+                  role: 'tool',
+                  results: [{ toolCallId: 'tc-1', status: 'success', content: { type: 'text', text: 'Sunny' } }],
+                  timestamp: 1100,
+                  replies: { items: [] }
+                }]
+              }
+            }
+          ]
+        }
+      };
+
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: {
+            endpointType: 'ollama',
+            endpointUrl: 'http://localhost:11434',
+            autoTitleEnabled: true,
+            storageType: 'local',
+            providerProfiles: []
+          } as any,
+          hierarchy: { items: [{ type: 'chat', id: UUID_C1 }] },
+          chatMetas: [createValidChatMeta({ id: UUID_C1 })],
+          chatGroups: []
+        },
+        contentStream: (async function* () {
+          yield { type: 'chat', data: complexChat as any };
+        })()
+      });
+
+      const { stream } = await service.exportData({});
+      const chunks: Uint8Array[] = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value!);
+      }
+      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+      const rootFolder = Object.keys(zip.files).find(f => f.startsWith('naidan-data-'))!;
+      const content = JSON.parse(await zip.file(`${rootFolder}chat-contents/${UUID_C1}.json`)!.async('string'));
+
+      expect(content.root.items[0].thinking).toBe('I am thinking...');
+      expect(content.root.items[0].modelId).toBe('gpt-4');
+      expect(content.root.items[0].toolCalls).toHaveLength(1);
+      expect(content.root.items[0].replies.items[0].results[0].content.text).toBe('Sunny');
+    });
+
+    it('exports transformers_js endpoint settings', async () => {
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: {
+            endpointType: 'transformers_js',
+            autoTitleEnabled: true,
+            storageType: 'local',
+            providerProfiles: []
+          } as any,
+          hierarchy: { items: [] },
+          chatMetas: [],
+          chatGroups: []
+        },
+        contentStream: (async function* () {})()
+      });
+
+      const { stream } = await service.exportData({});
+      const chunks: Uint8Array[] = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value!);
+      }
+      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+      const rootFolder = Object.keys(zip.files).find(f => f.startsWith('naidan-data-'))!;
+      const settings = JSON.parse(await zip.file(`${rootFolder}settings.json`)!.async('string'));
+
+      expect(settings.endpoint.type).toBe('transformers_js');
+    });
+
+    it('sanitizes and truncates export filenames', async () => {
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: createValidSettings(),
+          hierarchy: { items: [] },
+          chatMetas: [],
+          chatGroups: []
+        },
+        contentStream: (async function* () {})()
+      });
+
+      const longName = 'A'.repeat(300); // Exceeds typical OS limits
+      const { filename } = await service.exportData({ fileNameSegment: `Illegal/Name:${longName}` });
+
+      expect(filename).not.toContain('/');
+      expect(filename).not.toContain(':');
+      // Byte length check (naidan-data- + sanitized_segment + -YYYY-MM-DD.zip)
+      // textEncoder helps verify actual byte length rather than just string length
+      expect(new TextEncoder().encode(filename).length).toBeLessThanOrEqual(255);
+    });
+
+    it('exports tool execution results with errors and binary references', async () => {
+      const toolChat = {
+        id: UUID_C1,
+        title: 'Tool Test',
+        updatedAt: 1000,
+        createdAt: 1000,
+        root: {
+          items: [{
+            id: UUID_M1,
+            role: 'tool',
+            results: [
+              {
+                toolCallId: 'tc-err',
+                status: 'error',
+                error: { code: 'execution_failed', message: { type: 'text', text: 'Crash' } }
+              },
+              {
+                toolCallId: 'tc-bin',
+                status: 'success',
+                content: { type: 'binary_object', id: UUID_A1 }
+              }
+            ],
+            timestamp: 1000,
+            replies: { items: [] }
+          }]
+        }
+      };
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: createValidSettings(),
+          hierarchy: { items: [{ type: 'chat', id: UUID_C1 }] },
+          chatMetas: [createValidChatMeta({ id: UUID_C1 })],
+          chatGroups: []
+        },
+        contentStream: (async function* () {
+          yield { type: 'chat', data: toolChat as any };
+        })()
+      });
+
+      const { stream } = await service.exportData({});
+      const chunks: Uint8Array[] = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value!);
+      }
+      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+      const rootFolder = Object.keys(zip.files).find(f => f.startsWith('naidan-data-'))!;
+      const content = JSON.parse(await zip.file(`${rootFolder}chat-contents/${UUID_C1}.json`)!.async('string'));
+
+      expect(content.root.items[0].results[0].status).toBe('error');
+      expect(content.root.items[0].results[0].error.code).toBe('execution_failed');
+      expect(content.root.items[0].results[1].content.type).toBe('binary_object');
+      expect(content.root.items[0].results[1].content.id).toBe(UUID_A1);
     });
   });
 
@@ -395,6 +603,113 @@ describe('ImportExportService', () => {
       expect(chunks.find(c => c.type === 'binary_object')?.id).toBe(NEW_UUID);
     });
 
+    it('should remap and convert V1 attachments to V2 during append import', async () => {
+      const zip = new JSZip();
+      zip.file('export-manifest.json', '{}');
+      const chatMeta = createValidChatMetaDto({ id: UUID_C1 });
+      zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
+
+      // V1 style content
+      const content = {
+        root: {
+          items: [{
+            id: UUID_M1, role: 'user', content: 'v1 test', timestamp: 1000,
+            attachments: [{
+              id: UUID_A1,
+              originalName: 'old.png',
+              mimeType: 'image/png',
+              size: 50,
+              uploadedAt: 1000,
+              status: 'persisted'
+            }],
+            replies: { items: [] }
+          }]
+        }
+      };
+      zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify(content));
+
+      // Sharded binary object
+      const shard = UUID_A1.slice(-2);
+      const binFolder = zip.folder('binary-objects')!.folder(shard);
+      binFolder!.file(`${UUID_A1}.bin`, new Blob(['...']));
+      binFolder!.file('index.json', JSON.stringify({
+        objects: {
+          [UUID_A1]: { id: UUID_A1, mimeType: 'image/png', size: 50, createdAt: 1000, name: 'old.png' }
+        }
+      }));
+
+      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+        data: { mode: 'append' },
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+      });
+
+      const calls = mockStorage.restore.mock.calls;
+      const snapshot = calls[0]![0] as StorageSnapshot;
+      const chunks = [];
+      for await (const chunk of snapshot.contentStream) {
+        chunks.push(chunk);
+      }
+
+      const chatChunk = chunks.find(c => c.type === 'chat');
+      if (chatChunk?.type === 'chat' && chatChunk.data.root) {
+        const node = chatChunk.data.root.items[0]!;
+        const att = node.attachments![0]!;
+        // Check V2 conversion
+        expect((att as any).binaryObjectId).toBe(NEW_UUID);
+        expect((att as any).name).toBe('old.png');
+        expect((att as any).originalName).toBeUndefined();
+        expect((att as any).mimeType).toBeUndefined();
+      }
+    });
+
+    it('remaps currentLeafId, originChatId and originMessageId during append import', async () => {
+      const zip = new JSZip();
+      zip.file('export-manifest.json', '{}');
+
+      const ORIGINAL_CHAT_ID = UUID_C1;
+      const ORIGINAL_MSG_ID = UUID_M1;
+
+      // Forked chat (origin is itself for this test case simplicity)
+      const chatMeta = createValidChatMetaDto({
+        id: ORIGINAL_CHAT_ID,
+        currentLeafId: ORIGINAL_MSG_ID,
+        originChatId: ORIGINAL_CHAT_ID,
+        originMessageId: ORIGINAL_MSG_ID
+      });
+      zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
+
+      const content = {
+        root: {
+          items: [{
+            id: ORIGINAL_MSG_ID, role: 'user', content: 'hello', timestamp: 1000,
+            replies: { items: [] }
+          }]
+        }
+      };
+      zip.folder('chat-contents')!.file(`${ORIGINAL_CHAT_ID}.json`, JSON.stringify(content));
+
+      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+        data: { mode: 'append' },
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+      });
+
+      const calls = mockStorage.restore.mock.calls;
+      const snapshot = calls[0]![0] as StorageSnapshot;
+      const chunks = [];
+      for await (const chunk of snapshot.contentStream) {
+        chunks.push(chunk);
+      }
+
+      const chatChunk = chunks.find(c => c.type === 'chat');
+      if (chatChunk?.type === 'chat') {
+        const newMsgId = chatChunk.data.root!.items[0]!.id;
+        expect(chatChunk.data.id).toBe(NEW_UUID);
+        expect(chatChunk.data.currentLeafId).toBe(newMsgId);
+        expect(chatChunk.data.originChatId).toBe(NEW_UUID);
+        expect(chatChunk.data.originMessageId).toBe(newMsgId);
+      }
+    });
+
     it('applies prefixes to both chat titles and group names', async () => {
       const zip = new JSZip();
       zip.file('export-manifest.json', '{}');
@@ -472,6 +787,28 @@ describe('ImportExportService', () => {
       expect(snapshot.structure.chatGroups[0]!.name).toBe('Empty Group');
       expect(snapshot.structure.chatMetas).toHaveLength(0);
     });
+
+    it('correctly imports system prompts with append behavior', async () => {
+      const zip = new JSZip();
+      zip.file('export-manifest.json', '{}');
+      const chatMeta = createValidChatMetaDto({
+        id: UUID_C1,
+        systemPrompt: { behavior: 'append', content: 'Extra context' }
+      });
+      zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
+      zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
+
+      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+        data: { mode: 'append' },
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+      });
+
+      const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
+      expect(snapshot.structure.chatMetas[0]!.systemPrompt).toEqual({
+        behavior: 'append',
+        content: 'Extra context'
+      });
+    });
   });
 
   describe('Settings Merge - Edge Cases', () => {
@@ -544,6 +881,34 @@ describe('ImportExportService', () => {
         temperature: 0.7,
         reasoning: { effort: 'high' }
       });
+    });
+
+    it('imports experimental settings and UI flags', async () => {
+      const zip = new JSZip();
+      zip.file('export-manifest.json', '{}');
+      zip.file('settings.json', JSON.stringify(createValidSettingsDto({
+        experimental: { markdownRendering: 'block_markdown' },
+        heavyContentAlertDismissed: true,
+        endpoint: { type: 'openai', url: 'http://imported', httpHeaders: [['X-Test', 'imported']] }
+      })));
+
+      mockStorage.loadSettings.mockResolvedValue(createValidSettings({ experimental: undefined }));
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const config: ImportConfig = {
+        data: { mode: 'replace' },
+        settings: { endpoint: 'replace', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+      };
+
+      await service.executeImport(zipBlob, config);
+
+      expect(mockStorage.updateSettings).toHaveBeenCalled();
+      const updater = mockStorage.updateSettings.mock.calls[0]![0];
+      const result = await updater(await mockStorage.loadSettings());
+      expect(result.experimental?.markdownRendering).toBe('block_markdown');
+      expect(result.heavyContentAlertDismissed).toBe(true);
+      expect(result.endpointUrl).toBe('http://imported');
+      expect(result.endpointHttpHeaders).toEqual([['X-Test', 'imported']]);
     });
 
     it('regenerates IDs for provider profiles when using append strategy', async () => {
@@ -630,6 +995,25 @@ describe('ImportExportService', () => {
       if (groupItem?.type === 'chat_group') {
         expect(groupItem.data.items).toHaveLength(1);
         expect(groupItem.data.items[0]!.title).toBe('C1');
+      }
+    });
+
+    it('assembles legacy hierarchy when hierarchy.json is missing', async () => {
+      const zip = new JSZip();
+      zip.file('export-manifest.json', '{}');
+      // No hierarchy.json
+      zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'G1', updatedAt: 1000, isCollapsed: false }));
+      zip.file('chat-metas.json', JSON.stringify({ entries: [
+        { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: 1000, createdAt: 1000 }
+      ] }));
+
+      const preview = await service.analyze(await zip.generateAsync({ type: 'blob' }));
+
+      expect(preview.items).toHaveLength(1);
+      expect(preview.items[0]!.type).toBe('chat_group');
+      if (preview.items[0]!.type === 'chat_group') {
+        expect(preview.items[0]!.data.items).toHaveLength(1);
+        expect(preview.items[0]!.data.items[0]!.title).toBe('C1');
       }
     });
   });
