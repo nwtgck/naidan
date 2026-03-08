@@ -10,12 +10,12 @@ async function main() {
   const args = process.argv.slice(2);
   const [inputFilePath, targetFunction] = args.filter(a => !a.startsWith('-'));
   const isDryRun = args.includes('--dry-run');
+  const tsConfigPath = path.resolve('tsconfig.app.json');
   const targetFile = path.resolve(inputFilePath);
 
   console.log(`🚀 Refactoring ${targetFunction} in ${inputFilePath}...`);
 
   // --- 1. Setup LS ---
-  const tsConfigPath = path.resolve('tsconfig.app.json');
   const configFile = ts.readConfigFile(tsConfigPath, ts.sys.readFile);
   const parsedConfig = ts.parseJsonConfigFileContent(configFile.config, ts.sys, path.dirname(tsConfigPath));
   const vueOptions = vue.createParsedCommandLine(ts, ts.sys, tsConfigPath.replace(/\\/g, '/')).vueOptions;
@@ -52,7 +52,8 @@ async function main() {
     getCurrentDirectory: () => process.cwd(),
     getProjectReferences: () => parsedConfig.projectReferences,
   });
-  const ls = ts.createLanguageService(languageServiceHost);
+  const baseLs = ts.createLanguageService(languageServiceHost);
+  const { proxy: ls } = (volar as any).createProxyLanguageService(baseLs);
   const program = ls.getProgram()!;
   const sourceFile = program.getSourceFile(targetFile)!;
 
@@ -66,35 +67,20 @@ async function main() {
       ts.forEachChild(node, findPrimaryDef);
   }
   findPrimaryDef(sourceFile);
-  
-  if (!primaryDefNode) {
-      console.error(`Could not find primary definition of ${targetFunction}`);
-      process.exit(1);
-  }
-  const primaryDefStart = primaryDefNode.getStart(sourceFile);
+  const primaryDefStart = primaryDefNode!.getStart(sourceFile);
 
   let params: ts.NodeArray<ts.ParameterDeclaration> | undefined;
-  let curr: ts.Node = primaryDefNode;
-  while (curr && !params) {
-      if (ts.isVariableDeclaration(curr) && curr.initializer && ts.isFunctionLike(curr.initializer)) {
-          params = curr.initializer.parameters;
-      } else if (ts.isFunctionDeclaration(curr) || ts.isMethodDeclaration(curr) || ts.isArrowFunction(curr)) {
-          params = curr.parameters;
-      }
-      curr = curr.parent;
+  let currNode: ts.Node = primaryDefNode!;
+  while (currNode && !params) {
+      if (ts.isVariableDeclaration(currNode) && currNode.initializer && ts.isFunctionLike(currNode.initializer)) params = currNode.initializer.parameters;
+      else if (ts.isFunctionDeclaration(currNode) || ts.isMethodDeclaration(currNode) || ts.isArrowFunction(currNode)) params = currNode.parameters;
+      currNode = currNode.parent;
   }
-
-  if (!params) {
-      console.error(`Could not extract parameters for ${targetFunction}`);
-      process.exit(1);
-  }
-  const paramNames = params.map(p => p.name.getText(sourceFile!));
+  const paramNames = params!.map(p => p.name.getText(sourceFile!));
   console.log(`Parameters identified: [${paramNames.join(', ')}]`);
 
-  // --- 3. Robust Search ---
+  // --- 3. Reference Search ---
   const allEntries = new Map<string, { fileName: string, start: number }>();
-  
-  // Method A: Recursive LS Search
   const queue: { fileName: string, pos: number }[] = [];
   function collectSearchPositions(node: ts.Node) {
       if (ts.isIdentifier(node) && node.getText(sourceFile!) === targetFunction) {
@@ -132,30 +118,26 @@ async function main() {
       }
   }
 
-  // Method B: Heuristic String Scan (for .vue and tricky spots)
-  console.log('Performing heuristic scan for additional sites...');
-  const allProjectFiles = globSync('src/**/*.{ts,vue}');
-  const targetFileBaseName = path.basename(inputFilePath, path.extname(inputFilePath));
+  // --- 4. Heuristic Backup for .vue files ---
+  console.log('Performing heuristic check for .vue files...');
+  const vueFiles = globSync('src/**/*.vue');
+  const targetFileBase = path.basename(inputFilePath, path.extname(inputFilePath));
 
-  for (const f of allProjectFiles) {
-      const absF = path.resolve(f);
-      const content = fs.readFileSync(absF, 'utf-8');
+  for (const vf of vueFiles) {
+      const absVf = path.resolve(vf);
+      const content = fs.readFileSync(absVf, 'utf-8');
       
-      // If the file doesn't even mention our target file or function, skip
-      if (!content.includes(targetFunction)) continue;
-      if (!content.includes(targetFileBaseName) && !f.endsWith(inputFilePath)) {
-          // Check if it might be imported via another way or used globally (unlikely for sendMessage but possible)
-      }
+      // Only check files that import the target composable
+      if (!content.includes(targetFileBase)) continue;
 
       let index = content.indexOf(targetFunction);
       while (index !== -1) {
-          const entryId = `${absF}:${index}`;
+          const entryId = `${absVf}:${index}`;
           if (!allEntries.has(entryId)) {
-              // Heuristic: Check if it's followed by '('
-              const rest = content.substring(index + targetFunction.length);
-              if (rest.trim().startsWith('(')) {
-                  console.log(`[HEURISTIC] Found potential site in ${f} at ${index}`);
-                  allEntries.set(entryId, { fileName: absF, start: index });
+              // Check if it looks like a call and is NOT in a comment
+              if (isCallInSource(content, index, targetFunction)) {
+                  console.log(`[HEURISTIC] Found call site in ${vf} at ${index}`);
+                  allEntries.set(entryId, { fileName: absVf, start: index });
               }
           }
           index = content.indexOf(targetFunction, index + 1);
@@ -164,7 +146,7 @@ async function main() {
 
   console.log(`Total sites to refactor: ${allEntries.size}`);
 
-  // --- 4. Refactor ---
+  // --- 5. Refactor ---
   const fileChanges = new Map<string, MagicString>();
   const getMS = (f: string) => {
       if (!fileChanges.has(f)) fileChanges.set(f, new MagicString(fs.readFileSync(f, 'utf-8')));
@@ -178,7 +160,6 @@ async function main() {
       const code = ms.original;
       const rest = code.substring(entry.start + targetFunction.length);
       const match = rest.match(/^\s*\(([\s\S]*?)\)/);
-      
       if (match) {
           const argsText = match[1]!;
           if (argsText.trim().startsWith('{') && argsText.trim().endsWith('}')) continue;
@@ -186,42 +167,19 @@ async function main() {
           const argsList = splitArguments(argsText);
           if (argsList.length === 0 && paramNames.length > 0) continue; 
 
-          const named = argsList.map((a, i) => {
-              const name = paramNames[i] || `arg${i}`;
-              return `${name}: ${a.trim()}`;
-          }).join(', ');
-
+          const named = argsList.map((a, i) => `${paramNames[i] || `arg${i}`}: ${a.trim()}`).join(', ');
           ms.overwrite(entry.start + targetFunction.length, entry.start + targetFunction.length + match[0].length, `({ ${named} })`);
           console.log(`[CALL] Updated ${path.relative(process.cwd(), entry.fileName)} at pos ${entry.start}`);
       }
   }
 
-  // Update Definition
-  // --- 5. Process Initial Definition ---
+  // Definition
   const defMS = getMS(targetFile);
-  
-  // Construct the destructuring pattern (e.g., { content, attachments = [] })
-  const destructuringMembers = params!.map(p => {
-      const name = p.name.getText(sourceFile!);
-      if (p.initializer) {
-          return `${name} = ${p.initializer.getText(sourceFile!)}`;
-      }
-      return name;
-  });
-
-  // Construct the type literal (e.g., { content: string, attachments?: Attachment[] })
-  const typeMembers = params!.map(p => {
-      const name = p.name.getText(sourceFile!);
-      const typeText = p.type ? p.type.getText(sourceFile!) : 'any';
-      const isOptional = !!p.questionToken || !!p.initializer;
-      return `${name}${isOptional ? '?' : ''}: ${typeText}`;
-  });
-
-  const newParamDef = `{ ${destructuringMembers.join(', ')} }: { ${typeMembers.join(', ')} }`;
-  defMS.overwrite(params![0].getStart(sourceFile!), params![params!.length - 1].getEnd(), newParamDef);
+  const destructuring = params!.map(p => p.initializer ? `${p.name.getText(sourceFile!)} = ${p.initializer.getText(sourceFile!)}` : p.name.getText(sourceFile!));
+  const types = params!.map(p => `${p.name.getText(sourceFile!)}${p.questionToken || p.initializer ? '?' : ''}: ${p.type ? p.type.getText(sourceFile!) : 'any'}`);
+  defMS.overwrite(params![0].getStart(sourceFile!), params![params!.length - 1].getEnd(), `{ ${destructuring.join(', ')} }: { ${types.join(', ')} }`);
   console.log(`[DEF] Updated definition in ${path.relative(process.cwd(), targetFile)}`);
 
-  // Save
   if (isDryRun) {
       console.log('\n--- DRY RUN ---');
       for (const [f, ms] of fileChanges) if (ms.hasChanged()) console.log(`Modified: ${path.relative(process.cwd(), f)}`);
@@ -229,6 +187,26 @@ async function main() {
       for (const [f, ms] of fileChanges) if (ms.hasChanged()) fs.writeFileSync(f, ms.toString());
       console.log('\n✨ Refactoring complete.');
   }
+}
+
+function isCallInSource(content: string, index: number, fnName: string): boolean {
+    const before = content.substring(0, index);
+    const after = content.substring(index + fnName.length);
+    
+    // Must be followed by '('
+    if (!after.trim().startsWith('(')) return false;
+
+    // Must NOT be in a line comment
+    const lastNewline = before.lastIndexOf('\n');
+    const lineBefore = before.substring(lastNewline + 1);
+    if (lineBefore.includes('//')) return false;
+
+    // Must NOT be in a block comment
+    const lastBlockStart = before.lastIndexOf('/*');
+    const lastBlockEnd = before.lastIndexOf('*/');
+    if (lastBlockStart > lastBlockEnd) return false;
+
+    return true;
 }
 
 function splitArguments(text: string): string[] {
