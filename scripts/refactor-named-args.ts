@@ -197,9 +197,28 @@ async function main() {
   }
 
   // Update Definition
+  // --- 5. Process Initial Definition ---
   const defMS = getMS(targetFile);
-  const newParams = `{ ${paramNames.join(', ')} }: { ${params.map(p => p.getText(sourceFile!)).join(', ')} }`;
-  defMS.overwrite(params[0]!.getStart(sourceFile!), params[params.length - 1]!.getEnd(), newParams);
+  
+  // Construct the destructuring pattern (e.g., { content, attachments = [] })
+  const destructuringMembers = params!.map(p => {
+      const name = p.name.getText(sourceFile!);
+      if (p.initializer) {
+          return `${name} = ${p.initializer.getText(sourceFile!)}`;
+      }
+      return name;
+  });
+
+  // Construct the type literal (e.g., { content: string, attachments?: Attachment[] })
+  const typeMembers = params!.map(p => {
+      const name = p.name.getText(sourceFile!);
+      const typeText = p.type ? p.type.getText(sourceFile!) : 'any';
+      const isOptional = !!p.questionToken || !!p.initializer;
+      return `${name}${isOptional ? '?' : ''}: ${typeText}`;
+  });
+
+  const newParamDef = `{ ${destructuringMembers.join(', ')} }: { ${typeMembers.join(', ')} }`;
+  defMS.overwrite(params![0].getStart(sourceFile!), params![params!.length - 1].getEnd(), newParamDef);
   console.log(`[DEF] Updated definition in ${path.relative(process.cwd(), targetFile)}`);
 
   // Save
