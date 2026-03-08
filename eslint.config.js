@@ -65,7 +65,7 @@ import requireDefineExposeTestOnly from './eslint-local-rules/require-define-exp
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts'],
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'scripts/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
