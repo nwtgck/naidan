@@ -66,7 +66,7 @@ describe('MessageItem Rendering', () => {
       timestamp: Date.now(),
       replies: { items: [] },
     };
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
 
     expect(wrapper.text()).toContain(modelId);
     expect(wrapper.text()).not.toContain(modelId.toUpperCase());
@@ -76,7 +76,7 @@ describe('MessageItem Rendering', () => {
 
   it('displays "You" for user messages with correct styling', () => {
     const message = createMessage('Hello', 'user');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
 
     const youSpan = wrapper.find('.uppercase.tracking-widest');
     expect(youSpan.exists()).toBe(true);
@@ -85,20 +85,21 @@ describe('MessageItem Rendering', () => {
 
   it('correctly separates and displays thinking blocks', async () => {
     const message = createMessage('<think>Internal thought</think>Actual response');
-    const wrapper = mount(MessageItem, { props: { message } });
 
-    // Check if thinking process button exists
-    expect(wrapper.text()).toContain('Thought Process');
+    // 1. Thinking Part
+    const thinkingWrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    expect(thinkingWrapper.text()).toContain('Thought Process');
 
-    // Check if the content part only shows the actual response
-    const contentArea = wrapper.find('[data-testid="message-content"]');
+    // 2. Content Part
+    const contentWrapper = mount(MessageItem, { props: { message, mode: 'content' } });
+    const contentArea = contentWrapper.find('[data-testid="message-content"]');
     expect(contentArea.text()).toBe('Actual response');
     expect(contentArea.text()).not.toContain('Internal thought');
   });
 
   it('detects active thinking state (isThinkingNow)', () => {
     const message = createMessage('<think>Ongoing thought...');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking', isGenerating: true } });
 
     // Should show "Thinking..." instead of "Show Thought Process"
     expect(wrapper.text()).toContain('Thinking...');
@@ -107,20 +108,21 @@ describe('MessageItem Rendering', () => {
 
   it('handles multiple thinking blocks and case-insensitivity', async () => {
     const message = createMessage('<THINK>Thought 1</THINK>Response 1<think>Thought 2</think>Response 2');
-    const wrapper = mount(MessageItem, { props: { message } });
 
-    // displayContent should be cleaned
-    const contentArea = wrapper.find('[data-testid="message-content"]');
+    // 1. Content Part
+    const contentWrapper = mount(MessageItem, { props: { message, mode: 'content' } });
+    const contentArea = contentWrapper.find('[data-testid="message-content"]');
     expect(contentArea.text()).toContain('Response 1');
     expect(contentArea.text()).toContain('Response 2');
     expect(contentArea.text()).not.toContain('Thought 1');
     expect(contentArea.text()).not.toContain('Thought 2');
 
-    // Toggle it to see the content
-    const toggle = wrapper.find('[data-testid="toggle-thinking"]');
+    // 2. Thinking Part
+    const thinkingWrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
+    const toggle = thinkingWrapper.find('[data-testid="toggle-thinking"]');
     await toggle.trigger('click');
 
-    const thinkingArea = wrapper.find('[data-testid="thinking-content"]');
+    const thinkingArea = thinkingWrapper.find('[data-testid="thinking-content"]');
     expect(thinkingArea.text()).toContain('Thought 1');
     expect(thinkingArea.text()).toContain('Thought 2');
     expect(thinkingArea.text()).toContain('---');
@@ -129,7 +131,7 @@ describe('MessageItem Rendering', () => {
   it('hides loading indicator when thinking is active', () => {
     // Content is empty, but <think> is present
     const message = createMessage('<think>Thinking only');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
 
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="thinking-block"]').exists()).toBe(true);
@@ -583,7 +585,7 @@ describe('MessageItem States', () => {
 
   it('displays loading indicator when waiting for response', () => {
     const message = createAssistantMessage('');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'waiting', isFirstInTurn: true } });
 
     expect(wrapper.find('[data-testid="loading-indicator"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('Waiting for response...');
@@ -836,7 +838,7 @@ describe('MessageItem Abort Button', () => {
 
   it('renders the abort button when isGenerating is true', () => {
     const message = createAssistantMessage('Generation in progress...');
-    const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: true, isFirstInTurn: true } });
 
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     expect(abortBtn.exists()).toBe(true);
@@ -845,7 +847,7 @@ describe('MessageItem Abort Button', () => {
 
   it('does not render the abort button when isGenerating is false', () => {
     const message = createAssistantMessage('Generation finished');
-    const wrapper = mount(MessageItem, { props: { message, isGenerating: false } });
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: false, isFirstInTurn: true } });
 
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     expect(abortBtn.exists()).toBe(false);
@@ -853,7 +855,7 @@ describe('MessageItem Abort Button', () => {
 
   it('emits abort event when abort button is clicked', async () => {
     const message = createAssistantMessage('Generation in progress...');
-    const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: true, isFirstInTurn: true } });
 
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     await abortBtn.trigger('click');
@@ -863,7 +865,7 @@ describe('MessageItem Abort Button', () => {
 
   it('has the correct subtle styling for the abort button', () => {
     const message = createAssistantMessage('Generation in progress...');
-    const wrapper = mount(MessageItem, { props: { message, isGenerating: true } });
+    const wrapper = mount(MessageItem, { props: { message, isGenerating: true, isFirstInTurn: true } });
 
     const abortBtn = wrapper.find('[data-testid="message-abort-button"]');
     const cls = abortBtn.classes();
@@ -882,8 +884,8 @@ describe('MessageItem Abort Button', () => {
         timestamp: Date.now(),
         replies: { items: [] },
       } as AssistantMessageNode;
+      const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
 
-      const wrapper = mount(MessageItem, { props: { message } });
       const badge = wrapper.find('[data-testid="reasoning-effort-badge"]');
 
       expect(badge.exists()).toBe(true);
@@ -900,8 +902,8 @@ describe('MessageItem Abort Button', () => {
         timestamp: Date.now(),
         replies: { items: [] },
       } as AssistantMessageNode;
+      const wrapper = mount(MessageItem, { props: { message, isFirstInTurn: true } });
 
-      const wrapper = mount(MessageItem, { props: { message } });
       const badge = wrapper.find('[data-testid="reasoning-effort-badge"]');
 
       expect(badge.exists()).toBe(true);

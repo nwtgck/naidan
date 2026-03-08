@@ -28,7 +28,9 @@ describe('MessageItem Speech Controls', () => {
 
   it('renders speech buttons if supported', () => {
     const message = createMessage('Hello');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, {
+      props: { message, isFirstInTurn: true }
+    });
 
     // Header and footer toggle buttons
     const toggles = wrapper.findAll('[data-testid="speech-toggle-mini"]');

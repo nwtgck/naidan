@@ -60,7 +60,7 @@ describe('AI Sequence Design', () => {
     it('shows header when position is standalone or start', () => {
       const message = createAssistantMessage('Hello');
       const wrapper = mount(MessageItem, {
-        props: { message, flow: flow('start') }
+        props: { message, flow: flow('start'), isFirstInTurn: true }
       });
 
       expect(wrapper.find('.flex.items-center.gap-3.mb-1').exists()).toBe(true);

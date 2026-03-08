@@ -179,18 +179,18 @@ describe('useChat Tool Chaining', () => {
     // New structure: user, assistant1 (calls), tool (consolidated), assistant2 (final)
     expect(messages.map(m => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
 
-    // chatFlow might group things into process_sequence or leave them as standalone.
-    // In this test, we expect: message (user), message (assistant), tool_group, message (assistant)
-    // Actually, useChatDisplayFlow might group assistant + tool + assistant into process_sequence if it thinks they are "internal".
-    // Let's see what yieldGroupedItems does.
-    // tool_group is internal. assistant message is NOT internal unless it's ONLY thinking or tool_calls.
-    
-    expect(displayMessages.map(d => d.type)).toEqual(['message', 'message', 'tool_group', 'message']);
+    // chatFlow groups internal atoms (tool_calls, tool_group, completed thinking) into process_sequence.
+    // Here: [message(user), process_sequence(assistant tool_calls + tool_group), message(assistant final answer)]
+    expect(displayMessages.map(d => d.type)).toEqual(['message', 'process_sequence', 'message']);
 
-    const toolGroup = displayMessages[2] as { type: 'tool_group', toolCalls: any[] };
-    expect(toolGroup.toolCalls).toHaveLength(2);
-    expect(toolGroup.toolCalls[0].id).toBe('call-1');
-    expect(toolGroup.toolCalls[1].id).toBe('call-2');
+    const seq = displayMessages[1] as { type: 'process_sequence', items: any[] };
+    expect(seq.items).toHaveLength(2);
+    expect(seq.items[0].type).toBe('message');
+    expect(seq.items[0].mode).toBe('tool_calls');
+    expect(seq.items[1].type).toBe('tool_group');
+    expect(seq.items[1].toolCalls).toHaveLength(2);
+    expect(seq.items[1].toolCalls[0].id).toBe('call-1');
+    expect(seq.items[1].toolCalls[1].id).toBe('call-2');
 
     // Check tree structure
     const assistant1 = messages[1]!;

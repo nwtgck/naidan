@@ -28,7 +28,7 @@ describe('MessageItem Copy Protection', () => {
 
   it('toggles thinking block when no text is selected', async () => {
     const message = createMessage('Final response', 'Thought process');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
 
     const toggle = wrapper.find('[data-testid="toggle-thinking"]');
 
@@ -44,7 +44,7 @@ describe('MessageItem Copy Protection', () => {
 
   it('does NOT toggle thinking block when text is selected (prevents accidental closing on copy)', async () => {
     const message = createMessage('Final response', 'Thought process');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
 
     const toggle = wrapper.find('[data-testid="toggle-thinking"]');
 
