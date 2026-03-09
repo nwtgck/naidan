@@ -40,7 +40,7 @@ Naidan provides multiple ways to run the application, allowing you to choose the
 Download the zip package containing the HTML file and assets, then open it directly in your browser as `file://`. No installation, no terminal, no background processes.
 
 - **Download:** [naidan-standalone.zip](https://naidan.pages.dev/naidan-standalone.zip)
-- **Mirrors:** [GitHub Releases](https://github.com/nwtgck/naidan/releases/download/v0.1.0/naidan-standalone-v0.1.0.zip) or GitHub Actions Artifacts.
+- **Mirrors:** [GitHub Releases](https://github.com/nwtgck/naidan/releases/download/v0.24.1/naidan-standalone-v0.24.1.zip) or GitHub Actions Artifacts.
 - **Usage:** Unzip and just double-click `index.html`.
 - **Update:** Just delete the old standalone folder and replace it with the new one. Your data is stored in your browser, so it's safe to swap versions.
 
@@ -48,8 +48,8 @@ Download the zip package containing the HTML file and assets, then open it direc
 **For those who require a standard HTTP Origin.**
 Using `file://` results in `Origin: null`, which some backend CORS policies may reject. Use this optimized static build if you need a valid Origin (e.g., `http://localhost:8080`) or simply prefer using your own tools like `python3 -m http.server`, `npx serve`, or Nginx.
 
-- **Download:** [naidan-hosted.zip](https://github.com/nwtgck/naidan/releases/download/v0.1.0/naidan-hosted-v0.1.0.zip)
-- **Usage:** Serve the extracted directory with your preferred HTTP server.
+- **Download:** [naidan-hosted.zip](https://github.com/nwtgck/naidan/releases/download/v0.24.1/naidan-hosted-v0.24.1.zip)
+- **Usage:** Serve the extracted directory with your preferred HTTP server. See [static-hosting-examples/](./static-hosting-examples/) for Nginx and Caddy configurations.
 - **Update:** Replace the old files with the new version. Your data stays safely in your browser.
 
 ### Option 3: Dedicated Server Binary
