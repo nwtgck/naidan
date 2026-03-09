@@ -62,7 +62,7 @@ A portable executable that serves the application locally without requiring Pyth
 **Instant access with zero setup.**
 Run Naidan directly from the web. Your data remains local, stored in your browser.
 
-- https://naidan.pages.dev
+- https://naidan.pages.dev or https://naidan.nwtgck.org
 - https://naidan-only-local.pages.dev: A hardened version with a Content-Security-Policy (CSP) that *only* allows connections to localhost APIs.
 - **Update:** Just refresh the page. Your data remains in your browser.
 
