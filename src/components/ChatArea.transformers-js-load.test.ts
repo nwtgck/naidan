@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
-import { nextTick, ref } from 'vue';
+import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { transformersJsService } from '../services/transformers-js';
 import { setupScrollToMock } from '../utils/test-utils';
@@ -98,6 +98,17 @@ vi.mock('../composables/useChat', () => ({
     updateReasoningEffort: vi.fn(),
     updateChatSettings: vi.fn(),
     getLiveChat: vi.fn().mockImplementation((c) => c),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: m.role === 'assistant' && !m.content ? 'waiting' : 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(({ item }) => item.type === 'message' && item.mode === 'waiting'),
   }),
 }));
 

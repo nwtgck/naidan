@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
-import { nextTick, ref, reactive } from 'vue';
+import { nextTick, ref, reactive, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 
@@ -81,6 +81,17 @@ vi.mock('../composables/useChat', () => ({
     updateReasoningEffort: vi.fn(),
     updateChatSettings: vi.fn(),
     getLiveChat: vi.fn().mockImplementation((c) => c),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
   }),
 }));
 
@@ -152,7 +163,7 @@ describe('ChatArea Auto-send', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockSendMessage).toHaveBeenCalledWith('hello', undefined, [], undefined, expect.anything());
+    expect(mockSendMessage).toHaveBeenCalledWith({ content: 'hello', parentId: undefined, attachments: [], chatTarget: undefined, lmParameters: expect.anything() });
     expect(wrapper.emitted('auto-sent')).toBeTruthy();
   });
 
@@ -192,6 +203,6 @@ describe('ChatArea Auto-send', () => {
     await nextTick();
 
     // If it returns early, mockSendMessage won't be called
-    expect(mockSendMessage).toHaveBeenCalledWith('hello', undefined, [], undefined, expect.anything());
+    expect(mockSendMessage).toHaveBeenCalledWith({ content: 'hello', parentId: undefined, attachments: [], chatTarget: undefined, lmParameters: expect.anything() });
   });
 });

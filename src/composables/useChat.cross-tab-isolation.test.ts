@@ -76,7 +76,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
         }),
         getSidebarStructure: vi.fn().mockImplementation(async () => {
           const s = getShared();
-          return s.hierarchy.items.map((node: any) => {
+          if (!s || !s.hierarchy) return [];
+          return (s.hierarchy.items || []).map((node: any) => {
             if (node.type === 'chat') {
               const chat = s.chats.get(node.id);
               return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: chat?.title || null, updatedAt: chat?.updatedAt || 0, groupId: chat?.groupId || null } };
@@ -240,7 +241,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     vi.advanceTimersByTime(600);
     await tabB.openChat(chat!.id);
 
-    const p = tabA.sendMessage('Hello');
+    const p = tabA.sendMessage({ content: 'Hello' });
     await vi.advanceTimersByTimeAsync(1000);
     await p;
 
@@ -287,7 +288,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await tabB.openChat(chat!.id);
 
     // 1. Tab A starts sending a message
-    const sendPromise = tabA.sendMessage('Slow msg');
+    const sendPromise = tabA.sendMessage({ content: 'Slow msg' });
 
     await vi.advanceTimersByTimeAsync(10);
     await nextTick();
@@ -321,7 +322,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     // We'll verify sidebar state via isTaskRunning
 
     // 3. Start generation for chat1 in tab1
-    const p1 = tab1.sendMessage('Msg 1');
+    const p1 = tab1.sendMessage({ content: 'Msg 1' });
     await vi.advanceTimersByTimeAsync(10);
     await nextTick();
 
@@ -330,7 +331,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
 
     // 4. Start generation for chat2 in tab2
-    const p2 = tab2.sendMessage('Msg 2');
+    const p2 = tab2.sendMessage({ content: 'Msg 2' });
     await vi.advanceTimersByTimeAsync(10);
     await nextTick();
 

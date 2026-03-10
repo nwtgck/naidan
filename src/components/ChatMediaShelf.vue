@@ -81,9 +81,10 @@ const mediaGroups = computed(() => {
     }
 
     // 2. Generated Images in content
+    const msgContent = msg.content || '';
     const codeBlockRegex = new RegExp('```' + IMAGE_BLOCK_LANG + '[^\\n]*\\n([\\s\\S]*?)\\n```', 'g');
     let match;
-    while ((match = codeBlockRegex.exec(msg.content)) !== null) {
+    while ((match = codeBlockRegex.exec(msgContent)) !== null) {
       try {
         const result = GeneratedImageBlockSchema.safeParse(JSON.parse(match[1] || '{}'));
         if (result.success) {
@@ -110,7 +111,7 @@ const mediaGroups = computed(() => {
 
     if (items.length > 0) {
       if (!sharedPrompt) {
-        sharedPrompt = stripNaidanSentinels(msg.content).trim().slice(0, 100);
+        sharedPrompt = stripNaidanSentinels(msgContent).trim().slice(0, 100);
       }
 
       items.forEach((item, idx) => {

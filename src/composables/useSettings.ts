@@ -320,11 +320,13 @@ export function useSettings() {
   }
 
   async function toggleMarkdownRendering() {
-    const current = _settings.value.experimental?.markdownRendering;
+    const current = _settings.value.experimental?.markdownRendering ?? 'block_markdown';
     const nextValue = (() => {
       switch (current) {
-      case 'block_markdown': return undefined;
-      case undefined: return 'block_markdown' as const;
+      case 'block_markdown':
+        return 'monolithic_html' as const;
+      case 'monolithic_html':
+        return 'block_markdown' as const;
       default: {
         const _ex: never = current;
         return _ex;

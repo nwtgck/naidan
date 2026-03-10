@@ -64,7 +64,7 @@ describe('useChat System Prompt Clear Policy', () => {
     await openChat(id);
 
     // 1. Initial State: Global Default
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([{ role: 'system', content: 'Global System Prompt' }])
     }));
@@ -73,7 +73,7 @@ describe('useChat System Prompt Clear Policy', () => {
     await updateChatSettings(id, {
       systemPrompt: { behavior: 'override', content: null }
     });
-    await sendMessage('Hello again');
+    await sendMessage({ content: 'Hello again' });
 
     // Check that system prompt is NOT present
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
@@ -90,7 +90,7 @@ describe('useChat System Prompt Clear Policy', () => {
     await updateChatSettings(id, {
       systemPrompt: { behavior: 'override', content: '' }
     });
-    await sendMessage('Empty string override');
+    await sendMessage({ content: 'Empty string override' });
 
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
@@ -112,7 +112,7 @@ describe('useChat System Prompt Clear Policy', () => {
     await updateChatGroupOverride(id, 'g-clear');
     await nextTick();
 
-    await sendMessage('In group');
+    await sendMessage({ content: 'In group' });
 
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');
@@ -136,7 +136,7 @@ describe('useChat System Prompt Clear Policy', () => {
       systemPrompt: { behavior: 'override', content: 'Chat Specific Prompt' }
     });
 
-    await sendMessage('Override');
+    await sendMessage({ content: 'Override' });
 
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
     const systemMessages = lastCall.messages.filter((m: any) => m.role === 'system');

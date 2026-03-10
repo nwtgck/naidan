@@ -92,17 +92,17 @@ describe('useChat Registry Lifecycle', () => {
     const modelPromise = new Promise<string[]>(r => resolveModels = r);
     mockListModels.mockReturnValue(modelPromise);
 
-    const fetchTask = fetchAvailableModels(chat as any);
+    const fetchTask = fetchAvailableModels({ chatId: chat.id });
 
     // Wait for the registry to populate via fetchAvailableModels (using busy check)
     await vi.waitUntil(() => toRaw(chatStore.getLiveChat(chat as any)) === toRaw(chat), { timeout: 1000 });
 
-    // 2. Start sendMessage (which also awaits fetchAvailableModels)
+    // 2. Start sendMessage({ content: which also awaits fetchAvailableModels })
     let resolveChat: () => void;
     const chatPromise = new Promise<void>(r => resolveChat = r);
     mockLlmChat.mockReturnValue(chatPromise);
 
-    const sendTask = sendMessage('Hello');
+    const sendTask = sendMessage({ content: 'Hello' });
 
     // 3. Resolve model fetch
     resolveModels!(['m1']);

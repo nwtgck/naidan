@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '../models/types';
 
@@ -19,6 +19,8 @@ const mockCurrentChat = ref<Chat | null>({
   createdAt: Date.now(),
   updatedAt: Date.now(),
 });
+
+const mockActiveMessages = ref<MessageNode[]>([]);
 
 const mockActiveFocusArea = ref('chat');
 const mockSetActiveFocusArea = vi.fn((area) => {
@@ -46,7 +48,7 @@ vi.mock('../composables/useChat', () => ({
     generateChatTitle: vi.fn(),
     abortTitleGeneration: vi.fn(),
     streaming: ref(false),
-    activeMessages: ref([]),
+    activeMessages: mockActiveMessages,
     isProcessing: vi.fn().mockReturnValue(false),
     fetchAvailableModels: vi.fn(),
     getSiblings: vi.fn().mockReturnValue([]),
@@ -76,6 +78,17 @@ vi.mock('../composables/useChat', () => ({
     updateReasoningEffort: vi.fn(),
     updateChatSettings: vi.fn(),
     getLiveChat: vi.fn().mockImplementation((c) => c),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
   }),
 }));
 

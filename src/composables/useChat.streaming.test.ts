@@ -9,7 +9,7 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
+    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined }))),
     updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     deleteChat: vi.fn(),
@@ -85,7 +85,7 @@ describe('useChat Streaming State Logic', () => {
       params.onChunk('End');
     });
 
-    const sendPromise = sendMessage('Hello');
+    const sendPromise = sendMessage({ content: 'Hello' });
     await waitForRegistry(chat.id);
 
     expect(streaming.value).toBe(true);
@@ -112,7 +112,7 @@ describe('useChat Streaming State Logic', () => {
       if (signal?.aborted) throw new Error('Aborted');
     });
 
-    const sendPromise = sendMessage('Hello');
+    const sendPromise = sendMessage({ content: 'Hello' });
     await waitForRegistry(chat.id);
 
     expect(streaming.value).toBe(true);

@@ -16,7 +16,7 @@ describe('MessageItem Thinking Border (New Implementation)', () => {
   it('renders the dedicated gradient border element when thinking', () => {
     // Simulate active thinking state (unclosed <think> tag)
     const message = createMessage('<think>Still thinking...');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
 
     // Parent container (toggle button)
     const container = wrapper.find('[data-testid="toggle-thinking"]');
@@ -32,7 +32,7 @@ describe('MessageItem Thinking Border (New Implementation)', () => {
 
   it('does not apply conflicting border classes to the parent container when thinking', () => {
     const message = createMessage('<think>Still thinking...');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
     const container = wrapper.find('[data-testid="toggle-thinking"]');
 
     // To prevent artifacts, the parent container should NOT have the standard 'border' class
@@ -47,7 +47,7 @@ describe('MessageItem Thinking Border (New Implementation)', () => {
   it('removes the gradient border element when not thinking', () => {
     // Simulate completed thinking state
     const message = createMessage('Final response', 'Completed thought process');
-    const wrapper = mount(MessageItem, { props: { message } });
+    const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });
 
     // The dedicated border element should NOT exist
     expect(wrapper.find('.thinking-gradient-border').exists()).toBe(false);

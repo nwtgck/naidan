@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref, reactive, nextTick } from 'vue';
+import { ref, reactive, nextTick, computed } from 'vue';
 import ChatArea from './ChatArea.vue';
 import ModelSelector from './ModelSelector.vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -15,6 +15,7 @@ const mockCurrentChat = ref<any>(null);
 const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
+const mockActiveMessages = ref<any[]>([]);
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -22,7 +23,7 @@ vi.mock('../composables/useChat', () => ({
     chatGroups: mockChatGroups,
     resolvedSettings: mockResolvedSettings,
     inheritedSettings: mockInheritedSettings,
-    activeMessages: ref([]),
+    activeMessages: mockActiveMessages,
     activeGenerations: reactive(new Map()),
     streaming: ref(false),
     generatingTitle: ref(false),
@@ -63,6 +64,17 @@ vi.mock('../composables/useChat', () => ({
     updateReasoningEffort: vi.fn(),
     updateChatSettings: vi.fn(),
     getLiveChat: vi.fn().mockImplementation((c) => c),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
   }),
 }));
 
@@ -215,7 +227,9 @@ describe('ChatArea Group Inheritance UI', () => {
 
       getSortedImageModels: vi.fn(() => []),
       fetchAvailableModels: vi.fn(),
-
+      chatFlow: ref([]),
+      isThinkingActive: vi.fn(() => false),
+      isWaitingResponse: vi.fn(() => false),
     } as any);
 
     // 1. Setup Group-level reasoning effort
@@ -237,14 +251,14 @@ describe('ChatArea Group Inheritance UI', () => {
 
     // 3. Verify sendMessage was called with 'medium' (inherited from resolvedSettings)
     // BUG: Currently it will be called with undefined because ChatInput overrides it manually
-    expect(mockSendMessage).toHaveBeenCalledWith(
-      'Hello',
-      undefined,
-      [],
-      undefined,
-      expect.objectContaining({
+    expect(mockSendMessage).toHaveBeenCalledWith({
+      content: 'Hello',
+      parentId: undefined,
+      attachments: [],
+      chatTarget: undefined,
+      lmParameters: expect.objectContaining({
         reasoning: { effort: 'medium' }
       })
-    );
+    });
   });
 });

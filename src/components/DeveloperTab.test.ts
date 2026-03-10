@@ -41,7 +41,7 @@ describe('DeveloperTab', () => {
     });
 
     (useSettings as any).mockReturnValue({
-      settings: ref({ experimental: { markdownRendering: 'standard' } }),
+      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
       toggleMarkdownRendering,
     });
 
@@ -85,5 +85,22 @@ describe('DeveloperTab', () => {
     const button = wrapper.find('[data-testid="toggle-pwa-update-button"]');
     expect(button.classes()).toContain('bg-emerald-50/30');
     expect(wrapper.find('.animate-spin-slow').exists()).toBe(true);
+  });
+
+  it('triggers Cache Storage clearing when the button is clicked and confirmed', async () => {
+    showConfirm.mockResolvedValue(true);
+    const wrapper = mount(DeveloperTab, {
+      props: { storageType: 'localStorage' }
+    });
+
+    const button = wrapper.find('[data-testid="clear-all-cache-storage-button"]');
+    await button.trigger('click');
+
+    expect(showConfirm).toHaveBeenCalledWith({
+      title: 'Clear All Cache Storage',
+      message: expect.stringContaining('delete all entries in the browser\'s Cache Storage API'),
+      confirmButtonText: 'Clear All',
+      confirmButtonVariant: 'danger',
+    });
   });
 });

@@ -69,7 +69,7 @@ const versionItems = computed((): VersionItem[] => {
   return props.siblings.map((msg, i) => ({
     id: msg.id,
     versionNumber: i + 1,
-    content: msg.content,
+    content: msg.content || '',
     modelId: msg.modelId,
     timestamp: msg.timestamp,
   }));
@@ -128,8 +128,8 @@ const sequentialDiffs = computed(() => {
       }
 
       diffParts = prevMsg
-        ? computeWordDiff({ oldText: prevMsg.content, newText: msg.content })
-        : [{ type: 'unchanged', value: msg.content } as DiffPart];
+        ? computeWordDiff({ oldText: prevMsg.content || '', newText: msg.content || '' })
+        : [{ type: 'unchanged', value: msg.content || '' } as DiffPart];
     }
 
     result.push({
@@ -137,7 +137,7 @@ const sequentialDiffs = computed(() => {
       versionNumber: props.siblings.findIndex(m => m.id === msg.id) + 1,
       timestamp: msg.timestamp,
       modelId: msg.modelId,
-      content: msg.content,
+      content: msg.content || '',
       diffParts,
       isCurrent: msg.id === props.currentMessageId,
       isSkipped,

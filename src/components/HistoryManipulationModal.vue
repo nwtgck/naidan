@@ -53,14 +53,16 @@ watch(() => props.isOpen, async (open) => {
     localSystemPrompt.value = currentChat.value.systemPrompt ? JSON.parse(JSON.stringify(currentChat.value.systemPrompt)) : undefined;
 
     // Deep copy current branch to editable state with localIds
-    editableMessages.value = activeMessages.value.map(m => ({
-      localId: generateId(),
-      role: m.role,
-      content: m.content,
-      modelId: m.modelId,
-      thinking: m.thinking,
-      attachments: m.attachments ? [...m.attachments] : undefined
-    }));
+    editableMessages.value = activeMessages.value
+      .filter(m => m.role !== 'tool') // Filter out tool nodes from Super Edit
+      .map(m => ({
+        localId: generateId(),
+        role: m.role as 'user' | 'assistant' | 'system',
+        content: m.content || '',
+        modelId: m.modelId,
+        thinking: m.thinking,
+        attachments: m.attachments ? [...m.attachments] : undefined
+      }));
 
     // Generate preview URLs for existing attachments
     for (const msg of editableMessages.value) {
@@ -101,7 +103,7 @@ function predictNextRole(index: number): 'user' | 'assistant' {
   if (editableMessages.value.length === 0) return 'user';
 
   if (index >= 0 && index < editableMessages.value.length) {
-    const prevRole = editableMessages.value[index]!.role;
+    const prevRole = editableMessages.value[index]!.role as 'user' | 'assistant' | 'system';
     switch (prevRole) {
     case 'user': return 'assistant';
     case 'assistant': return 'user';
@@ -114,7 +116,7 @@ function predictNextRole(index: number): 'user' | 'assistant' {
   }
 
   if (index === -1 && editableMessages.value.length > 0) {
-    const nextRole = editableMessages.value[0]!.role;
+    const nextRole = editableMessages.value[0]!.role as 'user' | 'assistant' | 'system';
     switch (nextRole) {
     case 'user': return 'assistant';
     case 'assistant': return 'user';

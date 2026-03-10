@@ -182,7 +182,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       onChunk('A-End');
     });
 
-    const sendPromiseA = sendMessage('Start A');
+    const sendPromiseA = sendMessage({ content: 'Start A' });
     await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chatAId);
 
@@ -195,7 +195,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       onChunk('B-Response');
     });
 
-    const sendPromiseB = sendMessage('Start B');
+    const sendPromiseB = sendMessage({ content: 'Start B' });
     await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chatBId);
 
@@ -232,7 +232,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     });
 
     // 2. Start generation
-    const sendPromise = sendMessage('Stay in group');
+    const sendPromise = sendMessage({ content: 'Stay in group' });
     await waitForRegistry(chatAId);
 
     // 3. Simulate Tab B moving Chat A into a group
@@ -266,7 +266,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       await p;
     });
 
-    const sendPromise = sendMessage('Rename me');
+    const sendPromise = sendMessage({ content: 'Rename me' });
     await waitForRegistry(chatAId);
 
     // Manual rename happens while streaming
@@ -295,7 +295,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       await p;
     });
 
-    const sendPromise = sendMessage('Delete me');
+    const sendPromise = sendMessage({ content: 'Delete me' });
     await waitForRegistry(chatAId);
 
     // Delete chat while it's still generating in background
@@ -322,7 +322,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       onChunk('A...');
       await pA;
     });
-    const sendA = sendMessage('A');
+    const sendA = sendMessage({ content: 'A' });
     await waitForRegistry(chatAId);
 
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
@@ -334,7 +334,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       onChunk('B...');
       await pB;
     });
-    const sendB = sendMessage('B');
+    const sendB = sendMessage({ content: 'B' });
     await waitForRegistry(chatBId);
 
     // 2. Perform global delete
@@ -366,7 +366,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       onChunk('A...');
       await pA;
     });
-    const sendA = sendMessage('A');
+    const sendA = sendMessage({ content: 'A' });
     await waitForRegistry(chatAId);
 
     // 2. Switch away from A
@@ -408,7 +408,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       });
 
     // 2. Start generation (response finishes, title gen starts and waits)
-    const sendPromise = sendMessage('Topic');
+    const sendPromise = sendMessage({ content: 'Topic' });
     await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chatAId);
     await vi.waitUntil(() => mockLlmChat.mock.calls.length >= 2); // Wait for title gen to start
@@ -443,7 +443,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       await p;
     });
 
-    const sendPromise = sendMessage('Moving target');
+    const sendPromise = sendMessage({ content: 'Moving target' });
     await waitForRegistry(chatAId);
 
     // 2. Move to Group B
@@ -485,7 +485,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     expect(currentChat.value?.id).toBe(chatBId);
 
     // 3. Trigger error in background Chat A
-    const sendPromiseA = sendMessage('Fail in background', null, [], chatA_initial);
+    const sendPromiseA = sendMessage({ content: 'Fail in background', parentId: null, attachments: [], chatTarget: chatA_initial });
 
     // 4. Verification: Toast should be called (done via mock)
     await sendPromiseA;
@@ -512,7 +512,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       await pA;
       if (signal?.aborted) throw new Error('Aborted');
     });
-    const sendA = sendMessage('A');
+    const sendA = sendMessage({ content: 'A' });
     await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chatAId);
 
@@ -533,7 +533,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       });
     });
 
-    const sendB = sendMessage('B');
+    const sendB = sendMessage({ content: 'B' });
     await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chatBId);
 
@@ -568,10 +568,10 @@ describe('useChat Concurrency & Stale State Protection', () => {
     mockListModels.mockReturnValueOnce(modelPromise);
 
     // First send starts and waits for models
-    const p1 = sendMessage('First');
+    const p1 = sendMessage({ content: 'First' });
 
     // Second send immediately - should be ignored because first is 'processing'
-    const p2 = sendMessage('Second');
+    const p2 = sendMessage({ content: 'Second' });
 
     resolveModels!(['gpt-4']);
     await Promise.all([p1, p2]);
@@ -601,7 +601,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
       onChunk('A-End');
     });
 
-    const sendA = sendMessage('Message A');
+    const sendA = sendMessage({ content: 'Message A' });
     await waitForRegistry(chatAId);
 
     // 2. Create Chat B while A is still streaming
@@ -620,7 +620,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     });
 
     // Pass chatB explicitly to sendMessage
-    const sendB = sendMessage('Message B', null, [], chatB as any);
+    const sendB = sendMessage({ content: 'Message B', parentId: null, attachments: [], chatTarget: chatB as any });
 
     // 4. Verify both are active
     await pBStarted;

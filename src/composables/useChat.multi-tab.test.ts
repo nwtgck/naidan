@@ -162,7 +162,7 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
     });
 
-    const sendP = chatStoreB.sendMessage('Reply to me');
+    const sendP = chatStoreB.sendMessage({ content: 'Reply to me' });
 
     // 2. Tab A renames the chat
     // This updates the ChatMeta

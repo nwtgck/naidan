@@ -48,6 +48,7 @@ export const roleToDomain = (dto: RoleDto): Role => {
   case 'user': return 'user';
   case 'assistant': return 'assistant';
   case 'system': return 'system';
+  case 'tool': return 'tool';
   default: throw new Error(`Unknown role: ${dto}`);
   }
 };
@@ -338,31 +339,53 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
     return {
       ...common,
       role: 'user',
+      content: dto.content,
       attachments: dto.attachments?.map(attachmentToDomain),
       thinking: undefined,
       error: undefined,
       modelId: undefined,
       lmParameters: lmParametersToDomain(dto.lmParameters),
+      toolCalls: undefined,
+      results: undefined,
     };
   case 'assistant':
     return {
       ...common,
       role: 'assistant',
+      content: dto.content,
       attachments: undefined,
       thinking: dto.thinking,
       error: undefined,
       modelId: dto.modelId,
       lmParameters: lmParametersToDomain(dto.lmParameters),
+      toolCalls: dto.toolCalls,
+      results: undefined,
     };
   case 'system':
     return {
       ...common,
       role: 'system',
+      content: dto.content,
       attachments: undefined,
       thinking: undefined,
       error: undefined,
       modelId: undefined,
       lmParameters: undefined,
+      toolCalls: undefined,
+      results: undefined,
+    };
+  case 'tool':
+    return {
+      ...common,
+      role: 'tool',
+      content: undefined,
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+      toolCalls: undefined,
+      results: dto.results,
     };
   default: {
     const _ex: never = dto;
@@ -386,28 +409,49 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
     return {
       ...common,
       role: 'user',
+      content: domain.content,
       attachments: domain.attachments?.map(attachmentToDto),
       thinking: undefined,
       modelId: undefined,
       lmParameters: lmParametersToDto(domain.lmParameters),
+      toolCalls: undefined,
+      results: undefined,
     };
   case 'assistant':
     return {
       ...common,
       role: 'assistant',
+      content: domain.content,
       attachments: undefined,
       thinking: domain.thinking,
       modelId: domain.modelId,
       lmParameters: lmParametersToDto(domain.lmParameters),
+      toolCalls: domain.toolCalls,
+      results: undefined,
     };
   case 'system':
     return {
       ...common,
       role: 'system',
+      content: domain.content,
       attachments: undefined,
       thinking: undefined,
       modelId: undefined,
       lmParameters: undefined,
+      toolCalls: undefined,
+      results: undefined,
+    };
+  case 'tool':
+    return {
+      ...common,
+      role: 'tool',
+      content: undefined,
+      attachments: undefined,
+      thinking: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+      toolCalls: undefined,
+      results: domain.results,
     };
   default: {
     const _ex: never = domain;
@@ -452,6 +496,8 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
           stop: undefined,
           reasoning: { effort: undefined }
         },
+        toolCalls: undefined,
+        results: undefined,
       } as AssistantMessageNode;
     case 'user':
       return {
@@ -470,6 +516,8 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
           stop: undefined,
           reasoning: { effort: undefined }
         },
+        toolCalls: undefined,
+        results: undefined,
       } as UserMessageNode;
     case 'system':
       return {
@@ -480,7 +528,11 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
         error: undefined,
         modelId: undefined,
         lmParameters: undefined,
+        toolCalls: undefined,
+        results: undefined,
       } as SystemMessageNode;
+    case 'tool':
+      throw new Error('Tool role migration not implemented for legacy messages');
     default: {
       const _ex: never = m.role;
       throw new Error(`Unhandled role: ${_ex}`);
@@ -743,7 +795,7 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
     }) ?? [],
     lmParameters: lmParametersToDomain(rest.lmParameters),
     experimental: experimental ? {
-      markdownRendering: experimental.markdownRendering ?? undefined
+      markdownRendering: experimental.markdownRendering ?? 'block_markdown'
     } : undefined,
   };
 };
@@ -788,7 +840,7 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
     systemPrompt: rest.systemPrompt,
     lmParameters: lmParametersToDto(rest.lmParameters),
     experimental: experimental ? {
-      markdownRendering: experimental.markdownRendering ?? undefined
+      markdownRendering: experimental.markdownRendering
     } : undefined,
   };
 };

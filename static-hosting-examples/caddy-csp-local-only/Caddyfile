@@ -1,0 +1,11 @@
+:5536 {
+	root * /usr/share/caddy
+	file_server
+	try_files {path} /index.html
+
+	header {
+		# Hardened Content Security Policy (CSP)
+		# - connect-src 'self' http://localhost:* http://127.0.0.1:* : ONLY allow connections to the same origin and LOCAL APIs
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'; form-action 'none';"
+	}
+}

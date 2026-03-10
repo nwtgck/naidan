@@ -66,7 +66,7 @@ describe('useChat Image Generation', () => {
     chatStore.registerLiveInstance(chat);
     chatStore.toggleImageMode({ chatId: 'chat-1' });
 
-    const success = await chatStore.sendMessage('draw a cat', null, [], chat);
+    const success = await chatStore.sendMessage({ content: 'draw a cat', parentId: null, attachments: [], chatTarget: chat });
     expect(success).toBe(true);
 
     const userMessage = chat.root.items[0];

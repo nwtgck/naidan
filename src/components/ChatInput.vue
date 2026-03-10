@@ -180,7 +180,7 @@ function handleUpdateImageModel(modelId: string) {
 
 async function fetchModels() {
   if (currentChat.value) {
-    await chatStore.fetchAvailableModels(currentChat.value.id);
+    await chatStore.fetchAvailableModels({ chatId: currentChat.value.id });
   }
 }
 
@@ -534,7 +534,7 @@ async function handleSend() {
   // Use resolvedSettings if available (correctly inherits), otherwise fallback to currentChat's own parameters
   const lmParameters = toRaw(chatStore.resolvedSettings?.value?.lmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
 
-  const success = await chatStore.sendMessage(text, undefined, currentAttachments, undefined, lmParameters as LmParameters);
+  const success = await chatStore.sendMessage({ content: text, parentId: undefined, attachments: currentAttachments, chatTarget: undefined, lmParameters: lmParameters as LmParameters });
 
   if (success) {
     if (currentChat.value?.id === sendingChatId) {

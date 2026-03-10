@@ -147,7 +147,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       blob: new Blob(['fake image'], { type: 'image/png' })
     };
 
-    await sendMessage('Hello', null, [mockAttachment], chatObj!);
+    await sendMessage({ content: 'Hello', parentId: null, attachments: [mockAttachment], chatTarget: chatObj! });
 
     const chat = await storageService.loadChat(newChat!.id);
     const message = chat?.root.items[0];
@@ -176,7 +176,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       blob: new Blob(['fake image'], { type: 'image/png' })
     };
 
-    await sendMessage('Hello', null, [mockAttachment], chatObj!);
+    await sendMessage({ content: 'Hello', parentId: null, attachments: [mockAttachment], chatTarget: chatObj! });
 
     const chat = await storageService.loadChat(newChat!.id);
     const message = chat?.root.items[0];
@@ -216,7 +216,7 @@ describe('useChat - Attachment & Migration Logic', () => {
     };
 
     // 1. Send in LocalStorage mode
-    await sendMessage('Initial message', null, [mockAttachment], chatObj);
+    await sendMessage({ content: 'Initial message', parentId: null, attachments: [mockAttachment], chatTarget: chatObj });
     const initialMsg = chatObj.root.items[0];
     expect(initialMsg?.attachments).toBeDefined();
     const initialAtts = initialMsg!.attachments!;

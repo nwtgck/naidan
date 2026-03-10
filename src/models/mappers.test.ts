@@ -23,7 +23,9 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
         stop: undefined,
         reasoning: { effort: 'low' }
       },
-      replies: { items: [] }
+      replies: { items: [] },
+      toolCalls: undefined,
+      results: undefined
     };
 
     const domain = messageNodeToDomain(dto) as UserMessageNode;
@@ -56,7 +58,9 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
         stop: undefined,
         reasoning: { effort: 'high' }
       },
-      replies: { items: [] }
+      replies: { items: [] },
+      toolCalls: undefined,
+      results: undefined
     };
 
     const domain = messageNodeToDomain(dto) as AssistantMessageNode;
@@ -81,7 +85,9 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       thinking: undefined,
       modelId: undefined,
       lmParameters: undefined,
-      replies: { items: [] }
+      replies: { items: [] },
+      toolCalls: undefined,
+      results: undefined
     };
 
     const domain = messageNodeToDomain(dto) as SystemMessageNode;

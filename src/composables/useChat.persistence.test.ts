@@ -74,7 +74,7 @@ describe('useChat Persistence Timing', () => {
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
     // First message (User -> Assistant)
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
     // Wait for background generation to finish, which triggers storage.persist
     await vi.waitUntil(() => !chatStore.streaming.value);
 
@@ -89,12 +89,12 @@ describe('useChat Persistence Timing', () => {
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
     // First message
-    await sendMessage('Message 1');
+    await sendMessage({ content: 'Message 1' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(persistMock).toHaveBeenCalledTimes(1);
 
     // Second message
-    await sendMessage('Message 2');
+    await sendMessage({ content: 'Message 2' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(persistMock).toHaveBeenCalledTimes(1); // Still 1
   });
@@ -106,13 +106,13 @@ describe('useChat Persistence Timing', () => {
 
     // Chat 1
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    await sendMessage('Chat 1 Message 1');
+    await sendMessage({ content: 'Chat 1 Message 1' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(persistMock).toHaveBeenCalledTimes(1);
 
     // Chat 2
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    await sendMessage('Chat 2 Message 1');
+    await sendMessage({ content: 'Chat 2 Message 1' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(persistMock).toHaveBeenCalledTimes(1); // Should still be 1 because of module-level session flag
   });

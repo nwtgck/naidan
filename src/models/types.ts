@@ -6,9 +6,11 @@
  * leaking into the core, ensuring structural integrity and preventing data
  * inconsistencies.
  */
+import type { ToolExecutionResult } from '../services/tools/types';
+
 // --- Domain Definitions (Business Logic Layer) ---
 
-export type Role = 'user' | 'assistant' | 'system';
+export type Role = 'user' | 'assistant' | 'system' | 'tool';
 export type StorageType = 'local' | 'opfs' | 'memory';
 export type EndpointType = 'openai' | 'ollama' | 'transformers_js';
 
@@ -55,9 +57,20 @@ export type MultimodalContent =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
 
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 export interface ChatMessage {
   role: string;
   content: string | MultimodalContent[];
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
 }
 
 export interface AttachmentBase {
@@ -76,43 +89,71 @@ export type Attachment =
 
 export type MessageNodeBase = {
   id: string;
-  content: string;
+  content: string | undefined;
   timestamp: number;
   replies: MessageBranch;
 };
 
 export type UserMessageNode = MessageNodeBase & {
   role: 'user';
+  content: string;
   attachments?: Attachment[];
   thinking?: undefined;
   error?: undefined;
   modelId?: undefined;
   lmParameters?: LmParameters;
+  toolCalls?: undefined;
+  results?: undefined;
 };
 
 export type AssistantMessageNode = MessageNodeBase & {
   role: 'assistant';
+  content: string;
   attachments?: undefined;
   thinking?: string;
   error?: string;
   modelId?: string;
   lmParameters?: LmParameters;
+  toolCalls?: ToolCall[];
+  results?: undefined;
 };
 
 export type SystemMessageNode = MessageNodeBase & {
   role: 'system';
+  content: string;
   attachments?: undefined;
   thinking?: undefined;
   error?: undefined;
   modelId?: undefined;
   lmParameters?: undefined;
+  toolCalls?: undefined;
+  results?: undefined;
 };
 
-export type MessageNode = UserMessageNode | AssistantMessageNode | SystemMessageNode;
+export type ToolMessageNode = MessageNodeBase & {
+  role: 'tool';
+  content: undefined;
+  attachments: undefined;
+  thinking: undefined;
+  error: undefined;
+  modelId: undefined;
+  lmParameters: undefined;
+  toolCalls: undefined;
+  results: ToolExecutionResult[];
+};
+
+export type MessageNode = UserMessageNode | AssistantMessageNode | SystemMessageNode | ToolMessageNode;
 
 export type MessageBranch = {
   items: MessageNode[];
 };
+
+export interface CombinedToolCall {
+  id: string; // The toolCallId
+  nodeId: string; // The ToolMessageNode's ID
+  call: ToolCall;
+  result: ToolExecutionResult;
+}
 
 export interface Chat {
   id: string;
@@ -275,7 +316,7 @@ export interface Settings {
   systemPrompt?: string;
   lmParameters?: LmParameters;
   experimental?: {
-    markdownRendering?: 'block_markdown';
+    markdownRendering: 'block_markdown' | 'monolithic_html';
   };
 }
 

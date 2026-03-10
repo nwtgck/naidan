@@ -60,7 +60,7 @@ describe('useChat Reactivity', () => {
     const chat = chatStore.currentChat.value!;
 
     // Start sending
-    void chatStore.sendMessage('Hello');
+    void chatStore.sendMessage({ content: 'Hello' });
 
     // Wait for activeGenerations to have the chat (signals generation started)
     await vi.waitUntil(() => chatStore.__testOnly.activeGenerations.has(chat.id), { timeout: 2000 });

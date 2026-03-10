@@ -81,7 +81,7 @@ describe('useChat Onboarding Trigger', () => {
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any);
 
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
 
     expect(mockIsOnboardingDismissed.value).toBe(false);
   });
@@ -93,7 +93,7 @@ describe('useChat Onboarding Trigger', () => {
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any);
 
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
 
     expect(mockIsOnboardingDismissed.value).toBe(false);
     expect(mockOnboardingDraft.value).toEqual({
@@ -112,7 +112,7 @@ describe('useChat Onboarding Trigger', () => {
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any);
 
-    await sendMessage('Hello');
+    await sendMessage({ content: 'Hello' });
 
     // It should have stopped and triggered onboarding instead of sending
     expect(mockIsOnboardingDismissed.value).toBe(false);
