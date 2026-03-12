@@ -1,9 +1,10 @@
+// MOVE_FILE_START
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { OpenAIProvider } from './llm';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
+import { OpenAIProvider } from './openai';
+import { useGlobalEvents } from '../../composables/useGlobalEvents';
 import { z } from 'zod';
-import type { Tool } from './tools/types';
-import { startMockServer } from './llm-test-utils';
+import type { Tool } from '../tools/types';
+import { startMockServer } from '../../../utils/mock-server';
 
 describe('OpenAIProvider Tool Calls (Integration)', () => {
   const { errorCount, clearEvents } = useGlobalEvents();
@@ -616,3 +617,4 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     expect(toolMessages[1].content).toBe('res_2+2');
   });
 });
+// MOVE_FILE_END

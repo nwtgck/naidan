@@ -1,3 +1,4 @@
+// MOVE_FILE_START
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OllamaProvider } from './llm';
 import { useGlobalEvents } from '../composables/useGlobalEvents';
@@ -306,3 +307,4 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     expect(sentToolCall.function.arguments).toEqual({ a: 123 });
   });
 });
+// MOVE_FILE_END
