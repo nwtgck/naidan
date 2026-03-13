@@ -61,7 +61,6 @@ describe('OpenAIProvider Integration Tests', () => {
     }
   });
 
-  // MOVE_OPENAI_TESTS_START
   describe('OpenAIProvider', () => {
     it('should handle a full streaming conversation', async () => {
       await startServer((_req, res) => {
@@ -465,7 +464,6 @@ describe('OpenAIProvider Integration Tests', () => {
       await expect(chatPromise).rejects.toThrow();
     });
   });
-  // MOVE_OPENAI_TESTS_END
 });
 
 const EMPTY_LM_PARAMETERS = {

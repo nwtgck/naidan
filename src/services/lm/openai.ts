@@ -17,7 +17,6 @@ import { type LLMProvider } from './types';
 
 const { addErrorEvent } = useGlobalEvents();
 
-// MOVE_OPENAI_SCHEMAS_START
 const OpenAIChatChunkSchema = z.object({
   choices: z.array(z.object({
     delta: z.object({
@@ -42,9 +41,7 @@ const OpenAIModelsSchema = z.object({
     id: z.string(),
   })),
 });
-// MOVE_OPENAI_SCHEMAS_END
 
-// MOVE_OPENAI_REQUEST_START
 interface OpenAICompletionRequest {
   model: string;
   messages: ChatMessage[];
@@ -65,9 +62,7 @@ interface OpenAICompletionRequest {
     };
   }[];
 }
-// MOVE_OPENAI_REQUEST_END
 
-// MOVE_OPENAI_PROVIDER_START
 export class OpenAIProvider implements LLMProvider {
   private config: {
     endpoint: string;
@@ -395,4 +390,3 @@ export class OpenAIProvider implements LLMProvider {
     return validated.data.map((m) => m.id);
   }
 }
-// MOVE_OPENAI_PROVIDER_END

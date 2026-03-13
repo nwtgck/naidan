@@ -17,7 +17,6 @@ import { type LLMProvider, UNKNOWN_STEPS } from './types';
 
 const { addErrorEvent } = useGlobalEvents();
 
-// MOVE_OLLAMA_SCHEMAS_START
 const OllamaChatChunkSchema = z.object({
   message: z.object({
     role: z.string().optional(),
@@ -54,9 +53,7 @@ const OllamaImageStreamChunkSchema = z.discriminatedUnion('done', [
     done_reason: z.string().optional(),
   }),
 ]);
-// MOVE_OLLAMA_SCHEMAS_END
 
-// MOVE_OLLAMA_REQUEST_START
 interface OllamaMessage {
   role: string;
   content: string;
@@ -93,9 +90,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
-// MOVE_OLLAMA_REQUEST_END
 
-// MOVE_OLLAMA_PROVIDER_START
 export class OllamaProvider implements LLMProvider {
   private config: {
     endpoint: string;
@@ -671,4 +666,3 @@ export class OllamaProvider implements LLMProvider {
     };
   }
 }
-// MOVE_OLLAMA_PROVIDER_END

@@ -1,7 +1,6 @@
 import type { ChatMessage, LmParameters } from '../../models/types';
 import type { Tool } from '../tools/types';
 
-// MOVE_TYPES_HERE
 export const UNKNOWN_STEPS: unique symbol = Symbol('unknown');
 
 export interface LLMProvider {

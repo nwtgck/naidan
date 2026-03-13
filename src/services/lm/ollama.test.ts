@@ -61,7 +61,6 @@ describe('OllamaProvider Integration Tests', () => {
     }
   });
 
-  // MOVE_OLLAMA_TESTS_START
   describe('OllamaProvider', () => {
     it('should handle streaming with reasoning and content', async () => {
       await startServer((_req, res) => {
@@ -612,7 +611,6 @@ describe('OllamaProvider Integration Tests', () => {
       vi.unstubAllGlobals();
     }, 500);
   });
-  // MOVE_OLLAMA_TESTS_END
 });
 
 const EMPTY_LM_PARAMETERS = {
