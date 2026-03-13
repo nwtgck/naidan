@@ -3,10 +3,10 @@ import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { ref, nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import type { MessageNode, Chat } from '../models/types';
+import type { MessageNode, Chat } from '@/models/types';
 
 
-import { setupScrollToMock } from '../utils/test-utils';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 
 // Mock dependencies

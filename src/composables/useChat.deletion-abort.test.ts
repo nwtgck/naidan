@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 
 // --- Shared Mocks ---
 const mockAddToast = vi.fn();

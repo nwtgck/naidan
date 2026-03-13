@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
-import { usePWAUpdate } from '../composables/usePWAUpdate';
-import { useLayout } from '../composables/useLayout';
+import { usePWAUpdate } from '@/composables/usePWAUpdate';
+import { useLayout } from '@/composables/useLayout';
 
 // Mock usePWAUpdate
 vi.mock('../composables/usePWAUpdate', () => ({

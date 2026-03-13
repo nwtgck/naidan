@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import type { ToolCallRecord } from '../services/tools/types';
+import type { ToolCallRecord } from '@/services/tools/types';
 
 const _enabledToolNames = ref<Set<string>>(new Set());
 const _messageToolCalls = ref<Map<string, ToolCallRecord[]>>(new Map());

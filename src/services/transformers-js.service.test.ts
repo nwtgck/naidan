@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import * as Comlink from 'comlink';
 
 // Mock Worker class

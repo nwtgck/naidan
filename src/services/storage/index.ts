@@ -1,13 +1,13 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot, BinaryObject } from '../../models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot, BinaryObject } from '@/models/types';
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 import { MemoryStorageProvider } from './memory-storage';
 import { checkOPFSSupport } from './opfs-detection';
-import { useGlobalEvents } from '../../composables/useGlobalEvents';
-import { STORAGE_BOOTSTRAP_KEY, SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '../../models/constants';
-import { chatToDto, hierarchyToDomain, hierarchyToDto } from '../../models/mappers';
-import type { MigrationChunkDto } from '../../models/dto';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { STORAGE_BOOTSTRAP_KEY, SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/models/constants';
+import { chatToDto, hierarchyToDomain, hierarchyToDto } from '@/models/mappers';
+import type { MigrationChunkDto } from '@/models/dto';
 import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } from './synchronizer';
 
 /**

@@ -59,6 +59,7 @@
     "@vue/typescript": "^1.8.20",
     "autoprefixer": "^10.4.23",
     "eslint": "^9.39.2",
+    "eslint-plugin-no-relative-import-paths": "^1.6.1",
     "eslint-plugin-vue": "^10.6.2",
     "globals": "^17.0.0",
     "happy-dom": "^20.1.0",

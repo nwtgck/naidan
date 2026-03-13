@@ -1,7 +1,7 @@
-import { generateId } from '../../utils/id';
+import { generateId } from '@/utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
-import type { Chat } from '../../models/types';
+import type { Chat } from '@/models/types';
 
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {

@@ -114,9 +114,12 @@ export default defineConfig(({ mode }) => {
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
     resolve: {
-      alias: isStandalone ? {
-        './transformers-js-loader': path.resolve(__dirname, 'src/services/transformers-js-loader-noop.ts'),
-      } : ({} as Record<string, string>),
+      alias: {
+        '@': path.resolve(__dirname, 'src'),
+        ...(isStandalone ? {
+          './transformers-js-loader': path.resolve(__dirname, 'src/services/transformers-js-loader-noop.ts'),
+        } : {}),
+      },
     },
     plugins: [
       VueRouter({

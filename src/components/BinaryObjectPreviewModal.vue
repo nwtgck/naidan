@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import type { BinaryObject } from '../models/types';
-import { storageService } from '../services/storage';
+import type { BinaryObject } from '@/models/types';
+import { storageService } from '@/services/storage';
 import {
   X, Download, Trash2, ChevronLeft, ChevronRight,
   ZoomIn, ZoomOut,

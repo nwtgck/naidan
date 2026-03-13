@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import DeveloperTab from './DeveloperTab.vue';
-import { usePWAUpdate } from '../composables/usePWAUpdate';
-import { useSettings } from '../composables/useSettings';
-import { useConfirm } from '../composables/useConfirm';
-import { useSampleChat } from '../composables/useSampleChat';
+import { usePWAUpdate } from '@/composables/usePWAUpdate';
+import { useSettings } from '@/composables/useSettings';
+import { useConfirm } from '@/composables/useConfirm';
+import { useSampleChat } from '@/composables/useSampleChat';
 
 // Mock composables
 vi.mock('../composables/usePWAUpdate', () => ({

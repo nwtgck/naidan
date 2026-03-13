@@ -6,7 +6,7 @@ import { ref, nextTick, computed } from 'vue';
 import { Image, Send } from 'lucide-vue-next';
 
 
-import { setupScrollToMock } from '../utils/test-utils';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 
 // Mock useChat singleton

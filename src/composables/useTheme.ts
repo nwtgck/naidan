@@ -1,6 +1,6 @@
 import { watch, onMounted } from 'vue';
 import { usePreferredDark, useStorage } from '@vueuse/core';
-import { STORAGE_KEY_PREFIX } from '../models/constants';
+import { STORAGE_KEY_PREFIX } from '@/models/constants';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 

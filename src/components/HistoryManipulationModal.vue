@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { ref, watch, onUnmounted, computed } from 'vue';
 import draggable from 'vuedraggable';
 import {
@@ -8,11 +8,11 @@ import {
   Paperclip, Image as ImageIcon, History,
   Copy, GripVertical, MessageSquareQuote, Info
 } from 'lucide-vue-next';
-import { useChat } from '../composables/useChat';
-import type { HistoryItem } from '../utils/chat-tree';
-import { useLayout } from '../composables/useLayout';
-import type { Attachment, SystemPrompt } from '../models/types';
-import { storageService } from '../services/storage';
+import { useChat } from '@/composables/useChat';
+import type { HistoryItem } from '@/utils/chat-tree';
+import { useLayout } from '@/composables/useLayout';
+import type { Attachment, SystemPrompt } from '@/models/types';
+import { storageService } from '@/services/storage';
 
 const props = defineProps<{
   isOpen: boolean;

@@ -3,9 +3,9 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { ref, nextTick, reactive } from 'vue';
 import StorageTab from './StorageTab.vue';
 import SettingsModal from './SettingsModal.vue';
-import { useSettings } from '../composables/useSettings';
-import { storageService } from '../services/storage';
-import type { ProviderProfile } from '../models/types';
+import { useSettings } from '@/composables/useSettings';
+import { storageService } from '@/services/storage';
+import type { ProviderProfile } from '@/models/types';
 import { useRouter, useRoute } from 'vue-router';
 
 // --- Mocks ---

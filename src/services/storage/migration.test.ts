@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
-import type { Chat, ChatGroup, Settings } from '../../models/types';
-import { EMPTY_LM_PARAMETERS } from '../../models/types';
-import type { MigrationChunkDto } from '../../models/dto';
+import type { Chat, ChatGroup, Settings } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import type { MigrationChunkDto } from '@/models/dto';
 
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {

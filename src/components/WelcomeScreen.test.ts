@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import WelcomeScreen from './WelcomeScreen.vue';
-import { useSettings } from '../composables/useSettings';
-import type { Settings } from '../models/types';
+import { useSettings } from '@/composables/useSettings';
+import type { Settings } from '@/models/types';
 
 describe('WelcomeScreen.vue', () => {
   const { __testOnly } = useSettings();

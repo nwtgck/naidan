@@ -5,7 +5,7 @@ import {
   ChevronRight, HardDrive, AlertCircle, Braces,
   AlertTriangle, RefreshCw, Eye, EyeOff
 } from 'lucide-vue-next';
-import { useConfirm } from '../composables/useConfirm';
+import { useConfirm } from '@/composables/useConfirm';
 
 const props = defineProps<{
   modelValue: boolean;

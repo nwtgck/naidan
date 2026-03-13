@@ -5,7 +5,7 @@ import { nextTick, ref, reactive, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 
-import { setupScrollToMock } from '../utils/test-utils';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 // Mock router
 const router = createRouter({
@@ -13,7 +13,7 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }],
 });
 
-import type { MessageNode, Chat } from '../models/types';
+import type { MessageNode, Chat } from '@/models/types';
 
 // Mock dependencies
 const mockSendMessage = vi.fn().mockResolvedValue(true);

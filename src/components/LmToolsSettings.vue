@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Calculator } from 'lucide-vue-next';
-import { useChatTools } from '../composables/useChatTools';
+import { useChatTools } from '@/composables/useChatTools';
 
 const { isToolEnabled, toggleTool } = useChatTools();
 

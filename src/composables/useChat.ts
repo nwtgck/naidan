@@ -1,19 +1,19 @@
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy, type ComputedRef } from 'vue';
-import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning } from '../models/types';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
-import { storageService } from '../services/storage';
-import { OpenAIProvider, OllamaProvider, UNKNOWN_STEPS, type LLMProvider } from '../services/llm';
-import { TransformersJsProvider } from '../services/transformers-js-provider';
-import { transformersJsService } from '../services/transformers-js';
+import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { storageService } from '@/services/storage';
+import { OpenAIProvider, OllamaProvider, UNKNOWN_STEPS, type LLMProvider } from '@/services/llm';
+import { TransformersJsProvider } from '@/services/transformers-js-provider';
+import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
 import { useImageGeneration } from './useImageGeneration';
-import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranchIterator, processThinking, createBranchFromMessages, getAllMessages, type HistoryItem } from '../utils/chat-tree';
-import { resolveChatSettings } from '../utils/chat-settings-resolver';
-import { detectLanguage, getTitleSystemPrompt, cleanGeneratedTitle } from '../utils/title-generator';
+import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranchIterator, processThinking, createBranchFromMessages, getAllMessages, type HistoryItem } from '@/utils/chat-tree';
+import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { detectLanguage, getTitleSystemPrompt, cleanGeneratedTitle } from '@/utils/title-generator';
 import {
   SENTINEL_IMAGE_PENDING,
   isImageRequest,
@@ -22,10 +22,10 @@ import {
   createImageResponseMarker,
   stripNaidanSentinels,
   type ImageRequestParams
-} from '../utils/image-generation';
+} from '@/utils/image-generation';
 
 import { useChatTools } from './useChatTools';
-import { ALL_TOOLS } from '../services/tools/registry';
+import { ALL_TOOLS } from '@/services/tools/registry';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 
 const rootItems = ref<SidebarItem[]>([]);

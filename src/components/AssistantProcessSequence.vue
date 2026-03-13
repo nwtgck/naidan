@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { Loader2, Eye, EyeOff, Bird } from 'lucide-vue-next';
-import type { ChatFlowItem, FlowMetadata, SequenceStats } from '../composables/useChatDisplayFlow';
+import type { ChatFlowItem, FlowMetadata, SequenceStats } from '@/composables/useChatDisplayFlow';
 
 const props = withDefaults(defineProps<{
   items: ChatFlowItem[];

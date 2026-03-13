@@ -9,11 +9,11 @@ import SettingsModal from './SettingsModal.vue';
 import AboutTab from './AboutTab.vue';
 import ConnectionTab from './ConnectionTab.vue';
 import { Loader2 } from 'lucide-vue-next';
-import { useSettings } from '../composables/useSettings';
-import { useChat } from '../composables/useChat';
-import { useSampleChat } from '../composables/useSampleChat';
-import { storageService } from '../services/storage';
-import type { ProviderProfile } from '../models/types';
+import { useSettings } from '@/composables/useSettings';
+import { useChat } from '@/composables/useChat';
+import { useSampleChat } from '@/composables/useSampleChat';
+import { storageService } from '@/services/storage';
+import type { ProviderProfile } from '@/models/types';
 
 // --- Mocks ---
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '../services/storage';
-import type { Chat, SidebarItem, Hierarchy } from '../models/types';
+import { storageService } from '@/services/storage';
+import type { Chat, SidebarItem, Hierarchy } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 
 // --- Mocks ---

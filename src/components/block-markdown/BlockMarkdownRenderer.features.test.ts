@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
-import { IMAGE_BLOCK_LANG } from '../../utils/image-generation';
+import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 // Mock navigator.clipboard
 Object.assign(navigator, {

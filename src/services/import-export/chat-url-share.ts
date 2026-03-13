@@ -1,8 +1,8 @@
-import { storageService } from '../storage';
-import { MemoryStorageProvider } from '../storage/memory-storage';
+import { storageService } from '@/services/storage';
+import { MemoryStorageProvider } from '@/services/storage/memory-storage';
 import { ImportExportService, type IImportExportStorage } from './service';
-import { hierarchyToDomain } from '../../models/mappers';
-import type { MessageNode, Settings } from '../../models/types';
+import { hierarchyToDomain } from '@/models/mappers';
+import type { MessageNode, Settings } from '@/models/types';
 
 /**
  * Generates a URL that contains a zipped version of the current chat.

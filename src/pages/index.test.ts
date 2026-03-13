@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import IndexPage from './index.vue';
-import ChatArea from '../components/ChatArea.vue';
+import ChatArea from '@/components/ChatArea.vue';
 
 // Mock ChatArea as it has many dependencies
 vi.mock('../components/ChatArea.vue', () => ({

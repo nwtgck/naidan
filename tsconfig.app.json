@@ -34,7 +34,8 @@
 
     "types": ["node", "unplugin-vue-router/client", "vite-plugin-pwa/client", "vite-plugin-pwa/vue"],
     "paths": {
-      "~/*": ["./src/*"]
+      "~/*": ["./src/*"],
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "./typed-router.d.ts"],

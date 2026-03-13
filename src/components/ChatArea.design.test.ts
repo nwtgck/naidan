@@ -4,9 +4,9 @@ import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatInput from './ChatInput.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
-import { useChat } from '../composables/useChat';
-import { useSettings } from '../composables/useSettings';
-import { setupScrollToMock } from '../utils/test-utils';
+import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 
 vi.mock('../composables/useChat', () => ({

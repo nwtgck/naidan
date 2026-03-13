@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { watch, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { useChat } from '../../composables/useChat';
-import ChatArea from '../../components/ChatArea.vue';
+import { useChat } from '@/composables/useChat';
+import ChatArea from '@/components/ChatArea.vue';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);

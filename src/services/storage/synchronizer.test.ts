@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorageSynchronizer } from './synchronizer';
-import { SYNC_SIGNAL_KEY, SYNC_LOCK_KEY } from '../../models/constants';
+import { SYNC_SIGNAL_KEY, SYNC_LOCK_KEY } from '@/models/constants';
 
 describe('StorageSynchronizer', () => {
   let synchronizer: StorageSynchronizer;

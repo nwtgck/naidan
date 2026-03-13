@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { OllamaProvider } from './ollama';
-import { useGlobalEvents } from '../../composables/useGlobalEvents';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import http from 'http';
 import type { AddressInfo } from 'net';
 

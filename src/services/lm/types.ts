@@ -1,5 +1,5 @@
-import type { ChatMessage, LmParameters } from '../../models/types';
-import type { Tool } from '../tools/types';
+import type { ChatMessage, LmParameters } from '@/models/types';
+import type { Tool } from '@/services/tools/types';
 
 export const UNKNOWN_STEPS: unique symbol = Symbol('unknown');
 

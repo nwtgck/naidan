@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { reactive } from 'vue';
-import type { Chat, ChatGroup, SidebarItem } from '../models/types';
+import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
 
 const mockGetSidebarStructure = vi.fn();
 

@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatInput from './ChatInput.vue';
 import { ref, isRef, reactive, computed } from 'vue';
-import { useChatDraft } from '../composables/useChatDraft';
-import { setupScrollToMock } from '../utils/test-utils';
+import { useChatDraft } from '@/composables/useChatDraft';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 // Define shared refs for the mock
 const mockCurrentChat = ref({

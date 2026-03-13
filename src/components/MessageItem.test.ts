@@ -1,12 +1,12 @@
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
-import type { MessageNode, UserMessageNode, AssistantMessageNode } from '../models/types';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
+import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { Check } from 'lucide-vue-next';
 import { nextTick, ref } from 'vue';
-import { useSettings } from '../composables/useSettings';
+import { useSettings } from '@/composables/useSettings';
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),

@@ -4,8 +4,8 @@ import { ref, nextTick, reactive } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import StorageTab from './StorageTab.vue';
-import { useSettings } from '../composables/useSettings';
-import { useConfirm } from '../composables/useConfirm';
+import { useSettings } from '@/composables/useSettings';
+import { useConfirm } from '@/composables/useConfirm';
 
 // Mock vue-router
 vi.mock('vue-router', () => ({

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveChatSettings, hasChatOverrides, hasGroupOverrides, type ResolvableSettings } from './chat-settings-resolver';
-import type { Chat, ChatGroup } from '../models/types';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
+import type { Chat, ChatGroup } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
 
 describe('resolveChatSettings - System Prompt Edge Cases', () => {
   const globalSettings: ResolvableSettings = {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, onUnmounted, watch } from 'vue';
 import { X, History, Clock, Cpu, ArrowDown, Copy, Check, ArrowRight, RotateCcw, Eye, EyeOff } from 'lucide-vue-next';
-import type { MessageNode } from '../models/types';
-import { computeWordDiff, type DiffPart } from '../utils/diff';
+import type { MessageNode } from '@/models/types';
+import { computeWordDiff, type DiffPart } from '@/utils/diff';
 
 const props = defineProps<{
   isOpen: boolean;

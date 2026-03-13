@@ -4,7 +4,7 @@ import ChatDebugInspector from './ChatDebugInspector.vue';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import { nextTick } from 'vue';
 import { Network } from 'lucide-vue-next';
-import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '../models/types';
+import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '@/models/types';
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({

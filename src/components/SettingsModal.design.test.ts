@@ -3,12 +3,12 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
-import { useSettings } from '../composables/useSettings';
-import { useChat } from '../composables/useChat';
-import { useToast } from '../composables/useToast';
-import { useConfirm } from '../composables/useConfirm';
-import { usePrompt } from '../composables/usePrompt';
-import { useSampleChat } from '../composables/useSampleChat';
+import { useSettings } from '@/composables/useSettings';
+import { useChat } from '@/composables/useChat';
+import { useToast } from '@/composables/useToast';
+import { useConfirm } from '@/composables/useConfirm';
+import { usePrompt } from '@/composables/usePrompt';
+import { useSampleChat } from '@/composables/useSampleChat';
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),

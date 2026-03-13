@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue';
 import { Folder, MessageSquare, Loader2, ChevronRight } from 'lucide-vue-next';
-import { storageService, type ChatSummary } from '../services/storage';
-import { UNTITLED_CHAT_TITLE } from '../models/constants';
-import type { SearchResultItem } from '../composables/useChatSearch';
-import { useChat } from '../composables/useChat';
-import { useGlobalSearch } from '../composables/useGlobalSearch';
+import { storageService, type ChatSummary } from '@/services/storage';
+import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import type { SearchResultItem } from '@/composables/useChatSearch';
+import { useChat } from '@/composables/useChat';
+import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useRouter } from 'vue-router';
-import { scrollIntoViewSafe } from '../utils/dom';
+import { scrollIntoViewSafe } from '@/utils/dom';
 import SearchPreview from './SearchPreview.vue';
 
 const props = defineProps<{

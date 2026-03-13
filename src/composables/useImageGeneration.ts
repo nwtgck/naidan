@@ -1,7 +1,7 @@
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { ref } from 'vue';
-import { OllamaProvider, UNKNOWN_STEPS } from '../services/llm';
-import { storageService } from '../services/storage';
+import { OllamaProvider, UNKNOWN_STEPS } from '@/services/llm';
+import { storageService } from '@/services/storage';
 import {
   getImageGenerationModels,
   SENTINEL_IMAGE_PENDING,
@@ -12,11 +12,11 @@ import {
   getDisplayDimensions,
   type GeneratedImageBlock,
   type ImageRequestParams
-} from '../utils/image-generation';
-import { reencodeImage } from '../utils/image-processing';
-import { naturalSort, sanitizeFilename } from '../utils/string';
-import type { Chat, ChatContent, Attachment } from '../models/types';
-import { findNodeInBranch } from '../utils/chat-tree';
+} from '@/utils/image-generation';
+import { reencodeImage } from '@/utils/image-processing';
+import { naturalSort, sanitizeFilename } from '@/utils/string';
+import type { Chat, ChatContent, Attachment } from '@/models/types';
+import { findNodeInBranch } from '@/utils/chat-tree';
 
 // Shared state across all instances to maintain consistency
 const imageModeMap = ref<Record<string, boolean>>({});

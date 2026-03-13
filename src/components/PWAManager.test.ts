@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import PWAManager from './PWAManager.vue';
-import { usePWAUpdate } from '../composables/usePWAUpdate';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
+import { usePWAUpdate } from '@/composables/usePWAUpdate';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
 
 // 1. Mock the virtual module
 vi.mock('virtual:pwa-register/vue', () => ({

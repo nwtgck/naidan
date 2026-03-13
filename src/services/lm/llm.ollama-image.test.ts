@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { OllamaProvider } from '../llm';
+import { OllamaProvider } from '@/services/llm';
 
 describe('OllamaProvider Image Generation', () => {
   const config = {

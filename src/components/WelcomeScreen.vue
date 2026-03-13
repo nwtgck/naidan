@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ShieldCheck, Download, Ghost } from 'lucide-vue-next';
-import { useSettings } from '../composables/useSettings';
+import { useSettings } from '@/composables/useSettings';
 
 defineProps<{
   hasInput?: boolean

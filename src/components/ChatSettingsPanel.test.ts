@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, reactive, toRef, nextTick, computed } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
-import { useChat } from '../composables/useChat';
-import { useSettings } from '../composables/useSettings';
+import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
 
 // --- Mocks ---
 

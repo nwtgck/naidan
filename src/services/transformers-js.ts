@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink';
-import type { ChatMessage, LmParameters } from '../models/types';
+import type { ChatMessage, LmParameters } from '@/models/types';
 import { createTransformersWorker, createTransformersScannerWorker } from './transformers-js-loader';
 import type { ITransformersJsWorker, ITransformersJsScannerWorker, ProgressInfo, ScanTask } from './transformers-js.types';
 

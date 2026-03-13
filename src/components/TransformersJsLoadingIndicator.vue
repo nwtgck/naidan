@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
-import { transformersJsService } from '../services/transformers-js';
+import { transformersJsService } from '@/services/transformers-js';
 import { BrainCircuit, AlertTriangle, ShieldCheck } from 'lucide-vue-next';
 
 const props = defineProps<{

@@ -1,5 +1,5 @@
 import type { LLMProvider } from './llm';
-import type { ChatMessage, LmParameters } from '../models/types';
+import type { ChatMessage, LmParameters } from '@/models/types';
 import { transformersJsService } from './transformers-js';
 import type { Tool } from './tools/types';
 

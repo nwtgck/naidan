@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
-import { useSettings } from '../composables/useSettings';
+import { useSettings } from '@/composables/useSettings';
 
 // --- Mocks must come BEFORE imports that use them ---
 
@@ -52,8 +52,8 @@ vi.mock('../services/web-speech', () => ({
 
 import MessageItem from './MessageItem.vue';
 import ImageDownloadButton from './ImageDownloadButton.vue';
-import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '../utils/image-generation';
-import { storageService } from '../services/storage';
+import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
+import { storageService } from '@/services/storage';
 
 describe('MessageItem Image Generation', () => {
   const createMessage = (content: string) => ({

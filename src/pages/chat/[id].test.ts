@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import ChatPage from './[id].vue';
-import { useChat } from '../../composables/useChat';
+import { useChat } from '@/composables/useChat';
 import { useRouter } from 'vue-router';
 
 vi.mock('../../composables/useChat', () => ({

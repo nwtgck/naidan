@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '../services/storage';
-import type { Chat, Hierarchy } from '../models/types';
+import { storageService } from '@/services/storage';
+import type { Chat, Hierarchy } from '@/models/types';
 
 /**
  * Multi-Tab Scenario Tests

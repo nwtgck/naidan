@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { Image as ImageIcon, Eye, Globe } from 'lucide-vue-next';
-import { useExternalResourceSettings } from '../../composables/useExternalResourceSettings';
+import { useExternalResourceSettings } from '@/composables/useExternalResourceSettings';
 
 const props = defineProps<{
   src: string;

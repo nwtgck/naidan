@@ -1,20 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useSettings } from '../composables/useSettings';
-import { useChat } from '../composables/useChat';
-import { storageService } from '../services/storage';
-import { checkOPFSSupport } from '../services/storage/opfs-detection';
+import { useSettings } from '@/composables/useSettings';
+import { useChat } from '@/composables/useChat';
+import { storageService } from '@/services/storage';
+import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 import {
   ShieldCheck, CheckCircle2, FileArchive,
   Database, HardDrive, Info, Trash2, Ghost,
   Link, Loader2
 } from 'lucide-vue-next';
-import { useConfirm } from '../composables/useConfirm';
-import { useToast } from '../composables/useToast';
-import { urlImportExportLogic } from '../services/import-export/url-logic';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { useConfirm } from '@/composables/useConfirm';
+import { useToast } from '@/composables/useToast';
+import { urlImportExportLogic } from '@/services/import-export/url-logic';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Lazily load the import/export modal as it is a heavy secondary action, but prefetch it when idle.
 const ImportExportModal = defineAsyncComponentAndLoadOnMounted(() => import('./ImportExportModal.vue'));

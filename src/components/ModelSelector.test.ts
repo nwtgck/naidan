@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ModelSelector from './ModelSelector.vue';
-import { useSettings } from '../composables/useSettings';
+import { useSettings } from '@/composables/useSettings';
 import { ref, nextTick } from 'vue';
 
 // Mock useSettings

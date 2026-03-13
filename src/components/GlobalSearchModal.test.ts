@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import GlobalSearchModal from './GlobalSearchModal.vue';
 import { ref, nextTick } from 'vue';
-import { setupScrollToMock } from '../utils/test-utils';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 // --- Mocks ---
 

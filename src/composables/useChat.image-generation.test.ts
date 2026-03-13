@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '../services/storage';
-import { SENTINEL_IMAGE_PENDING } from '../utils/image-generation';
+import { storageService } from '@/services/storage';
+import { SENTINEL_IMAGE_PENDING } from '@/utils/image-generation';
 import { toRaw } from 'vue';
 
 // Mock LLM

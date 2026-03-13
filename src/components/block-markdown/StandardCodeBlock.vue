@@ -2,7 +2,7 @@
 import { ref, computed, onBeforeUpdate, onUpdated } from 'vue';
 import { highlightCode } from './useMarkdown';
 import { Check, Copy, Terminal, WrapText } from 'lucide-vue-next';
-import { useCodeBlockSettings } from '../../composables/useCodeBlockSettings';
+import { useCodeBlockSettings } from '@/composables/useCodeBlockSettings';
 
 const props = defineProps<{
   code: string;

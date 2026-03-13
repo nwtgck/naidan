@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import ChatArea from '../components/ChatArea.vue';
+import ChatArea from '@/components/ChatArea.vue';
 
 
 defineExpose({

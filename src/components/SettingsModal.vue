@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { ref, watch, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useSettings } from '../composables/useSettings';
-import { useChat } from '../composables/useChat';
-import { useToast } from '../composables/useToast';
-import type { Settings } from '../models/types';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
-import { ChatGroupRecipeSchema } from '../models/recipe';
-import type { ChatGroupRecipe } from '../models/recipe';
-import { parseConcatenatedJson } from '../utils/json-stream-parser';
-import { matchRecipeModels } from '../utils/recipe-matcher';
+import { useSettings } from '@/composables/useSettings';
+import { useChat } from '@/composables/useChat';
+import { useToast } from '@/composables/useToast';
+import type { Settings } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { ChatGroupRecipeSchema } from '@/models/recipe';
+import type { ChatGroupRecipe } from '@/models/recipe';
+import { parseConcatenatedJson } from '@/utils/json-stream-parser';
+import { matchRecipeModels } from '@/utils/recipe-matcher';
 import {
   X, Globe,
   Database, Settings2, BookmarkPlus,
@@ -19,7 +19,7 @@ import {
   Download, BrainCircuit,
   File
 } from 'lucide-vue-next';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Lazily load tabs that are not visible by default, but prefetch them when idle.
 const RecipeImportTab = defineAsyncComponentAndLoadOnMounted(() => import('./RecipeImportTab.vue'));
@@ -34,9 +34,9 @@ const AboutTab = defineAsyncComponentAndLoadOnMounted(() => import('./AboutTab.v
 import ConnectionTab from './ConnectionTab.vue';
 import ThemeToggle from './ThemeToggle.vue';
 
-import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
-import { useLayout } from '../composables/useLayout';
-import { naturalSort } from '../utils/string';
+import { useConfirm } from '@/composables/useConfirm'; // Import useConfirm
+import { useLayout } from '@/composables/useLayout';
+import { naturalSort } from '@/utils/string';
 
 const props = defineProps<{
   isOpen: boolean;

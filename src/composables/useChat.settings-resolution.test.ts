@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { reactive, nextTick } from 'vue';
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 
 // Mock storage
 vi.mock('../services/storage', () => ({

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import logoUrl from '../assets/logo.svg';
+import logoUrl from '@/assets/logo.svg';
 
 interface Props {
   size?: number;

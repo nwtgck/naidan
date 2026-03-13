@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '../../models/types';
+import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/models/types';
 import {
   type ChatMetaDto,
   type ChatGroupDto,
@@ -9,7 +9,7 @@ import {
   SettingsSchemaDto,
   HierarchySchemaDto,
   ChatContentSchemaDto,
-} from '../../models/dto';
+} from '@/models/dto';
 import {
   chatToDomain,
   chatToDto,
@@ -22,7 +22,7 @@ import {
   chatContentToDto,
   chatContentToDomain,
   buildSidebarItemsFromHierarchy,
-} from '../../models/mappers';
+} from '@/models/mappers';
 import { IStorageProvider } from './interface';
 
 /**

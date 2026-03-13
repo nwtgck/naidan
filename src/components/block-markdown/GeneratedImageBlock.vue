@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
-import { GeneratedImageBlockSchema, getDisplayDimensions } from '../../utils/image-generation';
-import { storageService } from '../../services/storage';
+import { GeneratedImageBlockSchema, getDisplayDimensions } from '@/utils/image-generation';
+import { storageService } from '@/services/storage';
 import { Image as ImageIcon, AlertTriangle } from 'lucide-vue-next';
-import ImageDownloadButton from '../ImageDownloadButton.vue';
-import ImageInfoDisplay from '../ImageInfoDisplay.vue';
-import { ImageDownloadHydrator } from '../ImageDownloadHydrator';
-import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '../../composables/useImagePreview';
-import { useGlobalEvents } from '../../composables/useGlobalEvents';
+import ImageDownloadButton from '@/components/ImageDownloadButton.vue';
+import ImageInfoDisplay from '@/components/ImageInfoDisplay.vue';
+import { ImageDownloadHydrator } from '@/components/ImageDownloadHydrator';
+import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '@/composables/useImagePreview';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
 
 const props = defineProps<{
   json: string;

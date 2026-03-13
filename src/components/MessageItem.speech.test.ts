@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
-import { webSpeechService } from '../services/web-speech';
+import { webSpeechService } from '@/services/web-speech';
 import { nextTick } from 'vue';
 
 describe('MessageItem Speech Controls', () => {

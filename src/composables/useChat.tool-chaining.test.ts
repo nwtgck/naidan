@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { useChat } from './useChat';
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 import { reactive, nextTick, computed } from 'vue';
-import type { Chat, SidebarItem, Hierarchy } from '../models/types';
+import type { Chat, SidebarItem, Hierarchy } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 
 // Mock storage service state

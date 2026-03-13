@@ -1,4 +1,4 @@
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { describe, it, expect, vi } from 'vitest';
 import { ChatSchemaDto } from './dto';
 

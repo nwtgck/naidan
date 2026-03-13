@@ -1,12 +1,12 @@
 import { ref, readonly, computed } from 'vue';
-import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, type ProviderProfile } from '../models/types';
-import { storageService } from '../services/storage';
-import { checkOPFSSupport } from '../services/storage/opfs-detection';
-import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
-import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
-import { TransformersJsProvider } from '../services/transformers-js-provider';
-import { transformersJsService } from '../services/transformers-js';
-import { StorageTypeSchemaDto } from '../models/dto';
+import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, type ProviderProfile } from '@/models/types';
+import { storageService } from '@/services/storage';
+import { checkOPFSSupport } from '@/services/storage/opfs-detection';
+import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
+import { OpenAIProvider, OllamaProvider, type LLMProvider } from '@/services/llm';
+import { TransformersJsProvider } from '@/services/transformers-js-provider';
+import { transformersJsService } from '@/services/transformers-js';
+import { StorageTypeSchemaDto } from '@/models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useConfirm } from './useConfirm';
 

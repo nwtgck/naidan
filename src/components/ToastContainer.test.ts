@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ToastContainer from './ToastContainer.vue';
-import { useToast } from '../composables/useToast';
+import { useToast } from '@/composables/useToast';
 
 vi.mock('../composables/useToast', () => ({
   useToast: vi.fn(),

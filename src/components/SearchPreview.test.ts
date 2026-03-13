@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import SearchPreview from './SearchPreview.vue';
 import { ref } from 'vue';
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 
 vi.mock('../services/storage', () => ({
   storageService: {

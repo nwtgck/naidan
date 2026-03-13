@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { watch } from 'vue';
 import { useRegisterSW } from 'virtual:pwa-register/vue';
-import { usePWAUpdate } from '../composables/usePWAUpdate';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
+import { usePWAUpdate } from '@/composables/usePWAUpdate';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
 
 const {
   offlineReady,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, useAttrs, nextTick, getCurrentInstance, watch, type CSSProperties } from 'vue';
 import { Search, RefreshCw, Check, ChevronDown, Loader2, X } from 'lucide-vue-next';
-import { useSettings } from '../composables/useSettings';
+import { useSettings } from '@/composables/useSettings';
 import { useElementBounding, useWindowSize } from '@vueuse/core';
 
 const props = defineProps<{

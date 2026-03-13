@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ImportExportService } from '../import-export/service';
+import { ImportExportService } from '@/services/import-export/service';
 import { StorageService } from './index';
 
 // --- Improved Mocks for OPFS ---

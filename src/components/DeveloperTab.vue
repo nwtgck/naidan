@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { useSampleChat } from '../composables/useSampleChat';
-import { useConfirm } from '../composables/useConfirm';
-import { useSettings } from '../composables/useSettings';
-import { usePWAUpdate } from '../composables/usePWAUpdate';
-import { storageService } from '../services/storage';
+import { useSampleChat } from '@/composables/useSampleChat';
+import { useConfirm } from '@/composables/useConfirm';
+import { useSettings } from '@/composables/useSettings';
+import { usePWAUpdate } from '@/composables/usePWAUpdate';
+import { storageService } from '@/services/storage';
 import { Cpu, FlaskConical, AlertTriangle, Trash2, Zap, RefreshCw } from 'lucide-vue-next';
 
 defineProps<{

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorageService } from './index';
-import { SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '../../models/constants';
+import { SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/models/constants';
 
 // We mock the synchronizer to track calls to withLock and notify
 const { mockWithLock, mockNotify, mockSubscribe } = vi.hoisted(() => ({

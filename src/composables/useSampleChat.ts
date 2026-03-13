@@ -1,9 +1,9 @@
-import { generateId } from '../utils/id';
-import type { Chat, MessageNode } from '../models/types';
-import { storageService } from '../services/storage';
-import sampleContent from '../assets/sample-showcase.md?raw';
+import { generateId } from '@/utils/id';
+import type { Chat, MessageNode } from '@/models/types';
+import { storageService } from '@/services/storage';
+import sampleContent from '@/assets/sample-showcase.md?raw';
 import { useChat } from './useChat';
-import { processThinking } from '../utils/chat-tree';
+import { processThinking } from '@/utils/chat-tree';
 
 export function useSampleChat() {
   const { loadChats, openChat } = useChat();

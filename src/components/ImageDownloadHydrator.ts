@@ -2,9 +2,9 @@ import { render, h as vueH } from 'vue';
 import ImageDownloadButton from './ImageDownloadButton.vue';
 import ImageInfoDisplay from './ImageInfoDisplay.vue';
 import ImageIndexBadge from './ImageIndexBadge.vue';
-import { detectFormat, embedMetadataInPng, embedMetadataInWebp, UNSUPPORTED } from '../utils/image-metadata';
-import { sanitizeFilename } from '../utils/string';
-import type { StorageService } from '../services/storage';
+import { detectFormat, embedMetadataInPng, embedMetadataInWebp, UNSUPPORTED } from '@/utils/image-metadata';
+import { sanitizeFilename } from '@/utils/string';
+import type { StorageService } from '@/services/storage';
 
 /**
  * ImageDownloadHydrator handles the manual attachment of the Vue-based

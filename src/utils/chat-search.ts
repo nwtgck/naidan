@@ -1,4 +1,4 @@
-import type { MessageBranch, MessageNode } from '../models/types';
+import type { MessageBranch, MessageNode } from '@/models/types';
 import { findDeepestLeaf } from './chat-tree';
 
 export interface ContentMatch {

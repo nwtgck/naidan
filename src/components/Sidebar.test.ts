@@ -5,7 +5,7 @@ import ChatGroupActions from './ChatGroupActions.vue';
 import SidebarDebugControls from './SidebarDebugControls.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '../models/types';
+import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '@/models/types';
 
 // --- Shared Mock State ---
 // Using mock prefix to satisfy Vitest hoisting requirements

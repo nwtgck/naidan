@@ -1,4 +1,4 @@
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { describe, it, expect } from 'vitest';
 import { chatToDomain, buildSidebarItemsFromHierarchy, messageNodeToDomain, messageNodeToDto, lmParametersToDomain, lmParametersToDto } from './mappers';
 import type { ChatMeta, ChatGroup, Hierarchy, UserMessageNode, AssistantMessageNode, SystemMessageNode } from './types';

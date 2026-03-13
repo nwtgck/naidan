@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
-import { storageService } from '../services/storage';
-import type { BinaryObject } from '../models/types';
+import { storageService } from '@/services/storage';
+import type { BinaryObject } from '@/models/types';
 import {
   File, Search, ArrowUp, ArrowDown, Download,
   Eye, HardDrive,
   Trash2, RefreshCw, LayoutGrid, List
 } from 'lucide-vue-next';
-import { Semaphore } from '../utils/concurrency';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { Semaphore } from '@/utils/concurrency';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // Lazily load the preview modal since it's only shown after user interaction, but prefetch it when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
-import { useImagePreview } from '../composables/useImagePreview';
-import { useBinaryActions } from '../composables/useBinaryActions';
+import { useImagePreview } from '@/composables/useImagePreview';
+import { useBinaryActions } from '@/composables/useBinaryActions';
 
 const objects = ref<BinaryObject[]>([]);
 const isLoading = ref(true);

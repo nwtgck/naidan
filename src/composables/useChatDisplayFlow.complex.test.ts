@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { computed } from 'vue';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
-import type { MessageNode, Chat } from '../models/types';
+import type { MessageNode, Chat } from '@/models/types';
 
 describe('useChatDisplayFlow complex scenario', () => {
   const createChat = (messages: MessageNode[]) => {

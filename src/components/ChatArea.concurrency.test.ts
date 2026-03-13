@@ -5,7 +5,7 @@ import { nextTick, ref, computed, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 
-import { setupScrollToMock } from '../utils/test-utils';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 // --- Mocks ---
 

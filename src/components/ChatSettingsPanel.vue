@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
-import { useChat } from '../composables/useChat';
-import { useSettings } from '../composables/useSettings';
-import { useLayout } from '../composables/useLayout';
+import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
+import { useLayout } from '@/composables/useLayout';
 import {
   X, Settings2,
   MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus
 } from 'lucide-vue-next';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // IMPORTANT: ModelSelector is used for immediate model override feedback and should not flicker.
 import ModelSelector from './ModelSelector.vue';
@@ -18,11 +18,11 @@ const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./
 // Lazily load upsell UI
 const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
 
-import { ENDPOINT_PRESETS } from '../models/constants';
-import type { Chat } from '../models/types';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
-import { naturalSort } from '../utils/string';
-import { hasChatOverrides } from '../utils/chat-settings-resolver';
+import { ENDPOINT_PRESETS } from '@/models/constants';
+import type { Chat } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { naturalSort } from '@/utils/string';
+import { hasChatOverrides } from '@/utils/chat-settings-resolver';
 
 const props = defineProps<{
   show?: boolean;

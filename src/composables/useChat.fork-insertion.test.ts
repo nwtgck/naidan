@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { ref } from 'vue';
-import { storageService } from '../services/storage';
-import type { SidebarItem } from '../models/types';
+import { storageService } from '@/services/storage';
+import type { SidebarItem } from '@/models/types';
 
 // Mock storage
 vi.mock('../services/storage', () => ({

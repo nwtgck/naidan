@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useLayout } from '../composables/useLayout';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
-import { useOPFSExplorer } from '../composables/useOPFSExplorer';
-import { useRecentChats } from '../composables/useRecentChats';
+import { useLayout } from '@/composables/useLayout';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { useOPFSExplorer } from '@/composables/useOPFSExplorer';
+import { useRecentChats } from '@/composables/useRecentChats';
 import { Terminal, HardDrive, MoreVertical, History } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';
 

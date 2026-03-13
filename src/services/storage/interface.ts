@@ -1,5 +1,5 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '../../models/types';
-import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '../../models/dto';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '@/models/types';
+import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '@/models/dto';
 
 export type { ChatSummary };
 

@@ -27,13 +27,13 @@ const DOMPurify = (() => {
 })();
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
-import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '../models/types';
-import type { FlowMetadata, MessageMode } from '../composables/useChatDisplayFlow';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
+import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '@/models/types';
+import type { FlowMetadata, MessageMode } from '@/composables/useChatDisplayFlow';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
-import { storageService } from '../services/storage';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
-import { sanitizeFilename } from '../utils/string';
+import { storageService } from '@/services/storage';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { sanitizeFilename } from '@/utils/string';
 // IMPORTANT: SpeechControl is used in every message and should be immediately available.
 import SpeechControl from './SpeechControl.vue';
 // IMPORTANT: ImageConjuringLoader is essential for showing image generation progress immediately.
@@ -44,17 +44,17 @@ import MessageThinking from './MessageThinking.vue';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
-import { transformersJsService } from '../services/transformers-js';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { transformersJsService } from '@/services/transformers-js';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
 const ReasoningSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ReasoningSettings.vue'));
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted(() => import('./MessageDiffModal.vue'));
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
-import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '../composables/useImagePreview';
-import { useChat } from '../composables/useChat';
-import { useReasoning } from '../composables/useReasoning';
-import { useLayout } from '../composables/useLayout';
-import { useSettings } from '../composables/useSettings';
+import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '@/composables/useImagePreview';
+import { useChat } from '@/composables/useChat';
+import { useReasoning } from '@/composables/useReasoning';
+import { useLayout } from '@/composables/useLayout';
+import { useSettings } from '@/composables/useSettings';
 import {
   isImageGenerationPending,
   isImageGenerationProcessed,
@@ -67,7 +67,7 @@ import {
   createImageRequestMarker,
   getDisplayDimensions,
   getImageStats
-} from '../utils/image-generation';
+} from '@/utils/image-generation';
 
 const props = withDefaults(defineProps<{
   chatId?: string;

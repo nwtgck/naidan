@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ImportExportService, type IImportExportStorage } from './service';
 import JSZip from 'jszip';
-import type { SettingsDto, ChatMetaDto, ChatGroupDto } from '../../models/dto';
+import type { SettingsDto, ChatMetaDto, ChatGroupDto } from '@/models/dto';
 import type { ImportConfig } from './types';
 import type { Mocked } from 'vitest';
-import type { StorageSnapshot, Settings, ChatMeta } from '../../models/types';
+import type { StorageSnapshot, Settings, ChatMeta } from '@/models/types';
 
 const UUID_G1 = '018d476a-7b3a-73fd-8000-000000000001';
 const UUID_C1 = '018d476a-7b3a-73fd-8000-000000000002';

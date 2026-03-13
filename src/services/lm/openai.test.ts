@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { OpenAIProvider } from './openai';
-import { useGlobalEvents } from '../../composables/useGlobalEvents';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import http from 'http';
 import type { AddressInfo } from 'net';
 

@@ -6,7 +6,7 @@
  * leaking into the core, ensuring structural integrity and preventing data
  * inconsistencies.
  */
-import type { ToolExecutionResult } from '../services/tools/types';
+import type { ToolExecutionResult } from '@/services/tools/types';
 
 // --- Domain Definitions (Business Logic Layer) ---
 

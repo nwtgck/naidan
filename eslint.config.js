@@ -2,6 +2,7 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
+import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
 import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-init.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import requireTestOnlyExport from './eslint-local-rules/require-test-only-export.js';
@@ -72,6 +73,9 @@ export default tseslint.config(
   ...pluginVue.configs['flat/essential'],
   {
     files: ['**/*.ts', '**/*.vue'],
+    plugins: {
+      'no-relative-import-paths': noRelativeImportPaths,
+    },
     languageOptions: {
       parserOptions: {
         parser: tseslint.parser,
@@ -107,6 +111,10 @@ export default tseslint.config(
       'indent': ['warn', 2],
       'brace-style': ['warn', '1tbs', { allowSingleLine: false }],
       'no-trailing-spaces': 'error',
+      'no-relative-import-paths/no-relative-import-paths': [
+        'error',
+        { allowSameFolder: true, rootDir: 'src', prefix: '@' }
+      ],
       // Prevents components (like icons) from disappearing silently due to missing imports.
       // Without this, build succeeds but the component fails to render at runtime.
       'vue/no-undef-components': ['error', {

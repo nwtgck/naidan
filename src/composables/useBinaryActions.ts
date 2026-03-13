@@ -1,4 +1,4 @@
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 import { useConfirm } from './useConfirm';
 import { useImagePreview } from './useImagePreview';
 

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import DebugPanel from './DebugPanel.vue';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
-import { useLayout } from '../composables/useLayout';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { useLayout } from '@/composables/useLayout';
 import { ref } from 'vue';
 
 vi.mock('../composables/useGlobalEvents', () => ({

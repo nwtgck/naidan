@@ -5,12 +5,12 @@ import {
   Image as ImageIcon, Hash, Zap, Cpu,
   SortAsc, SortDesc
 } from 'lucide-vue-next';
-import type { MessageNode, BinaryObject } from '../models/types';
-import { storageService } from '../services/storage';
-import { useBinaryActions } from '../composables/useBinaryActions';
-import { useImagePreview } from '../composables/useImagePreview';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
-import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '../utils/image-generation';
+import type { MessageNode, BinaryObject } from '@/models/types';
+import { storageService } from '@/services/storage';
+import { useBinaryActions } from '@/composables/useBinaryActions';
+import { useImagePreview } from '@/composables/useImagePreview';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageDownloadButton from './ImageDownloadButton.vue';
 

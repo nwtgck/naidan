@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SYNC_SIGNAL_KEY } from '../../models/constants';
+import { SYNC_SIGNAL_KEY } from '@/models/constants';
 
 export const StorageChangeEventSchema = z.discriminatedUnion('type', [
   z.object({

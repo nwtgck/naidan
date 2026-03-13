@@ -1,5 +1,5 @@
-import { generateId } from '../../utils/id';
-import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '../../models/types';
+import { generateId } from '@/utils/id';
+import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '@/models/types';
 import {
   type ChatMetaDto,
   type ChatGroupDto,
@@ -10,7 +10,7 @@ import {
   SettingsSchemaDto,
   HierarchySchemaDto,
   ChatContentSchemaDto,
-} from '../../models/dto';
+} from '@/models/dto';
 import {
   chatToDomain,
   chatToDto,
@@ -25,14 +25,14 @@ import {
   chatContentToDomain,
   buildSidebarItemsFromHierarchy,
   binaryObjectToDomain,
-} from '../../models/mappers';import { IStorageProvider } from './interface';
+} from '@/models/mappers';import { IStorageProvider } from './interface';
 
 import {
   type MigrationStateDto,
   type BinaryShardIndexDto,
   MigrationStateSchemaDto,
   BinaryShardIndexSchemaDto,
-} from '../../models/dto';
+} from '@/models/dto';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>;

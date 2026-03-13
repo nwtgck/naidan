@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Folder, MessageSquare } from 'lucide-vue-next';
-import { UNTITLED_CHAT_TITLE } from '../models/constants';
+import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import RelativeTime from './RelativeTime.vue';
-import type { ChatSummary } from '../models/types';
+import type { ChatSummary } from '@/models/types';
 
 const props = defineProps<{
   chat: ChatSummary & { accessedAt: number };

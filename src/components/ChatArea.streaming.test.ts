@@ -3,10 +3,10 @@ import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { useChat } from '../composables/useChat';
+import { useChat } from '@/composables/useChat';
 
 
-import { setupScrollToMock } from '../utils/test-utils';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 
 // --- Mocks ---

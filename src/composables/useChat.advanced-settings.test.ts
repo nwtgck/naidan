@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { reactive } from 'vue';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
 
 // Mock storage
 vi.mock('../services/storage', () => ({

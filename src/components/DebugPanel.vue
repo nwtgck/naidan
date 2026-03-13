@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
-import { useGlobalEvents, type GlobalEvent } from '../composables/useGlobalEvents';
-import { useOPFSExplorer } from '../composables/useOPFSExplorer';
-import { useLayout } from '../composables/useLayout';
+import { useGlobalEvents, type GlobalEvent } from '@/composables/useGlobalEvents';
+import { useOPFSExplorer } from '@/composables/useOPFSExplorer';
+import { useLayout } from '@/composables/useLayout';
 import {
   Terminal, Trash2, AlertCircle, X, Skull,
   Info, AlertTriangle, Bug, MoreVertical, HardDrive,

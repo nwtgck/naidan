@@ -1,12 +1,12 @@
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import ToolCallGroupItem from './ToolCallGroupItem.vue';
-import type { AssistantMessageNode, CombinedToolCall } from '../models/types';
+import type { AssistantMessageNode, CombinedToolCall } from '@/models/types';
 import { ref } from 'vue';
-import { useSettings } from '../composables/useSettings';
-import type { FlowMetadata } from '../composables/useChatDisplayFlow';
+import { useSettings } from '@/composables/useSettings';
+import type { FlowMetadata } from '@/composables/useChatDisplayFlow';
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),

@@ -2,11 +2,11 @@
 import { ref, computed, onUnmounted, watch } from 'vue';
 import { ChevronRight, ChevronDown, Copy, Check, Image as ImageIcon, File, Cpu, Eye, EyeOff } from 'lucide-vue-next';
 import createDOMPurify from 'dompurify';
-import { storageService } from '../services/storage';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
-import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '../utils/image-generation';
-import type { GeneratedImageBlock } from '../utils/image-generation';
-import type { MessageNode } from '../models/types';
+import { storageService } from '@/services/storage';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
+import type { GeneratedImageBlock } from '@/utils/image-generation';
+import type { MessageNode } from '@/models/types';
 
 const DOMPurify = (() => {
   const t = typeof window;

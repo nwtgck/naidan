@@ -4,8 +4,8 @@
  * It uses the existing theme styles and colors.
  */
 import { computed, onMounted } from 'vue';
-import { useChat } from '../composables/useChat';
-import { usePrint } from '../composables/usePrint';
+import { useChat } from '@/composables/useChat';
+import { usePrint } from '@/composables/usePrint';
 import MessageItem from './MessageItem.vue';
 
 const chatStore = useChat();

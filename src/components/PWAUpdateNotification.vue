@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { RotateCw } from 'lucide-vue-next';
-import { usePWAUpdate } from '../composables/usePWAUpdate';
-import { useLayout } from '../composables/useLayout';
+import { usePWAUpdate } from '@/composables/usePWAUpdate';
+import { useLayout } from '@/composables/useLayout';
 
 const { needRefresh, update } = usePWAUpdate();
 const { isSidebarOpen } = useLayout();

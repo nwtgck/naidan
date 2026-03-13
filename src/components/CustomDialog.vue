@@ -69,7 +69,7 @@
 
 <script setup lang="ts">
 import type { Component } from 'vue';
-import { useLayout } from '../composables/useLayout';
+import { useLayout } from '@/composables/useLayout';
 
 const { setActiveFocusArea } = useLayout();
 

@@ -9,10 +9,10 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
-import { zodToJsonSchema } from '../../utils/llm-tools';
-import type { LmParameters, ChatMessage } from '../../models/types';
-import { useGlobalEvents } from '../../composables/useGlobalEvents';
-import type { Tool } from '../tools/types';
+import { zodToJsonSchema } from '@/utils/llm-tools';
+import type { LmParameters, ChatMessage } from '@/models/types';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import type { Tool } from '@/services/tools/types';
 import { type LLMProvider } from './types';
 
 const { addErrorEvent } = useGlobalEvents();

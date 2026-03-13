@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { OpenAIProvider, OllamaProvider } from '../llm';
+import { OpenAIProvider, OllamaProvider } from '@/services/llm';
 
 describe('LLM Providers - Multimodal Requests', () => {
   beforeEach(() => {

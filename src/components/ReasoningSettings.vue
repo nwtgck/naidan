@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue';
 import { Brain } from 'lucide-vue-next';
-import type { Reasoning } from '../models/types';
+import type { Reasoning } from '@/models/types';
 
 defineOptions({
   name: 'ReasoningSettings'

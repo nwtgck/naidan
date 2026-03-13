@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Hammer, CheckCircle2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-vue-next';
 import { ref } from 'vue';
-import type { ToolCallRecord } from '../services/tools/types';
+import type { ToolCallRecord } from '@/services/tools/types';
 
 const props = defineProps<{
   toolCall: ToolCallRecord;

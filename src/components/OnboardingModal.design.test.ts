@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import OnboardingModal from './OnboardingModal.vue';
-import { useSettings } from '../composables/useSettings';
-import { useToast } from '../composables/useToast';
-import { useTheme } from '../composables/useTheme';
+import { useSettings } from '@/composables/useSettings';
+import { useToast } from '@/composables/useToast';
+import { useTheme } from '@/composables/useTheme';
 
 vi.mock('../services/llm');
 vi.mock('../composables/useSettings', () => ({

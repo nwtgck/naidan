@@ -1,5 +1,5 @@
-import type { Chat, ChatGroup, EndpointType, LmParameters, Reasoning, SystemPrompt } from '../models/types';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
+import type { Chat, ChatGroup, EndpointType, LmParameters, Reasoning, SystemPrompt } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
 
 export interface ResolvableLmParameters {
   temperature?: number;

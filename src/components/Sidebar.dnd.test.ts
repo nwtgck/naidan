@@ -3,9 +3,9 @@ import { mount } from '@vue/test-utils';
 import { ref, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import Sidebar from './Sidebar.vue';
-import { useChat } from '../composables/useChat';
-import { useSettings } from '../composables/useSettings';
-import { useLayout } from '../composables/useLayout';
+import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
+import { useLayout } from '@/composables/useLayout';
 
 vi.mock('../composables/useChat');
 vi.mock('../composables/useSettings');

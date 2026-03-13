@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { LmParameters } from '../models/types';
+import type { LmParameters } from '@/models/types';
 import { RotateCcw, X } from 'lucide-vue-next';
 
 const props = defineProps<{

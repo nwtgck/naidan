@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { ref, nextTick } from 'vue';
-import type { Reasoning } from '../models/types';
+import type { Reasoning } from '@/models/types';
 
 // Mock @vueuse/core for positioning tests
 const mockBounding = {

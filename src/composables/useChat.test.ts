@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { useChat, type AddToastOptions } from './useChat';
-import { storageService } from '../services/storage';
-import { OpenAIProvider } from '../services/llm';
+import { storageService } from '@/services/storage';
+import { OpenAIProvider } from '@/services/llm';
 import { reactive, triggerRef, toRaw } from 'vue';
-import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '../models/types';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
+import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
-import { findRestorationIndex } from '../utils/chat-tree';
+import { findRestorationIndex } from '@/utils/chat-tree';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];

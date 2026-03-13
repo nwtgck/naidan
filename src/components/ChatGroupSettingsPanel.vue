@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
-import { useChat } from '../composables/useChat';
-import { useSettings } from '../composables/useSettings';
-import { useLayout } from '../composables/useLayout';
+import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
+import { useLayout } from '@/composables/useLayout';
 import {
   Settings2,
   MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus,
   ChefHat, Search
 } from 'lucide-vue-next';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
-import { useGlobalSearch } from '../composables/useGlobalSearch';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
+import { useGlobalSearch } from '@/composables/useGlobalSearch';
 
 // IMPORTANT: ModelSelector is used for immediate model override feedback and should not flicker.
 import ModelSelector from './ModelSelector.vue';
@@ -22,11 +22,11 @@ const RecipeExportModal = defineAsyncComponentAndLoadOnMounted(() => import('./R
 // Lazily load upsell UI
 const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
 
-import { ENDPOINT_PRESETS } from '../models/constants';
-import type { ChatGroup } from '../models/types';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
-import { naturalSort } from '../utils/string';
-import { hasGroupOverrides } from '../utils/chat-settings-resolver';
+import { ENDPOINT_PRESETS } from '@/models/constants';
+import type { ChatGroup } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { naturalSort } from '@/utils/string';
+import { hasGroupOverrides } from '@/utils/chat-settings-resolver';
 
 const chatStore = useChat();
 const {

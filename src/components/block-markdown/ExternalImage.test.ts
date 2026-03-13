@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ExternalImage from './ExternalImage.vue';
-import { useExternalResourceSettings } from '../../composables/useExternalResourceSettings';
+import { useExternalResourceSettings } from '@/composables/useExternalResourceSettings';
 
 describe('ExternalImage.vue', () => {
   const { __testOnlyReset } = useExternalResourceSettings();

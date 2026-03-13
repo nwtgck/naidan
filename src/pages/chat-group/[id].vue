@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { useChat } from '../../composables/useChat';
-import ChatGroupSettingsPanel from '../../components/ChatGroupSettingsPanel.vue';
+import { useChat } from '@/composables/useChat';
+import ChatGroupSettingsPanel from '@/components/ChatGroupSettingsPanel.vue';
 
 const route = useRoute();
 const chatStore = useChat();

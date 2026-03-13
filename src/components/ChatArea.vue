@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { useChat } from '../composables/useChat';
-import { useSettings } from '../composables/useSettings';
-import { useLayout } from '../composables/useLayout';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
+import { useLayout } from '@/composables/useLayout';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // IMPORTANT: MessageItem is the core of the chat experience. We import it synchronously
 // to ensure the chat history displays immediately and smoothly without individual components popping in.
@@ -17,13 +17,13 @@ import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
-import type { ChatFlowItem } from '../composables/useChatDisplayFlow';
+import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
-import { useImagePreview } from '../composables/useImagePreview';
-import { useBinaryActions } from '../composables/useBinaryActions';
-import type { LmParameters } from '../models/types';
+import { useImagePreview } from '@/composables/useImagePreview';
+import { useBinaryActions } from '@/composables/useBinaryActions';
+import type { LmParameters } from '@/models/types';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
@@ -39,13 +39,13 @@ import {
   Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap,
   Printer, Link
 } from 'lucide-vue-next';
-import { usePrint } from '../composables/usePrint';
-import { useGlobalSearch } from '../composables/useGlobalSearch';
-import { hasChatOverrides } from '../utils/chat-settings-resolver';
-import { scrollIntoViewSafe } from '../utils/dom';
-import { generateChatShareURL } from '../services/import-export/chat-url-share';
-import { useToast } from '../composables/useToast';
-import { storageService } from '../services/storage';
+import { usePrint } from '@/composables/usePrint';
+import { useGlobalSearch } from '@/composables/useGlobalSearch';
+import { hasChatOverrides } from '@/utils/chat-settings-resolver';
+import { scrollIntoViewSafe } from '@/utils/dom';
+import { generateChatShareURL } from '@/services/import-export/chat-url-share';
+import { useToast } from '@/composables/useToast';
+import { storageService } from '@/services/storage';
 
 
 const chatStore = useChat();

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { ref, nextTick, reactive, toRef } from 'vue';
-import type { ChatGroup } from '../models/types';
+import type { ChatGroup } from '@/models/types';
 
 const mockGroup = reactive<ChatGroup>({
   id: 'g1',
