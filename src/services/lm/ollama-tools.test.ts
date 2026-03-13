@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { OllamaProvider } from './llm';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
+import { OllamaProvider } from '../llm';
+import { useGlobalEvents } from '../../composables/useGlobalEvents';
 import { z } from 'zod';
-import type { Tool } from './tools/types';
-import { startMockServer } from './llm-test-utils';
+import type { Tool } from '../tools/types';
+import { startMockServer } from '../../utils/mock-server';
 
 describe('OllamaProvider Tool Calls (Integration)', () => {
   const { errorCount, clearEvents } = useGlobalEvents();

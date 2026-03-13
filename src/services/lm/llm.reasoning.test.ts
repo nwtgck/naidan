@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { OllamaProvider, OpenAIProvider } from './llm';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
+import { OllamaProvider, OpenAIProvider } from '../llm';
+import { EMPTY_LM_PARAMETERS } from '../../models/types';
 
 // Mock useGlobalEvents
-vi.mock('../composables/useGlobalEvents', () => ({
+vi.mock('../../composables/useGlobalEvents', () => ({
   useGlobalEvents: vi.fn(() => ({
     addErrorEvent: vi.fn(),
   })),
