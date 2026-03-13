@@ -7,7 +7,7 @@ import type { AddressInfo } from 'net';
 describe('OllamaProvider Integration Tests', () => {
   let server: http.Server | null = null;
   let baseUrl: string;
-  const { errorCount, clearEvents, events } = useGlobalEvents();
+  const { errorCount, clearEvents } = useGlobalEvents();
 
   let capturedRequests: {
     url?: string;

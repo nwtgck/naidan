@@ -13,7 +13,7 @@ export interface LLMProvider {
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
     onToolResult?: (params: {
       id: string;
-      result: | { status: 'success'; content: string } | { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string };
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
