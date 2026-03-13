@@ -1,4 +1,4 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
 export const touch: CommandDefinition = {
   meta: {
@@ -19,16 +19,19 @@ export const touch: CommandDefinition = {
       try {
         const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
         const exists = await context.vfs.exists({ path: fullPath });
-        
+
         if (!exists) {
           /** Create empty file */
-          const emptyStream = new ReadableStream({ start(c) { c.close(); } });
+          const emptyStream = new ReadableStream({ start(c) {
+            c.close();
+          } });
           await context.vfs.writeFile({ path: fullPath, stream: emptyStream });
         } else {
           /** Update timestamp: for now we just re-read/write or ignore as OPFS doesn't expose easy utime */
         }
-      } catch (e: any) {
-        await text.error({ text: `touch: ${f}: ${e.message}\n` });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await text.error({ text: `touch: ${f}: ${message}\n` });
       }
     }
 

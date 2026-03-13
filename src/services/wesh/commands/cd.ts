@@ -1,4 +1,4 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
 export const cd: CommandDefinition = {
   meta: {
@@ -19,15 +19,23 @@ export const cd: CommandDefinition = {
       }
 
       const res = await context.vfs.resolve({ path: fullPath });
-      if (res.handle.kind !== 'directory') {
+      switch (res.handle.kind) {
+      case 'directory':
+        break;
+      case 'file':
         throw new Error(`Not a directory: ${target}`);
+      default: {
+        const _ex: never = res.handle.kind;
+        throw new Error(`Unexpected handle kind: ${_ex}`);
+      }
       }
 
       context.setCwd({ path: res.fullPath });
       return { exitCode: 0, data: undefined, error: undefined };
-    } catch (e: any) {
-      await text.error({ text: `cd: ${target}: ${e.message}\n` });
-      return { exitCode: 1, data: undefined, error: e.message };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      await text.error({ text: `cd: ${target}: ${message}\n` });
+      return { exitCode: 1, data: undefined, error: message };
     }
   },
 };

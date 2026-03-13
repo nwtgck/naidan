@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const rm: CommandDefinition = {
   meta: {
@@ -27,9 +27,10 @@ export const rm: CommandDefinition = {
       try {
         const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
         await context.vfs.rm({ path: fullPath, recursive });
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!force) {
-          await text.error({ text: `rm: cannot remove '${p}': ${e.message}\n` });
+          const message = e instanceof Error ? e.message : String(e);
+          await text.error({ text: `rm: cannot remove '${p}': ${message}\n` });
         }
       }
     }

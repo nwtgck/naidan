@@ -20,32 +20,32 @@ export class WeshService {
   }
 
   /**
-   * Initializes the Wesh shell with an explicit root directory handle 
+   * Initializes the Wesh shell with an explicit root directory handle
    * and an optional list of external mounts.
    */
-  async init({ 
-    rootHandle, 
+  async init({
+    rootHandle,
     user = 'user',
     initialEnv = {},
     mounts = [],
-  }: { 
+  }: {
     rootHandle: FileSystemDirectoryHandle;
     user?: string;
     initialEnv?: Record<string, string>;
     mounts?: WeshMount[];
   }): Promise<void> {
-    this.shell = new Wesh({ 
-      rootHandle, 
-      user, 
-      initialEnv 
+    this.shell = new Wesh({
+      rootHandle,
+      user,
+      initialEnv
     });
 
     /** Apply external mounts */
     for (const mount of mounts) {
-      this.shell.vfs.mount({ 
-        path: mount.path, 
-        handle: mount.handle, 
-        readOnly: mount.readOnly 
+      this.shell.vfs.mount({
+        path: mount.path,
+        handle: mount.handle,
+        readOnly: mount.readOnly
       });
     }
   }

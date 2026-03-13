@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const echo: CommandDefinition = {
   meta: {
@@ -16,7 +16,7 @@ export const echo: CommandDefinition = {
 
     const text = context.text();
     await text.print({ text: positional.join(' ') });
-    
+
     if (!flags.n) {
       await text.print({ text: '\n' });
     }

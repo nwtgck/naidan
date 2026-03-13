@@ -1,4 +1,4 @@
-import type { CommandDefinition } from '../types';
+import type { CommandDefinition } from '@/services/wesh/types';
 import { ls } from './ls';
 import { cd } from './cd';
 import { cat } from './cat';

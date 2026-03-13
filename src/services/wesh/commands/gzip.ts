@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const gzip: CommandDefinition = {
   meta: {
@@ -25,16 +25,18 @@ export const gzip: CommandDefinition = {
       try {
         const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
         const input = await context.vfs.readFile({ path: fullPath });
-        
+
         /** Use native CompressionStream */
         const compressor = new CompressionStream('gzip');
-        const compressedStream = input.pipeThrough(compressor);
-        
+        // @ts-expect-error - CompressionStream/DecompressionStream typing mismatch in some environments
+        const compressedStream = input.pipeThrough(compressor) as ReadableStream<Uint8Array>;
+
         const gzPath = fullPath + '.gz';
         await context.vfs.writeFile({ path: gzPath, stream: compressedStream });
         await context.vfs.rm({ path: fullPath, recursive: false });
-      } catch (e: any) {
-        await text.error({ text: `gzip: ${f}: ${e.message}\n` });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await text.error({ text: `gzip: ${f}: ${message}\n` });
       }
     }
 

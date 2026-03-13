@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const wc: CommandDefinition = {
   meta: {
@@ -17,12 +17,12 @@ export const wc: CommandDefinition = {
     const showAll = !flags.l && !flags.w && !flags.c;
     const text = context.text();
 
-    const process = async ({ 
-      input, 
-      label 
-    }: { 
-      input: AsyncIterable<string>, 
-      label?: string 
+    const process = async ({
+      input,
+      label
+    }: {
+      input: AsyncIterable<string>,
+      label?: string
     }) => {
       let lines = 0;
       let words = 0;
@@ -51,7 +51,7 @@ export const wc: CommandDefinition = {
           const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
           const stream = await context.vfs.readFile({ path: fullPath });
           const decoder = new TextDecoder();
-          
+
           const lineReader: AsyncIterable<string> = {
             async *[Symbol.asyncIterator]() {
               const reader = stream.getReader();
@@ -72,8 +72,9 @@ export const wc: CommandDefinition = {
             }
           };
           await process({ input: lineReader, label: f });
-        } catch (e: any) {
-          await text.error({ text: `wc: ${f}: ${e.message}\n` });
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          await text.error({ text: `wc: ${f}: ${message}\n` });
         }
       }
     }

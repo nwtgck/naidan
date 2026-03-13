@@ -33,10 +33,10 @@ export class VFS implements IVirtualFileSystem {
 
     /** Intercept virtual devices */
     if (normalized.startsWith('/dev/')) {
-      return { 
-        handle: { name: normalized.split('/').pop()!, kind: 'file' } as FileSystemHandle, 
-        readOnly: false, 
-        fullPath: normalized 
+      return {
+        handle: { name: normalized.split('/').pop()!, kind: 'file' } as FileSystemHandle,
+        readOnly: false,
+        fullPath: normalized
       };
     }
 
@@ -80,13 +80,19 @@ export class VFS implements IVirtualFileSystem {
     }
 
     const { handle } = await this.resolve({ path });
-    if (handle.kind !== 'directory') {
+    switch (handle.kind) {
+    case 'directory':
+      break;
+    case 'file':
       throw new Error(`Not a directory: ${path}`);
+    default: {
+      const _ex: never = handle.kind;
+      throw new Error(`Unexpected handle kind: ${_ex}`);
+    }
     }
 
     const dirHandle = handle as FileSystemDirectoryHandle;
     const entries: Array<{ name: string; kind: 'file' | 'directory' }> = [];
-    // @ts-ignore
     for await (const [name, entry] of dirHandle.entries()) {
       entries.push({ name, kind: entry.kind });
     }
@@ -97,11 +103,15 @@ export class VFS implements IVirtualFileSystem {
     const normalized = this.normalizePath({ path });
 
     if (normalized === '/dev/null') {
-      return new ReadableStream({ start(c) { c.close(); } });
+      return new ReadableStream({ start(c) {
+        c.close();
+      } });
     }
     if (normalized === '/dev/zero' || normalized === '/dev/full') {
       return new ReadableStream({
-        pull(c) { c.enqueue(new Uint8Array(1024).fill(0)); }
+        pull(c) {
+          c.enqueue(new Uint8Array(1024).fill(0));
+        }
       });
     }
     if (normalized === '/dev/random' || normalized === '/dev/urandom') {
@@ -115,8 +125,15 @@ export class VFS implements IVirtualFileSystem {
     }
 
     const { handle } = await this.resolve({ path });
-    if (handle.kind !== 'file') {
+    switch (handle.kind) {
+    case 'file':
+      break;
+    case 'directory':
       throw new Error(`Not a file: ${path}`);
+    default: {
+      const _ex: never = handle.kind;
+      throw new Error(`Unexpected handle kind: ${_ex}`);
+    }
     }
     const file = await (handle as FileSystemFileHandle).getFile();
     return file.stream() as ReadableStream<Uint8Array>;
@@ -148,9 +165,17 @@ export class VFS implements IVirtualFileSystem {
     });
 
     if (readOnly) throw new Error(`Read-only file system: ${path}`);
-    if (handle.kind !== 'file') throw new Error(`Not a file: ${path}`);
+    switch (handle.kind as 'file' | 'directory') {
+    case 'file':
+      break;
+    case 'directory':
+      throw new Error(`Not a file: ${path}`);
+    default: {
+      const _ex: never = handle.kind as never;
+      throw new Error(`Unexpected handle kind: ${_ex}`);
+    }
+    }
 
-    // @ts-ignore
     const writable = await (handle as FileSystemFileHandle).createWritable();
     await stream.pipeTo(writable);
   }
@@ -162,11 +187,17 @@ export class VFS implements IVirtualFileSystem {
     }
 
     const { handle, readOnly } = await this.resolve({ path });
-    if (handle.kind === 'file') {
+    switch (handle.kind) {
+    case 'file': {
       const file = await (handle as FileSystemFileHandle).getFile();
       return { size: file.size, kind: 'file', readOnly };
-    } else {
+    }
+    case 'directory':
       return { size: 0, kind: 'directory', readOnly };
+    default: {
+      const _ex: never = handle.kind;
+      throw new Error(`Unexpected handle kind: ${_ex}`);
+    }
     }
   }
 
@@ -180,9 +211,18 @@ export class VFS implements IVirtualFileSystem {
       const checkPath = currentPath + '/' + nextPart;
       try {
         const res = await this.resolve({ path: checkPath });
-        if (res.handle.kind !== 'directory') throw new Error(`Path component is a file: ${checkPath}`);
+        switch (res.handle.kind) {
+        case 'directory':
+          break;
+        case 'file':
+          throw new Error(`Path component is a file: ${checkPath}`);
+        default: {
+          const _ex: never = res.handle.kind;
+          throw new Error(`Unexpected handle kind: ${_ex}`);
+        }
+        }
         currentPath = checkPath;
-      } catch (e) {
+      } catch (e: unknown) {
         if (!recursive && i < parts.length - 1) throw e;
         const parent = await this.resolve({ path: currentPath || '/' });
         if (parent.readOnly) throw new Error(`Read-only file system: ${currentPath || '/'}`);

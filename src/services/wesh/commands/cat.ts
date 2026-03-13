@@ -1,4 +1,4 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
 export const cat: CommandDefinition = {
   meta: {
@@ -22,8 +22,9 @@ export const cat: CommandDefinition = {
       try {
         const stream = await context.vfs.readFile({ path: f.startsWith('/') ? f : `${context.cwd}/${f}` });
         await stream.pipeTo(context.stdout, { preventClose: true });
-      } catch (e: any) {
-        await text.error({ text: `cat: ${f}: ${e.message}\n` });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await text.error({ text: `cat: ${f}: ${message}\n` });
       }
     }
 

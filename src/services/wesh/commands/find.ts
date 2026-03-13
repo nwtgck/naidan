@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const find: CommandDefinition = {
   meta: {
@@ -24,7 +24,7 @@ export const find: CommandDefinition = {
         const entries = await context.vfs.readDir({ path: currentPath });
         for (const entry of entries) {
           const fullPath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`;
-          
+
           let matches = true;
           if (namePattern) {
             /** Very simple glob-to-regex conversion */
@@ -32,20 +32,39 @@ export const find: CommandDefinition = {
             if (!globRegex.test(entry.name)) matches = false;
           }
           if (typeFilter) {
-            if (typeFilter === 'f' && entry.kind !== 'file') matches = false;
-            if (typeFilter === 'd' && entry.kind !== 'directory') matches = false;
+            switch (entry.kind) {
+            case 'file':
+              if (typeFilter !== 'f') matches = false;
+              break;
+            case 'directory':
+              if (typeFilter !== 'd') matches = false;
+              break;
+            default: {
+              const _ex: never = entry.kind;
+              throw new Error(`Unexpected entry kind: ${_ex}`);
+            }
+            }
           }
 
           if (matches) {
             await text.print({ text: fullPath + '\n' });
           }
 
-          if (entry.kind === 'directory') {
+          switch (entry.kind) {
+          case 'directory':
             await walk({ currentPath: fullPath });
+            break;
+          case 'file':
+            break;
+          default: {
+            const _ex: never = entry.kind;
+            throw new Error(`Unexpected entry kind: ${_ex}`);
+          }
           }
         }
-      } catch (e: any) {
-        await text.error({ text: `find: ${currentPath}: ${e.message}\n` });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await text.error({ text: `find: ${currentPath}: ${message}\n` });
       }
     };
 

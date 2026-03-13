@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const sort: CommandDefinition = {
   meta: {
@@ -42,9 +42,12 @@ export const sort: CommandDefinition = {
               for (const l of lns) lines.push(l);
             }
             if (buffer) lines.push(buffer);
-          } finally { reader.releaseLock(); }
-        } catch (e: any) {
-          await text.error({ text: `sort: ${f}: ${e.message}\n` });
+          } finally {
+            reader.releaseLock();
+          }
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          await text.error({ text: `sort: ${f}: ${message}\n` });
         }
       }
     }

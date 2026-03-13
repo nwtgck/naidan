@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const tail: CommandDefinition = {
   meta: {
@@ -37,7 +37,7 @@ export const tail: CommandDefinition = {
           const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
           const stream = await context.vfs.readFile({ path: fullPath });
           const decoder = new TextDecoder();
-          
+
           const lineReader: AsyncIterable<string> = {
             async *[Symbol.asyncIterator]() {
               const reader = stream.getReader();
@@ -59,8 +59,9 @@ export const tail: CommandDefinition = {
           };
 
           await process({ input: lineReader });
-        } catch (e: any) {
-          await text.error({ text: `tail: ${f}: ${e.message}\n` });
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          await text.error({ text: `tail: ${f}: ${message}\n` });
         }
       }
     }

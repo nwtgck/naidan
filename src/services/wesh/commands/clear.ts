@@ -1,4 +1,4 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
 export const clear: CommandDefinition = {
   meta: {

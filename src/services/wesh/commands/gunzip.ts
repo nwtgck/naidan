@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const gunzip: CommandDefinition = {
   meta: {
@@ -31,13 +31,15 @@ export const gunzip: CommandDefinition = {
 
         const input = await context.vfs.readFile({ path: fullPath });
         const decompressor = new DecompressionStream('gzip');
-        const decompressedStream = input.pipeThrough(decompressor);
-        
+        // @ts-expect-error - CompressionStream/DecompressionStream typing mismatch in some environments
+        const decompressedStream = input.pipeThrough(decompressor) as ReadableStream<Uint8Array>;
+
         const originalPath = fullPath.slice(0, -3);
         await context.vfs.writeFile({ path: originalPath, stream: decompressedStream });
         await context.vfs.rm({ path: fullPath, recursive: false });
-      } catch (e: any) {
-        await text.error({ text: `gunzip: ${f}: ${e.message}\n` });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await text.error({ text: `gunzip: ${f}: ${message}\n` });
       }
     }
 

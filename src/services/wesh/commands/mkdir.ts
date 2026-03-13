@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const mkdir: CommandDefinition = {
   meta: {
@@ -27,8 +27,9 @@ export const mkdir: CommandDefinition = {
       try {
         const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
         await context.vfs.mkdir({ path: fullPath, recursive });
-      } catch (e: any) {
-        await text.error({ text: `mkdir: cannot create directory '${p}': ${e.message}\n` });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await text.error({ text: `mkdir: cannot create directory '${p}': ${message}\n` });
       }
     }
 

@@ -1,4 +1,4 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
 export const mv: CommandDefinition = {
   meta: {
@@ -23,18 +23,30 @@ export const mv: CommandDefinition = {
       const destExists = await context.vfs.exists({ path: fullDest });
       if (destExists) {
         const destStat = await context.vfs.stat({ path: fullDest });
-        if (destStat.kind === 'directory') {
+        switch (destStat.kind) {
+        case 'directory': {
           const srcName = src.split('/').pop()!;
           fullDest = fullDest === '/' ? `/${srcName}` : `${fullDest}/${srcName}`;
+          break;
+        }
+        case 'file':
+          break;
+        default: {
+          const _ex: never = destStat.kind;
+          throw new Error(`Unexpected kind: ${_ex}`);
+        }
         }
       }
 
       const copyRecursive = async ({ s, d }: { s: string, d: string }) => {
         const stat = await context.vfs.stat({ path: s });
-        if (stat.kind === 'file') {
+        switch (stat.kind) {
+        case 'file': {
           const stream = await context.vfs.readFile({ path: s });
           await context.vfs.writeFile({ path: d, stream });
-        } else {
+          break;
+        }
+        case 'directory': {
           await context.vfs.mkdir({ path: d, recursive: true });
           const entries = await context.vfs.readDir({ path: s });
           for (const e of entries) {
@@ -43,6 +55,12 @@ export const mv: CommandDefinition = {
               d: d === '/' ? `/${e.name}` : `${d}/${e.name}`
             });
           }
+          break;
+        }
+        default: {
+          const _ex: never = stat.kind;
+          throw new Error(`Unexpected kind: ${_ex}`);
+        }
         }
       };
 
@@ -50,9 +68,10 @@ export const mv: CommandDefinition = {
       await context.vfs.rm({ path: fullSrc, recursive: true });
 
       return { exitCode: 0, data: undefined, error: undefined };
-    } catch (e: any) {
-      await text.error({ text: `mv: ${src}: ${e.message}\n` });
-      return { exitCode: 1, data: undefined, error: e.message };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      await text.error({ text: `mv: ${src}: ${message}\n` });
+      return { exitCode: 1, data: undefined, error: message };
     }
   },
 };

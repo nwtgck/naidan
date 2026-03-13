@@ -50,7 +50,7 @@ export interface CommandContext {
 
 export type CommandFunction = ({ context }: { context: CommandContext }) => Promise<CommandResult>;
 
-/** 
+/**
  * Metadata for internal shell documentation (help/man)
  */
 export interface CommandMeta {

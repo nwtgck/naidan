@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const ls: CommandDefinition = {
   meta: {
@@ -32,8 +32,16 @@ export const ls: CommandDefinition = {
 
         for (const entry of filtered) {
           let line = entry.name;
-          if (entry.kind === 'directory') {
+          switch (entry.kind) {
+          case 'directory':
             line += '/';
+            break;
+          case 'file':
+            break;
+          default: {
+            const _ex: never = entry.kind;
+            throw new Error(`Unexpected entry kind: ${_ex}`);
+          }
           }
 
           if (l) {
@@ -48,8 +56,9 @@ export const ls: CommandDefinition = {
         if (!one && !l && filtered.length > 0) {
           await text.print({ text: '\n' });
         }
-      } catch (e: any) {
-        await text.error({ text: `ls: ${p}: ${e.message}\n` });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await text.error({ text: `ls: ${p}: ${message}\n` });
       }
     }
 

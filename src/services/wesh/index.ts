@@ -13,11 +13,11 @@ export class Wesh {
   private history: string[] = [];
   private commands: Map<string, CommandDefinition> = new Map();
 
-  constructor({ 
-    rootHandle, 
-    user = 'user', 
-    initialEnv = {} 
-  }: { 
+  constructor({
+    rootHandle,
+    user = 'user',
+    initialEnv = {}
+  }: {
     rootHandle: FileSystemDirectoryHandle;
     user?: string;
     initialEnv?: Record<string, string>;
@@ -66,19 +66,35 @@ export class Wesh {
 
       for (const red of cmd.redirections) {
         const fullTarget = red.target ? (red.target.startsWith('/') ? red.target : `${this.cwd}/${red.target}`) : undefined;
-        
-        if (red.type === '<' && fullTarget) {
-          stdin = await this.vfs.readFile({ path: fullTarget });
-        } else if ((red.type === '>' || red.type === '>>') && fullTarget) {
-          const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-          stdout = writable;
-          this.vfs.writeFile({ path: fullTarget, stream: readable }).catch(console.error);
-        } else if (red.type === '2>' && fullTarget) {
-          const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-          stderr = writable;
-          this.vfs.writeFile({ path: fullTarget, stream: readable }).catch(console.error);
-        } else if (red.type === '2>&1') {
+
+        switch (red.type) {
+        case '<':
+          if (fullTarget) {
+            stdin = await this.vfs.readFile({ path: fullTarget });
+          }
+          break;
+        case '>':
+        case '>>':
+          if (fullTarget) {
+            const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+            stdout = writable;
+            this.vfs.writeFile({ path: fullTarget, stream: readable }).catch(console.error);
+          }
+          break;
+        case '2>':
+          if (fullTarget) {
+            const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+            stderr = writable;
+            this.vfs.writeFile({ path: fullTarget, stream: readable }).catch(console.error);
+          }
+          break;
+        case '2>&1':
           stderr = stdout;
+          break;
+        default: {
+          const _ex: never = red.type;
+          throw new Error(`Unexpected redirection type: ${_ex}`);
+        }
         }
       }
 
@@ -154,8 +170,9 @@ export class Wesh {
         data: output,
         error: lastResult?.error || errorOutput || undefined,
       };
-    } catch (e: any) {
-      return { exitCode: 1, data: undefined, error: e.message || 'Unknown error' };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { exitCode: 1, data: undefined, error: message || 'Unknown error' };
     }
   }
 

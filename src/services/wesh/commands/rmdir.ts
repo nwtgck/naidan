@@ -1,4 +1,4 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
 export const rmdir: CommandDefinition = {
   meta: {
@@ -21,8 +21,9 @@ export const rmdir: CommandDefinition = {
           throw new Error('Directory not empty');
         }
         await context.vfs.rm({ path: fullPath, recursive: false });
-      } catch (e: any) {
-        await text.error({ text: `rmdir: failed to remove '${p}': ${e.message}\n` });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await text.error({ text: `rmdir: failed to remove '${p}': ${message}\n` });
       }
     }
 

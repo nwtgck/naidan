@@ -1,5 +1,5 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const cp: CommandDefinition = {
   meta: {
@@ -29,28 +29,39 @@ export const cp: CommandDefinition = {
       return { exitCode: 1, data: undefined, error: 'missing destination' };
     }
 
-    const copyOne = async ({ 
-      srcPath, 
-      destPath 
-    }: { 
-      srcPath: string; 
-      destPath: string; 
+    const copyOne = async ({
+      srcPath,
+      destPath
+    }: {
+      srcPath: string;
+      destPath: string;
     }) => {
       const stat = await context.vfs.stat({ path: srcPath });
-      if (stat.kind === 'file') {
+      switch (stat.kind) {
+      case 'file': {
         const stream = await context.vfs.readFile({ path: srcPath });
         await context.vfs.writeFile({ path: destPath, stream });
-      } else if (recursive) {
-        await context.vfs.mkdir({ path: destPath, recursive: true });
-        const entries = await context.vfs.readDir({ path: srcPath });
-        for (const entry of entries) {
-          await copyOne({ 
-            srcPath: srcPath === '/' ? `/${entry.name}` : `${srcPath}/${entry.name}`,
-            destPath: destPath === '/' ? `/${entry.name}` : `${destPath}/${entry.name}`
-          });
+        break;
+      }
+      case 'directory': {
+        if (recursive) {
+          await context.vfs.mkdir({ path: destPath, recursive: true });
+          const entries = await context.vfs.readDir({ path: srcPath });
+          for (const entry of entries) {
+            await copyOne({
+              srcPath: srcPath === '/' ? `/${entry.name}` : `${srcPath}/${entry.name}`,
+              destPath: destPath === '/' ? `/${entry.name}` : `${destPath}/${entry.name}`
+            });
+          }
+        } else {
+          throw new Error(`${srcPath} is a directory (use -r)`);
         }
-      } else {
-        throw new Error(`${srcPath} is a directory (use -r)`);
+        break;
+      }
+      default: {
+        const _ex: never = stat.kind;
+        throw new Error(`Unexpected kind: ${_ex}`);
+      }
       }
     };
 
@@ -59,19 +70,29 @@ export const cp: CommandDefinition = {
       try {
         const fullSrc = src.startsWith('/') ? src : `${context.cwd}/${src}`;
         let fullDest = dest.startsWith('/') ? dest : `${context.cwd}/${dest}`;
-        
+
         const destExists = await context.vfs.exists({ path: fullDest });
         if (destExists) {
           const destStat = await context.vfs.stat({ path: fullDest });
-          if (destStat.kind === 'directory') {
+          switch (destStat.kind) {
+          case 'directory': {
             const srcName = src.split('/').pop()!;
             fullDest = fullDest === '/' ? `/${srcName}` : `${fullDest}/${srcName}`;
+            break;
+          }
+          case 'file':
+            break;
+          default: {
+            const _ex: never = destStat.kind;
+            throw new Error(`Unexpected kind: ${_ex}`);
+          }
           }
         }
 
         await copyOne({ srcPath: fullSrc, destPath: fullDest });
-      } catch (e: any) {
-        await text.error({ text: `cp: ${src}: ${e.message}\n` });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await text.error({ text: `cp: ${src}: ${message}\n` });
       }
     }
 
