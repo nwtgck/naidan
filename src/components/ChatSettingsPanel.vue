@@ -82,7 +82,14 @@ onMounted(() => {
 });
 
 // Sync if currentChat changes while open (e.g. from another tab)
-watch(() => currentChat.value?.id, syncLocalWithCurrent);
+watch(() => currentChat.value?.id, async (newId, oldId) => {
+  if (oldId && oldId !== newId) {
+    // If we're switching chats while the panel is open, ensure any pending changes in the OLD chat are saved.
+    // We use the ID that was active when the changes were made.
+    await chatStore.updateChatSettings(oldId, localSettings.value);
+  }
+  syncLocalWithCurrent();
+});
 
 // Deep watch for lmParameters to keep UI in sync with changes from ChatInput (like Reasoning)
 watch(() => currentChat.value?.lmParameters, (newParams) => {
@@ -93,9 +100,11 @@ watch(() => currentChat.value?.lmParameters, (newParams) => {
 
 watch(() => props.show, (show) => {
   if (show) {
+    syncLocalWithCurrent();
     setActiveFocusArea('chat-settings');
   } else {
     setActiveFocusArea('chat');
+    saveChanges();
   }
 });
 
@@ -237,7 +246,6 @@ async function updateSystemPromptContent(content: string) {
   } else {
     localSettings.value.systemPrompt = { content, behavior: 'override' };
   }
-  await saveChanges();
 }
 
 async function handleRestoreDefaults() {
@@ -588,6 +596,7 @@ defineExpose({
                   v-else
                   :value="localSettings.systemPrompt?.content || ''"
                   @input="e => updateSystemPromptContent((e.target as HTMLTextAreaElement).value)"
+                  @blur="saveChanges"
                   rows="4"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
                   :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
