@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const unset: CommandDefinition = {
+export const unsetCommandDefinition: CommandDefinition = {
   meta: {
     name: 'unset',
     description: 'Unset environment variables',

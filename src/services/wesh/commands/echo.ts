@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const echo: CommandDefinition = {
+export const echoCommandDefinition: CommandDefinition = {
   meta: {
     name: 'echo',
     description: 'Display a line of text',

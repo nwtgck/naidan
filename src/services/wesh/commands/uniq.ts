@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const uniq: CommandDefinition = {
+export const uniqCommandDefinition: CommandDefinition = {
   meta: {
     name: 'uniq',
     description: 'Report or omit repeated lines',

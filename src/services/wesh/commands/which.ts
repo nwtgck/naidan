@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const which: CommandDefinition = {
+export const whichCommandDefinition: CommandDefinition = {
   meta: {
     name: 'which',
     description: 'Locate a command',

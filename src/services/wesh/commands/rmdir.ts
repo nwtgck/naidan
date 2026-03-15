@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const rmdir: CommandDefinition = {
+export const rmdirCommandDefinition: CommandDefinition = {
   meta: {
     name: 'rmdir',
     description: 'Remove empty directories',

@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const env: CommandDefinition = {
+export const envCommandDefinition: CommandDefinition = {
   meta: {
     name: 'env',
     description: 'Print environment variables',

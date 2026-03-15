@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const touch: CommandDefinition = {
+export const touchCommandDefinition: CommandDefinition = {
   meta: {
     name: 'touch',
     description: 'Update timestamp or create empty file',

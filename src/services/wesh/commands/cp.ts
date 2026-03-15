@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const cp: CommandDefinition = {
+export const cpCommandDefinition: CommandDefinition = {
   meta: {
     name: 'cp',
     description: 'Copy files and directories',

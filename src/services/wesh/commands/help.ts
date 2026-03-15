@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const help: CommandDefinition = {
+export const helpCommandDefinition: CommandDefinition = {
   meta: {
     name: 'help',
     description: 'Display information about builtin commands',

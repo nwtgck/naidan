@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const history: CommandDefinition = {
+export const historyCommandDefinition: CommandDefinition = {
   meta: {
     name: 'history',
     description: 'Display the command history list',

@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const ls: CommandDefinition = {
+export const lsCommandDefinition: CommandDefinition = {
   meta: {
     name: 'ls',
     description: 'List directory contents',

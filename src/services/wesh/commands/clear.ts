@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const clear: CommandDefinition = {
+export const clearCommandDefinition: CommandDefinition = {
   meta: {
     name: 'clear',
     description: 'Clear the terminal screen',

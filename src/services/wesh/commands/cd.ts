@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const cd: CommandDefinition = {
+export const cdCommandDefinition: CommandDefinition = {
   meta: {
     name: 'cd',
     description: 'Change current directory',

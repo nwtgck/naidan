@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const head: CommandDefinition = {
+export const headCommandDefinition: CommandDefinition = {
   meta: {
     name: 'head',
     description: 'Output the first part of files',

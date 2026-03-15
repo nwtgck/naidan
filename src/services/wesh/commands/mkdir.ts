@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const mkdir: CommandDefinition = {
+export const mkdirCommandDefinition: CommandDefinition = {
   meta: {
     name: 'mkdir',
     description: 'Create directories',

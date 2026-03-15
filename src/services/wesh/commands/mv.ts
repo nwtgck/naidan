@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const mv: CommandDefinition = {
+export const mvCommandDefinition: CommandDefinition = {
   meta: {
     name: 'mv',
     description: 'Move or rename files',

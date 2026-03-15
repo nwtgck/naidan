@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const cut: CommandDefinition = {
+export const cutCommandDefinition: CommandDefinition = {
   meta: {
     name: 'cut',
     description: 'Remove sections from each line of files',

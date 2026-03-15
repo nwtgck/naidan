@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const command: CommandDefinition = {
+export const commandCommandDefinition: CommandDefinition = {
   meta: {
     name: 'command',
     description: 'Run command with arguments, ignoring any function or alias',

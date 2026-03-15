@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const wc: CommandDefinition = {
+export const wcCommandDefinition: CommandDefinition = {
   meta: {
     name: 'wc',
     description: 'Print newline, word, and byte counts for each file',

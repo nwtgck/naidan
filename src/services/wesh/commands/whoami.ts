@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const whoami: CommandDefinition = {
+export const whoamiCommandDefinition: CommandDefinition = {
   meta: {
     name: 'whoami',
     description: 'Print the user name associated with the current effective user ID',

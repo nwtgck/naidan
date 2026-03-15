@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const date: CommandDefinition = {
+export const dateCommandDefinition: CommandDefinition = {
   meta: {
     name: 'date',
     description: 'Print the system date and time',

@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const gzip: CommandDefinition = {
+export const gzipCommandDefinition: CommandDefinition = {
   meta: {
     name: 'gzip',
     description: 'Compress files',

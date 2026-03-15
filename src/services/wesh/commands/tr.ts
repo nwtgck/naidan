@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const tr: CommandDefinition = {
+export const trCommandDefinition: CommandDefinition = {
   meta: {
     name: 'tr',
     description: 'Translate or delete characters',

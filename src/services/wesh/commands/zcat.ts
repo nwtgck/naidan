@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const zcat: CommandDefinition = {
+export const zcatCommandDefinition: CommandDefinition = {
   meta: {
     name: 'zcat',
     description: 'Decompress files and print on the standard output',

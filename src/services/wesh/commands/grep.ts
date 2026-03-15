@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const grep: CommandDefinition = {
+export const grepCommandDefinition: CommandDefinition = {
   meta: {
     name: 'grep',
     description: 'Print lines matching a pattern',

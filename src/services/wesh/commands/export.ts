@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const exportCmd: CommandDefinition = {
+export const exportCmdCommandDefinition: CommandDefinition = {
   meta: {
     name: 'export',
     description: 'Set environment variables',

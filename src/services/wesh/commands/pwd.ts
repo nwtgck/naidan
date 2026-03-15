@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const pwd: CommandDefinition = {
+export const pwdCommandDefinition: CommandDefinition = {
   meta: {
     name: 'pwd',
     description: 'Print name of current/working directory',

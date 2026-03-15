@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const sort: CommandDefinition = {
+export const sortCommandDefinition: CommandDefinition = {
   meta: {
     name: 'sort',
     description: 'Sort lines of text files',

@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const sleep: CommandDefinition = {
+export const sleepCommandDefinition: CommandDefinition = {
   meta: {
     name: 'sleep',
     description: 'Delay for a specified amount of time',

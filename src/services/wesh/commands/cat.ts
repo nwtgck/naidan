@@ -1,6 +1,6 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 
-export const cat: CommandDefinition = {
+export const catCommandDefinition: CommandDefinition = {
   meta: {
     name: 'cat',
     description: 'Concatenate files and print on the standard output',

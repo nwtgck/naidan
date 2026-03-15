@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const find: CommandDefinition = {
+export const findCommandDefinition: CommandDefinition = {
   meta: {
     name: 'find',
     description: 'Search for files in a directory hierarchy',

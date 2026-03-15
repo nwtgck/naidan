@@ -4,7 +4,7 @@ import { parseCommandLine } from './parser';
 import { createTextHelpers } from './utils/io';
 
 import { builtinCommands } from './commands';
-import { help } from './commands/help';
+import { helpCommandDefinition } from './commands/help';
 
 interface Job {
   id: number;
@@ -44,7 +44,7 @@ export class Wesh {
     for (const definition of builtinCommands) {
       this.registerCommand({ definition });
     }
-    this.registerCommand({ definition: help });
+    this.registerCommand({ definition: helpCommandDefinition });
     
     this.registerInternalCommand('jobs', async ({ context }) => {
       const jobs = context.getJobs();

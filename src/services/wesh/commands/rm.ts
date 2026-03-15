@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const rm: CommandDefinition = {
+export const rmCommandDefinition: CommandDefinition = {
   meta: {
     name: 'rm',
     description: 'Remove files or directories',
