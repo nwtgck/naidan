@@ -35,7 +35,7 @@ class Parser {
   parse(): ASTNode {
     const node = this.parseList();
     if (this.currentToken.type !== 'EOF') {
-        throw new Error(`Unexpected token at end of command: ${this.currentToken.value}`);
+      throw new Error(`Unexpected token at end of command: ${this.currentToken.value}`);
     }
     return node;
   }
@@ -52,31 +52,31 @@ class Parser {
     ) {
       const operator = this.currentToken.type === 'SEMI' ? ';'
         : this.currentToken.type === 'AND' ? '&&'
-        : this.currentToken.type === 'OR' ? '||'
-        : '&';
-      
+          : this.currentToken.type === 'OR' ? '||'
+            : '&';
+
       this.eat(this.currentToken.type);
 
       if (this.isTerminator(terminators) || this.currentToken.type === 'EOF') {
-         if (node.kind === 'list') {
-             node.parts[node.parts.length - 1].operator = operator;
-         } else {
-             node = { kind: 'list', parts: [{ node, operator }] };
-         }
-         return node;
+        if (node.kind === 'list') {
+          node.parts[node.parts.length - 1].operator = operator;
+        } else {
+          node = { kind: 'list', parts: [{ node, operator }] };
+        }
+        return node;
       }
 
       const nextNode = this.parsePipeline(terminators);
 
       if (node.kind === 'list') {
         node.parts[node.parts.length - 1].operator = operator;
-        node.parts.push({ node: nextNode, operator: ';' }); 
+        node.parts.push({ node: nextNode, operator: ';' });
       } else {
         node = {
           kind: 'list',
           parts: [
             { node, operator },
-            { node: nextNode, operator: ';' } 
+            { node: nextNode, operator: ';' }
           ]
         };
       }
@@ -86,7 +86,7 @@ class Parser {
   }
 
   private isTerminator(terminators: string[]): boolean {
-      return this.currentToken.type === 'WORD' && terminators.includes(this.currentToken.value);
+    return this.currentToken.type === 'WORD' && terminators.includes(this.currentToken.value);
   }
 
   private parsePipeline(terminators: string[] = []): ASTNode {
@@ -95,7 +95,7 @@ class Parser {
     while (this.currentToken.type === 'PIPE' && !this.isTerminator(terminators)) {
       this.eat('PIPE');
       const right = this.parseCommand(terminators);
-      
+
       if (node.kind === 'pipeline') {
         node.commands.push(right);
       } else {
@@ -108,15 +108,15 @@ class Parser {
 
   private parseCommand(terminators: string[] = []): ASTNode {
     if (this.isTerminator(terminators)) {
-        throw new Error(`Unexpected terminator: ${this.currentToken.value}`);
+      throw new Error(`Unexpected terminator: ${this.currentToken.value}`);
     }
 
     if (this.currentToken.type === 'WORD') {
       if (this.currentToken.value === 'if') return this.parseIf();
       if (this.currentToken.value === 'for') return this.parseFor();
-      
+
       if (KEYWORDS.has(this.currentToken.value)) {
-          throw new Error(`Unexpected keyword: ${this.currentToken.value}`);
+        throw new Error(`Unexpected keyword: ${this.currentToken.value}`);
       }
     }
 
@@ -126,51 +126,51 @@ class Parser {
     let commandName: string | null = null;
 
     while (
-        (this.currentToken.type === 'WORD' ||
+      (this.currentToken.type === 'WORD' ||
         this.currentToken.type === 'GT' ||
         this.currentToken.type === 'GTGT' ||
         this.currentToken.type === 'LT' ||
-        this.currentToken.type === 'LTGT' || 
+        this.currentToken.type === 'LTGT' ||
         this.currentToken.type === 'LTGTAMP') &&
         !this.isTerminator(terminators)
     ) {
-        if (this.isRedirection(this.currentToken.type)) {
-            const type = this.currentToken.type as 'GT' | 'GTGT' | 'LT' | 'LTGT' | 'LTGTAMP';
-            this.eat(type);
-            
-            let redType: '>' | '>>' | '<' | '2>' | '2>&1';
-            let target: string | undefined;
+      if (this.isRedirection(this.currentToken.type)) {
+        const type = this.currentToken.type as 'GT' | 'GTGT' | 'LT' | 'LTGT' | 'LTGTAMP';
+        this.eat(type);
 
-            switch(type) {
-                case 'GT': redType = '>'; target = this.expectWord(); break;
-                case 'GTGT': redType = '>>'; target = this.expectWord(); break;
-                case 'LT': redType = '<'; target = this.expectWord(); break;
-                case 'LTGT': redType = '2>'; target = this.expectWord(); break;
-                case 'LTGTAMP': redType = '2>&1'; target = undefined; break;
-                default: throw new Error("Unknown redirection");
-            }
-            redirections.push({ type: redType, target });
+        let redType: '>' | '>>' | '<' | '2>' | '2>&1';
+        let target: string | undefined;
 
-        } else {
-            const word = this.currentToken.value;
-            
-            if (commandName === null && KEYWORDS.has(word)) {
-                break; 
-            }
-
-            this.eat('WORD');
-
-            if (commandName === null) {
-                if (word.includes('=') && !word.startsWith('=')) {
-                    const [key, ...rest] = word.split('=');
-                    assignments.push({ key, value: rest.join('=') });
-                } else {
-                    commandName = word;
-                }
-            } else {
-                args.push(word);
-            }
+        switch(type) {
+        case 'GT': redType = '>'; target = this.expectWord(); break;
+        case 'GTGT': redType = '>>'; target = this.expectWord(); break;
+        case 'LT': redType = '<'; target = this.expectWord(); break;
+        case 'LTGT': redType = '2>'; target = this.expectWord(); break;
+        case 'LTGTAMP': redType = '2>&1'; target = undefined; break;
+        default: throw new Error("Unknown redirection");
         }
+        redirections.push({ type: redType, target });
+
+      } else {
+        const word = this.currentToken.value;
+
+        if (commandName === null && KEYWORDS.has(word)) {
+          break;
+        }
+
+        this.eat('WORD');
+
+        if (commandName === null) {
+          if (word.includes('=') && !word.startsWith('=')) {
+            const [key, ...rest] = word.split('=');
+            assignments.push({ key, value: rest.join('=') });
+          } else {
+            commandName = word;
+          }
+        } else {
+          args.push(word);
+        }
+      }
     }
 
     if (commandName === null && assignments.length > 0) {
@@ -178,7 +178,7 @@ class Parser {
     }
 
     if (commandName === null) {
-        throw new Error("Expected command");
+      throw new Error("Expected command");
     }
 
     return {
@@ -192,10 +192,10 @@ class Parser {
 
   private parseIf(): ASTNode {
     this.eat('WORD'); // eat 'if'
-    const condition = this.parseList(['then']); 
-    
+    const condition = this.parseList(['then']);
+
     if (this.currentToken.type !== 'WORD' || this.currentToken.value !== 'then') {
-         throw new Error("Expected 'then'");
+      throw new Error("Expected 'then'");
     }
     this.eat('WORD'); // eat 'then'
 
@@ -203,21 +203,21 @@ class Parser {
 
     let elseBody: ASTNode | undefined;
     if (this.currentToken.type === 'WORD' && this.currentToken.value === 'else') {
-        this.eat('WORD');
-        elseBody = this.parseList(['fi']);
+      this.eat('WORD');
+      elseBody = this.parseList(['fi']);
     } else if (this.currentToken.type === 'WORD' && this.currentToken.value === 'elif') {
-        this.currentToken.value = 'if'; 
-        elseBody = this.parseIf();
-        return {
-            kind: 'if',
-            condition,
-            thenBody,
-            elseBody
-        };
+      this.currentToken.value = 'if';
+      elseBody = this.parseIf();
+      return {
+        kind: 'if',
+        condition,
+        thenBody,
+        elseBody
+      };
     }
 
     if (this.currentToken.type !== 'WORD' || this.currentToken.value !== 'fi') {
-        throw new Error("Expected 'fi'");
+      throw new Error("Expected 'fi'");
     }
     this.eat('WORD');
 
@@ -231,43 +231,43 @@ class Parser {
 
   private parseFor(): ASTNode {
     this.eat('WORD'); // eat 'for'
-    
+
     if (this.currentToken.type !== 'WORD') throw new Error("Expected variable name");
     const variable = this.currentToken.value;
     this.eat('WORD');
 
     if (this.currentToken.type !== 'WORD' || this.currentToken.value !== 'in') {
-        throw new Error("Expected 'in'");
+      throw new Error("Expected 'in'");
     }
     this.eat('WORD');
 
     const items: string[] = [];
     while (this.currentToken.type === 'WORD' && this.currentToken.value !== 'do' && this.currentToken.value !== ';') {
-        items.push(this.currentToken.value);
-        this.eat('WORD');
+      items.push(this.currentToken.value);
+      this.eat('WORD');
     }
 
     if (this.currentToken.type === 'SEMI') {
-        this.eat('SEMI');
+      this.eat('SEMI');
     }
 
     if (this.currentToken.type !== 'WORD' || this.currentToken.value !== 'do') {
-        throw new Error("Expected 'do'");
+      throw new Error("Expected 'do'");
     }
     this.eat('WORD');
 
     const body = this.parseList(['done']);
 
     if (this.currentToken.type !== 'WORD' || this.currentToken.value !== 'done') {
-        throw new Error("Expected 'done'");
+      throw new Error("Expected 'done'");
     }
     this.eat('WORD');
 
     return {
-        kind: 'for',
-        variable,
-        items,
-        body
+      kind: 'for',
+      variable,
+      items,
+      body
     };
   }
 
@@ -281,6 +281,6 @@ class Parser {
   }
 
   private isRedirection(type: TokenType): boolean {
-      return ['GT', 'GTGT', 'LT', 'LTGT', 'LTGTAMP'].includes(type);
+    return ['GT', 'GTGT', 'LT', 'LTGT', 'LTGTAMP'].includes(type);
   }
 }

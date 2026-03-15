@@ -9,30 +9,30 @@ describe('Wesh Shell', () => {
   beforeEach(() => {
     rootHandle = new MockFileSystemDirectoryHandle('root');
     wesh = new Wesh({ rootHandle: rootHandle as any });
-    
+
     // Register mock commands
     wesh.registerCommand({
-        definition: {
-            meta: { name: 'true', description: 'Success', usage: 'true' },
-            fn: async () => ({ exitCode: 0, data: undefined, error: undefined })
-        }
+      definition: {
+        meta: { name: 'true', description: 'Success', usage: 'true' },
+        fn: async () => ({ exitCode: 0, data: undefined, error: undefined })
+      }
     });
     wesh.registerCommand({
-        definition: {
-            meta: { name: 'false', description: 'Fail', usage: 'false' },
-            fn: async () => ({ exitCode: 1, data: undefined, error: undefined })
-        }
+      definition: {
+        meta: { name: 'false', description: 'Fail', usage: 'false' },
+        fn: async () => ({ exitCode: 1, data: undefined, error: undefined })
+      }
     });
     wesh.registerCommand({
-        definition: {
-            meta: { name: 'print_env', description: 'Print env var', usage: 'print_env VAR' },
-            fn: async ({ context }) => {
-                const key = context.args[0] || '';
-                const val = context.env[key] || '';
-                await context.text().print({ text: val });
-                return { exitCode: 0, data: undefined, error: undefined };
-            }
+      definition: {
+        meta: { name: 'print_env', description: 'Print env var', usage: 'print_env VAR' },
+        fn: async ({ context }) => {
+          const key = context.args[0] || '';
+          const val = context.env[key] || '';
+          await context.text().print({ text: val });
+          return { exitCode: 0, data: undefined, error: undefined };
         }
+      }
     });
   });
 
@@ -52,7 +52,7 @@ describe('Wesh Shell', () => {
 
   it('handles sequential commands with ;', async () => {
     const result = await wesh.execute({ commandLine: 'echo A; echo B' });
-    expect(getOutput(result)).toContain('B'); 
+    expect(getOutput(result)).toContain('B');
   });
 
   it('handles logical AND (&&)', async () => {
@@ -61,7 +61,7 @@ describe('Wesh Shell', () => {
     expect(result.exitCode).toBe(0);
 
     const resultFail = await wesh.execute({ commandLine: 'false && echo B' });
-    expect(resultFail.exitCode).not.toBe(0); 
+    expect(resultFail.exitCode).not.toBe(0);
     expect(getOutput(resultFail)).not.toContain('B');
   });
 
@@ -80,12 +80,12 @@ describe('Wesh Shell', () => {
 
   it('supports file redirection and reading (Mock OPFS)', async () => {
     await wesh.execute({ commandLine: 'echo "file content" > test.txt' });
-    
+
     const handle = await rootHandle.getFileHandle('test.txt');
     const file = await handle.getFile();
     const text = await file.text();
     expect(text).toContain('file content');
-    
+
     const catResult = await wesh.execute({ commandLine: 'cat test.txt' });
     expect(getOutput(catResult)).toContain('file content');
   });

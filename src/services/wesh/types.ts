@@ -1,4 +1,4 @@
-export interface CommandResult {
+export interface WeshCommandResult {
   /** 0 for success, non-zero for failure */
   exitCode: number;
   /** Structured output data for machine consumption */
@@ -7,7 +7,7 @@ export interface CommandResult {
   error: string | undefined;
 }
 
-export interface IVirtualFileSystem {
+export interface WeshIVirtualFileSystem {
   mount({ path, handle, readOnly }: { path: string; handle: FileSystemDirectoryHandle; readOnly: boolean }): void;
   unmount({ path }: { path: string }): void;
   resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }>;
@@ -20,12 +20,12 @@ export interface IVirtualFileSystem {
   exists({ path }: { path: string }): Promise<boolean>;
 }
 
-export interface CommandContext {
+export interface WeshCommandContext {
   /** All arguments including flags */
   args: string[];
   env: Record<string, string>;
   cwd: string;
-  vfs: IVirtualFileSystem;
+  vfs: WeshIVirtualFileSystem;
 
   /** Standard I/O Streams */
   stdin: ReadableStream<Uint8Array>;
@@ -37,7 +37,7 @@ export interface CommandContext {
   setEnv({ key, value }: { key: string; value: string }): void;
   unsetEnv({ key }: { key: string }): void;
   getHistory(): string[];
-  getCommandMeta({ name }: { name: string }): CommandMeta | undefined;
+  getWeshCommandMeta({ name }: { name: string }): WeshCommandMeta | undefined;
   getCommandNames(): string[];
   getJobs(): Array<{ id: number; command: string; status: 'running' | 'done' }>;
 
@@ -49,73 +49,73 @@ export interface CommandContext {
   };
 }
 
-export type CommandFunction = ({ context }: { context: CommandContext }) => Promise<CommandResult>;
+export type WeshWeshCommandFunction = ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
 
 /**
  * Metadata for internal shell documentation (help/man)
  */
-export interface CommandMeta {
+export interface WeshWeshCommandMeta {
   name: string;
   description: string;
   usage: string;
 }
 
-export interface CommandDefinition {
-  fn: CommandFunction;
-  meta: CommandMeta;
+export interface WeshWeshCommandDefinition {
+  fn: WeshCommandFunction;
+  meta: WeshCommandMeta;
 }
 
 // --- AST Definitions ---
 
-export interface Redirection {
+export interface WeshRedirection {
   type: '>' | '>>' | '<' | '2>' | '2>&1';
   target: string | undefined;
 }
 
-export type ASTNode =
-  | CommandNode
-  | PipelineNode
-  | ListNode
-  | IfNode
-  | ForNode
-  | AssignmentNode;
+export type WeshWeshASTNode =
+  | WeshCommandNode
+  | WeshPipelineNode
+  | WeshListNode
+  | WeshIfNode
+  | WeshForNode
+  | WeshAssignmentNode;
 
-export interface CommandNode {
+export interface WeshWeshCommandNode {
   kind: 'command';
   assignments: { key: string; value: string }[];
   name: string;
   args: string[];
-  redirections: Redirection[];
+  redirections: WeshRedirection[];
 }
 
-export interface PipelineNode {
+export interface WeshWeshPipelineNode {
   kind: 'pipeline';
-  commands: ASTNode[];
+  commands: WeshASTNode[];
 }
 
-export interface ListNode {
+export interface WeshWeshListNode {
   kind: 'list';
   parts: {
-    node: ASTNode;
+    node: WeshASTNode;
     operator: ';' | '&&' | '||' | '&';
   }[];
 }
 
-export interface IfNode {
+export interface WeshWeshIfNode {
   kind: 'if';
-  condition: ASTNode;
-  thenBody: ASTNode;
-  elseBody?: ASTNode;
+  condition: WeshASTNode;
+  thenBody: WeshASTNode;
+  elseBody?: WeshASTNode;
 }
 
-export interface ForNode {
+export interface WeshWeshForNode {
   kind: 'for';
   variable: string;
   items: string[];
-  body: ASTNode;
+  body: WeshASTNode;
 }
 
-export interface AssignmentNode {
+export interface WeshWeshAssignmentNode {
   kind: 'assignment';
   assignments: { key: string; value: string }[];
 }

@@ -42,9 +42,9 @@ export class MockFile {
   text(): Promise<string> {
     return Promise.resolve(new TextDecoder().decode(this.content));
   }
-  
+
   arrayBuffer(): Promise<ArrayBuffer> {
-      return Promise.resolve(this.content.buffer.slice(this.content.byteOffset, this.content.byteOffset + this.content.byteLength));
+    return Promise.resolve(this.content.buffer.slice(this.content.byteOffset, this.content.byteOffset + this.content.byteLength));
   }
 }
 
@@ -53,36 +53,36 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
 
   constructor(fileHandle: MockFileSystemFileHandle) {
     let currentContent = new Uint8Array(0);
-    
+
     super({
       write: (chunk) => {
         let data: Uint8Array;
-        
+
         if (typeof chunk === 'string') {
-            data = new TextEncoder().encode(chunk);
+          data = new TextEncoder().encode(chunk);
         } else if (chunk instanceof Uint8Array) {
-            data = chunk;
+          data = chunk;
         } else if (chunk && typeof chunk === 'object' && 'type' in chunk && chunk.type === 'write') {
-             const d = (chunk as any).data;
-             if (typeof d === 'string') data = new TextEncoder().encode(d);
-             else if (d instanceof Uint8Array) data = d;
-             else if (d instanceof ArrayBuffer) data = new Uint8Array(d);
-             else throw new Error("Unsupported write data type in mock");
+          const d = (chunk as any).data;
+          if (typeof d === 'string') data = new TextEncoder().encode(d);
+          else if (d instanceof Uint8Array) data = d;
+          else if (d instanceof ArrayBuffer) data = new Uint8Array(d);
+          else throw new Error("Unsupported write data type in mock");
         } else {
-             try {
-                 data = new Uint8Array(chunk as any);
-             } catch {
-                 throw new Error("Invalid chunk type");
-             }
+          try {
+            data = new Uint8Array(chunk as any);
+          } catch {
+            throw new Error("Invalid chunk type");
+          }
         }
-        
+
         const newContent = new Uint8Array(currentContent.length + data.length);
         newContent.set(currentContent);
         newContent.set(data, currentContent.length);
         currentContent = newContent;
       },
       close: () => {
-          fileHandle.content = currentContent;
+        fileHandle.content = currentContent;
       }
     });
     this.fileHandle = fileHandle;
@@ -104,7 +104,7 @@ export class MockFileSystemFileHandle extends MockFileSystemHandle {
   async createWritable(options?: { keepExistingData?: boolean }): Promise<MockFileSystemWritableFileStream> {
     const stream = new MockFileSystemWritableFileStream(this);
     if (options?.keepExistingData) {
-        // Not implemented but also not used in tests yet
+      // Not implemented but also not used in tests yet
     }
     return stream;
   }
@@ -149,42 +149,42 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
   async removeEntry(name: string, options?: { recursive?: boolean }): Promise<void> {
     const child = this.children.get(name);
     if (!child) throw new Error(`NotFoundError: Entry '${name}' not found.`);
-    
+
     if (child.kind === 'directory' && !options?.recursive) {
-        const dir = child as MockFileSystemDirectoryHandle;
-        if (dir.children.size > 0) throw new Error(`InvalidModificationError: Directory not empty`);
+      const dir = child as MockFileSystemDirectoryHandle;
+      if (dir.children.size > 0) throw new Error(`InvalidModificationError: Directory not empty`);
     }
     this.children.delete(name);
   }
 
   async resolve(possibleDescendant: MockFileSystemHandle): Promise<string[] | null> {
     if (possibleDescendant === this) return [];
-    
+
     for (const [name, child] of this.children) {
-        if (child === possibleDescendant) return [name];
-        if (child.kind === 'directory') {
-            const path = await (child as MockFileSystemDirectoryHandle).resolve(possibleDescendant);
-            if (path) return [name, ...path];
-        }
+      if (child === possibleDescendant) return [name];
+      if (child.kind === 'directory') {
+        const path = await (child as MockFileSystemDirectoryHandle).resolve(possibleDescendant);
+        if (path) return [name, ...path];
+      }
     }
     return null;
   }
-  
+
   async *entries() {
-      for (const [name, handle] of this.children) {
-          yield [name, handle];
-      }
+    for (const [name, handle] of this.children) {
+      yield [name, handle];
+    }
   }
-  
+
   async *keys() {
-      for (const name of this.children.keys()) {
-          yield name;
-      }
+    for (const name of this.children.keys()) {
+      yield name;
+    }
   }
-  
+
   async *values() {
-      for (const handle of this.children.values()) {
-          yield handle;
-      }
+    for (const handle of this.children.values()) {
+      yield handle;
+    }
   }
 }
