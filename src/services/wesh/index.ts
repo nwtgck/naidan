@@ -1,4 +1,4 @@
-import type { CommandDefinition, CommandResult, IVirtualFileSystem, CommandContext } from './types';
+import type { CommandDefinition, CommandResult, IVirtualFileSystem, CommandContext, ASTNode, Redirection } from './types';
 import { VFS } from './vfs';
 import { parseCommandLine } from './parser';
 import { createTextHelpers } from './utils/io';
@@ -6,12 +6,21 @@ import { createTextHelpers } from './utils/io';
 import { builtinCommands } from './commands';
 import { help } from './commands/help';
 
+interface Job {
+  id: number;
+  command: string;
+  promise: Promise<CommandResult>;
+  status: 'running' | 'done';
+}
+
 export class Wesh {
   public vfs: IVirtualFileSystem;
   private env: Record<string, string> = {};
   private cwd: string = '/';
   private history: string[] = [];
   private commands: Map<string, CommandDefinition> = new Map();
+  private jobs: Map<number, Job> = new Map();
+  private nextJobId: number = 1;
 
   constructor({
     rootHandle,
@@ -36,79 +45,273 @@ export class Wesh {
       this.registerCommand({ definition });
     }
     this.registerCommand({ definition: help });
+    
+    this.registerInternalCommand('jobs', async ({ context }) => {
+      const jobs = context.getJobs();
+      const { print } = context.text();
+      for (const job of jobs) {
+        await print({ text: `[${job.id}] ${job.status} ${job.command}\n` });
+      }
+      return { exitCode: 0, data: undefined, error: undefined };
+    });
+    
+    this.registerInternalCommand('ps', async ({ context }) => {
+        const jobs = context.getJobs();
+        const { print } = context.text();
+        await print({ text: "PID\tCMD\n" });
+        for (const job of jobs) {
+            await print({ text: `${job.id}\t${job.command}\n` });
+        }
+        return { exitCode: 0, data: undefined, error: undefined };
+    });
   }
 
   registerCommand({ definition }: { definition: CommandDefinition }): void {
     this.commands.set(definition.meta.name, definition);
   }
 
-  async execute({ commandLine }: { commandLine: string }): Promise<CommandResult> {
-    this.history.push(commandLine);
-    const pipeline = parseCommandLine({ commandLine, env: this.env });
+  private registerInternalCommand(name: string, fn: ({ context }: { context: CommandContext }) => Promise<CommandResult>) {
+      this.commands.set(name, {
+          fn,
+          meta: { name, description: 'Built-in command', usage: name }
+      });
+  }
 
-    if (pipeline.commands.length === 0) {
+  private expandVariables(text: string): string {
+    return text.replace(/\$(\w+)|\${(\w+)}|\$\?/g, (match, p1, p2) => {
+      if (match === '$?') return this.env['?'] || '0';
+      const key = p1 || p2;
+      if (key === 'RANDOM') return Math.floor(Math.random() * 32768).toString();
+      return this.env[key || ''] || '';
+    });
+  }
+
+  async execute({ commandLine }: { commandLine: string }): Promise<CommandResult> {
+    if (!commandLine.trim()) {
       return { exitCode: 0, data: undefined, error: undefined };
     }
 
-    const streams: Array<{ readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> }> = [];
-    for (let i = 0; i < pipeline.commands.length - 1; i++) {
-      const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-      streams.push({ readable, writable });
+    this.history.push(commandLine);
+    
+    const stdoutChunks: Uint8Array[] = [];
+    const stderrChunks: Uint8Array[] = [];
+
+    const stdout = new WritableStream<Uint8Array>({
+      write(chunk) { 
+        stdoutChunks.push(chunk); 
+      }
+    });
+    const stderr = new WritableStream<Uint8Array>({
+      write(chunk) { stderrChunks.push(chunk); }
+    });
+
+    try {
+      const rootNode = parseCommandLine({ commandLine, env: this.env });
+      const result = await this.executeNode(rootNode, new ReadableStream(), stdout, stderr);
+      
+      /** Final settled wait */
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const decoder = new TextDecoder();
+      const capturedStdout = stdoutChunks.length > 0 ? decoder.decode(this.concatUint8Arrays(stdoutChunks)) : undefined;
+      const capturedStderr = stderrChunks.length > 0 ? decoder.decode(this.concatUint8Arrays(stderrChunks)) : undefined;
+
+      return {
+        ...result,
+        data: capturedStdout ?? result.data,
+        error: result.error || capturedStderr
+      };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { exitCode: 1, data: undefined, error: message || 'Unknown error' };
     }
+  }
 
-    const finalStdout = new TransformStream<Uint8Array, Uint8Array>();
-    const finalStderr = new TransformStream<Uint8Array, Uint8Array>();
+  private async executeNode(node: ASTNode, stdin: ReadableStream<Uint8Array>, stdout: WritableStream<Uint8Array>, stderr: WritableStream<Uint8Array>): Promise<CommandResult> {
+    switch (node.kind) {
+      case 'list':
+        let lastResult: CommandResult = { exitCode: 0, data: undefined, error: undefined };
+        let previousOperator: ';' | '&&' | '||' | '&' = ';';
 
-    const commandPromises = pipeline.commands.map(async (cmd, i) => {
-      let stdin = i === 0 ? new ReadableStream<Uint8Array>() : (streams[i - 1]?.readable ?? new ReadableStream());
-      let stdout = i === pipeline.commands.length - 1 ? finalStdout.writable : (streams[i]?.writable ?? finalStdout.writable);
-      let stderr = finalStderr.writable;
+        for (const part of node.parts) {
+          let shouldExecute = true;
+          if (previousOperator === '&&' && lastResult.exitCode !== 0) shouldExecute = false;
+          if (previousOperator === '||' && lastResult.exitCode === 0) shouldExecute = false;
 
-      for (const red of cmd.redirections) {
-        const fullTarget = red.target ? (red.target.startsWith('/') ? red.target : `${this.cwd}/${red.target}`) : undefined;
-
-        switch (red.type) {
-        case '<':
-          if (fullTarget) {
-            stdin = await this.vfs.readFile({ path: fullTarget });
+          if (!shouldExecute) {
+             previousOperator = part.operator;
+             continue;
           }
-          break;
-        case '>':
-        case '>>':
-          if (fullTarget) {
-            const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-            stdout = writable;
-            this.vfs.writeFile({ path: fullTarget, stream: readable }).catch(console.error);
+
+          if (part.operator === '&') {
+            const jobId = this.nextJobId++;
+            const cmdStr = "Background Job"; 
+            const jobPromise = this.executeNode(part.node, stdin, stdout, stderr).then(res => {
+                const job = this.jobs.get(jobId);
+                if (job) job.status = 'done';
+                return res;
+            });
+            
+            this.jobs.set(jobId, {
+                id: jobId,
+                command: cmdStr,
+                promise: jobPromise,
+                status: 'running'
+            });
+            
+            lastResult = { exitCode: 0, data: `[${jobId}] ${jobId}\n`, error: undefined };
+            previousOperator = '&';
+          } else {
+             lastResult = await this.executeNode(part.node, stdin, stdout, stderr);
+             previousOperator = part.operator;
           }
-          break;
-        case '2>':
-          if (fullTarget) {
-            const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-            stderr = writable;
-            this.vfs.writeFile({ path: fullTarget, stream: readable }).catch(console.error);
-          }
-          break;
-        case '2>&1':
-          stderr = stdout;
-          break;
-        default: {
-          const _ex: never = red.type;
-          throw new Error(`Unexpected redirection type: ${_ex}`);
         }
+        return lastResult;
+
+      case 'pipeline':
+        return this.executePipeline(node, stdin, stdout, stderr);
+
+      case 'command':
+        return this.executeCommand(node, stdin, stdout, stderr);
+
+      case 'if':
+        const conditionResult = await this.executeNode(node.condition, stdin, stdout, stderr);
+        if (conditionResult.exitCode === 0) {
+            return this.executeNode(node.thenBody, stdin, stdout, stderr);
+        } else if (node.elseBody) {
+            return this.executeNode(node.elseBody, stdin, stdout, stderr);
         }
+        return { exitCode: 0, data: undefined, error: undefined };
+
+      case 'for':
+        let lastForRes: CommandResult = { exitCode: 0, data: undefined, error: undefined };
+        const expandedItems: string[] = [];
+        for (const item of node.items) {
+            expandedItems.push(this.expandVariables(item));
+        }
+
+        for (const item of expandedItems) {
+            this.env[node.variable] = item;
+            lastForRes = await this.executeNode(node.body, stdin, stdout, stderr);
+        }
+        return lastForRes;
+
+      case 'assignment':
+        for (const assign of node.assignments) {
+            this.env[assign.key] = this.expandVariables(assign.value);
+        }
+        return { exitCode: 0, data: undefined, error: undefined };
+    }
+  }
+
+  private async executePipeline(node: { commands: ASTNode[] }, stdin: ReadableStream<Uint8Array>, stdout: WritableStream<Uint8Array>, stderr: WritableStream<Uint8Array>): Promise<CommandResult> {
+      const commands = node.commands;
+      if (commands.length === 0) return { exitCode: 0, data: undefined, error: undefined };
+
+      const streams: Array<{ readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> }> = [];
+      for (let i = 0; i < commands.length - 1; i++) {
+        let controller: ReadableStreamDefaultController<Uint8Array>;
+        const readable = new ReadableStream<Uint8Array>({
+            start(c) { controller = c; }
+        });
+        const writable = new WritableStream<Uint8Array>({
+            write(chunk) { controller.enqueue(chunk); },
+            close() { controller.close(); },
+            abort(e) { controller.error(e); }
+        });
+        streams.push({ readable, writable });
       }
 
-      const definition = this.commands.get(cmd.command);
-      if (!definition) throw new Error(`Command not found: ${cmd.command}`);
+      const promises = commands.map((cmd, i) => {
+          const myStdin = i === 0 ? stdin : streams[i-1]!.readable;
+          const myStdout = i === commands.length - 1 ? stdout : streams[i]!.writable;
+          return this.executeNode(cmd, myStdin, myStdout, stderr);
+      });
 
-      const context: CommandContext = {
-        args: cmd.args,
-        env: { ...this.env },
+      const results = await Promise.all(promises);
+      const lastResult = results[results.length - 1]!;
+
+      const exitCode = lastResult.exitCode;
+      this.env['?'] = exitCode.toString();
+
+      return lastResult;
+  }
+
+  private async executeCommand(node: { name: string; args: string[]; assignments: {key:string; value:string}[]; redirections: Redirection[] }, stdin: ReadableStream<Uint8Array>, stdout: WritableStream<Uint8Array>, stderr: WritableStream<Uint8Array>): Promise<CommandResult> {
+    const cmdName = this.expandVariables(node.name);
+    const definition = this.commands.get(cmdName);
+    if (!definition) {
+        throw new Error(`Command not found: ${cmdName}`);
+    }
+
+    const currentEnv = { ...this.env };
+    for (const assign of node.assignments) {
+        currentEnv[assign.key] = this.expandVariables(assign.value);
+    }
+
+    let cmdStdin = stdin;
+    let cmdStdout = stdout;
+    let cmdStderr = stderr;
+    let backgroundPromises: Promise<void>[] = [];
+    let createdStreams: WritableStream[] = [];
+
+    for (const red of node.redirections) {
+        const rawTarget = red.target ? this.expandVariables(red.target) : undefined;
+        const fullTarget = rawTarget ? (rawTarget.startsWith('/') ? rawTarget : `${this.cwd}/${rawTarget}`) : undefined;
+
+        switch (red.type) {
+            case '<':
+                if (fullTarget) {
+                    cmdStdin = await this.vfs.readFile({ path: fullTarget });
+                }
+                break;
+            case '>':
+            case '>>':
+                if (fullTarget) {
+                    let controller: ReadableStreamDefaultController<Uint8Array>;
+                    const readable = new ReadableStream<Uint8Array>({
+                        start(c) { controller = c; }
+                    });
+                    const writable = new WritableStream<Uint8Array>({
+                        write(chunk) { controller.enqueue(chunk); },
+                        close() { controller.close(); },
+                        abort(e) { controller.error(e); }
+                    });
+                    cmdStdout = writable;
+                    createdStreams.push(writable);
+                    backgroundPromises.push(this.vfs.writeFile({ path: fullTarget, stream: readable }));
+                }
+                break;
+             case '2>':
+                if (fullTarget) {
+                    let controller: ReadableStreamDefaultController<Uint8Array>;
+                    const readable = new ReadableStream<Uint8Array>({
+                        start(c) { controller = c; }
+                    });
+                    const writable = new WritableStream<Uint8Array>({
+                        write(chunk) { controller.enqueue(chunk); },
+                        close() { controller.close(); },
+                        abort(e) { controller.error(e); }
+                    });
+                    cmdStderr = writable;
+                    createdStreams.push(writable);
+                    backgroundPromises.push(this.vfs.writeFile({ path: fullTarget, stream: readable }));
+                }
+                break;
+            case '2>&1':
+                cmdStderr = cmdStdout;
+                break;
+        }
+    }
+
+    const context: CommandContext = {
+        args: node.args.map(a => this.expandVariables(a)),
+        env: currentEnv,
         cwd: this.cwd,
         vfs: this.vfs,
-        stdin,
-        stdout,
-        stderr,
+        stdin: cmdStdin,
+        stdout: cmdStdout,
+        stderr: cmdStderr,
         setCwd: ({ path }: { path: string }) => {
           this.env.OLDPWD = this.cwd;
           this.cwd = path;
@@ -123,57 +326,18 @@ export class Wesh {
         getHistory: () => [...this.history],
         getCommandMeta: ({ name }: { name: string }) => this.commands.get(name)?.meta,
         getCommandNames: () => Array.from(this.commands.keys()),
-        text: () => createTextHelpers({ stdin, stdout, stderr }),
-      };
+        getJobs: () => Array.from(this.jobs.values()).map(j => ({ id: j.id, command: j.command, status: j.status })),
+        text: () => createTextHelpers({ stdin: cmdStdin, stdout: cmdStdout, stderr: cmdStderr }),
+    };
 
-      return definition.fn({ context });
-    });
+    const result = await definition.fn({ context });
 
-    const stdoutChunks: Uint8Array[] = [];
-    const stderrChunks: Uint8Array[] = [];
-    const stdoutReader = finalStdout.readable.getReader();
-    const stderrReader = finalStderr.readable.getReader();
-
-    const readStdout = (async () => {
-      while (true) {
-        const { done, value } = await stdoutReader.read();
-        if (done) break;
-        stdoutChunks.push(value);
-      }
-    })();
-
-    const readStderr = (async () => {
-      while (true) {
-        const { done, value } = await stderrReader.read();
-        if (done) break;
-        stderrChunks.push(value);
-      }
-    })();
-
-    try {
-      const results = await Promise.all(commandPromises);
-      const lastResult = results[results.length - 1];
-
-      await finalStdout.writable.close();
-      await finalStderr.writable.close();
-      await Promise.all([readStdout, readStderr]);
-
-      const decoder = new TextDecoder();
-      const output = decoder.decode(this.concatUint8Arrays(stdoutChunks));
-      const errorOutput = decoder.decode(this.concatUint8Arrays(stderrChunks));
-
-      const exitCode = lastResult?.exitCode ?? 0;
-      this.env['?'] = exitCode.toString();
-
-      return {
-        exitCode,
-        data: output,
-        error: lastResult?.error || errorOutput || undefined,
-      };
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      return { exitCode: 1, data: undefined, error: message || 'Unknown error' };
+    for (const stream of createdStreams) {
+        await stream.close().catch(() => {});
     }
+    await Promise.all(backgroundPromises);
+
+    return result;
   }
 
   private concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {

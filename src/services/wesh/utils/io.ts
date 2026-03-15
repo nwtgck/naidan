@@ -43,6 +43,7 @@ export function createTextHelpers({
     async print({ text }: { text: string }): Promise<void> {
       const writer = stdout.getWriter();
       try {
+        await writer.ready;
         await writer.write(encoder.encode(text));
       } finally {
         writer.releaseLock();
@@ -52,6 +53,7 @@ export function createTextHelpers({
     async error({ text }: { text: string }): Promise<void> {
       const writer = stderr.getWriter();
       try {
+        await writer.ready;
         await writer.write(encoder.encode(text));
       } finally {
         writer.releaseLock();

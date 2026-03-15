@@ -39,6 +39,7 @@ export interface CommandContext {
   getHistory(): string[];
   getCommandMeta({ name }: { name: string }): CommandMeta | undefined;
   getCommandNames(): string[];
+  getJobs(): Array<{ id: number; command: string; status: 'running' | 'done' }>;
 
   /** Utilities for text-based commands */
   text(): {
@@ -62,4 +63,59 @@ export interface CommandMeta {
 export interface CommandDefinition {
   fn: CommandFunction;
   meta: CommandMeta;
+}
+
+// --- AST Definitions ---
+
+export interface Redirection {
+  type: '>' | '>>' | '<' | '2>' | '2>&1';
+  target: string | undefined;
+}
+
+export type ASTNode =
+  | CommandNode
+  | PipelineNode
+  | ListNode
+  | IfNode
+  | ForNode
+  | AssignmentNode;
+
+export interface CommandNode {
+  kind: 'command';
+  assignments: { key: string; value: string }[];
+  name: string;
+  args: string[];
+  redirections: Redirection[];
+}
+
+export interface PipelineNode {
+  kind: 'pipeline';
+  commands: ASTNode[];
+}
+
+export interface ListNode {
+  kind: 'list';
+  parts: {
+    node: ASTNode;
+    operator: ';' | '&&' | '||' | '&';
+  }[];
+}
+
+export interface IfNode {
+  kind: 'if';
+  condition: ASTNode;
+  thenBody: ASTNode;
+  elseBody?: ASTNode;
+}
+
+export interface ForNode {
+  kind: 'for';
+  variable: string;
+  items: string[];
+  body: ASTNode;
+}
+
+export interface AssignmentNode {
+  kind: 'assignment';
+  assignments: { key: string; value: string }[];
 }

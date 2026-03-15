@@ -20,7 +20,8 @@ export const cat: CommandDefinition = {
     for (const f of files) {
       if (f === undefined) continue;
       try {
-        const stream = await context.vfs.readFile({ path: f.startsWith('/') ? f : `${context.cwd}/${f}` });
+        const path = f.startsWith('/') ? f : `${context.cwd}/${f}`;
+        const stream = await context.vfs.readFile({ path });
         await stream.pipeTo(context.stdout, { preventClose: true });
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);

@@ -40,7 +40,11 @@ export class VFS implements IVirtualFileSystem {
       };
     }
 
-    const mount = this.mounts.find((m) => normalized === m.path || normalized.startsWith(m.path + '/'));
+    const mount = this.mounts.find((m) => {
+      if (normalized === m.path) return true;
+      const prefix = m.path.endsWith('/') ? m.path : m.path + '/';
+      return normalized.startsWith(prefix);
+    });
     if (!mount) {
       throw new Error(`Path not found: ${path}`);
     }
@@ -176,7 +180,8 @@ export class VFS implements IVirtualFileSystem {
     }
     }
 
-    const writable = await (handle as FileSystemFileHandle).createWritable();
+    const fileHandle = handle as FileSystemFileHandle;
+    const writable = await fileHandle.createWritable();
     await stream.pipeTo(writable);
   }
 
