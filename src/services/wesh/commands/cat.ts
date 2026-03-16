@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '../types';
 
 export const catCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -8,31 +8,57 @@ export const catCommandDefinition: WeshCommandDefinition = {
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const files = context.args;
-    const text = context.text();
+    const buf = new Uint8Array(64 * 1024); // 64KB buffer for efficiency
+
+    // Helper to pump data from one handle to another
+    const pump = async (src: WeshFileHandle, dst: WeshFileHandle) => {
+      try {
+        while (true) {
+          const { bytesRead } = await src.read({ buffer: buf });
+          if (bytesRead === 0) break; // EOF
+          
+          let written = 0;
+          while (written < bytesRead) {
+            const { bytesWritten } = await dst.write({ 
+              buffer: buf, 
+              offset: written, 
+              length: bytesRead - written 
+            });
+            written += bytesWritten;
+          }
+        }
+      } catch (e: any) {
+         if (e.message === 'Broken pipe') return;
+         throw e;
+      }
+    };
 
     if (files.length === 0) {
-      for await (const line of text.input) {
-        await text.print({ text: line + '\n' });
-      }
+      await pump(context.stdin, context.stdout);
       return { exitCode: 0, data: undefined, error: undefined };
     }
 
     for (const f of files) {
       if (f === undefined || f === '') continue;
-      if (f === '-') {
-        for await (const line of text.input) {
-          await text.print({ text: line + '\n' });
-        }
-        continue;
-      }
       
       try {
-        const path = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-        const stream = await context.vfs.readFile({ path });
-        await stream.pipeTo(context.stdout, { preventClose: true });
+        if (f === '-') {
+          await pump(context.stdin, context.stdout);
+        } else {
+          const path = f.startsWith('/') ? f : `${context.cwd}/${f}`;
+          // We use kernel.open via context to ensure proper access/vfs resolution
+          const handle = await context.kernel.open({ path, flags: 0 }); // O_RDONLY
+          try {
+            await pump(handle, context.stdout);
+          } finally {
+            await handle.close();
+          }
+        }
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
-        await text.error({ text: `cat: ${f}: ${message}\n` });
+        const encoder = new TextEncoder();
+        await context.stderr.write({ buffer: encoder.encode(`cat: ${f}: ${message}\n`) });
+        return { exitCode: 1, data: undefined, error: message };
       }
     }
 

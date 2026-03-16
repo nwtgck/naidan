@@ -1,77 +1,188 @@
-export interface WeshCommandResult {
-  /** 0 for success, non-zero for failure */
-  exitCode: number;
-  /** Structured output data for machine consumption */
-  data: unknown | undefined;
-  /** Human-readable error message */
-  error: string | undefined;
+// --- Kernel & Process Types ---
+
+export type WeshFileType = 'file' | 'directory' | 'fifo' | 'chardev' | 'symlink';
+
+export interface WeshStat {
+  size: number;
+  mode: number; // Unix-style mode (permissions + type)
+  type: WeshFileType;
+  mtime: number;
+  ino: number;
+  uid: number;
+  gid: number;
 }
 
-export interface WeshFileHandle {
-  read({ buffer, position }: { buffer: Uint8Array; position?: number }): Promise<{ bytesRead: number }>;
-  write({ buffer, position }: { buffer: Uint8Array; position?: number }): Promise<{ bytesWritten: number }>;
-  close(): Promise<void>;
-  stat(): Promise<{ size: number; kind: 'file' | 'directory' }>;
-  truncate({ size }: { size: number }): Promise<void>;
+export interface WeshIOResult {
+  bytesRead: number;
 }
+
+export interface WeshWriteResult {
+  bytesWritten: number;
+}
+
+/**
+ * Low-level File Handle (similar to a file descriptor in kernel)
+ */
+export interface WeshFileHandle {
+  /**
+   * Read data into a buffer (Bring Your Own Buffer)
+   */
+  read(options: { 
+    buffer: Uint8Array; 
+    offset?: number; // Offset in the buffer to start writing at
+    length?: number; // Maximum number of bytes to read
+    position?: number; // File position (seek). If undefined, use current cursor.
+  }): Promise<WeshIOResult>;
+
+  /**
+   * Write data from a buffer
+   */
+  write(options: { 
+    buffer: Uint8Array; 
+    offset?: number; // Offset in the buffer to start reading from
+    length?: number; // Number of bytes to write
+    position?: number; // File position (seek). If undefined, use current cursor.
+  }): Promise<WeshWriteResult>;
+
+  close(): Promise<void>;
+
+  stat(): Promise<WeshStat>;
+
+  truncate(options: { size: number }): Promise<void>;
+  
+  /**
+   * Control device/handle specific operations (e.g. terminal size, blocking mode)
+   */
+  ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }>;
+}
+
+export interface WeshProcess {
+  pid: number;
+  ppid: number;
+  pgid: number; // Process Group ID
+  state: 'running' | 'stopped' | 'zombie' | 'terminated';
+  exitCode?: number;
+  
+  env: Map<string, string>;
+  cwd: string;
+  args: string[];
+  
+  /** File Descriptor Table: fd -> handle */
+  fds: Map<number, WeshFileHandle>;
+}
+
+export interface WeshKernel {
+  /**
+   * Fork/Spawn a new process
+   * @returns PID of the new process
+   */
+  spawn(options: { 
+    image: string; // Command/Executable name or path
+    args: string[]; 
+    env?: Map<string, string>; 
+    cwd?: string; 
+    fds?: Map<number, WeshFileHandle>; // Explicit FD inheritance/mapping
+  }): Promise<{ pid: number; process: WeshProcess }>;
+
+  /**
+   * Wait for a process to change state (e.g. exit)
+   */
+  wait(options: { pid: number; flags?: number }): Promise<{ pid: number; exitCode: number }>;
+
+  /**
+   * Send a signal to a process
+   */
+  kill(options: { pid: number; signal: number }): Promise<void>;
+
+  /**
+   * Create a pipe (unnamed)
+   */
+  pipe(): Promise<{ read: WeshFileHandle; write: WeshFileHandle }>;
+
+  /** Open a file (Virtual File System or Device) */
+  open(options: { path: string; flags: number; mode?: number }): Promise<WeshFileHandle>;
+
+  stat(options: { path: string }): Promise<WeshStat>;
+
+  readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
+
+  mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
+
+  mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
+
+  getProcess(options: { pid: number }): WeshProcess | undefined;
+}
+
+// --- Virtual File System ---
 
 export interface WeshIVirtualFileSystem {
-  mount({ path, handle, readOnly }: { path: string; handle: FileSystemDirectoryHandle; readOnly: boolean }): void;
-  unmount({ path }: { path: string }): void;
-  resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }>;
-  readDir({ path }: { path: string }): Promise<Array<{ name: string; kind: 'file' | 'directory' }>>;
+  mount(options: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void>;
+  unmount(options: { path: string }): Promise<void>;
   
-  /** Low-level file open */
-  open({ path, mode }: { path: string; mode: 'r' | 'w' | 'rw' | 'a' }): Promise<WeshFileHandle>;
-
-  /** @deprecated use open() */
-  readFile({ path }: { path: string }): Promise<ReadableStream<Uint8Array>>;
-  /** @deprecated use open() */
-  writeFile({ path, stream }: { path: string; stream: ReadableStream<Uint8Array> }): Promise<void>;
+  /**
+   * Open a file by path.
+   * Handles translation of VFS paths to handles.
+   */
+  open(options: { path: string; flags: number; mode?: number }): Promise<WeshFileHandle>;
   
-  stat({ path }: { path: string }): Promise<{ size: number; kind: 'file' | 'directory'; readOnly: boolean }>;
-  mkdir({ path, recursive }: { path: string; recursive: boolean }): Promise<void>;
-  rm({ path, recursive }: { path: string; recursive: boolean }): Promise<void>;
-  exists({ path }: { path: string }): Promise<boolean>;
+  stat(options: { path: string }): Promise<WeshStat>;
+  
+  readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
+  
+  mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
+  
+  /**
+   * Remove a file or directory
+   */
+  unlink(options: { path: string }): Promise<void>;
+  rmdir(options: { path: string }): Promise<void>;
+  
+  /**
+   * Create a special file (FIFO, Device, etc.)
+   * Persistence logic for special files is handled here.
+   */
+  mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
+  
+  rename(options: { oldPath: string; newPath: string }): Promise<void>;
+}
 
-  registerSpecialFile({ path, handler }: { path: string; handler: () => WeshFileHandle }): void;
-  unregisterSpecialFile({ path }: { path: string }): void;
+// --- Shell / Command Execution Context ---
+
+export interface WeshCommandResult {
+  exitCode: number;
 }
 
 export interface WeshCommandContext {
-  /** All arguments including flags */
+  pid: number;
   args: string[];
   env: Map<string, string>;
   cwd: string;
-  vfs: WeshIVirtualFileSystem;
+  
+  kernel: WeshKernel;
+  
+  // Standard Streams (FDs 0, 1, 2)
+  stdin: WeshFileHandle;
+  stdout: WeshFileHandle;
+  stderr: WeshFileHandle;
 
-  /** Standard I/O Streams */
-  stdin: ReadableStream<Uint8Array>;
-  stdout: WritableStream<Uint8Array>;
-  stderr: WritableStream<Uint8Array>;
-
-  /** Shell State Update */
-  setCwd({ path }: { path: string }): void;
-  setEnv({ key, value }: { key: string; value: string }): void;
-  unsetEnv({ key }: { key: string }): void;
-  getHistory(): string[];
-  getWeshCommandMeta({ name }: { name: string }): WeshCommandMeta | undefined;
-  getCommandNames(): string[];
-  getJobs(): Array<{ id: number; command: string; status: 'running' | 'done' }>;
-
-  /** Utilities for text-based commands */
   text(): {
     input: AsyncIterable<string>;
-    print({ text }: { text: string }): Promise<void>;
-    error({ text }: { text: string }): Promise<void>;
+    print(options: { text: string }): Promise<void>;
+    error(options: { text: string }): Promise<void>;
   };
+
+  // State management (Built-in only)
+  setCwd(options: { path: string }): void;
+  setEnv(options: { key: string; value: string }): void;
+  unsetEnv(options: { key: string }): void;
+  getHistory(): string[];
+  getWeshCommandMeta(options: { name: string }): WeshCommandMeta | undefined;
+  getCommandNames(): string[];
+  getJobs(): Array<{ id: number; command: string; status: 'running' | 'done' }>;
 }
 
-export type WeshCommandFunction = ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
+export type WeshCommandFunction = (options: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
 
-/**
- * Metadata for internal shell documentation (help/man)
- */
 export interface WeshCommandMeta {
   name: string;
   description: string;
@@ -148,5 +259,5 @@ export interface WeshAssignmentNode {
 
 export interface WeshSubshellNode {
   kind: 'subshell';
-  list: WeshListNode; // The content of ( ... ) is effectively a list
+  list: WeshASTNode;
 }

@@ -1,40 +1,48 @@
+import type { WeshFileHandle } from '../types';
+
 export function createTextHelpers({
   stdin,
   stdout,
   stderr,
 }: {
-  stdin: ReadableStream<Uint8Array>;
-  stdout: WritableStream<Uint8Array>;
-  stderr: WritableStream<Uint8Array>;
+  stdin: WeshFileHandle;
+  stdout: WeshFileHandle;
+  stderr: WeshFileHandle;
 }) {
   const encoder = new TextEncoder();
 
+  // Async Iterable for reading lines from stdin
   const inputIterable: AsyncIterable<string> = {
     async *[Symbol.asyncIterator]() {
-      const reader = stdin.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      const readBuf = new Uint8Array(4096); // 4KB buffer
 
       try {
         while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+          const { bytesRead } = await stdin.read({ buffer: readBuf });
+          if (bytesRead === 0) break; // EOF
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split(/\r?\n/);
-          // Keep the last partial line in the buffer
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            yield line;
+          const chunk = readBuf.subarray(0, bytesRead);
+          buffer += decoder.decode(chunk, { stream: true });
+          
+          if (buffer.includes('\n')) {
+             const lines = buffer.split(/\r?\n/);
+             buffer = lines.pop() ?? ''; // Keep the last partial line
+             
+             for (const line of lines) {
+               yield line;
+             }
           }
         }
-        // After EOF, if there's anything left in buffer, yield it
+        
+        // Final flush
         if (buffer !== '') {
           yield buffer;
         }
-      } finally {
-        reader.releaseLock();
+      } catch (e) {
+        // Handle error?
+        throw e;
       }
     }
   };
@@ -43,23 +51,13 @@ export function createTextHelpers({
     input: inputIterable,
 
     async print({ text }: { text: string }): Promise<void> {
-      const writer = stdout.getWriter();
-      try {
-        await writer.ready;
-        await writer.write(encoder.encode(text));
-      } finally {
-        writer.releaseLock();
-      }
+      const data = encoder.encode(text);
+      await stdout.write({ buffer: data });
     },
 
     async error({ text }: { text: string }): Promise<void> {
-      const writer = stderr.getWriter();
-      try {
-        await writer.ready;
-        await writer.write(encoder.encode(text));
-      } finally {
-        writer.releaseLock();
-      }
+      const data = encoder.encode(text);
+      await stderr.write({ buffer: data });
     },
   };
 }

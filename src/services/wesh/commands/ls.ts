@@ -1,5 +1,5 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '../types';
+import { parseFlags } from '../utils/args';
 
 export const lsCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -26,28 +26,24 @@ export const lsCommandDefinition: WeshCommandDefinition = {
     for (const p of paths) {
       try {
         const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
-        const entries = await context.vfs.readDir({ path: fullPath });
+        const entries = await context.kernel.readDir({ path: fullPath });
 
         const filtered = a ? entries : entries.filter((e) => !e.name.startsWith('.'));
 
         for (const entry of filtered) {
           let line = entry.name;
-          switch (entry.kind) {
-          case 'directory':
-            line += '/';
-            break;
-          case 'file':
-            break;
-          default: {
-            const _ex: never = entry.kind;
-            throw new Error(`Unexpected entry kind: ${_ex}`);
-          }
-          }
+          const type = entry.type;
+          
+          if (type === 'directory') line += '/';
+          else if (type === 'fifo') line += '|';
+          else if (type === 'chardev') line += '@';
 
           if (l) {
-            const stat = await context.vfs.stat({ path: `${fullPath}/${entry.name}` });
-            const size = h ? formatSize(stat.size) : stat.size.toString();
-            line = `${entry.kind.charAt(0)} ${size.padStart(10)} ${line}`;
+            const entryPath = fullPath.endsWith('/') ? `${fullPath}${entry.name}` : `${fullPath}/${entry.name}`;
+            const st = await context.kernel.stat({ path: entryPath });
+            const size = h ? formatSize(st.size) : st.size.toString();
+            const typeChar = type === 'directory' ? 'd' : type === 'fifo' ? 'p' : type === 'chardev' ? 'c' : '-';
+            line = `${typeChar} ${size.padStart(10)} ${line}`;
           }
 
           await text.print({ text: line + (one || l ? '\n' : '  ') });

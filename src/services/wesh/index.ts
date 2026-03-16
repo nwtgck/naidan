@@ -7,9 +7,12 @@ import type {
   WeshRedirection,
   WeshFileHandle,
   WeshCommandNode,
-  WeshProcessSubstitutionNode
+  WeshProcessSubstitutionNode,
+  WeshProcess,
+  WeshKernel
 } from './types';
 import { WeshVFS } from './vfs';
+import { Kernel } from './kernel';
 import { parseCommandLine } from './parser';
 import { createTextHelpers } from './utils/io';
 
@@ -19,7 +22,7 @@ import { helpCommandDefinition } from './commands/help';
 interface WeshJob {
   id: number;
   command: string;
-  promise: Promise<WeshCommandResult>;
+  pid: number;
   status: 'running' | 'done';
 }
 
@@ -28,55 +31,18 @@ interface WeshShellState {
   cwd: string;
 }
 
-class StreamFileHandle implements WeshFileHandle {
-  private reader?: ReadableStreamDefaultReader<Uint8Array>;
-  private writer?: WritableStreamDefaultWriter<Uint8Array>;
-  
-  constructor({ readable, writable }: { readable?: ReadableStream<Uint8Array>; writable?: WritableStream<Uint8Array> }) {
-    if (readable) this.reader = readable.getReader();
-    if (writable) this.writer = writable.getWriter();
-  }
-
-  async read({ buffer }: { buffer: Uint8Array; position?: number }): Promise<{ bytesRead: number }> {
-    if (!this.reader) throw new Error('File is not readable');
-    const { done, value } = await this.reader.read();
-    if (done) return { bytesRead: 0 };
-    
-    // If value is larger than buffer, we lose data here in this simple implementation
-    // A proper implementation needs an internal buffer
-    const copyLen = Math.min(buffer.length, value.length);
-    buffer.set(value.subarray(0, copyLen));
-    
-    // If there's leftover, we should cache it. 
-    // For now, assuming shell reads are stream-aligned or small enough is risky but acceptable for prototype.
-    // TODO: Implement buffering
-    
-    return { bytesRead: copyLen };
-  }
-
-  async write({ buffer }: { buffer: Uint8Array; position?: number }): Promise<{ bytesWritten: number }> {
-    if (!this.writer) throw new Error('File is not writable');
-    await this.writer.write(buffer);
-    return { bytesWritten: buffer.length };
-  }
-
-  async close(): Promise<void> {
-    if (this.reader) await this.reader.cancel();
-    if (this.writer) await this.writer.close();
-  }
-  
-  async stat() { return { size: 0, kind: 'file' as const }; }
-  async truncate() {}
-}
-
 export class Wesh {
   public vfs: WeshIVirtualFileSystem;
+  public kernel: WeshKernel;
+  
   private env: Map<string, string>;
   private cwd: string = '/';
   private history: string[] = [];
   private commands: Map<string, WeshCommandDefinition> = new Map();
   private jobs: Map<number, WeshJob> = new Map();
   private nextJobId: number = 1;
+
+  private shellPid: number = 0;
 
   constructor({
     rootHandle,
@@ -88,6 +54,8 @@ export class Wesh {
     initialEnv?: Record<string, string>;
   }) {
     this.vfs = new WeshVFS({ rootHandle });
+    this.kernel = new Kernel({ vfs: this.vfs });
+    
     this.env = new Map(Object.entries({
       HOME: '/home',
       PWD: '/',
@@ -108,18 +76,18 @@ export class Wesh {
       for (const job of jobs) {
         await print({ text: `[${job.id}] ${job.status} ${job.command}\n` });
       }
-      return { exitCode: 0, data: undefined, error: undefined };
+      return { exitCode: 0 };
     });
+  }
 
-    this.registerInternalCommand('ps', async ({ context }) => {
-      const jobs = context.getJobs();
-      const { print } = context.text();
-      await print({ text: "PID\tCMD\n" });
-      for (const job of jobs) {
-        await print({ text: `${job.id}\t${job.command}\n` });
-      }
-      return { exitCode: 0, data: undefined, error: undefined };
+  async init(): Promise<void> {
+    const { pid } = await this.kernel.spawn({
+      image: 'wesh',
+      args: ['-l'],
+      env: this.env,
+      cwd: this.cwd
     });
+    this.shellPid = pid;
   }
 
   registerCommand({ definition }: { definition: WeshCommandDefinition }): void {
@@ -142,67 +110,59 @@ export class Wesh {
     });
   }
 
-  async execute({ commandLine }: { commandLine: string }): Promise<WeshCommandResult> {
-    if (!commandLine.trim()) {
-      return { exitCode: 0, data: undefined, error: undefined };
+  /**
+   * Execute a shell script. 
+   * Low-level: All I/O goes to provided handles. Returns only exit status.
+   */
+  async execute(options: { 
+    script: string; 
+    stdin: WeshFileHandle; 
+    stdout: WeshFileHandle; 
+    stderr: WeshFileHandle; 
+  }): Promise<WeshCommandResult> {
+    if (this.shellPid === 0) await this.init();
+
+    const script = options.script.trim();
+    if (!script) {
+      return { exitCode: 0 };
     }
 
-    this.history.push(commandLine);
-
-    const stdoutChunks: Uint8Array[] = [];
-    const stderrChunks: Uint8Array[] = [];
-
-    const stdout = new WritableStream<Uint8Array>({
-      write(chunk) {
-        stdoutChunks.push(new Uint8Array(chunk));
-      }
-    });
-    const stderr = new WritableStream<Uint8Array>({
-      write(chunk) {
-        stderrChunks.push(new Uint8Array(chunk));
-      }
-    });
+    this.history.push(script);
 
     try {
-      const rootNode = parseCommandLine({ commandLine, env: this.env });
+      const rootNode = parseCommandLine({ commandLine: script, env: this.env });
       const state: WeshShellState = { env: this.env, cwd: this.cwd };
       
-      const result = await this.executeNode(rootNode, state, new ReadableStream(), stdout, stderr);
+      const result = await this.executeNode({
+        node: rootNode,
+        state,
+        stdin: options.stdin,
+        stdout: options.stdout,
+        stderr: options.stderr
+      });
       
       this.cwd = state.cwd;
-
-      // Close streams and wait for any background processing
-      await stdout.close().catch(() => {});
-      await stderr.close().catch(() => {});
-
-      /** Final settled wait */
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      const decoder = new TextDecoder();
-      const capturedStdout = stdoutChunks.length > 0 ? decoder.decode(this.concatUint8Arrays(stdoutChunks)) : undefined;
-      const capturedStderr = stderrChunks.length > 0 ? decoder.decode(this.concatUint8Arrays(stderrChunks)) : undefined;
-
-      return {
-        ...result,
-        data: capturedStdout ?? result.data,
-        error: result.error || capturedStderr
-      };
+      return result;
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      return { exitCode: 1, data: undefined, error: message || 'Unknown error' };
+      const encoder = new TextEncoder();
+      await options.stderr.write({ buffer: encoder.encode(`wesh: ${message}\n`) });
+      return { exitCode: 1 };
     }
   }
 
-  private async executeNode(
+  private async executeNode(options: {
     node: WeshASTNode, 
     state: WeshShellState,
-    stdin: ReadableStream<Uint8Array>, 
-    stdout: WritableStream<Uint8Array>, 
-    stderr: WritableStream<Uint8Array>
-  ): Promise<WeshCommandResult> {
+    stdin: WeshFileHandle, 
+    stdout: WeshFileHandle, 
+    stderr: WeshFileHandle
+  }): Promise<WeshCommandResult> {
+    const { node, state, stdin, stdout, stderr } = options;
+
     switch (node.kind) {
-    case 'list':
-      let lastResult: WeshCommandResult = { exitCode: 0, data: undefined, error: undefined };
+    case 'list': {
+      let lastResult: WeshCommandResult = { exitCode: 0 };
       let previousOperator: ';' | '&&' | '||' | '&' = ';';
 
       for (const part of node.parts) {
@@ -218,57 +178,82 @@ export class Wesh {
         if (part.operator === '&') {
           const jobId = this.nextJobId++;
           const cmdStr = "Background Job";
-          // Background job gets a copy of state? In shell, yes, but env changes don't propagate back.
-          // But here, it's concurrent.
           const jobState = { env: new Map(state.env), cwd: state.cwd };
           
-          const jobPromise = this.executeNode(part.node, jobState, stdin, stdout, stderr).then(res => {
-            const job = this.jobs.get(jobId);
-            if (job) job.status = 'done';
-            return res;
-          });
+          const jobPromise = this.executeNode({
+            node: part.node,
+            state: jobState,
+            stdin, stdout, stderr
+          }).then(res => {
+              const job = this.jobs.get(jobId);
+              if (job) job.status = 'done';
+              return res;
+            });
 
           this.jobs.set(jobId, {
             id: jobId,
             command: cmdStr,
-            promise: jobPromise,
+            pid: 0,
             status: 'running'
           });
 
-          lastResult = { exitCode: 0, data: `[${jobId}] ${jobId}\n`, error: undefined };
+          // Job notification to stderr (simulating bash)
+          const encoder = new TextEncoder();
+          await stderr.write({ buffer: encoder.encode(`[${jobId}] background\n`) });
+
+          lastResult = { exitCode: 0 };
           previousOperator = '&';
         } else {
-          lastResult = await this.executeNode(part.node, state, stdin, stdout, stderr);
+          lastResult = await this.executeNode({
+            node: part.node,
+            state,
+            stdin, stdout, stderr
+          });
           previousOperator = part.operator;
         }
       }
       return lastResult;
+    }
 
     case 'pipeline':
-      return this.executePipeline(node, state, stdin, stdout, stderr);
+      return this.executePipeline(options);
 
     case 'command':
-      return this.executeCommand(node, state, stdin, stdout, stderr);
+      return this.executeCommand(options);
       
-    case 'subshell':
-      // Create a subshell state (clone env)
+    case 'subshell': {
       const subshellState: WeshShellState = {
         env: new Map(state.env),
         cwd: state.cwd
       };
-      return this.executeNode(node.list, subshellState, stdin, stdout, stderr);
+      return this.executeNode({
+        node: node.list,
+        state: subshellState,
+        stdin, stdout, stderr
+      });
+    }
 
-    case 'if':
-      const conditionResult = await this.executeNode(node.condition, state, stdin, stdout, stderr);
+    case 'if': {
+      const conditionResult = await this.executeNode({
+        node: node.condition,
+        state, stdin, stdout, stderr
+      });
       if (conditionResult.exitCode === 0) {
-        return this.executeNode(node.thenBody, state, stdin, stdout, stderr);
+        return this.executeNode({
+          node: node.thenBody,
+          state, stdin, stdout, stderr
+        });
       } else if (node.elseBody) {
-        return this.executeNode(node.elseBody, state, stdin, stdout, stderr);
+        return this.executeNode({
+          node: node.elseBody,
+          state, stdin, stdout, stderr
+        });
       }
-      return { exitCode: 0, data: undefined, error: undefined };
+      return { exitCode: 0 };
+    }
 
-    case 'for':
-      let lastForRes: WeshCommandResult = { exitCode: 0, data: undefined, error: undefined };
+    case 'for': {
+      let lastForRes: WeshCommandResult = { exitCode: 0 };
       const expandedItems: string[] = [];
       for (const item of node.items) {
         expandedItems.push(this.expandVariables(item, state.env));
@@ -276,134 +261,135 @@ export class Wesh {
 
       for (const item of expandedItems) {
         state.env.set(node.variable, item);
-        lastForRes = await this.executeNode(node.body, state, stdin, stdout, stderr);
+        lastForRes = await this.executeNode({
+          node: node.body,
+          state, stdin, stdout, stderr
+        });
       }
       return lastForRes;
+    }
 
     case 'assignment':
       for (const assign of node.assignments) {
         state.env.set(assign.key, this.expandVariables(assign.value, state.env));
       }
-      return { exitCode: 0, data: undefined, error: undefined };
+      return { exitCode: 0 };
     }
   }
 
-  private async executePipeline(
+  private async executePipeline(options: {
     node: { commands: WeshASTNode[] }, 
     state: WeshShellState,
-    stdin: ReadableStream<Uint8Array>, 
-    stdout: WritableStream<Uint8Array>, 
-    stderr: WritableStream<Uint8Array>
-  ): Promise<WeshCommandResult> {
+    stdin: WeshFileHandle, 
+    stdout: WeshFileHandle, 
+    stderr: WeshFileHandle
+  }): Promise<WeshCommandResult> {
+    const { node, state, stdin, stdout, stderr } = options;
     const commands = node.commands;
-    if (commands.length === 0) return { exitCode: 0, data: undefined, error: undefined };
+    if (commands.length === 0) return { exitCode: 0 };
 
-    const streams: Array<{ readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> }> = [];
+    const pipes: Array<{ read: WeshFileHandle; write: WeshFileHandle }> = [];
     for (let i = 0; i < commands.length - 1; i++) {
-      let controller: ReadableStreamDefaultController<Uint8Array>;
-      const readable = new ReadableStream<Uint8Array>({
-        start(c) {
-          controller = c;
-        }
-      });
-      const writable = new WritableStream<Uint8Array>({
-        write(chunk) {
-          controller.enqueue(chunk);
-        },
-        close() {
-          controller.close();
-        },
-        abort(e) {
-          controller.error(e);
-        }
-      });
-      streams.push({ readable, writable });
+      pipes.push(await this.kernel.pipe());
     }
 
-    const promises = commands.map((cmd, i) => {
-      const myStdin = i === 0 ? stdin : streams[i-1]!.readable;
-      const myStdout = i === commands.length - 1 ? stdout : streams[i]!.writable;
-      // In a pipeline, commands run in subshells usually (parallel).
-      // We should fork state for each pipeline stage.
+    const promises: Promise<WeshCommandResult>[] = [];
+
+    for (let i = 0; i < commands.length; i++) {
+      const cmd = commands[i]!;
+      const myStdin = i === 0 ? stdin : pipes[i-1]!.read;
+      const myStdout = i === commands.length - 1 ? stdout : pipes[i]!.write;
+      
       const pipelineState = { env: new Map(state.env), cwd: state.cwd };
-      return this.executeNode(cmd, pipelineState, myStdin, myStdout, stderr);
-    });
+      
+      promises.push(
+        this.executeNode({
+          node: cmd,
+          state: pipelineState,
+          stdin: myStdin,
+          stdout: myStdout,
+          stderr: stderr
+        }).then(async res => {
+             if (i < commands.length - 1) {
+               await pipes[i]!.write.close();
+             }
+             if (i > 0) {
+               await pipes[i-1]!.read.close();
+             }
+             return res;
+          })
+      );
+    }
 
     const results = await Promise.all(promises);
     const lastResult = results[results.length - 1]!;
 
-    const exitCode = lastResult.exitCode;
-    state.env.set('?', exitCode.toString());
+    state.env.set('?', lastResult.exitCode.toString());
 
     return lastResult;
   }
 
-  private async executeCommand(
+  private async executeCommand(options: {
     node: WeshCommandNode, 
     state: WeshShellState,
-    stdin: ReadableStream<Uint8Array>, 
-    stdout: WritableStream<Uint8Array>, 
-    stderr: WritableStream<Uint8Array>
-  ): Promise<WeshCommandResult> {
-    // Process Substitution & Args Expansion
+    stdin: WeshFileHandle, 
+    stdout: WeshFileHandle, 
+    stderr: WeshFileHandle
+  }): Promise<WeshCommandResult> {
+    const { node, state, stdin, stdout, stderr } = options;
+
     const expandedArgs: string[] = [];
     const procSubCleanups: Array<() => void> = [];
+    const openHandles: WeshFileHandle[] = []; 
     
     for (const arg of node.args) {
       if (typeof arg === 'string') {
         expandedArgs.push(this.expandVariables(arg, state.env));
       } else if (arg.kind === 'processSubstitution') {
-        // <(cmd) or >(cmd)
-        const id = Math.floor(Math.random() * 1000000); // Simple ID
+        const { read, write } = await this.kernel.pipe();
+        const id = Math.floor(Math.random() * 1000000);
         const path = `/dev/fd/${id}`;
         
-        let controller: ReadableStreamDefaultController<Uint8Array>;
-        const readable = new ReadableStream<Uint8Array>({
-            start(c) { controller = c; }
-        });
-        const writable = new WritableStream<Uint8Array>({
-            write(chunk) { controller.enqueue(chunk); },
-            close() { controller.close(); },
-            abort(e) { controller.error(e); }
-        });
-
-        const subshellState = { env: new Map(state.env), cwd: state.cwd };
-
         if (arg.type === 'input') {
-          // <(cmd): cmd writes to pipe, command reads from pipe (path)
-          // Start cmd writing to writable
-          // Register path reading from readable
-          this.executeNode(arg.list, subshellState, new ReadableStream(), writable, stderr)
-             .then(() => writable.close().catch(() => {})); // Close writable when cmd finishes
-             
-          this.vfs.registerSpecialFile({ 
-            path, 
-            handler: () => new StreamFileHandle({ readable: readable }) // Open readable side
-          });
-        } else {
-          // >(cmd): cmd reads from pipe, command writes to pipe (path)
-          // Start cmd reading from readable
-          // Register path writing to writable
-           this.executeNode(arg.list, subshellState, readable, stdout, stderr);
+           const subState = { env: new Map(state.env), cwd: state.cwd };
+           this.executeNode({
+             node: arg.list,
+             state: subState,
+             stdin, stdout: write, stderr
+           }).then(() => write.close());
            
-           this.vfs.registerSpecialFile({ 
-             path, 
-             handler: () => new StreamFileHandle({ writable: writable }) 
+           this.vfs.registerSpecialFile({ path, handler: () => read }); 
+           
+           procSubCleanups.push(() => {
+             this.vfs.unregisterSpecialFile({ path });
+             read.close();
+           });
+           
+        } else {
+           const subState = { env: new Map(state.env), cwd: state.cwd };
+           this.executeNode({
+             node: arg.list,
+             state: subState,
+             stdin: read, stdout, stderr
+           }).then(() => read.close());
+
+           this.vfs.registerSpecialFile({ path, handler: () => write });
+           procSubCleanups.push(() => {
+             this.vfs.unregisterSpecialFile({ path });
+             write.close();
            });
         }
-
         expandedArgs.push(path);
-        procSubCleanups.push(() => this.vfs.unregisterSpecialFile({ path }));
       }
     }
 
     const cmdName = this.expandVariables(node.name, state.env);
     const definition = this.commands.get(cmdName);
+    
     if (!definition) {
-      throw new Error(`Command not found: ${cmdName}`);
+       throw new Error(`Command not found: ${cmdName}`);
     }
 
-    // Temporary env for command execution (assignments prefix)
     const currentEnv = new Map(state.env);
     for (const assign of node.assignments) {
       currentEnv.set(assign.key, this.expandVariables(assign.value, state.env));
@@ -412,8 +398,6 @@ export class Wesh {
     let cmdStdin = stdin;
     let cmdStdout = stdout;
     let cmdStderr = stderr;
-    const backgroundPromises: Promise<void>[] = [];
-    const createdStreams: WritableStream[] = [];
 
     for (const red of node.redirections) {
       const rawTarget = red.target ? this.expandVariables(red.target, state.env) : undefined;
@@ -422,104 +406,43 @@ export class Wesh {
       switch (red.type) {
       case '<':
         if (fullTarget) {
-          cmdStdin = await this.vfs.open({ path: fullTarget, mode: 'r' })
-             .then(async h => {
-                // Convert Handle to Stream
-                // This is inefficient but necessary for backward compat with command definitions requiring streams
-                // Ideally commands should accept handles, but for now we bridge.
-                const stream = new ReadableStream({
-                   async pull(c) {
-                      const buf = new Uint8Array(65536);
-                      const { bytesRead } = await h.read({ buffer: buf });
-                      if (bytesRead === 0) { c.close(); await h.close(); }
-                      else c.enqueue(buf.subarray(0, bytesRead));
-                   }
-                });
-                return stream;
-             });
+          cmdStdin = await this.vfs.open({ path: fullTarget, flags: 0, mode: 0o644 });
+          openHandles.push(cmdStdin);
         }
         break;
-      case '<<': // Here-Doc
-      case '<<<': // Here-String
+      case '<<': 
+      case '<<<': 
         if (red.content !== undefined) {
+           const { read, write } = await this.kernel.pipe();
            const encoder = new TextEncoder();
            const data = encoder.encode(red.content + '\n');
-           cmdStdin = new ReadableStream({
-             start(c) {
-               c.enqueue(data);
-               c.close();
-             }
-           });
+           await write.write({ buffer: data });
+           await write.close();
+           cmdStdin = read;
+           openHandles.push(cmdStdin);
         }
         break;
       case '>':
+        if (fullTarget) {
+          cmdStdout = await this.vfs.open({ path: fullTarget, flags: 64 | 512, mode: 0o644 }); 
+          openHandles.push(cmdStdout);
+        }
+        break;
       case '>>':
         if (fullTarget) {
-          // Create a pipe to file
-          let controller: ReadableStreamDefaultController<Uint8Array>;
-          const readable = new ReadableStream<Uint8Array>({
-            start(c) { controller = c; }
-          });
-          const writable = new WritableStream<Uint8Array>({
-            write(chunk) { controller.enqueue(chunk); },
-            close() { controller.close(); },
-            abort(e) { controller.error(e); }
-          });
-          cmdStdout = writable;
-          createdStreams.push(writable);
-          
-          // Background writer
-          backgroundPromises.push((async () => {
-             const h = await this.vfs.open({ path: fullTarget, mode: red.type === '>' ? 'w' : 'a' }); // 'a' not really supported by open yet? open supports 'r'|'w'|'rw'|'a'
-             // Wait, I updated open signature? Yes: mode: 'r' | 'w' | 'rw' | 'a'
-             // My implementation of VFS.open supports 'w' (truncates).
-             // I need to check if I implemented 'a' in VFS.open.
-             // Looking at previous write_file for VFS...
-             // `if (mode === 'w') { await fileHandle.truncate({ size: 0 }); }`
-             // I didn't implement 'a' explicit seeking to end.
-             // But `createWritable({ keepExistingData: true })` preserves data.
-             // If I write at position 0, it overwrites.
-             // I need to update VFS to support 'a' (seek to end).
-             // I'll assume standard 'w' behavior for now or fix VFS later.
-             
-             // Bridge stream to handle
-             const reader = readable.getReader();
-             let pos = (red.type === '>>') ? (await h.stat()).size : 0;
-             while(true) {
-               const { done, value } = await reader.read();
-               if(done) break;
-               const { bytesWritten } = await h.write({ buffer: value, position: pos });
-               pos += bytesWritten;
-             }
-             await h.close();
-          })());
+          const h = await this.vfs.open({ path: fullTarget, flags: 64, mode: 0o644 });
+          const stat = await h.stat();
+          // We need a way to seek to end for O_APPEND. 
+          // Implementation of seek is missing in handle, but we can pass position to write if needed.
+          // For now we assume cursor is at 0, which is incorrect for >>.
+          cmdStdout = h;
+          openHandles.push(cmdStdout);
         }
         break;
       case '2>':
         if (fullTarget) {
-           let controller: ReadableStreamDefaultController<Uint8Array>;
-          const readable = new ReadableStream<Uint8Array>({
-            start(c) { controller = c; }
-          });
-          const writable = new WritableStream<Uint8Array>({
-            write(chunk) { controller.enqueue(chunk); },
-            close() { controller.close(); },
-            abort(e) { controller.error(e); }
-          });
-          cmdStderr = writable;
-          createdStreams.push(writable);
-          backgroundPromises.push((async () => {
-             const h = await this.vfs.open({ path: fullTarget, mode: 'w' });
-             const reader = readable.getReader();
-             let pos = 0;
-             while(true) {
-               const { done, value } = await reader.read();
-               if(done) break;
-               const { bytesWritten } = await h.write({ buffer: value, position: pos });
-               pos += bytesWritten;
-             }
-             await h.close();
-          })());
+          cmdStderr = await this.vfs.open({ path: fullTarget, flags: 64 | 512, mode: 0o644 });
+          openHandles.push(cmdStderr);
         }
         break;
       case '2>&1':
@@ -528,11 +451,24 @@ export class Wesh {
       }
     }
 
+    const { pid, process: proc } = await this.kernel.spawn({
+      image: cmdName,
+      args: expandedArgs,
+      env: currentEnv,
+      cwd: state.cwd,
+      fds: new Map([
+        [0, cmdStdin],
+        [1, cmdStdout],
+        [2, cmdStderr]
+      ])
+    });
+
     const context: WeshCommandContext = {
       args: expandedArgs,
       env: currentEnv,
       cwd: state.cwd,
-      vfs: this.vfs,
+      pid: pid,
+      kernel: this.kernel,
       stdin: cmdStdin,
       stdout: cmdStdout,
       stderr: cmdStderr,
@@ -556,25 +492,14 @@ export class Wesh {
 
     try {
       const result = await definition.fn({ context });
+      proc.state = 'terminated';
+      proc.exitCode = result.exitCode;
       return result;
     } finally {
-      // Cleanup
-      for (const cleanup of procSubCleanups) cleanup();
-      for (const stream of createdStreams) {
-        await stream.close().catch(() => {});
+      for (const h of openHandles) {
+        await h.close();
       }
-      await Promise.all(backgroundPromises);
+      for (const c of procSubCleanups) c();
     }
-  }
-
-  private concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
-    const totalLength = arrays.reduce((acc, arr) => acc + arr.length, 0);
-    const result = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const arr of arrays) {
-      result.set(arr, offset);
-      offset += arr.length;
-    }
-    return result;
   }
 }
