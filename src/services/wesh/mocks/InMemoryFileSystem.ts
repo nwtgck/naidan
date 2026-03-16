@@ -71,7 +71,7 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
     if (!options?.keepExistingData) {
       this.fileHandle.content = new Uint8Array(0);
     }
-    this.cursor = options?.keepExistingData ? 0 : 0; 
+    this.cursor = options?.keepExistingData ? 0 : 0;
     // Logic note: keepExistingData=true usually means open existing. Cursor starts at 0.
     // If keepExistingData=false, it truncates.
   }
@@ -108,8 +108,12 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
       else if (d instanceof ArrayBuffer) bytes = new Uint8Array(d);
       else throw new Error("Unsupported write data type in mock");
     } else {
-       // fallback
-       try { bytes = new Uint8Array(data); } catch { throw new Error("Invalid data type"); }
+      // fallback
+      try {
+        bytes = new Uint8Array(data);
+      } catch {
+        throw new Error("Invalid data type");
+      }
     }
 
     const requiredSize = this.cursor + bytes.length;

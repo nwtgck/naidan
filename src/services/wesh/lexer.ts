@@ -214,29 +214,29 @@ export class Lexer {
   readHereDoc(delimiter: string): string {
     const start = this.position;
     let content = '';
-    
+
     // Simple line-based scanner
     while (this.position < this.length) {
       const lineStart = this.position;
       let lineEnd = this.input.indexOf('\n', lineStart);
       if (lineEnd === -1) lineEnd = this.length;
-      
+
       const line = this.input.slice(lineStart, lineEnd);
-      
+
       if (line === delimiter) {
         this.position = lineEnd + (lineEnd < this.length ? 1 : 0); // Skip delimiter line and newline
         // Standard behavior: content is everything BEFORE the delimiter line.
-        // If content ended with newline (which it does because we add it), 
+        // If content ended with newline (which it does because we add it),
         // we might want to keep it or remove one.
         // Actually, my content += line + '\n' adds a newline for every line.
         // The last line before delimiter also got a newline.
         return content.endsWith('\n') ? content.slice(0, -1) : content;
       }
-      
+
       content += line + '\n';
       this.position = lineEnd + (lineEnd < this.length ? 1 : 0);
     }
-    
+
     throw new Error(`Here-document delimiter '${delimiter}' not found`);
   }
 }

@@ -1,7 +1,7 @@
-import type { 
-  WeshIVirtualFileSystem, 
-  WeshFileHandle, 
-  WeshFileType, 
+import type {
+  WeshIVirtualFileSystem,
+  WeshFileHandle,
+  WeshFileType,
   WeshStat,
   WeshIOResult,
   WeshWriteResult
@@ -29,38 +29,38 @@ class StandardFileHandle implements WeshFileHandle {
     this.readOnly = readOnly;
   }
 
-  async read(options: { 
-    buffer: Uint8Array; 
-    offset?: number; 
-    length?: number; 
+  async read(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
     position?: number;
   }): Promise<WeshIOResult> {
     const file = await this.handle.getFile();
     const position = options.position ?? 0; // Default to 0 if not provided? Or maintain internal cursor?
     // The interface says "If undefined, use current cursor."
-    // StandardFileHandle should probably maintain a cursor if it's stateful, 
+    // StandardFileHandle should probably maintain a cursor if it's stateful,
     // but the previous implementation was stateless regarding cursor.
     // However, POSIX file descriptors have state (cursor).
     // The VFS.open returns a Handle. If this handle is shared, cursor is shared.
     // Let's implement cursor.
-    
+
     // Actually, `WeshFileHandle` in types.ts implies we might pass position.
     // If position is undefined, we use internal cursor.
-    
+
     const pos = options.position ?? this._cursor;
-    
+
     if (pos >= file.size) return { bytesRead: 0 };
 
     const bufferOffset = options.offset ?? 0;
     const maxLen = options.length ?? (options.buffer.length - bufferOffset);
     const end = Math.min(pos + maxLen, file.size);
-    
+
     const slice = file.slice(pos, end);
     const arrayBuffer = await slice.arrayBuffer();
     const result = new Uint8Array(arrayBuffer);
-    
+
     options.buffer.set(result, bufferOffset);
-    
+
     if (options.position === undefined) {
       this._cursor += result.length;
     }
@@ -70,18 +70,18 @@ class StandardFileHandle implements WeshFileHandle {
 
   private _cursor = 0;
 
-  async write(options: { 
-    buffer: Uint8Array; 
-    offset?: number; 
-    length?: number; 
-    position?: number 
+  async write(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number
   }): Promise<WeshWriteResult> {
     if (this.readOnly) throw new Error('File is read-only');
 
     const bufferOffset = options.offset ?? 0;
     const length = options.length ?? (options.buffer.length - bufferOffset);
     const dataToWrite = options.buffer.subarray(bufferOffset, bufferOffset + length);
-    
+
     const pos = options.position ?? this._cursor;
 
     // keepExistingData: true is crucial.
@@ -92,7 +92,7 @@ class StandardFileHandle implements WeshFileHandle {
     } finally {
       await writable.close();
     }
-    
+
     if (options.position === undefined) {
       this._cursor += length;
     }
@@ -106,8 +106,8 @@ class StandardFileHandle implements WeshFileHandle {
 
   async stat(): Promise<WeshStat> {
     const file = await this.handle.getFile();
-    return { 
-      size: file.size, 
+    return {
+      size: file.size,
       mode: 0o644, // Default for regular files
       type: 'file',
       mtime: file.lastModified,
@@ -140,7 +140,7 @@ class FifoHandle implements WeshFileHandle {
 
   async read(options: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshIOResult> {
     if (this.buffer.length === 0 && this.closed) return { bytesRead: 0 };
-    
+
     while (this.buffer.length === 0) {
       if (this.closed) return { bytesRead: 0 };
       await new Promise<void>(resolve => this.waiters.push(resolve));
@@ -149,35 +149,35 @@ class FifoHandle implements WeshFileHandle {
     const chunk = this.buffer.shift()!;
     // Simple implementation: Return one chunk (or part of it)
     // Real implementation should fill buffer as much as possible.
-    
+
     const bufferOffset = options.offset ?? 0;
     const maxLen = options.length ?? (options.buffer.length - bufferOffset);
     const copyLen = Math.min(chunk.length, maxLen);
-    
+
     options.buffer.set(chunk.subarray(0, copyLen), bufferOffset);
-    
+
     if (chunk.length > copyLen) {
       // Unshift remaining
       this.buffer.unshift(chunk.subarray(copyLen));
     }
-    
+
     return { bytesRead: copyLen };
   }
 
   async write(options: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshWriteResult> {
     if (this.closed) throw new Error('Broken pipe');
-    
+
     const bufferOffset = options.offset ?? 0;
     const length = options.length ?? (options.buffer.length - bufferOffset);
     const data = new Uint8Array(options.buffer.subarray(bufferOffset, bufferOffset + length)); // Copy
-    
+
     this.buffer.push(data);
-    
+
     // Wake up readers
     const waiters = this.waiters;
     this.waiters = [];
     waiters.forEach(w => w());
-    
+
     return { bytesWritten: length };
   }
 
@@ -199,24 +199,30 @@ class FifoHandle implements WeshFileHandle {
       gid: 0
     };
   }
-  
+
   async truncate(): Promise<void> {}
-  async ioctl(): Promise<{ ret: number }> { return { ret: 0 }; }
+  async ioctl(): Promise<{ ret: number }> {
+    return { ret: 0 };
+  }
 }
 
 // Special Device Handles (Memory-based)
 class DevNullHandle implements WeshFileHandle {
-  async read(): Promise<WeshIOResult> { return { bytesRead: 0 }; }
-  async write(options: { length?: number; buffer: Uint8Array; offset?: number }): Promise<WeshWriteResult> { 
+  async read(): Promise<WeshIOResult> {
+    return { bytesRead: 0 };
+  }
+  async write(options: { length?: number; buffer: Uint8Array; offset?: number }): Promise<WeshWriteResult> {
     const len = options.length ?? (options.buffer.length - (options.offset ?? 0));
-    return { bytesWritten: len }; 
+    return { bytesWritten: len };
   }
   async close() {}
-  async stat(): Promise<WeshStat> { 
-    return { size: 0, mode: 0o666, type: 'chardev', mtime: 0, ino: 0, uid: 0, gid: 0 }; 
+  async stat(): Promise<WeshStat> {
+    return { size: 0, mode: 0o666, type: 'chardev', mtime: 0, ino: 0, uid: 0, gid: 0 };
   }
   async truncate() {}
-  async ioctl() { return { ret: 0 }; }
+  async ioctl() {
+    return { ret: 0 };
+  }
 }
 
 class DevZeroHandle implements WeshFileHandle {
@@ -231,11 +237,13 @@ class DevZeroHandle implements WeshFileHandle {
     return { bytesWritten: len };
   }
   async close() {}
-  async stat(): Promise<WeshStat> { 
-    return { size: 0, mode: 0o666, type: 'chardev', mtime: 0, ino: 0, uid: 0, gid: 0 }; 
+  async stat(): Promise<WeshStat> {
+    return { size: 0, mode: 0o666, type: 'chardev', mtime: 0, ino: 0, uid: 0, gid: 0 };
   }
   async truncate() {}
-  async ioctl() { return { ret: 0 }; }
+  async ioctl() {
+    return { ret: 0 };
+  }
 }
 
 interface MountEntry {
@@ -252,7 +260,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle }) {
     this.mount({ path: '/', handle: rootHandle, readOnly: false });
-    
+
     this.registerSpecialFile({ path: '/dev/null', handler: () => new DevNullHandle() });
     this.registerSpecialFile({ path: '/dev/zero', handler: () => new DevZeroHandle() });
   }
@@ -261,7 +269,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const normalizedPath = this.normalizePath({ path });
     // Remove existing if any (simplification)
     this.mounts = this.mounts.filter((m) => m.path !== normalizedPath);
-    
+
     // Load registry if exists
     let registry: WeshRegistry | undefined;
     try {
@@ -299,7 +307,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     if (mount) {
       const relPath = this.getRelativePath({ path: normalized, mount });
       const regEntry = mount.registry?.[relPath];
-      
+
       if (regEntry?.type === 'fifo') {
         if (!this.openFifos.has(normalized)) {
           this.openFifos.set(normalized, new FifoHandle());
@@ -310,24 +318,24 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
     // Regular file open
     // 'w' implies truncate, 'a' implies append (handled by VFS/StandardHandle logic)
-    // Flags mapping: 
+    // Flags mapping:
     // This is simplified. 'flags' arg in interface is number, but we need to parse it?
     // For now, I'll rely on a simpler 'mode' string equivalent logic if I were using strings.
     // Wait, interface says `flags: number`. I should use constants like O_RDONLY?
     // Since I haven't exported constants, I'll assume standard behavior or add a helper.
-    // Actually, let's assume `flags` is unused for now and rely on intention, 
+    // Actually, let's assume `flags` is unused for now and rely on intention,
     // or better: I need to know if it's creation or not.
-    
+
     // Let's assume the caller uses O_CREAT (decimal 64) if they want to create.
     const O_CREAT = 64;
     const O_TRUNC = 512;
-    // const O_APPEND = 1024; 
-    
+    // const O_APPEND = 1024;
+
     const create = (options.flags & O_CREAT) !== 0;
     const truncate = (options.flags & O_TRUNC) !== 0;
 
     let handleRes: { handle: FileSystemHandle; readOnly: boolean; fullPath: string };
-    
+
     try {
       handleRes = await this.resolve({ path: normalized });
     } catch (e) {
@@ -338,7 +346,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         const parentPath = parts.join('/') || '/';
         const parent = await this.resolve({ path: parentPath });
         if (parent.readOnly) throw new Error(`Read-only file system: ${parentPath}`);
-        
+
         const newHandle = await (parent.handle as FileSystemDirectoryHandle).getFileHandle(name, { create: true });
         handleRes = { handle: newHandle, readOnly: false, fullPath: normalized };
       } else {
@@ -349,21 +357,21 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     if (handleRes.handle.kind !== 'file') throw new Error(`Not a file: ${normalized}`);
     if (create && handleRes.readOnly) throw new Error(`Read-only file system: ${normalized}`);
 
-    const fileHandle = new StandardFileHandle({ 
-      handle: handleRes.handle as FileSystemFileHandle, 
-      readOnly: handleRes.readOnly 
+    const fileHandle = new StandardFileHandle({
+      handle: handleRes.handle as FileSystemFileHandle,
+      readOnly: handleRes.readOnly
     });
 
     if (truncate) {
       await fileHandle.truncate({ size: 0 });
     }
-    
+
     return fileHandle;
   }
 
   async stat(options: { path: string }): Promise<WeshStat> {
     const normalized = this.normalizePath({ path: options.path });
-    
+
     if (this.specialFiles.has(normalized)) {
       const h = this.specialFiles.get(normalized)!();
       const s = await h.stat();
@@ -372,24 +380,24 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
 
     const { handle, readOnly } = await this.resolve({ path: normalized });
-    
+
     // Check registry for special type overrides
     const mount = this.findMount({ path: normalized });
     if (mount) {
       const relPath = this.getRelativePath({ path: normalized, mount });
       const regEntry = mount.registry?.[relPath];
       if (regEntry) {
-         // It's a special file (e.g. FIFO), but represented by a file on disk (0 byte placeholder)
-         // We return the special type.
-         // Real size is 0 (placeholder), but for FIFO we might want to show buffer size if opened?
-         // For stat, we just return type.
-         return {
-           size: 0,
-           mode: regEntry.mode,
-           type: regEntry.type,
-           mtime: Date.now(), // approximation
-           ino: 0, uid: 0, gid: 0
-         };
+        // It's a special file (e.g. FIFO), but represented by a file on disk (0 byte placeholder)
+        // We return the special type.
+        // Real size is 0 (placeholder), but for FIFO we might want to show buffer size if opened?
+        // For stat, we just return type.
+        return {
+          size: 0,
+          mode: regEntry.mode,
+          type: regEntry.type,
+          mtime: Date.now(), // approximation
+          ino: 0, uid: 0, gid: 0
+        };
       }
     }
 
@@ -415,7 +423,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   async readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>> {
     const normalized = this.normalizePath({ path: options.path });
-    
+
     if (normalized === '/dev') {
       return Array.from(this.specialFiles.keys())
         .filter(k => k.startsWith('/dev/'))
@@ -427,24 +435,24 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
     const dirHandle = handle as FileSystemDirectoryHandle;
     const entries: Array<{ name: string; type: WeshFileType }> = [];
-    
+
     const mount = this.findMount({ path: normalized });
     const registry = mount?.registry || {};
 
     for await (const [name, entry] of dirHandle.entries()) {
       if (name === REGISTRY_FILE) continue; // Hide registry file
-      
+
       let type: WeshFileType = entry.kind === 'directory' ? 'directory' : 'file';
-      
+
       // Check registry
       const entryPath = normalized === '/' ? name : `${normalized}/${name}`; // This is absolute path
       // Registry stores relative paths to mount?
       // Yes.
       if (mount) {
-         const relPath = this.getRelativePath({ path: normalized === '/' ? `/${name}` : `${normalized}/${name}`, mount });
-         if (registry[relPath]) {
-           type = registry[relPath].type;
-         }
+        const relPath = this.getRelativePath({ path: normalized === '/' ? `/${name}` : `${normalized}/${name}`, mount });
+        if (registry[relPath]) {
+          type = registry[relPath].type;
+        }
       }
 
       entries.push({ name, type });
@@ -456,18 +464,18 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     // Implementation similar to previous, using resolve loop
     const normalized = this.normalizePath({ path: options.path });
     const parts = normalized.split('/').filter(p => p);
-    
+
     let currentPath = '';
     for (let i = 0; i < parts.length; i++) {
       const nextPart = parts[i];
       const checkPath = currentPath + '/' + nextPart;
-      
+
       try {
         const res = await this.resolve({ path: checkPath });
         if (res.handle.kind === 'file') throw new Error(`File exists: ${checkPath}`);
       } catch {
         if (!options.recursive && i < parts.length - 1) throw new Error(`No such file or directory: ${currentPath}`);
-        
+
         // Create directory
         const parent = await this.resolve({ path: currentPath || '/' });
         if (parent.readOnly) throw new Error(`Read-only fs: ${currentPath || '/'}`);
@@ -488,7 +496,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         await this.saveRegistry(mount);
       }
     }
-    
+
     // Remove actual file
     const parts = normalized.split('/');
     const name = parts.pop()!;
@@ -498,19 +506,19 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   async rmdir(options: { path: string }): Promise<void> {
-     // Same as unlink but check for directory
-     await this.unlink(options);
+    // Same as unlink but check for directory
+    await this.unlink(options);
   }
 
   async mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void> {
     const normalized = this.normalizePath({ path: options.path });
     const mount = this.findMount({ path: normalized });
     if (!mount) throw new Error(`No mount point for ${normalized}`);
-    
+
     if (mount.readOnly) throw new Error(`Read-only filesystem`);
 
     const relPath = this.getRelativePath({ path: normalized, mount });
-    
+
     // Update registry
     mount.registry = mount.registry || {};
     mount.registry[relPath] = {
@@ -524,7 +532,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const name = parts.pop()!;
     const parentPath = parts.join('/') || '/';
     const parent = await this.resolve({ path: parentPath });
-    
+
     // Create empty file
     const handle = await (parent.handle as FileSystemDirectoryHandle).getFileHandle(name, { create: true });
     // Truncate to ensure empty? Default is empty on create.
@@ -541,7 +549,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   private async saveRegistry(mount: MountEntry) {
     if (!mount.registry) return;
     if (mount.readOnly) return;
-    
+
     const fileHandle = await mount.handle.getFileHandle(REGISTRY_FILE, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(mount.registry, null, 2));
@@ -566,7 +574,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       return path.startsWith(prefix);
     });
   }
-  
+
   private getRelativePath({ path, mount }: { path: string; mount: MountEntry }): string {
     if (path === mount.path) return '.';
     const prefix = mount.path.endsWith('/') ? mount.path : mount.path + '/';
@@ -576,11 +584,11 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   private async resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {
     const normalized = this.normalizePath({ path });
     const mount = this.findMount({ path: normalized });
-    
+
     if (!mount) throw new Error(`Path not found: ${path}`);
-    
+
     const relativePath = this.getRelativePath({ path: normalized, mount });
-    
+
     if (relativePath === '.') {
       return { handle: mount.handle, readOnly: mount.readOnly, fullPath: normalized };
     }

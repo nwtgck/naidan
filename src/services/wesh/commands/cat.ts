@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '../types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/services/wesh/types';
 
 export const catCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -16,20 +16,20 @@ export const catCommandDefinition: WeshCommandDefinition = {
         while (true) {
           const { bytesRead } = await src.read({ buffer: buf });
           if (bytesRead === 0) break; // EOF
-          
+
           let written = 0;
           while (written < bytesRead) {
-            const { bytesWritten } = await dst.write({ 
-              buffer: buf, 
-              offset: written, 
-              length: bytesRead - written 
+            const { bytesWritten } = await dst.write({
+              buffer: buf,
+              offset: written,
+              length: bytesRead - written
             });
             written += bytesWritten;
           }
         }
       } catch (e: any) {
-         if (e.message === 'Broken pipe') return;
-         throw e;
+        if (e.message === 'Broken pipe') return;
+        throw e;
       }
     };
 
@@ -40,7 +40,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
 
     for (const f of files) {
       if (f === undefined || f === '') continue;
-      
+
       try {
         if (f === '-') {
           await pump(context.stdin, context.stdout);

@@ -1,7 +1,7 @@
-import type { 
-  WeshKernel, 
-  WeshProcess, 
-  WeshFileHandle, 
+import type {
+  WeshKernel,
+  WeshProcess,
+  WeshFileHandle,
   WeshIVirtualFileSystem,
   WeshWriteResult,
   WeshIOResult,
@@ -35,13 +35,13 @@ class PipeHandle implements WeshFileHandle {
     const bufferOffset = options.offset ?? 0;
     const maxLen = options.length ?? (options.buffer.length - bufferOffset);
     const copyLen = Math.min(chunk.length, maxLen);
-    
+
     options.buffer.set(chunk.subarray(0, copyLen), bufferOffset);
-    
+
     if (chunk.length > copyLen) {
       this.state.buffer.unshift(chunk.subarray(copyLen));
     }
-    
+
     return { bytesRead: copyLen };
   }
 
@@ -52,9 +52,9 @@ class PipeHandle implements WeshFileHandle {
     const bufferOffset = options.offset ?? 0;
     const length = options.length ?? (options.buffer.length - bufferOffset);
     const data = new Uint8Array(options.buffer.subarray(bufferOffset, bufferOffset + length));
-    
+
     this.state.buffer.push(data);
-    
+
     // Wake up readers
     const waiters = this.state.waiters;
     this.state.waiters = [];
@@ -79,9 +79,11 @@ class PipeHandle implements WeshFileHandle {
       ino: 0, uid: 0, gid: 0
     };
   }
-  
+
   async truncate(): Promise<void> {}
-  async ioctl(): Promise<{ ret: number }> { return { ret: 0 }; }
+  async ioctl(): Promise<{ ret: number }> {
+    return { ret: 0 };
+  }
 }
 
 
@@ -106,17 +108,17 @@ export class Kernel implements WeshKernel {
     this.nextPid = 2;
   }
 
-  async spawn(options: { 
-    image: string; 
-    args: string[]; 
-    env?: Map<string, string>; 
-    cwd?: string; 
+  async spawn(options: {
+    image: string;
+    args: string[];
+    env?: Map<string, string>;
+    cwd?: string;
     fds?: Map<number, WeshFileHandle>;
   }): Promise<{ pid: number; process: WeshProcess }> {
     const pid = this.nextPid++;
     const process: WeshProcess = {
       pid,
-      ppid: 1, 
+      ppid: 1,
       pgid: pid,
       state: 'running',
       env: options.env ? new Map(options.env) : new Map(),
@@ -124,7 +126,7 @@ export class Kernel implements WeshKernel {
       args: options.args,
       fds: options.fds ? new Map(options.fds) : new Map()
     };
-    
+
     this.processes.set(pid, process);
     return { pid, process };
   }
@@ -134,23 +136,23 @@ export class Kernel implements WeshKernel {
     if (!proc) throw new Error(`No such process: ${options.pid}`);
 
     if (proc.state === 'terminated' || proc.state === 'zombie') {
-       return { pid: options.pid, exitCode: proc.exitCode ?? 0 };
+      return { pid: options.pid, exitCode: proc.exitCode ?? 0 };
     }
 
     return new Promise(resolve => {
-       const check = setInterval(() => {
-         if (proc.state === 'terminated' || proc.state === 'zombie') {
-           clearInterval(check);
-           resolve({ pid: options.pid, exitCode: proc.exitCode ?? 0 });
-         }
-       }, 50);
+      const check = setInterval(() => {
+        if (proc.state === 'terminated' || proc.state === 'zombie') {
+          clearInterval(check);
+          resolve({ pid: options.pid, exitCode: proc.exitCode ?? 0 });
+        }
+      }, 50);
     });
   }
 
   async kill(options: { pid: number; signal: number }): Promise<void> {
     const proc = this.processes.get(options.pid);
     if (!proc) return;
-    
+
     proc.state = 'terminated';
     proc.exitCode = 128 + options.signal;
   }

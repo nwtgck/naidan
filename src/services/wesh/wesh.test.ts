@@ -44,7 +44,9 @@ class MemoryFileHandle implements WeshFileHandle {
     this.buffer = this.buffer.slice(0, options.size);
     if (this.cursor > options.size) this.cursor = options.size;
   }
-  async ioctl(): Promise<{ ret: number }> { return { ret: 0 }; }
+  async ioctl(): Promise<{ ret: number }> {
+    return { ret: 0 };
+  }
 
   toString() {
     return new TextDecoder().decode(this.buffer);
@@ -152,7 +154,7 @@ describe('Wesh Shell', () => {
     const output = stdout.toString();
     expect(output).toContain('child');
     expect(output).toContain('parent');
-    
+
     // Check that child assignment didn't leak
     stdout = new MemoryFileHandle();
     await wesh.execute({ script: 'echo $VAR', stdin, stdout, stderr });

@@ -1,4 +1,4 @@
-import type { WeshFileHandle } from '../types';
+import type { WeshFileHandle } from '@/services/wesh/types';
 
 export function createTextHelpers({
   stdin,
@@ -25,17 +25,17 @@ export function createTextHelpers({
 
           const chunk = readBuf.subarray(0, bytesRead);
           buffer += decoder.decode(chunk, { stream: true });
-          
+
           if (buffer.includes('\n')) {
-             const lines = buffer.split(/\r?\n/);
-             buffer = lines.pop() ?? ''; // Keep the last partial line
-             
-             for (const line of lines) {
-               yield line;
-             }
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() ?? ''; // Keep the last partial line
+
+            for (const line of lines) {
+              yield line;
+            }
           }
         }
-        
+
         // Final flush
         if (buffer !== '') {
           yield buffer;

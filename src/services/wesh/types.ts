@@ -27,8 +27,8 @@ export interface WeshFileHandle {
   /**
    * Read data into a buffer (Bring Your Own Buffer)
    */
-  read(options: { 
-    buffer: Uint8Array; 
+  read(options: {
+    buffer: Uint8Array;
     offset?: number; // Offset in the buffer to start writing at
     length?: number; // Maximum number of bytes to read
     position?: number; // File position (seek). If undefined, use current cursor.
@@ -37,8 +37,8 @@ export interface WeshFileHandle {
   /**
    * Write data from a buffer
    */
-  write(options: { 
-    buffer: Uint8Array; 
+  write(options: {
+    buffer: Uint8Array;
     offset?: number; // Offset in the buffer to start reading from
     length?: number; // Number of bytes to write
     position?: number; // File position (seek). If undefined, use current cursor.
@@ -49,7 +49,7 @@ export interface WeshFileHandle {
   stat(): Promise<WeshStat>;
 
   truncate(options: { size: number }): Promise<void>;
-  
+
   /**
    * Control device/handle specific operations (e.g. terminal size, blocking mode)
    */
@@ -62,11 +62,11 @@ export interface WeshProcess {
   pgid: number; // Process Group ID
   state: 'running' | 'stopped' | 'zombie' | 'terminated';
   exitCode?: number;
-  
+
   env: Map<string, string>;
   cwd: string;
   args: string[];
-  
+
   /** File Descriptor Table: fd -> handle */
   fds: Map<number, WeshFileHandle>;
 }
@@ -76,11 +76,11 @@ export interface WeshKernel {
    * Fork/Spawn a new process
    * @returns PID of the new process
    */
-  spawn(options: { 
+  spawn(options: {
     image: string; // Command/Executable name or path
-    args: string[]; 
-    env?: Map<string, string>; 
-    cwd?: string; 
+    args: string[];
+    env?: Map<string, string>;
+    cwd?: string;
     fds?: Map<number, WeshFileHandle>; // Explicit FD inheritance/mapping
   }): Promise<{ pid: number; process: WeshProcess }>;
 
@@ -118,31 +118,31 @@ export interface WeshKernel {
 export interface WeshIVirtualFileSystem {
   mount(options: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void>;
   unmount(options: { path: string }): Promise<void>;
-  
+
   /**
    * Open a file by path.
    * Handles translation of VFS paths to handles.
    */
   open(options: { path: string; flags: number; mode?: number }): Promise<WeshFileHandle>;
-  
+
   stat(options: { path: string }): Promise<WeshStat>;
-  
+
   readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
-  
+
   mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
-  
+
   /**
    * Remove a file or directory
    */
   unlink(options: { path: string }): Promise<void>;
   rmdir(options: { path: string }): Promise<void>;
-  
+
   /**
    * Create a special file (FIFO, Device, etc.)
    * Persistence logic for special files is handled here.
    */
   mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
-  
+
   rename(options: { oldPath: string; newPath: string }): Promise<void>;
 }
 
@@ -157,9 +157,9 @@ export interface WeshCommandContext {
   args: string[];
   env: Map<string, string>;
   cwd: string;
-  
+
   kernel: WeshKernel;
-  
+
   // Standard Streams (FDs 0, 1, 2)
   stdin: WeshFileHandle;
   stdout: WeshFileHandle;

@@ -1,5 +1,5 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '../types';
-import { parseFlags } from '../utils/args';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const lsCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -33,7 +33,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
         for (const entry of filtered) {
           let line = entry.name;
           const type = entry.type;
-          
+
           if (type === 'directory') line += '/';
           else if (type === 'fifo') line += '|';
           else if (type === 'chardev') line += '@';
