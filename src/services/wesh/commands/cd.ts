@@ -1,19 +1,19 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 
-export const cdCommandDefinition: CommandDefinition = {
+export const cdCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'cd',
     description: 'Change current directory',
     usage: 'cd [path]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const target = context.args[0] || '/';
     const text = context.text();
 
     try {
       let fullPath: string;
       if (target === '-') {
-        fullPath = context.env.OLDPWD || '/';
+        fullPath = context.env.get('OLDPWD') || '/';
       } else {
         fullPath = target.startsWith('/') ? target : `${context.cwd}/${target}`;
       }

@@ -1,12 +1,12 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 
-export const mvCommandDefinition: CommandDefinition = {
+export const mvCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'mv',
     description: 'Move or rename files',
     usage: 'mv source destination',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const text = context.text();
     if (context.args.length < 2) {
       await text.error({ text: 'mv: missing file operand\n' });

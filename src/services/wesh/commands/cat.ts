@@ -1,12 +1,12 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 
-export const catCommandDefinition: CommandDefinition = {
+export const catCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'cat',
     description: 'Concatenate files and print on the standard output',
     usage: 'cat [file...]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const files = context.args;
     const text = context.text();
 
@@ -18,7 +18,14 @@ export const catCommandDefinition: CommandDefinition = {
     }
 
     for (const f of files) {
-      if (f === undefined) continue;
+      if (f === undefined || f === '') continue;
+      if (f === '-') {
+        for await (const line of text.input) {
+          await text.print({ text: line + '\n' });
+        }
+        continue;
+      }
+      
       try {
         const path = f.startsWith('/') ? f : `${context.cwd}/${f}`;
         const stream = await context.vfs.readFile({ path });

@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const mkdirCommandDefinition: CommandDefinition = {
+export const mkdirCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'mkdir',
     description: 'Create directories',
     usage: 'mkdir [-p] path...',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: ['p'],

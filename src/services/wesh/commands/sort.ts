@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const sortCommandDefinition: CommandDefinition = {
+export const sortCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'sort',
     description: 'Sort lines of text files',
     usage: 'sort [-r] [-n] [file...]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: ['r', 'n'],

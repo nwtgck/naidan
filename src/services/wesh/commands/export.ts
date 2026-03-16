@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const exportCmdCommandDefinition: CommandDefinition = {
+export const exportCmdCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'export',
     description: 'Set environment variables',
     usage: 'export [-p] name=value...',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: ['p'],
@@ -16,7 +16,7 @@ export const exportCmdCommandDefinition: CommandDefinition = {
 
     const text = context.text();
     if (flags.p) {
-      for (const [key, val] of Object.entries(context.env)) {
+      for (const [key, val] of context.env) {
         await text.print({ text: `export ${key}='${val}'\n` });
       }
       return { exitCode: 0, data: undefined, error: undefined };

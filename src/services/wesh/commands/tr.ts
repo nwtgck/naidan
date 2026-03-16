@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const trCommandDefinition: CommandDefinition = {
+export const trCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'tr',
     description: 'Translate or delete characters',
     usage: 'tr [-d] set1 [set2]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: ['d'],

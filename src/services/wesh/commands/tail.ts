@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const tailCommandDefinition: CommandDefinition = {
+export const tailCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'tail',
     description: 'Output the last part of files',
     usage: 'tail [-n number] [file...]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: [],

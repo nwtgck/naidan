@@ -1,4 +1,4 @@
-import type { CommandDefinition } from '@/services/wesh/types';
+import type { WeshCommandDefinition } from '@/services/wesh/types';
 import { lsCommandDefinition } from './ls';
 import { cdCommandDefinition } from './cd';
 import { catCommandDefinition } from './cat';
@@ -32,8 +32,9 @@ import { clearCommandDefinition } from './clear';
 import { gzipCommandDefinition } from './gzip';
 import { gunzipCommandDefinition } from './gunzip';
 import { zcatCommandDefinition } from './zcat';
+import { mkfifoCommandDefinition } from './mkfifo';
 
-export const builtinCommands: CommandDefinition[] = [
+export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
   cdCommandDefinition,
   catCommandDefinition,
@@ -67,4 +68,5 @@ export const builtinCommands: CommandDefinition[] = [
   gzipCommandDefinition,
   gunzipCommandDefinition,
   zcatCommandDefinition,
+  mkfifoCommandDefinition,
 ];

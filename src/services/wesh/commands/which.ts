@@ -1,12 +1,12 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 
-export const whichCommandDefinition: CommandDefinition = {
+export const whichCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'which',
     description: 'Locate a command',
     usage: 'which command...',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const text = context.text();
     let foundAll = true;
 

@@ -28,7 +28,7 @@ describe('Wesh Shell', () => {
         meta: { name: 'print_env', description: 'Print env var', usage: 'print_env VAR' },
         fn: async ({ context }) => {
           const key = context.args[0] || '';
-          const val = context.env[key] || '';
+          const val = context.env.get(key) || '';
           await context.text().print({ text: val });
           return { exitCode: 0, data: undefined, error: undefined };
         }
@@ -52,11 +52,13 @@ describe('Wesh Shell', () => {
 
   it('handles sequential commands with ;', async () => {
     const result = await wesh.execute({ commandLine: 'echo A; echo B' });
+    expect(getOutput(result)).toContain('A');
     expect(getOutput(result)).toContain('B');
   });
 
   it('handles logical AND (&&)', async () => {
     const result = await wesh.execute({ commandLine: 'echo A && echo B' });
+    expect(getOutput(result)).toContain('A');
     expect(getOutput(result)).toContain('B');
     expect(result.exitCode).toBe(0);
 
@@ -75,6 +77,7 @@ describe('Wesh Shell', () => {
 
   it('handles for loops', async () => {
     const result = await wesh.execute({ commandLine: 'for i in A B; do echo $i; done' });
+    expect(getOutput(result)).toContain('A');
     expect(getOutput(result)).toContain('B');
   });
 
@@ -88,5 +91,40 @@ describe('Wesh Shell', () => {
 
     const catResult = await wesh.execute({ commandLine: 'cat test.txt' });
     expect(getOutput(catResult)).toContain('file content');
+  });
+
+  it('handles subshells ( isolation )', async () => {
+    await wesh.execute({ commandLine: 'VAR=parent' });
+    const result = await wesh.execute({ commandLine: '(VAR=child; echo $VAR); echo $VAR' });
+    const output = getOutput(result);
+    expect(output).toContain('child');
+    expect(output).toContain('parent');
+    
+    // Check that child assignment didn't leak
+    const checkResult = await wesh.execute({ commandLine: 'echo $VAR' });
+    expect(getOutput(checkResult)).toBe('parent\n');
+  });
+
+  it('handles here-documents (<<EOF)', async () => {
+    const result = await wesh.execute({ commandLine: 'cat <<EOF\nhello\nworld\nEOF' });
+    expect(getOutput(result)).toContain('hello');
+    expect(getOutput(result)).toContain('world');
+  });
+
+  it('handles here-strings (<<<)', async () => {
+    const result = await wesh.execute({ commandLine: 'cat <<< "hello world"' });
+    expect(getOutput(result)).toContain('hello world');
+  });
+
+  it('handles process substitution <(cmd)', async () => {
+    const result = await wesh.execute({ commandLine: 'cat <(echo "subst")' });
+    expect(getOutput(result)).toContain('subst');
+  });
+
+  it('handles environment variable maps ( Map compliance )', async () => {
+    // This indirectly tests that Map is used and works
+    await wesh.execute({ commandLine: 'export TEST_MAP=1' });
+    const result = await wesh.execute({ commandLine: 'env' });
+    expect(getOutput(result)).toContain('TEST_MAP=1');
   });
 });

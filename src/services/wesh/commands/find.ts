@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const findCommandDefinition: CommandDefinition = {
+export const findCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'find',
     description: 'Search for files in a directory hierarchy',
     usage: 'find [path...] [-name pattern] [-type f|d]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: [],

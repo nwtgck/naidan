@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const commandCommandDefinition: CommandDefinition = {
+export const commandCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'command',
     description: 'Run command with arguments, ignoring any function or alias',
     usage: 'command [-v] command [argument...]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: ['v'],

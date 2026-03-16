@@ -1,4 +1,4 @@
-import type { IVirtualFileSystem } from './types';
+import type { WeshIVirtualFileSystem, WeshFileHandle } from './types';
 
 interface MountEntry {
   path: string;
@@ -6,11 +6,124 @@ interface MountEntry {
   readOnly: boolean;
 }
 
-export class VFS implements IVirtualFileSystem {
+class StandardFileHandle implements WeshFileHandle {
+  private handle: FileSystemFileHandle;
+  private readOnly: boolean;
+
+  constructor({ handle, readOnly }: { handle: FileSystemFileHandle; readOnly: boolean }) {
+    this.handle = handle;
+    this.readOnly = readOnly;
+  }
+
+  async read({ buffer, position = 0 }: { buffer: Uint8Array; position?: number }): Promise<{ bytesRead: number }> {
+    const file = await this.handle.getFile();
+    if (position >= file.size) return { bytesRead: 0 };
+
+    const end = Math.min(position + buffer.length, file.size);
+    const slice = file.slice(position, end);
+    const arrayBuffer = await slice.arrayBuffer();
+    const result = new Uint8Array(arrayBuffer);
+    buffer.set(result);
+    return { bytesRead: result.length };
+  }
+
+  async write({ buffer, position = 0 }: { buffer: Uint8Array; position?: number }): Promise<{ bytesWritten: number }> {
+    if (this.readOnly) throw new Error('File is read-only');
+    
+    // In File System Access API, we must create a writer. 
+    // keepExistingData: true is crucial for random access / appending.
+    const writable = await this.handle.createWritable({ keepExistingData: true });
+    try {
+      await writable.seek(position);
+      await writable.write(buffer);
+    } finally {
+      await writable.close();
+    }
+    return { bytesWritten: buffer.length };
+  }
+
+  async close(): Promise<void> {
+    // No explicit close needed for handles, but good for cleanup hooks if needed later
+  }
+
+  async stat(): Promise<{ size: number; kind: 'file' | 'directory' }> {
+    const file = await this.handle.getFile();
+    return { size: file.size, kind: 'file' };
+  }
+
+  async truncate({ size }: { size: number }): Promise<void> {
+    if (this.readOnly) throw new Error('File is read-only');
+    const writable = await this.handle.createWritable({ keepExistingData: true });
+    try {
+      await writable.truncate(size);
+    } finally {
+      await writable.close();
+    }
+  }
+}
+
+class DevNullHandle implements WeshFileHandle {
+  async read({ buffer }: { buffer: Uint8Array; position?: number }): Promise<{ bytesRead: number }> {
+    return { bytesRead: 0 }; // EOF
+  }
+  async write({ buffer }: { buffer: Uint8Array; position?: number }): Promise<{ bytesWritten: number }> {
+    return { bytesWritten: buffer.length }; // Discard
+  }
+  async close() {}
+  async stat() { return { size: 0, kind: 'file' as const }; }
+  async truncate() {}
+}
+
+class DevZeroHandle implements WeshFileHandle {
+  async read({ buffer }: { buffer: Uint8Array; position?: number }): Promise<{ bytesRead: number }> {
+    buffer.fill(0);
+    return { bytesRead: buffer.length };
+  }
+  async write({ buffer }: { buffer: Uint8Array; position?: number }): Promise<{ bytesWritten: number }> {
+    return { bytesWritten: buffer.length };
+  }
+  async close() {}
+  async stat() { return { size: 0, kind: 'file' as const }; }
+  async truncate() {}
+}
+
+class DevFullHandle implements WeshFileHandle {
+  async read({ buffer }: { buffer: Uint8Array; position?: number }): Promise<{ bytesRead: number }> {
+    buffer.fill(0);
+    return { bytesRead: buffer.length };
+  }
+  async write(): Promise<{ bytesWritten: number }> {
+    throw new Error('No space left on device');
+  }
+  async close() {}
+  async stat() { return { size: 0, kind: 'file' as const }; }
+  async truncate() {}
+}
+
+class DevRandomHandle implements WeshFileHandle {
+  async read({ buffer }: { buffer: Uint8Array; position?: number }): Promise<{ bytesRead: number }> {
+    crypto.getRandomValues(buffer);
+    return { bytesRead: buffer.length };
+  }
+  async write({ buffer }: { buffer: Uint8Array; position?: number }): Promise<{ bytesWritten: number }> {
+    return { bytesWritten: buffer.length };
+  }
+  async close() {}
+  async stat() { return { size: 0, kind: 'file' as const }; }
+  async truncate() {}
+}
+
+export class WeshVFS implements WeshIVirtualFileSystem {
   private mounts: MountEntry[] = [];
+  private specialFiles: Map<string, () => WeshFileHandle> = new Map();
 
   constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle }) {
     this.mount({ path: '/', handle: rootHandle, readOnly: false });
+    this.registerSpecialFile({ path: '/dev/null', handler: () => new DevNullHandle() });
+    this.registerSpecialFile({ path: '/dev/zero', handler: () => new DevZeroHandle() });
+    this.registerSpecialFile({ path: '/dev/full', handler: () => new DevFullHandle() });
+    this.registerSpecialFile({ path: '/dev/random', handler: () => new DevRandomHandle() });
+    this.registerSpecialFile({ path: '/dev/urandom', handler: () => new DevRandomHandle() });
   }
 
   mount({ path, handle, readOnly }: { path: string; handle: FileSystemDirectoryHandle; readOnly: boolean }): void {
@@ -28,16 +141,26 @@ export class VFS implements IVirtualFileSystem {
     this.mounts = this.mounts.filter((m) => m.path !== normalizedPath);
   }
 
+  registerSpecialFile({ path, handler }: { path: string; handler: () => WeshFileHandle }): void {
+    this.specialFiles.set(this.normalizePath({ path }), handler);
+  }
+
+  unregisterSpecialFile({ path }: { path: string }): void {
+    this.specialFiles.delete(this.normalizePath({ path }));
+  }
+
   async resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {
     const normalized = this.normalizePath({ path });
 
-    /** Intercept virtual devices */
-    if (normalized.startsWith('/dev/')) {
-      return {
-        handle: { name: normalized.split('/').pop()!, kind: 'file' } as FileSystemHandle,
-        readOnly: false,
-        fullPath: normalized
-      };
+    /** Special Files Interception */
+    if (this.specialFiles.has(normalized)) {
+       // Return a dummy handle for special files if needed by internal logic, 
+       // but open() uses specialFiles map directly.
+       return {
+         handle: { name: normalized.split('/').pop()!, kind: 'file' } as FileSystemHandle,
+         readOnly: false,
+         fullPath: normalized
+       };
     }
 
     const mount = this.mounts.find((m) => {
@@ -74,13 +197,9 @@ export class VFS implements IVirtualFileSystem {
   async readDir({ path }: { path: string }): Promise<Array<{ name: string; kind: 'file' | 'directory' }>> {
     const normalized = this.normalizePath({ path });
     if (normalized === '/dev') {
-      return [
-        { name: 'null', kind: 'file' },
-        { name: 'zero', kind: 'file' },
-        { name: 'random', kind: 'file' },
-        { name: 'urandom', kind: 'file' },
-        { name: 'full', kind: 'file' },
-      ];
+      return Array.from(this.specialFiles.keys())
+        .filter(k => k.startsWith('/dev/'))
+        .map(k => ({ name: k.split('/').pop()!, kind: 'file' }));
     }
 
     const { handle } = await this.resolve({ path });
@@ -103,92 +222,97 @@ export class VFS implements IVirtualFileSystem {
     return entries;
   }
 
-  async readFile({ path }: { path: string }): Promise<ReadableStream<Uint8Array>> {
+  async open({ path, mode }: { path: string; mode: 'r' | 'w' | 'rw' | 'a' }): Promise<WeshFileHandle> {
     const normalized = this.normalizePath({ path });
 
-    if (normalized === '/dev/null') {
-      return new ReadableStream({ start(c) {
-        c.close();
-      } });
-    }
-    if (normalized === '/dev/zero' || normalized === '/dev/full') {
-      return new ReadableStream({
-        pull(c) {
-          c.enqueue(new Uint8Array(1024).fill(0));
-        }
-      });
-    }
-    if (normalized === '/dev/random' || normalized === '/dev/urandom') {
-      return new ReadableStream({
-        pull(c) {
-          const buf = new Uint8Array(1024);
-          crypto.getRandomValues(buf);
-          c.enqueue(buf);
-        }
-      });
+    if (this.specialFiles.has(normalized)) {
+      return this.specialFiles.get(normalized)!();
     }
 
-    const { handle } = await this.resolve({ path });
-    switch (handle.kind) {
-    case 'file':
-      break;
-    case 'directory':
-      throw new Error(`Not a file: ${path}`);
-    default: {
-      const _ex: never = handle.kind;
-      throw new Error(`Unexpected handle kind: ${_ex}`);
+    const create = mode !== 'r';
+
+    let handleRes: { handle: FileSystemHandle; readOnly: boolean; fullPath: string };
+    try {
+      handleRes = await this.resolve({ path });
+    } catch (e) {
+      if (create) {
+        const parts = normalized.split('/');
+        const name = parts.pop()!;
+        const parentPath = parts.join('/') || '/';
+        const parent = await this.resolve({ path: parentPath });
+        if (parent.readOnly) throw new Error(`Read-only file system: ${parentPath}`);
+        const newFileHandle = await (parent.handle as FileSystemDirectoryHandle).getFileHandle(name, { create: true });
+        handleRes = { handle: newFileHandle, readOnly: false, fullPath: normalized };
+      } else {
+        throw e;
+      }
     }
+
+    if (create && handleRes.readOnly) throw new Error(`Read-only file system: ${path}`);
+    if (handleRes.handle.kind !== 'file') throw new Error(`Not a file: ${path}`);
+
+    const fileHandle = new StandardFileHandle({ handle: handleRes.handle as FileSystemFileHandle, readOnly: handleRes.readOnly });
+    
+    if (mode === 'w') {
+      await fileHandle.truncate({ size: 0 });
     }
-    const file = await (handle as FileSystemFileHandle).getFile();
-    return file.stream() as ReadableStream<Uint8Array>;
+    
+    return fileHandle;
   }
 
-  async writeFile({ path, stream }: { path: string; stream: ReadableStream<Uint8Array> }): Promise<void> {
-    const normalized = this.normalizePath({ path });
-
-    if (normalized === '/dev/null' || normalized === '/dev/zero' || normalized === '/dev/random' || normalized === '/dev/urandom') {
-      const reader = stream.getReader();
-      while (true) {
-        const { done } = await reader.read();
-        if (done) break;
+  /** @deprecated use open() */
+  async readFile({ path }: { path: string }): Promise<ReadableStream<Uint8Array>> {
+    const handle = await this.open({ path, mode: 'r' });
+    
+    let position = 0;
+    return new ReadableStream({
+      async pull(controller) {
+        const buffer = new Uint8Array(64 * 1024); // 64KB chunks
+        try {
+          const { bytesRead } = await handle.read({ buffer, position });
+          if (bytesRead === 0) {
+            await handle.close();
+            controller.close();
+          } else {
+            position += bytesRead;
+            controller.enqueue(new Uint8Array(buffer.subarray(0, bytesRead)));
+          }
+        } catch (e) {
+          await handle.close();
+          controller.error(e);
+        }
+      },
+      async cancel() {
+        await handle.close();
       }
-      return;
-    }
-    if (normalized === '/dev/full') {
-      throw new Error('No space left on device');
-    }
-
-    const { handle, readOnly } = await this.resolve({ path }).catch(async () => {
-      const parts = this.normalizePath({ path }).split('/');
-      const name = parts.pop()!;
-      const parentPath = parts.join('/') || '/';
-      const parent = await this.resolve({ path: parentPath });
-      if (parent.readOnly) throw new Error(`Read-only file system: ${parentPath}`);
-      const newFileHandle = await (parent.handle as FileSystemDirectoryHandle).getFileHandle(name, { create: true });
-      return { handle: newFileHandle, readOnly: false, fullPath: path };
     });
+  }
 
-    if (readOnly) throw new Error(`Read-only file system: ${path}`);
-    switch (handle.kind as 'file' | 'directory') {
-    case 'file':
-      break;
-    case 'directory':
-      throw new Error(`Not a file: ${path}`);
-    default: {
-      const _ex: never = handle.kind as never;
-      throw new Error(`Unexpected handle kind: ${_ex}`);
+  /** @deprecated use open() */
+  async writeFile({ path, stream }: { path: string; stream: ReadableStream<Uint8Array> }): Promise<void> {
+    const handle = await this.open({ path, mode: 'w' });
+    const reader = stream.getReader();
+    let position = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const { bytesWritten } = await handle.write({ buffer: value, position });
+        position += bytesWritten;
+      }
+    } finally {
+      await handle.close();
+      reader.releaseLock();
     }
-    }
-
-    const fileHandle = handle as FileSystemFileHandle;
-    const writable = await fileHandle.createWritable();
-    await stream.pipeTo(writable);
   }
 
   async stat({ path }: { path: string }): Promise<{ size: number; kind: 'file' | 'directory'; readOnly: boolean }> {
     const normalized = this.normalizePath({ path });
-    if (normalized.startsWith('/dev/')) {
-      return { size: 0, kind: 'file', readOnly: false };
+    if (this.specialFiles.has(normalized)) {
+       const h = this.specialFiles.get(normalized)!();
+       const s = await h.stat();
+       await h.close();
+       return { ...s, readOnly: false };
     }
 
     const { handle, readOnly } = await this.resolve({ path });
@@ -240,7 +364,7 @@ export class VFS implements IVirtualFileSystem {
   async rm({ path, recursive }: { path: string; recursive: boolean }): Promise<void> {
     const normalized = this.normalizePath({ path });
     if (normalized === '/') throw new Error('Cannot remove root');
-    if (normalized.startsWith('/dev/')) throw new Error('Permission denied');
+    if (this.specialFiles.has(normalized)) throw new Error('Permission denied');
 
     const parts = normalized.split('/');
     const name = parts.pop()!;
@@ -256,7 +380,7 @@ export class VFS implements IVirtualFileSystem {
       await this.resolve({ path });
       return true;
     } catch {
-      return false;
+      return this.specialFiles.has(this.normalizePath({ path }));
     }
   }
 

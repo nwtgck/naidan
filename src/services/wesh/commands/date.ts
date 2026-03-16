@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const dateCommandDefinition: CommandDefinition = {
+export const dateCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'date',
     description: 'Print the system date and time',
     usage: 'date [-u]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags } = parseFlags({
       args: context.args,
       booleanFlags: ['u'],

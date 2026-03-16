@@ -7,23 +7,41 @@ export interface WeshCommandResult {
   error: string | undefined;
 }
 
+export interface WeshFileHandle {
+  read({ buffer, position }: { buffer: Uint8Array; position?: number }): Promise<{ bytesRead: number }>;
+  write({ buffer, position }: { buffer: Uint8Array; position?: number }): Promise<{ bytesWritten: number }>;
+  close(): Promise<void>;
+  stat(): Promise<{ size: number; kind: 'file' | 'directory' }>;
+  truncate({ size }: { size: number }): Promise<void>;
+}
+
 export interface WeshIVirtualFileSystem {
   mount({ path, handle, readOnly }: { path: string; handle: FileSystemDirectoryHandle; readOnly: boolean }): void;
   unmount({ path }: { path: string }): void;
   resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }>;
   readDir({ path }: { path: string }): Promise<Array<{ name: string; kind: 'file' | 'directory' }>>;
+  
+  /** Low-level file open */
+  open({ path, mode }: { path: string; mode: 'r' | 'w' | 'rw' | 'a' }): Promise<WeshFileHandle>;
+
+  /** @deprecated use open() */
   readFile({ path }: { path: string }): Promise<ReadableStream<Uint8Array>>;
+  /** @deprecated use open() */
   writeFile({ path, stream }: { path: string; stream: ReadableStream<Uint8Array> }): Promise<void>;
+  
   stat({ path }: { path: string }): Promise<{ size: number; kind: 'file' | 'directory'; readOnly: boolean }>;
   mkdir({ path, recursive }: { path: string; recursive: boolean }): Promise<void>;
   rm({ path, recursive }: { path: string; recursive: boolean }): Promise<void>;
   exists({ path }: { path: string }): Promise<boolean>;
+
+  registerSpecialFile({ path, handler }: { path: string; handler: () => WeshFileHandle }): void;
+  unregisterSpecialFile({ path }: { path: string }): void;
 }
 
 export interface WeshCommandContext {
   /** All arguments including flags */
   args: string[];
-  env: Record<string, string>;
+  env: Map<string, string>;
   cwd: string;
   vfs: WeshIVirtualFileSystem;
 
@@ -49,18 +67,18 @@ export interface WeshCommandContext {
   };
 }
 
-export type WeshWeshCommandFunction = ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
+export type WeshCommandFunction = ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
 
 /**
  * Metadata for internal shell documentation (help/man)
  */
-export interface WeshWeshCommandMeta {
+export interface WeshCommandMeta {
   name: string;
   description: string;
   usage: string;
 }
 
-export interface WeshWeshCommandDefinition {
+export interface WeshCommandDefinition {
   fn: WeshCommandFunction;
   meta: WeshCommandMeta;
 }
@@ -68,32 +86,40 @@ export interface WeshWeshCommandDefinition {
 // --- AST Definitions ---
 
 export interface WeshRedirection {
-  type: '>' | '>>' | '<' | '2>' | '2>&1';
+  type: '>' | '>>' | '<' | '2>' | '2>&1' | '<<' | '<<<';
   target: string | undefined;
+  content?: string; // For here-docs
 }
 
-export type WeshWeshASTNode =
+export type WeshASTNode =
   | WeshCommandNode
   | WeshPipelineNode
   | WeshListNode
   | WeshIfNode
   | WeshForNode
-  | WeshAssignmentNode;
+  | WeshAssignmentNode
+  | WeshSubshellNode;
 
-export interface WeshWeshCommandNode {
+export interface WeshProcessSubstitutionNode {
+  kind: 'processSubstitution';
+  type: 'input' | 'output'; // <(..) vs >(..)
+  list: WeshASTNode;
+}
+
+export interface WeshCommandNode {
   kind: 'command';
   assignments: { key: string; value: string }[];
   name: string;
-  args: string[];
+  args: Array<string | WeshProcessSubstitutionNode>;
   redirections: WeshRedirection[];
 }
 
-export interface WeshWeshPipelineNode {
+export interface WeshPipelineNode {
   kind: 'pipeline';
   commands: WeshASTNode[];
 }
 
-export interface WeshWeshListNode {
+export interface WeshListNode {
   kind: 'list';
   parts: {
     node: WeshASTNode;
@@ -101,21 +127,26 @@ export interface WeshWeshListNode {
   }[];
 }
 
-export interface WeshWeshIfNode {
+export interface WeshIfNode {
   kind: 'if';
   condition: WeshASTNode;
   thenBody: WeshASTNode;
   elseBody?: WeshASTNode;
 }
 
-export interface WeshWeshForNode {
+export interface WeshForNode {
   kind: 'for';
   variable: string;
   items: string[];
   body: WeshASTNode;
 }
 
-export interface WeshWeshAssignmentNode {
+export interface WeshAssignmentNode {
   kind: 'assignment';
   assignments: { key: string; value: string }[];
+}
+
+export interface WeshSubshellNode {
+  kind: 'subshell';
+  list: WeshListNode; // The content of ( ... ) is effectively a list
 }

@@ -1,12 +1,12 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 
-export const historyCommandDefinition: CommandDefinition = {
+export const historyCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'history',
     description: 'Display the command history list',
     usage: 'history',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const text = context.text();
     const historyList = context.getHistory();
     for (let i = 0; i < historyList.length; i++) {

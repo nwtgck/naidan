@@ -1,12 +1,12 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 
-export const sleepCommandDefinition: CommandDefinition = {
+export const sleepCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'sleep',
     description: 'Delay for a specified amount of time',
     usage: 'sleep number',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const seconds = parseFloat(context.args[0] || '0');
     if (isNaN(seconds)) {
       const text = context.text();

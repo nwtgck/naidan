@@ -29,6 +29,12 @@ export class MockFile {
     return this.content.length;
   }
 
+  slice(start?: number, end?: number): MockFile {
+    const s = start ?? 0;
+    const e = end ?? this.content.length;
+    return new MockFile(this.content.slice(s, e), this.name);
+  }
+
   stream(): ReadableStream<Uint8Array> {
     const content = new Uint8Array(this.content);
     return new ReadableStream({
@@ -50,42 +56,71 @@ export class MockFile {
 
 export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array | string | { type: 'write'; data: Uint8Array | string | ArrayBuffer | Blob }> {
   public fileHandle: MockFileSystemFileHandle;
+  private cursor: number = 0;
 
-  constructor(fileHandle: MockFileSystemFileHandle) {
-    let currentContent = new Uint8Array(0);
-
+  constructor(fileHandle: MockFileSystemFileHandle, options?: { keepExistingData?: boolean }) {
     super({
-      write: (chunk) => {
-        let data: Uint8Array;
-
-        if (typeof chunk === 'string') {
-          data = new TextEncoder().encode(chunk);
-        } else if (chunk instanceof Uint8Array) {
-          data = chunk;
-        } else if (chunk && typeof chunk === 'object' && 'type' in chunk && chunk.type === 'write') {
-          const d = (chunk as any).data;
-          if (typeof d === 'string') data = new TextEncoder().encode(d);
-          else if (d instanceof Uint8Array) data = d;
-          else if (d instanceof ArrayBuffer) data = new Uint8Array(d);
-          else throw new Error("Unsupported write data type in mock");
-        } else {
-          try {
-            data = new Uint8Array(chunk as any);
-          } catch {
-            throw new Error("Invalid chunk type");
-          }
-        }
-
-        const newContent = new Uint8Array(currentContent.length + data.length);
-        newContent.set(currentContent);
-        newContent.set(data, currentContent.length);
-        currentContent = newContent;
+      write: async (chunk) => {
+        await this.write(chunk);
       },
-      close: () => {
-        fileHandle.content = currentContent;
+      close: async () => {
+        // Content is already updated in fileHandle during write
       }
     });
     this.fileHandle = fileHandle;
+    if (!options?.keepExistingData) {
+      this.fileHandle.content = new Uint8Array(0);
+    }
+    this.cursor = options?.keepExistingData ? 0 : 0; 
+    // Logic note: keepExistingData=true usually means open existing. Cursor starts at 0.
+    // If keepExistingData=false, it truncates.
+  }
+
+  async seek(position: number): Promise<void> {
+    this.cursor = position;
+  }
+
+  async truncate(size: number): Promise<void> {
+    if (this.fileHandle.content.length === size) return;
+    if (this.fileHandle.content.length > size) {
+      this.fileHandle.content = this.fileHandle.content.slice(0, size);
+    } else {
+      const newContent = new Uint8Array(size);
+      newContent.set(this.fileHandle.content);
+      this.fileHandle.content = newContent;
+    }
+    if (this.cursor > size) this.cursor = size;
+  }
+
+  async write(data: any): Promise<void> {
+    let bytes: Uint8Array;
+
+    if (typeof data === 'string') {
+      bytes = new TextEncoder().encode(data);
+    } else if (data instanceof Uint8Array) {
+      bytes = data;
+    } else if (data instanceof ArrayBuffer) {
+      bytes = new Uint8Array(data);
+    } else if (data && typeof data === 'object' && 'type' in data && data.type === 'write') {
+      const d = data.data;
+      if (typeof d === 'string') bytes = new TextEncoder().encode(d);
+      else if (d instanceof Uint8Array) bytes = d;
+      else if (d instanceof ArrayBuffer) bytes = new Uint8Array(d);
+      else throw new Error("Unsupported write data type in mock");
+    } else {
+       // fallback
+       try { bytes = new Uint8Array(data); } catch { throw new Error("Invalid data type"); }
+    }
+
+    const requiredSize = this.cursor + bytes.length;
+    if (this.fileHandle.content.length < requiredSize) {
+      const newContent = new Uint8Array(requiredSize);
+      newContent.set(this.fileHandle.content);
+      this.fileHandle.content = newContent;
+    }
+
+    this.fileHandle.content.set(bytes, this.cursor);
+    this.cursor += bytes.length;
   }
 }
 
@@ -102,11 +137,7 @@ export class MockFileSystemFileHandle extends MockFileSystemHandle {
   }
 
   async createWritable(options?: { keepExistingData?: boolean }): Promise<MockFileSystemWritableFileStream> {
-    const stream = new MockFileSystemWritableFileStream(this);
-    if (options?.keepExistingData) {
-      // Not implemented but also not used in tests yet
-    }
-    return stream;
+    return new MockFileSystemWritableFileStream(this, options);
   }
 }
 

@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const zcatCommandDefinition: CommandDefinition = {
+export const zcatCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'zcat',
     description: 'Decompress files and print on the standard output',
     usage: 'zcat [file...]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { positional } = parseFlags({
       args: context.args,
       booleanFlags: [],

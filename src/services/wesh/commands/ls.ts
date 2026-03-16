@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const lsCommandDefinition: CommandDefinition = {
+export const lsCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'ls',
     description: 'List directory contents',
     usage: 'ls [path...] [-l] [-a] [-R] [-1] [-h]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional, unknown } = parseFlags({
       args: context.args,
       booleanFlags: ['l', 'a', 'R', '1', 'h'],

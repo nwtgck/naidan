@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const wcCommandDefinition: CommandDefinition = {
+export const wcCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'wc',
     description: 'Print newline, word, and byte counts for each file',
     usage: 'wc [-l] [-w] [-c] [file...]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: ['l', 'w', 'c'],

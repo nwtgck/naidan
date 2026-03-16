@@ -1,12 +1,12 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 
-export const rmdirCommandDefinition: CommandDefinition = {
+export const rmdirCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'rmdir',
     description: 'Remove empty directories',
     usage: 'rmdir directory...',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const text = context.text();
     if (context.args.length === 0) {
       await text.error({ text: 'rmdir: missing operand\n' });

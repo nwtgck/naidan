@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const gzipCommandDefinition: CommandDefinition = {
+export const gzipCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'gzip',
     description: 'Compress files',
     usage: 'gzip [file...]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { positional } = parseFlags({
       args: context.args,
       booleanFlags: [],

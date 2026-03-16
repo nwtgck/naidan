@@ -1,12 +1,12 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 
-export const touchCommandDefinition: CommandDefinition = {
+export const touchCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'touch',
     description: 'Update timestamp or create empty file',
     usage: 'touch file...',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const files = context.args;
     const text = context.text();
 

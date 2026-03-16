@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const uniqCommandDefinition: CommandDefinition = {
+export const uniqCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'uniq',
     description: 'Report or omit repeated lines',
     usage: 'uniq [-c] [-d] [-u] [-i] [input]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: ['c', 'd', 'u', 'i'],

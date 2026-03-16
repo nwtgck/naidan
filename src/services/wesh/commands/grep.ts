@@ -1,13 +1,13 @@
-import type { CommandDefinition, CommandResult, CommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
 
-export const grepCommandDefinition: CommandDefinition = {
+export const grepCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'grep',
     description: 'Print lines matching a pattern',
     usage: 'grep [-i] [-v] [-n] pattern [file...]',
   },
-  fn: async ({ context }: { context: CommandContext }): Promise<CommandResult> => {
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: ['i', 'v', 'n'],

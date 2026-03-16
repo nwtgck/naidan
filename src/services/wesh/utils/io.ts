@@ -22,13 +22,15 @@ export function createTextHelpers({
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split(/\r?\n/);
-          buffer = lines.pop() || '';
+          // Keep the last partial line in the buffer
+          buffer = lines.pop() ?? '';
 
           for (const line of lines) {
             yield line;
           }
         }
-        if (buffer) {
+        // After EOF, if there's anything left in buffer, yield it
+        if (buffer !== '') {
           yield buffer;
         }
       } finally {

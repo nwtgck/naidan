@@ -10,6 +10,12 @@ export type TokenType =
   | 'LT' // <
   | 'LTGT' // 2>
   | 'LTGTAMP' // 2>&1
+  | 'LPAREN' // (
+  | 'RPAREN' // )
+  | 'HEREDOC' // <<
+  | 'HERESTRING' // <<<
+  | 'PROC_SUB_IN' // <(
+  | 'PROC_SUB_OUT' // >(
   | 'EOF';
 
 export interface Token {
@@ -38,6 +44,16 @@ export class Lexer {
     const char = this.input[this.position];
     const nextChar = this.input[this.position + 1];
 
+    // Parentheses
+    if (char === '(') {
+      this.position++;
+      return { type: 'LPAREN', value: '(', position: this.position - 1 };
+    }
+    if (char === ')') {
+      this.position++;
+      return { type: 'RPAREN', value: ')', position: this.position - 1 };
+    }
+
     // Operators and Redirections
     if (char === '|') {
       if (nextChar === '|') {
@@ -62,7 +78,16 @@ export class Lexer {
       return { type: 'SEMI', value: ';', position: this.position - 1 };
     }
 
+    if (char === '\n' || char === '\r') {
+      this.position++;
+      return { type: 'SEMI', value: ';', position: this.position - 1 };
+    }
+
     if (char === '>') {
+      if (nextChar === '(') {
+        this.position += 2;
+        return { type: 'PROC_SUB_OUT', value: '>(', position: this.position - 2 };
+      }
       if (nextChar === '>') {
         this.position += 2;
         return { type: 'GTGT', value: '>>', position: this.position - 2 };
@@ -72,6 +97,19 @@ export class Lexer {
     }
 
     if (char === '<') {
+      if (nextChar === '(') {
+        this.position += 2;
+        return { type: 'PROC_SUB_IN', value: '<(', position: this.position - 2 };
+      }
+      if (nextChar === '<') {
+        const thirdChar = this.input[this.position + 2];
+        if (thirdChar === '<') {
+          this.position += 3;
+          return { type: 'HERESTRING', value: '<<<', position: this.position - 3 };
+        }
+        this.position += 2;
+        return { type: 'HEREDOC', value: '<<', position: this.position - 2 };
+      }
       this.position++;
       return { type: 'LT', value: '<', position: this.position - 1 };
     }
@@ -145,11 +183,15 @@ export class Lexer {
       if (
         char === ' ' ||
         char === '\t' ||
+        char === '\n' ||
+        char === '\r' ||
         char === '|' ||
         char === '&' ||
         char === ';' ||
         char === '>' ||
         char === '<' ||
+        char === '(' ||
+        char === ')' ||
         (char === '2' && this.input[this.position + 1] === '>') // Start of 2> or 2>&1
       ) {
         break;
@@ -167,5 +209,34 @@ export class Lexer {
     const token = this.next();
     this.position = savedPosition;
     return token;
+  }
+
+  readHereDoc(delimiter: string): string {
+    const start = this.position;
+    let content = '';
+    
+    // Simple line-based scanner
+    while (this.position < this.length) {
+      const lineStart = this.position;
+      let lineEnd = this.input.indexOf('\n', lineStart);
+      if (lineEnd === -1) lineEnd = this.length;
+      
+      const line = this.input.slice(lineStart, lineEnd);
+      
+      if (line === delimiter) {
+        this.position = lineEnd + (lineEnd < this.length ? 1 : 0); // Skip delimiter line and newline
+        // Standard behavior: content is everything BEFORE the delimiter line.
+        // If content ended with newline (which it does because we add it), 
+        // we might want to keep it or remove one.
+        // Actually, my content += line + '\n' adds a newline for every line.
+        // The last line before delimiter also got a newline.
+        return content.endsWith('\n') ? content.slice(0, -1) : content;
+      }
+      
+      content += line + '\n';
+      this.position = lineEnd + (lineEnd < this.length ? 1 : 0);
+    }
+    
+    throw new Error(`Here-document delimiter '${delimiter}' not found`);
   }
 }
