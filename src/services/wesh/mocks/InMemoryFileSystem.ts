@@ -112,6 +112,7 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
     } else {
       // fallback
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         bytes = new Uint8Array(data as any);
       } catch {
         throw new Error("Invalid data type");
@@ -158,8 +159,16 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<MockFileSystemFileHandle> {
     const child = this.children.get(name);
     if (child) {
-      if (child.kind !== 'file') throw new Error(`TypeMismatchError: Entry '${name}' is not a file.`);
-      return child as MockFileSystemFileHandle;
+      switch (child.kind) {
+      case 'file':
+        return child as MockFileSystemFileHandle;
+      case 'directory':
+        throw new Error(`TypeMismatchError: Entry '${name}' is not a file.`);
+      default: {
+        const _ex: never = child.kind;
+        throw new Error(`Unhandled case: ${_ex}`);
+      }
+      }
     }
     if (options?.create) {
       const newFile = new MockFileSystemFileHandle(name);
@@ -172,8 +181,16 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
   async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MockFileSystemDirectoryHandle> {
     const child = this.children.get(name);
     if (child) {
-      if (child.kind !== 'directory') throw new Error(`TypeMismatchError: Entry '${name}' is not a directory.`);
-      return child as MockFileSystemDirectoryHandle;
+      switch (child.kind) {
+      case 'directory':
+        return child as MockFileSystemDirectoryHandle;
+      case 'file':
+        throw new Error(`TypeMismatchError: Entry '${name}' is not a directory.`);
+      default: {
+        const _ex: never = child.kind;
+        throw new Error(`Unhandled case: ${_ex}`);
+      }
+      }
     }
     if (options?.create) {
       const newDir = new MockFileSystemDirectoryHandle(name);
@@ -210,9 +227,18 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
 
     for (const [name, child] of this.children) {
       if (child === possibleDescendant) return [name];
-      if (child.kind === 'directory') {
+      switch (child.kind) {
+      case 'directory': {
         const path = await (child as MockFileSystemDirectoryHandle).resolve(possibleDescendant);
         if (path) return [name, ...path];
+        break;
+      }
+      case 'file':
+        break;
+      default: {
+        const _ex: never = child.kind;
+        throw new Error(`Unhandled case: ${_ex}`);
+      }
       }
     }
     return null;
