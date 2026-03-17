@@ -22,9 +22,18 @@ export const mvCommandDefinition: WeshCommandDefinition = {
 
       try {
         const destStat = await context.kernel.stat({ path: fullDest });
-        if (destStat.type === 'directory') {
+        switch (destStat.type) {
+        case 'directory': {
           const srcName = src.split('/').filter(Boolean).pop()!;
           fullDest = `${fullDest}/${srcName}`;
+          break;
+        }
+        case 'file':
+          break;
+        default: {
+          const _ex: never = destStat.type;
+          throw new Error(`Unhandled type: ${_ex}`);
+        }
         }
       } catch {
         // Destination does not exist, which is fine for rename

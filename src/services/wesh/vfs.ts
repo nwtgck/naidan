@@ -160,7 +160,7 @@ class StandardFileHandle implements WeshFileHandle {
     const writable = await this.handle.createWritable({ keepExistingData: true });
     try {
       await writable.seek(pos);
-      await writable.write(dataToWrite as any);
+      await writable.write(dataToWrite);
     } finally {
       await writable.close();
     }
@@ -429,8 +429,16 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
     try {
       handleRes = await this._resolve({ path: normalized });
-      if (options.flags.creation === 'always') {
+      switch (options.flags.creation) {
+      case 'always':
         throw new Error(`File exists: ${normalized}`);
+      case 'never':
+      case 'if-needed':
+        break;
+      default: {
+        const _ex: never = options.flags.creation;
+        throw new Error(`Unhandled creation flag: ${_ex}`);
+      }
       }
     } catch (e) {
       if (create) {
@@ -696,7 +704,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const newParentRes = await this._resolve({ path: newParentPath });
     if (newParentRes.readOnly) throw new Error(`Read-only destination: ${newParentPath}`);
 
-    if (oldRes.handle.kind === 'file') {
+    switch (oldRes.handle.kind) {
+    case 'file': {
       const oldFileHandle = oldRes.handle as FileSystemFileHandle;
       const newParentDir = newParentRes.handle as FileSystemDirectoryHandle;
 
@@ -708,6 +717,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         const newFileHandle = await newParentDir.getFileHandle(newName, { create: true });
         const writable = await newFileHandle.createWritable();
         const file = await oldFileHandle.getFile();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await writable.write(file as any);
         await writable.close();
 
@@ -718,8 +728,14 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         const oldParentRes = await this._resolve({ path: oldParentPath });
         await (oldParentRes.handle as FileSystemDirectoryHandle).removeEntry(oldName);
       }
-    } else {
+      break;
+    }
+    case 'directory':
       throw new Error('Directory rename not yet implemented');
+    default: {
+      const _ex: never = oldRes.handle.kind;
+      throw new Error(`Unhandled kind: ${_ex}`);
+    }
     }
   }
 

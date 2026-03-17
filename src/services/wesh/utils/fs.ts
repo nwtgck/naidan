@@ -83,7 +83,7 @@ export function handleToStream({
   handle,
   chunkSize = 64 * 1024,
 }: {
-  handle: any; // WeshFileHandle
+  handle: WeshFileHandle;
   chunkSize?: number;
 }): ReadableStream<Uint8Array> {
   return new ReadableStream({
@@ -116,7 +116,7 @@ export async function streamToHandle({
   handle,
 }: {
   stream: ReadableStream<Uint8Array>;
-  handle: any; // WeshFileHandle
+  handle: WeshFileHandle;
 }): Promise<void> {
   const reader = stream.getReader();
   try {

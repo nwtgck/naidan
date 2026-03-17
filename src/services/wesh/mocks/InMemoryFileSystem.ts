@@ -104,7 +104,7 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
     } else if (data instanceof ArrayBuffer) {
       bytes = new Uint8Array(data);
     } else if (data && typeof data === 'object' && 'type' in data && (data as { type: string }).type === 'write') {
-      const d = (data as any).data;
+      const d = (data as { data: string | Uint8Array | ArrayBuffer }).data;
       if (typeof d === 'string') bytes = new TextEncoder().encode(d);
       else if (d instanceof Uint8Array) bytes = d;
       else if (d instanceof ArrayBuffer) bytes = new Uint8Array(d);

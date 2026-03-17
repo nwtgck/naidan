@@ -20,7 +20,8 @@ export const cpCommandDefinition: WeshCommandDefinition = {
     const copyOne = async (srcPath: string, destPath: string) => {
       const stat = await context.kernel.stat({ path: srcPath });
 
-      if (stat.type === 'directory') {
+      switch (stat.type) {
+      case 'directory': {
         await context.kernel.mkdir({ path: destPath, recursive: true });
         const entries = await context.kernel.readDir({ path: srcPath });
         for (const entry of entries) {
@@ -29,7 +30,9 @@ export const cpCommandDefinition: WeshCommandDefinition = {
             `${destPath}/${entry.name}`
           );
         }
-      } else {
+        break;
+      }
+      case 'file': {
         const srcH = await context.kernel.open({
           path: srcPath,
           flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
@@ -43,6 +46,12 @@ export const cpCommandDefinition: WeshCommandDefinition = {
           stream: handleToStream({ handle: srcH }),
           handle: destH
         });
+        break;
+      }
+      default: {
+        const _ex: never = stat.type;
+        throw new Error(`Unhandled type: ${_ex}`);
+      }
       }
     };
 
@@ -52,9 +61,18 @@ export const cpCommandDefinition: WeshCommandDefinition = {
 
       try {
         const destStat = await context.kernel.stat({ path: fullDest });
-        if (destStat.type === 'directory') {
+        switch (destStat.type) {
+        case 'directory': {
           const srcName = src.split('/').pop()!;
           fullDest = `${fullDest}/${srcName}`;
+          break;
+        }
+        case 'file':
+          break;
+        default: {
+          const _ex: never = destStat.type;
+          throw new Error(`Unhandled type: ${_ex}`);
+        }
         }
       } catch {
         // Dest doesn't exist

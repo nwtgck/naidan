@@ -25,7 +25,8 @@ export const rmCommandDefinition: WeshCommandDefinition = {
 
     const removeRecursive = async (path: string) => {
       const st = await context.kernel.stat({ path });
-      if (st.type === 'directory') {
+      switch (st.type) {
+      case 'directory': {
         if (!recursive) {
           throw new Error('is a directory');
         }
@@ -34,8 +35,14 @@ export const rmCommandDefinition: WeshCommandDefinition = {
           await removeRecursive(`${path}/${entry.name}`);
         }
         await context.kernel.rmdir({ path });
-      } else {
+        break;
+      }      case 'file':
         await context.kernel.unlink({ path });
+        break;
+      default: {
+        const _ex: never = st.type;
+        throw new Error(`Unhandled type: ${_ex}`);
+      }
       }
     };
 

@@ -19,9 +19,18 @@ export const cdCommandDefinition: WeshCommandDefinition = {
       }
 
       const res = await context.kernel.resolve({ path: fullPath });
-      if (res.stat.type !== 'directory') {
-        throw new Error(`Not a directory: ${target}`);
-      }
+      (() => {
+        switch (res.stat.type) {
+        case 'directory':
+          return;
+        case 'file':
+          throw new Error(`Not a directory: ${target}`);
+        default: {
+          const _ex: never = res.stat.type;
+          throw new Error(`Unhandled type: ${_ex}`);
+        }
+        }
+      })();
 
       context.setCwd({ path: res.fullPath });
       return { exitCode: 0 };

@@ -24,10 +24,17 @@ export const findCommandDefinition: WeshCommandDefinition = {
         const entries = await context.kernel.readDir({ path: currentPath });
         for (const entry of entries) {
           const entryPath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`;
-          if (entry.type === 'directory') {
+          switch (entry.type) {
+          case 'directory':
             await walk(entryPath);
-          } else {
+            break;
+          case 'file':
             await text.print({ text: entryPath + '\n' });
+            break;
+          default: {
+            const _ex: never = entry.type;
+            throw new Error(`Unhandled type: ${_ex}`);
+          }
           }
         }
       } catch (e: unknown) {

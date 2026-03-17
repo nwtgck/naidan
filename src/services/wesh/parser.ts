@@ -230,16 +230,40 @@ class Parser {
 
     // Subshell / Compound Commands
     const type = this.currentToken.type;
-    if (type === 'LPAREN') {
+    switch (type) {
+    case 'LPAREN':
       return this.parseSubshell();
-    }
-    if (type === 'WORD') {
-      if (this.currentToken.value === 'if') return this.parseIf();
-      if (this.currentToken.value === 'for') return this.parseFor();
+    case 'WORD': {
+      const val = this.currentToken.value;
+      if (val === 'if') return this.parseIf();
+      if (val === 'for') return this.parseFor();
 
-      if (KEYWORDS.has(this.currentToken.value)) {
-        throw new Error(`Unexpected keyword: ${this.currentToken.value}`);
+      if (KEYWORDS.has(val)) {
+        throw new Error(`Unexpected keyword: ${val}`);
       }
+      break;
+    }
+    case 'PIPE':
+    case 'AND':
+    case 'OR':
+    case 'SEMI':
+    case 'AMP':
+    case 'GT':
+    case 'GTGT':
+    case 'LT':
+    case 'LTGT':
+    case 'LTGTAMP':
+    case 'HEREDOC':
+    case 'HERESTRING':
+    case 'PROC_SUB_IN':
+    case 'PROC_SUB_OUT':
+    case 'EOF':
+    case 'RPAREN':
+      break;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled token type: ${_ex}`);
+    }
     }
 
     const assignments: { key: string; value: string }[] = [];
@@ -327,10 +351,32 @@ class Parser {
         const list = this.parseList(['RPAREN']);
 
         const endType = this.currentToken.type;
-        if (endType === 'RPAREN') {
+        switch (endType) {
+        case 'RPAREN':
           this.eat('RPAREN');
-        } else {
+          break;
+        case 'WORD':
+        case 'LPAREN':
+        case 'PIPE':
+        case 'AND':
+        case 'OR':
+        case 'SEMI':
+        case 'AMP':
+        case 'GT':
+        case 'GTGT':
+        case 'LT':
+        case 'LTGT':
+        case 'LTGTAMP':
+        case 'HEREDOC':
+        case 'HERESTRING':
+        case 'PROC_SUB_IN':
+        case 'PROC_SUB_OUT':
+        case 'EOF':
           throw new Error(`Expected ')' after process substitution, got: ${this.currentToken.value}`);
+        default: {
+          const _ex: never = endType;
+          throw new Error(`Unhandled token type: ${_ex}`);
+        }
         }
 
         args.push({
@@ -339,33 +385,59 @@ class Parser {
           list
         });
 
-      } else if (t === 'WORD') {
-        const word = this.currentToken.value;
+      } else {
+        switch (t) {
+        case 'WORD': {
+          const word = this.currentToken.value;
 
-        if (commandName === null && KEYWORDS.has(word)) {
-          break;
-        }
+          if (commandName === null && KEYWORDS.has(word)) {
+            break;
+          }
 
-        this.eat('WORD');
+          this.eat('WORD');
 
-        if (commandName === null) {
-          if (word.includes('=') && !word.startsWith('=')) {
-            const parts = word.split('=');
-            const key = parts[0];
-            if (key) {
-              assignments.push({ key, value: parts.slice(1).join('=') });
+          if (commandName === null) {
+            if (word.includes('=') && !word.startsWith('=')) {
+              const parts = word.split('=');
+              const key = parts[0];
+              if (key) {
+                assignments.push({ key, value: parts.slice(1).join('=') });
+              } else {
+                commandName = word;
+              }
             } else {
               commandName = word;
             }
           } else {
-            commandName = word;
+            args.push(word);
           }
-        } else {
-          args.push(word);
+          break;
         }
-      } else {
-        // Fallback for types that canContinue allows but we didn't handle specifically
-        throw new Error(`Unexpected token in canContinue loop: ${t}`);
+        case 'GT':
+        case 'GTGT':
+        case 'LT':
+        case 'LTGT':
+        case 'LTGTAMP':
+        case 'HEREDOC':
+        case 'HERESTRING':
+        case 'PROC_SUB_IN':
+        case 'PROC_SUB_OUT':
+          // Handled by isRedirection or ProcSub blocks
+          break;
+        case 'PIPE':
+        case 'AND':
+        case 'OR':
+        case 'SEMI':
+        case 'AMP':
+        case 'LPAREN':
+        case 'RPAREN':
+        case 'EOF':
+          throw new Error(`Unexpected token in canContinue loop: ${t}`);
+        default: {
+          const _ex: never = t;
+          throw new Error(`Unhandled token type: ${_ex}`);
+        }
+        }
       }
     }
 
@@ -504,7 +576,8 @@ class Parser {
       this.eat('WORD');
     }
 
-    // @ts-expect-error
+    // Ensure the semicolon is handled as a separator
+    // @ts-expect-error: The parser needs to handle cases where an optional semicolon separates the list of items from the do keyword.
     if (this.currentToken.type === 'SEMI') {
       this.eat('SEMI');
     }
@@ -530,14 +603,35 @@ class Parser {
   }
 
   private expectWord(): string {
-    switch (this.currentToken.type) {
+    const type = this.currentToken.type;
+    switch (type) {
     case 'WORD': {
       const val = this.currentToken.value;
       this.eat('WORD');
       return val;
     }
-    default:
-      throw new Error(`Expected word, got: ${this.currentToken.type}`);
+    case 'LPAREN':
+    case 'RPAREN':
+    case 'PIPE':
+    case 'AND':
+    case 'OR':
+    case 'SEMI':
+    case 'AMP':
+    case 'GT':
+    case 'GTGT':
+    case 'LT':
+    case 'LTGT':
+    case 'LTGTAMP':
+    case 'HEREDOC':
+    case 'HERESTRING':
+    case 'PROC_SUB_IN':
+    case 'PROC_SUB_OUT':
+    case 'EOF':
+      throw new Error(`Expected word, got: ${type}`);
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled token type: ${_ex}`);
+    }
     }
   }
 
