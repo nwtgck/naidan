@@ -10,6 +10,6 @@ export const clearCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     /** Standard clear escape code */
     await text.print({ text: '\x1b[2J\x1b[H' });
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

@@ -19,7 +19,7 @@ export const exportCmdCommandDefinition: WeshCommandDefinition = {
       for (const [key, val] of context.env) {
         await text.print({ text: `export ${key}='${val}'\n` });
       }
-      return { exitCode: 0, data: undefined, error: undefined };
+      return { exitCode: 0 };
     }
 
     for (const p of positional) {
@@ -31,6 +31,6 @@ export const exportCmdCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

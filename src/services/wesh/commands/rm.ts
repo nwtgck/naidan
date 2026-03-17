@@ -17,7 +17,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     if (positional.length === 0) {
       await text.error({ text: 'rm: missing operand\n' });
-      return { exitCode: 1, data: undefined, error: 'missing operand' };
+      return { exitCode: 1 };
     }
 
     const recursive = !!flags.r;
@@ -35,6 +35,6 @@ export const rmCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

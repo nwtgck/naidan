@@ -10,7 +10,7 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     if (context.args.length === 0) {
       await text.error({ text: 'rmdir: missing operand\n' });
-      return { exitCode: 1, data: undefined, error: 'missing operand' };
+      return { exitCode: 1 };
     }
 
     for (const p of context.args) {
@@ -27,6 +27,6 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

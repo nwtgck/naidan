@@ -17,7 +17,7 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
     if (positional.length === 0) {
       const text = context.text();
       await text.error({ text: 'mkdir: missing operand\n' });
-      return { exitCode: 1, data: undefined, error: 'missing operand' };
+      return { exitCode: 1 };
     }
 
     const recursive = !!flags.p;
@@ -33,6 +33,6 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

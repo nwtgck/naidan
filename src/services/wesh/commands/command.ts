@@ -15,7 +15,7 @@ export const commandCommandDefinition: WeshCommandDefinition = {
     });
 
     const text = context.text();
-    if (positional.length === 0) return { exitCode: 0, data: undefined, error: undefined };
+    if (positional.length === 0) return { exitCode: 0 };
 
     const cmdName = positional[0]!;
     const meta = context.getCommandMeta({ name: cmdName });
@@ -23,16 +23,16 @@ export const commandCommandDefinition: WeshCommandDefinition = {
     if (flags.v) {
       if (meta) {
         await text.print({ text: `${cmdName}\n` });
-        return { exitCode: 0, data: undefined, error: undefined };
+        return { exitCode: 0 };
       }
-      return { exitCode: 1, data: undefined, error: 'not found' };
+      return { exitCode: 1 };
     }
 
     if (!meta) {
       await text.error({ text: `command: ${cmdName} not found\n` });
-      return { exitCode: 1, data: undefined, error: 'not found' };
+      return { exitCode: 1 };
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

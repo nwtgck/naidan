@@ -12,7 +12,7 @@ export const touchCommandDefinition: WeshCommandDefinition = {
 
     if (files.length === 0) {
       await text.error({ text: 'touch: missing file operand\n' });
-      return { exitCode: 1, data: undefined, error: 'missing operand' };
+      return { exitCode: 1 };
     }
 
     for (const f of files) {
@@ -35,6 +35,6 @@ export const touchCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

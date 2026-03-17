@@ -19,6 +19,6 @@ export const dateCommandDefinition: WeshCommandDefinition = {
     const out = flags.u ? now.toUTCString() : now.toString();
     await text.print({ text: out + '\n' });
 
-    return { exitCode: 0, data: now.toISOString(), error: undefined };
+    return { exitCode: 0 };
   },
 };

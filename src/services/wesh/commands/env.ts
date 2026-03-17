@@ -21,6 +21,6 @@ export const envCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: 0, data: Object.fromEntries(context.env), error: undefined };
+    return { exitCode: 0 };
   },
 };

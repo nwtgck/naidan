@@ -11,10 +11,10 @@ export const sleepCommandDefinition: WeshCommandDefinition = {
     if (isNaN(seconds)) {
       const text = context.text();
       await text.error({ text: `sleep: invalid time interval '${context.args[0]}'\n` });
-      return { exitCode: 1, data: undefined, error: 'invalid interval' };
+      return { exitCode: 1 };
     }
 
     await new Promise(resolve => setTimeout(resolve, seconds * 1000));
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

@@ -28,7 +28,7 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `zcat: stdin: ${message}\n` });
       }
-      return { exitCode: 0, data: undefined, error: undefined };
+      return { exitCode: 0 };
     }
 
     for (const f of positional) {
@@ -46,6 +46,6 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

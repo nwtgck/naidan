@@ -20,6 +20,6 @@ export const whichCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: foundAll ? 0 : 1, data: undefined, error: undefined };
+    return { exitCode: foundAll ? 0 : 1 };
   },
 };

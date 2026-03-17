@@ -73,6 +73,6 @@ export const findCommandDefinition: WeshCommandDefinition = {
       await walk({ currentPath: fullPath });
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

@@ -17,7 +17,7 @@ export const gunzipCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     if (positional.length === 0) {
       await text.error({ text: 'gunzip: missing file operand\n' });
-      return { exitCode: 1, data: undefined, error: 'missing operand' };
+      return { exitCode: 1 };
     }
 
     for (const f of positional) {
@@ -43,6 +43,6 @@ export const gunzipCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

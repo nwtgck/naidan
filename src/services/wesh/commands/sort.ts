@@ -67,6 +67,6 @@ export const sortCommandDefinition: WeshCommandDefinition = {
       await text.print({ text: line + '\n' });
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

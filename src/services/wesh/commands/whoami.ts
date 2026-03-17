@@ -10,6 +10,6 @@ export const whoamiCommandDefinition: WeshCommandDefinition = {
     const user = context.env.get('USER') || 'user';
     const text = context.text();
     await text.print({ text: user + '\n' });
-    return { exitCode: 0, data: user, error: undefined };
+    return { exitCode: 0 };
   },
 };

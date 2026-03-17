@@ -9,6 +9,6 @@ export const pwdCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const text = context.text();
     await text.print({ text: context.cwd + '\n' });
-    return { exitCode: 0, data: context.cwd, error: undefined };
+    return { exitCode: 0 };
   },
 };

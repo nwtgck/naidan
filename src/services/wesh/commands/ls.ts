@@ -17,7 +17,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     if (unknown.length > 0) {
       await text.error({ text: `ls: invalid option -- '${unknown[0]}'\n` });
-      return { exitCode: 1, data: undefined, error: 'invalid option' };
+      return { exitCode: 1 };
     }
 
     const paths = positional.length > 0 ? positional : ['.'];
@@ -91,7 +91,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };
 

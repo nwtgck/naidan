@@ -13,6 +13,6 @@ export const historyCommandDefinition: WeshCommandDefinition = {
       const line = `${(i + 1).toString().padStart(5)}  ${historyList[i]}\n`;
       await text.print({ text: line });
     }
-    return { exitCode: 0, data: historyList, error: undefined };
+    return { exitCode: 0 };
   },
 };

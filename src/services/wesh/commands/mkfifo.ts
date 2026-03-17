@@ -12,7 +12,7 @@ export const mkfifoCommandDefinition: WeshCommandDefinition = {
 
     if (paths.length === 0) {
       await text.error({ text: "mkfifo: missing operand\n" });
-      return { exitCode: 1, data: undefined, error: "missing operand" };
+      return { exitCode: 1 };
     }
 
     for (const p of paths) {
@@ -23,10 +23,10 @@ export const mkfifoCommandDefinition: WeshCommandDefinition = {
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `mkfifo: cannot create fifo '${p}': ${message}\n` });
-        return { exitCode: 1, data: undefined, error: message };
+        return { exitCode: 1 };
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

@@ -1,4 +1,5 @@
 import { Wesh } from './wesh';
+import type { WeshFileHandle } from './wesh/types';
 
 export interface WeshMount {
   path: string;
@@ -55,11 +56,35 @@ export class WeshService {
       throw new Error('WeshService not initialized');
     }
 
-    const result = await this.shell.execute({ commandLine });
+    const decoder = new TextDecoder();
+    
+    const outputBuffer: Uint8Array[] = [];
+    const errorBuffer: Uint8Array[] = [];
+
+    const createDummyHandle = (): WeshFileHandle => ({
+      read: async () => ({ bytesRead: 0 }),
+      write: async ({ buffer }) => {
+        // Correctly handle the buffer passed to write
+        outputBuffer.push(new Uint8Array(buffer));
+        return { bytesWritten: buffer.length };
+      },
+      close: async () => {},
+      stat: async () => ({ size: 0, mode: 0, type: 'file', mtime: 0, ino: 0, uid: 0, gid: 0 }),
+      truncate: async () => ({ size: 0 }),
+      ioctl: async () => ({ ret: 0 })
+    });
+
+    const result = await this.shell.execute({
+      script: commandLine,
+      stdin: createDummyHandle(),
+      stdout: createDummyHandle(),
+      stderr: createDummyHandle()
+    });
+    
     return {
       exitCode: result.exitCode,
-      output: (result.data as string) || '',
-      error: result.error,
+      output: outputBuffer.map(b => decoder.decode(b)).join(''),
+      error: errorBuffer.length > 0 ? errorBuffer.map(b => decoder.decode(b)).join('') : undefined,
     };
   }
 }

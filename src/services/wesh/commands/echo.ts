@@ -21,6 +21,6 @@ export const echoCommandDefinition: WeshCommandDefinition = {
       await text.print({ text: '\n' });
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

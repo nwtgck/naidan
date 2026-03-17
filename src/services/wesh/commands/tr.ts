@@ -17,7 +17,7 @@ export const trCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     if (positional.length < 1) {
       await text.error({ text: 'tr: missing operand\n' });
-      return { exitCode: 1, data: undefined, error: 'missing operand' };
+      return { exitCode: 1 };
     }
 
     const set1 = positional[0]!;
@@ -46,6 +46,6 @@ export const trCommandDefinition: WeshCommandDefinition = {
       await text.print({ text: out + '\n' });
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

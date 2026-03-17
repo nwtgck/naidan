@@ -35,7 +35,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
 
     if (files.length === 0) {
       await pump(context.stdin, context.stdout);
-      return { exitCode: 0, data: undefined, error: undefined };
+      return { exitCode: 0 };
     }
 
     for (const f of files) {
@@ -58,10 +58,10 @@ export const catCommandDefinition: WeshCommandDefinition = {
         const message = e instanceof Error ? e.message : String(e);
         const encoder = new TextEncoder();
         await context.stderr.write({ buffer: encoder.encode(`cat: ${f}: ${message}\n`) });
-        return { exitCode: 1, data: undefined, error: message };
+        return { exitCode: 1 };
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

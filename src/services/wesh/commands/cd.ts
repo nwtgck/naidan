@@ -31,11 +31,11 @@ export const cdCommandDefinition: WeshCommandDefinition = {
       }
 
       context.setCwd({ path: res.fullPath });
-      return { exitCode: 0, data: undefined, error: undefined };
+      return { exitCode: 0 };
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       await text.error({ text: `cd: ${target}: ${message}\n` });
-      return { exitCode: 1, data: undefined, error: message };
+      return { exitCode: 1 };
     }
   },
 };

@@ -15,10 +15,10 @@ export const helpCommandDefinition: WeshCommandDefinition = {
       if (meta) {
         await text.print({ text: `${meta.name}: ${meta.description}\n` });
         await text.print({ text: `Usage: ${meta.usage}\n` });
-        return { exitCode: 0, data: meta, error: undefined };
+        return { exitCode: 0 };
       } else {
         await text.error({ text: `help: no help topics match '${target}'\n` });
-        return { exitCode: 1, data: undefined, error: undefined };
+        return { exitCode: 1 };
       }
     }
 
@@ -30,6 +30,6 @@ export const helpCommandDefinition: WeshCommandDefinition = {
       await text.print({ text: `  ${paddedName} - ${meta?.description || ''}\n` });
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };
