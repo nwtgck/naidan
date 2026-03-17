@@ -65,8 +65,9 @@ class Parser {
       this.currentToken.type === 'AMP') &&
       !this.isTerminator(terminators)
     ) {
+      const type = this.currentToken.type;
       let operator: ';' | '&&' | '||' | '&';
-      switch (this.currentToken.type) {
+      switch (type) {
       case 'SEMI':
         operator = ';';
         break;
@@ -80,28 +81,49 @@ class Parser {
         operator = '&';
         break;
       default: {
-        const _ex: never = this.currentToken.type;
+        const _ex: never = type;
         throw new Error(`Unhandled operator type: ${_ex}`);
       }
       }
 
-      this.eat(this.currentToken.type);
+      this.eat(type);
 
       if (this.isTerminator(terminators) || this.currentToken.type === 'EOF') {
-        if (node.kind === 'list') {
+        switch (node.kind) {
+        case 'list':
           node.parts[node.parts.length - 1].operator = operator;
-        } else {
+          break;
+        case 'command':
+        case 'pipeline':
+        case 'if':
+        case 'for':
+        case 'assignment':
+        case 'subshell':
+        case 'processSubstitution':
           node = { kind: 'list', parts: [{ node, operator }] };
+          break;
+        default: {
+          const _ex: never = node;
+          throw new Error(`Unhandled node kind: ${(_ex as WeshASTNode).kind}`);
+        }
         }
         return node;
       }
 
       const nextNode = this.parsePipeline(terminators);
 
-      if (node.kind === 'list') {
+      switch (node.kind) {
+      case 'list':
         node.parts[node.parts.length - 1].operator = operator;
         node.parts.push({ node: nextNode, operator: ';' });
-      } else {
+        break;
+      case 'command':
+      case 'pipeline':
+      case 'if':
+      case 'for':
+      case 'assignment':
+      case 'subshell':
+      case 'processSubstitution':
         node = {
           kind: 'list',
           parts: [
@@ -109,6 +131,11 @@ class Parser {
             { node: nextNode, operator: ';' }
           ]
         };
+        break;
+      default: {
+        const _ex: never = node;
+        throw new Error(`Unhandled node kind: ${(_ex as WeshASTNode).kind}`);
+      }
       }
     }
 
@@ -153,25 +180,30 @@ class Parser {
 
   private parseCommand(terminators: string[] = []): WeshASTNode {
     if (this.isTerminator(terminators)) {
-      if (this.currentToken.type === 'RPAREN') {
+      switch (this.currentToken.type) {
+      case 'RPAREN':
         // Handled by caller (parseSubshell/parseList)
         return { kind: 'command', name: '', args: [], assignments: [], redirections: [] }; // Should not happen if logic is correct
+      default:
+        throw new Error(`Unexpected terminator: ${this.currentToken.value}`);
       }
-      throw new Error(`Unexpected terminator: ${this.currentToken.value}`);
     }
 
     // Subshell
-    if (this.currentToken.type === 'LPAREN') {
+    switch (this.currentToken.type) {
+    case 'LPAREN':
       return this.parseSubshell();
-    }
-
-    if (this.currentToken.type === 'WORD') {
+    case 'WORD': {
       if (this.currentToken.value === 'if') return this.parseIf();
       if (this.currentToken.value === 'for') return this.parseFor();
 
       if (KEYWORDS.has(this.currentToken.value)) {
         throw new Error(`Unexpected keyword: ${this.currentToken.value}`);
       }
+      break;
+    }
+    default:
+      break;
     }
 
     const assignments: { key: string; value: string }[] = [];
@@ -179,19 +211,25 @@ class Parser {
     const redirections: WeshRedirection[] = [];
     let commandName: string | null = null;
 
-    while (
-      (this.currentToken.type === 'WORD' ||
-        this.currentToken.type === 'GT' ||
-        this.currentToken.type === 'GTGT' ||
-        this.currentToken.type === 'LT' ||
-        this.currentToken.type === 'LTGT' ||
-        this.currentToken.type === 'LTGTAMP' ||
-        this.currentToken.type === 'HEREDOC' ||
-        this.currentToken.type === 'HERESTRING' ||
-        this.currentToken.type === 'PROC_SUB_IN' ||
-        this.currentToken.type === 'PROC_SUB_OUT') &&
-        !this.isTerminator(terminators)
-    ) {
+    const canContinue = () => {
+      switch (this.currentToken.type) {
+      case 'WORD':
+      case 'GT':
+      case 'GTGT':
+      case 'LT':
+      case 'LTGT':
+      case 'LTGTAMP':
+      case 'HEREDOC':
+      case 'HERESTRING':
+      case 'PROC_SUB_IN':
+      case 'PROC_SUB_OUT':
+        return !this.isTerminator(terminators);
+      default:
+        return false;
+      }
+    };
+
+    while (canContinue()) {
       if (this.isRedirection(this.currentToken.type)) {
         const type = this.currentToken.type;
         this.eat(type);
@@ -240,8 +278,18 @@ class Parser {
 
       } else if (this.currentToken.type === 'PROC_SUB_IN' || this.currentToken.type === 'PROC_SUB_OUT') {
         const type = this.currentToken.type;
-        const kind = type === 'PROC_SUB_IN' ? 'input' : 'output';
         this.eat(type);
+
+        const kind = (() => {
+          switch (type) {
+          case 'PROC_SUB_IN': return 'input';
+          case 'PROC_SUB_OUT': return 'output';
+          default: {
+            const _ex: never = type;
+            throw new Error(`Unhandled process substitution type: ${_ex}`);
+          }
+          }
+        })();
 
         // Process substitution inner list: <( list )
         // We parse a list until RPAREN
@@ -253,10 +301,13 @@ class Parser {
         // If parseCommand sees RPAREN, it stops?
         // My isTerminator includes RPAREN check now.
 
-        if (this.currentToken.type !== 'RPAREN') {
+        switch (this.currentToken.type) {
+        case 'RPAREN':
+          this.eat('RPAREN');
+          break;
+        default:
           throw new Error("Expected ')' after process substitution");
         }
-        this.eat('RPAREN');
 
         args.push({
           kind: 'processSubstitution',
@@ -291,9 +342,14 @@ class Parser {
     }
 
     if (commandName === null) {
-      // Could be just empty command or subshell processed earlier?
-      // But loop condition handles words/redirections.
-      throw new Error("Expected command");
+      switch (this.currentToken.type) {
+      case 'WORD':
+        throw new Error(`Expected command, got WORD: ${this.currentToken.value}`);
+      case 'EOF':
+        throw new Error("Expected command, got EOF");
+      default:
+        throw new Error(`Expected command, got token type: ${this.currentToken.type}`);
+      }
     }
 
     return {
@@ -391,11 +447,22 @@ class Parser {
   private parseFor(): WeshASTNode {
     this.eat('WORD'); // eat 'for'
 
-    if (this.currentToken.type !== 'WORD') throw new Error("Expected variable name");
+    switch (this.currentToken.type) {
+    case 'WORD':
+      break;
+    default:
+      throw new Error("Expected variable name");
+    }
     const variable = this.currentToken.value;
     this.eat('WORD');
 
-    if (this.currentToken.type !== 'WORD' || this.currentToken.value !== 'in') {
+    switch (this.currentToken.type) {
+    case 'WORD':
+      if (this.currentToken.value !== 'in') {
+        throw new Error("Expected 'in'");
+      }
+      break;
+    default:
       throw new Error("Expected 'in'");
     }
     this.eat('WORD');
@@ -431,12 +498,15 @@ class Parser {
   }
 
   private expectWord(): string {
-    if (this.currentToken.type === 'WORD') {
+    switch (this.currentToken.type) {
+    case 'WORD': {
       const val = this.currentToken.value;
       this.eat('WORD');
       return val;
     }
-    throw new Error("Expected word");
+    default:
+      throw new Error(`Expected word, got: ${this.currentToken.type}`);
+    }
   }
 
   private isRedirection(type: TokenType): boolean {
