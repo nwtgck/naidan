@@ -23,10 +23,26 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     const recursive = !!flags.r;
     const force = !!flags.f;
 
+    const removeRecursive = async (path: string) => {
+      const st = await context.kernel.stat({ path });
+      if (st.type === 'directory') {
+        if (!recursive) {
+          throw new Error('is a directory');
+        }
+        const entries = await context.kernel.readDir({ path });
+        for (const entry of entries) {
+          await removeRecursive(`${path}/${entry.name}`);
+        }
+        await context.kernel.rmdir({ path });
+      } else {
+        await context.kernel.unlink({ path });
+      }
+    };
+
     for (const p of positional) {
       try {
         const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
-        await context.vfs.rm({ path: fullPath, recursive });
+        await removeRecursive(fullPath);
       } catch (e: unknown) {
         if (!force) {
           const message = e instanceof Error ? e.message : String(e);

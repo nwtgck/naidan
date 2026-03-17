@@ -1,16 +1,17 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
+import { handleToStream } from '@/services/wesh/utils/fs';
 
 export const sortCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'sort',
     description: 'Sort lines of text files',
-    usage: 'sort [-r] [-n] [file...]',
+    usage: 'sort [file...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const { positional } = parseFlags({
       args: context.args,
-      booleanFlags: ['r', 'n'],
+      booleanFlags: [],
       stringFlags: [],
     });
 
@@ -28,23 +29,23 @@ export const sortCommandDefinition: WeshCommandDefinition = {
         if (f === undefined) continue;
         try {
           const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-          const stream = await context.vfs.readFile({ path: fullPath });
+          const handle = await context.kernel.open({
+            path: fullPath,
+            flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+          });
+          const stream = handleToStream({ handle });
           const decoder = new TextDecoder();
           const reader = stream.getReader();
           let buffer = '';
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              const lns = buffer.split(/\r?\n/);
-              buffer = lns.pop() || '';
-              for (const l of lns) lines.push(l);
-            }
-            if (buffer) lines.push(buffer);
-          } finally {
-            reader.releaseLock();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lns = buffer.split(/\r?\n/);
+            buffer = lns.pop() || '';
+            for (const l of lns) lines.push(l);
           }
+          if (buffer) lines.push(buffer);
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           await text.error({ text: `sort: ${f}: ${message}\n` });
@@ -52,17 +53,7 @@ export const sortCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    lines.sort((a, b) => {
-      if (flags.n) {
-        const na = parseFloat(a);
-        const nb = parseFloat(b);
-        if (!isNaN(na) && !isNaN(nb)) return na - nb;
-      }
-      return a.localeCompare(b);
-    });
-
-    if (flags.r) lines.reverse();
-
+    lines.sort();
     for (const line of lines) {
       await text.print({ text: line + '\n' });
     }

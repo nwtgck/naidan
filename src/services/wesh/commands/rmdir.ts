@@ -16,11 +16,11 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
     for (const p of context.args) {
       try {
         const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
-        const entries = await context.vfs.readDir({ path: fullPath });
+        const entries = await context.kernel.readDir({ path: fullPath });
         if (entries.length > 0) {
           throw new Error('Directory not empty');
         }
-        await context.vfs.rm({ path: fullPath, recursive: false });
+        await context.kernel.rmdir({ path: fullPath });
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `rmdir: failed to remove '${p}': ${message}\n` });

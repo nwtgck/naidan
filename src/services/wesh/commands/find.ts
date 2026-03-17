@@ -5,72 +5,40 @@ export const findCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'find',
     description: 'Search for files in a directory hierarchy',
-    usage: 'find [path...] [-name pattern] [-type f|d]',
+    usage: 'find [path...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const { positional } = parseFlags({
       args: context.args,
       booleanFlags: [],
-      stringFlags: ['name', 'type'],
+      stringFlags: [],
     });
 
-    const paths = positional.length > 0 ? positional : ['.'];
-    const namePattern = flags.name as string | undefined;
-    const typeFilter = flags.type as string | undefined;
     const text = context.text();
+    const paths = positional.length > 0 ? positional : ['.'];
 
-    const walk = async ({ currentPath }: { currentPath: string }) => {
+    const walk = async (currentPath: string) => {
+      await text.print({ text: currentPath + '\n' });
+
       try {
-        const entries = await context.vfs.readDir({ path: currentPath });
+        const entries = await context.kernel.readDir({ path: currentPath });
         for (const entry of entries) {
-          const fullPath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`;
-
-          let matches = true;
-          if (namePattern) {
-            /** Very simple glob-to-regex conversion */
-            const globRegex = new RegExp('^' + namePattern.replace(/\*/g, '.*') + '$');
-            if (!globRegex.test(entry.name)) matches = false;
-          }
-          if (typeFilter) {
-            switch (entry.kind) {
-            case 'file':
-              if (typeFilter !== 'f') matches = false;
-              break;
-            case 'directory':
-              if (typeFilter !== 'd') matches = false;
-              break;
-            default: {
-              const _ex: never = entry.kind;
-              throw new Error(`Unexpected entry kind: ${_ex}`);
-            }
-            }
-          }
-
-          if (matches) {
-            await text.print({ text: fullPath + '\n' });
-          }
-
-          switch (entry.kind) {
-          case 'directory':
-            await walk({ currentPath: fullPath });
-            break;
-          case 'file':
-            break;
-          default: {
-            const _ex: never = entry.kind;
-            throw new Error(`Unexpected entry kind: ${_ex}`);
-          }
+          const entryPath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`;
+          if (entry.type === 'directory') {
+            await walk(entryPath);
+          } else {
+            await text.print({ text: entryPath + '\n' });
           }
         }
       } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : String(e);
-        await text.error({ text: `find: ${currentPath}: ${message}\n` });
+        // Not a directory or access denied
       }
     };
 
     for (const p of paths) {
+      if (p === undefined) continue;
       const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
-      await walk({ currentPath: fullPath });
+      await walk(fullPath);
     }
 
     return { exitCode: 0 };

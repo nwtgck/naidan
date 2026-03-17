@@ -6,7 +6,8 @@ import type {
   WeshWriteResult,
   WeshIOResult,
   WeshStat,
-  WeshFileType
+  WeshFileType,
+  WeshOpenFlags
 } from './types';
 
 // --- Pipe Implementation ---
@@ -184,12 +185,16 @@ export class Kernel implements WeshKernel {
     };
   }
 
-  async open(options: { path: string; flags: number; mode?: number }): Promise<WeshFileHandle> {
+  async open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle> {
     return this.vfs.open({ path: options.path, flags: options.flags, mode: options.mode });
   }
 
   async stat(options: { path: string }): Promise<WeshStat> {
     return this.vfs.stat({ path: options.path });
+  }
+
+  async resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }> {
+    return this.vfs.resolve(options);
   }
 
   async readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>> {
@@ -210,6 +215,10 @@ export class Kernel implements WeshKernel {
 
   async rmdir(options: { path: string }): Promise<void> {
     return this.vfs.rmdir(options);
+  }
+
+  async rename(options: { oldPath: string; newPath: string }): Promise<void> {
+    return this.vfs.rename(options);
   }
 
   getProcess(options: { pid: number }): WeshProcess | undefined {

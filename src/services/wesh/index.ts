@@ -426,7 +426,11 @@ export class Wesh {
       switch (red.type) {
       case '<':
         if (fullTarget) {
-          cmdStdin = await this.vfs.open({ path: fullTarget, flags: 0, mode: 0o644 });
+          cmdStdin = await this.kernel.open({
+            path: fullTarget,
+            flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+            mode: 0o644
+          });
           openHandles.push(cmdStdin);
         }
         break;
@@ -444,24 +448,31 @@ export class Wesh {
         break;
       case '>':
         if (fullTarget) {
-          cmdStdout = await this.vfs.open({ path: fullTarget, flags: 64 | 512, mode: 0o644 });
+          cmdStdout = await this.kernel.open({
+            path: fullTarget,
+            flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
+            mode: 0o644
+          });
           openHandles.push(cmdStdout);
         }
         break;
       case '>>':
         if (fullTarget) {
-          const h = await this.vfs.open({ path: fullTarget, flags: 64, mode: 0o644 });
-          const stat = await h.stat();
-          // We need a way to seek to end for O_APPEND.
-          // Implementation of seek is missing in handle, but we can pass position to write if needed.
-          // For now we assume cursor is at 0, which is incorrect for >>.
-          cmdStdout = h;
+          cmdStdout = await this.kernel.open({
+            path: fullTarget,
+            flags: { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' },
+            mode: 0o644
+          });
           openHandles.push(cmdStdout);
         }
         break;
       case '2>':
         if (fullTarget) {
-          cmdStderr = await this.vfs.open({ path: fullTarget, flags: 64 | 512, mode: 0o644 });
+          cmdStderr = await this.kernel.open({
+            path: fullTarget,
+            flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
+            mode: 0o644
+          });
           openHandles.push(cmdStderr);
         }
         break;
@@ -489,7 +500,6 @@ export class Wesh {
       cwd: state.cwd,
       pid: pid,
       kernel: this.kernel,
-      vfs: this.vfs,
       stdin: cmdStdin,
       stdout: cmdStdout,
       stderr: cmdStderr,

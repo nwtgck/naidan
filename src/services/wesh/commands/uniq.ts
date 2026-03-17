@@ -1,45 +1,44 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
+import { handleToStream } from '@/services/wesh/utils/fs';
 
 export const uniqCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'uniq',
     description: 'Report or omit repeated lines',
-    usage: 'uniq [-c] [-d] [-u] [-i] [input]',
+    usage: 'uniq [file] [-c] [-d] [-u]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
-      booleanFlags: ['c', 'd', 'u', 'i'],
+      booleanFlags: ['c', 'd', 'u'],
       stringFlags: [],
     });
 
     const text = context.text();
-    let lastLine: string | null = null;
-    let count = 0;
 
     const process = async ({ input }: { input: AsyncIterable<string> }) => {
+      let lastLine: string | null = null;
+      let count = 0;
+
       for await (const line of input) {
         if (lastLine === null) {
           lastLine = line;
           count = 1;
+        } else if (line === lastLine) {
+          count++;
         } else {
-          const equal = flags.i ? line.toLowerCase() === lastLine.toLowerCase() : line === lastLine;
-          if (equal) {
-            count++;
-          } else {
-            await outputLine({ line: lastLine, cnt: count });
-            lastLine = line;
-            count = 1;
-          }
+          await writeLine(lastLine, count);
+          lastLine = line;
+          count = 1;
         }
       }
       if (lastLine !== null) {
-        await outputLine({ line: lastLine, cnt: count });
+        await writeLine(lastLine, count);
       }
     };
 
-    const outputLine = async ({ line, cnt }: { line: string, cnt: number }) => {
+    const writeLine = async (line: string, cnt: number) => {
       const showLine = (!flags.d || cnt > 1) && (!flags.u || cnt === 1);
       if (showLine) {
         let out = '';
@@ -55,7 +54,11 @@ export const uniqCommandDefinition: WeshCommandDefinition = {
       const f = positional[0]!;
       try {
         const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-        const stream = await context.vfs.readFile({ path: fullPath });
+        const handle = await context.kernel.open({
+          path: fullPath,
+          flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+        });
+        const stream = handleToStream({ handle });
         const decoder = new TextDecoder();
 
         const lineReader: AsyncIterable<string> = {

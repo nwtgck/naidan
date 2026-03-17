@@ -1,33 +1,28 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
+import { handleToStream } from '@/services/wesh/utils/fs';
 
 export const cutCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'cut',
     description: 'Remove sections from each line of files',
-    usage: 'cut [-d delimiter] [-f fields] [file...]',
+    usage: 'cut [file...] -f fields [-d delimiter]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const { flags, positional } = parseFlags({
       args: context.args,
       booleanFlags: [],
-      stringFlags: ['d', 'f'],
+      stringFlags: ['f', 'd'],
     });
 
-    const delimiter = (flags.d as string) || '\t';
-    const fieldsStr = (flags.f as string) || '1';
     const text = context.text();
+    if (!flags.f) {
+      await text.error({ text: 'cut: fields must be specified\n' });
+      return { exitCode: 1 };
+    }
 
-    /** Simple fields parser: handles "1,3", "1-3", "2-" */
-    const fieldIndices = fieldsStr.split(',').flatMap(part => {
-      if (part.includes('-')) {
-        const [start, end] = part.split('-');
-        const s = parseInt(start || '1') || 1;
-        const e = parseInt(end || '100') || 100;
-        return Array.from({ length: e - s + 1 }, (_, i) => s + i);
-      }
-      return [parseInt(part)];
-    }).map(n => n - 1);
+    const fieldIndices = flags.f.split(',').map(f => parseInt(f, 10) - 1);
+    const delimiter = flags.d || '\t';
 
     const process = async ({ input }: { input: AsyncIterable<string> }) => {
       for await (const line of input) {
@@ -44,7 +39,11 @@ export const cutCommandDefinition: WeshCommandDefinition = {
         if (f === undefined) continue;
         try {
           const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-          const stream = await context.vfs.readFile({ path: fullPath });
+          const handle = await context.kernel.open({
+            path: fullPath,
+            flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+          });
+          const stream = handleToStream({ handle });
           const decoder = new TextDecoder();
 
           const lineReader: AsyncIterable<string> = {

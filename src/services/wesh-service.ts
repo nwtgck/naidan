@@ -57,7 +57,7 @@ export class WeshService {
     }
 
     const decoder = new TextDecoder();
-    
+
     const outputBuffer: Uint8Array[] = [];
     const errorBuffer: Uint8Array[] = [];
 
@@ -80,7 +80,7 @@ export class WeshService {
       stdout: createDummyHandle(),
       stderr: createDummyHandle()
     });
-    
+
     return {
       exitCode: result.exitCode,
       output: outputBuffer.map(b => decoder.decode(b)).join(''),

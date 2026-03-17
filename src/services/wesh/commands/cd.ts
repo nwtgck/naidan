@@ -18,16 +18,9 @@ export const cdCommandDefinition: WeshCommandDefinition = {
         fullPath = target.startsWith('/') ? target : `${context.cwd}/${target}`;
       }
 
-      const res = await context.vfs.resolve({ path: fullPath });
-      switch (res.handle.kind) {
-      case 'directory':
-        break;
-      case 'file':
+      const res = await context.kernel.resolve({ path: fullPath });
+      if (res.stat.type !== 'directory') {
         throw new Error(`Not a directory: ${target}`);
-      default: {
-        const _ex: never = res.handle.kind;
-        throw new Error(`Unexpected handle kind: ${_ex}`);
-      }
       }
 
       context.setCwd({ path: res.fullPath });

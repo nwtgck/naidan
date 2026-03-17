@@ -100,9 +100,11 @@ export interface WeshKernel {
   pipe(): Promise<{ read: WeshFileHandle; write: WeshFileHandle }>;
 
   /** Open a file (Virtual File System or Device) */
-  open(options: { path: string; flags: number; mode?: number }): Promise<WeshFileHandle>;
+  open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
 
   stat(options: { path: string }): Promise<WeshStat>;
+
+  resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
 
   readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
 
@@ -114,10 +116,42 @@ export interface WeshKernel {
 
   rmdir(options: { path: string }): Promise<void>;
 
+  rename(options: { oldPath: string; newPath: string }): Promise<void>;
+
   getProcess(options: { pid: number }): WeshProcess | undefined;
 }
 
 // --- Virtual File System ---
+
+/**
+ * File access permissions
+ */
+export type WeshOpenAccess = 'read' | 'write' | 'read-write';
+
+/**
+ * File creation behavior
+ * - 'always': Create new. Error if already exists.
+ * - 'if-needed': Create if not exists.
+ * - 'never': Do not create. Error if not exists.
+ */
+export type WeshOpenCreation = 'always' | 'if-needed' | 'never';
+
+/**
+ * File truncation settings
+ */
+export type WeshOpenTruncate = 'truncate' | 'preserve';
+
+/**
+ * File append settings
+ */
+export type WeshOpenAppend = 'append' | 'preserve';
+
+export interface WeshOpenFlags {
+  access: WeshOpenAccess;
+  creation: WeshOpenCreation;
+  truncate: WeshOpenTruncate;
+  append: WeshOpenAppend;
+}
 
 export interface WeshIVirtualFileSystem {
   mount(options: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void>;
@@ -127,17 +161,16 @@ export interface WeshIVirtualFileSystem {
    * Open a file by path.
    * Handles translation of VFS paths to handles.
    */
-  open(options: { path: string; flags: number; mode?: number }): Promise<WeshFileHandle>;
+  open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
 
   stat(options: { path: string }): Promise<WeshStat>;
+
+  resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
 
   readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
 
   mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
 
-  open(options: { path: string; flags: number; mode?: number }): Promise<WeshFileHandle>;
-  stat(options: { path: string }): Promise<WeshStat>;
-  readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
   unlink(options: { path: string }): Promise<void>;
   rmdir(options: { path: string }): Promise<void>;
   mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
@@ -145,8 +178,6 @@ export interface WeshIVirtualFileSystem {
 
   registerSpecialFile(options: { path: string; handler: () => WeshFileHandle }): void;
   unregisterSpecialFile(options: { path: string }): void;
-
-  resolve(options: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }>;
 }
 
 // --- Shell / Command Execution Context ---
@@ -162,7 +193,6 @@ export interface WeshCommandContext {
   cwd: string;
 
   kernel: WeshKernel;
-  vfs: WeshIVirtualFileSystem;
 
   // Standard Streams (FDs 0, 1, 2)
   stdin: WeshFileHandle;

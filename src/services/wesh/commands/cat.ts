@@ -46,8 +46,16 @@ export const catCommandDefinition: WeshCommandDefinition = {
           await pump(context.stdin, context.stdout);
         } else {
           const path = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-          // We use kernel.open via context to ensure proper access/vfs resolution
-          const handle = await context.kernel.open({ path, flags: 0 }); // O_RDONLY
+          // Use WeshOpenFlags for kernel.open
+          const handle = await context.kernel.open({
+            path,
+            flags: {
+              access: 'read',
+              creation: 'never',
+              truncate: 'preserve',
+              append: 'preserve',
+            }
+          });
           try {
             await pump(handle, context.stdout);
           } finally {

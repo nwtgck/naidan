@@ -4,7 +4,8 @@ import type {
   WeshFileType,
   WeshStat,
   WeshIOResult,
-  WeshWriteResult
+  WeshWriteResult,
+  WeshOpenFlags
 } from './types';
 import {
   WeshRegistryEntrySchemaDto,
@@ -94,9 +95,17 @@ class StandardFileHandle implements WeshFileHandle {
   private readOnly: boolean;
   private _cursor = 0;
 
-  constructor({ handle, readOnly }: { handle: FileSystemFileHandle; readOnly: boolean }) {
+  constructor({ handle, readOnly, append }: { handle: FileSystemFileHandle; readOnly: boolean; append: boolean }) {
     this.handle = handle;
     this.readOnly = readOnly;
+    if (append) {
+      this.initAppend();
+    }
+  }
+
+  private async initAppend() {
+    const file = await this.handle.getFile();
+    this._cursor = file.size;
   }
 
   async read(options: {
@@ -376,7 +385,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     this.specialFiles.delete(this.normalizePath({ path }));
   }
 
-  async open(options: { path: string; flags: number; mode?: number }): Promise<WeshFileHandle> {
+  async open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle> {
     const normalized = this.normalizePath({ path: options.path });
 
     if (this.specialFiles.has(normalized)) {
@@ -406,21 +415,22 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       }
     }
 
-    const O_CREAT = 64;
-    const O_TRUNC = 512;
-    const create = (options.flags & O_CREAT) !== 0;
-    const truncate = (options.flags & O_TRUNC) !== 0;
+    const create = options.flags.creation !== 'never';
+    const truncate = options.flags.truncate === 'truncate';
 
     let handleRes: { handle: FileSystemHandle; readOnly: boolean; fullPath: string };
 
     try {
-      handleRes = await this.resolve({ path: normalized });
+      handleRes = await this._resolve({ path: normalized });
+      if (options.flags.creation === 'always') {
+        throw new Error(`File exists: ${normalized}`);
+      }
     } catch (e) {
       if (create) {
         const parts = normalized.split('/');
         const name = parts.pop()!;
         const parentPath = parts.join('/') || '/';
-        const parent = await this.resolve({ path: parentPath });
+        const parent = await this._resolve({ path: parentPath });
         if (parent.readOnly) throw new Error(`Read-only file system: ${parentPath}`);
 
         const newHandle = await (parent.handle as FileSystemDirectoryHandle).getFileHandle(name, { create: true });
@@ -443,7 +453,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
     const fileHandle = new StandardFileHandle({
       handle: handleRes.handle as FileSystemFileHandle,
-      readOnly: handleRes.readOnly
+      readOnly: handleRes.readOnly || options.flags.access === 'read',
+      append: options.flags.append === 'append'
     });
 
     if (truncate) {
@@ -463,7 +474,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       return s;
     }
 
-    const { handle, readOnly } = await this.resolve({ path: normalized });
+    const { handle, readOnly } = await this._resolve({ path: normalized });
 
     const mount = this.findMount({ path: normalized });
     if (mount) {
@@ -506,6 +517,12 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
   }
 
+  async resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }> {
+    const normalized = this.normalizePath({ path: options.path });
+    const s = await this.stat({ path: normalized });
+    return { fullPath: normalized, stat: s };
+  }
+
   async readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>> {
     const normalized = this.normalizePath({ path: options.path });
 
@@ -515,7 +532,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         .map(k => ({ name: k.split('/').pop()!, type: 'chardev' }));
     }
 
-    const { handle } = await this.resolve({ path: normalized });
+    const { handle } = await this._resolve({ path: normalized });
     switch (handle.kind) {
     case 'directory':
       break;
@@ -569,7 +586,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       const nextPart = parts[i];
       const checkPath = currentPath + '/' + nextPart;
       try {
-        const res = await this.resolve({ path: checkPath });
+        const res = await this._resolve({ path: checkPath });
         switch (res.handle.kind) {
         case 'file':
           throw new Error(`File exists: ${checkPath}`);
@@ -582,7 +599,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         }
       } catch {
         if (!options.recursive && i < parts.length - 1) throw new Error(`No such file or directory: ${currentPath}`);
-        const parent = await this.resolve({ path: currentPath || '/' });
+        const parent = await this._resolve({ path: currentPath || '/' });
         if (parent.readOnly) throw new Error(`Read-only fs: ${currentPath || '/'}`);
         await (parent.handle as FileSystemDirectoryHandle).getDirectoryHandle(nextPart, { create: true });
       }
@@ -603,7 +620,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const parts = normalized.split('/');
     const name = parts.pop()!;
     const parentPath = parts.join('/') || '/';
-    const parent = await this.resolve({ path: parentPath });
+    const parent = await this._resolve({ path: parentPath });
 
     switch (parent.handle.kind) {
     case 'directory':
@@ -631,7 +648,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const parts = normalized.split('/');
     const name = parts.pop()!;
     const parentPath = parts.join('/') || '/';
-    const parent = await this.resolve({ path: parentPath });
+    const parent = await this._resolve({ path: parentPath });
     await (parent.handle as FileSystemDirectoryHandle).getFileHandle(name, { create: true });
 
     let entry: RegistryEntry;
@@ -656,7 +673,42 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   async rename(options: { oldPath: string; newPath: string }): Promise<void> {
-    throw new Error('Rename not implemented');
+    const oldNormalized = this.normalizePath({ path: options.oldPath });
+    const newNormalized = this.normalizePath({ path: options.newPath });
+
+    const oldRes = await this._resolve({ path: oldNormalized });
+    if (oldRes.readOnly) throw new Error(`Read-only source: ${oldNormalized}`);
+
+    const newParts = newNormalized.split('/');
+    const newName = newParts.pop()!;
+    const newParentPath = newParts.join('/') || '/';
+    const newParentRes = await this._resolve({ path: newParentPath });
+    if (newParentRes.readOnly) throw new Error(`Read-only destination: ${newParentPath}`);
+
+    if (oldRes.handle.kind === 'file') {
+      const oldFileHandle = oldRes.handle as FileSystemFileHandle;
+      const newParentDir = newParentRes.handle as FileSystemDirectoryHandle;
+
+      // @ts-expect-error - move() is relatively new
+      if (typeof oldFileHandle.move === 'function') {
+        // @ts-expect-error - move() is relatively new
+        await oldFileHandle.move(newParentDir, newName);
+      } else {
+        const newFileHandle = await newParentDir.getFileHandle(newName, { create: true });
+        const writable = await newFileHandle.createWritable();
+        const file = await oldFileHandle.getFile();
+        await writable.write(file);
+        await writable.close();
+
+        const oldParts = oldNormalized.split('/');
+        const oldName = oldParts.pop()!;
+        const oldParentPath = oldParts.join('/') || '/';
+        const oldParentRes = await this._resolve({ path: oldParentPath });
+        await (oldParentRes.handle as FileSystemDirectoryHandle).removeEntry(oldName);
+      }
+    } else {
+      throw new Error('Directory rename not yet implemented');
+    }
   }
 
   // --- Registry Persistence Helpers ---
@@ -724,7 +776,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     return path.substring(prefix.length);
   }
 
-  async resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {
+  private async _resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {
     const normalized = this.normalizePath({ path });
     const mount = this.findMount({ path: normalized });
     if (!mount) throw new Error(`Path not found: ${path}`);

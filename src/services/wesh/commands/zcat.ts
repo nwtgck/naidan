@@ -1,10 +1,11 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
+import { handleToStream } from '@/services/wesh/utils/fs';
 
 export const zcatCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'zcat',
-    description: 'Decompress files and print on the standard output',
+    description: 'Decompress and print files to standard output',
     usage: 'zcat [file...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
@@ -15,31 +16,28 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
     });
 
     const text = context.text();
-    if (positional.length === 0) {
-      /** zcat usually doesn't read from stdin without - or other flags,
-       * but we'll support it if it's piped.
-       */
-      try {
-        const decompressor = new DecompressionStream('gzip');
-        // @ts-expect-error - CompressionStream/DecompressionStream typing mismatch in some environments
-        const decompressedStream = context.stdin.pipeThrough(decompressor);
-        await decompressedStream.pipeTo(context.stdout, { preventClose: true });
-      } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : String(e);
-        await text.error({ text: `zcat: stdin: ${message}\n` });
-      }
-      return { exitCode: 0 };
-    }
+    const decoder = new TextDecoder();
 
     for (const f of positional) {
       if (f === undefined) continue;
       try {
         const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-        const input = await context.vfs.readFile({ path: fullPath });
+        const handle = await context.kernel.open({
+          path: fullPath,
+          flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+        });
+
+        const stream = handleToStream({ handle });
         const decompressor = new DecompressionStream('gzip');
-        // @ts-expect-error - CompressionStream/DecompressionStream typing mismatch in some environments
-        const decompressedStream = input.pipeThrough(decompressor);
-        await decompressedStream.pipeTo(context.stdout, { preventClose: true });
+        const decompressedStream = stream.pipeThrough(decompressor);
+
+        const reader = decompressedStream.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await text.print({ text: decoder.decode(value, { stream: true }) });
+        }
+        await text.print({ text: decoder.decode() }); // flush
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `zcat: ${f}: ${message}\n` });

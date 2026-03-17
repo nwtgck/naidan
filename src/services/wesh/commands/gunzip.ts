@@ -1,5 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseFlags } from '@/services/wesh/utils/args';
+import { readFile, writeFile } from '@/services/wesh/utils/fs';
 
 export const gunzipCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -29,14 +30,34 @@ export const gunzipCommandDefinition: WeshCommandDefinition = {
           continue;
         }
 
-        const input = await context.vfs.readFile({ path: fullPath });
+        const input = await readFile({ kernel: context.kernel, path: fullPath });
         const decompressor = new DecompressionStream('gzip');
-        // @ts-expect-error - CompressionStream/DecompressionStream typing mismatch in some environments
-        const decompressedStream = input.pipeThrough(decompressor) as ReadableStream<Uint8Array>;
+        const inputProvider = new ReadableStream({
+          start(controller) {
+            controller.enqueue(input);
+            controller.close();
+          }
+        });
+        const decompressedStream = inputProvider.pipeThrough(decompressor);
 
         const originalPath = fullPath.slice(0, -3);
-        await context.vfs.writeFile({ path: originalPath, stream: decompressedStream });
-        await context.vfs.rm({ path: fullPath, recursive: false });
+        const chunks: Uint8Array[] = [];
+        const reader = decompressedStream.getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+        const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
+        const result = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+          result.set(chunk, offset);
+          offset += chunk.length;
+        }
+
+        await writeFile({ kernel: context.kernel, path: originalPath, data: result });
+        await context.kernel.unlink({ path: fullPath });
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `gunzip: ${f}: ${message}\n` });
