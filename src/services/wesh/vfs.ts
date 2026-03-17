@@ -338,7 +338,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   ) {
     for await (const [name, handle] of dirHandle.entries()) {
       const itemPath = relPath ? `${relPath}/${name}` : name;
-      if (handle.kind === 'file') {
+      switch (handle.kind) {
+      case 'file': {
         const file = await (handle as FileSystemFileHandle).getFile();
         try {
           const text = await file.text();
@@ -348,8 +349,15 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         } catch (e) {
           console.warn(`Failed to parse registry entry ${itemPath}:`, e);
         }
-      } else if (handle.kind === 'directory') {
+        break;
+      }
+      case 'directory':
         await this.scanRegistryRecursive(handle as FileSystemDirectoryHandle, itemPath, cache);
+        break;
+      default: {
+        const _ex: never = handle.kind;
+        throw new Error(`Unhandled case: ${_ex}`);
+      }
       }
     }
   }
@@ -504,7 +512,16 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
 
     const { handle } = await this.resolve({ path: normalized });
-    if (handle.kind !== 'directory') throw new Error(`Not a directory: ${normalized}`);
+    switch (handle.kind) {
+    case 'directory':
+      break;
+    case 'file':
+      throw new Error(`Not a directory: ${normalized}`);
+    default: {
+      const _ex: never = handle.kind;
+      throw new Error(`Unhandled case: ${_ex}`);
+    }
+    }
 
     const dirHandle = handle as FileSystemDirectoryHandle;
     const entries: Array<{ name: string; type: WeshFileType }> = [];

@@ -18,38 +18,32 @@ export function createTextHelpers({
       let buffer = '';
       const readBuf = new Uint8Array(4096); // 4KB buffer
 
-      try {
-        while (true) {
-          const { bytesRead } = await stdin.read({ buffer: readBuf });
-          if (bytesRead === 0) break; // EOF
+      while (true) {
+        const { bytesRead } = await stdin.read({ buffer: readBuf });
+        if (bytesRead === 0) break; // EOF
 
-          const chunk = readBuf.subarray(0, bytesRead);
-          buffer += decoder.decode(chunk, { stream: true });
+        const chunk = readBuf.subarray(0, bytesRead);
+        buffer += decoder.decode(chunk, { stream: true });
 
-          if (buffer.includes('\n')) {
-            const lines = buffer.split(/\r?\n/);
-            buffer = lines.pop() ?? ''; // Keep the last partial line
+        if (buffer.includes('\n')) {
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() ?? ''; // Keep the last partial line
 
-            for (const line of lines) {
-              yield line;
-            }
+          for (const line of lines) {
+            yield line;
           }
         }
+      }
 
-        // Final flush
-        if (buffer !== '') {
-          yield buffer;
-        }
-      } catch (e: unknown) {
-        // Handle error?
-        throw e;
+      // Final flush
+      if (buffer !== '') {
+        yield buffer;
       }
     }
   };
 
   return {
     input: inputIterable,
-
     async print({ text }: { text: string }): Promise<void> {
       const data = encoder.encode(text);
       await stdout.write({ buffer: data });

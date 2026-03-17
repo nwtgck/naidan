@@ -188,19 +188,19 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
     if (!child) throw new Error(`NotFoundError: Entry '${name}' not found.`);
 
     switch (child.kind) {
-      case 'directory': {
-        const dir = child as MockFileSystemDirectoryHandle;
-        if (!options?.recursive && dir.children.size > 0) {
-          throw new Error(`InvalidModificationError: Directory not empty`);
-        }
-        break;
+    case 'directory': {
+      const dir = child as MockFileSystemDirectoryHandle;
+      if (!options?.recursive && dir.children.size > 0) {
+        throw new Error(`InvalidModificationError: Directory not empty`);
       }
-      case 'file':
-        break;
-      default: {
-        const _ex: never = child.kind;
-        throw new Error(`Unhandled file kind: ${_ex}`);
-      }
+      break;
+    }
+    case 'file':
+      break;
+    default: {
+      const _ex: never = child.kind;
+      throw new Error(`Unhandled file kind: ${_ex}`);
+    }
     }
     this.children.delete(name);
   }
