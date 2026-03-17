@@ -110,6 +110,10 @@ export interface WeshKernel {
 
   mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
 
+  unlink(options: { path: string }): Promise<void>;
+
+  rmdir(options: { path: string }): Promise<void>;
+
   getProcess(options: { pid: number }): WeshProcess | undefined;
 }
 

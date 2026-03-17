@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '../types';
 
 export const mvCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -10,68 +10,78 @@ export const mvCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     if (context.args.length < 2) {
       await text.error({ text: 'mv: missing file operand\n' });
-      return { exitCode: 1, data: undefined, error: 'missing operand' };
+      return { exitCode: 1 };
     }
 
     const src = context.args[0]!;
     const dest = context.args[1]!;
 
+    const buf = new Uint8Array(64 * 1024);
+    const pump = async (src: WeshFileHandle, dst: WeshFileHandle) => {
+      while (true) {
+        const { bytesRead } = await src.read({ buffer: buf });
+        if (bytesRead === 0) break;
+        let written = 0;
+        while (written < bytesRead) {
+          const { bytesWritten } = await dst.write({ 
+            buffer: buf, 
+            offset: written, 
+            length: bytesRead - written 
+          });
+          written += bytesWritten;
+        }
+      }
+    };
+
+    const moveOne = async (srcPath: string, destPath: string) => {
+      const stat = await context.kernel.stat({ path: srcPath });
+      
+      if (stat.type === 'file') {
+        const srcH = await context.kernel.open({ path: srcPath, flags: 0 });
+        const destH = await context.kernel.open({ path: destPath, flags: 64 | 512 });
+        try {
+          await pump(srcH, destH);
+        } finally {
+          await srcH.close();
+          await destH.close();
+        }
+        await context.kernel.unlink({ path: srcPath });
+      } else if (stat.type === 'directory') {
+        await context.kernel.mkdir({ path: destPath, recursive: true });
+        const entries = await context.kernel.readDir({ path: srcPath });
+        for (const entry of entries) {
+          await moveOne(
+            `${srcPath}/${entry.name}`,
+            `${destPath}/${entry.name}`
+          );
+        }
+        await context.kernel.rmdir({ path: srcPath });
+      } else if (stat.type === 'fifo') {
+         await context.kernel.mknod({ path: destPath, type: 'fifo', mode: stat.mode });
+         await context.kernel.unlink({ path: srcPath });
+      }
+    };
+
     try {
       const fullSrc = src.startsWith('/') ? src : `${context.cwd}/${src}`;
       let fullDest = dest.startsWith('/') ? dest : `${context.cwd}/${dest}`;
 
-      const destExists = await context.vfs.exists({ path: fullDest });
-      if (destExists) {
-        const destStat = await context.vfs.stat({ path: fullDest });
-        switch (destStat.kind) {
-        case 'directory': {
+      try {
+        const destStat = await context.kernel.stat({ path: fullDest });
+        if (destStat.type === 'directory') {
           const srcName = src.split('/').pop()!;
-          fullDest = fullDest === '/' ? `/${srcName}` : `${fullDest}/${srcName}`;
-          break;
+          fullDest = `${fullDest}/${srcName}`;
         }
-        case 'file':
-          break;
-        default: {
-          const _ex: never = destStat.kind;
-          throw new Error(`Unexpected kind: ${_ex}`);
-        }
-        }
+      } catch {
+        // Dest doesn't exist
       }
 
-      const copyRecursive = async ({ s, d }: { s: string, d: string }) => {
-        const stat = await context.vfs.stat({ path: s });
-        switch (stat.kind) {
-        case 'file': {
-          const stream = await context.vfs.readFile({ path: s });
-          await context.vfs.writeFile({ path: d, stream });
-          break;
-        }
-        case 'directory': {
-          await context.vfs.mkdir({ path: d, recursive: true });
-          const entries = await context.vfs.readDir({ path: s });
-          for (const e of entries) {
-            await copyRecursive({
-              s: s === '/' ? `/${e.name}` : `${s}/${e.name}`,
-              d: d === '/' ? `/${e.name}` : `${d}/${e.name}`
-            });
-          }
-          break;
-        }
-        default: {
-          const _ex: never = stat.kind;
-          throw new Error(`Unexpected kind: ${_ex}`);
-        }
-        }
-      };
-
-      await copyRecursive({ s: fullSrc, d: fullDest });
-      await context.vfs.rm({ path: fullSrc, recursive: true });
-
-      return { exitCode: 0, data: undefined, error: undefined };
+      await moveOne(fullSrc, fullDest);
+      return { exitCode: 0 };
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       await text.error({ text: `mv: ${src}: ${message}\n` });
-      return { exitCode: 1, data: undefined, error: message };
+      return { exitCode: 1 };
     }
   },
 };

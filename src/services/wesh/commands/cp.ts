@@ -1,5 +1,5 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '../types';
+import { parseFlags } from '../utils/args';
 
 export const cpCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -17,85 +17,85 @@ export const cpCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     if (positional.length < 2) {
       await text.error({ text: 'cp: missing file operand\n' });
-      return { exitCode: 1, data: undefined, error: 'missing operand' };
+      return { exitCode: 1 };
     }
 
     const recursive = !!flags.r;
     const sources = positional.slice(0, -1);
-    const dest = positional[positional.length - 1];
+    const dest = positional[positional.length - 1]!;
 
-    if (dest === undefined) {
-      await text.error({ text: 'cp: missing destination operand\n' });
-      return { exitCode: 1, data: undefined, error: 'missing destination' };
-    }
+    const buf = new Uint8Array(64 * 1024);
 
-    const copyOne = async ({
-      srcPath,
-      destPath
-    }: {
-      srcPath: string;
-      destPath: string;
-    }) => {
-      const stat = await context.vfs.stat({ path: srcPath });
-      switch (stat.kind) {
-      case 'file': {
-        const stream = await context.vfs.readFile({ path: srcPath });
-        await context.vfs.writeFile({ path: destPath, stream });
-        break;
+    const pump = async (src: WeshFileHandle, dst: WeshFileHandle) => {
+      while (true) {
+        const { bytesRead } = await src.read({ buffer: buf });
+        if (bytesRead === 0) break;
+        let written = 0;
+        while (written < bytesRead) {
+          const { bytesWritten } = await dst.write({ 
+            buffer: buf, 
+            offset: written, 
+            length: bytesRead - written 
+          });
+          written += bytesWritten;
+        }
       }
-      case 'directory': {
-        if (recursive) {
-          await context.vfs.mkdir({ path: destPath, recursive: true });
-          const entries = await context.vfs.readDir({ path: srcPath });
-          for (const entry of entries) {
-            await copyOne({
-              srcPath: srcPath === '/' ? `/${entry.name}` : `${srcPath}/${entry.name}`,
-              destPath: destPath === '/' ? `/${entry.name}` : `${destPath}/${entry.name}`
-            });
-          }
-        } else {
+    };
+
+    const copyOne = async (srcPath: string, destPath: string) => {
+      const stat = await context.kernel.stat({ path: srcPath });
+      
+      if (stat.type === 'file') {
+        const srcH = await context.kernel.open({ path: srcPath, flags: 0 }); // O_RDONLY
+        const destH = await context.kernel.open({ path: destPath, flags: 64 | 512 }); // O_CREAT | O_TRUNC
+        try {
+          await pump(srcH, destH);
+        } finally {
+          await srcH.close();
+          await destH.close();
+        }
+      } else if (stat.type === 'directory') {
+        if (!recursive) {
           throw new Error(`${srcPath} is a directory (use -r)`);
         }
-        break;
-      }
-      default: {
-        const _ex: never = stat.kind;
-        throw new Error(`Unexpected kind: ${_ex}`);
-      }
+        await context.kernel.mkdir({ path: destPath, recursive: true });
+        const entries = await context.kernel.readDir({ path: srcPath });
+        for (const entry of entries) {
+          await copyOne(
+            `${srcPath}/${entry.name}`,
+            `${destPath}/${entry.name}`
+          );
+        }
+      } else if (stat.type === 'fifo') {
+         // Special handling: copy metadata, but don't pump data (it's a pipe)
+         await context.kernel.mknod({ path: destPath, type: 'fifo', mode: stat.mode });
       }
     };
 
     for (const src of sources) {
-      if (src === undefined) continue;
       try {
         const fullSrc = src.startsWith('/') ? src : `${context.cwd}/${src}`;
         let fullDest = dest.startsWith('/') ? dest : `${context.cwd}/${dest}`;
 
-        const destExists = await context.vfs.exists({ path: fullDest });
-        if (destExists) {
-          const destStat = await context.vfs.stat({ path: fullDest });
-          switch (destStat.kind) {
-          case 'directory': {
+        // Check if dest is directory
+        try {
+          const destStat = await context.kernel.stat({ path: fullDest });
+          if (destStat.type === 'directory') {
             const srcName = src.split('/').pop()!;
-            fullDest = fullDest === '/' ? `/${srcName}` : `${fullDest}/${srcName}`;
-            break;
+            fullDest = `${fullDest}/${srcName}`;
           }
-          case 'file':
-            break;
-          default: {
-            const _ex: never = destStat.kind;
-            throw new Error(`Unexpected kind: ${_ex}`);
-          }
-          }
+        } catch {
+          // Dest doesn't exist, which is fine
         }
 
-        await copyOne({ srcPath: fullSrc, destPath: fullDest });
+        await copyOne(fullSrc, fullDest);
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `cp: ${src}: ${message}\n` });
+        return { exitCode: 1 };
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };

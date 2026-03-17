@@ -185,6 +185,14 @@ export class Kernel implements WeshKernel {
     return this.vfs.mknod(options);
   }
 
+  async unlink(options: { path: string }): Promise<void> {
+    return this.vfs.unlink(options);
+  }
+
+  async rmdir(options: { path: string }): Promise<void> {
+    return this.vfs.rmdir(options);
+  }
+
   getProcess(options: { pid: number }): WeshProcess | undefined {
     return this.processes.get(options.pid);
   }

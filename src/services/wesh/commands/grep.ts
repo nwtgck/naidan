@@ -1,5 +1,5 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '../types';
+import { parseFlags } from '../utils/args';
 
 export const grepCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -17,7 +17,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     if (positional.length === 0) {
       await text.error({ text: 'grep: pattern is required\n' });
-      return { exitCode: 1, data: undefined, error: 'pattern required' };
+      return { exitCode: 1 };
     }
 
     const patternStr = positional[0]!;
@@ -26,61 +26,56 @@ export const grepCommandDefinition: WeshCommandDefinition = {
     const invert = !!flags.v;
     const showLineNumber = !!flags.n;
 
-    const processStream = async ({
-      input,
-      label
-    }: {
-      input: AsyncIterable<string>;
-      label: string | undefined;
-    }) => {
+    const processHandle = async (handle: WeshFileHandle, label?: string) => {
       let lineNum = 0;
-      for await (const line of input) {
+      let buffer = '';
+      const readBuf = new Uint8Array(16 * 1024);
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { bytesRead } = await handle.read({ buffer: readBuf });
+        if (bytesRead === 0) break;
+
+        buffer += decoder.decode(readBuf.subarray(0, bytesRead), { stream: true });
+        if (buffer.includes('\n')) {
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() ?? '';
+          for (const line of lines) {
+            lineNum++;
+            if (regex.test(line) !== invert) {
+              let out = '';
+              if (label) out += `${label}:`;
+              if (showLineNumber) out += `${lineNum}:`;
+              out += line + '\n';
+              await text.print({ text: out });
+            }
+          }
+        }
+      }
+      if (buffer) {
         lineNum++;
-        const matches = regex.test(line);
-        if (matches !== invert) {
-          let output = '';
-          if (label) output += `${label}:`;
-          if (showLineNumber) output += `${lineNum}:`;
-          output += line + '\n';
-          await text.print({ text: output });
+        if (regex.test(buffer) !== invert) {
+          let out = '';
+          if (label) out += `${label}:`;
+          if (showLineNumber) out += `${lineNum}:`;
+          out += buffer + '\n';
+          await text.print({ text: out });
         }
       }
     };
 
     if (files.length === 0) {
-      await processStream({ input: text.input, label: undefined });
+      await processHandle(context.stdin);
     } else {
       for (const f of files) {
-        if (f === undefined) continue;
         try {
-          const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-          const stream = await context.vfs.readFile({ path: fullPath });
-          const decoder = new TextDecoder();
-
-          const lineReader: AsyncIterable<string> = {
-            async *[Symbol.asyncIterator]() {
-              const reader = stream.getReader();
-              let buffer = '';
-              try {
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  buffer += decoder.decode(value, { stream: true });
-                  const lines = buffer.split(/\r?\n/);
-                  buffer = lines.pop() || '';
-                  for (const l of lines) yield l;
-                }
-                if (buffer) yield buffer;
-              } finally {
-                reader.releaseLock();
-              }
-            }
-          };
-
-          await processStream({
-            input: lineReader,
-            label: files.length > 1 ? f : undefined
-          });
+          const path = f.startsWith('/') ? f : `${context.cwd}/${f}`;
+          const handle = await context.kernel.open({ path, flags: 0 });
+          try {
+            await processHandle(handle, files.length > 1 ? f : undefined);
+          } finally {
+            await handle.close();
+          }
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           await text.error({ text: `grep: ${f}: ${message}\n` });
@@ -88,6 +83,6 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    return { exitCode: 0, data: undefined, error: undefined };
+    return { exitCode: 0 };
   },
 };
