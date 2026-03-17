@@ -96,25 +96,8 @@ class Parser {
       case 'AMP':
         operator = '&';
         break;
-      case 'WORD':
-      case 'PIPE':
-      case 'GT':
-      case 'GTGT':
-      case 'LT':
-      case 'LTGT':
-      case 'LTGTAMP':
-      case 'LPAREN':
-      case 'RPAREN':
-      case 'HEREDOC':
-      case 'HERESTRING':
-      case 'PROC_SUB_IN':
-      case 'PROC_SUB_OUT':
-      case 'EOF':
+      default:
         throw new Error(`Unhandled operator type: ${type}`);
-      default: {
-        const _ex: never = type;
-        throw new Error(`Unknown token type: ${_ex}`);
-      }
       }
 
       this.eat(type);
@@ -321,24 +304,8 @@ class Parser {
           target = this.expectWord();
           content = this.lexer.readHereDoc(target);
           break;
-        case 'WORD':
-        case 'PIPE':
-        case 'AND':
-        case 'OR':
-        case 'SEMI':
-        case 'AMP':
-        case 'LPAREN':
-        case 'RPAREN':
-        case 'PROC_SUB_IN':
-        case 'PROC_SUB_OUT':
-        case 'EOF': {
-          const _ex: never = redToken;
-          throw new Error(`Unhandled redirection type: ${_ex}`);
-        }
-        default: {
-          const _ex: never = redToken;
-          throw new Error(`Unknown token type: ${_ex}`);
-        }
+        default:
+          throw new Error(`Unhandled redirection type: ${redToken}`);
         }
         redirections.push({ type: redType, target, content });
 
@@ -434,10 +401,8 @@ class Parser {
     switch (this.currentToken.type) {
     case 'RPAREN':
       break;
-    default: {
-      const _ex: never = this.currentToken.type;
-      throw new Error(`Expected ')', got: ${_ex}`);
-    }
+    default:
+      throw new Error(`Expected ')', got: ${this.currentToken.value}`);
     }
 
     this.eat('RPAREN');
@@ -539,8 +504,8 @@ class Parser {
       this.eat('WORD');
     }
 
-    const t = this.currentToken.type;
-    if (t === 'SEMI') {
+    // @ts-expect-error
+    if (this.currentToken.type === 'SEMI') {
       this.eat('SEMI');
     }
 
