@@ -27,14 +27,30 @@ interface RegistryEntry {
 // --- Mappers ---
 
 function mapDtoToDomain(dto: WeshRegistryEntryDto): RegistryEntry {
-  return {
-    type: dto.type,
-    mode: dto.mode,
-    targetPath: dto.type === 'symlink' ? dto.targetPath : undefined,
-    uid: dto.uid,
-    gid: dto.gid,
-    mtime: dto.mtime,
-  };
+  switch (dto.type) {
+  case 'symlink':
+    return {
+      type: 'symlink',
+      mode: dto.mode,
+      targetPath: dto.targetPath,
+      uid: dto.uid,
+      gid: dto.gid,
+      mtime: dto.mtime,
+    };
+  case 'fifo':
+  case 'chardev':
+    return {
+      type: dto.type,
+      mode: dto.mode,
+      uid: dto.uid,
+      gid: dto.gid,
+      mtime: dto.mtime,
+    };
+  default: {
+    const _ex: never = dto.type;
+    throw new Error(`Unhandled DTO type: ${_ex}`);
+  }
+  }
 }
 
 function mapDomainToDto(entry: RegistryEntry): WeshRegistryEntryDto {
@@ -360,11 +376,21 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       const relPath = this.getRelativePath({ path: normalized, mount });
       const regEntry = mount.registryCache.get(relPath);
 
-      if (regEntry?.type === 'fifo') {
-        if (!this.openFifos.has(normalized)) {
-          this.openFifos.set(normalized, new FifoHandle());
+      if (regEntry) {
+        switch (regEntry.type) {
+        case 'fifo':
+          if (!this.openFifos.has(normalized)) {
+            this.openFifos.set(normalized, new FifoHandle());
+          }
+          return this.openFifos.get(normalized)!;
+        case 'chardev':
+        case 'symlink':
+          throw new Error(`Open not implemented for ${regEntry.type}`);
+        default: {
+          const _ex: never = regEntry.type;
+          throw new Error(`Unhandled registry entry type: ${_ex}`);
         }
-        return this.openFifos.get(normalized)!;
+        }
       }
     }
 
@@ -392,8 +418,16 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       }
     }
 
-    if (handleRes.handle.kind !== 'file') throw new Error(`Not a file: ${normalized}`);
-    if (create && handleRes.readOnly) throw new Error(`Read-only file system: ${normalized}`);
+    switch (handleRes.handle.kind) {
+    case 'file':
+      break;
+    case 'directory':
+      throw new Error(`Not a file: ${normalized}`);
+    default: {
+      const _ex: never = handleRes.handle.kind;
+      throw new Error(`Unhandled handle kind: ${_ex}`);
+    }
+    }
 
     const fileHandle = new StandardFileHandle({
       handle: handleRes.handle as FileSystemFileHandle,
@@ -434,7 +468,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       }
     }
 
-    if (handle.kind === 'file') {
+    switch (handle.kind) {
+    case 'file': {
       const file = await (handle as FileSystemFileHandle).getFile();
       return {
         size: file.size,
@@ -443,7 +478,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         mtime: file.lastModified,
         ino: 0, uid: 0, gid: 0
       };
-    } else {
+    }
+    case 'directory':
       return {
         size: 0,
         mode: readOnly ? 0o555 : 0o755,
@@ -451,6 +487,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         mtime: Date.now(),
         ino: 0, uid: 0, gid: 0
       };
+    default: {
+      const _ex: never = handle.kind;
+      throw new Error(`Unhandled handle kind: ${_ex}`);
+    }
     }
   }
 
@@ -473,7 +513,20 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     for await (const [name, entry] of dirHandle.entries()) {
       if (name === WESH_SYSTEM_DIR) continue;
 
-      let type: WeshFileType = entry.kind === 'directory' ? 'directory' : 'file';
+      let type: WeshFileType;
+      switch (entry.kind) {
+      case 'directory':
+        type = 'directory';
+        break;
+      case 'file':
+        type = 'file';
+        break;
+      default: {
+        const _ex: never = entry.kind;
+        throw new Error(`Unhandled file kind: ${_ex}`);
+      }
+      }
+
       if (mount) {
         const relPath = this.getRelativePath({ path: normalized === '/' ? `/${name}` : `${normalized}/${name}`, mount });
         const regEntry = mount.registryCache.get(relPath);
@@ -496,7 +549,16 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       const checkPath = currentPath + '/' + nextPart;
       try {
         const res = await this.resolve({ path: checkPath });
-        if (res.handle.kind === 'file') throw new Error(`File exists: ${checkPath}`);
+        switch (res.handle.kind) {
+        case 'file':
+          throw new Error(`File exists: ${checkPath}`);
+        case 'directory':
+          break;
+        default: {
+          const _ex: never = res.handle.kind;
+          throw new Error(`Unhandled handle kind: ${_ex}`);
+        }
+        }
       } catch {
         if (!options.recursive && i < parts.length - 1) throw new Error(`No such file or directory: ${currentPath}`);
         const parent = await this.resolve({ path: currentPath || '/' });
@@ -521,9 +583,19 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const name = parts.pop()!;
     const parentPath = parts.join('/') || '/';
     const parent = await this.resolve({ path: parentPath });
-    await (parent.handle as FileSystemDirectoryHandle).removeEntry(name);
-  }
 
+    switch (parent.handle.kind) {
+    case 'directory':
+      await (parent.handle as FileSystemDirectoryHandle).removeEntry(name);
+      break;
+    case 'file':
+      throw new Error(`Not a directory: ${parentPath}`);
+    default: {
+      const _ex: never = parent.handle.kind;
+      throw new Error(`Unhandled handle kind: ${_ex}`);
+    }
+    }
+  }
   async rmdir(options: { path: string }): Promise<void> {
     await this.unlink(options);
   }
@@ -542,12 +614,20 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     await (parent.handle as FileSystemDirectoryHandle).getFileHandle(name, { create: true });
 
     let entry: RegistryEntry;
-    if (options.type === 'fifo' || options.type === 'chardev') {
+    switch (options.type) {
+    case 'fifo':
+    case 'chardev':
       entry = { type: options.type, mode: options.mode ?? 0o644 };
-    } else if (options.type === 'symlink') {
+      break;
+    case 'symlink':
       throw new Error("Use ln -s for symlinks");
-    } else {
+    case 'file':
+    case 'directory':
       return;
+    default: {
+      const _ex: never = options.type;
+      throw new Error(`Unhandled option type: ${_ex}`);
+    }
     }
 
     mount.registryCache.set(relPath, entry);
@@ -594,7 +674,6 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     } catch (e: unknown) {
       console.warn('Failed to delete registry entry:', e);
     }
-  }
   }
 
   // --- Path Helpers ---
@@ -643,7 +722,16 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       return { handle: fileHandle, readOnly: mount.readOnly, fullPath: normalized };
     } catch {
       const dirHandle = await current.getDirectoryHandle(lastPart);
-      return { handle: dirHandle, readOnly: mount.readOnly, fullPath: normalized };
+      switch (dirHandle.kind) {
+      case 'directory':
+        return { handle: dirHandle, readOnly: mount.readOnly, fullPath: normalized };
+      case 'file':
+        return { handle: dirHandle, readOnly: mount.readOnly, fullPath: normalized };
+      default: {
+        const _ex: never = dirHandle.kind;
+        throw new Error(`Unhandled handle kind: ${_ex}`);
+      }
+      }
     }
   }
 }

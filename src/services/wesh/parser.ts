@@ -44,8 +44,13 @@ class Parser {
 
   parse(): WeshASTNode {
     const node = this.parseList();
-    if (this.currentToken.type !== 'EOF') {
+    switch (this.currentToken.type) {
+    case 'EOF':
+      break;
+    default: {
+      const _ex: never = this.currentToken.type;
       throw new Error(`Unexpected token at end of command: ${this.currentToken.value}`);
+    }
     }
     return node;
   }
@@ -60,10 +65,25 @@ class Parser {
       this.currentToken.type === 'AMP') &&
       !this.isTerminator(terminators)
     ) {
-      const operator = this.currentToken.type === 'SEMI' ? ';'
-        : this.currentToken.type === 'AND' ? '&&'
-          : this.currentToken.type === 'OR' ? '||'
-            : '&';
+      let operator: ';' | '&&' | '||' | '&';
+      switch (this.currentToken.type) {
+      case 'SEMI':
+        operator = ';';
+        break;
+      case 'AND':
+        operator = '&&';
+        break;
+      case 'OR':
+        operator = '||';
+        break;
+      case 'AMP':
+        operator = '&';
+        break;
+      default: {
+        const _ex: never = this.currentToken.type;
+        throw new Error(`Unhandled operator type: ${_ex}`);
+      }
+      }
 
       this.eat(this.currentToken.type);
 
@@ -107,10 +127,24 @@ class Parser {
       this.eat('PIPE');
       const right = this.parseCommand(terminators);
 
-      if (node.kind === 'pipeline') {
+      switch (node.kind) {
+      case 'pipeline':
         node.commands.push(right);
-      } else {
+        break;
+      case 'command':
         node = { kind: 'pipeline', commands: [node, right] };
+        break;
+      case 'list':
+      case 'if':
+      case 'for':
+      case 'assignment':
+      case 'subshell':
+      case 'processSubstitution':
+        throw new Error(`Invalid node kind in pipeline: ${node.kind}`);
+      default: {
+        const _ex: never = node;
+        throw new Error(`Unhandled node kind: ${(_ex as WeshASTNode).kind}`);
+      }
       }
     }
 
@@ -159,32 +193,55 @@ class Parser {
         !this.isTerminator(terminators)
     ) {
       if (this.isRedirection(this.currentToken.type)) {
-        const type = this.currentToken.type as 'GT' | 'GTGT' | 'LT' | 'LTGT' | 'LTGTAMP' | 'HEREDOC' | 'HERESTRING';
+        const type = this.currentToken.type;
         this.eat(type);
 
         let redType: '>' | '>>' | '<' | '2>' | '2>&1' | '<<' | '<<<';
         let target: string | undefined;
         let content: string | undefined;
 
-        switch(type) {
-        case 'GT': redType = '>'; target = this.expectWord(); break;
-        case 'GTGT': redType = '>>'; target = this.expectWord(); break;
-        case 'LT': redType = '<'; target = this.expectWord(); break;
-        case 'LTGT': redType = '2>'; target = this.expectWord(); break;
-        case 'LTGTAMP': redType = '2>&1'; target = undefined; break;
-        case 'HERESTRING': redType = '<<<'; target = this.expectWord(); content = target; break; // target is the string
+        switch (type) {
+        case 'GT':
+          redType = '>';
+          target = this.expectWord();
+          break;
+        case 'GTGT':
+          redType = '>>';
+          target = this.expectWord();
+          break;
+        case 'LT':
+          redType = '<';
+          target = this.expectWord();
+          break;
+        case 'LTGT':
+          redType = '2>';
+          target = this.expectWord();
+          break;
+        case 'LTGTAMP':
+          redType = '2>&1';
+          target = undefined;
+          break;
+        case 'HERESTRING':
+          redType = '<<<';
+          target = this.expectWord();
+          content = target;
+          break;
         case 'HEREDOC':
           redType = '<<';
           target = this.expectWord();
           content = this.lexer.readHereDoc(target);
           break;
-        default: throw new Error("Unknown redirection");
+        default: {
+          const _ex: never = type;
+          throw new Error(`Unhandled redirection type: ${_ex}`);
+        }
         }
         redirections.push({ type: redType, target, content });
 
       } else if (this.currentToken.type === 'PROC_SUB_IN' || this.currentToken.type === 'PROC_SUB_OUT') {
-        const kind = this.currentToken.type === 'PROC_SUB_IN' ? 'input' : 'output';
-        this.eat(this.currentToken.type);
+        const type = this.currentToken.type;
+        const kind = type === 'PROC_SUB_IN' ? 'input' : 'output';
+        this.eat(type);
 
         // Process substitution inner list: <( list )
         // We parse a list until RPAREN
@@ -250,66 +307,40 @@ class Parser {
 
   private parseSubshell(): WeshSubshellNode {
     this.eat('LPAREN');
-    const list = this.parseList(); // parse until EOF or RPAREN?
+    const list = this.parseList();
 
-    // parseList loops until terminator or EOF.
-    // parseList calls parsePipeline.
-    // We need parseList to stop at RPAREN.
-    // parseList uses isTerminator.
-    // But parseList doesn't take terminators from here?
-    // I need to pass RPAREN as terminator to parseList?
-    // But parseList signature: (terminators: string[] = [])
-    // RPAREN is a token type, not a WORD value.
-    // My isTerminator implementation checks TokenType RPAREN.
-    // So if I call parseList(), it checks isTerminator([]).
-    // isTerminator([]) -> checks currentToken.type === RPAREN.
-    // Yes, because I added RPAREN check in isTerminator.
-
-    // However, parseList consumes terminators inside the loop?
-    // No, parseList logic:
-    // while (SEMI/AND/OR/AMP && !isTerminator)
-    //   eat operator
-    //   if (isTerminator) break
-
-    // If next token is RPAREN, parseList returns.
-
-    if (this.currentToken.type !== 'RPAREN') {
-      // If parseList returned, it means it hit a terminator (RPAREN or EOF) or end of list.
-      // If EOF, we expect RPAREN.
-      throw new Error("Expected ')'");
+    switch (this.currentToken.type) {
+    case 'RPAREN':
+      break;
+    default: {
+      const _ex: never = this.currentToken.type;
+      throw new Error(`Expected ')', got: ${_ex}`);
+    }
     }
 
     this.eat('RPAREN');
 
-    // Need to cast WeshASTNode to WeshListNode if possible?
-    // WeshASTNode includes WeshListNode.
-    // WeshSubshellNode expects 'list' of type WeshListNode?
-    // Types definition: list: WeshListNode;
-    // But parseList returns WeshASTNode.
-    // If parseList returns a single command, it returns WeshCommandNode.
-    // A single command is a valid list (conceptually).
-    // But type-wise: WeshListNode has 'parts'.
-    // I should wrap single node in WeshListNode if needed or update type.
-    // types.ts says `list: WeshListNode`.
-    // I should update types.ts to allow WeshASTNode or ensure parseList returns WeshListNode.
-    // Better: Update types.ts to `list: WeshASTNode` for subshell.
-    // Subshell can be `( cmd )`.
-
-    // I will cast it for now or assume I updated types (I did update types.ts but subshell definition was `list: WeshListNode` in my thought).
-    // Wait, let me check types.ts update.
-    // `export interface WeshSubshellNode { kind: 'subshell'; list: WeshListNode; }`
-    // If parseList returns WeshCommandNode, it doesn't match WeshListNode.
-    // I should update types.ts to `list: WeshASTNode`?
-    // Or wrap it here.
-
     let listNode: WeshListNode;
-    if (list.kind === 'list') {
+    switch (list.kind) {
+    case 'list':
       listNode = list;
-    } else {
+      break;
+    case 'command':
+    case 'pipeline':
+    case 'if':
+    case 'for':
+    case 'assignment':
+    case 'subshell':
+    case 'processSubstitution':
       listNode = {
         kind: 'list',
         parts: [{ node: list, operator: ';' }]
       };
+      break;
+    default: {
+      const _ex: never = list;
+      throw new Error(`Unhandled node kind: ${(_ex as WeshASTNode).kind}`);
+    }
     }
 
     return {

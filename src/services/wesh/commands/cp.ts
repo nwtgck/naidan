@@ -45,7 +45,8 @@ export const cpCommandDefinition: WeshCommandDefinition = {
     const copyOne = async (srcPath: string, destPath: string) => {
       const stat = await context.kernel.stat({ path: srcPath });
 
-      if (stat.type === 'file') {
+      switch (stat.type) {
+      case 'file': {
         const srcH = await context.kernel.open({ path: srcPath, flags: 0 }); // O_RDONLY
         const destH = await context.kernel.open({ path: destPath, flags: 64 | 512 }); // O_CREAT | O_TRUNC
         try {
@@ -54,7 +55,9 @@ export const cpCommandDefinition: WeshCommandDefinition = {
           await srcH.close();
           await destH.close();
         }
-      } else if (stat.type === 'directory') {
+        break;
+      }
+      case 'directory': {
         if (!recursive) {
           throw new Error(`${srcPath} is a directory (use -r)`);
         }
@@ -66,9 +69,23 @@ export const cpCommandDefinition: WeshCommandDefinition = {
             `${destPath}/${entry.name}`
           );
         }
-      } else if (stat.type === 'fifo') {
+        break;
+      }
+      case 'fifo': {
         // Special handling: copy metadata, but don't pump data (it's a pipe)
         await context.kernel.mknod({ path: destPath, type: 'fifo', mode: stat.mode });
+        break;
+      }
+      case 'chardev': {
+        throw new Error(`Copying chardev ${srcPath} not implemented`);
+      }
+      case 'symlink': {
+        throw new Error(`Copying symlink ${srcPath} not implemented`);
+      }
+      default: {
+        const _ex: never = stat.type;
+        throw new Error(`Unhandled file type: ${_ex}`);
+      }
       }
     };
 
@@ -80,9 +97,22 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         // Check if dest is directory
         try {
           const destStat = await context.kernel.stat({ path: fullDest });
-          if (destStat.type === 'directory') {
+          switch (destStat.type) {
+          case 'directory': {
             const srcName = src.split('/').pop()!;
             fullDest = `${fullDest}/${srcName}`;
+            break;
+          }
+          case 'file':
+          case 'fifo':
+          case 'chardev':
+          case 'symlink':
+            // do nothing
+            break;
+          default: {
+            const _ex: never = destStat.type;
+            throw new Error(`Unhandled file type: ${_ex}`);
+          }
           }
         } catch {
           // Dest doesn't exist, which is fine

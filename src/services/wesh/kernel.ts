@@ -24,7 +24,16 @@ class PipeHandle implements WeshFileHandle {
   }
 
   async read(options: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshIOResult> {
-    if (this.mode !== 'r') throw new Error('File not open for reading');
+    switch (this.mode) {
+    case 'r':
+      break;
+    case 'w':
+      throw new Error('File not open for reading');
+    default: {
+      const _ex: never = this.mode;
+      throw new Error(`Unhandled mode: ${_ex}`);
+    }
+    }
 
     while (this.state.buffer.length === 0) {
       if (this.state.closed) return { bytesRead: 0 };
@@ -46,8 +55,18 @@ class PipeHandle implements WeshFileHandle {
   }
 
   async write(options: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshWriteResult> {
-    if (this.mode !== 'w') throw new Error('File not open for writing');
+    switch (this.mode) {
+    case 'w':
+      break;
+    case 'r':
+      throw new Error('File not open for writing');
+    default: {
+      const _ex: never = this.mode;
+      throw new Error(`Unhandled mode: ${_ex}`);
+    }
+    }
     if (this.state.closed) throw new Error('Broken pipe');
+
 
     const bufferOffset = options.offset ?? 0;
     const length = options.length ?? (options.buffer.length - bufferOffset);

@@ -70,8 +70,10 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
     this.fileHandle = fileHandle;
     if (!options?.keepExistingData) {
       this.fileHandle.content = new Uint8Array(0);
+      this.cursor = 0;
+    } else {
+      this.cursor = 0;
     }
-    this.cursor = options?.keepExistingData ? 0 : 0;
     // Logic note: keepExistingData=true usually means open existing. Cursor starts at 0.
     // If keepExistingData=false, it truncates.
   }
@@ -92,7 +94,7 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
     if (this.cursor > size) this.cursor = size;
   }
 
-  async write(data: any): Promise<void> {
+  async write(data: unknown): Promise<void> {
     let bytes: Uint8Array;
 
     if (typeof data === 'string') {
@@ -101,8 +103,8 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
       bytes = data;
     } else if (data instanceof ArrayBuffer) {
       bytes = new Uint8Array(data);
-    } else if (data && typeof data === 'object' && 'type' in data && data.type === 'write') {
-      const d = data.data;
+    } else if (data && typeof data === 'object' && 'type' in data && (data as { type: string }).type === 'write') {
+      const d = (data as { data: unknown }).data;
       if (typeof d === 'string') bytes = new TextEncoder().encode(d);
       else if (d instanceof Uint8Array) bytes = d;
       else if (d instanceof ArrayBuffer) bytes = new Uint8Array(d);
@@ -110,7 +112,7 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
     } else {
       // fallback
       try {
-        bytes = new Uint8Array(data);
+        bytes = new Uint8Array(data as any);
       } catch {
         throw new Error("Invalid data type");
       }
@@ -185,9 +187,20 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
     const child = this.children.get(name);
     if (!child) throw new Error(`NotFoundError: Entry '${name}' not found.`);
 
-    if (child.kind === 'directory' && !options?.recursive) {
-      const dir = child as MockFileSystemDirectoryHandle;
-      if (dir.children.size > 0) throw new Error(`InvalidModificationError: Directory not empty`);
+    switch (child.kind) {
+      case 'directory': {
+        const dir = child as MockFileSystemDirectoryHandle;
+        if (!options?.recursive && dir.children.size > 0) {
+          throw new Error(`InvalidModificationError: Directory not empty`);
+        }
+        break;
+      }
+      case 'file':
+        break;
+      default: {
+        const _ex: never = child.kind;
+        throw new Error(`Unhandled file kind: ${_ex}`);
+      }
     }
     this.children.delete(name);
   }

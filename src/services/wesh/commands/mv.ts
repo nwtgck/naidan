@@ -36,7 +36,8 @@ export const mvCommandDefinition: WeshCommandDefinition = {
     const moveOne = async (srcPath: string, destPath: string) => {
       const stat = await context.kernel.stat({ path: srcPath });
 
-      if (stat.type === 'file') {
+      switch (stat.type) {
+      case 'file': {
         const srcH = await context.kernel.open({ path: srcPath, flags: 0 });
         const destH = await context.kernel.open({ path: destPath, flags: 64 | 512 });
         try {
@@ -46,7 +47,9 @@ export const mvCommandDefinition: WeshCommandDefinition = {
           await destH.close();
         }
         await context.kernel.unlink({ path: srcPath });
-      } else if (stat.type === 'directory') {
+        break;
+      }
+      case 'directory': {
         await context.kernel.mkdir({ path: destPath, recursive: true });
         const entries = await context.kernel.readDir({ path: srcPath });
         for (const entry of entries) {
@@ -56,9 +59,20 @@ export const mvCommandDefinition: WeshCommandDefinition = {
           );
         }
         await context.kernel.rmdir({ path: srcPath });
-      } else if (stat.type === 'fifo') {
+        break;
+      }
+      case 'fifo': {
         await context.kernel.mknod({ path: destPath, type: 'fifo', mode: stat.mode });
         await context.kernel.unlink({ path: srcPath });
+        break;
+      }
+      case 'chardev':
+      case 'symlink':
+        throw new Error(`Moving ${stat.type} ${srcPath} not implemented`);
+      default: {
+        const _ex: never = stat.type;
+        throw new Error(`Unhandled file type: ${_ex}`);
+      }
       }
     };
 
@@ -68,9 +82,22 @@ export const mvCommandDefinition: WeshCommandDefinition = {
 
       try {
         const destStat = await context.kernel.stat({ path: fullDest });
-        if (destStat.type === 'directory') {
+        switch (destStat.type) {
+        case 'directory': {
           const srcName = src.split('/').pop()!;
           fullDest = `${fullDest}/${srcName}`;
+          break;
+        }
+        case 'file':
+        case 'fifo':
+        case 'chardev':
+        case 'symlink':
+          // Dest is file or other, do nothing (overwrite is handled by moveOne if needed)
+          break;
+        default: {
+          const _ex: never = destStat.type;
+          throw new Error(`Unhandled file type: ${_ex}`);
+        }
         }
       } catch {
         // Dest doesn't exist

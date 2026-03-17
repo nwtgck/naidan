@@ -32,17 +32,50 @@ export const lsCommandDefinition: WeshCommandDefinition = {
 
         for (const entry of filtered) {
           let line = entry.name;
-          const type = entry.type;
+          const { type } = entry;
 
-          if (type === 'directory') line += '/';
-          else if (type === 'fifo') line += '|';
-          else if (type === 'chardev') line += '@';
+          switch (type) {
+          case 'directory':
+            line += '/';
+            break;
+          case 'fifo':
+            line += '|';
+            break;
+          case 'chardev':
+            line += '@';
+            break;
+          case 'file':
+          case 'symlink':
+            break;
+          default: {
+            const _ex: never = type;
+            throw new Error(`Unhandled file type: ${_ex}`);
+          }
+          }
 
           if (l) {
             const entryPath = fullPath.endsWith('/') ? `${fullPath}${entry.name}` : `${fullPath}/${entry.name}`;
             const st = await context.kernel.stat({ path: entryPath });
             const size = h ? formatSize(st.size) : st.size.toString();
-            const typeChar = type === 'directory' ? 'd' : type === 'fifo' ? 'p' : type === 'chardev' ? 'c' : '-';
+            let typeChar = '-';
+            switch (type) {
+            case 'directory':
+              typeChar = 'd';
+              break;
+            case 'fifo':
+              typeChar = 'p';
+              break;
+            case 'chardev':
+              typeChar = 'c';
+              break;
+            case 'file':
+            case 'symlink':
+              break;
+            default: {
+              const _ex: never = type;
+              throw new Error(`Unhandled file type: ${_ex}`);
+            }
+            }
             line = `${typeChar} ${size.padStart(10)} ${line}`;
           }
 

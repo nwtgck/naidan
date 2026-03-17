@@ -175,12 +175,13 @@ export class Wesh {
           continue;
         }
 
-        if (part.operator === '&') {
+        switch (part.operator) {
+        case '&': {
           const jobId = this.nextJobId++;
           const cmdStr = "Background Job";
           const jobState = { env: new Map(state.env), cwd: state.cwd };
 
-          const jobPromise = this.executeNode({
+          this.executeNode({
             node: part.node,
             state: jobState,
             stdin, stdout, stderr
@@ -203,14 +204,25 @@ export class Wesh {
 
           lastResult = { exitCode: 0 };
           previousOperator = '&';
-        } else {
+          break;
+        }
+        case ';':
+        case '&&':
+        case '||': {
           lastResult = await this.executeNode({
             node: part.node,
             state,
             stdin, stdout, stderr
           });
           previousOperator = part.operator;
+          break;
         }
+        default: {
+          const _ex: never = part.operator;
+          throw new Error(`Unhandled operator: ${_ex}`);
+        }
+        }
+
       }
       return lastResult;
     }
@@ -350,7 +362,8 @@ export class Wesh {
         const id = Math.floor(Math.random() * 1000000);
         const path = `/dev/fd/${id}`;
 
-        if (arg.type === 'input') {
+        switch (arg.type) {
+        case 'input': {
           const subState = { env: new Map(state.env), cwd: state.cwd };
           this.executeNode({
             node: arg.list,
@@ -364,8 +377,9 @@ export class Wesh {
             this.vfs.unregisterSpecialFile({ path });
             read.close();
           });
-
-        } else {
+          break;
+        }
+        case 'output': {
           const subState = { env: new Map(state.env), cwd: state.cwd };
           this.executeNode({
             node: arg.list,
@@ -378,6 +392,12 @@ export class Wesh {
             this.vfs.unregisterSpecialFile({ path });
             write.close();
           });
+          break;
+        }
+        default: {
+          const _ex: never = arg.type;
+          throw new Error(`Unhandled process substitution type: ${_ex}`);
+        }
         }
         expandedArgs.push(path);
       }
