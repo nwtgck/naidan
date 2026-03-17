@@ -368,8 +368,12 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     this.mounts = this.mounts.filter((m) => m.path !== normalizedPath);
   }
 
-  private registerSpecialFile({ path, handler }: { path: string; handler: () => WeshFileHandle }): void {
+  registerSpecialFile({ path, handler }: { path: string; handler: () => WeshFileHandle }): void {
     this.specialFiles.set(this.normalizePath({ path }), handler);
+  }
+
+  unregisterSpecialFile({ path }: { path: string }): void {
+    this.specialFiles.delete(this.normalizePath({ path }));
   }
 
   async open(options: { path: string; flags: number; mode?: number }): Promise<WeshFileHandle> {
@@ -720,7 +724,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     return path.substring(prefix.length);
   }
 
-  private async resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {
+  async resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {
     const normalized = this.normalizePath({ path });
     const mount = this.findMount({ path: normalized });
     if (!mount) throw new Error(`Path not found: ${path}`);
@@ -741,8 +745,6 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       const dirHandle = await current.getDirectoryHandle(lastPart);
       switch (dirHandle.kind) {
       case 'directory':
-        return { handle: dirHandle, readOnly: mount.readOnly, fullPath: normalized };
-      case 'file':
         return { handle: dirHandle, readOnly: mount.readOnly, fullPath: normalized };
       default: {
         const _ex: never = dirHandle.kind;

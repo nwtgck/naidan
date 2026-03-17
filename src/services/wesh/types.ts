@@ -135,19 +135,18 @@ export interface WeshIVirtualFileSystem {
 
   mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
 
-  /**
-   * Remove a file or directory
-   */
+  open(options: { path: string; flags: number; mode?: number }): Promise<WeshFileHandle>;
+  stat(options: { path: string }): Promise<WeshStat>;
+  readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
   unlink(options: { path: string }): Promise<void>;
   rmdir(options: { path: string }): Promise<void>;
-
-  /**
-   * Create a special file (FIFO, Device, etc.)
-   * Persistence logic for special files is handled here.
-   */
   mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
-
   rename(options: { oldPath: string; newPath: string }): Promise<void>;
+
+  registerSpecialFile(options: { path: string; handler: () => WeshFileHandle }): void;
+  unregisterSpecialFile(options: { path: string }): void;
+
+  resolve(options: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }>;
 }
 
 // --- Shell / Command Execution Context ---
@@ -163,6 +162,7 @@ export interface WeshCommandContext {
   cwd: string;
 
   kernel: WeshKernel;
+  vfs: WeshIVirtualFileSystem;
 
   // Standard Streams (FDs 0, 1, 2)
   stdin: WeshFileHandle;

@@ -28,7 +28,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
           }
         }
       } catch (e: unknown) {
-        if (e.message === 'Broken pipe') return;
+        if (e instanceof Error && e.message === 'Broken pipe') return;
         throw e;
       }
     };

@@ -489,6 +489,7 @@ export class Wesh {
       cwd: state.cwd,
       pid: pid,
       kernel: this.kernel,
+      vfs: this.vfs,
       stdin: cmdStdin,
       stdout: cmdStdout,
       stderr: cmdStderr,
