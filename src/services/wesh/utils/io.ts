@@ -40,7 +40,7 @@ export function createTextHelpers({
         if (buffer !== '') {
           yield buffer;
         }
-      } catch (e) {
+      } catch (e: unknown) {
         // Handle error?
         throw e;
       }

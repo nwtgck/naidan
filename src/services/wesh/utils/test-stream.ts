@@ -1,5 +1,5 @@
 import { createWeshReadFileHandle, createWeshWriteFileHandle } from './stream';
-import type { WeshFileHandle } from '../types';
+import type { WeshFileHandle } from '@/services/wesh/types';
 
 /**
  * Creates a Wesh file handle that provides the given text as input.

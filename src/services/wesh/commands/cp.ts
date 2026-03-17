@@ -1,5 +1,5 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '../types';
-import { parseFlags } from '../utils/args';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const cpCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -32,10 +32,10 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         if (bytesRead === 0) break;
         let written = 0;
         while (written < bytesRead) {
-          const { bytesWritten } = await dst.write({ 
-            buffer: buf, 
-            offset: written, 
-            length: bytesRead - written 
+          const { bytesWritten } = await dst.write({
+            buffer: buf,
+            offset: written,
+            length: bytesRead - written
           });
           written += bytesWritten;
         }
@@ -44,7 +44,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
 
     const copyOne = async (srcPath: string, destPath: string) => {
       const stat = await context.kernel.stat({ path: srcPath });
-      
+
       if (stat.type === 'file') {
         const srcH = await context.kernel.open({ path: srcPath, flags: 0 }); // O_RDONLY
         const destH = await context.kernel.open({ path: destPath, flags: 64 | 512 }); // O_CREAT | O_TRUNC
@@ -67,8 +67,8 @@ export const cpCommandDefinition: WeshCommandDefinition = {
           );
         }
       } else if (stat.type === 'fifo') {
-         // Special handling: copy metadata, but don't pump data (it's a pipe)
-         await context.kernel.mknod({ path: destPath, type: 'fifo', mode: stat.mode });
+        // Special handling: copy metadata, but don't pump data (it's a pipe)
+        await context.kernel.mknod({ path: destPath, type: 'fifo', mode: stat.mode });
       }
     };
 

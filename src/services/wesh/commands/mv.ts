@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '../types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/services/wesh/types';
 
 export const mvCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -23,10 +23,10 @@ export const mvCommandDefinition: WeshCommandDefinition = {
         if (bytesRead === 0) break;
         let written = 0;
         while (written < bytesRead) {
-          const { bytesWritten } = await dst.write({ 
-            buffer: buf, 
-            offset: written, 
-            length: bytesRead - written 
+          const { bytesWritten } = await dst.write({
+            buffer: buf,
+            offset: written,
+            length: bytesRead - written
           });
           written += bytesWritten;
         }
@@ -35,7 +35,7 @@ export const mvCommandDefinition: WeshCommandDefinition = {
 
     const moveOne = async (srcPath: string, destPath: string) => {
       const stat = await context.kernel.stat({ path: srcPath });
-      
+
       if (stat.type === 'file') {
         const srcH = await context.kernel.open({ path: srcPath, flags: 0 });
         const destH = await context.kernel.open({ path: destPath, flags: 64 | 512 });
@@ -57,8 +57,8 @@ export const mvCommandDefinition: WeshCommandDefinition = {
         }
         await context.kernel.rmdir({ path: srcPath });
       } else if (stat.type === 'fifo') {
-         await context.kernel.mknod({ path: destPath, type: 'fifo', mode: stat.mode });
-         await context.kernel.unlink({ path: srcPath });
+        await context.kernel.mknod({ path: destPath, type: 'fifo', mode: stat.mode });
+        await context.kernel.unlink({ path: srcPath });
       }
     };
 

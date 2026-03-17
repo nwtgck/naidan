@@ -1,5 +1,5 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '../types';
-import { parseFlags } from '../utils/args';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/services/wesh/types';
+import { parseFlags } from '@/services/wesh/utils/args';
 
 export const grepCommandDefinition: WeshCommandDefinition = {
   meta: {

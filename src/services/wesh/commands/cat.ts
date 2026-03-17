@@ -27,7 +27,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
             written += bytesWritten;
           }
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (e.message === 'Broken pipe') return;
         throw e;
       }

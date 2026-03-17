@@ -45,7 +45,7 @@ describe('Wesh Shell', () => {
     const stderr = createWeshWriteCaptureHandle();
 
     await wesh.execute({ script: 'MYVAR=test', stdin, stdout: stdout.handle, stderr: stderr.handle });
-    
+
     const stdout2 = createWeshWriteCaptureHandle();
     const result = await wesh.execute({ script: 'echo $MYVAR', stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('test');
@@ -126,7 +126,7 @@ describe('Wesh Shell', () => {
     const stderr = createWeshWriteCaptureHandle();
 
     await wesh.execute({ script: 'VAR=parent', stdin, stdout: stdout.handle, stderr: stderr.handle });
-    
+
     const stdout2 = createWeshWriteCaptureHandle();
     await wesh.execute({ script: '(VAR=child; echo $VAR); echo $VAR', stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('child');
@@ -172,7 +172,7 @@ describe('Wesh Shell', () => {
     const stderr = createWeshWriteCaptureHandle();
 
     await wesh.execute({ script: 'export TEST_MAP=1', stdin, stdout: stdout.handle, stderr: stderr.handle });
-    
+
     const stdout2 = createWeshWriteCaptureHandle();
     await wesh.execute({ script: 'env', stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('TEST_MAP=1');

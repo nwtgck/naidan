@@ -3,7 +3,7 @@ import type {
   WeshIOResult,
   WeshWriteResult,
   WeshStat,
-} from '../types';
+} from '@/services/wesh/types';
 
 /**
  * Creates a Wesh file handle that reads from a ReadableStream.
