@@ -29,7 +29,7 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
 
         const stream = handleToStream({ handle });
         const decompressor = new DecompressionStream('gzip');
-        const decompressedStream = stream.pipeThrough(decompressor);
+        const decompressedStream = stream.pipeThrough(decompressor as any) as ReadableStream<Uint8Array>;
 
         const reader = decompressedStream.getReader();
         while (true) {

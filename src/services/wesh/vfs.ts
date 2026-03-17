@@ -39,17 +39,24 @@ function mapDtoToDomain(dto: WeshRegistryEntryDto): RegistryEntry {
       mtime: dto.mtime,
     };
   case 'fifo':
+    return {
+      type: 'fifo',
+      mode: dto.mode,
+      uid: dto.uid,
+      gid: dto.gid,
+      mtime: dto.mtime,
+    };
   case 'chardev':
     return {
-      type: dto.type,
+      type: 'chardev',
       mode: dto.mode,
       uid: dto.uid,
       gid: dto.gid,
       mtime: dto.mtime,
     };
   default: {
-    const _ex: never = dto.type;
-    throw new Error(`Unhandled DTO type: ${_ex}`);
+    const _ex: never = dto;
+    throw new Error(`Unhandled DTO: ${_ex}`);
   }
   }
 }
@@ -153,7 +160,7 @@ class StandardFileHandle implements WeshFileHandle {
     const writable = await this.handle.createWritable({ keepExistingData: true });
     try {
       await writable.seek(pos);
-      await writable.write(dataToWrite);
+      await writable.write(dataToWrite as any);
     } finally {
       await writable.close();
     }
@@ -428,7 +435,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     } catch (e) {
       if (create) {
         const parts = normalized.split('/');
-        const name = parts.pop()!;
+        const name = parts.pop();
+        if (name === undefined) throw new Error(`Invalid path: ${normalized}`);
         const parentPath = parts.join('/') || '/';
         const parent = await this._resolve({ path: parentPath });
         if (parent.readOnly) throw new Error(`Read-only file system: ${parentPath}`);
@@ -584,6 +592,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     let currentPath = '';
     for (let i = 0; i < parts.length; i++) {
       const nextPart = parts[i];
+      if (nextPart === undefined) continue;
       const checkPath = currentPath + '/' + nextPart;
       try {
         const res = await this._resolve({ path: checkPath });
@@ -618,7 +627,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       }
     }
     const parts = normalized.split('/');
-    const name = parts.pop()!;
+    const name = parts.pop();
+    if (name === undefined) throw new Error(`Invalid path: ${normalized}`);
     const parentPath = parts.join('/') || '/';
     const parent = await this._resolve({ path: parentPath });
 
@@ -680,7 +690,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     if (oldRes.readOnly) throw new Error(`Read-only source: ${oldNormalized}`);
 
     const newParts = newNormalized.split('/');
-    const newName = newParts.pop()!;
+    const newName = newParts.pop();
+    if (newName === undefined) throw new Error(`Invalid path: ${newNormalized}`);
     const newParentPath = newParts.join('/') || '/';
     const newParentRes = await this._resolve({ path: newParentPath });
     if (newParentRes.readOnly) throw new Error(`Read-only destination: ${newParentPath}`);
@@ -697,11 +708,12 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         const newFileHandle = await newParentDir.getFileHandle(newName, { create: true });
         const writable = await newFileHandle.createWritable();
         const file = await oldFileHandle.getFile();
-        await writable.write(file);
+        await writable.write(file as any);
         await writable.close();
 
         const oldParts = oldNormalized.split('/');
-        const oldName = oldParts.pop()!;
+        const oldName = oldParts.pop();
+        if (oldName === undefined) throw new Error(`Invalid path: ${oldNormalized}`);
         const oldParentPath = oldParts.join('/') || '/';
         const oldParentRes = await this._resolve({ path: oldParentPath });
         await (oldParentRes.handle as FileSystemDirectoryHandle).removeEntry(oldName);
@@ -720,7 +732,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const metaDir = await systemDir.getDirectoryHandle(METADATA_DIR, { create: true });
 
     const parts = relPath.split('/');
-    const fileName = parts.pop()!;
+    const fileName = parts.pop();
+    if (fileName === undefined) throw new Error(`Invalid relPath: ${relPath}`);
     let currentDir = metaDir;
     for (const part of parts) {
       currentDir = await currentDir.getDirectoryHandle(part, { create: true });
@@ -738,7 +751,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       const systemDir = await mount.handle.getDirectoryHandle(WESH_SYSTEM_DIR);
       const metaDir = await systemDir.getDirectoryHandle(METADATA_DIR);
       const parts = relPath.split('/');
-      const fileName = parts.pop()!;
+      const fileName = parts.pop();
+      if (fileName === undefined) throw new Error(`Invalid relPath: ${relPath}`);
       let currentDir = metaDir;
       for (const part of parts) {
         currentDir = await currentDir.getDirectoryHandle(part);
@@ -787,9 +801,12 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const parts = relativePath.split('/');
     let current: FileSystemDirectoryHandle = mount.handle;
     for (let i = 0; i < parts.length - 1; i++) {
-      current = await current.getDirectoryHandle(parts[i]);
+      const part = parts[i];
+      if (part === undefined) continue;
+      current = await current.getDirectoryHandle(part);
     }
     const lastPart = parts[parts.length - 1];
+    if (lastPart === undefined) return { handle: current, readOnly: mount.readOnly, fullPath: normalized };
     try {
       const fileHandle = await current.getFileHandle(lastPart);
       return { handle: fileHandle, readOnly: mount.readOnly, fullPath: normalized };

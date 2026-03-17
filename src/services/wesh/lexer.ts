@@ -212,7 +212,6 @@ export class Lexer {
   }
 
   readHereDoc(delimiter: string): string {
-    const start = this.position;
     let content = '';
 
     // Simple line-based scanner

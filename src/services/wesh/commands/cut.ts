@@ -16,13 +16,14 @@ export const cutCommandDefinition: WeshCommandDefinition = {
     });
 
     const text = context.text();
-    if (!flags.f) {
+    const fields = typeof flags.f === 'string' ? flags.f : undefined;
+    if (!fields) {
       await text.error({ text: 'cut: fields must be specified\n' });
       return { exitCode: 1 };
     }
 
-    const fieldIndices = flags.f.split(',').map(f => parseInt(f, 10) - 1);
-    const delimiter = flags.d || '\t';
+    const fieldIndices = fields.split(',').map(f => parseInt(f, 10) - 1);
+    const delimiter = typeof flags.d === 'string' ? flags.d : '\t';
 
     const process = async ({ input }: { input: AsyncIterable<string> }) => {
       for await (const line of input) {

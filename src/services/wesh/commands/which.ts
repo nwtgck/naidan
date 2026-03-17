@@ -11,7 +11,7 @@ export const whichCommandDefinition: WeshCommandDefinition = {
     let foundAll = true;
 
     for (const name of context.args) {
-      const meta = context.getCommandMeta({ name });
+      const meta = context.getWeshCommandMeta({ name });
       if (meta) {
         await text.print({ text: `${name}: builtin command\n` });
       } else {

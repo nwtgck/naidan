@@ -4,12 +4,10 @@ import type {
   WeshIVirtualFileSystem,
   WeshCommandContext,
   WeshASTNode,
-  WeshRedirection,
   WeshFileHandle,
   WeshCommandNode,
-  WeshProcessSubstitutionNode,
-  WeshProcess,
-  WeshKernel
+  WeshKernel,
+  WeshPipelineNode
 } from './types';
 import { WeshVFS } from './vfs';
 import { Kernel } from './kernel';
@@ -228,10 +226,10 @@ export class Wesh {
     }
 
     case 'pipeline':
-      return this.executePipeline(options);
+      return this.executePipeline({ ...options, node: node as WeshPipelineNode });
 
     case 'command':
-      return this.executeCommand(options);
+      return this.executeCommand({ ...options, node: node as WeshCommandNode });
 
     case 'subshell': {
       const subshellState: WeshShellState = {

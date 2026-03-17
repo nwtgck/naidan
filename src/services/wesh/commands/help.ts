@@ -11,7 +11,7 @@ export const helpCommandDefinition: WeshCommandDefinition = {
     const target = context.args[0];
 
     if (target) {
-      const meta = context.getCommandMeta({ name: target });
+      const meta = context.getWeshCommandMeta({ name: target });
       if (meta) {
         await text.print({ text: `${meta.name}: ${meta.description}\n` });
         await text.print({ text: `Usage: ${meta.usage}\n` });
@@ -25,7 +25,7 @@ export const helpCommandDefinition: WeshCommandDefinition = {
     await text.print({ text: 'Available commands:\n' });
     const names = context.getCommandNames().sort();
     for (const name of names) {
-      const meta = context.getCommandMeta({ name });
+      const meta = context.getWeshCommandMeta({ name });
       const paddedName = name.padEnd(10);
       await text.print({ text: `  ${paddedName} - ${meta?.description || ''}\n` });
     }

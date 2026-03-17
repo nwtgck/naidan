@@ -18,7 +18,7 @@ export const commandCommandDefinition: WeshCommandDefinition = {
     if (positional.length === 0) return { exitCode: 0 };
 
     const cmdName = positional[0]!;
-    const meta = context.getCommandMeta({ name: cmdName });
+    const meta = context.getWeshCommandMeta({ name: cmdName });
 
     if (flags.v) {
       if (meta) {

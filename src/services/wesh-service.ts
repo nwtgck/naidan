@@ -70,7 +70,7 @@ export class WeshService {
       },
       close: async () => {},
       stat: async () => ({ size: 0, mode: 0, type: 'file', mtime: 0, ino: 0, uid: 0, gid: 0 }),
-      truncate: async () => ({ size: 0 }),
+      truncate: async () => {},
       ioctl: async () => ({ ret: 0 })
     });
 

@@ -16,7 +16,8 @@ export const tailCommandDefinition: WeshCommandDefinition = {
     });
 
     const text = context.text();
-    const n = parseInt(flags.n || '10', 10);
+    const nFlag = typeof flags.n === 'string' ? flags.n : '10';
+    const n = parseInt(nFlag, 10);
 
     const processStream = async (stream: ReadableStream<Uint8Array>) => {
       const decoder = new TextDecoder();

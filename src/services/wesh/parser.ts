@@ -1,11 +1,8 @@
-import { Lexer, Token, TokenType } from './lexer';
-import {
+import { Lexer } from './lexer';
+import type { Token, TokenType } from './lexer';
+import type {
   WeshASTNode,
-  WeshCommandNode,
   WeshListNode,
-  WeshPipelineNode,
-  WeshIfNode,
-  WeshForNode,
   WeshRedirection,
   WeshSubshellNode,
   WeshProcessSubstitutionNode
@@ -13,7 +10,6 @@ import {
 
 export function parseCommandLine({
   commandLine,
-  env,
 }: {
   commandLine: string;
   env: Map<string, string>;
@@ -44,12 +40,31 @@ class Parser {
 
   parse(): WeshASTNode {
     const node = this.parseList();
-    switch (this.currentToken.type) {
+    const type = this.currentToken.type;
+    switch (type) {
     case 'EOF':
       break;
-    default: {
-      const _ex: never = this.currentToken.type;
+    case 'WORD':
+    case 'PIPE':
+    case 'AND':
+    case 'OR':
+    case 'SEMI':
+    case 'AMP':
+    case 'GT':
+    case 'GTGT':
+    case 'LT':
+    case 'LTGT':
+    case 'LTGTAMP':
+    case 'LPAREN':
+    case 'RPAREN':
+    case 'HEREDOC':
+    case 'HERESTRING':
+    case 'PROC_SUB_IN':
+    case 'PROC_SUB_OUT':
       throw new Error(`Unexpected token at end of command: ${this.currentToken.value}`);
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled token type: ${_ex}`);
     }
     }
     return node;
@@ -67,6 +82,7 @@ class Parser {
     ) {
       const type = this.currentToken.type;
       let operator: ';' | '&&' | '||' | '&';
+
       switch (type) {
       case 'SEMI':
         operator = ';';
@@ -80,31 +96,48 @@ class Parser {
       case 'AMP':
         operator = '&';
         break;
+      case 'WORD':
+      case 'PIPE':
+      case 'GT':
+      case 'GTGT':
+      case 'LT':
+      case 'LTGT':
+      case 'LTGTAMP':
+      case 'LPAREN':
+      case 'RPAREN':
+      case 'HEREDOC':
+      case 'HERESTRING':
+      case 'PROC_SUB_IN':
+      case 'PROC_SUB_OUT':
+      case 'EOF':
+        throw new Error(`Unhandled operator type: ${type}`);
       default: {
         const _ex: never = type;
-        throw new Error(`Unhandled operator type: ${_ex}`);
+        throw new Error(`Unknown token type: ${_ex}`);
       }
       }
 
       this.eat(type);
 
-      if (this.isTerminator(terminators) || this.currentToken.type === 'EOF') {
-        switch (node.kind) {
-        case 'list':
-          node.parts[node.parts.length - 1].operator = operator;
+      if (this.isTerminator(terminators) || (this.currentToken.type as TokenType) === 'EOF') {
+        const kind = node.kind;
+        switch (kind) {
+        case 'list': {
+          const lastPart = node.parts[node.parts.length - 1];
+          if (lastPart) lastPart.operator = operator;
           break;
+        }
         case 'command':
         case 'pipeline':
         case 'if':
         case 'for':
         case 'assignment':
         case 'subshell':
-        case 'processSubstitution':
           node = { kind: 'list', parts: [{ node, operator }] };
           break;
         default: {
-          const _ex: never = node;
-          throw new Error(`Unhandled node kind: ${(_ex as WeshASTNode).kind}`);
+          const _ex: never = kind;
+          throw new Error(`Unhandled node kind: ${_ex}`);
         }
         }
         return node;
@@ -112,18 +145,20 @@ class Parser {
 
       const nextNode = this.parsePipeline(terminators);
 
-      switch (node.kind) {
-      case 'list':
-        node.parts[node.parts.length - 1].operator = operator;
+      const kind = node.kind;
+      switch (kind) {
+      case 'list': {
+        const lastPart = node.parts[node.parts.length - 1];
+        if (lastPart) lastPart.operator = operator;
         node.parts.push({ node: nextNode, operator: ';' });
         break;
+      }
       case 'command':
       case 'pipeline':
       case 'if':
       case 'for':
       case 'assignment':
       case 'subshell':
-      case 'processSubstitution':
         node = {
           kind: 'list',
           parts: [
@@ -133,8 +168,8 @@ class Parser {
         };
         break;
       default: {
-        const _ex: never = node;
-        throw new Error(`Unhandled node kind: ${(_ex as WeshASTNode).kind}`);
+        const _ex: never = kind;
+        throw new Error(`Unhandled node kind: ${_ex}`);
       }
       }
     }
@@ -154,7 +189,8 @@ class Parser {
       this.eat('PIPE');
       const right = this.parseCommand(terminators);
 
-      switch (node.kind) {
+      const kind = node.kind;
+      switch (kind) {
       case 'pipeline':
         node.commands.push(right);
         break;
@@ -166,11 +202,10 @@ class Parser {
       case 'for':
       case 'assignment':
       case 'subshell':
-      case 'processSubstitution':
-        throw new Error(`Invalid node kind in pipeline: ${node.kind}`);
+        throw new Error(`Invalid node kind in pipeline: ${kind}`);
       default: {
-        const _ex: never = node;
-        throw new Error(`Unhandled node kind: ${(_ex as WeshASTNode).kind}`);
+        const _ex: never = kind;
+        throw new Error(`Unhandled node kind: ${_ex}`);
       }
       }
     }
@@ -180,30 +215,48 @@ class Parser {
 
   private parseCommand(terminators: string[] = []): WeshASTNode {
     if (this.isTerminator(terminators)) {
-      switch (this.currentToken.type) {
+      const type = this.currentToken.type;
+      switch (type) {
       case 'RPAREN':
         // Handled by caller (parseSubshell/parseList)
-        return { kind: 'command', name: '', args: [], assignments: [], redirections: [] }; // Should not happen if logic is correct
-      default:
+        return { kind: 'command', name: '', args: [], assignments: [], redirections: [] };
+      case 'WORD':
+      case 'PIPE':
+      case 'AND':
+      case 'OR':
+      case 'SEMI':
+      case 'AMP':
+      case 'GT':
+      case 'GTGT':
+      case 'LT':
+      case 'LTGT':
+      case 'LTGTAMP':
+      case 'LPAREN':
+      case 'HEREDOC':
+      case 'HERESTRING':
+      case 'PROC_SUB_IN':
+      case 'PROC_SUB_OUT':
+      case 'EOF':
         throw new Error(`Unexpected terminator: ${this.currentToken.value}`);
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unhandled token type: ${_ex}`);
+      }
       }
     }
 
-    // Subshell
-    switch (this.currentToken.type) {
-    case 'LPAREN':
+    // Subshell / Compound Commands
+    const type = this.currentToken.type;
+    if (type === 'LPAREN') {
       return this.parseSubshell();
-    case 'WORD': {
+    }
+    if (type === 'WORD') {
       if (this.currentToken.value === 'if') return this.parseIf();
       if (this.currentToken.value === 'for') return this.parseFor();
 
       if (KEYWORDS.has(this.currentToken.value)) {
         throw new Error(`Unexpected keyword: ${this.currentToken.value}`);
       }
-      break;
-    }
-    default:
-      break;
     }
 
     const assignments: { key: string; value: string }[] = [];
@@ -212,33 +265,32 @@ class Parser {
     let commandName: string | null = null;
 
     const canContinue = () => {
-      switch (this.currentToken.type) {
-      case 'WORD':
-      case 'GT':
-      case 'GTGT':
-      case 'LT':
-      case 'LTGT':
-      case 'LTGTAMP':
-      case 'HEREDOC':
-      case 'HERESTRING':
-      case 'PROC_SUB_IN':
-      case 'PROC_SUB_OUT':
-        return !this.isTerminator(terminators);
-      default:
-        return false;
-      }
+      const t = this.currentToken.type;
+      return (
+        t === 'WORD' ||
+        t === 'GT' ||
+        t === 'GTGT' ||
+        t === 'LT' ||
+        t === 'LTGT' ||
+        t === 'LTGTAMP' ||
+        t === 'HEREDOC' ||
+        t === 'HERESTRING' ||
+        t === 'PROC_SUB_IN' ||
+        t === 'PROC_SUB_OUT'
+      ) && !this.isTerminator(terminators);
     };
 
     while (canContinue()) {
-      if (this.isRedirection(this.currentToken.type)) {
-        const type = this.currentToken.type;
-        this.eat(type);
+      const t = this.currentToken.type;
+      if (this.isRedirection(t)) {
+        this.eat(t);
 
         let redType: '>' | '>>' | '<' | '2>' | '2>&1' | '<<' | '<<<';
         let target: string | undefined;
         let content: string | undefined;
 
-        switch (type) {
+        const redToken = t as 'GT' | 'GTGT' | 'LT' | 'LTGT' | 'LTGTAMP' | 'HEREDOC' | 'HERESTRING';
+        switch (redToken) {
         case 'GT':
           redType = '>';
           target = this.expectWord();
@@ -269,44 +321,49 @@ class Parser {
           target = this.expectWord();
           content = this.lexer.readHereDoc(target);
           break;
-        default: {
-          const _ex: never = type;
+        case 'WORD':
+        case 'PIPE':
+        case 'AND':
+        case 'OR':
+        case 'SEMI':
+        case 'AMP':
+        case 'LPAREN':
+        case 'RPAREN':
+        case 'PROC_SUB_IN':
+        case 'PROC_SUB_OUT':
+        case 'EOF': {
+          const _ex: never = redToken;
           throw new Error(`Unhandled redirection type: ${_ex}`);
+        }
+        default: {
+          const _ex: never = redToken;
+          throw new Error(`Unknown token type: ${_ex}`);
         }
         }
         redirections.push({ type: redType, target, content });
 
-      } else if (this.currentToken.type === 'PROC_SUB_IN' || this.currentToken.type === 'PROC_SUB_OUT') {
-        const type = this.currentToken.type;
-        this.eat(type);
+      } else if (t === 'PROC_SUB_IN' || t === 'PROC_SUB_OUT') {
+        this.eat(t);
 
-        const kind = (() => {
-          switch (type) {
+        const procSubToken = t as 'PROC_SUB_IN' | 'PROC_SUB_OUT';
+        const kind: 'input' | 'output' = (() => {
+          switch (procSubToken) {
           case 'PROC_SUB_IN': return 'input';
           case 'PROC_SUB_OUT': return 'output';
           default: {
-            const _ex: never = type;
-            throw new Error(`Unhandled process substitution type: ${_ex}`);
+            const _ex: never = procSubToken;
+            throw new Error(`Unhandled process substitution: ${_ex}`);
           }
           }
         })();
 
-        // Process substitution inner list: <( list )
-        // We parse a list until RPAREN
-        const list = this.parseList(['RPAREN']); // terminator is RPAREN?
+        const list = this.parseList(['RPAREN']);
 
-        // Wait, parseList consumes everything until terminator or EOF.
-        // If terminator is RPAREN, it stops when it sees RPAREN?
-        // But parseList calls parsePipeline which calls parseCommand.
-        // If parseCommand sees RPAREN, it stops?
-        // My isTerminator includes RPAREN check now.
-
-        switch (this.currentToken.type) {
-        case 'RPAREN':
+        const endType = this.currentToken.type;
+        if (endType === 'RPAREN') {
           this.eat('RPAREN');
-          break;
-        default:
-          throw new Error("Expected ')' after process substitution");
+        } else {
+          throw new Error(`Expected ')' after process substitution, got: ${this.currentToken.value}`);
         }
 
         args.push({
@@ -315,7 +372,7 @@ class Parser {
           list
         });
 
-      } else {
+      } else if (t === 'WORD') {
         const word = this.currentToken.value;
 
         if (commandName === null && KEYWORDS.has(word)) {
@@ -326,14 +383,22 @@ class Parser {
 
         if (commandName === null) {
           if (word.includes('=') && !word.startsWith('=')) {
-            const [key, ...rest] = word.split('=');
-            assignments.push({ key, value: rest.join('=') });
+            const parts = word.split('=');
+            const key = parts[0];
+            if (key) {
+              assignments.push({ key, value: parts.slice(1).join('=') });
+            } else {
+              commandName = word;
+            }
           } else {
             commandName = word;
           }
         } else {
           args.push(word);
         }
+      } else {
+        // Fallback for types that canContinue allows but we didn't handle specifically
+        throw new Error(`Unexpected token in canContinue loop: ${t}`);
       }
     }
 
@@ -342,13 +407,14 @@ class Parser {
     }
 
     if (commandName === null) {
-      switch (this.currentToken.type) {
+      const t = this.currentToken.type;
+      switch (t) {
       case 'WORD':
         throw new Error(`Expected command, got WORD: ${this.currentToken.value}`);
       case 'EOF':
         throw new Error("Expected command, got EOF");
       default:
-        throw new Error(`Expected command, got token type: ${this.currentToken.type}`);
+        throw new Error(`Expected command, got token type: ${t}`);
       }
     }
 
@@ -377,7 +443,8 @@ class Parser {
     this.eat('RPAREN');
 
     let listNode: WeshListNode;
-    switch (list.kind) {
+    const kind = list.kind;
+    switch (kind) {
     case 'list':
       listNode = list;
       break;
@@ -387,15 +454,14 @@ class Parser {
     case 'for':
     case 'assignment':
     case 'subshell':
-    case 'processSubstitution':
       listNode = {
         kind: 'list',
         parts: [{ node: list, operator: ';' }]
       };
       break;
     default: {
-      const _ex: never = list;
-      throw new Error(`Unhandled node kind: ${(_ex as WeshASTNode).kind}`);
+      const _ex: never = kind;
+      throw new Error(`Unhandled node kind: ${_ex}`);
     }
     }
 
@@ -409,7 +475,7 @@ class Parser {
     this.eat('WORD'); // eat 'if'
     const condition = this.parseList(['then']);
 
-    if (this.currentToken.type !== 'WORD' || this.currentToken.value !== 'then') {
+    if (this.currentToken.type !== 'WORD' || (this.currentToken.value as string) !== 'then') {
       throw new Error("Expected 'then'");
     }
     this.eat('WORD'); // eat 'then'
@@ -417,10 +483,10 @@ class Parser {
     const thenBody = this.parseList(['else', 'elif', 'fi']);
 
     let elseBody: WeshASTNode | undefined;
-    if (this.currentToken.type === 'WORD' && this.currentToken.value === 'else') {
+    if (this.currentToken.type === 'WORD' && (this.currentToken.value as string) === 'else') {
       this.eat('WORD');
       elseBody = this.parseList(['fi']);
-    } else if (this.currentToken.type === 'WORD' && this.currentToken.value === 'elif') {
+    } else if (this.currentToken.type === 'WORD' && (this.currentToken.value as string) === 'elif') {
       this.currentToken.value = 'if';
       elseBody = this.parseIf();
       return {
@@ -431,7 +497,7 @@ class Parser {
       };
     }
 
-    if (this.currentToken.type !== 'WORD' || this.currentToken.value !== 'fi') {
+    if (this.currentToken.type !== 'WORD' || (this.currentToken.value as string) !== 'fi') {
       throw new Error("Expected 'fi'");
     }
     this.eat('WORD');
@@ -458,7 +524,7 @@ class Parser {
 
     switch (this.currentToken.type) {
     case 'WORD':
-      if (this.currentToken.value !== 'in') {
+      if ((this.currentToken.value as string) !== 'in') {
         throw new Error("Expected 'in'");
       }
       break;
@@ -468,23 +534,24 @@ class Parser {
     this.eat('WORD');
 
     const items: string[] = [];
-    while (this.currentToken.type === 'WORD' && this.currentToken.value !== 'do' && this.currentToken.value !== ';') {
+    while (this.currentToken.type === 'WORD' && (this.currentToken.value as string) !== 'do' && (this.currentToken.value as string) !== ';') {
       items.push(this.currentToken.value);
       this.eat('WORD');
     }
 
-    if (this.currentToken.type === 'SEMI') {
+    const t = this.currentToken.type;
+    if (t === 'SEMI') {
       this.eat('SEMI');
     }
 
-    if (this.currentToken.type !== 'WORD' || this.currentToken.value !== 'do') {
+    if (this.currentToken.type !== 'WORD' || (this.currentToken.value as string) !== 'do') {
       throw new Error("Expected 'do'");
     }
     this.eat('WORD');
 
     const body = this.parseList(['done']);
 
-    if (this.currentToken.type !== 'WORD' || this.currentToken.value !== 'done') {
+    if (this.currentToken.type !== 'WORD' || (this.currentToken.value as string) !== 'done') {
       throw new Error("Expected 'done'");
     }
     this.eat('WORD');
