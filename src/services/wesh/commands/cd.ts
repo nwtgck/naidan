@@ -25,6 +25,10 @@ export const cdCommandDefinition: WeshCommandDefinition = {
           return;
         case 'file':
           throw new Error(`Not a directory: ${target}`);
+        case 'fifo':
+        case 'chardev':
+        case 'symlink':
+          throw new Error(`Not a directory: ${target}`);
         default: {
           const _ex: never = res.stat.type;
           throw new Error(`Unhandled type: ${_ex}`);

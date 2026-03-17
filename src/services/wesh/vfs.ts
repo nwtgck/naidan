@@ -160,7 +160,7 @@ class StandardFileHandle implements WeshFileHandle {
     const writable = await this.handle.createWritable({ keepExistingData: true });
     try {
       await writable.seek(pos);
-      await writable.write(dataToWrite);
+      await writable.write(dataToWrite as BufferSource);
     } finally {
       await writable.close();
     }

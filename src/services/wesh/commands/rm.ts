@@ -36,7 +36,11 @@ export const rmCommandDefinition: WeshCommandDefinition = {
         }
         await context.kernel.rmdir({ path });
         break;
-      }      case 'file':
+      }
+      case 'file':
+      case 'fifo':
+      case 'chardev':
+      case 'symlink':
         await context.kernel.unlink({ path });
         break;
       default: {

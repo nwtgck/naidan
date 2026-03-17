@@ -420,8 +420,6 @@ class Parser {
         case 'LTGTAMP':
         case 'HEREDOC':
         case 'HERESTRING':
-        case 'PROC_SUB_IN':
-        case 'PROC_SUB_OUT':
           // Handled by isRedirection or ProcSub blocks
           break;
         case 'PIPE':

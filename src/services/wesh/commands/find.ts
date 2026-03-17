@@ -31,6 +31,11 @@ export const findCommandDefinition: WeshCommandDefinition = {
           case 'file':
             await text.print({ text: entryPath + '\n' });
             break;
+          case 'fifo':
+          case 'chardev':
+          case 'symlink':
+            await text.print({ text: entryPath + '\n' });
+            break;
           default: {
             const _ex: never = entry.type;
             throw new Error(`Unhandled type: ${_ex}`);

@@ -29,6 +29,9 @@ export const mvCommandDefinition: WeshCommandDefinition = {
           break;
         }
         case 'file':
+        case 'fifo':
+        case 'chardev':
+        case 'symlink':
           break;
         default: {
           const _ex: never = destStat.type;

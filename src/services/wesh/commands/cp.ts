@@ -48,6 +48,10 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         });
         break;
       }
+      case 'fifo':
+      case 'chardev':
+      case 'symlink':
+        throw new Error(`Unsupported file type: ${stat.type}`);
       default: {
         const _ex: never = stat.type;
         throw new Error(`Unhandled type: ${_ex}`);
@@ -68,6 +72,10 @@ export const cpCommandDefinition: WeshCommandDefinition = {
           break;
         }
         case 'file':
+          break;
+        case 'fifo':
+        case 'chardev':
+        case 'symlink':
           break;
         default: {
           const _ex: never = destStat.type;
