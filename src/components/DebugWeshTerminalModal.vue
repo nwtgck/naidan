@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import { X, Terminal } from 'lucide-vue-next';
 import { Wesh } from '@/services/wesh';
 import { createWeshWriteCaptureHandle, createWeshReadFileHandleFromText } from '@/services/wesh/utils/test-stream';
+import DOMPurify from 'dompurify';
 
 defineProps<{ isOpen: boolean }>();
 const emit = defineEmits<{
@@ -11,11 +12,12 @@ const emit = defineEmits<{
 
 const terminalInput = ref('');
 const terminalOutput = ref('');
+const outputContainerRef = ref<HTMLElement | null>(null);
 const weshInstance = ref<Wesh | null>(null);
 
 async function initWesh() {
   if (!navigator.storage || typeof navigator.storage.getDirectory !== 'function') {
-    terminalOutput.value = 'OPFS not supported in this environment.\n';
+    terminalOutput.value = 'Error: OPFS not supported in this environment.';
     return;
   }
   const root = await navigator.storage.getDirectory();
@@ -33,7 +35,8 @@ async function runCommand() {
   if (!weshInstance.value || !terminalInput.value.trim()) return;
 
   const script = terminalInput.value;
-  terminalOutput.value += `> ${script}\n`;
+  const commandHtml = `<span class="text-blue-500 font-bold">$</span> ${DOMPurify.sanitize(script)}\n`;
+  terminalOutput.value += commandHtml;
   terminalInput.value = '';
 
   const stdout = createWeshWriteCaptureHandle();
@@ -41,21 +44,35 @@ async function runCommand() {
   const stdin = createWeshReadFileHandleFromText({ text: '' });
 
   try {
-    await weshInstance.value.execute({
+    const result = await weshInstance.value.execute({
       script,
       stdin,
       stdout: stdout.handle,
       stderr: stderr.handle
     });
 
-    const out = stdout.text;
-    if (out) terminalOutput.value += out + '\n';
-  } catch (e) {
-    terminalOutput.value += `Error: ${e}\n`;
-  }
-}
+    if (stdout.text) {
+      terminalOutput.value += `<span class="text-gray-300">${DOMPurify.sanitize(stdout.text)}</span>`;
+    }
+    if (stderr.text) {
+      terminalOutput.value += `<span class="text-red-400 italic">${DOMPurify.sanitize(stderr.text)}</span>`;
+    }
 
-onMounted(initWesh);
+    if (result.exitCode !== 0) {
+      terminalOutput.value += `<span class="text-amber-500 text-[10px] uppercase font-bold">Process exited with code ${result.exitCode}</span>\n`;
+    }
+    terminalOutput.value += '\n';
+  } catch (e) {
+    terminalOutput.value += `<span class="text-red-500 font-bold">Execution Error:</span> ${DOMPurify.sanitize(String(e))}\n\n`;
+  }
+
+  // Scroll to bottom
+  if (outputContainerRef.value) {
+    setTimeout(() => {
+      outputContainerRef.value!.scrollTop = outputContainerRef.value!.scrollHeight;
+    }, 0);
+  }
+}onMounted(initWesh);
 
 
 defineExpose({
@@ -79,15 +96,18 @@ defineExpose({
           </button>
         </div>
 
-        <div class="flex-1 p-6 bg-gray-50 dark:bg-black overflow-y-auto font-mono text-sm text-gray-800 dark:text-gray-300 whitespace-pre-wrap">
-          {{ terminalOutput }}
-        </div>
+        <div
+          ref="outputContainerRef"
+          class="flex-1 p-6 bg-gray-50 dark:bg-black overflow-y-auto font-mono text-sm text-gray-800 dark:text-gray-300 whitespace-pre-wrap"
+          v-html="terminalOutput"
+        ></div>
 
         <div class="p-6 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
           <textarea
             v-model="terminalInput"
-            @keydown.ctrl.enter="runCommand"
-            placeholder="Enter command (Ctrl+Enter to run)..."
+            @keydown.enter.ctrl.prevent="runCommand"
+            @keydown.enter.meta.prevent="runCommand"
+            placeholder="Enter command (Ctrl+Enter or Cmd+Enter to run)..."
             class="w-full h-32 p-4 bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono resize-none"
           ></textarea>
           <div class="flex justify-end mt-4">
