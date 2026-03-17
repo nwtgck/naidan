@@ -28,5 +28,6 @@ export const WeshRegistryEntrySchemaDto = z.discriminatedUnion('type', [
 
 export type WeshRegistryEntryDto = z.infer<typeof WeshRegistryEntrySchemaDto>;
 
-// Constants for registry
-export const REGISTRY_DIR_NAME = '.wesh-registry';
+// Constants for system data
+export const WESH_SYSTEM_DIR = '.wesh-system';
+export const METADATA_DIR = 'metadata';

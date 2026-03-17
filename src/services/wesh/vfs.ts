@@ -9,7 +9,8 @@ import type {
 import { 
   WeshRegistryEntrySchemaDto, 
   type WeshRegistryEntryDto, 
-  REGISTRY_DIR_NAME 
+  WESH_SYSTEM_DIR,
+  METADATA_DIR
 } from './dto';
 
 // --- Domain Models ---
@@ -295,10 +296,11 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     
     const registryCache = new Map<string, RegistryEntry>();
     try {
-      const regDir = await handle.getDirectoryHandle(REGISTRY_DIR_NAME);
-      await this.scanRegistryRecursive(regDir, '', registryCache);
+      const systemDir = await handle.getDirectoryHandle(WESH_SYSTEM_DIR);
+      const metaDir = await systemDir.getDirectoryHandle(METADATA_DIR);
+      await this.scanRegistryRecursive(metaDir, '', registryCache);
     } catch {
-      // No registry dir
+      // No metadata dir
     }
 
     this.mounts.push({ path: normalizedPath, handle, readOnly: !!readOnly, registryCache });
@@ -461,7 +463,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const mount = this.findMount({ path: normalized });
 
     for await (const [name, entry] of dirHandle.entries()) {
-      if (name === REGISTRY_DIR_NAME) continue; 
+      if (name === WESH_SYSTEM_DIR) continue; 
       
       let type: WeshFileType = entry.kind === 'directory' ? 'directory' : 'file';
       if (mount) {
@@ -552,10 +554,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   private async saveRegistryEntry(mount: MountEntry, relPath: string, entry: RegistryEntry) {
     if (mount.readOnly) return;
-    const regDir = await mount.handle.getDirectoryHandle(REGISTRY_DIR_NAME, { create: true });
+    
+    const systemDir = await mount.handle.getDirectoryHandle(WESH_SYSTEM_DIR, { create: true });
+    const metaDir = await systemDir.getDirectoryHandle(METADATA_DIR, { create: true });
+    
     const parts = relPath.split('/');
     const fileName = parts.pop()!;
-    let currentDir = regDir;
+    let currentDir = metaDir;
     for (const part of parts) {
        currentDir = await currentDir.getDirectoryHandle(part, { create: true });
     }
@@ -569,10 +574,11 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   private async deleteRegistryEntry(mount: MountEntry, relPath: string) {
      if (mount.readOnly) return;
      try {
-       const regDir = await mount.handle.getDirectoryHandle(REGISTRY_DIR_NAME);
+       const systemDir = await mount.handle.getDirectoryHandle(WESH_SYSTEM_DIR);
+       const metaDir = await systemDir.getDirectoryHandle(METADATA_DIR);
        const parts = relPath.split('/');
        const fileName = parts.pop()!;
-       let currentDir = regDir;
+       let currentDir = metaDir;
        for (const part of parts) {
          currentDir = await currentDir.getDirectoryHandle(part);
        }
