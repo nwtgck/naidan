@@ -42,19 +42,19 @@ async function loadVolumes() {
 async function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement;
   if (!target.files || target.files.length === 0) return;
-  
+
   isCreating.value = true;
   try {
     const files = target.files;
     // webkitRelativePath is like "FolderName/Sub/File.txt"
     const firstFile = files[0];
     const folderName = firstFile.webkitRelativePath.split('/')[0] || 'Imported Folder';
-    
+
     await storageService.createVolumeFromFiles({
       name: folderName,
       files: files
     });
-    
+
     await loadVolumes();
     addToast({ message: `Volume "${folderName}" imported successfully` });
   } catch (e) {
@@ -68,7 +68,7 @@ async function handleFileSelect(event: Event) {
 
 async function createVolume(type: 'opfs' | 'host') {
   if (isCreating.value) return;
-  
+
   if (type === 'host') {
     // @ts-ignore
     if (!window.showDirectoryPicker) {
@@ -166,6 +166,13 @@ async function deleteVolume(vol: Volume) {
 onMounted(() => {
   loadVolumes();
 });
+
+
+defineExpose({
+  __testOnly: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>
@@ -186,7 +193,7 @@ onMounted(() => {
         <span>{{ progress?.processed }} / {{ progress?.total }}</span>
       </div>
       <div class="h-1.5 w-full bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
-        <div 
+        <div
           class="h-full bg-blue-600 transition-all duration-300"
           :style="{ width: `${progress ? (progress.processed / progress.total) * 100 : 0}%` }"
         ></div>
@@ -243,9 +250,9 @@ onMounted(() => {
             <h3 class="font-bold text-gray-800 dark:text-white text-sm">{{ vol.name }}</h3>
             <div class="flex items-center gap-2 mt-1">
               <span class="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-md"
-                :class="vol.type === 'host' 
-                  ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
-                  : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'"
+                    :class="vol.type === 'host'
+                      ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
+                      : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'"
               >
                 {{ vol.type === 'host' ? 'Linked' : 'Copied' }}
               </span>

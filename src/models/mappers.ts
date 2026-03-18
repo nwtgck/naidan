@@ -842,6 +842,20 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
     experimental: experimental ? {
       markdownRendering: experimental.markdownRendering
     } : undefined,
+    mounts: (domain.mounts || []).map(m => {
+      switch (m.type) {
+      case 'volume':
+        return {
+          type: 'volume',
+          volumeId: m.volumeId,
+          mountPath: m.mountPath,
+        };
+      default: {
+        const _ex: never = m;
+        throw new Error(`Unhandled mount type: ${(_ex as { type: string }).type}`);
+      }
+      }
+    }),
   };
 };
 

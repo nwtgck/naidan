@@ -124,6 +124,7 @@ const mockSettings: Settings = {
   autoTitleEnabled: true,
   storageType: 'local',
   providerProfiles: [],
+  mounts: [],
   lmParameters: EMPTY_LM_PARAMETERS,
 };
 

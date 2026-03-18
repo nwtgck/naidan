@@ -950,14 +950,14 @@ export class OPFSStorageProvider extends IStorageProvider {
       const file = files[i];
       const pathParts = file.webkitRelativePath.split('/');
       const relativePathParts = pathParts.length > 1 ? pathParts.slice(1) : [file.name];
-      
+
       const fileName = relativePathParts.pop()!;
       let currentDir = volumeDir;
-      
+
       for (const part of relativePathParts) {
         currentDir = await currentDir.getDirectoryHandle(part, { create: true });
       }
-      
+
       const fileHandle = await currentDir.getFileHandle(fileName, { create: true }) as FileSystemFileHandleWithWritable;
       const writable = await fileHandle.createWritable();
       await writable.write(await file.arrayBuffer());
