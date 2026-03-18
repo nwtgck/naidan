@@ -30,6 +30,7 @@ const mockSettings = {
   endpointType: 'openai' as const,
   endpointUrl: 'http://localhost',
   storageType: 'local' as const,
+  mounts: [],
   autoTitleEnabled: true,
   defaultModelId: 'gpt-3.5-turbo',
 };

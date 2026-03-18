@@ -25,6 +25,7 @@ const mockUpdateProviderProfiles = vi.fn();
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
     settings: ref({ storageType: 'local', providerProfiles: [] }),
+    mounts: [],
     availableModels: ref(['model-a', 'model-b']),
     isFetchingModels: ref(false),
     save: mockSave,
@@ -93,6 +94,7 @@ const mockSettings = {
   defaultModelId: 'gpt-4',
   autoTitleEnabled: true,
   storageType: 'local',
+  mounts: [],
   providerProfiles: [] as ProviderProfile[],
 };
 
@@ -188,6 +190,7 @@ describe('StorageTab.vue Tests', () => {
       // Ensure useSettings.save will call switchProvider
       vi.mocked(useSettings).mockReturnValue({
         settings: ref({ ...mockSettings, storageType: 'local' }),
+        mounts: [],
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
@@ -321,6 +324,7 @@ describe('StorageTab.vue Tests', () => {
     it('renders storage providers and highlights active one', async () => {
       const wrapper = mount(StorageTab, {
         props: { storageType: 'local' },
+        mounts: [],
         global: globalMocks
       });
       await flushPromises();
@@ -351,6 +355,7 @@ describe('StorageTab.vue Tests', () => {
       mockShowConfirm.mockResolvedValue(true);
       const wrapper = mount(StorageTab, {
         props: { storageType: 'local' },
+        mounts: [],
         global: globalMocks
       });
       await flushPromises();
@@ -369,6 +374,7 @@ describe('StorageTab.vue Tests', () => {
       mockShowConfirm.mockResolvedValue(true);
       const wrapper = mount(StorageTab, {
         props: { storageType: 'local' },
+        mounts: [],
         global: globalMocks
       });
       await flushPromises();
@@ -480,6 +486,7 @@ describe('StorageTab.vue Tests', () => {
 
       vi.mocked(useSettings).mockReturnValue({
         settings: { value: { storageType: 'local', providerProfiles: [], endpointUrl: '' } } as any,
+        mounts: [],
         save: mockSaveFail,
         updateProviderProfiles: vi.fn(),
         initialized: { value: true } as any,

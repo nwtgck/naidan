@@ -57,6 +57,7 @@ describe('useChat Error Handling', () => {
       autoTitleEnabled: false,
       storageType: 'local',
       providerProfiles: [],
+      mounts: [],
       heavyContentAlertDismissed: true,
     });
   });

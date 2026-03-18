@@ -55,6 +55,7 @@ describe('useChat System Prompt Clear Policy', () => {
       autoTitleEnabled: false,
       storageType: 'local',
       providerProfiles: [],
+      mounts: [],
     });
   });
 

@@ -65,6 +65,7 @@ describe('useChat Settings Resolution Policy', () => {
       autoTitleEnabled: false,
       storageType: 'local',
       providerProfiles: [],
+      mounts: [],
     });
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'other-gpt', 'pinned-model', 'model-a', 'model-b']);
