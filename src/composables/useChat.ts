@@ -25,7 +25,7 @@ import {
 } from '@/utils/image-generation';
 
 import { useChatTools } from './useChatTools';
-import { ALL_TOOLS } from '@/services/tools/registry';
+import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 
 const rootItems = ref<SidebarItem[]>([]);
@@ -1032,7 +1032,10 @@ export function useChat() {
       let lastSave = 0;
       let isSaving = false;
       const { enabledToolNames } = useChatTools();
-      const enabledTools = ALL_TOOLS.filter(t => enabledToolNames.value.includes(t.name));
+      const enabledTools = await getEnabledTools({
+        enabledNames: enabledToolNames.value,
+        settings: _settings.value,
+      });
 
       const generationState = {
         currentAssistantNode: assistantNode,

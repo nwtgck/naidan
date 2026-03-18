@@ -1,11 +1,5 @@
 import { Wesh } from './wesh';
-import type { WeshFileHandle } from './wesh/types';
-
-export interface WeshMount {
-  path: string;
-  handle: FileSystemDirectoryHandle;
-  readOnly: boolean;
-}
+import type { WeshFileHandle, WeshMount } from './wesh/types';
 
 export class WeshService {
   private static instance: WeshService | undefined;
@@ -18,6 +12,17 @@ export class WeshService {
       WeshService.instance = new WeshService();
     }
     return WeshService.instance;
+  }
+
+  isInitialized(): boolean {
+    return !!this.shell;
+  }
+
+  getWeshInstance(): Wesh {
+    if (!this.shell) {
+      throw new Error('WeshService not initialized');
+    }
+    return this.shell;
   }
 
   /**

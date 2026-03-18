@@ -180,6 +180,12 @@ export interface WeshIVirtualFileSystem {
   unregisterSpecialFile(options: { path: string }): void;
 }
 
+export interface WeshMount {
+  path: string;
+  handle: FileSystemDirectoryHandle;
+  readOnly: boolean;
+}
+
 // --- Shell / Command Execution Context ---
 
 export interface WeshCommandResult {
