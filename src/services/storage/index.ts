@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot, BinaryObject } from '@/models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/models/types';
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
@@ -312,6 +312,36 @@ export class StorageService {
       this.handleStorageError(e, 'deleteBinaryObject');
       throw e;
     }
+  }
+
+  // --- Volume Management ---
+
+  listVolumes(): AsyncIterable<Volume> {
+    return this.getProvider().listVolumes();
+  }
+
+  async createVolume(params: {
+    name: string;
+    type: VolumeType;
+    sourceHandle: FileSystemDirectoryHandle;
+  }): Promise<Volume> {
+    return this.getProvider().createVolume(params);
+  }
+
+  async createVolumeFromFiles(params: {
+    name: string;
+    files: FileList;
+    onProgress?: (progress: { processed: number; total: number }) => void;
+  }): Promise<Volume> {
+    return this.getProvider().createVolumeFromFiles(params);
+  }
+
+  async getVolumeDirectoryHandle(params: { volumeId: string }): Promise<FileSystemDirectoryHandle | null> {
+    return this.getProvider().getVolumeDirectoryHandle(params);
+  }
+
+  async deleteVolume(params: { volumeId: string }): Promise<void> {
+    return this.getProvider().deleteVolume(params);
   }
 
   async switchProvider(type: 'local' | 'opfs' | 'memory') {

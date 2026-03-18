@@ -933,6 +933,51 @@ export class OPFSStorageProvider extends IStorageProvider {
     return volumeToDomain(volumeDto);
   }
 
+  async createVolumeFromFiles(params: {
+    name: string;
+    files: FileList;
+  }): Promise<Volume> {
+    const { name, files } = params;
+    const id = generateId();
+    const createdAt = Date.now();
+    const shard = this.getVolumeShardPath({ id });
+
+    const shardDir = await this.getVolumeShardDir({ shard });
+    const volumeDir = await shardDir.getDirectoryHandle(id, { create: true });
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      // webkitRelativePath: "RootFolder/Sub/File.txt" -> we want "Sub/File.txt"
+      const pathParts = file.webkitRelativePath.split('/');
+      const relativePathParts = pathParts.length > 1 ? pathParts.slice(1) : [file.name];
+      
+      const fileName = relativePathParts.pop()!;
+      let currentDir = volumeDir;
+      
+      for (const part of relativePathParts) {
+        currentDir = await currentDir.getDirectoryHandle(part, { create: true });
+      }
+      
+      const fileHandle = await currentDir.getFileHandle(fileName, { create: true }) as FileSystemFileHandleWithWritable;
+      const writable = await fileHandle.createWritable();
+      await writable.write(await file.arrayBuffer());
+      await writable.close();
+    }
+
+    const volumeDto: VolumeDto = {
+      type: 'opfs',
+      id,
+      name,
+      createdAt,
+    };
+
+    const index = await this.loadVolumeShardIndex({ shard });
+    index.volumes[id] = volumeDto;
+    await this.saveVolumeShardIndex({ shard, index });
+
+    return volumeToDomain(volumeDto);
+  }
+
   async getVolumeDirectoryHandle(params: { volumeId: string }): Promise<FileSystemDirectoryHandle | null> {
     const { volumeId } = params;
     try {

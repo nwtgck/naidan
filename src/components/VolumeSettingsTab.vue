@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { storageService } from '@/services/storage';
+import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import type { Volume } from '@/models/types';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
@@ -9,6 +10,7 @@ import { HardDrive, FolderInput, Copy, Trash2, FolderOpen, Loader2 } from 'lucid
 const volumes = ref<Volume[]>([]);
 const isLoading = ref(false);
 const isCreating = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
 
 const { addToast } = useToast();
 const { showConfirm } = useConfirm();
@@ -37,38 +39,107 @@ async function loadVolumes() {
   }
 }
 
+async function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement;
+  if (!target.files || target.files.length === 0) return;
+  
+  isCreating.value = true;
+  try {
+    const files = target.files;
+    // webkitRelativePath is like "FolderName/Sub/File.txt"
+    const firstFile = files[0];
+    const folderName = firstFile.webkitRelativePath.split('/')[0] || 'Imported Folder';
+    
+    await storageService.createVolumeFromFiles({
+      name: folderName,
+      files: files
+    });
+    
+    await loadVolumes();
+    addToast({ message: `Volume "${folderName}" imported successfully` });
+  } catch (e) {
+    console.error('Failed to import volume:', e);
+    addToast({ message: `Failed to import volume: ${(e as Error).message}`, type: 'error' });
+  } finally {
+    isCreating.value = false;
+    if (fileInput.value) fileInput.value.value = '';
+  }
+}
+
 async function createVolume(type: 'opfs' | 'host') {
   if (isCreating.value) return;
   
-  try {
-    // @ts-ignore - File System Access API types might be missing in some environments
+  if (type === 'host') {
+    // @ts-ignore
     if (!window.showDirectoryPicker) {
-      addToast({ message: 'Your browser does not support File System Access API', type: 'error' });
+      addToast({ message: 'Linking external folders is not supported in this browser (File System Access API required).', type: 'error' });
       return;
     }
 
-    // @ts-ignore
-    const handle = await window.showDirectoryPicker({
-      mode: 'readwrite',
-    });
+    try {
+      // @ts-ignore
+      const handle = await window.showDirectoryPicker({
+        mode: 'readwrite',
+      });
 
-    isCreating.value = true;
-    const name = handle.name;
+      isCreating.value = true;
+      const name = handle.name;
 
-    await storageService.createVolume({
-      name,
-      type: type,
-      sourceHandle: handle,
-    });
+      await storageService.createVolume({
+        name,
+        type: 'host',
+        sourceHandle: handle,
+      });
 
-    await loadVolumes();
-    addToast({ message: `Volume "${name}" added successfully` });
-  } catch (e) {
-    if ((e as Error).name === 'AbortError') return; // User cancelled
-    console.error('Failed to create volume:', e);
-    addToast({ message: `Failed to create volume: ${(e as Error).message}`, type: 'error' });
-  } finally {
-    isCreating.value = false;
+      await loadVolumes();
+      addToast({ message: `Volume "${name}" linked successfully` });
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+      console.error('Failed to link volume:', e);
+      addToast({ message: `Failed to link volume: ${(e as Error).message}`, type: 'error' });
+    } finally {
+      isCreating.value = false;
+    }
+    return;
+  }
+
+  // OPFS Import Logic
+  const isOPFSSupported = await checkOPFSSupport();
+  if (!isOPFSSupported) {
+    addToast({ message: 'Origin Private File System is not supported in this browser.', type: 'error' });
+    return;
+  }
+
+  // @ts-ignore
+  if (window.showDirectoryPicker) {
+    // Use File System Access API for better UX
+    try {
+      // @ts-ignore
+      const handle = await window.showDirectoryPicker({
+        mode: 'read', // Read-only is enough for copy source
+      });
+
+      isCreating.value = true;
+      const name = handle.name;
+
+      await storageService.createVolume({
+        name,
+        type: 'opfs',
+        sourceHandle: handle,
+      });
+
+      await loadVolumes();
+      addToast({ message: `Volume "${name}" imported successfully` });
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+      console.error('Failed to import volume:', e);
+      addToast({ message: `Failed to import volume: ${(e as Error).message}`, type: 'error' });
+    } finally {
+      isCreating.value = false;
+    }
+  } else {
+    // Fallback to <input type="file" webkitdirectory>
+    fileInput.value?.click();
   }
 }
 
@@ -99,6 +170,15 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+    <input
+      type="file"
+      ref="fileInput"
+      webkitdirectory
+      directory
+      multiple
+      class="hidden"
+      @change="handleFileSelect"
+    />
     <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
       <div class="flex items-center gap-2">
         <HardDrive class="w-5 h-5 text-blue-500" />

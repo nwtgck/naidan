@@ -26,6 +26,12 @@ export abstract class IStorageProvider {
     sourceHandle: FileSystemDirectoryHandle;
   }): Promise<Volume>;
 
+  abstract createVolumeFromFiles(params: {
+    name: string;
+    files: FileList;
+    onProgress?: (progress: { processed: number; total: number }) => void;
+  }): Promise<Volume>;
+
   abstract getVolumeDirectoryHandle(params: {
     volumeId: string;
   }): Promise<FileSystemDirectoryHandle | null>;
