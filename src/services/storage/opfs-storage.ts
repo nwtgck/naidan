@@ -863,15 +863,24 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   private async copyDirectory({ source, destination }: { source: FileSystemDirectoryHandle; destination: FileSystemDirectoryHandle }): Promise<void> {
     for await (const entry of source.values()) {
-      if (entry.kind === 'file') {
+      switch (entry.kind) {
+      case 'file': {
         const file = await (entry as FileSystemFileHandle).getFile();
         const destFile = await destination.getFileHandle(entry.name, { create: true }) as FileSystemFileHandleWithWritable;
         const writable = await destFile.createWritable();
         await writable.write(await file.arrayBuffer());
         await writable.close();
-      } else if (entry.kind === 'directory') {
+        break;
+      }
+      case 'directory': {
         const newDestSubDir = await destination.getDirectoryHandle(entry.name, { create: true });
         await this.copyDirectory({ source: entry as FileSystemDirectoryHandle, destination: newDestSubDir });
+        break;
+      }
+      default: {
+        const _ex: never = entry.kind;
+        throw new Error(`Unhandled entry kind: ${(_ex as { kind: string }).kind}`);
+      }
       }
     }
   }
@@ -881,11 +890,20 @@ export class OPFSStorageProvider extends IStorageProvider {
     try {
       const baseDir = await this.getVolumesBaseDir();
       for await (const shardEntry of baseDir.values()) {
-        if (shardEntry.kind === 'directory') {
+        switch (shardEntry.kind) {
+        case 'directory': {
           const index = await this.loadVolumeShardIndex({ shard: shardEntry.name });
           for (const volDto of Object.values(index.volumes)) {
             yield volumeToDomain(volDto);
           }
+          break;
+        }
+        case 'file':
+          break;
+        default: {
+          const _ex: never = shardEntry.kind;
+          throw new Error(`Unhandled entry kind: ${(_ex as { kind: string }).kind}`);
+        }
         }
       }
     } catch (e) {
@@ -905,7 +923,8 @@ export class OPFSStorageProvider extends IStorageProvider {
 
     let volumeDto: VolumeDto;
 
-    if (type === 'opfs') {
+    switch (type) {
+    case 'opfs': {
       const shardDir = await this.getVolumeShardDir({ shard });
       const volumeDir = await shardDir.getDirectoryHandle(id, { create: true });
       await this.copyDirectory({ source: sourceHandle, destination: volumeDir });
@@ -916,7 +935,9 @@ export class OPFSStorageProvider extends IStorageProvider {
         name,
         createdAt,
       };
-    } else {
+      break;
+    }
+    case 'host': {
       await this.hostVolumeDB.put({ id, handle: sourceHandle });
       volumeDto = {
         type: 'host',
@@ -924,6 +945,12 @@ export class OPFSStorageProvider extends IStorageProvider {
         name,
         createdAt,
       };
+      break;
+    }
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled volume type: ${(_ex as { type: string }).type}`);
+    }
     }
 
     const index = await this.loadVolumeShardIndex({ shard });
@@ -991,12 +1018,17 @@ export class OPFSStorageProvider extends IStorageProvider {
 
       if (!volume) return null;
 
-      if (volume.type === 'opfs') {
+      switch (volume.type) {
+      case 'opfs': {
         const shardDir = await this.getVolumeShardDir({ shard });
         return await shardDir.getDirectoryHandle(volumeId);
-      } else {
-        const handle = await this.hostVolumeDB.get({ id: volumeId });
-        return handle || null;
+      }
+      case 'host':
+        return await this.hostVolumeDB.get({ id: volumeId }) || null;
+      default: {
+        const _ex: never = volume.type;
+        throw new Error(`Unhandled volume type: ${(_ex as { type: string }).type}`);
+      }
       }
     } catch (e) {
       console.error('Failed to get volume directory handle:', e);
@@ -1013,11 +1045,19 @@ export class OPFSStorageProvider extends IStorageProvider {
       const volume = index.volumes[volumeId];
 
       if (volume) {
-        if (volume.type === 'opfs') {
+        switch (volume.type) {
+        case 'opfs': {
           const shardDir = await this.getVolumeShardDir({ shard });
           await shardDir.removeEntry(volumeId, { recursive: true });
-        } else {
+          break;
+        }
+        case 'host':
           await this.hostVolumeDB.delete({ id: volumeId });
+          break;
+        default: {
+          const _ex: never = volume.type;
+          throw new Error(`Unhandled volume type: ${(_ex as { type: string }).type}`);
+        }
         }
 
         delete index.volumes[volumeId];

@@ -886,18 +886,24 @@ export const volumeToDomain = (dto: VolumeDto): Volume => ({
 });
 
 export const volumeToDto = (domain: Volume): VolumeDto => {
-  if (domain.type === 'opfs') {
+  switch (domain.type) {
+  case 'opfs':
     return {
       type: 'opfs',
       id: domain.id,
       name: domain.name,
       createdAt: domain.createdAt,
     };
+  case 'host':
+    return {
+      type: 'host',
+      id: domain.id,
+      name: domain.name,
+      createdAt: domain.createdAt,
+    };
+  default: {
+    const _ex: never = domain.type;
+    throw new Error(`Unhandled volume type: ${(_ex as { type: string }).type}`);
   }
-  return {
-    type: 'host',
-    id: domain.id,
-    name: domain.name,
-    createdAt: domain.createdAt,
-  };
+  }
 };

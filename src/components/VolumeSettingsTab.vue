@@ -69,15 +69,16 @@ async function handleFileSelect(event: Event) {
 async function createVolume(type: 'opfs' | 'host') {
   if (isCreating.value) return;
 
-  if (type === 'host') {
-    // @ts-ignore
+  switch (type) {
+  case 'host': {
+    // @ts-expect-error: File System Access API
     if (!window.showDirectoryPicker) {
       addToast({ message: 'Linking external folders is not supported in this browser (File System Access API required).', type: 'error' });
       return;
     }
 
     try {
-      // @ts-ignore
+      // @ts-expect-error: File System Access API
       const handle = await window.showDirectoryPicker({
         mode: 'readwrite',
       });
@@ -102,6 +103,14 @@ async function createVolume(type: 'opfs' | 'host') {
     }
     return;
   }
+  case 'opfs':
+    // OPFS Import Logic continues...
+    break;
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled volume type: ${(_ex as { type: string }).type}`);
+  }
+  }
 
   // OPFS Import Logic
   const isOPFSSupported = await checkOPFSSupport();
@@ -110,11 +119,11 @@ async function createVolume(type: 'opfs' | 'host') {
     return;
   }
 
-  // @ts-ignore
+  // @ts-expect-error: File System Access API
   if (window.showDirectoryPicker) {
     // Use File System Access API for better UX
     try {
-      // @ts-ignore
+      // @ts-expect-error: File System Access API
       const handle = await window.showDirectoryPicker({
         mode: 'read', // Read-only is enough for copy source
       });
