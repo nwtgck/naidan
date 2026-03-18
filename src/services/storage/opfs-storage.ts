@@ -936,8 +936,9 @@ export class OPFSStorageProvider extends IStorageProvider {
   async createVolumeFromFiles(params: {
     name: string;
     files: FileList;
+    onProgress?: (progress: { processed: number; total: number }) => void;
   }): Promise<Volume> {
-    const { name, files } = params;
+    const { name, files, onProgress } = params;
     const id = generateId();
     const createdAt = Date.now();
     const shard = this.getVolumeShardPath({ id });
@@ -947,7 +948,6 @@ export class OPFSStorageProvider extends IStorageProvider {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      // webkitRelativePath: "RootFolder/Sub/File.txt" -> we want "Sub/File.txt"
       const pathParts = file.webkitRelativePath.split('/');
       const relativePathParts = pathParts.length > 1 ? pathParts.slice(1) : [file.name];
       
@@ -962,6 +962,10 @@ export class OPFSStorageProvider extends IStorageProvider {
       const writable = await fileHandle.createWritable();
       await writable.write(await file.arrayBuffer());
       await writable.close();
+
+      if (onProgress) {
+        onProgress({ processed: i + 1, total: files.length });
+      }
     }
 
     const volumeDto: VolumeDto = {

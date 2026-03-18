@@ -179,6 +179,20 @@ onMounted(() => {
       class="hidden"
       @change="handleFileSelect"
     />
+
+    <div v-if="isCreating" class="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-900/30">
+      <div class="flex items-center justify-between text-xs font-bold text-blue-700 dark:text-blue-300 mb-2">
+        <span>Copying files...</span>
+        <span>{{ progress?.processed }} / {{ progress?.total }}</span>
+      </div>
+      <div class="h-1.5 w-full bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
+        <div 
+          class="h-full bg-blue-600 transition-all duration-300"
+          :style="{ width: `${progress ? (progress.processed / progress.total) * 100 : 0}%` }"
+        ></div>
+      </div>
+    </div>
+
     <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
       <div class="flex items-center gap-2">
         <HardDrive class="w-5 h-5 text-blue-500" />
