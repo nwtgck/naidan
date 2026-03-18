@@ -1,0 +1,20 @@
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+
+export const sleepCommandDefinition: WeshCommandDefinition = {
+  meta: {
+    name: 'sleep',
+    description: 'Delay for a specified amount of time',
+    usage: 'sleep number',
+  },
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const seconds = parseFloat(context.args[0] || '0');
+    if (isNaN(seconds)) {
+      const text = context.text();
+      await text.error({ text: `sleep: invalid time interval '${context.args[0]}'\n` });
+      return { exitCode: 1 };
+    }
+
+    await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+    return { exitCode: 0 };
+  },
+};
