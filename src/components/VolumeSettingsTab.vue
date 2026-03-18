@@ -17,7 +17,6 @@ import {
   Settings2,
   Lock,
   Unlock,
-  AlertCircle,
   Check
 } from 'lucide-vue-next';
 
@@ -66,7 +65,7 @@ async function loadData() {
     mounts.value = settings?.mounts || [];
   } catch (e) {
     console.error('Failed to load volumes:', e);
-    addToast({ message: 'Failed to load volumes', type: 'error' });
+    addToast({ message: 'Failed to load volumes'});
   } finally {
     isLoading.value = false;
   }
@@ -94,6 +93,7 @@ async function handleFileSelect(event: Event) {
   try {
     const files = target.files;
     const firstFile = files[0];
+    if (!firstFile) return;
     const folderName = firstFile.webkitRelativePath.split('/')[0] || 'Imported Folder';
 
     const vol = await storageService.createVolumeFromFiles({
@@ -114,7 +114,7 @@ async function handleFileSelect(event: Event) {
     addToast({ message: `Volume "${folderName}" imported and mounted` });
   } catch (e) {
     console.error('Failed to import volume:', e);
-    addToast({ message: `Failed to import volume: ${(e as Error).message}`, type: 'error' });
+    addToast({ message: `Failed to import volume: ${(e as Error).message}`});
   } finally {
     isCreating.value = false;
     progress.value = null;
@@ -128,7 +128,7 @@ async function createVolume(type: 'opfs' | 'host') {
   if (type === 'host') {
     // @ts-expect-error: File System Access API
     if (!window.showDirectoryPicker) {
-      addToast({ message: 'Linking external folders is not supported in this browser.', type: 'error' });
+      addToast({ message: 'Linking external folders is not supported in this browser.'});
       return;
     }
 
@@ -154,7 +154,7 @@ async function createVolume(type: 'opfs' | 'host') {
       addToast({ message: `Volume "${name}" linked and mounted` });
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
-      addToast({ message: `Failed to link volume: ${(e as Error).message}`, type: 'error' });
+      addToast({ message: `Failed to link volume: ${(e as Error).message}`});
     } finally {
       isCreating.value = false;
     }
@@ -163,7 +163,7 @@ async function createVolume(type: 'opfs' | 'host') {
 
   const isOPFSSupported = await checkOPFSSupport();
   if (!isOPFSSupported) {
-    addToast({ message: 'OPFS is not supported in this browser.', type: 'error' });
+    addToast({ message: 'OPFS is not supported in this browser.'});
     return;
   }
 
@@ -191,7 +191,7 @@ async function createVolume(type: 'opfs' | 'host') {
       addToast({ message: `Volume "${name}" imported and mounted` });
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
-      addToast({ message: `Failed to import volume: ${(e as Error).message}`, type: 'error' });
+      addToast({ message: `Failed to import volume: ${(e as Error).message}`});
     } finally {
       isCreating.value = false;
     }
@@ -219,7 +219,7 @@ async function saveMountSettings(volId: string) {
     );
 
     if (isCollision) {
-      addToast({ message: 'Mount path already in use', type: 'error' });
+      addToast({ message: 'Mount path already in use'});
       return;
     }
 
@@ -239,7 +239,7 @@ async function saveMountSettings(volId: string) {
     addToast({ message: 'Mount settings updated' });
   } catch (e) {
     console.error('Failed to update mount settings:', e);
-    addToast({ message: 'Failed to update mount settings', type: 'error' });
+    addToast({ message: 'Failed to update mount settings'});
   }
 }
 
@@ -259,7 +259,7 @@ async function toggleMount(vol: Volume) {
     }
     await loadData();
   } catch (e) {
-    addToast({ message: 'Failed to update mount status', type: 'error' });
+    addToast({ message: 'Failed to update mount status'});
   }
 }
 
@@ -279,7 +279,7 @@ async function deleteVolume(vol: Volume) {
     await loadData();
     addToast({ message: 'Volume deleted' });
   } catch (e) {
-    addToast({ message: 'Failed to delete volume', type: 'error' });
+    addToast({ message: 'Failed to delete volume'});
   }
 }
 

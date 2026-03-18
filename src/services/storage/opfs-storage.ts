@@ -11,7 +11,6 @@ import {
   HierarchySchemaDto,
   ChatContentSchemaDto,
   type VolumeDto,
-  type VolumeTypeDto,
   type VolumeIndexDto,
   VolumeIndexSchemaDto,
 } from '@/models/dto';
@@ -773,6 +772,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         settings: settings || {
           autoTitleEnabled: true,
           providerProfiles: [],
+          mounts: [],
           storageType: 'opfs',
           endpointType: 'openai',
           endpointUrl: '',
@@ -975,6 +975,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+      if (!file) continue;
       const pathParts = file.webkitRelativePath.split('/');
       const relativePathParts = pathParts.length > 1 ? pathParts.slice(1) : [file.name];
 
@@ -1026,8 +1027,8 @@ export class OPFSStorageProvider extends IStorageProvider {
       case 'host':
         return await this.hostVolumeDB.get({ id: volumeId }) || null;
       default: {
-        const _ex: never = volume.type;
-        throw new Error(`Unhandled volume type: ${(_ex as { type: string }).type}`);
+        const _ex: never = volume;
+        throw new Error(`Unhandled volume type: ${(_ex as any).type}`);
       }
       }
     } catch (e) {
@@ -1055,8 +1056,8 @@ export class OPFSStorageProvider extends IStorageProvider {
           await this.hostVolumeDB.delete({ id: volumeId });
           break;
         default: {
-          const _ex: never = volume.type;
-          throw new Error(`Unhandled volume type: ${(_ex as { type: string }).type}`);
+          const _ex: never = volume;
+          throw new Error(`Unhandled volume type: ${(_ex as any).type}`);
         }
         }
 

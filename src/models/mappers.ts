@@ -843,16 +843,18 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
       markdownRendering: experimental.markdownRendering
     } : undefined,
     mounts: (domain.mounts || []).map(m => {
-      switch (m.type) {
+      const type = m.type;
+      switch (type) {
       case 'volume':
         return {
           type: 'volume',
           volumeId: m.volumeId,
           mountPath: m.mountPath,
+          readOnly: m.readOnly,
         };
       default: {
-        const _ex: never = m;
-        throw new Error(`Unhandled mount type: ${(_ex as { type: string }).type}`);
+        const _ex: never = type;
+        throw new Error(`Unhandled mount type: ${_ex}`);
       }
       }
     }),
@@ -875,8 +877,8 @@ export const binaryObjectToDto = (domain: BinaryObject): BinaryObjectDto => ({
   name: domain.name,
 });
 
-import type { Volume, VolumeType } from '@/models/types';
-import type { VolumeDto, VolumeTypeDto } from '@/models/dto';
+import type { Volume } from '@/models/types';
+import type { VolumeDto } from '@/models/dto';
 
 export const volumeToDomain = (dto: VolumeDto): Volume => ({
   id: dto.id,
