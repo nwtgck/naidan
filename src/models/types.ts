@@ -278,6 +278,7 @@ export interface Volume {
 
 export interface MountBase {
   mountPath: string;
+  readOnly: boolean;
 }
 
 export interface MountVolume extends MountBase {

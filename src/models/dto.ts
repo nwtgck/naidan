@@ -393,6 +393,7 @@ export const MountVolumeSchemaDto = z.object({
   type: z.literal('volume'),
   volumeId: z.string(),
   mountPath: z.string(),
+  readOnly: z.boolean().default(false),
 });
 
 export const MountSchemaDto = z.discriminatedUnion('type', [

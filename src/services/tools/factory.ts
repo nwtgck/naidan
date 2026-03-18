@@ -27,12 +27,12 @@ export async function getEnabledTools({
 
     case 'shell_execute': {
       const weshService = await WeshService.getInstance();
-      
+
       // Initialize Wesh if not already done
       if (!weshService.isInitialized()) {
         let rootHandle: FileSystemDirectoryHandle;
         const opfsSupported = await checkOPFSSupport();
-        
+
         if (opfsSupported) {
           const root = await navigator.storage.getDirectory();
           const weshDir = await root.getDirectoryHandle('naidan-wesh-runtime', { create: true });
@@ -42,7 +42,7 @@ export async function getEnabledTools({
           const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem');
           rootHandle = new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle;
         }
-        
+
         await weshService.init({ rootHandle });
       }
 

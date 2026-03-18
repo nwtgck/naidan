@@ -344,6 +344,33 @@ export class StorageService {
     return this.getProvider().deleteVolume(params);
   }
 
+  async mountVolume({ volumeId, mountPath, readOnly }: {
+    volumeId: string;
+    mountPath: string;
+    readOnly: boolean;
+  }): Promise<void> {
+    await this.updateSettings((settings) => {
+      if (!settings) throw new Error('Settings not initialized');
+      const exists = settings.mounts.some(m => m.type === 'volume' && m.volumeId === volumeId);
+      if (exists) return settings;
+
+      return {
+        ...settings,
+        mounts: [...settings.mounts, { type: 'volume', volumeId, mountPath, readOnly }],
+      };
+    });
+  }
+
+  async unmountVolume({ volumeId }: { volumeId: string }): Promise<void> {
+    await this.updateSettings((settings) => {
+      if (!settings) return null as unknown as Settings;
+      return {
+        ...settings,
+        mounts: settings.mounts.filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
+      };
+    });
+  }
+
   async switchProvider(type: 'local' | 'opfs' | 'memory') {
     try {
       await this.synchronizer.withLock(async () => {

@@ -79,7 +79,7 @@ export function createWeshTool({
     ? `\n\nMounted directories:\n${mounts.map(m => `- ${m.path} (${m.readOnly ? 'read-only' : 'read-write'})`).join('\n')}`
     : '';
 
-  const toolDescription = description ?? 
+  const toolDescription = description ??
     `Execute shell scripts to perform file operations, system exploration, and data processing. You can use standard Unix-like commands (ls, cat, grep, etc.). Use the "help" command to see available utilities. This is useful for reading multiple files at once or performing complex file manipulations.${mountList}`;
 
   const WeshArgsSchema = z.object({
