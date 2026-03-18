@@ -1,5 +1,5 @@
 import { generateId } from '@/utils/id';
-import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '@/models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/models/types';
 import {
   type ChatMetaDto,
   type ChatGroupDto,
@@ -10,6 +10,10 @@ import {
   SettingsSchemaDto,
   HierarchySchemaDto,
   ChatContentSchemaDto,
+  type VolumeDto,
+  type VolumeTypeDto,
+  type VolumeIndexDto,
+  VolumeIndexSchemaDto,
 } from '@/models/dto';
 import {
   chatToDomain,
@@ -25,6 +29,7 @@ import {
   chatContentToDomain,
   buildSidebarItemsFromHierarchy,
   binaryObjectToDomain,
+  volumeToDomain,
 } from '@/models/mappers';import { IStorageProvider } from './interface';
 
 import {
@@ -818,5 +823,211 @@ export class OPFSStorageProvider extends IStorageProvider {
       }
       }
     }
+  }
+
+  // --- Volume Management ---
+
+  private readonly hostVolumeDB = new HostVolumeDB();
+
+  private getVolumeShardPath({ id }: { id: string }): string {
+    return id.slice(-2).toLowerCase();
+  }
+
+  private async getVolumesBaseDir(): Promise<FileSystemDirectoryHandle> {
+    return await this.getDir('volumes');
+  }
+
+  private async getVolumeShardDir({ shard }: { shard: string }): Promise<FileSystemDirectoryHandle> {
+    const baseDir = await this.getVolumesBaseDir();
+    return await this.getDir(shard, baseDir);
+  }
+
+  private async loadVolumeShardIndex({ shard }: { shard: string }): Promise<VolumeIndexDto> {
+    try {
+      const dir = await this.getVolumeShardDir({ shard });
+      const fileHandle = await dir.getFileHandle('index.json');
+      const file = await fileHandle.getFile();
+      return VolumeIndexSchemaDto.parse(JSON.parse(await file.text()));
+    } catch {
+      return { volumes: {} };
+    }
+  }
+
+  private async saveVolumeShardIndex({ shard, index }: { shard: string; index: VolumeIndexDto }): Promise<void> {
+    const dir = await this.getVolumeShardDir({ shard });
+    const fileHandle = await dir.getFileHandle('index.json', { create: true }) as FileSystemFileHandleWithWritable;
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(index));
+    await writable.close();
+  }
+
+  private async copyDirectory({ source, destination }: { source: FileSystemDirectoryHandle; destination: FileSystemDirectoryHandle }): Promise<void> {
+    for await (const entry of source.values()) {
+      if (entry.kind === 'file') {
+        const file = await (entry as FileSystemFileHandle).getFile();
+        const destFile = await destination.getFileHandle(entry.name, { create: true }) as FileSystemFileHandleWithWritable;
+        const writable = await destFile.createWritable();
+        await writable.write(await file.arrayBuffer());
+        await writable.close();
+      } else if (entry.kind === 'directory') {
+        const newDestSubDir = await destination.getDirectoryHandle(entry.name, { create: true });
+        await this.copyDirectory({ source: entry as FileSystemDirectoryHandle, destination: newDestSubDir });
+      }
+    }
+  }
+
+  async *listVolumes(): AsyncIterable<Volume> {
+    await this.ensureRoot();
+    try {
+      const baseDir = await this.getVolumesBaseDir();
+      for await (const shardEntry of baseDir.values()) {
+        if (shardEntry.kind === 'directory') {
+          const index = await this.loadVolumeShardIndex({ shard: shardEntry.name });
+          for (const volDto of Object.values(index.volumes)) {
+            yield volumeToDomain(volDto);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[OPFSStorageProvider] Failed to list volumes', e);
+    }
+  }
+
+  async createVolume(params: {
+    name: string;
+    type: VolumeType;
+    sourceHandle: FileSystemDirectoryHandle;
+  }): Promise<Volume> {
+    const { name, type, sourceHandle } = params;
+    const id = generateId();
+    const createdAt = Date.now();
+    const shard = this.getVolumeShardPath({ id });
+
+    let volumeDto: VolumeDto;
+
+    if (type === 'opfs') {
+      const shardDir = await this.getVolumeShardDir({ shard });
+      const volumeDir = await shardDir.getDirectoryHandle(id, { create: true });
+      await this.copyDirectory({ source: sourceHandle, destination: volumeDir });
+
+      volumeDto = {
+        type: 'opfs',
+        id,
+        name,
+        createdAt,
+      };
+    } else {
+      await this.hostVolumeDB.put({ id, handle: sourceHandle });
+      volumeDto = {
+        type: 'host',
+        id,
+        name,
+        createdAt,
+      };
+    }
+
+    const index = await this.loadVolumeShardIndex({ shard });
+    index.volumes[id] = volumeDto;
+    await this.saveVolumeShardIndex({ shard, index });
+
+    return volumeToDomain(volumeDto);
+  }
+
+  async getVolumeDirectoryHandle(params: { volumeId: string }): Promise<FileSystemDirectoryHandle | null> {
+    const { volumeId } = params;
+    try {
+      const shard = this.getVolumeShardPath({ id: volumeId });
+      const index = await this.loadVolumeShardIndex({ shard });
+      const volume = index.volumes[volumeId];
+
+      if (!volume) return null;
+
+      if (volume.type === 'opfs') {
+        const shardDir = await this.getVolumeShardDir({ shard });
+        return await shardDir.getDirectoryHandle(volumeId);
+      } else {
+        const handle = await this.hostVolumeDB.get({ id: volumeId });
+        return handle || null;
+      }
+    } catch (e) {
+      console.error('Failed to get volume directory handle:', e);
+      return null;
+    }
+  }
+
+  async deleteVolume(params: { volumeId: string }): Promise<void> {
+    const { volumeId } = params;
+    const shard = this.getVolumeShardPath({ id: volumeId });
+
+    try {
+      const index = await this.loadVolumeShardIndex({ shard });
+      const volume = index.volumes[volumeId];
+
+      if (volume) {
+        if (volume.type === 'opfs') {
+          const shardDir = await this.getVolumeShardDir({ shard });
+          await shardDir.removeEntry(volumeId, { recursive: true });
+        } else {
+          await this.hostVolumeDB.delete({ id: volumeId });
+        }
+
+        delete index.volumes[volumeId];
+        await this.saveVolumeShardIndex({ shard, index });
+      }
+    } catch (e) {
+      console.error('Failed to delete volume:', e);
+    }
+  }
+}
+
+class HostVolumeDB {
+  private readonly DB_NAME = 'naidan-volumes';
+  private readonly STORE_NAME = 'handles';
+
+  async put({ id, handle }: { id: string, handle: FileSystemDirectoryHandle }): Promise<void> {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.STORE_NAME, 'readwrite');
+      const store = tx.objectStore(this.STORE_NAME);
+      const req = store.put(handle, id);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async get({ id }: { id: string }): Promise<FileSystemDirectoryHandle | undefined> {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.STORE_NAME, 'readonly');
+      const store = tx.objectStore(this.STORE_NAME);
+      const req = store.get(id);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async delete({ id }: { id: string }): Promise<void> {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(this.STORE_NAME, 'readwrite');
+      const store = tx.objectStore(this.STORE_NAME);
+      const req = store.delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  private open(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(this.DB_NAME, 1);
+      req.onupgradeneeded = (e) => {
+        const db = (e.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+          db.createObjectStore(this.STORE_NAME);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
   }
 }

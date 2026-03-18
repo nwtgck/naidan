@@ -267,6 +267,15 @@ export interface BinaryObject {
   name?: string;
 }
 
+export type VolumeType = 'opfs' | 'host';
+
+export interface Volume {
+  id: string;
+  name: string;
+  type: VolumeType;
+  createdAt: number;
+}
+
 /**
  * Storage Snapshot
  * Represents a complete snapshot of the storage for migration or backup.

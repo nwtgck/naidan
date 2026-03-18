@@ -860,3 +860,30 @@ export const binaryObjectToDto = (domain: BinaryObject): BinaryObjectDto => ({
   createdAt: domain.createdAt,
   name: domain.name,
 });
+
+import type { Volume, VolumeType } from '@/models/types';
+import type { VolumeDto, VolumeTypeDto } from '@/models/dto';
+
+export const volumeToDomain = (dto: VolumeDto): Volume => ({
+  id: dto.id,
+  name: dto.name,
+  type: dto.type,
+  createdAt: dto.createdAt,
+});
+
+export const volumeToDto = (domain: Volume): VolumeDto => {
+  if (domain.type === 'opfs') {
+    return {
+      type: 'opfs',
+      id: domain.id,
+      name: domain.name,
+      createdAt: domain.createdAt,
+    };
+  }
+  return {
+    type: 'host',
+    id: domain.id,
+    name: domain.name,
+    createdAt: domain.createdAt,
+  };
+};
