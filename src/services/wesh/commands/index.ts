@@ -33,6 +33,7 @@ import { gzipCommandDefinition } from './gzip';
 import { gunzipCommandDefinition } from './gunzip';
 import { zcatCommandDefinition } from './zcat';
 import { mkfifoCommandDefinition } from './mkfifo';
+import { sedCommandDefinition } from './sed';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -69,4 +70,5 @@ export const builtinCommands: WeshCommandDefinition[] = [
   gunzipCommandDefinition,
   zcatCommandDefinition,
   mkfifoCommandDefinition,
+  sedCommandDefinition,
 ];
