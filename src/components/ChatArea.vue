@@ -301,6 +301,8 @@ function handlePrint() {
 }
 
 function scrollToBottom(force = true) {
+  if (isProcessing.value || isThinkingActive.value || isWaitingResponse.value) return;
+
   if (container.value) {
     const { scrollTop, scrollHeight, clientHeight } = container.value;
     // Only auto-scroll if forced (new message) or already near the bottom
@@ -481,11 +483,13 @@ async function scrollToLatestUserMessage() {
 }
 
 const isInitialLoad = ref(true);
+const hasScrolledToAssistant = ref(false);
 
 watch(
   () => currentChat.value?.id,
   () => {
     isInitialLoad.value = true;
+    hasScrolledToAssistant.value = false;
   }
 );
 
@@ -513,25 +517,43 @@ watch(
       const role = lastItem.node.role;
       switch (role) {
       case 'user':
+        hasScrolledToAssistant.value = false;
         scrollToBottom();
         break;
-      case 'assistant':
+      case 'assistant': {
+        // if (!hasScrolledToAssistant.value && container.value) {
+        //   const messageId = lastItem.node.id;
+        //   // Wait a tick for the new element
+        //   await nextTick();
+        //   const el = container.value.querySelector(`#message-${messageId}`);
+        //   if (el instanceof HTMLElement) {
+        //     scrollIntoViewSafe({
+        //       container: container.value,
+        //       element: el,
+        //       behavior: 'smooth',
+        //       block: 'start'
+        //     });
+        //     hasScrolledToAssistant.value = true;
+        //   }
+        // }
+        break;
+      }
       case 'system':
       case 'tool': {
-        if (container.value) {
-          const messageId = lastItem.node.id;
-          // Wait a tick for the new element
-          await nextTick();
-          const el = container.value.querySelector(`#message-${messageId}`);
-          if (el instanceof HTMLElement) {
-            scrollIntoViewSafe({
-              container: container.value,
-              element: el,
-              behavior: 'smooth',
-              block: 'start'
-            });
-          }
-        }
+        // if (container.value) {
+        //   const messageId = lastItem.node.id;
+        //   // Wait a tick for the new element
+        //   await nextTick();
+        //   const el = container.value.querySelector(`#message-${messageId}`);
+        //   if (el instanceof HTMLElement) {
+        //     scrollIntoViewSafe({
+        //       container: container.value,
+        //       element: el,
+        //       behavior: 'smooth',
+        //       block: 'start'
+        //     });
+        //   }
+        // }
         break;
       }
       default: {
@@ -544,7 +566,7 @@ watch(
     case 'tool_group':
     case 'process_sequence':
       // Auto scroll to new AI items
-      scrollToBottom();
+      // scrollToBottom();
       break;
     default: {
       const _ex: never = itemType;
