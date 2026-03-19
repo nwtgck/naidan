@@ -6,12 +6,11 @@ import type {
   WeshASTNode,
   WeshFileHandle,
   WeshCommandNode,
-  WeshKernel,
   WeshPipelineNode,
   WeshFileType
 } from './types';
 import { WeshVFS } from './vfs';
-import { Kernel } from './kernel';
+import { WeshKernel } from './kernel';
 import { parseCommandLine } from './parser';
 import { createTextHelpers } from './utils/io';
 
@@ -65,7 +64,7 @@ export class Wesh {
     initialEnv?: Record<string, string>;
   }) {
     this.vfs = new WeshVFS({ rootHandle });
-    this.kernel = new Kernel({ vfs: this.vfs });
+    this.kernel = new WeshKernel({ vfs: this.vfs });
 
     this.env = new Map(Object.entries({
       HOME: '/',

@@ -1,3 +1,5 @@
+import type { WeshKernel } from './kernel';
+
 // --- Kernel & Process Types ---
 
 export type WeshFileType = 'file' | 'directory' | 'fifo' | 'chardev' | 'symlink';
@@ -71,59 +73,6 @@ export interface WeshProcess {
   fds: Map<number, WeshFileHandle>;
 }
 
-export interface WeshKernel {
-  /**
-   * Fork/Spawn a new process
-   * @returns PID of the new process
-   */
-  spawn(options: {
-    image: string; // Command/Executable name or path
-    args: string[];
-    env?: Map<string, string>;
-    cwd?: string;
-    fds?: Map<number, WeshFileHandle>; // Explicit FD inheritance/mapping
-  }): Promise<{ pid: number; process: WeshProcess }>;
-
-  /**
-   * Wait for a process to change state (e.g. exit)
-   */
-  wait(options: { pid: number; flags?: number }): Promise<{ pid: number; exitCode: number }>;
-
-  /**
-   * Send a signal to a process
-   */
-  kill(options: { pid: number; signal: number }): Promise<void>;
-
-  /**
-   * Create a pipe (unnamed)
-   */
-  pipe(): Promise<{ read: WeshFileHandle; write: WeshFileHandle }>;
-
-  /** Open a file (Virtual File System or Device) */
-  open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
-
-  stat(options: { path: string }): Promise<WeshStat>;
-  lstat(options: { path: string }): Promise<WeshStat>;
-
-  resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
-
-  readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
-
-  mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
-
-  symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void>;
-
-  mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
-
-  unlink(options: { path: string }): Promise<void>;
-
-  rmdir(options: { path: string }): Promise<void>;
-
-  rename(options: { oldPath: string; newPath: string }): Promise<void>;
-
-  getProcess(options: { pid: number }): WeshProcess | undefined;
-}
-
 // --- Virtual File System ---
 
 /**
@@ -168,6 +117,7 @@ export interface WeshIVirtualFileSystem {
 
   stat(options: { path: string }): Promise<WeshStat>;
   lstat(options: { path: string }): Promise<WeshStat>;
+  readlink(options: { path: string }): Promise<string>;
 
   resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
 

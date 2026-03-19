@@ -543,6 +543,36 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     return this.statFromResolvedNode({ resolved });
   }
 
+  async readlink(options: { path: string }): Promise<string> {
+    const resolved = await this.resolveNode({
+      path: options.path,
+      finalSymlinkTreatment: 'no-follow',
+      depth: 0,
+    });
+    switch (resolved.kind) {
+    case 'registry':
+      switch (resolved.resolution.entry.type) {
+      case 'symlink':
+        return resolved.resolution.entry.targetPath ?? '';
+      case 'fifo':
+      case 'chardev':
+        throw new Error(`Invalid argument: ${options.path}`);
+      default: {
+        const _ex: never = resolved.resolution.entry.type;
+        throw new Error(`Unhandled registry entry type: ${_ex}`);
+      }
+      }
+    case 'handle':
+    case 'synthetic-directory':
+    case 'special':
+      throw new Error(`Invalid argument: ${options.path}`);
+    default: {
+      const _ex: never = resolved;
+      throw new Error(`Unhandled resolved node: ${_ex}`);
+    }
+    }
+  }
+
   async resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }> {
     const resolved = await this.resolveNode({
       path: options.path,
@@ -757,7 +787,6 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       break;
     case 'handle':
     case 'synthetic-directory':
-    case 'special':
       break;
     default: {
       const _ex: never = resolved;

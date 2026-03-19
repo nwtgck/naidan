@@ -1,4 +1,5 @@
-import type { WeshKernel, WeshOpenFlags, WeshFileHandle } from '@/services/wesh/types';
+import type { WeshOpenFlags, WeshFileHandle } from '@/services/wesh/types';
+import type { WeshKernel } from '@/services/wesh/kernel';
 
 /**
  * Read the entire content of a file as a Uint8Array.

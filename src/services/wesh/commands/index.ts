@@ -37,6 +37,8 @@ import { sedCommandDefinition } from './sed';
 import { evalCommandDefinition } from './eval';
 import { execCommandDefinition } from './exec';
 import { readCommandDefinition } from './read';
+import { lnCommandDefinition } from './ln';
+import { readlinkCommandDefinition } from './readlink';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -77,4 +79,6 @@ export const builtinCommands: WeshCommandDefinition[] = [
   evalCommandDefinition,
   execCommandDefinition,
   readCommandDefinition,
+  lnCommandDefinition,
+  readlinkCommandDefinition,
 ];

@@ -1,5 +1,4 @@
 import type {
-  WeshKernel,
   WeshProcess,
   WeshFileHandle,
   WeshIVirtualFileSystem,
@@ -107,7 +106,7 @@ class PipeHandle implements WeshFileHandle {
 }
 
 
-export class Kernel implements WeshKernel {
+export class WeshKernel {
   private processes: Map<number, WeshProcess> = new Map();
   private nextPid = 1;
   private vfs: WeshIVirtualFileSystem;
@@ -195,6 +194,10 @@ export class Kernel implements WeshKernel {
 
   async lstat(options: { path: string }): Promise<WeshStat> {
     return this.vfs.lstat({ path: options.path });
+  }
+
+  async readlink(options: { path: string }): Promise<string> {
+    return this.vfs.readlink({ path: options.path });
   }
 
   async resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }> {
