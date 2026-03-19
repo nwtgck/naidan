@@ -45,11 +45,11 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       let buffer = '';
       const reader = stream.getReader();
       const allLines: string[] = [];
-      
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         if (flags.I) {
           const isBinary = value.some(byte => byte === 0);
           if (isBinary) return;
@@ -72,7 +72,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
         if (matches[i]) {
           const start = Math.max(0, i - before);
           const end = Math.min(allLines.length - 1, i + contextAfter);
-          
+
           for (let j = start; j <= end; j++) {
             let output = '';
             if (name) output += `${name}:`;

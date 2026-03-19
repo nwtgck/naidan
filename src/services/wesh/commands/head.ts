@@ -53,13 +53,13 @@ export const headCommandDefinition: WeshCommandDefinition = {
 
     const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       const reader = stream.getReader();
-      
+
       if (bytes !== undefined) {
         let bytesReadCount = 0;
         while (bytesReadCount < bytes) {
           const { done, value } = await reader.read();
           if (done) break;
-          
+
           const toRead = Math.min(value.length, bytes - bytesReadCount);
           await textOutput.print({ text: new TextDecoder().decode(value.subarray(0, toRead)) });
           bytesReadCount += toRead;
@@ -68,19 +68,19 @@ export const headCommandDefinition: WeshCommandDefinition = {
         const decoder = new TextDecoder();
         let linesProcessed = 0;
         let buffer = '';
-        
+
         while (linesProcessed < lines) {
           const { done, value } = await reader.read();
           if (done) {
             if (buffer) await textOutput.print({ text: buffer });
             break;
           }
-          
+
           buffer += decoder.decode(value, { stream: true });
           const parts = buffer.split('\n');
           // If the last part isn't complete, keep it in buffer
           buffer = parts.pop() || '';
-          
+
           for (const line of parts) {
             await textOutput.print({ text: line + '\n' });
             linesProcessed++;
@@ -114,7 +114,7 @@ export const headCommandDefinition: WeshCommandDefinition = {
             flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
           });
           // Simple wrapper to use the stream
-          await processStream({ 
+          await processStream({
             stream: new ReadableStream({
               async pull(controller) {
                 const buf = new Uint8Array(4096);

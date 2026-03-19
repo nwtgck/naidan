@@ -1028,7 +1028,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         return await this.hostVolumeDB.get({ id: volumeId }) || null;
       default: {
         const _ex: never = volume;
-        throw new Error(`Unhandled volume type: ${(_ex as any).type}`);
+        throw new Error(`Unhandled volume type: ${JSON.stringify(_ex)}`);
       }
       }
     } catch (e) {
@@ -1057,7 +1057,7 @@ export class OPFSStorageProvider extends IStorageProvider {
           break;
         default: {
           const _ex: never = volume;
-          throw new Error(`Unhandled volume type: ${(_ex as any).type}`);
+          throw new Error(`Unhandled volume type: ${JSON.stringify(_ex)}`);
         }
         }
 

@@ -125,7 +125,8 @@ async function handleFileSelect(event: Event) {
 async function createVolume(type: 'opfs' | 'host') {
   if (isCreating.value) return;
 
-  if (type === 'host') {
+  switch (type) {
+  case 'host': {
     // @ts-expect-error: File System Access API
     if (!window.showDirectoryPicker) {
       addToast({ message: 'Linking external folders is not supported in this browser.'});
@@ -158,45 +159,52 @@ async function createVolume(type: 'opfs' | 'host') {
     } finally {
       isCreating.value = false;
     }
-    return;
+    break;
   }
-
-  const isOPFSSupported = await checkOPFSSupport();
-  if (!isOPFSSupported) {
-    addToast({ message: 'OPFS is not supported in this browser.'});
-    return;
-  }
-
-  // @ts-expect-error: File System Access API
-  if (window.showDirectoryPicker) {
-    try {
-      // @ts-expect-error: File System Access API
-      const handle = await window.showDirectoryPicker({ mode: 'read' });
-      isCreating.value = true;
-      const name = handle.name;
-
-      const vol = await storageService.createVolume({
-        name,
-        type: 'opfs',
-        sourceHandle: handle,
-      });
-
-      await storageService.mountVolume({
-        volumeId: vol.id,
-        mountPath: generateUniquePath(name),
-        readOnly: true,
-      });
-
-      await loadData();
-      addToast({ message: `Volume "${name}" imported and mounted` });
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') return;
-      addToast({ message: `Failed to import volume: ${(e as Error).message}`});
-    } finally {
-      isCreating.value = false;
+  case 'opfs': {
+    const isOPFSSupported = await checkOPFSSupport();
+    if (!isOPFSSupported) {
+      addToast({ message: 'OPFS is not supported in this browser.'});
+      return;
     }
-  } else {
-    fileInput.value?.click();
+
+    // @ts-expect-error: File System Access API
+    if (window.showDirectoryPicker) {
+      try {
+        // @ts-expect-error: File System Access API
+        const handle = await window.showDirectoryPicker({ mode: 'read' });
+        isCreating.value = true;
+        const name = handle.name;
+
+        const vol = await storageService.createVolume({
+          name,
+          type: 'opfs',
+          sourceHandle: handle,
+        });
+
+        await storageService.mountVolume({
+          volumeId: vol.id,
+          mountPath: generateUniquePath(name),
+          readOnly: true,
+        });
+
+        await loadData();
+        addToast({ message: `Volume "${name}" imported and mounted` });
+      } catch (e) {
+        if ((e as Error).name === 'AbortError') return;
+        addToast({ message: `Failed to import volume: ${(e as Error).message}`});
+      } finally {
+        isCreating.value = false;
+      }
+    } else {
+      fileInput.value?.click();
+    }
+    break;
+  }
+  default: {
+    const _exhaustive: never = type;
+    throw new Error(`Unhandled volume type: ${_exhaustive}`);
+  }
   }
 }
 

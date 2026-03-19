@@ -2,6 +2,8 @@ import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } fro
 import { parseFlags } from '@/services/wesh/utils/args';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
+type CutMode = 'b' | 'c' | 'f';
+
 export const cutCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'cut',
@@ -23,7 +25,7 @@ export const cutCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     const delimiter = (flags.d as string) ?? '\t';
     const outputDelimiter = (flags['output-delimiter'] as string) ?? delimiter;
-    
+
     // Simple range parser for list (e.g., "1,3-5,7-")
     const parseList = (list: string): number[] => {
       const indices = new Set<number>();
@@ -41,7 +43,7 @@ export const cutCommandDefinition: WeshCommandDefinition = {
       return Array.from(indices).sort((a, b) => a - b);
     };
 
-    const mode = flags.b ? 'b' : flags.c ? 'c' : flags.f ? 'f' : null;
+    const mode: CutMode | null = flags.b ? 'b' : flags.c ? 'c' : flags.f ? 'f' : null;
     const listStr = (flags.b ?? flags.c ?? flags.f) as string | undefined;
 
     if (!mode) {
@@ -52,10 +54,11 @@ export const cutCommandDefinition: WeshCommandDefinition = {
     const indices = listStr ? parseList(listStr) : [];
 
     const processLine = (line: string): string | null => {
-      if (mode === 'f') {
+      switch (mode) {
+      case 'f': {
         const parts = line.split(delimiter);
         if (parts.length === 1 && line.includes(delimiter) === false && flags.s) return null;
-        
+
         const result: string[] = [];
         if (flags.complement) {
           for (let i = 1; i <= parts.length; i++) {
@@ -67,7 +70,9 @@ export const cutCommandDefinition: WeshCommandDefinition = {
           }
         }
         return result.join(outputDelimiter);
-      } else {
+      }
+      case 'b':
+      case 'c': {
         // -b or -c (simplified to character-based for this implementation)
         const chars = [...line];
         const result: string[] = [];
@@ -81,6 +86,11 @@ export const cutCommandDefinition: WeshCommandDefinition = {
           }
         }
         return result.join('');
+      }
+      default: {
+        const _exhaustive: never = mode;
+        throw new Error(`Unhandled cut mode: ${_exhaustive}`);
+      }
       }
     };
 

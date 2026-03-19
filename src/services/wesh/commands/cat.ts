@@ -2,6 +2,17 @@ import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } fro
 import { parseFlags } from '@/services/wesh/utils/args';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
+function renderVisibleAscii(char: string): string {
+  if (char === '\t') return '^I';
+
+  const code = char.charCodeAt(0);
+  if ((code >= 0 && code <= 8) || (code >= 11 && code <= 12) || (code >= 14 && code <= 31) || code === 127) {
+    return '^' + String.fromCharCode(code + 64);
+  }
+
+  return char;
+}
+
 export const catCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'cat',
@@ -44,7 +55,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
           for (const line of lines) {
             const isEmpty = line.length === 0;
             if (flags.s && isEmpty && lastWasEmpty) continue;
-            
+
             let output = '';
             if (flags.n || (flags.b && !isEmpty)) {
               output += `${String(lineNumber++).padStart(6, ' ')}  `;
@@ -54,9 +65,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
             if (flags.T) processedLine = processedLine.replace(/\t/g, '^I');
             if (flags.E) processedLine += '$';
             if (flags.A) {
-               processedLine = processedLine
-                 .replace(/\t/g, '^I')
-                 .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, (c) => '^' + String.fromCharCode(c.charCodeAt(0) + 64));
+              processedLine = Array.from(processedLine, renderVisibleAscii).join('');
             }
 
             await text.print({ text: output + processedLine + '\n' });
