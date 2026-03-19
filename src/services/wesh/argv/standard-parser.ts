@@ -128,27 +128,35 @@ export function parseStandardArgv({
         continue;
       }
 
-      if (option.kind === 'flag') {
+      switch (option.kind) {
+      case 'flag':
         applyEffects({ optionValues, effects: option.effects });
         continue;
-      }
+      case 'value': {
+        const value = inlineValue ?? scanner.next();
+        if (value === undefined) {
+          diagnostics.push(createMissingValueDiagnostic({
+            option: `--${key}`,
+            valueName: option.valueName,
+          }));
+          continue;
+        }
 
-      const value = inlineValue ?? scanner.next();
-      if (value === undefined) {
-        diagnostics.push(createMissingValueDiagnostic({
-          option: `--${key}`,
-          valueName: option.valueName,
-        }));
+        const parsedValue = parseValueOption({ option, rawValue: value });
+        if (!parsedValue.ok) {
+          diagnostics.push(parsedValue.diagnostic);
+          continue;
+        }
+
+        optionValues[option.key] = parsedValue.value;
         continue;
       }
-
-      const parsedValue = parseValueOption({ option, rawValue: value });
-      if (!parsedValue.ok) {
-        diagnostics.push(parsedValue.diagnostic);
-        continue;
+      default: {
+        const _ex: never = option;
+        throw new Error(`Unhandled option kind: ${_ex}`);
+      }
       }
 
-      optionValues[option.key] = parsedValue.value;
       continue;
     }
 
@@ -161,6 +169,7 @@ export function parseStandardArgv({
       scanner.next();
       const shortBody = token.slice(1);
 
+      shortOptionLoop:
       for (let index = 0; index < shortBody.length; index++) {
         const short = shortBody[index];
         if (short === undefined) continue;
@@ -175,37 +184,43 @@ export function parseStandardArgv({
           break;
         }
 
-        if (option.kind === 'flag') {
+        switch (option.kind) {
+        case 'flag':
           applyEffects({ optionValues, effects: option.effects });
           if (!spec.allowShortFlagBundles && index < shortBody.length - 1) {
             positionals.push(`-${shortBody.slice(index + 1)}`);
-            break;
+            break shortOptionLoop;
           }
           continue;
-        }
+        case 'value': {
+          const attachedValue = shortBody.slice(index + 1);
+          let value = attachedValue.length > 0 && option.allowAttachedValue ? attachedValue : undefined;
+          if (value === undefined) {
+            value = scanner.next();
+          }
 
-        const attachedValue = shortBody.slice(index + 1);
-        let value = attachedValue.length > 0 && option.allowAttachedValue ? attachedValue : undefined;
-        if (value === undefined) {
-          value = scanner.next();
-        }
+          if (value === undefined) {
+            diagnostics.push(createMissingValueDiagnostic({
+              option: `-${short}`,
+              valueName: option.valueName,
+            }));
+            break shortOptionLoop;
+          }
 
-        if (value === undefined) {
-          diagnostics.push(createMissingValueDiagnostic({
-            option: `-${short}`,
-            valueName: option.valueName,
-          }));
-          break;
-        }
+          const parsedValue = parseValueOption({ option, rawValue: value });
+          if (!parsedValue.ok) {
+            diagnostics.push(parsedValue.diagnostic);
+            break shortOptionLoop;
+          }
 
-        const parsedValue = parseValueOption({ option, rawValue: value });
-        if (!parsedValue.ok) {
-          diagnostics.push(parsedValue.diagnostic);
-          break;
+          optionValues[option.key] = parsedValue.value;
+          break shortOptionLoop;
         }
-
-        optionValues[option.key] = parsedValue.value;
-        break;
+        default: {
+          const _ex: never = option;
+          throw new Error(`Unhandled option kind: ${_ex}`);
+        }
+        }
       }
       continue;
     }

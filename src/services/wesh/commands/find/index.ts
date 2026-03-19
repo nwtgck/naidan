@@ -204,10 +204,17 @@ function tokenizeFindExpression({
       const parsed = parseNonNegativeInteger({ value: valueToken, optionName: token });
       if (!parsed.ok) return parsed;
 
-      if (token === '-maxdepth') {
+      switch (token) {
+      case '-maxdepth':
         traversal.maxDepth = parsed.value;
-      } else {
+        break;
+      case '-mindepth':
         traversal.minDepth = parsed.value;
+        break;
+      default: {
+        const _ex: never = token;
+        throw new Error(`Unhandled traversal token: ${_ex}`);
+      }
       }
 
       index += 2;
@@ -338,12 +345,12 @@ function tokenizeFindExpression({
 
     switch (token) {
     case '(':
-      {
-        const expr = parseOr();
-        if (typeof expr === 'string') return expr;
-        if (next() !== ')') return "expected ')'";
-        return expr;
-      }
+    {
+      const expr = parseOr();
+      if (typeof expr === 'string') return expr;
+      if (next() !== ')') return "expected ')'";
+      return expr;
+    }
     case '-name': {
       const pattern = next();
       if (pattern === undefined) return "missing argument to '-name'";
@@ -413,7 +420,18 @@ function tokenizeFindExpression({
         const arg = next();
         if (arg === undefined) return "missing terminating ';' for -exec";
         if (arg === ';' || arg === '+') {
-          mode = arg === ';' ? 'single' : 'batch';
+          switch (arg) {
+          case ';':
+            mode = 'single';
+            break;
+          case '+':
+            mode = 'batch';
+            break;
+          default: {
+            const _ex: never = arg;
+            throw new Error(`Unhandled -exec terminator: ${_ex}`);
+          }
+          }
           break;
         }
         argv.push(arg);
@@ -541,7 +559,8 @@ async function evaluateExpression({
       exitCode: 0,
     };
   case 'empty':
-    if (entry.type === 'directory') {
+    switch (entry.type) {
+    case 'directory': {
       const entries = await context.kernel.readDir({ path: entry.fullPath });
       return {
         matched: entries.length === 0,
@@ -551,19 +570,38 @@ async function evaluateExpression({
         exitCode: 0,
       };
     }
-    return {
-      matched: entry.size === 0,
-      actionInvoked: false,
-      shouldPrune: false,
-      shouldQuit: false,
-      exitCode: 0,
-    };
+    case 'file':
+    case 'fifo':
+    case 'chardev':
+    case 'symlink':
+      return {
+        matched: entry.size === 0,
+        actionInvoked: false,
+        shouldPrune: false,
+        shouldQuit: false,
+        exitCode: 0,
+      };
+    default: {
+      const _ex: never = entry.type;
+      throw new Error(`Unhandled file type: ${_ex}`);
+    }
+    }
   case 'size':
     return {
-      matched:
-        expr.comparison === 'eq' ? entry.size === expr.sizeInBytes
-          : expr.comparison === 'lt' ? entry.size < expr.sizeInBytes
-            : entry.size > expr.sizeInBytes,
+      matched: (() => {
+        switch (expr.comparison) {
+        case 'eq':
+          return entry.size === expr.sizeInBytes;
+        case 'lt':
+          return entry.size < expr.sizeInBytes;
+        case 'gt':
+          return entry.size > expr.sizeInBytes;
+        default: {
+          const _ex: never = expr.comparison;
+          throw new Error(`Unhandled size comparison: ${_ex}`);
+        }
+        }
+      })(),
       actionInvoked: false,
       shouldPrune: false,
       shouldQuit: false,
@@ -575,10 +613,20 @@ async function evaluateExpression({
   case 'prune':
     return { matched: true, actionInvoked: true, shouldPrune: true, shouldQuit: false, exitCode: 0 };
   case 'delete':
-    if (entry.type === 'directory') {
+    switch (entry.type) {
+    case 'directory':
       await context.kernel.rmdir({ path: entry.fullPath });
-    } else {
+      break;
+    case 'file':
+    case 'fifo':
+    case 'chardev':
+    case 'symlink':
       await context.kernel.unlink({ path: entry.fullPath });
+      break;
+    default: {
+      const _ex: never = entry.type;
+      throw new Error(`Unhandled file type: ${_ex}`);
+    }
     }
     return { matched: true, actionInvoked: true, shouldPrune: false, shouldQuit: false, exitCode: 0 };
   case 'quit':
@@ -588,7 +636,8 @@ async function evaluateExpression({
   case 'false':
     return { matched: false, actionInvoked: false, shouldPrune: false, shouldQuit: false, exitCode: 0 };
   case 'exec': {
-    if (expr.mode === 'batch') {
+    switch (expr.mode) {
+    case 'batch': {
       const existing = pendingExecBatches.get(expr.id);
       if (existing === undefined) {
         pendingExecBatches.set(expr.id, {
@@ -609,18 +658,24 @@ async function evaluateExpression({
         exitCode: 0,
       };
     }
-
-    const result = await context.executeCommand({
-      command: expr.command,
-      args: expr.args.map((arg) => arg.replace(/\{\}/g, entry.displayPath)),
-    });
-    return {
-      matched: result.exitCode === 0,
-      actionInvoked: true,
-      shouldPrune: false,
-      shouldQuit: false,
-      exitCode: result.exitCode,
-    };
+    case 'single': {
+      const result = await context.executeCommand({
+        command: expr.command,
+        args: expr.args.map((arg) => arg.replace(/\{\}/g, entry.displayPath)),
+      });
+      return {
+        matched: result.exitCode === 0,
+        actionInvoked: true,
+        shouldPrune: false,
+        shouldQuit: false,
+        exitCode: result.exitCode,
+      };
+    }
+    default: {
+      const _ex: never = expr.mode;
+      throw new Error(`Unhandled exec mode: ${_ex}`);
+    }
+    }
   }
   default: {
     const _ex: never = expr;

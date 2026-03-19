@@ -22,7 +22,8 @@ export function parseSubcommandArgv({
     index += 1;
   }
 
-  if (activeSpec.parser.kind === 'subcommand') {
+  switch (activeSpec.parser.kind) {
+  case 'subcommand': {
     const nested = parseSubcommandArgv({
       args: args.slice(index),
       spec: activeSpec.parser.spec,
@@ -33,13 +34,18 @@ export function parseSubcommandArgv({
       parsed: nested.parsed,
     };
   }
-
-  return {
-    matchedSubcommands,
-    activeCommand: activeSpec.name,
-    parsed: parseStandardArgv({
-      args: args.slice(index),
-      spec: activeSpec.parser.spec,
-    }),
-  };
+  case 'standard':
+    return {
+      matchedSubcommands,
+      activeCommand: activeSpec.name,
+      parsed: parseStandardArgv({
+        args: args.slice(index),
+        spec: activeSpec.parser.spec,
+      }),
+    };
+  default: {
+    const _ex: never = activeSpec.parser;
+    throw new Error(`Unhandled parser kind: ${_ex}`);
+  }
+  }
 }
