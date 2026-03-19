@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Wesh } from './index';
-import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
+import { Wesh } from '../../index';
+import { MockFileSystemDirectoryHandle } from '../../mocks/InMemoryFileSystem';
 import {
   createWeshReadFileHandleFromText,
   createWeshWriteCaptureHandle,
-} from './utils/test-stream';
+} from '../../utils/test-stream';
 
 describe('wesh cat', () => {
   let wesh: Wesh;
