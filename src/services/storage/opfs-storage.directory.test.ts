@@ -96,6 +96,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
       autoTitleEnabled: true,
       storageType: 'opfs',
       providerProfiles: [],
+      mounts: [],
       endpointType: 'openai',
       endpointUrl: 'http://localhost'
     });
@@ -117,6 +118,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
       autoTitleEnabled: true,
       storageType: 'opfs',
       providerProfiles: [],
+      mounts: [],
       endpointType: 'openai',
       endpointUrl: 'http://localhost'
     });

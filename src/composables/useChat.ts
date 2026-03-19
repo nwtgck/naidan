@@ -1,6 +1,6 @@
 import { generateId } from '@/utils/id';
 import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy, type ComputedRef } from 'vue';
-import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning } from '@/models/types';
+import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning, Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { OpenAIProvider, OllamaProvider, UNKNOWN_STEPS, type LLMProvider } from '@/services/llm';
@@ -1034,7 +1034,7 @@ export function useChat() {
       const { enabledToolNames } = useChatTools();
       const enabledTools = await getEnabledTools({
         enabledNames: enabledToolNames.value,
-        settings: _settings.value,
+        settings: settings.value as unknown as Settings,
       });
 
       const generationState = {

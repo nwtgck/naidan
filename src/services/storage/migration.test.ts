@@ -125,7 +125,6 @@ const mockSettings: Settings = {
   storageType: 'local',
   mounts: [],
   providerProfiles: [],
-  mounts: [],
   lmParameters: EMPTY_LM_PARAMETERS,
 };
 

@@ -107,8 +107,10 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       endpointUrl: 'http://localhost:11434',
       autoTitleEnabled: true,
       storageType: 'local',
-      providerProfiles: []
+      providerProfiles: [],
+      mounts: [],
     }));
+
 
     const mockBlob = new Blob(['binary-content'], { type: 'image/png' });
     const chat = {

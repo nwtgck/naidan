@@ -60,7 +60,8 @@ describe('ImportExportService', () => {
     heavyContentAlertDismissed: undefined,
     systemPrompt: undefined,
     lmParameters: undefined,
-    ...overrides
+    mounts: [],
+    ...overrides,
   });
 
   const createValidSettings = (overrides: Partial<Settings> = {}): Settings => ({
@@ -76,7 +77,8 @@ describe('ImportExportService', () => {
     heavyContentAlertDismissed: undefined,
     systemPrompt: undefined,
     lmParameters: undefined,
-    ...overrides
+    mounts: [],
+    ...overrides,
   });
 
   const createValidChatMetaDto = (overrides: Partial<ChatMetaDto> = {}): ChatMetaDto => ({
@@ -94,7 +96,7 @@ describe('ImportExportService', () => {
     originMessageId: undefined,
     systemPrompt: undefined,
     lmParameters: undefined,
-    ...overrides
+    ...overrides,
   });
 
   const createValidChatMeta = (overrides: Partial<ChatMeta> = {}): ChatMeta => ({
@@ -112,7 +114,7 @@ describe('ImportExportService', () => {
     originMessageId: undefined,
     systemPrompt: undefined,
     lmParameters: undefined,
-    ...overrides
+    ...overrides,
   });
 
   describe('exportData', () => {
