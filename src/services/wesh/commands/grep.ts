@@ -6,14 +6,19 @@ export const grepCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'grep',
     description: 'Search for patterns in files',
-    usage: 'grep pattern [file...]',
+    usage: 'grep [flags] pattern [file...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { positional } = parseFlags({
+    const { flags, positional, unknown } = parseFlags({
       args: context.args,
-      booleanFlags: [],
-      stringFlags: [],
+      booleanFlags: ['i', 'v', 'n', 'w', 'F', 'I'],
+      stringFlags: ['A', 'B', 'C'],
     });
+
+    if (unknown.length > 0) {
+      await context.text().error({ text: `grep: invalid option -- '${unknown[0]}'\n` });
+      return { exitCode: 2 };
+    }
 
     const text = context.text();
     if (positional.length === 0) {
@@ -21,28 +26,61 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const pattern = positional[0]!;
-    const regex = new RegExp(pattern);
+    const pattern = flags.F ? positional[0]!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : positional[0]!;
+    const regex = new RegExp(flags.w ? `\\b${pattern}\\b` : pattern, flags.i ? 'i' : undefined);
     const files = positional.slice(1);
 
-    const processStream = async (stream: ReadableStream<Uint8Array>, name?: string) => {
+    const after = parseInt(flags.A as string) || 0;
+    const before = parseInt(flags.B as string) || parseInt(flags.C as string) || 0;
+    const contextAfter = parseInt(flags.A as string) || parseInt(flags.C as string) || 0;
+
+    const processStream = async ({
+      stream,
+      name,
+    }: {
+      stream: ReadableStream<Uint8Array>;
+      name?: string;
+    }) => {
       const decoder = new TextDecoder();
       let buffer = '';
       const reader = stream.getReader();
+      const allLines: string[] = [];
+      
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        
+        if (flags.I) {
+          const isBinary = value.some(byte => byte === 0);
+          if (isBinary) return;
+        }
+
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          if (regex.test(line)) {
-            await text.print({ text: (name ? `${name}:` : '') + line + '\n' });
+        allLines.push(...lines);
+      }
+      if (buffer) allLines.push(buffer);
+
+      const matches = new Array(allLines.length).fill(false);
+      for (let i = 0; i < allLines.length; i++) {
+        const match = regex.test(allLines[i]!);
+        matches[i] = flags.v ? !match : match;
+      }
+
+      for (let i = 0; i < allLines.length; i++) {
+        if (matches[i]) {
+          const start = Math.max(0, i - before);
+          const end = Math.min(allLines.length - 1, i + contextAfter);
+          
+          for (let j = start; j <= end; j++) {
+            let output = '';
+            if (name) output += `${name}:`;
+            if (flags.n) output += `${j + 1}:`;
+            output += allLines[j] + '\n';
+            await text.print({ text: output });
           }
         }
-      }
-      if (buffer && regex.test(buffer)) {
-        await text.print({ text: (name ? `${name}:` : '') + buffer + '\n' });
       }
     };
 
@@ -58,7 +96,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
           controller.enqueue(buf.subarray(0, bytesRead));
         }
       });
-      await processStream(input);
+      await processStream({ stream: input });
     } else {
       for (const f of files) {
         if (f === undefined) continue;
@@ -68,7 +106,10 @@ export const grepCommandDefinition: WeshCommandDefinition = {
             path: fullPath,
             flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
           });
-          await processStream(handleToStream({ handle }), files.length > 1 ? f : undefined);
+          await processStream({
+            stream: handleToStream({ handle }),
+            name: files.length > 1 ? f : undefined
+          });
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           await text.error({ text: `grep: ${f}: ${message}\n` });
