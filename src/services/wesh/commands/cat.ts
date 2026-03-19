@@ -1,8 +1,24 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/services/wesh/types';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
+const CAT_USAGE_LINES = [
+  'usage: cat [OPTION]... [FILE]...',
+  'options:',
+  '  -A, --show-all            equivalent to -vET',
+  '  -b, --number-nonblank     number nonempty output lines',
+  '  -E, --show-ends           display $ at end of each line',
+  '  -n, --number              number all output lines',
+  '  -s, --squeeze-blank       suppress repeated empty output lines',
+  '  -T, --show-tabs           display TAB characters as ^I',
+  '  -u                        accepted for compatibility',
+  '  -v, --show-nonprinting    use ^ and M- notation, except for LFD and TAB',
+  '  -e                        equivalent to -vE',
+  '  -t                        equivalent to -vT',
+].join('\n');
+
 function renderVisibleAscii(char: string): string {
-  if (char === '\t') return '^I';
+  if (char === '\t') return char;
 
   const code = char.charCodeAt(0);
   if ((code >= 0 && code <= 8) || (code >= 11 && code <= 12) || (code >= 14 && code <= 31) || code === 127) {
@@ -34,6 +50,19 @@ async function writeAll({
   }
 }
 
+async function writeUsageError({
+  context,
+  message,
+}: {
+  context: WeshCommandContext;
+  message: string;
+}): Promise<void> {
+  const encoder = new TextEncoder();
+  await context.stderr.write({
+    buffer: encoder.encode(`${message}\n${CAT_USAGE_LINES}\n`),
+  });
+}
+
 export const catCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'cat',
@@ -41,123 +70,69 @@ export const catCommandDefinition: WeshCommandDefinition = {
     usage: 'cat [flags] [file...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const files: string[] = [];
-    let numberAllLines = false;
-    let numberNonBlankLines = false;
-    let showEnds = false;
-    let showTabs = false;
-    let showNonPrinting = false;
-    let squeezeBlank = false;
+    const parsed = parseStandardArgv({
+      args: context.args,
+      spec: {
+        options: [
+          { kind: 'flag', short: 'n', long: 'number', effects: [{ key: 'numberAllLines', value: true }] },
+          { kind: 'flag', short: 'b', long: 'number-nonblank', effects: [{ key: 'numberNonBlankLines', value: true }] },
+          { kind: 'flag', short: 'E', long: 'show-ends', effects: [{ key: 'showEnds', value: true }] },
+          { kind: 'flag', short: 'T', long: 'show-tabs', effects: [{ key: 'showTabs', value: true }] },
+          { kind: 'flag', short: 'v', long: 'show-nonprinting', effects: [{ key: 'showNonPrinting', value: true }] },
+          {
+            kind: 'flag',
+            short: 'A',
+            long: 'show-all',
+            effects: [
+              { key: 'showEnds', value: true },
+              { key: 'showTabs', value: true },
+              { key: 'showNonPrinting', value: true },
+            ],
+          },
+          {
+            kind: 'flag',
+            short: 'e',
+            long: undefined,
+            effects: [
+              { key: 'showEnds', value: true },
+              { key: 'showNonPrinting', value: true },
+            ],
+          },
+          {
+            kind: 'flag',
+            short: 't',
+            long: undefined,
+            effects: [
+              { key: 'showTabs', value: true },
+              { key: 'showNonPrinting', value: true },
+            ],
+          },
+          { kind: 'flag', short: 's', long: 'squeeze-blank', effects: [{ key: 'squeezeBlank', value: true }] },
+          { kind: 'flag', short: 'u', long: 'u', effects: [] },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
+    });
 
-    for (let i = 0; i < context.args.length; i++) {
-      const arg = context.args[i];
-      if (arg === undefined) continue;
-
-      if (arg === '--') {
-        files.push(...context.args.slice(i + 1).filter((value): value is string => value !== undefined));
-        break;
-      }
-
-      if (arg === '-') {
-        files.push(arg);
-        continue;
-      }
-
-      if (arg.startsWith('--')) {
-        const longFlag = arg.slice(2);
-        switch (longFlag) {
-        case 'number':
-          numberAllLines = true;
-          break;
-        case 'number-nonblank':
-          numberNonBlankLines = true;
-          break;
-        case 'show-ends':
-          showEnds = true;
-          break;
-        case 'show-tabs':
-          showTabs = true;
-          break;
-        case 'show-nonprinting':
-          showNonPrinting = true;
-          break;
-        case 'show-all':
-          showEnds = true;
-          showTabs = true;
-          showNonPrinting = true;
-          break;
-        case 'squeeze-blank':
-          squeezeBlank = true;
-          break;
-        case 'u':
-          break;
-        default:
-          await context.stderr.write({
-            buffer: new TextEncoder().encode(`cat: unrecognized option '--${longFlag}'\n`),
-          });
-          return { exitCode: 1 };
-        }
-        continue;
-      }
-
-      if (arg.startsWith('-') && arg.length > 1) {
-        let invalidFlag: string | undefined;
-
-        for (const flag of arg.slice(1)) {
-          switch (flag) {
-          case 'A':
-            showEnds = true;
-            showTabs = true;
-            showNonPrinting = true;
-            break;
-          case 'b':
-            numberNonBlankLines = true;
-            break;
-          case 'e':
-            showEnds = true;
-            showNonPrinting = true;
-            break;
-          case 'E':
-            showEnds = true;
-            break;
-          case 'n':
-            numberAllLines = true;
-            break;
-          case 's':
-            squeezeBlank = true;
-            break;
-          case 't':
-            showTabs = true;
-            showNonPrinting = true;
-            break;
-          case 'T':
-            showTabs = true;
-            break;
-          case 'u':
-            break;
-          case 'v':
-            showNonPrinting = true;
-            break;
-          default:
-            invalidFlag = flag;
-            break;
-          }
-
-          if (invalidFlag !== undefined) break;
-        }
-
-        if (invalidFlag !== undefined) {
-          await context.stderr.write({
-            buffer: new TextEncoder().encode(`cat: invalid option -- '${invalidFlag}'\n`),
-          });
-          return { exitCode: 1 };
-        }
-        continue;
-      }
-
-      files.push(arg);
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await writeUsageError({
+        context,
+        message: `cat: ${diagnostic.message}`,
+      });
+      return { exitCode: 1 };
     }
 
+    const files = parsed.positionals;
+    const numberAllLines = parsed.optionValues.numberAllLines === true;
+    const numberNonBlankLines = parsed.optionValues.numberNonBlankLines === true;
+    const showEnds = parsed.optionValues.showEnds === true;
+    const showTabs = parsed.optionValues.showTabs === true;
+    const showNonPrinting = parsed.optionValues.showNonPrinting === true;
+    const squeezeBlank = parsed.optionValues.squeezeBlank === true;
     const text = context.text();
     let lineNumber = 1;
     let lastWasEmpty = false;
@@ -200,7 +175,8 @@ export const catCommandDefinition: WeshCommandDefinition = {
             if (squeezeBlank && isEmpty && lastWasEmpty) continue;
 
             let output = '';
-            if (numberAllLines || (numberNonBlankLines && !isEmpty)) {
+            const shouldNumberLine = numberNonBlankLines ? !isEmpty : numberAllLines;
+            if (shouldNumberLine) {
               output += `${String(lineNumber++).padStart(6, ' ')}  `;
             }
 
@@ -220,7 +196,8 @@ export const catCommandDefinition: WeshCommandDefinition = {
           const isEmpty = buffer.length === 0;
           if (!(squeezeBlank && isEmpty && lastWasEmpty)) {
             let output = '';
-            if (numberAllLines || (numberNonBlankLines && !isEmpty)) {
+            const shouldNumberLine = numberNonBlankLines ? !isEmpty : numberAllLines;
+            if (shouldNumberLine) {
               output += `${String(lineNumber++).padStart(6, ' ')}  `;
             }
 

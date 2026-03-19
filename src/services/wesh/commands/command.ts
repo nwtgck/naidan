@@ -1,5 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
+import { parseStandardArgv } from '@/services/wesh/argv';
 
 export const commandCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -8,19 +8,32 @@ export const commandCommandDefinition: WeshCommandDefinition = {
     usage: 'command [-v] command [argument...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['v'],
-      stringFlags: [],
+      spec: {
+        options: [
+          { kind: 'flag', short: 'v', long: undefined, effects: [{ key: 'verbose', value: true }] },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: false,
+        specialTokenParsers: [],
+      },
     });
 
     const text = context.text();
-    if (positional.length === 0) return { exitCode: 0 };
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await text.error({ text: `command: ${diagnostic.message}\n` });
+      return { exitCode: 1 };
+    }
 
-    const cmdName = positional[0]!;
+    if (parsed.positionals.length === 0) return { exitCode: 0 };
+
+    const cmdName = parsed.positionals[0]!;
     const meta = context.getWeshCommandMeta({ name: cmdName });
 
-    if (flags.v) {
+    if (parsed.optionValues.verbose === true) {
       if (meta) {
         await text.print({ text: `${cmdName}\n` });
         return { exitCode: 0 };

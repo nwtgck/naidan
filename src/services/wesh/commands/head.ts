@@ -1,4 +1,19 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv } from '@/services/wesh/argv';
+
+function parseCount({
+  value,
+  errorPrefix,
+}: {
+  value: string;
+  errorPrefix: string;
+}): { ok: true; value: number } | { ok: false; message: string } {
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed)) {
+    return { ok: false, message: `${errorPrefix}: '${value}'` };
+  }
+  return { ok: true, value: parsed };
+}
 
 export const headCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -7,50 +22,61 @@ export const headCommandDefinition: WeshCommandDefinition = {
     usage: 'head [OPTION]... [FILE]...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { args } = context;
     const textOutput = context.text();
+    const parsed = parseStandardArgv({
+      args: context.args,
+      spec: {
+        options: [
+          {
+            kind: 'value',
+            short: 'n',
+            long: 'lines',
+            key: 'lines',
+            valueName: 'lines',
+            allowAttachedValue: true,
+            parseValue: ({ value }) => parseCount({
+              value,
+              errorPrefix: 'invalid number of lines',
+            }),
+          },
+          {
+            kind: 'value',
+            short: 'c',
+            long: 'bytes',
+            key: 'bytes',
+            valueName: 'bytes',
+            allowAttachedValue: true,
+            parseValue: ({ value }) => parseCount({
+              value,
+              errorPrefix: 'invalid number of bytes',
+            }),
+          },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [
+          ({ token }) => {
+            if (!/^-\d+$/.test(token)) return undefined;
+            return {
+              kind: 'matched',
+              consumeCount: 1,
+              effects: [{ key: 'lines', value: parseInt(token.slice(1), 10) }],
+            };
+          },
+        ],
+      },
+    });
 
-    let lines = 10;
-    let bytes: number | undefined;
-    const positional: string[] = [];
-
-    // Parse arguments
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i];
-      if (arg === undefined) continue;
-
-      if (arg.startsWith('-')) {
-        if (arg === '--') {
-          positional.push(...args.slice(i + 1).filter((value): value is string => value !== undefined));
-          break;
-        }
-
-        // Handle -N (lines) or -c N (bytes) or -n N (lines)
-        if (/^-\d+$/.test(arg)) {
-          lines = parseInt(arg.slice(1), 10);
-        } else if (arg.startsWith('-n')) {
-          const val = arg.length > 2 ? arg.slice(2) : args[++i];
-          if (val === undefined || isNaN(parseInt(val, 10))) {
-            await textOutput.error({ text: `head: invalid number of lines: '${val}'\n` });
-            return { exitCode: 1 };
-          }
-          lines = parseInt(val, 10);
-        } else if (arg.startsWith('-c')) {
-          const val = arg.length > 2 ? arg.slice(2) : args[++i];
-          if (val === undefined || isNaN(parseInt(val, 10))) {
-            await textOutput.error({ text: `head: invalid number of bytes: '${val}'\n` });
-            return { exitCode: 1 };
-          }
-          bytes = parseInt(val, 10);
-          lines = -1; // Bytes mode overrides lines mode
-        } else {
-          await textOutput.error({ text: `head: invalid option -- '${arg}'\n` });
-          return { exitCode: 1 };
-        }
-      } else {
-        positional.push(arg);
-      }
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await textOutput.error({ text: `head: ${diagnostic.message}\n` });
+      return { exitCode: 1 };
     }
+
+    const lines = typeof parsed.optionValues.lines === 'number' ? parsed.optionValues.lines : 10;
+    const bytes = typeof parsed.optionValues.bytes === 'number' ? parsed.optionValues.bytes : undefined;
+    const positional = parsed.positionals;
 
     const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       const reader = stream.getReader();

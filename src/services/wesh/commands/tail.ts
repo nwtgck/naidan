@@ -1,6 +1,17 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { handleToStream } from '@/services/wesh/utils/fs';
+
+function parseLineCount({
+  value,
+}: {
+  value: string;
+}): { ok: true; value: string } | { ok: false; message: string } {
+  if (!/^[+-]?\d+$/.test(value)) {
+    return { ok: false, message: `invalid number of lines: '${value}'` };
+  }
+  return { ok: true, value };
+}
 
 export const tailCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -9,15 +20,46 @@ export const tailCommandDefinition: WeshCommandDefinition = {
     usage: 'tail [file...] [-n lines]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: [],
-      stringFlags: ['n'],
+      spec: {
+        options: [
+          {
+            kind: 'value',
+            short: 'n',
+            long: 'lines',
+            key: 'lines',
+            valueName: 'lines',
+            allowAttachedValue: true,
+            parseValue: ({ value }) => parseLineCount({ value }),
+          },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [
+          ({ token }) => {
+            if (!/^[+-]\d+$/.test(token)) return undefined;
+            return {
+              kind: 'matched',
+              consumeCount: 1,
+              effects: [{ key: 'lines', value: token }],
+            };
+          },
+        ],
+      },
     });
 
     const text = context.text();
-    const nFlag = typeof flags.n === 'string' ? flags.n : '10';
-    const n = parseInt(nFlag, 10);
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await text.error({ text: `tail: ${diagnostic.message}\n` });
+      return { exitCode: 1 };
+    }
+
+    const rawLineCount = typeof parsed.optionValues.lines === 'string' ? parsed.optionValues.lines : '10';
+    const lineCount = parseInt(rawLineCount, 10);
+    const countFromStart = rawLineCount.startsWith('+');
 
     const processStream = async (stream: ReadableStream<Uint8Array>) => {
       const decoder = new TextDecoder();
@@ -33,13 +75,16 @@ export const tailCommandDefinition: WeshCommandDefinition = {
       const lines = content.split('\n');
       if (lines[lines.length - 1] === '') lines.pop();
 
-      const lastLines = lines.slice(-n);
-      for (const line of lastLines) {
+      const selectedLines = countFromStart
+        ? lines.slice(Math.max(lineCount - 1, 0))
+        : lines.slice(-Math.abs(lineCount));
+
+      for (const line of selectedLines) {
         await text.print({ text: line + '\n' });
       }
     };
 
-    if (positional.length === 0) {
+    if (parsed.positionals.length === 0) {
       const input = new ReadableStream({
         async pull(controller) {
           const buf = new Uint8Array(4096);
@@ -53,7 +98,7 @@ export const tailCommandDefinition: WeshCommandDefinition = {
       });
       await processStream(input);
     } else {
-      for (const f of positional) {
+      for (const f of parsed.positionals) {
         if (f === undefined) continue;
         try {
           const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
