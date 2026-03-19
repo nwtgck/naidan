@@ -12,7 +12,10 @@ type FindExpression =
   | { kind: 'not'; expr: FindExpression }
   | { kind: 'name'; pattern: string; caseInsensitive: boolean }
   | { kind: 'path'; pattern: string }
+  | { kind: 'regex'; pattern: RegExp }
   | { kind: 'type'; expected: WeshFileType }
+  | { kind: 'empty' }
+  | { kind: 'size'; comparison: 'eq' | 'lt' | 'gt'; sizeInBytes: number }
   | { kind: 'print' }
   | { kind: 'prune' }
   | { kind: 'delete' }
@@ -26,6 +29,7 @@ interface FindEntry {
   displayPath: string;
   type: WeshFileType;
   name: string;
+  size: number;
 }
 
 interface FindEvaluationResult {
@@ -113,6 +117,57 @@ function parseNonNegativeInteger({
   return { ok: true, value: parseInt(value, 10) };
 }
 
+function parseFindRegex({
+  value,
+}: {
+  value: string;
+}): { ok: true; value: RegExp } | { ok: false; message: string } {
+  try {
+    return { ok: true, value: new RegExp(value) };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, message: `invalid regular expression '${value}': ${message}` };
+  }
+}
+
+function parseFindSize({
+  value,
+}: {
+  value: string;
+}): { ok: true; comparison: 'eq' | 'lt' | 'gt'; sizeInBytes: number } | { ok: false; message: string } {
+  const match = value.match(/^([+-]?)(\d+)([ckMGT]?)$/);
+  if (match === null) {
+    return { ok: false, message: `invalid argument to -size: ${value}` };
+  }
+
+  const prefix = match[1] ?? '';
+  const count = parseInt(match[2] ?? '0', 10);
+  const unit = match[3] ?? '';
+  const multiplier = (() => {
+    switch (unit) {
+    case '':
+    case 'c':
+      return 1;
+    case 'k':
+      return 1024;
+    case 'M':
+      return 1024 * 1024;
+    case 'G':
+      return 1024 * 1024 * 1024;
+    case 'T':
+      return 1024 * 1024 * 1024 * 1024;
+    default:
+      return 1;
+    }
+  })();
+
+  return {
+    ok: true,
+    comparison: prefix === '+' ? 'gt' : prefix === '-' ? 'lt' : 'eq',
+    sizeInBytes: count * multiplier,
+  };
+}
+
 function tokenizeFindExpression({
   tokens,
 }: {
@@ -188,7 +243,10 @@ function tokenizeFindExpression({
       '-name',
       '-iname',
       '-path',
+      '-regex',
       '-type',
+      '-empty',
+      '-size',
       '-print',
       '-prune',
       '-delete',
@@ -214,7 +272,10 @@ function tokenizeFindExpression({
       return true;
     case 'name':
     case 'path':
+    case 'regex':
     case 'type':
+    case 'empty':
+    case 'size':
     case 'true':
     case 'false':
       return false;
@@ -297,6 +358,13 @@ function tokenizeFindExpression({
       if (pattern === undefined) return "missing argument to '-path'";
       return { kind: 'path', pattern };
     }
+    case '-regex': {
+      const pattern = next();
+      if (pattern === undefined) return "missing argument to '-regex'";
+      const parsed = parseFindRegex({ value: pattern });
+      if (!parsed.ok) return parsed.message;
+      return { kind: 'regex', pattern: parsed.value };
+    }
     case '-type': {
       const typeToken = next();
       if (typeToken === undefined) return "missing argument to '-type'";
@@ -314,6 +382,15 @@ function tokenizeFindExpression({
       default:
         return `unknown argument to -type: ${typeToken}`;
       }
+    }
+    case '-empty':
+      return { kind: 'empty' };
+    case '-size': {
+      const sizeToken = next();
+      if (sizeToken === undefined) return "missing argument to '-size'";
+      const parsed = parseFindSize({ value: sizeToken });
+      if (!parsed.ok) return parsed.message;
+      return { kind: 'size', comparison: parsed.comparison, sizeInBytes: parsed.sizeInBytes };
     }
     case '-print':
       return { kind: 'print' };
@@ -446,9 +523,46 @@ async function evaluateExpression({
       shouldQuit: false,
       exitCode: 0,
     };
+  case 'regex':
+    return {
+      matched: expr.pattern.test(entry.displayPath),
+      actionInvoked: false,
+      shouldPrune: false,
+      shouldQuit: false,
+      exitCode: 0,
+    };
   case 'type':
     return {
       matched: entry.type === expr.expected,
+      actionInvoked: false,
+      shouldPrune: false,
+      shouldQuit: false,
+      exitCode: 0,
+    };
+  case 'empty':
+    if (entry.type === 'directory') {
+      const entries = await context.kernel.readDir({ path: entry.fullPath });
+      return {
+        matched: entries.length === 0,
+        actionInvoked: false,
+        shouldPrune: false,
+        shouldQuit: false,
+        exitCode: 0,
+      };
+    }
+    return {
+      matched: entry.size === 0,
+      actionInvoked: false,
+      shouldPrune: false,
+      shouldQuit: false,
+      exitCode: 0,
+    };
+  case 'size':
+    return {
+      matched:
+        expr.comparison === 'eq' ? entry.size === expr.sizeInBytes
+          : expr.comparison === 'lt' ? entry.size < expr.sizeInBytes
+            : entry.size > expr.sizeInBytes,
       actionInvoked: false,
       shouldPrune: false,
       shouldQuit: false,
@@ -552,7 +666,10 @@ function hasDeleteAction({
     return true;
   case 'name':
   case 'path':
+  case 'regex':
   case 'type':
+  case 'empty':
+  case 'size':
   case 'print':
   case 'prune':
   case 'quit':
@@ -608,6 +725,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
           displayPath,
           type: stat.type,
           name: basename({ path: displayPath }),
+          size: stat.size,
         };
 
         let shouldPruneChildren = false;

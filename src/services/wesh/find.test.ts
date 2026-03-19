@@ -238,4 +238,50 @@ describe('wesh find', () => {
     expect(result.exitCode).toBe(0);
     expect(await directoryExists({ path: 'src/nested' })).toBe(false);
   });
+
+  it('supports -empty for empty files and directories', async () => {
+    await writeFile({ path: 'src/empty.txt', data: '' });
+    await writeFile({ path: 'src/full.txt', data: 'x' });
+    await mkdir({ path: 'src/empty-dir' });
+    await mkdir({ path: 'src/non-empty-dir' });
+    await writeFile({ path: 'src/non-empty-dir/file.txt', data: 'x' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -empty',
+    });
+
+    expect(stdout.text).toBe('src/empty.txt\nsrc/empty-dir\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -size with exact and greater-than matching', async () => {
+    await writeFile({ path: 'src/one.txt', data: 'a' });
+    await writeFile({ path: 'src/two.txt', data: 'ab' });
+    await writeFile({ path: 'src/three.txt', data: 'abc' });
+
+    const exact = await execute({
+      script: 'find src -size 2c',
+    });
+    expect(exact.stdout.text).toBe('src/two.txt\n');
+
+    const greater = await execute({
+      script: 'find src -size +2c',
+    });
+    expect(greater.stdout.text).toBe('src/three.txt\n');
+  });
+
+  it('supports -regex against the displayed path', async () => {
+    await writeFile({ path: 'src/app.ts', data: 'console.log(1);\n' });
+    await writeFile({ path: 'src/lib/util.ts', data: 'console.log(2);\n' });
+    await writeFile({ path: 'src/readme.md', data: '# readme\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -regex "src/.*/.*\\.ts"',
+    });
+
+    expect(stdout.text).toBe('src/lib/util.ts\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });
