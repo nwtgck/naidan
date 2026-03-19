@@ -516,6 +516,14 @@ export class Wesh {
       getWeshCommandMeta: ({ name }: { name: string }) => this.commands.get(name)?.meta,
       getCommandNames: () => Array.from(this.commands.keys()),
       getJobs: () => Array.from(this.jobs.values()).map(j => ({ id: j.id, command: j.command, status: j.status })),
+      executeCommand: ({ command, args, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr }) => this.executeArgv({
+        command,
+        args,
+        state,
+        stdin: nextStdin ?? cmdStdin,
+        stdout: nextStdout ?? cmdStdout,
+        stderr: nextStderr ?? cmdStderr,
+      }),
       text: () => createTextHelpers({ stdin: cmdStdin, stdout: cmdStdout, stderr: cmdStderr }),
     };
 
@@ -530,5 +538,33 @@ export class Wesh {
       }
       for (const c of procSubCleanups) c();
     }
+  }
+
+  private async executeArgv(options: {
+    command: string;
+    args: string[];
+    state: WeshShellState;
+    stdin: WeshFileHandle;
+    stdout: WeshFileHandle;
+    stderr: WeshFileHandle;
+  }): Promise<WeshCommandResult> {
+    const isolatedState: WeshShellState = {
+      env: new Map(options.state.env),
+      cwd: options.state.cwd,
+    };
+
+    return this.executeCommand({
+      node: {
+        kind: 'command',
+        assignments: [],
+        name: options.command,
+        args: options.args,
+        redirections: [],
+      },
+      state: isolatedState,
+      stdin: options.stdin,
+      stdout: options.stdout,
+      stderr: options.stderr,
+    });
   }
 }

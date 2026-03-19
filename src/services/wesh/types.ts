@@ -219,6 +219,13 @@ export interface WeshCommandContext {
   getWeshCommandMeta(options: { name: string }): WeshCommandMeta | undefined;
   getCommandNames(): string[];
   getJobs(): Array<{ id: number; command: string; status: 'running' | 'done' }>;
+  executeCommand(options: {
+    command: string;
+    args: string[];
+    stdin?: WeshFileHandle;
+    stdout?: WeshFileHandle;
+    stderr?: WeshFileHandle;
+  }): Promise<WeshCommandResult>;
 }
 
 export type WeshCommandFunction = (options: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
