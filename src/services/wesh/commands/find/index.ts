@@ -1,4 +1,5 @@
 import { parseFindLikeArgv } from '@/services/wesh/argv';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
@@ -695,7 +696,11 @@ export const findCommandDefinition: WeshCommandDefinition = {
     const expression = tokenizeFindExpression({ tokens: parsed.expressionTokens });
 
     if (!expression.ok) {
-      await context.text().error({ text: `find: ${expression.message}\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'find',
+        message: `find: ${expression.message}`,
+      });
       return { exitCode: 1 };
     }
 

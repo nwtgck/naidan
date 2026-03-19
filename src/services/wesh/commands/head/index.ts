@@ -1,5 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv } from '@/services/wesh/argv';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 function parseCount({
   value,
@@ -70,7 +71,11 @@ export const headCommandDefinition: WeshCommandDefinition = {
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
-      await textOutput.error({ text: `head: ${diagnostic.message}\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'head',
+        message: `head: ${diagnostic.message}`,
+      });
       return { exitCode: 1 };
     }
 

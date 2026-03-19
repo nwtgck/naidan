@@ -1,5 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv } from '@/services/wesh/argv';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
 function parseLineCount({
@@ -53,7 +54,11 @@ export const tailCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
-      await text.error({ text: `tail: ${diagnostic.message}\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'tail',
+        message: `tail: ${diagnostic.message}`,
+      });
       return { exitCode: 1 };
     }
 

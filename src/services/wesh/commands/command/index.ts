@@ -1,5 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv } from '@/services/wesh/argv';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 export const commandCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -24,7 +25,11 @@ export const commandCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
-      await text.error({ text: `command: ${diagnostic.message}\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'command',
+        message: `command: ${diagnostic.message}`,
+      });
       return { exitCode: 1 };
     }
 
