@@ -101,14 +101,20 @@ describe('wesh shell expansion', () => {
 
   it('expands variables in unquoted heredocs but not in quoted heredocs', async () => {
     const expanded = await execute({
-      script: 'cat <<EOF\n$FOO\nEOF',
+      script: `\
+cat <<EOF
+$FOO
+EOF`,
     });
     expect(expanded.stdout.text).toBe('persisted\n');
     expect(expanded.stderr.text).toBe('');
     expect(expanded.result.exitCode).toBe(0);
 
     const literal = await execute({
-      script: "cat <<'EOF'\n$FOO\nEOF",
+      script: `\
+cat <<'EOF'
+$FOO
+EOF`,
     });
     expect(literal.stdout.text).toBe('$FOO\n');
     expect(literal.stderr.text).toBe('');

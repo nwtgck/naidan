@@ -107,6 +107,27 @@ const widget: Widget = {
 ```
 
 ---
+
+# Multiline String Literals
+
+When writing multiline string literals, especially in tests, use a template literal that begins with `` `\ `` and then real newlines. Do not encode the body as a single-quoted or double-quoted string with embedded `\n` escapes unless there is a specific reason to keep it single-line.
+
+### Examples
+
+#### ❌ BAD
+```typescript
+const script = 'cat <<EOF\nhello\nworld\nEOF';
+```
+
+#### ✅ GOOD
+```typescript
+const script = `\
+cat <<EOF
+hello
+world
+EOF`;
+```
+
 *   **Non-interactive Tests**: Always use `npm run test:only-failed` when executing tests as an agent or in CI to ensure the process exits after completion, does not hang in watch mode, and minimizes output noise.
 *   **Testing**: Actively use `data-testid` attributes for selecting elements in tests. This decouples tests from implementation details (CSS classes, tag names) and makes them more resilient to styling changes.
 *   **Preserve Tests**: Never delete tests during refactoring. Adapt them to the new UI structure (e.g., test events/props instead of direct DOM interaction) to maintain functional coverage.

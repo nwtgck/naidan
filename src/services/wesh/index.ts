@@ -28,6 +28,7 @@ interface WeshJob {
 interface WeshShellState {
   env: Map<string, string>;
   cwd: string;
+  fds: Map<number, WeshFileHandle>;
 }
 
 type WeshExpansionMode = 'argv' | 'assignment' | 'redirection';
@@ -50,6 +51,7 @@ export class Wesh {
   private commands: Map<string, WeshCommandDefinition> = new Map();
   private jobs: Map<number, WeshJob> = new Map();
   private nextJobId: number = 1;
+  private shellFds: Map<number, WeshFileHandle> = new Map();
 
   private shellPid: number = 0;
 
@@ -641,6 +643,175 @@ export class Wesh {
     return expanded[0] ?? '';
   }
 
+  private createShellFdTable({
+    stdin,
+    stdout,
+    stderr,
+  }: {
+    stdin: WeshFileHandle;
+    stdout: WeshFileHandle;
+    stderr: WeshFileHandle;
+  }): Map<number, WeshFileHandle> {
+    const fds = new Map<number, WeshFileHandle>([
+      [0, stdin],
+      [1, stdout],
+      [2, stderr],
+    ]);
+
+    for (const [fd, handle] of this.shellFds.entries()) {
+      fds.set(fd, handle);
+    }
+
+    return fds;
+  }
+
+  private async setPersistentFd({
+    fd,
+    handle,
+  }: {
+    fd: number;
+    handle: WeshFileHandle;
+  }): Promise<void> {
+    const previous = this.shellFds.get(fd);
+    if (previous !== undefined && previous !== handle) {
+      await previous.close();
+    }
+    this.shellFds.set(fd, handle);
+  }
+
+  private async closePersistentFd({
+    fd,
+  }: {
+    fd: number;
+  }): Promise<void> {
+    const previous = this.shellFds.get(fd);
+    if (previous !== undefined) {
+      await previous.close();
+    }
+    this.shellFds.delete(fd);
+  }
+
+  private async openRedirectionTarget({
+    redirection,
+    state,
+  }: {
+    redirection: WeshCommandNode['redirections'][number];
+    state: WeshShellState;
+  }): Promise<WeshFileHandle | undefined> {
+    const rawTarget = redirection.target ? await this.expandSingleWord({
+      raw: redirection.target,
+      env: state.env,
+      cwd: state.cwd,
+      mode: 'redirection',
+    }) : undefined;
+
+    if (redirection.type === 'heredoc' || redirection.type === 'herestring') {
+      if (redirection.content === undefined) {
+        return undefined;
+      }
+
+      const { read, write } = await this.kernel.pipe();
+      const encoder = new TextEncoder();
+      const content = redirection.type === 'heredoc' && redirection.contentExpansion === 'variables'
+        ? this.expandPartVariables({ text: redirection.content, env: state.env })
+        : redirection.content;
+      await write.write({ buffer: encoder.encode(content + '\n') });
+      await write.close();
+      return read;
+    }
+
+    if (redirection.type === 'dup-output' || redirection.type === 'dup-input') {
+      if (redirection.closeTarget) {
+        return undefined;
+      }
+
+      if (redirection.targetFd === undefined) {
+        throw new Error(`Missing target fd for redirection ${redirection.type}`);
+      }
+
+      const duplicated = state.fds.get(redirection.targetFd);
+      if (duplicated === undefined) {
+        throw new Error(`${redirection.targetFd}: bad file descriptor`);
+      }
+
+      return duplicated;
+    }
+
+    if (rawTarget === undefined) {
+      return undefined;
+    }
+
+    const fullTarget = rawTarget.startsWith('/') ? rawTarget : `${state.cwd}/${rawTarget}`;
+
+    switch (redirection.type) {
+    case 'read':
+      return this.kernel.open({
+        path: fullTarget,
+        flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+        mode: 0o644,
+      });
+    case 'write':
+      return this.kernel.open({
+        path: fullTarget,
+        flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
+        mode: 0o644,
+      });
+    case 'append':
+      return this.kernel.open({
+        path: fullTarget,
+        flags: { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' },
+        mode: 0o644,
+      });
+    case 'read-write':
+      return this.kernel.open({
+        path: fullTarget,
+        flags: { access: 'read-write', creation: 'if-needed', truncate: 'preserve', append: 'preserve' },
+        mode: 0o644,
+      });
+    default: {
+      const _ex: never = redirection.type;
+      throw new Error(`Unhandled redirection type: ${_ex}`);
+    }
+    }
+  }
+
+  private async applyRedirectionsToFdTable({
+    redirections,
+    state,
+    fdTable,
+    trackOpenedHandle,
+  }: {
+    redirections: WeshCommandNode['redirections'];
+    state: WeshShellState;
+    fdTable: Map<number, WeshFileHandle>;
+    trackOpenedHandle: ({ handle }: { handle: WeshFileHandle }) => void;
+  }): Promise<void> {
+    for (const redirection of redirections) {
+      if (redirection.closeTarget) {
+        const current = fdTable.get(redirection.fd);
+        if (current !== undefined) {
+          await current.close();
+        }
+        fdTable.delete(redirection.fd);
+        continue;
+      }
+
+      const handle = await this.openRedirectionTarget({ redirection, state });
+      if (handle === undefined) {
+        continue;
+      }
+
+      if (
+        redirection.type !== 'dup-output' &&
+        redirection.type !== 'dup-input'
+      ) {
+        trackOpenedHandle({ handle });
+      }
+
+      fdTable.set(redirection.fd, handle);
+    }
+  }
+
   /**
    * Execute a shell script.
    * Low-level: All I/O goes to provided handles. Returns only exit status.
@@ -662,7 +833,15 @@ export class Wesh {
 
     try {
       const rootNode = parseCommandLine({ commandLine: script, env: this.env });
-      const state: WeshShellState = { env: this.env, cwd: this.cwd };
+      const state: WeshShellState = {
+        env: this.env,
+        cwd: this.cwd,
+        fds: this.createShellFdTable({
+          stdin: options.stdin,
+          stdout: options.stdout,
+          stderr: options.stderr,
+        }),
+      };
 
       const result = await this.executeNode({
         node: rootNode,
@@ -710,7 +889,7 @@ export class Wesh {
         case '&': {
           const jobId = this.nextJobId++;
           const cmdStr = "Background Job";
-          const jobState = { env: new Map(state.env), cwd: state.cwd };
+          const jobState = { env: new Map(state.env), cwd: state.cwd, fds: new Map(state.fds) };
 
           this.executeNode({
             node: part.node,
@@ -767,7 +946,8 @@ export class Wesh {
     case 'subshell': {
       const subshellState: WeshShellState = {
         env: new Map(state.env),
-        cwd: state.cwd
+        cwd: state.cwd,
+        fds: new Map(state.fds),
       };
       return this.executeNode({
         node: node.list,
@@ -854,7 +1034,7 @@ export class Wesh {
       const myStdin = i === 0 ? stdin : pipes[i-1]!.read;
       const myStdout = i === commands.length - 1 ? stdout : pipes[i]!.write;
 
-      const pipelineState = { env: new Map(state.env), cwd: state.cwd };
+      const pipelineState = { env: new Map(state.env), cwd: state.cwd, fds: new Map(state.fds) };
 
       promises.push(
         this.executeNode({
@@ -895,6 +1075,7 @@ export class Wesh {
     const expandedArgs: string[] = [];
     const procSubCleanups: Array<() => void> = [];
     const openHandles: WeshFileHandle[] = [];
+    const cmdFds = new Map(state.fds);
 
     for (const arg of node.args) {
       if (typeof arg === 'string') {
@@ -912,7 +1093,7 @@ export class Wesh {
 
         switch (arg.type) {
         case 'input': {
-          const subState = { env: new Map(state.env), cwd: state.cwd };
+          const subState = { env: new Map(state.env), cwd: state.cwd, fds: new Map(state.fds) };
           this.executeNode({
             node: arg.list,
             state: subState,
@@ -928,7 +1109,7 @@ export class Wesh {
           break;
         }
         case 'output': {
-          const subState = { env: new Map(state.env), cwd: state.cwd };
+          const subState = { env: new Map(state.env), cwd: state.cwd, fds: new Map(state.fds) };
           this.executeNode({
             node: arg.list,
             state: subState,
@@ -973,79 +1154,25 @@ export class Wesh {
       }));
     }
 
-    let cmdStdin = stdin;
-    let cmdStdout = stdout;
-    let cmdStderr = stderr;
+    cmdFds.set(0, stdin);
+    cmdFds.set(1, stdout);
+    cmdFds.set(2, stderr);
 
-    for (const red of node.redirections) {
-      const rawTarget = red.target ? await this.expandSingleWord({
-        raw: red.target,
-        env: state.env,
-        cwd: state.cwd,
-        mode: 'redirection',
-      }) : undefined;
-      const fullTarget = rawTarget ? (rawTarget.startsWith('/') ? rawTarget : `${state.cwd}/${rawTarget}`) : undefined;
+    await this.applyRedirectionsToFdTable({
+      redirections: node.redirections,
+      state,
+      fdTable: cmdFds,
+      trackOpenedHandle: ({ handle }) => {
+        openHandles.push(handle);
+      },
+    });
 
-      switch (red.type) {
-      case '<':
-        if (fullTarget) {
-          cmdStdin = await this.kernel.open({
-            path: fullTarget,
-            flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
-            mode: 0o644
-          });
-          openHandles.push(cmdStdin);
-        }
-        break;
-      case '<<':
-      case '<<<':
-        if (red.content !== undefined) {
-          const { read, write } = await this.kernel.pipe();
-          const encoder = new TextEncoder();
-          const content = red.type === '<<' && red.contentExpansion === 'variables'
-            ? this.expandPartVariables({ text: red.content, env: state.env })
-            : red.content;
-          const data = encoder.encode(content + '\n');
-          await write.write({ buffer: data });
-          await write.close();
-          cmdStdin = read;
-          openHandles.push(cmdStdin);
-        }
-        break;
-      case '>':
-        if (fullTarget) {
-          cmdStdout = await this.kernel.open({
-            path: fullTarget,
-            flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
-            mode: 0o644
-          });
-          openHandles.push(cmdStdout);
-        }
-        break;
-      case '>>':
-        if (fullTarget) {
-          cmdStdout = await this.kernel.open({
-            path: fullTarget,
-            flags: { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' },
-            mode: 0o644
-          });
-          openHandles.push(cmdStdout);
-        }
-        break;
-      case '2>':
-        if (fullTarget) {
-          cmdStderr = await this.kernel.open({
-            path: fullTarget,
-            flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
-            mode: 0o644
-          });
-          openHandles.push(cmdStderr);
-        }
-        break;
-      case '2>&1':
-        cmdStderr = cmdStdout;
-        break;
-      }
+    const cmdStdin = cmdFds.get(0);
+    const cmdStdout = cmdFds.get(1);
+    const cmdStderr = cmdFds.get(2);
+
+    if (cmdStdin === undefined || cmdStdout === undefined || cmdStderr === undefined) {
+      throw new Error('Missing standard file descriptor after redirection');
     }
 
     const { pid, process: proc } = await this.kernel.spawn({
@@ -1053,11 +1180,7 @@ export class Wesh {
       args: expandedArgs,
       env: currentEnv,
       cwd: state.cwd,
-      fds: new Map([
-        [0, cmdStdin],
-        [1, cmdStdout],
-        [2, cmdStderr]
-      ])
+      fds: cmdFds
     });
 
     const context: WeshCommandContext = {
@@ -1092,6 +1215,33 @@ export class Wesh {
         stdout: nextStdout ?? cmdStdout,
         stderr: nextStderr ?? cmdStderr,
       }),
+      executeShell: ({ script, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr }) => this.executeShellInState({
+        script,
+        state,
+        stdin: nextStdin ?? cmdStdin,
+        stdout: nextStdout ?? cmdStdout,
+        stderr: nextStderr ?? cmdStderr,
+      }),
+      getFileDescriptors: () => Array.from(proc.fds.entries()),
+      getFileDescriptor: ({ fd }) => proc.fds.get(fd),
+      setFileDescriptor: async ({ fd, handle, persist }) => {
+        proc.fds.set(fd, handle);
+        state.fds.set(fd, handle);
+        if (persist) {
+          await this.setPersistentFd({ fd, handle });
+        }
+      },
+      closeFileDescriptor: async ({ fd, persist }) => {
+        const current = proc.fds.get(fd);
+        if (current !== undefined) {
+          await current.close();
+        }
+        proc.fds.delete(fd);
+        state.fds.delete(fd);
+        if (persist) {
+          await this.closePersistentFd({ fd });
+        }
+      },
       text: () => createTextHelpers({ stdin: cmdStdin, stdout: cmdStdout, stderr: cmdStderr }),
     };
 
@@ -1119,6 +1269,7 @@ export class Wesh {
     const isolatedState: WeshShellState = {
       env: new Map(options.state.env),
       cwd: options.state.cwd,
+      fds: new Map(options.state.fds),
     };
 
     return this.executeCommand({
@@ -1130,6 +1281,27 @@ export class Wesh {
         redirections: [],
       },
       state: isolatedState,
+      stdin: options.stdin,
+      stdout: options.stdout,
+      stderr: options.stderr,
+    });
+  }
+
+  private async executeShellInState(options: {
+    script: string;
+    state: WeshShellState;
+    stdin: WeshFileHandle;
+    stdout: WeshFileHandle;
+    stderr: WeshFileHandle;
+  }): Promise<WeshCommandResult> {
+    const rootNode = parseCommandLine({
+      commandLine: options.script,
+      env: options.state.env,
+    });
+
+    return this.executeNode({
+      node: rootNode,
+      state: options.state,
       stdin: options.stdin,
       stdout: options.stdout,
       stderr: options.stderr,

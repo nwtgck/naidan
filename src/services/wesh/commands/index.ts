@@ -34,6 +34,9 @@ import { gunzipCommandDefinition } from './gunzip';
 import { zcatCommandDefinition } from './zcat';
 import { mkfifoCommandDefinition } from './mkfifo';
 import { sedCommandDefinition } from './sed';
+import { evalCommandDefinition } from './eval';
+import { execCommandDefinition } from './exec';
+import { readCommandDefinition } from './read';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -71,4 +74,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   zcatCommandDefinition,
   mkfifoCommandDefinition,
   sedCommandDefinition,
+  evalCommandDefinition,
+  execCommandDefinition,
+  readCommandDefinition,
 ];

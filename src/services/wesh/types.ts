@@ -226,6 +226,16 @@ export interface WeshCommandContext {
     stdout?: WeshFileHandle;
     stderr?: WeshFileHandle;
   }): Promise<WeshCommandResult>;
+  executeShell(options: {
+    script: string;
+    stdin?: WeshFileHandle;
+    stdout?: WeshFileHandle;
+    stderr?: WeshFileHandle;
+  }): Promise<WeshCommandResult>;
+  getFileDescriptors(): Array<[number, WeshFileHandle]>;
+  getFileDescriptor(options: { fd: number }): WeshFileHandle | undefined;
+  setFileDescriptor(options: { fd: number; handle: WeshFileHandle; persist: boolean }): Promise<void>;
+  closeFileDescriptor(options: { fd: number; persist: boolean }): Promise<void>;
 }
 
 export type WeshCommandFunction = (options: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
@@ -244,8 +254,11 @@ export interface WeshCommandDefinition {
 // --- AST Definitions ---
 
 export interface WeshRedirection {
-  type: '>' | '>>' | '<' | '2>' | '2>&1' | '<<' | '<<<';
+  fd: number;
+  type: 'write' | 'append' | 'read' | 'read-write' | 'dup-output' | 'dup-input' | 'heredoc' | 'herestring';
   target: string | undefined;
+  targetFd?: number;
+  closeTarget?: boolean;
   content?: string; // For here-docs
   contentExpansion?: 'literal' | 'variables';
 }
