@@ -31,6 +31,7 @@ interface FindEntry {
   type: WeshFileType;
   name: string;
   size: number;
+  readPath: string;
 }
 
 interface FindEvaluationResult {
@@ -52,6 +53,7 @@ interface FindTraversalOptions {
   maxDepth: number | undefined;
   minDepth: number;
   depthFirst: boolean;
+  symlinkMode: 'physical' | 'command-line' | 'logical';
 }
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
@@ -169,6 +171,32 @@ function parseFindSize({
   };
 }
 
+function splitFindLeadingOptions({
+  args,
+}: {
+  args: string[];
+}): {
+  leadingOptions: string[];
+  remainingArgs: string[];
+} {
+  const leadingOptions: string[] = [];
+  let index = 0;
+
+  while (index < args.length) {
+    const token = args[index];
+    if (token !== '-H' && token !== '-L' && token !== '-P') {
+      break;
+    }
+    leadingOptions.push(token);
+    index += 1;
+  }
+
+  return {
+    leadingOptions,
+    remainingArgs: args.slice(index),
+  };
+}
+
 function tokenizeFindExpression({
   tokens,
 }: {
@@ -189,6 +217,7 @@ function tokenizeFindExpression({
     maxDepth: undefined,
     minDepth: 0,
     depthFirst: false,
+    symlinkMode: 'physical',
   };
 
   while (index < tokens.length) {
@@ -223,6 +252,26 @@ function tokenizeFindExpression({
 
     if (token === '-depth') {
       traversal.depthFirst = true;
+      index += 1;
+      continue;
+    }
+
+    if (token === '-P' || token === '-H' || token === '-L') {
+      switch (token) {
+      case '-P':
+        traversal.symlinkMode = 'physical';
+        break;
+      case '-H':
+        traversal.symlinkMode = 'command-line';
+        break;
+      case '-L':
+        traversal.symlinkMode = 'logical';
+        break;
+      default: {
+        const _ex: never = token;
+        throw new Error(`Unhandled symlink token: ${_ex}`);
+      }
+      }
       index += 1;
       continue;
     }
@@ -747,8 +796,11 @@ export const findCommandDefinition: WeshCommandDefinition = {
     usage: 'find [path...] [expression]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseFindLikeArgv({ args: context.args });
-    const expression = tokenizeFindExpression({ tokens: parsed.expressionTokens });
+    const split = splitFindLeadingOptions({ args: context.args });
+    const parsed = parseFindLikeArgv({ args: split.remainingArgs });
+    const expression = tokenizeFindExpression({
+      tokens: [...split.leadingOptions, ...parsed.expressionTokens],
+    });
 
     if (!expression.ok) {
       await writeCommandUsageError({
@@ -767,25 +819,71 @@ export const findCommandDefinition: WeshCommandDefinition = {
       depthFirst: expression.traversal.depthFirst || hasDeleteAction({ expr: expression.expr }),
     };
 
+    const getPathStat = async ({
+      path,
+      isCommandLineArgument,
+    }: {
+      path: string;
+      isCommandLineArgument: boolean;
+    }) => {
+      switch (traversal.symlinkMode) {
+      case 'logical':
+        return context.kernel.stat({ path });
+      case 'command-line':
+        return isCommandLineArgument ? context.kernel.stat({ path }) : context.kernel.lstat({ path });
+      case 'physical':
+        return context.kernel.lstat({ path });
+      default: {
+        const _ex: never = traversal.symlinkMode;
+        throw new Error(`Unhandled symlink mode: ${_ex}`);
+      }
+      }
+    };
+
+    const getReadPath = async ({
+      path,
+      type,
+    }: {
+      path: string;
+      type: WeshFileType;
+    }) => {
+      switch (type) {
+      case 'directory':
+        return (await context.kernel.resolve({ path })).fullPath;
+      case 'file':
+      case 'fifo':
+      case 'chardev':
+      case 'symlink':
+        return path;
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unhandled file type: ${_ex}`);
+      }
+      }
+    };
+
     const walk = async ({
       fullPath,
       displayPath,
       depth,
+      isCommandLineArgument,
     }: {
       fullPath: string;
       displayPath: string;
       depth: number;
+      isCommandLineArgument: boolean;
     }) => {
       if (shouldQuit) return;
 
       try {
-        const stat = await context.kernel.stat({ path: fullPath });
+        const stat = await getPathStat({ path: fullPath, isCommandLineArgument });
         const entry: FindEntry = {
           fullPath,
           displayPath,
           type: stat.type,
           name: basename({ path: displayPath }),
           size: stat.size,
+          readPath: await getReadPath({ path: fullPath, type: stat.type }),
         };
 
         let shouldPruneChildren = false;
@@ -818,11 +916,16 @@ export const findCommandDefinition: WeshCommandDefinition = {
           && (traversal.maxDepth === undefined || depth < traversal.maxDepth);
 
         if (canDescend) {
-          const entries = await context.kernel.readDir({ path: fullPath });
+          const entries = await context.kernel.readDir({ path: entry.readPath });
           for (const child of entries) {
-            const childFullPath = fullPath === '/' ? `/${child.name}` : `${fullPath}/${child.name}`;
+            const childFullPath = entry.readPath === '/' ? `/${child.name}` : `${entry.readPath}/${child.name}`;
             const childDisplayPath = displayPath === '/' ? `/${child.name}` : `${displayPath}/${child.name}`;
-            await walk({ fullPath: childFullPath, displayPath: childDisplayPath, depth: depth + 1 });
+            await walk({
+              fullPath: childFullPath,
+              displayPath: childDisplayPath,
+              depth: depth + 1,
+              isCommandLineArgument: false,
+            });
             if (shouldQuit) break;
           }
         }
@@ -854,7 +957,12 @@ export const findCommandDefinition: WeshCommandDefinition = {
 
     for (const path of parsed.paths) {
       const fullPath = resolvePath({ cwd: context.cwd, path });
-      await walk({ fullPath, displayPath: path, depth: 0 });
+      await walk({
+        fullPath,
+        displayPath: path,
+        depth: 0,
+        isCommandLineArgument: true,
+      });
       if (shouldQuit) break;
     }
 
