@@ -24,7 +24,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     const force = !!flags.f;
 
     const removeRecursive = async (path: string) => {
-      const st = await context.kernel.stat({ path });
+      const st = await context.kernel.lstat({ path });
       switch (st.type) {
       case 'directory': {
         if (!recursive) {

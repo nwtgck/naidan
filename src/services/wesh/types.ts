@@ -103,12 +103,15 @@ export interface WeshKernel {
   open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
 
   stat(options: { path: string }): Promise<WeshStat>;
+  lstat(options: { path: string }): Promise<WeshStat>;
 
   resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
 
   readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
 
   mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
+
+  symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void>;
 
   mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
 
@@ -164,12 +167,15 @@ export interface WeshIVirtualFileSystem {
   open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
 
   stat(options: { path: string }): Promise<WeshStat>;
+  lstat(options: { path: string }): Promise<WeshStat>;
 
   resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
 
   readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
 
   mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
+
+  symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void>;
 
   unlink(options: { path: string }): Promise<void>;
   rmdir(options: { path: string }): Promise<void>;

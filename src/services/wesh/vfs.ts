@@ -101,13 +101,12 @@ class StandardFileHandle implements WeshFileHandle {
   private handle: FileSystemFileHandle;
   private readOnly: boolean;
   private _cursor = 0;
+  private ready: Promise<void>;
 
   constructor({ handle, readOnly, append }: { handle: FileSystemFileHandle; readOnly: boolean; append: boolean }) {
     this.handle = handle;
     this.readOnly = readOnly;
-    if (append) {
-      this.initAppend();
-    }
+    this.ready = append ? this.initAppend() : Promise.resolve();
   }
 
   private async initAppend() {
@@ -121,6 +120,7 @@ class StandardFileHandle implements WeshFileHandle {
     length?: number;
     position?: number;
   }): Promise<WeshIOResult> {
+    await this.ready;
     const file = await this.handle.getFile();
     const pos = options.position ?? this._cursor;
 
@@ -149,6 +149,7 @@ class StandardFileHandle implements WeshFileHandle {
     length?: number;
     position?: number
   }): Promise<WeshWriteResult> {
+    await this.ready;
     if (this.readOnly) throw new Error('File is read-only');
 
     const bufferOffset = options.offset ?? 0;
@@ -175,6 +176,7 @@ class StandardFileHandle implements WeshFileHandle {
   async close(): Promise<void> {}
 
   async stat(): Promise<WeshStat> {
+    await this.ready;
     const file = await this.handle.getFile();
     return {
       size: file.size,
@@ -188,6 +190,7 @@ class StandardFileHandle implements WeshFileHandle {
   }
 
   async truncate(options: { size: number }): Promise<void> {
+    await this.ready;
     if (this.readOnly) throw new Error('File is read-only');
     const writable = await this.handle.createWritable({ keepExistingData: true });
     try {
@@ -318,6 +321,37 @@ interface MountEntry {
   registryCache: Map<string, RegistryEntry>;
 }
 
+interface RegistryResolution {
+  mount: MountEntry;
+  relPath: string;
+  entry: RegistryEntry;
+}
+
+type ResolvedNode =
+  | {
+    kind: 'handle';
+    fullPath: string;
+    readOnly: boolean;
+    handle: FileSystemHandle;
+  }
+  | {
+    kind: 'registry';
+    fullPath: string;
+    readOnly: boolean;
+    resolution: RegistryResolution;
+  }
+  | {
+    kind: 'special';
+    fullPath: string;
+    readOnly: boolean;
+    handler: () => WeshFileHandle;
+  }
+  | {
+    kind: 'synthetic-directory';
+    fullPath: string;
+    readOnly: boolean;
+  };
+
 export class WeshVFS implements WeshIVirtualFileSystem {
   private mounts: MountEntry[] = [];
   private specialFiles: Map<string, () => WeshFileHandle> = new Map();
@@ -394,41 +428,16 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   async open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle> {
     const normalized = this.normalizePath({ path: options.path });
-
-    if (this.specialFiles.has(normalized)) {
-      return this.specialFiles.get(normalized)!();
-    }
-
-    const mount = this.findMount({ path: normalized });
-    if (mount) {
-      const relPath = this.getRelativePath({ path: normalized, mount });
-      const regEntry = mount.registryCache.get(relPath);
-
-      if (regEntry) {
-        switch (regEntry.type) {
-        case 'fifo':
-          if (!this.openFifos.has(normalized)) {
-            this.openFifos.set(normalized, new FifoHandle());
-          }
-          return this.openFifos.get(normalized)!;
-        case 'chardev':
-        case 'symlink':
-          throw new Error(`Open not implemented for ${regEntry.type}`);
-        default: {
-          const _ex: never = regEntry.type;
-          throw new Error(`Unhandled registry entry type: ${_ex}`);
-        }
-        }
-      }
-    }
-
     const create = options.flags.creation !== 'never';
     const truncate = options.flags.truncate === 'truncate';
-
-    let handleRes: { handle: FileSystemHandle; readOnly: boolean; fullPath: string };
+    let resolved: ResolvedNode;
 
     try {
-      handleRes = await this._resolve({ path: normalized });
+      resolved = await this.resolveNode({
+        path: normalized,
+        finalSymlinkTreatment: 'follow',
+        depth: 0,
+      });
       switch (options.flags.creation) {
       case 'always':
         throw new Error(`File exists: ${normalized}`);
@@ -446,30 +455,66 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         const name = parts.pop();
         if (name === undefined) throw new Error(`Invalid path: ${normalized}`);
         const parentPath = parts.join('/') || '/';
-        const parent = await this._resolve({ path: parentPath });
+        const parent = await this.resolveExistingDirectory({
+          path: parentPath,
+          finalSymlinkTreatment: 'follow',
+        });
         if (parent.readOnly) throw new Error(`Read-only file system: ${parentPath}`);
 
-        const newHandle = await (parent.handle as FileSystemDirectoryHandle).getFileHandle(name, { create: true });
-        handleRes = { handle: newHandle, readOnly: false, fullPath: normalized };
+        const newHandle = await parent.handle.getFileHandle(name, { create: true });
+        resolved = {
+          kind: 'handle',
+          handle: newHandle,
+          readOnly: false,
+          fullPath: normalized,
+        };
       } else {
         throw e;
       }
     }
 
-    switch (handleRes.handle.kind) {
-    case 'file':
-      break;
-    case 'directory':
+    switch (resolved.kind) {
+    case 'special':
+      return resolved.handler();
+    case 'registry':
+      switch (resolved.resolution.entry.type) {
+      case 'fifo':
+        if (!this.openFifos.has(resolved.fullPath)) {
+          this.openFifos.set(resolved.fullPath, new FifoHandle());
+        }
+        return this.openFifos.get(resolved.fullPath)!;
+      case 'chardev':
+        throw new Error('Open not implemented for chardev');
+      case 'symlink':
+        throw new Error(`Dangling symlink: ${normalized}`);
+      default: {
+        const _ex: never = resolved.resolution.entry.type;
+        throw new Error(`Unhandled registry entry type: ${_ex}`);
+      }
+      }
+    case 'synthetic-directory':
       throw new Error(`Not a file: ${normalized}`);
+    case 'handle':
+      switch (resolved.handle.kind) {
+      case 'file':
+        break;
+      case 'directory':
+        throw new Error(`Not a file: ${normalized}`);
+      default: {
+        const _ex: never = resolved.handle.kind;
+        throw new Error(`Unhandled handle kind: ${_ex}`);
+      }
+      }
+      break;
     default: {
-      const _ex: never = handleRes.handle.kind;
-      throw new Error(`Unhandled handle kind: ${_ex}`);
+      const _ex: never = resolved;
+      throw new Error(`Unhandled resolved node: ${_ex}`);
     }
     }
 
     const fileHandle = new StandardFileHandle({
-      handle: handleRes.handle as FileSystemFileHandle,
-      readOnly: handleRes.readOnly || options.flags.access === 'read',
+      handle: resolved.handle as FileSystemFileHandle,
+      readOnly: resolved.readOnly || options.flags.access === 'read',
       append: options.flags.append === 'append'
     });
 
@@ -481,109 +526,64 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   async stat(options: { path: string }): Promise<WeshStat> {
-    const normalized = this.normalizePath({ path: options.path });
+    const resolved = await this.resolveNode({
+      path: options.path,
+      finalSymlinkTreatment: 'follow',
+      depth: 0,
+    });
+    return this.statFromResolvedNode({ resolved });
+  }
 
-    if (this.specialFiles.has(normalized)) {
-      const h = this.specialFiles.get(normalized)!();
-      const s = await h.stat();
-      await h.close();
-      return s;
-    }
-
-    let resolved: { handle: FileSystemHandle; readOnly: boolean; fullPath: string } | undefined;
-    try {
-      resolved = await this._resolve({ path: normalized });
-    } catch (error) {
-      if (this.getDirectMountChildren({ path: normalized }).length > 0) {
-        return {
-          size: 0,
-          mode: 0o755,
-          type: 'directory',
-          mtime: Date.now(),
-          ino: 0,
-          uid: 0,
-          gid: 0,
-        };
-      }
-      throw error;
-    }
-
-    const { handle, readOnly } = resolved;
-
-    const mount = this.findMount({ path: normalized });
-    if (mount) {
-      const relPath = this.getRelativePath({ path: normalized, mount });
-      const regEntry = mount.registryCache.get(relPath);
-      if (regEntry) {
-        return {
-          size: 0,
-          mode: regEntry.mode,
-          type: regEntry.type,
-          mtime: Date.now(),
-          ino: 0, uid: 0, gid: 0
-        };
-      }
-    }
-
-    switch (handle.kind) {
-    case 'file': {
-      const file = await (handle as FileSystemFileHandle).getFile();
-      return {
-        size: file.size,
-        mode: readOnly ? 0o444 : 0o644,
-        type: 'file',
-        mtime: file.lastModified,
-        ino: 0, uid: 0, gid: 0
-      };
-    }
-    case 'directory':
-      return {
-        size: 0,
-        mode: readOnly ? 0o555 : 0o755,
-        type: 'directory',
-        mtime: Date.now(),
-        ino: 0, uid: 0, gid: 0
-      };
-    default: {
-      const _ex: never = handle.kind;
-      throw new Error(`Unhandled handle kind: ${_ex}`);
-    }
-    }
+  async lstat(options: { path: string }): Promise<WeshStat> {
+    const resolved = await this.resolveNode({
+      path: options.path,
+      finalSymlinkTreatment: 'no-follow',
+      depth: 0,
+    });
+    return this.statFromResolvedNode({ resolved });
   }
 
   async resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }> {
-    const normalized = this.normalizePath({ path: options.path });
-    const s = await this.stat({ path: normalized });
-    return { fullPath: normalized, stat: s };
+    const resolved = await this.resolveNode({
+      path: options.path,
+      finalSymlinkTreatment: 'follow',
+      depth: 0,
+    });
+    return {
+      fullPath: resolved.fullPath,
+      stat: await this.statFromResolvedNode({ resolved }),
+    };
   }
 
   async readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>> {
-    const normalized = this.normalizePath({ path: options.path });
-
-    if (normalized === '/dev') {
-      return Array.from(this.specialFiles.keys())
-        .filter(k => k.startsWith('/dev/'))
-        .map(k => ({ name: k.split('/').pop()!, type: 'chardev' }));
-    }
-
+    const resolved = await this.resolveNode({
+      path: options.path,
+      finalSymlinkTreatment: 'follow',
+      depth: 0,
+    });
     const entries = new Map<string, WeshFileType>();
 
-    try {
-      const { handle } = await this._resolve({ path: normalized });
-      switch (handle.kind) {
+    switch (resolved.kind) {
+    case 'synthetic-directory':
+      break;
+    case 'special':
+      throw new Error(`Not a directory: ${options.path}`);
+    case 'registry':
+      throw new Error(`Not a directory: ${options.path}`);
+    case 'handle': {
+      switch (resolved.handle.kind) {
       case 'directory':
         break;
       case 'file':
-        throw new Error(`Not a directory: ${normalized}`);
+        throw new Error(`Not a directory: ${options.path}`);
       default: {
-        const _ex: never = handle.kind;
+        const _ex: never = resolved.handle.kind;
         throw new Error(`Unhandled case: ${_ex}`);
       }
       }
 
-      const dirHandle = handle as FileSystemDirectoryHandle;
-      const mount = this.findMount({ path: normalized });
-
+      const dirHandle = resolved.handle as FileSystemDirectoryHandle;
+      const mount = this.findMount({ path: resolved.fullPath });
       for await (const [name, entry] of dirHandle.entries()) {
         if (name === WESH_SYSTEM_DIR) continue;
 
@@ -602,7 +602,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         }
 
         if (mount) {
-          const relPath = this.getRelativePath({ path: normalized === '/' ? `/${name}` : `${normalized}/${name}`, mount });
+          const childPath = resolved.fullPath === '/' ? `/${name}` : `${resolved.fullPath}/${name}`;
+          const relPath = this.getRelativePath({ path: childPath, mount });
           const regEntry = mount.registryCache.get(relPath);
           if (regEntry) {
             type = regEntry.type;
@@ -610,13 +611,20 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         }
         entries.set(name, type);
       }
-    } catch (error) {
-      if (this.getDirectMountChildren({ path: normalized }).length === 0) {
-        throw error;
-      }
+      break;
+    }
+    default: {
+      const _ex: never = resolved;
+      throw new Error(`Unhandled resolved node: ${_ex}`);
+    }
     }
 
-    for (const name of this.getDirectMountChildren({ path: normalized })) {
+    for (const name of this.getDirectMountChildren({ path: resolved.fullPath })) {
+      if (!entries.has(name)) {
+        entries.set(name, 'directory');
+      }
+    }
+    for (const name of this.getDirectSpecialChildren({ path: resolved.fullPath })) {
       if (!entries.has(name)) {
         entries.set(name, 'directory');
       }
@@ -635,57 +643,187 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       if (nextPart === undefined) continue;
       const checkPath = currentPath + '/' + nextPart;
       try {
-        const res = await this._resolve({ path: checkPath });
-        switch (res.handle.kind) {
-        case 'file':
-          throw new Error(`File exists: ${checkPath}`);
-        case 'directory':
+        const res = await this.resolveNode({
+          path: checkPath,
+          finalSymlinkTreatment: 'follow',
+          depth: 0,
+        });
+        switch (res.kind) {
+        case 'handle':
+          switch (res.handle.kind) {
+          case 'file':
+            throw new Error(`File exists: ${checkPath}`);
+          case 'directory':
+            break;
+          default: {
+            const _ex: never = res.handle.kind;
+            throw new Error(`Unhandled handle kind: ${_ex}`);
+          }
+          }
           break;
+        case 'synthetic-directory':
+          break;
+        case 'special':
+        case 'registry':
+          throw new Error(`File exists: ${checkPath}`);
         default: {
-          const _ex: never = res.handle.kind;
-          throw new Error(`Unhandled handle kind: ${_ex}`);
+          const _ex: never = res;
+          throw new Error(`Unhandled resolved node: ${_ex}`);
         }
         }
       } catch {
         if (!options.recursive && i < parts.length - 1) throw new Error(`No such file or directory: ${currentPath}`);
-        const parent = await this._resolve({ path: currentPath || '/' });
+        const parent = await this.resolveExistingDirectory({
+          path: currentPath || '/',
+          finalSymlinkTreatment: 'follow',
+        });
         if (parent.readOnly) throw new Error(`Read-only fs: ${currentPath || '/'}`);
-        await (parent.handle as FileSystemDirectoryHandle).getDirectoryHandle(nextPart, { create: true });
+        await parent.handle.getDirectoryHandle(nextPart, { create: true });
       }
       currentPath = checkPath;
     }
   }
 
-  async unlink(options: { path: string }): Promise<void> {
+  async symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void> {
     const normalized = this.normalizePath({ path: options.path });
     const mount = this.findMount({ path: normalized });
-    if (mount) {
-      const relPath = this.getRelativePath({ path: normalized, mount });
-      if (mount.registryCache.has(relPath)) {
-        mount.registryCache.delete(relPath);
-        await this.deleteRegistryEntry(mount, relPath);
-      }
+    if (!mount) throw new Error(`No mount point for ${normalized}`);
+    if (mount.readOnly) throw new Error('Read-only filesystem');
+
+    const existing = await this.tryResolveNode({
+      path: normalized,
+      finalSymlinkTreatment: 'no-follow',
+    });
+    if (existing !== undefined) {
+      throw new Error(`File exists: ${normalized}`);
+    }
+
+    const parts = normalized.split('/');
+    const name = parts.pop();
+    if (name === undefined) throw new Error(`Invalid path: ${normalized}`);
+    const parentPath = parts.join('/') || '/';
+    const parent = await this.resolveExistingDirectory({
+      path: parentPath,
+      finalSymlinkTreatment: 'follow',
+    });
+    if (parent.readOnly) throw new Error(`Read-only filesystem: ${parentPath}`);
+
+    await parent.handle.getFileHandle(name, { create: true });
+
+    const relPath = this.getRelativePath({ path: normalized, mount });
+    const entry: RegistryEntry = {
+      type: 'symlink',
+      mode: options.mode ?? 0o777,
+      targetPath: options.targetPath,
+    };
+    mount.registryCache.set(relPath, entry);
+    await this.saveRegistryEntry(mount, relPath, entry);
+  }
+
+  async unlink(options: { path: string }): Promise<void> {
+    const normalized = this.normalizePath({ path: options.path });
+    if (this.isMountPoint({ path: normalized })) {
+      throw new Error(`Cannot unlink mount point: ${normalized}`);
+    }
+
+    const resolved = await this.resolveNode({
+      path: normalized,
+      finalSymlinkTreatment: 'no-follow',
+      depth: 0,
+    });
+    const stat = await this.statFromResolvedNode({ resolved });
+    switch (stat.type) {
+    case 'directory':
+      throw new Error(`Is a directory: ${normalized}`);
+    case 'file':
+    case 'fifo':
+    case 'chardev':
+    case 'symlink':
+      break;
+    default: {
+      const _ex: never = stat.type;
+      throw new Error(`Unhandled stat type: ${_ex}`);
+    }
+    }
+
+    if (resolved.readOnly || resolved.kind === 'special') {
+      throw new Error(`Read-only filesystem: ${normalized}`);
+    }
+
+    switch (resolved.kind) {
+    case 'registry':
+      resolved.resolution.mount.registryCache.delete(resolved.resolution.relPath);
+      await this.deleteRegistryEntry(resolved.resolution.mount, resolved.resolution.relPath);
+      break;
+    case 'handle':
+    case 'synthetic-directory':
+    case 'special':
+      break;
+    default: {
+      const _ex: never = resolved;
+      throw new Error(`Unhandled resolved node: ${_ex}`);
+    }
     }
     const parts = normalized.split('/');
     const name = parts.pop();
     if (name === undefined) throw new Error(`Invalid path: ${normalized}`);
     const parentPath = parts.join('/') || '/';
-    const parent = await this._resolve({ path: parentPath });
-
-    switch (parent.handle.kind) {
-    case 'directory':
-      await (parent.handle as FileSystemDirectoryHandle).removeEntry(name);
-      break;
-    case 'file':
-      throw new Error(`Not a directory: ${parentPath}`);
-    default: {
-      const _ex: never = parent.handle.kind;
-      throw new Error(`Unhandled handle kind: ${_ex}`);
+    const parent = await this.resolveExistingDirectory({
+      path: parentPath,
+      finalSymlinkTreatment: 'follow',
+    });
+    if (parent.readOnly) {
+      throw new Error(`Read-only filesystem: ${parentPath}`);
     }
-    }
+    await parent.handle.removeEntry(name);
   }
   async rmdir(options: { path: string }): Promise<void> {
-    await this.unlink(options);
+    const normalized = this.normalizePath({ path: options.path });
+    if (this.isMountPoint({ path: normalized })) {
+      throw new Error(`Cannot remove mount point: ${normalized}`);
+    }
+
+    const resolved = await this.resolveNode({
+      path: normalized,
+      finalSymlinkTreatment: 'no-follow',
+      depth: 0,
+    });
+    const stat = await this.statFromResolvedNode({ resolved });
+    switch (stat.type) {
+    case 'directory':
+      break;
+    case 'file':
+    case 'fifo':
+    case 'chardev':
+    case 'symlink':
+      throw new Error(`Not a directory: ${normalized}`);
+    default: {
+      const _ex: never = stat.type;
+      throw new Error(`Unhandled stat type: ${_ex}`);
+    }
+    }
+
+    if (resolved.readOnly || resolved.kind === 'special') {
+      throw new Error(`Read-only filesystem: ${normalized}`);
+    }
+
+    const entries = await this.readDir({ path: normalized });
+    if (entries.length > 0) {
+      throw new Error(`Directory not empty: ${normalized}`);
+    }
+
+    const parts = normalized.split('/');
+    const name = parts.pop();
+    if (name === undefined) throw new Error(`Invalid path: ${normalized}`);
+    const parentPath = parts.join('/') || '/';
+    const parent = await this.resolveExistingDirectory({
+      path: parentPath,
+      finalSymlinkTreatment: 'follow',
+    });
+    if (parent.readOnly) {
+      throw new Error(`Read-only filesystem: ${parentPath}`);
+    }
+    await parent.handle.removeEntry(name);
   }
 
   async mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void> {
@@ -698,8 +836,11 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const parts = normalized.split('/');
     const name = parts.pop()!;
     const parentPath = parts.join('/') || '/';
-    const parent = await this._resolve({ path: parentPath });
-    await (parent.handle as FileSystemDirectoryHandle).getFileHandle(name, { create: true });
+    const parent = await this.resolveExistingDirectory({
+      path: parentPath,
+      finalSymlinkTreatment: 'follow',
+    });
+    await parent.handle.getFileHandle(name, { create: true });
 
     let entry: RegistryEntry;
     switch (options.type) {
@@ -725,21 +866,82 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   async rename(options: { oldPath: string; newPath: string }): Promise<void> {
     const oldNormalized = this.normalizePath({ path: options.oldPath });
     const newNormalized = this.normalizePath({ path: options.newPath });
+    if (oldNormalized === newNormalized) {
+      return;
+    }
+    if (this.isMountPoint({ path: oldNormalized }) || this.isMountPoint({ path: newNormalized })) {
+      throw new Error('Cannot rename mount point');
+    }
 
-    const oldRes = await this._resolve({ path: oldNormalized });
-    if (oldRes.readOnly) throw new Error(`Read-only source: ${oldNormalized}`);
+    const oldResolved = await this.resolveNode({
+      path: oldNormalized,
+      finalSymlinkTreatment: 'no-follow',
+      depth: 0,
+    });
+    if (oldResolved.readOnly || oldResolved.kind === 'special') {
+      throw new Error(`Read-only source: ${oldNormalized}`);
+    }
 
     const newParts = newNormalized.split('/');
     const newName = newParts.pop();
     if (newName === undefined) throw new Error(`Invalid path: ${newNormalized}`);
     const newParentPath = newParts.join('/') || '/';
-    const newParentRes = await this._resolve({ path: newParentPath });
+    const newParentRes = await this.resolveExistingDirectory({
+      path: newParentPath,
+      finalSymlinkTreatment: 'follow',
+    });
     if (newParentRes.readOnly) throw new Error(`Read-only destination: ${newParentPath}`);
 
-    switch (oldRes.handle.kind) {
+    const existingDestination = await this.tryResolveNode({
+      path: newNormalized,
+      finalSymlinkTreatment: 'no-follow',
+    });
+    if (existingDestination !== undefined) {
+      const destinationStat = await this.statFromResolvedNode({ resolved: existingDestination });
+      switch (destinationStat.type) {
+      case 'directory':
+        throw new Error(`Is a directory: ${newNormalized}`);
+      case 'file':
+      case 'fifo':
+      case 'chardev':
+      case 'symlink':
+        await this.unlink({ path: newNormalized });
+        break;
+      default: {
+        const _ex: never = destinationStat.type;
+        throw new Error(`Unhandled destination type: ${_ex}`);
+      }
+      }
+    }
+
+    const oldMount = this.findMount({ path: oldNormalized });
+    const newMount = this.findMount({ path: newNormalized });
+    const oldRelPath = oldMount ? this.getRelativePath({ path: oldNormalized, mount: oldMount }) : undefined;
+    const newRelPath = newMount ? this.getRelativePath({ path: newNormalized, mount: newMount }) : undefined;
+    const oldRegistryEntry = oldMount && oldRelPath ? oldMount.registryCache.get(oldRelPath) : undefined;
+
+    let sourceHandle: FileSystemHandle;
+    switch (oldResolved.kind) {
+    case 'handle':
+      sourceHandle = oldResolved.handle;
+      break;
+    case 'registry': {
+      const physical = await this._resolvePhysical({ path: oldNormalized });
+      sourceHandle = physical.handle;
+      break;
+    }
+    case 'synthetic-directory':
+      throw new Error(`Cannot rename: ${oldNormalized}`);
+    default: {
+      const _ex: never = oldResolved;
+      throw new Error(`Unhandled resolved node: ${_ex}`);
+    }
+    }
+
+    switch (sourceHandle.kind) {
     case 'file': {
-      const oldFileHandle = oldRes.handle as FileSystemFileHandle;
-      const newParentDir = newParentRes.handle as FileSystemDirectoryHandle;
+      const oldFileHandle = sourceHandle as FileSystemFileHandle;
+      const newParentDir = newParentRes.handle;
 
       // @ts-expect-error - move() is relatively new
       if (typeof oldFileHandle.move === 'function') {
@@ -757,17 +959,27 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         const oldName = oldParts.pop();
         if (oldName === undefined) throw new Error(`Invalid path: ${oldNormalized}`);
         const oldParentPath = oldParts.join('/') || '/';
-        const oldParentRes = await this._resolve({ path: oldParentPath });
-        await (oldParentRes.handle as FileSystemDirectoryHandle).removeEntry(oldName);
+        const oldParentRes = await this.resolveExistingDirectory({
+          path: oldParentPath,
+          finalSymlinkTreatment: 'follow',
+        });
+        await oldParentRes.handle.removeEntry(oldName);
       }
       break;
     }
     case 'directory':
       throw new Error('Directory rename not yet implemented');
     default: {
-      const _ex: never = oldRes.handle.kind;
+      const _ex: never = sourceHandle.kind;
       throw new Error(`Unhandled kind: ${_ex}`);
     }
+    }
+
+    if (oldRegistryEntry !== undefined && oldMount !== undefined && oldRelPath !== undefined && newMount !== undefined && newRelPath !== undefined) {
+      oldMount.registryCache.delete(oldRelPath);
+      await this.deleteRegistryEntry(oldMount, oldRelPath);
+      newMount.registryCache.set(newRelPath, oldRegistryEntry);
+      await this.saveRegistryEntry(newMount, newRelPath, oldRegistryEntry);
     }
   }
 
@@ -866,7 +1078,44 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     return Array.from(childNames).sort();
   }
 
-  private async _resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {
+  private getDirectSpecialChildren({ path }: { path: string }): string[] {
+    const normalized = this.normalizePath({ path });
+    const childNames = new Set<string>();
+
+    for (const specialPath of this.specialFiles.keys()) {
+      if (specialPath === normalized) {
+        continue;
+      }
+
+      const prefix = normalized === '/' ? '/' : `${normalized}/`;
+      if (!specialPath.startsWith(prefix)) {
+        continue;
+      }
+
+      const remainder = specialPath.slice(prefix.length);
+      if (remainder.length === 0) {
+        continue;
+      }
+
+      const childName = remainder.split('/')[0];
+      if (childName !== undefined && childName.length > 0) {
+        childNames.add(childName);
+      }
+    }
+
+    return Array.from(childNames).sort();
+  }
+
+  private hasSyntheticDirectory({ path }: { path: string }): boolean {
+    return this.getDirectMountChildren({ path }).length > 0 || this.getDirectSpecialChildren({ path }).length > 0;
+  }
+
+  private isMountPoint({ path }: { path: string }): boolean {
+    const normalized = this.normalizePath({ path });
+    return this.mounts.some((mount) => mount.path === normalized && normalized !== '/');
+  }
+
+  private async _resolvePhysical({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {
     const normalized = this.normalizePath({ path });
     const mount = this.findMount({ path: normalized });
     if (!mount) throw new Error(`Path not found: ${path}`);
@@ -896,6 +1145,292 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         throw new Error(`Unhandled handle kind: ${_ex}`);
       }
       }
+    }
+  }
+
+  private getRegistryResolution({ path }: { path: string }): RegistryResolution | undefined {
+    const normalized = this.normalizePath({ path });
+    const mount = this.findMount({ path: normalized });
+    if (!mount) {
+      return undefined;
+    }
+    const relPath = this.getRelativePath({ path: normalized, mount });
+    const entry = mount.registryCache.get(relPath);
+    if (entry === undefined) {
+      return undefined;
+    }
+    return { mount, relPath, entry };
+  }
+
+  private dirname({ path }: { path: string }): string {
+    const normalized = this.normalizePath({ path });
+    if (normalized === '/') {
+      return '/';
+    }
+    const parts = normalized.split('/');
+    parts.pop();
+    return parts.join('/') || '/';
+  }
+
+  private resolveSymlinkTarget({
+    linkPath,
+    targetPath,
+    remainder,
+  }: {
+    linkPath: string;
+    targetPath: string;
+    remainder: string;
+  }): string {
+    const basePath = targetPath.startsWith('/')
+      ? targetPath
+      : `${this.dirname({ path: linkPath })}/${targetPath}`;
+    if (remainder.length === 0) {
+      return this.normalizePath({ path: basePath });
+    }
+    return this.normalizePath({ path: `${basePath}/${remainder}` });
+  }
+
+  private async resolveNode({
+    path,
+    finalSymlinkTreatment,
+    depth,
+  }: {
+    path: string;
+    finalSymlinkTreatment: 'follow' | 'no-follow';
+    depth: number;
+  }): Promise<ResolvedNode> {
+    const normalized = this.normalizePath({ path });
+    if (depth > 40) {
+      throw new Error(`Too many levels of symbolic links: ${normalized}`);
+    }
+
+    const directSpecial = this.specialFiles.get(normalized);
+    if (directSpecial !== undefined) {
+      return {
+        kind: 'special',
+        fullPath: normalized,
+        readOnly: true,
+        handler: directSpecial,
+      };
+    }
+
+    const parts = normalized.split('/').filter(part => part.length > 0);
+    for (let i = 0; i < parts.length; i++) {
+      const candidate = `/${parts.slice(0, i + 1).join('/')}`;
+      if (this.specialFiles.has(candidate)) {
+        if (i < parts.length - 1) {
+          throw new Error(`Not a directory: ${candidate}`);
+        }
+        return {
+          kind: 'special',
+          fullPath: candidate,
+          readOnly: true,
+          handler: this.specialFiles.get(candidate)!,
+        };
+      }
+
+      const resolution = this.getRegistryResolution({ path: candidate });
+      if (resolution === undefined) {
+        continue;
+      }
+
+      const isFinalComponent = i === parts.length - 1;
+      switch (resolution.entry.type) {
+      case 'symlink':
+        if (!isFinalComponent || finalSymlinkTreatment === 'follow') {
+          return this.resolveNode({
+            path: this.resolveSymlinkTarget({
+              linkPath: candidate,
+              targetPath: resolution.entry.targetPath ?? '',
+              remainder: parts.slice(i + 1).join('/'),
+            }),
+            finalSymlinkTreatment,
+            depth: depth + 1,
+          });
+        }
+        return {
+          kind: 'registry',
+          fullPath: candidate,
+          readOnly: resolution.mount.readOnly,
+          resolution,
+        };
+      case 'fifo':
+      case 'chardev':
+        if (!isFinalComponent) {
+          throw new Error(`Not a directory: ${candidate}`);
+        }
+        return {
+          kind: 'registry',
+          fullPath: candidate,
+          readOnly: resolution.mount.readOnly,
+          resolution,
+        };
+      default: {
+        const _ex: never = resolution.entry.type;
+        throw new Error(`Unhandled registry type: ${_ex}`);
+      }
+      }
+    }
+
+    try {
+      const physical = await this._resolvePhysical({ path: normalized });
+      return {
+        kind: 'handle',
+        fullPath: physical.fullPath,
+        readOnly: physical.readOnly,
+        handle: physical.handle,
+      };
+    } catch (error) {
+      if (this.hasSyntheticDirectory({ path: normalized })) {
+        return {
+          kind: 'synthetic-directory',
+          fullPath: normalized,
+          readOnly: true,
+        };
+      }
+      throw error;
+    }
+  }
+
+  private async tryResolveNode({
+    path,
+    finalSymlinkTreatment,
+  }: {
+    path: string;
+    finalSymlinkTreatment: 'follow' | 'no-follow';
+  }): Promise<ResolvedNode | undefined> {
+    try {
+      return await this.resolveNode({
+        path,
+        finalSymlinkTreatment,
+        depth: 0,
+      });
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async resolveExistingDirectory({
+    path,
+    finalSymlinkTreatment,
+  }: {
+    path: string;
+    finalSymlinkTreatment: 'follow' | 'no-follow';
+  }): Promise<{ handle: FileSystemDirectoryHandle; readOnly: boolean; fullPath: string }> {
+    const resolved = await this.resolveNode({
+      path,
+      finalSymlinkTreatment,
+      depth: 0,
+    });
+    switch (resolved.kind) {
+    case 'handle':
+      switch (resolved.handle.kind) {
+      case 'directory':
+        return {
+          handle: resolved.handle as FileSystemDirectoryHandle,
+          readOnly: resolved.readOnly,
+          fullPath: resolved.fullPath,
+        };
+      case 'file':
+        throw new Error(`Not a directory: ${path}`);
+      default: {
+        const _ex: never = resolved.handle.kind;
+        throw new Error(`Unhandled handle kind: ${_ex}`);
+      }
+      }
+    case 'synthetic-directory':
+      throw new Error(`Synthetic directory cannot be mutated: ${path}`);
+    case 'registry':
+    case 'special':
+      throw new Error(`Not a directory: ${path}`);
+    default: {
+      const _ex: never = resolved;
+      throw new Error(`Unhandled resolved node: ${_ex}`);
+    }
+    }
+  }
+
+  private async statFromResolvedNode({
+    resolved,
+  }: {
+    resolved: ResolvedNode;
+  }): Promise<WeshStat> {
+    switch (resolved.kind) {
+    case 'special': {
+      const handle = resolved.handler();
+      try {
+        return await handle.stat();
+      } finally {
+        await handle.close();
+      }
+    }
+    case 'synthetic-directory':
+      return {
+        size: 0,
+        mode: 0o555,
+        type: 'directory',
+        mtime: Date.now(),
+        ino: 0,
+        uid: 0,
+        gid: 0,
+      };
+    case 'registry': {
+      const size = (() => {
+        switch (resolved.resolution.entry.type) {
+        case 'symlink':
+          return (resolved.resolution.entry.targetPath ?? '').length;
+        case 'fifo':
+        case 'chardev':
+          return 0;
+        default: {
+          const _ex: never = resolved.resolution.entry.type;
+          throw new Error(`Unhandled registry entry type: ${_ex}`);
+        }
+        }
+      })();
+      return {
+        size,
+        mode: resolved.resolution.entry.mode,
+        type: resolved.resolution.entry.type,
+        mtime: resolved.resolution.entry.mtime ?? Date.now(),
+        ino: 0,
+        uid: resolved.resolution.entry.uid ?? 0,
+        gid: resolved.resolution.entry.gid ?? 0,
+      };
+    }
+    case 'handle':
+      switch (resolved.handle.kind) {
+      case 'file': {
+        const file = await (resolved.handle as FileSystemFileHandle).getFile();
+        return {
+          size: file.size,
+          mode: resolved.readOnly ? 0o444 : 0o644,
+          type: 'file',
+          mtime: file.lastModified,
+          ino: 0,
+          uid: 0,
+          gid: 0,
+        };
+      }
+      case 'directory':
+        return {
+          size: 0,
+          mode: resolved.readOnly ? 0o555 : 0o755,
+          type: 'directory',
+          mtime: Date.now(),
+          ino: 0,
+          uid: 0,
+          gid: 0,
+        };
+      default: {
+        const _ex: never = resolved.handle.kind;
+        throw new Error(`Unhandled handle kind: ${_ex}`);
+      }
+      }
+    default: {
+      const _ex: never = resolved;
+      throw new Error(`Unhandled resolved node: ${_ex}`);
+    }
     }
   }
 }

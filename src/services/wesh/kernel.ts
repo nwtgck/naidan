@@ -193,6 +193,10 @@ export class Kernel implements WeshKernel {
     return this.vfs.stat({ path: options.path });
   }
 
+  async lstat(options: { path: string }): Promise<WeshStat> {
+    return this.vfs.lstat({ path: options.path });
+  }
+
   async resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }> {
     return this.vfs.resolve(options);
   }
@@ -203,6 +207,10 @@ export class Kernel implements WeshKernel {
 
   async mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void> {
     return this.vfs.mkdir(options);
+  }
+
+  async symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void> {
+    return this.vfs.symlink(options);
   }
 
   async mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void> {

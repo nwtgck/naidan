@@ -55,7 +55,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
 
           if (l) {
             const entryPath = fullPath.endsWith('/') ? `${fullPath}${entry.name}` : `${fullPath}/${entry.name}`;
-            const st = await context.kernel.stat({ path: entryPath });
+            const st = await context.kernel.lstat({ path: entryPath });
             const size = h ? formatSize(st.size) : st.size.toString();
             let typeChar = '-';
             switch (type) {
