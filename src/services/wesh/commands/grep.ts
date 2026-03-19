@@ -30,7 +30,6 @@ export const grepCommandDefinition: WeshCommandDefinition = {
     const regex = new RegExp(flags.w ? `\\b${pattern}\\b` : pattern, flags.i ? 'i' : undefined);
     const files = positional.slice(1);
 
-    const after = parseInt(flags.A as string) || 0;
     const before = parseInt(flags.B as string) || parseInt(flags.C as string) || 0;
     const contextAfter = parseInt(flags.A as string) || parseInt(flags.C as string) || 0;
 

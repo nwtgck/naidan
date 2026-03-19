@@ -36,8 +36,8 @@ export const sedCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const regexStr = match[2];
-    const replacement = match[4];
+    const regexStr = match[2] ?? '';
+    const replacement = match[4] ?? '';
     const globalFlag = match[6] === 'g';
     const regex = new RegExp(regexStr, globalFlag ? 'g' : undefined);
 

@@ -17,10 +17,11 @@ export const headCommandDefinition: WeshCommandDefinition = {
     // Parse arguments
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
+      if (arg === undefined) continue;
 
       if (arg.startsWith('-')) {
         if (arg === '--') {
-          positional.push(...args.slice(i + 1));
+          positional.push(...args.slice(i + 1).filter((value): value is string => value !== undefined));
           break;
         }
 

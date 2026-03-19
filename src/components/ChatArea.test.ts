@@ -715,7 +715,20 @@ describe('ChatArea Scrolling Logic', () => {
   it('should only scroll for the first assistant in an AI block', async () => {
     const userMessage = { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
     const firstAssistant = { id: 'a1', role: 'assistant', content: 'first reply', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
-    const toolMessage = { id: 't1', role: 'tool', content: 'tool output', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const toolMessage = {
+      id: 't1',
+      role: 'tool',
+      content: undefined,
+      timestamp: Date.now(),
+      replies: { items: [] },
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+      toolCalls: undefined,
+      results: [],
+    } as MessageNode;
     const secondAssistant = { id: 'a2', role: 'assistant', content: 'follow-up', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
 
     mockActiveMessages.value = [userMessage];

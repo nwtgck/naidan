@@ -94,19 +94,11 @@ export const cutCommandDefinition: WeshCommandDefinition = {
       }
     };
 
-    const process = async ({ input }: { input: AsyncIterable<string> }) => {
-      for await (const line of input) {
-        const res = processLine(line);
-        if (res !== null) await text.print({ text: res + '\n' });
-      }
-    };
-
-    if (positional.length === 0) {
-      // Stream processing from stdin logic
+    const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       const decoder = new TextDecoder();
-      const stream = context.stdin;
       const reader = stream.getReader();
       let buffer = '';
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -118,37 +110,25 @@ export const cutCommandDefinition: WeshCommandDefinition = {
           if (res !== null) await text.print({ text: res + '\n' });
         }
       }
+
       if (buffer) {
         const res = processLine(buffer);
         if (res !== null) await text.print({ text: res + '\n' });
       }
+    };
+
+    if (positional.length === 0) {
+      await processStream({ stream: handleToStream({ handle: context.stdin }) });
     } else {
       for (const f of positional) {
+        if (f === undefined) continue;
         try {
-          const fullPath = f!.startsWith('/') ? f! : `${context.cwd}/${f!}`;
+          const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
           const handle = await context.kernel.open({
             path: fullPath,
             flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
           });
-          const stream = handleToStream({ handle });
-          const decoder = new TextDecoder();
-          const reader = stream.getReader();
-          let buffer = '';
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split(/\r?\n/);
-            buffer = lines.pop() ?? '';
-            for (const line of lines) {
-              const res = processLine(line);
-              if (res !== null) await text.print({ text: res + '\n' });
-            }
-          }
-          if (buffer) {
-            const res = processLine(buffer);
-            if (res !== null) await text.print({ text: res + '\n' });
-          }
+          await processStream({ stream: handleToStream({ handle }) });
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           await text.error({ text: `cut: ${f}: ${message}\n` });
