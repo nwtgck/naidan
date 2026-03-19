@@ -1,75 +1,135 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
-import { handleToStream } from '@/services/wesh/utils/fs';
 
 export const headCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'head',
     description: 'Output the first part of files',
-    usage: 'head [file...] [-n lines]',
+    usage: 'head [OPTION]... [FILE]...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
-      args: context.args,
-      booleanFlags: [],
-      stringFlags: ['n'],
-    });
+    const { args } = context;
+    const textOutput = context.text();
 
-    const text = context.text();
-    const nFlag = typeof flags.n === 'string' ? flags.n : '10';
-    const n = parseInt(nFlag, 10);
+    let lines = 10;
+    let bytes: number | undefined;
+    const positional: string[] = [];
 
-    const processStream = async (stream: ReadableStream<Uint8Array>) => {
-      const decoder = new TextDecoder();
-      let linesProcessed = 0;
-      let buffer = '';
+    // Parse arguments
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
 
-      const reader = stream.getReader();
-      while (linesProcessed < n) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n');
-        while (parts.length > 1 && linesProcessed < n) {
-          const line = parts.shift();
-          await text.print({ text: line + '\n' });
-          linesProcessed++;
+      if (arg.startsWith('-')) {
+        if (arg === '--') {
+          positional.push(...args.slice(i + 1));
+          break;
         }
-        buffer = parts.join('\n');
+
+        // Handle -N (lines) or -c N (bytes) or -n N (lines)
+        if (/^-\d+$/.test(arg)) {
+          lines = parseInt(arg.slice(1), 10);
+        } else if (arg.startsWith('-n')) {
+          const val = arg.length > 2 ? arg.slice(2) : args[++i];
+          if (val === undefined || isNaN(parseInt(val, 10))) {
+            await textOutput.error({ text: `head: invalid number of lines: '${val}'\n` });
+            return { exitCode: 1 };
+          }
+          lines = parseInt(val, 10);
+        } else if (arg.startsWith('-c')) {
+          const val = arg.length > 2 ? arg.slice(2) : args[++i];
+          if (val === undefined || isNaN(parseInt(val, 10))) {
+            await textOutput.error({ text: `head: invalid number of bytes: '${val}'\n` });
+            return { exitCode: 1 };
+          }
+          bytes = parseInt(val, 10);
+          lines = -1; // Bytes mode overrides lines mode
+        } else {
+          await textOutput.error({ text: `head: invalid option -- '${arg}'\n` });
+          return { exitCode: 1 };
+        }
+      } else {
+        positional.push(arg);
       }
-      if (linesProcessed < n && buffer !== '') {
-        await text.print({ text: buffer + '\n' });
+    }
+
+    const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
+      const reader = stream.getReader();
+      
+      if (bytes !== undefined) {
+        let bytesReadCount = 0;
+        while (bytesReadCount < bytes) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const toRead = Math.min(value.length, bytes - bytesReadCount);
+          await textOutput.print({ text: new TextDecoder().decode(value.subarray(0, toRead)) });
+          bytesReadCount += toRead;
+        }
+      } else {
+        const decoder = new TextDecoder();
+        let linesProcessed = 0;
+        let buffer = '';
+        
+        while (linesProcessed < lines) {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (buffer) await textOutput.print({ text: buffer });
+            break;
+          }
+          
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n');
+          // If the last part isn't complete, keep it in buffer
+          buffer = parts.pop() || '';
+          
+          for (const line of parts) {
+            await textOutput.print({ text: line + '\n' });
+            linesProcessed++;
+            if (linesProcessed >= lines) break;
+          }
+        }
       }
       reader.releaseLock();
     };
 
     if (positional.length === 0) {
-      const input = new ReadableStream({
-        async pull(controller) {
-          const buf = new Uint8Array(4096);
-          const { bytesRead } = await context.stdin.read({ buffer: buf });
-          if (bytesRead === 0) {
-            controller.close();
-            return;
+      await processStream({
+        stream: new ReadableStream({
+          async pull(controller) {
+            const buf = new Uint8Array(4096);
+            const { bytesRead } = await context.stdin.read({ buffer: buf });
+            if (bytesRead === 0) {
+              controller.close();
+              return;
+            }
+            controller.enqueue(buf.subarray(0, bytesRead));
           }
-          controller.enqueue(buf.subarray(0, bytesRead));
-        }
+        })
       });
-      await processStream(input);
     } else {
       for (const f of positional) {
-        if (f === undefined) continue;
         try {
           const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
           const handle = await context.kernel.open({
             path: fullPath,
             flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
           });
-          await processStream(handleToStream({ handle }));
+          // Simple wrapper to use the stream
+          await processStream({ 
+            stream: new ReadableStream({
+              async pull(controller) {
+                const buf = new Uint8Array(4096);
+                const { bytesRead } = await handle.read({ buffer: buf });
+                if (bytesRead === 0) {
+                  controller.close();
+                  return;
+                }
+                controller.enqueue(buf.subarray(0, bytesRead));
+              }
+            })
+          });
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
-          await text.error({ text: `head: ${f}: ${message}\n` });
+          await textOutput.error({ text: `head: ${f}: ${message}\n` });
         }
       }
     }
