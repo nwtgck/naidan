@@ -301,7 +301,7 @@ function handlePrint() {
 }
 
 function scrollToBottom(force = true) {
-  if (isProcessing.value || isThinkingActive.value || isWaitingResponse.value) return;
+  if (currentChat.value && isProcessing(currentChat.value.id)) return;
 
   if (container.value) {
     const { scrollTop, scrollHeight, clientHeight } = container.value;
@@ -310,6 +310,28 @@ function scrollToBottom(force = true) {
       container.value.scrollTop = scrollHeight;
     }
   }
+}
+
+async function scrollMessageToTop({ messageId, behavior = 'smooth' }: { messageId: string, behavior?: ScrollBehavior }) {
+  if (!container.value) return false;
+
+  let el: HTMLElement | null = null;
+  for (let i = 0; i < 5; i++) {
+    await nextTick();
+    el = container.value.querySelector(`#message-${messageId}`) as HTMLElement | null;
+    if (el) break;
+  }
+
+  if (!(el instanceof HTMLElement)) return false;
+
+  scrollIntoViewSafe({
+    container: container.value,
+    element: el,
+    behavior,
+    block: 'start',
+    offset: 50
+  });
+  return true;
 }
 
 function jumpToMessage({ messageId }: { messageId: string }) {
@@ -457,24 +479,11 @@ async function scrollToLatestUserMessage() {
   const lastUserMsgItem = findLastUserMessage(chatFlow.value);
 
   if (lastUserMsgItem && lastUserMsgItem.type === 'message') {
-    const messageId = lastUserMsgItem.node.id;
-    // Robustly find the element, waiting up to 5 ticks for DOM to settle
-    let el: HTMLElement | null = null;
-    for (let i = 0; i < 5; i++) {
-      await nextTick();
-      el = container.value.querySelector(`#message-${messageId}`) as HTMLElement | null;
-      if (el) break;
-    }
-
-    if (el instanceof HTMLElement) {
-      scrollIntoViewSafe({
-        container: container.value,
-        element: el,
-        behavior: 'instant',
-        block: 'start',
-        offset: 50
-      });
-    } else {
+    const didScroll = await scrollMessageToTop({
+      messageId: lastUserMsgItem.node.id,
+      behavior: 'instant'
+    });
+    if (!didScroll) {
       scrollToBottom();
     }
   } else {
@@ -521,39 +530,18 @@ watch(
         scrollToBottom();
         break;
       case 'assistant': {
-        // if (!hasScrolledToAssistant.value && container.value) {
-        //   const messageId = lastItem.node.id;
-        //   // Wait a tick for the new element
-        //   await nextTick();
-        //   const el = container.value.querySelector(`#message-${messageId}`);
-        //   if (el instanceof HTMLElement) {
-        //     scrollIntoViewSafe({
-        //       container: container.value,
-        //       element: el,
-        //       behavior: 'smooth',
-        //       block: 'start'
-        //     });
-        //     hasScrolledToAssistant.value = true;
-        //   }
-        // }
+        if (!hasScrolledToAssistant.value) {
+          const didScroll = await scrollMessageToTop({ messageId: lastItem.node.id });
+          if (didScroll) {
+            hasScrolledToAssistant.value = true;
+          }
+        }
         break;
       }
       case 'system':
       case 'tool': {
-        // if (container.value) {
-        //   const messageId = lastItem.node.id;
-        //   // Wait a tick for the new element
-        //   await nextTick();
-        //   const el = container.value.querySelector(`#message-${messageId}`);
-        //   if (el instanceof HTMLElement) {
-        //     scrollIntoViewSafe({
-        //       container: container.value,
-        //       element: el,
-        //       behavior: 'smooth',
-        //       block: 'start'
-        //     });
-        //   }
-        // }
+        // Tool and system items are part of the current AI block.
+        // Once the block has started, they must not trigger additional scrolling.
         break;
       }
       default: {
