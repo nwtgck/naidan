@@ -247,6 +247,7 @@ export interface WeshRedirection {
   type: '>' | '>>' | '<' | '2>' | '2>&1' | '<<' | '<<<';
   target: string | undefined;
   content?: string; // For here-docs
+  contentExpansion?: 'literal' | 'variables';
 }
 
 export type WeshASTNode =

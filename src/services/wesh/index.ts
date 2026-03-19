@@ -7,7 +7,8 @@ import type {
   WeshFileHandle,
   WeshCommandNode,
   WeshKernel,
-  WeshPipelineNode
+  WeshPipelineNode,
+  WeshFileType
 } from './types';
 import { WeshVFS } from './vfs';
 import { Kernel } from './kernel';
@@ -27,6 +28,16 @@ interface WeshJob {
 interface WeshShellState {
   env: Map<string, string>;
   cwd: string;
+}
+
+type WeshExpansionMode = 'argv' | 'assignment' | 'redirection';
+
+interface WeshExpandedField {
+  text: string;
+  parts: Array<{
+    text: string;
+    quoted: boolean;
+  }>;
 }
 
 export class Wesh {
@@ -55,7 +66,7 @@ export class Wesh {
     this.kernel = new Kernel({ vfs: this.vfs });
 
     this.env = new Map(Object.entries({
-      HOME: '/home',
+      HOME: '/',
       PWD: '/',
       PATH: '/bin',
       USER: user,
@@ -99,13 +110,535 @@ export class Wesh {
     });
   }
 
-  private expandVariables(text: string, env: Map<string, string>): string {
-    return text.replace(/\$(\w+)|\${(\w+)}|\$\?/g, (match, p1, p2) => {
-      if (match === '$?') return env.get('?') || '0';
-      const key = p1 || p2;
-      if (key === 'RANDOM') return Math.floor(Math.random() * 32768).toString();
-      return env.get(key || '') || '';
+  private parseWordParts({
+    raw,
+  }: {
+    raw: string;
+  }): Array<{
+    text: string;
+    quoted: boolean;
+    expandVariables: boolean;
+  }> {
+    const parts: Array<{
+      text: string;
+      quoted: boolean;
+      expandVariables: boolean;
+    }> = [];
+
+    let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
+    let current = '';
+
+    const toPartMeta = ({
+      currentMode,
+    }: {
+      currentMode: 'unquoted' | 'single' | 'double';
+    }): {
+      quoted: boolean;
+      expandVariables: boolean;
+    } => {
+      switch (currentMode) {
+      case 'unquoted':
+        return {
+          quoted: false,
+          expandVariables: true,
+        };
+      case 'single':
+        return {
+          quoted: true,
+          expandVariables: false,
+        };
+      case 'double':
+        return {
+          quoted: true,
+          expandVariables: true,
+        };
+      default: {
+        const _ex: never = currentMode;
+        throw new Error(`Unhandled mode: ${_ex}`);
+      }
+      }
+    };
+
+    const pushCurrent = ({
+      nextMode,
+    }: {
+      nextMode: 'unquoted' | 'single' | 'double';
+    }) => {
+      if (current.length === 0 && mode === nextMode) {
+        return;
+      }
+
+      const meta = toPartMeta({ currentMode: mode });
+      parts.push({
+        text: current,
+        quoted: meta.quoted,
+        expandVariables: meta.expandVariables,
+      });
+      current = '';
+      mode = nextMode;
+    };
+
+    for (let index = 0; index < raw.length; index++) {
+      const char = raw[index];
+      if (char === undefined) {
+        continue;
+      }
+
+      const currentMode: string = mode;
+      switch (currentMode) {
+      case 'single':
+        if (char === "'") {
+          pushCurrent({ nextMode: 'unquoted' });
+        } else {
+          current += char;
+        }
+        continue;
+      case 'double':
+        if (char === '"') {
+          pushCurrent({ nextMode: 'unquoted' });
+          continue;
+        }
+
+        if (char === '\\') {
+          const nextChar = raw[index + 1];
+          if (nextChar !== undefined && ['\\', '"', '$'].includes(nextChar)) {
+            current += nextChar;
+            index += 1;
+            continue;
+          }
+        }
+
+        current += char;
+        continue;
+      case 'unquoted':
+        break;
+      default:
+        throw new Error(`Unhandled mode: ${currentMode}`);
+      }
+
+      if (char === "'") {
+        pushCurrent({ nextMode: 'single' });
+        continue;
+      }
+
+      if (char === '"') {
+        pushCurrent({ nextMode: 'double' });
+        continue;
+      }
+
+      if (char === '\\') {
+        const nextChar = raw[index + 1];
+        if (nextChar !== undefined) {
+          current += nextChar;
+          index += 1;
+          continue;
+        }
+      }
+
+      current += char;
+    }
+
+    const meta = toPartMeta({ currentMode: mode });
+    parts.push({
+      text: current,
+      quoted: meta.quoted,
+      expandVariables: meta.expandVariables,
     });
+
+    return parts;
+  }
+
+  private expandPartVariables({
+    text,
+    env,
+  }: {
+    text: string;
+    env: Map<string, string>;
+  }): string {
+    let result = '';
+
+    for (let index = 0; index < text.length; index++) {
+      const char = text[index];
+      if (char !== '$') {
+        result += char ?? '';
+        continue;
+      }
+
+      const nextChar = text[index + 1];
+      if (nextChar === '?') {
+        result += env.get('?') ?? '0';
+        index += 1;
+        continue;
+      }
+
+      if (nextChar === '{') {
+        const endIndex = text.indexOf('}', index + 2);
+        if (endIndex !== -1) {
+          const key = text.slice(index + 2, endIndex);
+          if (key === 'RANDOM') {
+            result += Math.floor(Math.random() * 32768).toString();
+          } else {
+            result += env.get(key) ?? '';
+          }
+          index = endIndex;
+          continue;
+        }
+      }
+
+      if (nextChar !== undefined && /[A-Za-z_]/.test(nextChar)) {
+        let endIndex = index + 2;
+        while (endIndex < text.length && /[A-Za-z0-9_]/.test(text[endIndex] ?? '')) {
+          endIndex += 1;
+        }
+
+        const key = text.slice(index + 1, endIndex);
+        if (key === 'RANDOM') {
+          result += Math.floor(Math.random() * 32768).toString();
+        } else {
+          result += env.get(key) ?? '';
+        }
+        index = endIndex - 1;
+        continue;
+      }
+
+      result += '$';
+    }
+
+    return result;
+  }
+
+  private splitExpandedFields({
+    parts,
+    mode,
+  }: {
+    parts: Array<{
+      text: string;
+      quoted: boolean;
+    }>;
+    mode: WeshExpansionMode;
+  }): WeshExpandedField[] {
+    switch (mode) {
+    case 'assignment':
+    case 'redirection':
+      return [{
+        text: parts.map((part) => part.text).join(''),
+        parts,
+      }];
+    case 'argv':
+      break;
+    default: {
+      const _ex: never = mode;
+      throw new Error(`Unhandled expansion mode: ${_ex}`);
+    }
+    }
+
+    const fields: WeshExpandedField[] = [];
+    let currentText = '';
+    let currentParts: Array<{ text: string; quoted: boolean }> = [];
+    let hasContent = false;
+
+    const flush = () => {
+      if (!hasContent) {
+        return;
+      }
+
+      fields.push({
+        text: currentText,
+        parts: currentParts,
+      });
+      currentText = '';
+      currentParts = [];
+      hasContent = false;
+    };
+
+    for (const part of parts) {
+      if (part.quoted) {
+        currentText += part.text;
+        currentParts.push(part);
+        hasContent = true;
+        continue;
+      }
+
+      let chunk = '';
+      for (const char of part.text) {
+        if (/\s/.test(char)) {
+          if (chunk.length > 0) {
+            currentText += chunk;
+            currentParts.push({ text: chunk, quoted: false });
+            hasContent = true;
+            chunk = '';
+          }
+          flush();
+          continue;
+        }
+        chunk += char;
+      }
+
+      if (chunk.length > 0) {
+        currentText += chunk;
+        currentParts.push({ text: chunk, quoted: false });
+        hasContent = true;
+      }
+    }
+
+    flush();
+    return fields;
+  }
+
+  private escapeGlobLiteral({
+    text,
+  }: {
+    text: string;
+  }): string {
+    let result = '';
+    for (const char of text) {
+      if (char === '\\' || char === '*' || char === '?' || char === '[' || char === ']') {
+        result += '\\';
+      }
+      result += char;
+    }
+    return result;
+  }
+
+  private hasActiveGlob({
+    field,
+  }: {
+    field: WeshExpandedField;
+  }): boolean {
+    return field.parts.some((part) => !part.quoted && /[[*?]/.test(part.text));
+  }
+
+  private buildGlobPattern({
+    field,
+  }: {
+    field: WeshExpandedField;
+  }): string {
+    return field.parts
+      .map((part) => part.quoted ? this.escapeGlobLiteral({ text: part.text }) : part.text)
+      .join('');
+  }
+
+  private compileGlobComponent({
+    pattern,
+  }: {
+    pattern: string;
+  }): RegExp {
+    let source = '^';
+
+    for (let index = 0; index < pattern.length; index++) {
+      const char = pattern[index];
+      if (char === undefined) {
+        continue;
+      }
+
+      if (char === '\\') {
+        const nextChar = pattern[index + 1];
+        if (nextChar !== undefined) {
+          source += nextChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          index += 1;
+          continue;
+        }
+        source += '\\\\';
+        continue;
+      }
+
+      if (char === '*') {
+        source += '[^/]*';
+        continue;
+      }
+
+      if (char === '?') {
+        source += '[^/]';
+        continue;
+      }
+
+      if (char === '[') {
+        const endIndex = pattern.indexOf(']', index + 1);
+        if (endIndex !== -1) {
+          let classContent = pattern.slice(index + 1, endIndex);
+          if (classContent.startsWith('!')) {
+            classContent = '^' + classContent.slice(1);
+          }
+          source += `[${classContent}]`;
+          index = endIndex;
+          continue;
+        }
+      }
+
+      source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    source += '$';
+    return new RegExp(source);
+  }
+
+  private async globField({
+    field,
+    cwd,
+  }: {
+    field: WeshExpandedField;
+    cwd: string;
+  }): Promise<string[]> {
+    if (!this.hasActiveGlob({ field })) {
+      return [field.text];
+    }
+
+    const pattern = this.buildGlobPattern({ field });
+    const isAbsolute = pattern.startsWith('/');
+    const rawSegments = pattern.split('/').filter((segment, index) => segment.length > 0 || index > 0);
+    const initialBase = isAbsolute ? '/' : cwd;
+    let candidates = [initialBase];
+
+    for (let index = 0; index < rawSegments.length; index++) {
+      const segment = rawSegments[index];
+      if (segment === undefined || segment.length === 0) {
+        continue;
+      }
+
+      const nextCandidates: string[] = [];
+      const matcher = this.compileGlobComponent({ pattern: segment });
+      const segmentHasGlob = /(^|[^\\])[[*?]/.test(segment);
+
+      for (const base of candidates) {
+        if (!segmentHasGlob) {
+          const candidate = base === '/' ? `/${segment}` : `${base}/${segment}`;
+          try {
+            await this.kernel.stat({ path: candidate });
+            nextCandidates.push(candidate);
+          } catch {
+            continue;
+          }
+          continue;
+        }
+
+        let entries: Array<{ name: string; type: WeshFileType }>;
+        try {
+          entries = await this.kernel.readDir({ path: base });
+        } catch {
+          continue;
+        }
+
+        for (const entry of entries) {
+          if (!segment.startsWith('.') && entry.name.startsWith('.')) {
+            continue;
+          }
+          if (!matcher.test(entry.name)) {
+            continue;
+          }
+          nextCandidates.push(base === '/' ? `/${entry.name}` : `${base}/${entry.name}`);
+        }
+      }
+
+      candidates = nextCandidates;
+      if (candidates.length === 0) {
+        return [field.text];
+      }
+      if (index < rawSegments.length - 1) {
+        const directoryCandidates: string[] = [];
+        for (const candidate of candidates) {
+          try {
+            const stat = await this.kernel.stat({ path: candidate });
+            switch (stat.type) {
+            case 'directory':
+              directoryCandidates.push(candidate);
+              break;
+            case 'file':
+            case 'fifo':
+            case 'chardev':
+            case 'symlink':
+              break;
+            default: {
+              const _ex: never = stat.type;
+              throw new Error(`Unhandled stat type: ${_ex}`);
+            }
+            }
+          } catch {
+            continue;
+          }
+        }
+        candidates = directoryCandidates;
+      }
+    }
+
+    if (candidates.length === 0) {
+      return [field.text];
+    }
+
+    return candidates.map((candidate) => {
+      if (isAbsolute) {
+        return candidate;
+      }
+      if (cwd === '/') {
+        return candidate.slice(1);
+      }
+      const prefix = `${cwd}/`;
+      return candidate.startsWith(prefix) ? candidate.slice(prefix.length) : candidate;
+    });
+  }
+
+  private async expandWord({
+    raw,
+    env,
+    cwd,
+    mode,
+  }: {
+    raw: string;
+    env: Map<string, string>;
+    cwd: string;
+    mode: WeshExpansionMode;
+  }): Promise<string[]> {
+    const parsedParts = this.parseWordParts({ raw });
+    const homeDirectory = env.get('HOME') ?? '/home';
+    const tildeExpandedParts = parsedParts.map((part, index) => {
+      if (
+        index === 0 &&
+        !part.quoted &&
+        part.text.startsWith('~') &&
+        (part.text.length === 1 || part.text[1] === '/')
+      ) {
+        const suffix = part.text.slice(1);
+        return {
+          ...part,
+          text: homeDirectory === '/' ? `/${suffix.replace(/^\/+/, '')}` : `${homeDirectory}${suffix}`,
+        };
+      }
+
+      return part;
+    });
+    const expandedParts = tildeExpandedParts.map((part) => ({
+      text: part.expandVariables ? this.expandPartVariables({ text: part.text, env }) : part.text,
+      quoted: part.quoted,
+    }));
+
+    const fields = this.splitExpandedFields({ parts: expandedParts, mode });
+    const expandedFields: string[] = [];
+
+    for (const field of fields) {
+      const globbed = await this.globField({ field, cwd });
+      expandedFields.push(...globbed);
+    }
+
+    return expandedFields;
+  }
+
+  private async expandSingleWord({
+    raw,
+    env,
+    cwd,
+    mode,
+  }: {
+    raw: string;
+    env: Map<string, string>;
+    cwd: string;
+    mode: Exclude<WeshExpansionMode, 'argv'>;
+  }): Promise<string> {
+    const expanded = await this.expandWord({
+      raw,
+      env,
+      cwd,
+      mode,
+    });
+    return expanded[0] ?? '';
   }
 
   /**
@@ -266,7 +799,13 @@ export class Wesh {
       let lastForRes: WeshCommandResult = { exitCode: 0 };
       const expandedItems: string[] = [];
       for (const item of node.items) {
-        expandedItems.push(this.expandVariables(item, state.env));
+        const itemFields = await this.expandWord({
+          raw: item,
+          env: state.env,
+          cwd: state.cwd,
+          mode: 'argv',
+        });
+        expandedItems.push(...itemFields);
       }
 
       for (const item of expandedItems) {
@@ -281,7 +820,12 @@ export class Wesh {
 
     case 'assignment':
       for (const assign of node.assignments) {
-        state.env.set(assign.key, this.expandVariables(assign.value, state.env));
+        state.env.set(assign.key, await this.expandSingleWord({
+          raw: assign.value,
+          env: state.env,
+          cwd: state.cwd,
+          mode: 'assignment',
+        }));
       }
       return { exitCode: 0 };
     }
@@ -354,7 +898,13 @@ export class Wesh {
 
     for (const arg of node.args) {
       if (typeof arg === 'string') {
-        expandedArgs.push(this.expandVariables(arg, state.env));
+        const fields = await this.expandWord({
+          raw: arg,
+          env: state.env,
+          cwd: state.cwd,
+          mode: 'argv',
+        });
+        expandedArgs.push(...fields);
       } else if (arg.kind === 'processSubstitution') {
         const { read, write } = await this.kernel.pipe();
         const id = Math.floor(Math.random() * 1000000);
@@ -401,7 +951,12 @@ export class Wesh {
       }
     }
 
-    const cmdName = this.expandVariables(node.name, state.env);
+    const cmdName = await this.expandSingleWord({
+      raw: node.name,
+      env: state.env,
+      cwd: state.cwd,
+      mode: 'assignment',
+    });
     const definition = this.commands.get(cmdName);
 
     if (!definition) {
@@ -410,7 +965,12 @@ export class Wesh {
 
     const currentEnv = new Map(state.env);
     for (const assign of node.assignments) {
-      currentEnv.set(assign.key, this.expandVariables(assign.value, state.env));
+      currentEnv.set(assign.key, await this.expandSingleWord({
+        raw: assign.value,
+        env: state.env,
+        cwd: state.cwd,
+        mode: 'assignment',
+      }));
     }
 
     let cmdStdin = stdin;
@@ -418,7 +978,12 @@ export class Wesh {
     let cmdStderr = stderr;
 
     for (const red of node.redirections) {
-      const rawTarget = red.target ? this.expandVariables(red.target, state.env) : undefined;
+      const rawTarget = red.target ? await this.expandSingleWord({
+        raw: red.target,
+        env: state.env,
+        cwd: state.cwd,
+        mode: 'redirection',
+      }) : undefined;
       const fullTarget = rawTarget ? (rawTarget.startsWith('/') ? rawTarget : `${state.cwd}/${rawTarget}`) : undefined;
 
       switch (red.type) {
@@ -437,7 +1002,10 @@ export class Wesh {
         if (red.content !== undefined) {
           const { read, write } = await this.kernel.pipe();
           const encoder = new TextEncoder();
-          const data = encoder.encode(red.content + '\n');
+          const content = red.type === '<<' && red.contentExpansion === 'variables'
+            ? this.expandPartVariables({ text: red.content, env: state.env })
+            : red.content;
+          const data = encoder.encode(content + '\n');
           await write.write({ buffer: data });
           await write.close();
           cmdStdin = read;

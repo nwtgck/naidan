@@ -21,6 +21,78 @@ export function parseCommandLine({
 
 const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'fi', 'for', 'in', 'do', 'done']);
 
+function parseHereDocDelimiter({
+  raw,
+}: {
+  raw: string;
+}): {
+  delimiter: string;
+  contentExpansion: 'literal' | 'variables';
+} {
+  let delimiter = '';
+  let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
+
+  for (let index = 0; index < raw.length; index++) {
+    const char = raw[index];
+    if (char === undefined) continue;
+
+    switch (mode) {
+    case 'single':
+      if (char === "'") {
+        mode = 'unquoted';
+      } else {
+        delimiter += char;
+      }
+      continue;
+    case 'double':
+      if (char === '"') {
+        mode = 'unquoted';
+      } else if (char === '\\') {
+        const nextChar = raw[index + 1];
+        if (nextChar !== undefined) {
+          delimiter += nextChar;
+          index += 1;
+        }
+      } else {
+        delimiter += char;
+      }
+      continue;
+    case 'unquoted':
+      break;
+    default: {
+      const _ex: never = mode;
+      throw new Error(`Unhandled parser mode: ${_ex}`);
+    }
+    }
+
+    if (char === "'") {
+      mode = 'single';
+      continue;
+    }
+
+    if (char === '"') {
+      mode = 'double';
+      continue;
+    }
+
+    if (char === '\\') {
+      const nextChar = raw[index + 1];
+      if (nextChar !== undefined) {
+        delimiter += nextChar;
+        index += 1;
+      }
+      continue;
+    }
+
+    delimiter += char;
+  }
+
+  return {
+    delimiter,
+    contentExpansion: raw === delimiter ? 'variables' : 'literal',
+  };
+}
+
 class Parser {
   private currentToken: Token;
   private lexer: Lexer;
@@ -295,6 +367,7 @@ class Parser {
         let redType: '>' | '>>' | '<' | '2>' | '2>&1' | '<<' | '<<<';
         let target: string | undefined;
         let content: string | undefined;
+        let contentExpansion: 'literal' | 'variables' | undefined;
 
         const redToken = t as 'GT' | 'GTGT' | 'LT' | 'LTGT' | 'LTGTAMP' | 'HEREDOC' | 'HERESTRING';
         switch (redToken) {
@@ -326,12 +399,16 @@ class Parser {
         case 'HEREDOC':
           redType = '<<';
           target = this.expectWord();
+          ({
+            delimiter: target,
+            contentExpansion,
+          } = parseHereDocDelimiter({ raw: target }));
           content = this.lexer.readHereDoc(target);
           break;
         default:
           throw new Error(`Unhandled redirection type: ${redToken}`);
         }
-        redirections.push({ type: redType, target, content });
+        redirections.push({ type: redType, target, content, contentExpansion });
 
       } else if (t === 'PROC_SUB_IN' || t === 'PROC_SUB_OUT') {
         this.eat(t);

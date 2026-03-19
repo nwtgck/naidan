@@ -490,7 +490,25 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       return s;
     }
 
-    const { handle, readOnly } = await this._resolve({ path: normalized });
+    let resolved: { handle: FileSystemHandle; readOnly: boolean; fullPath: string } | undefined;
+    try {
+      resolved = await this._resolve({ path: normalized });
+    } catch (error) {
+      if (this.getDirectMountChildren({ path: normalized }).length > 0) {
+        return {
+          size: 0,
+          mode: 0o755,
+          type: 'directory',
+          mtime: Date.now(),
+          ino: 0,
+          uid: 0,
+          gid: 0,
+        };
+      }
+      throw error;
+    }
+
+    const { handle, readOnly } = resolved;
 
     const mount = this.findMount({ path: normalized });
     if (mount) {
@@ -548,49 +566,63 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         .map(k => ({ name: k.split('/').pop()!, type: 'chardev' }));
     }
 
-    const { handle } = await this._resolve({ path: normalized });
-    switch (handle.kind) {
-    case 'directory':
-      break;
-    case 'file':
-      throw new Error(`Not a directory: ${normalized}`);
-    default: {
-      const _ex: never = handle.kind;
-      throw new Error(`Unhandled case: ${_ex}`);
-    }
-    }
+    const entries = new Map<string, WeshFileType>();
 
-    const dirHandle = handle as FileSystemDirectoryHandle;
-    const entries: Array<{ name: string; type: WeshFileType }> = [];
-    const mount = this.findMount({ path: normalized });
-
-    for await (const [name, entry] of dirHandle.entries()) {
-      if (name === WESH_SYSTEM_DIR) continue;
-
-      let type: WeshFileType;
-      switch (entry.kind) {
+    try {
+      const { handle } = await this._resolve({ path: normalized });
+      switch (handle.kind) {
       case 'directory':
-        type = 'directory';
         break;
       case 'file':
-        type = 'file';
-        break;
+        throw new Error(`Not a directory: ${normalized}`);
       default: {
-        const _ex: never = entry.kind;
-        throw new Error(`Unhandled file kind: ${_ex}`);
+        const _ex: never = handle.kind;
+        throw new Error(`Unhandled case: ${_ex}`);
       }
       }
 
-      if (mount) {
-        const relPath = this.getRelativePath({ path: normalized === '/' ? `/${name}` : `${normalized}/${name}`, mount });
-        const regEntry = mount.registryCache.get(relPath);
-        if (regEntry) {
-          type = regEntry.type;
+      const dirHandle = handle as FileSystemDirectoryHandle;
+      const mount = this.findMount({ path: normalized });
+
+      for await (const [name, entry] of dirHandle.entries()) {
+        if (name === WESH_SYSTEM_DIR) continue;
+
+        let type: WeshFileType;
+        switch (entry.kind) {
+        case 'directory':
+          type = 'directory';
+          break;
+        case 'file':
+          type = 'file';
+          break;
+        default: {
+          const _ex: never = entry.kind;
+          throw new Error(`Unhandled file kind: ${_ex}`);
         }
+        }
+
+        if (mount) {
+          const relPath = this.getRelativePath({ path: normalized === '/' ? `/${name}` : `${normalized}/${name}`, mount });
+          const regEntry = mount.registryCache.get(relPath);
+          if (regEntry) {
+            type = regEntry.type;
+          }
+        }
+        entries.set(name, type);
       }
-      entries.push({ name, type });
+    } catch (error) {
+      if (this.getDirectMountChildren({ path: normalized }).length === 0) {
+        throw error;
+      }
     }
-    return entries;
+
+    for (const name of this.getDirectMountChildren({ path: normalized })) {
+      if (!entries.has(name)) {
+        entries.set(name, 'directory');
+      }
+    }
+
+    return Array.from(entries.entries()).map(([name, type]) => ({ name, type }));
   }
 
   async mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void> {
@@ -804,6 +836,34 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     if (path === mount.path) return '.';
     const prefix = mount.path.endsWith('/') ? mount.path : mount.path + '/';
     return path.substring(prefix.length);
+  }
+
+  private getDirectMountChildren({ path }: { path: string }): string[] {
+    const normalized = this.normalizePath({ path });
+    const childNames = new Set<string>();
+
+    for (const mount of this.mounts) {
+      if (mount.path === normalized) {
+        continue;
+      }
+
+      const prefix = normalized === '/' ? '/' : `${normalized}/`;
+      if (!mount.path.startsWith(prefix)) {
+        continue;
+      }
+
+      const remainder = mount.path.slice(prefix.length);
+      if (remainder.length === 0) {
+        continue;
+      }
+
+      const childName = remainder.split('/')[0];
+      if (childName !== undefined && childName.length > 0) {
+        childNames.add(childName);
+      }
+    }
+
+    return Array.from(childNames).sort();
   }
 
   private async _resolve({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {

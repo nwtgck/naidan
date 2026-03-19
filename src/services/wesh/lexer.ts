@@ -143,7 +143,6 @@ export class Lexer {
 
   private readWord(): Token {
     const start = this.position;
-    let value = '';
     let inQuote: "'" | '"' | null = null;
     let escaped = false;
 
@@ -151,7 +150,6 @@ export class Lexer {
       const char = this.input[this.position];
 
       if (escaped) {
-        value += char;
         escaped = false;
         this.position++;
         continue;
@@ -166,8 +164,6 @@ export class Lexer {
       if (inQuote) {
         if (char === inQuote) {
           inQuote = null;
-        } else {
-          value += char;
         }
         this.position++;
         continue;
@@ -197,11 +193,10 @@ export class Lexer {
         break;
       }
 
-      value += char;
       this.position++;
     }
 
-    return { type: 'WORD', value, position: start };
+    return { type: 'WORD', value: this.input.slice(start, this.position), position: start };
   }
 
   peek(): Token {
