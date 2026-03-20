@@ -7,10 +7,10 @@ import type {
   WeshFileHandle,
   WeshCommandNode,
   WeshPipelineNode,
-  WeshFileType,
   WeshTrapDisposition,
   WeshWaitStatus,
   WeshProcessSignalDisposition,
+  WeshShellOption,
 } from './types';
 import { weshWaitStatusToExitCode } from './types';
 import { WeshVFS } from './vfs';
@@ -37,6 +37,7 @@ interface WeshExecutionEnvironment {
   cwd: string;
   fds: Map<number, WeshFileHandle>;
   traps: Map<string, WeshTrapDisposition>;
+  shellOptions: Map<WeshShellOption, boolean>;
   positionalArgs: string[];
   lastBackgroundPid: number | undefined;
 }
@@ -189,6 +190,12 @@ export class Wesh {
   private nextJobId: number = 1;
   private shellFds: Map<number, WeshFileHandle> = new Map();
   private traps: Map<string, WeshTrapDisposition> = new Map();
+  private shellOptions: Map<WeshShellOption, boolean> = new Map([
+    ['dotglob', false],
+    ['failglob', false],
+    ['globstar', false],
+    ['nullglob', false],
+  ]);
   private foregroundProcessGroupId: number | undefined;
 
   private shellPid: number = 0;
@@ -358,6 +365,7 @@ usage: ${name} [-c command] [file [argument...]]
               cwd: context.cwd,
               fds: new Map(),
               traps: new Map(),
+              shellOptions: new Map(context.getShellOptions()),
               positionalArgs: context.args.slice(1),
               lastBackgroundPid: undefined,
             }),
@@ -1351,12 +1359,226 @@ usage: alias [name[=value] ...]
     return new RegExp(source);
   }
 
+  private isGlobPatternSegment({
+    segment,
+  }: {
+    segment: string;
+  }): boolean {
+    return /(^|[^\\])[[*?]/.test(segment);
+  }
+
+  private isGlobStarSegment({
+    segment,
+    shellOptions,
+  }: {
+    segment: string;
+    shellOptions: Map<WeshShellOption, boolean>;
+  }): boolean {
+    return segment === '**' && shellOptions.get('globstar') === true;
+  }
+
+  private shouldIncludeHiddenGlobEntry({
+    patternSegment,
+    shellOptions,
+  }: {
+    patternSegment: string;
+    shellOptions: Map<WeshShellOption, boolean>;
+  }): boolean {
+    return patternSegment.startsWith('.') || shellOptions.get('dotglob') === true;
+  }
+
+  private async expandGlobSegments({
+    bases,
+    segments,
+    segmentIndex,
+    shellOptions,
+  }: {
+    bases: string[];
+    segments: string[];
+    segmentIndex: number;
+    shellOptions: Map<WeshShellOption, boolean>;
+  }): Promise<string[]> {
+    if (segmentIndex >= segments.length) {
+      return bases;
+    }
+
+    const segment = segments[segmentIndex];
+    if (segment === undefined || segment.length === 0) {
+      return this.expandGlobSegments({
+        bases,
+        segments,
+        segmentIndex: segmentIndex + 1,
+        shellOptions,
+      });
+    }
+
+    if (this.isGlobStarSegment({ segment, shellOptions })) {
+      const zeroDepthMatches = await this.expandGlobSegments({
+        bases,
+        segments,
+        segmentIndex: segmentIndex + 1,
+        shellOptions,
+      });
+      const nestedBases = new Set<string>();
+      const includeHiddenEntries = this.shouldIncludeHiddenGlobEntry({
+        patternSegment: segment,
+        shellOptions,
+      });
+
+      for (const base of bases) {
+        const entries = await this.kernel.readDir({ path: base });
+        for (const entry of entries) {
+          switch (entry.type) {
+          case 'directory':
+            break;
+          case 'file':
+          case 'fifo':
+          case 'chardev':
+          case 'symlink':
+            continue;
+          default: {
+            const _ex: never = entry.type;
+            throw new Error(`Unhandled file type: ${_ex}`);
+          }
+          }
+          if (entry.name === '.' || entry.name === '..') {
+            continue;
+          }
+          if (!includeHiddenEntries && entry.name.startsWith('.')) {
+            continue;
+          }
+          nestedBases.add(resolvePath({ cwd: base, path: entry.name }));
+        }
+      }
+
+      if (nestedBases.size === 0) {
+        return zeroDepthMatches;
+      }
+
+      const deepMatches = await this.expandGlobSegments({
+        bases: Array.from(nestedBases),
+        segments,
+        segmentIndex,
+        shellOptions,
+      });
+
+      return Array.from(new Set([...zeroDepthMatches, ...deepMatches]));
+    }
+
+    const nextBases: string[] = [];
+    const segmentHasGlob = this.isGlobPatternSegment({ segment });
+    const matcher = segmentHasGlob ? this.compileGlobComponent({ pattern: segment }) : undefined;
+    const includeHiddenEntries = this.shouldIncludeHiddenGlobEntry({
+      patternSegment: segment,
+      shellOptions,
+    });
+
+    for (const base of bases) {
+      if (!segmentHasGlob) {
+        const candidate = resolvePath({ cwd: base, path: segment });
+        try {
+          await this.kernel.stat({ path: candidate });
+          nextBases.push(candidate);
+        } catch {
+          continue;
+        }
+        continue;
+      }
+
+      const entries = await this.kernel.readDir({ path: base });
+      for (const entry of entries) {
+        if (!includeHiddenEntries && entry.name.startsWith('.')) {
+          continue;
+        }
+        if (!matcher?.test(entry.name)) {
+          continue;
+        }
+        nextBases.push(resolvePath({ cwd: base, path: entry.name }));
+      }
+    }
+
+    if (nextBases.length === 0) {
+      return [];
+    }
+
+    if (segmentIndex === segments.length - 1) {
+      return nextBases;
+    }
+
+    const directoryBases: string[] = [];
+    for (const candidate of nextBases) {
+      const stat = await this.kernel.stat({ path: candidate });
+      switch (stat.type) {
+      case 'directory':
+        directoryBases.push(candidate);
+        break;
+      case 'file':
+      case 'fifo':
+      case 'chardev':
+      case 'symlink':
+        break;
+      default: {
+        const _ex: never = stat.type;
+        throw new Error(`Unhandled stat type: ${_ex}`);
+      }
+      }
+    }
+
+    if (directoryBases.length === 0) {
+      return [];
+    }
+
+    return this.expandGlobSegments({
+      bases: directoryBases,
+      segments,
+      segmentIndex: segmentIndex + 1,
+      shellOptions,
+    });
+  }
+
+  private relativizeGlobMatch({
+    cwd,
+    absolutePath,
+  }: {
+    cwd: string;
+    absolutePath: string;
+  }): string {
+    if (cwd === absolutePath) {
+      return '.';
+    }
+
+    if (cwd === '/') {
+      return absolutePath.slice(1);
+    }
+
+    const cwdSegments = cwd.split('/').filter((segment) => segment.length > 0);
+    const pathSegments = absolutePath.split('/').filter((segment) => segment.length > 0);
+    let sharedLength = 0;
+
+    while (
+      sharedLength < cwdSegments.length &&
+      sharedLength < pathSegments.length &&
+      cwdSegments[sharedLength] === pathSegments[sharedLength]
+    ) {
+      sharedLength += 1;
+    }
+
+    const relativeSegments = [
+      ...Array.from({ length: cwdSegments.length - sharedLength }, () => '..'),
+      ...pathSegments.slice(sharedLength),
+    ];
+
+    return relativeSegments.length === 0 ? '.' : relativeSegments.join('/');
+  }
+
   private async globField({
     field,
     cwd,
+    shellOptions,
   }: {
     field: WeshExpandedField;
     cwd: string;
+    shellOptions: Map<WeshShellOption, boolean>;
   }): Promise<string[]> {
     if (!this.hasActiveGlob({ field })) {
       return [field.text];
@@ -1364,82 +1586,22 @@ usage: alias [name[=value] ...]
 
     const pattern = this.buildGlobPattern({ field });
     const isAbsolute = pattern.startsWith('/');
-    const rawSegments = pattern.split('/').filter((segment, index) => segment.length > 0 || index > 0);
+    const rawSegments = pattern.split('/').filter((segment) => segment.length > 0);
     const initialBase = isAbsolute ? '/' : cwd;
-    let candidates = [initialBase];
-
-    for (let index = 0; index < rawSegments.length; index++) {
-      const segment = rawSegments[index];
-      if (segment === undefined || segment.length === 0) {
-        continue;
-      }
-
-      const nextCandidates: string[] = [];
-      const matcher = this.compileGlobComponent({ pattern: segment });
-      const segmentHasGlob = /(^|[^\\])[[*?]/.test(segment);
-
-      for (const base of candidates) {
-        if (!segmentHasGlob) {
-          const candidate = base === '/' ? `/${segment}` : `${base}/${segment}`;
-          try {
-            await this.kernel.stat({ path: candidate });
-            nextCandidates.push(candidate);
-          } catch {
-            continue;
-          }
-          continue;
-        }
-
-        let entries: Array<{ name: string; type: WeshFileType }>;
-        try {
-          entries = await this.kernel.readDir({ path: base });
-        } catch {
-          continue;
-        }
-
-        for (const entry of entries) {
-          if (!segment.startsWith('.') && entry.name.startsWith('.')) {
-            continue;
-          }
-          if (!matcher.test(entry.name)) {
-            continue;
-          }
-          nextCandidates.push(base === '/' ? `/${entry.name}` : `${base}/${entry.name}`);
-        }
-      }
-
-      candidates = nextCandidates;
-      if (candidates.length === 0) {
-        return [field.text];
-      }
-      if (index < rawSegments.length - 1) {
-        const directoryCandidates: string[] = [];
-        for (const candidate of candidates) {
-          try {
-            const stat = await this.kernel.stat({ path: candidate });
-            switch (stat.type) {
-            case 'directory':
-              directoryCandidates.push(candidate);
-              break;
-            case 'file':
-            case 'fifo':
-            case 'chardev':
-            case 'symlink':
-              break;
-            default: {
-              const _ex: never = stat.type;
-              throw new Error(`Unhandled stat type: ${_ex}`);
-            }
-            }
-          } catch {
-            continue;
-          }
-        }
-        candidates = directoryCandidates;
-      }
-    }
+    const candidates = await this.expandGlobSegments({
+      bases: [initialBase],
+      segments: rawSegments,
+      segmentIndex: 0,
+      shellOptions,
+    });
 
     if (candidates.length === 0) {
+      if (shellOptions.get('failglob') === true) {
+        throw new Error(`no match: ${pattern}`);
+      }
+      if (shellOptions.get('nullglob') === true) {
+        return [];
+      }
       return [field.text];
     }
 
@@ -1447,11 +1609,10 @@ usage: alias [name[=value] ...]
       if (isAbsolute) {
         return candidate;
       }
-      if (cwd === '/') {
-        return candidate.slice(1);
-      }
-      const prefix = `${cwd}/`;
-      return candidate.startsWith(prefix) ? candidate.slice(prefix.length) : candidate;
+      return this.relativizeGlobMatch({
+        cwd,
+        absolutePath: candidate,
+      });
     });
   }
 
@@ -1460,11 +1621,13 @@ usage: alias [name[=value] ...]
     env,
     cwd,
     mode,
+    shellOptions,
   }: {
     raw: string;
     env: Map<string, string>;
     cwd: string;
     mode: WeshExpansionMode;
+    shellOptions: Map<WeshShellOption, boolean>;
   }): Promise<string[]> {
     const parsedParts = this.parseWordParts({ raw });
     const homeDirectory = env.get('HOME') ?? '/home';
@@ -1493,7 +1656,7 @@ usage: alias [name[=value] ...]
     const expandedFields: string[] = [];
 
     for (const field of fields) {
-      const globbed = await this.globField({ field, cwd });
+      const globbed = await this.globField({ field, cwd, shellOptions });
       expandedFields.push(...globbed);
     }
 
@@ -1505,17 +1668,20 @@ usage: alias [name[=value] ...]
     env,
     cwd,
     mode,
+    shellOptions,
   }: {
     raw: string;
     env: Map<string, string>;
     cwd: string;
     mode: Exclude<WeshExpansionMode, 'argv'>;
+    shellOptions: Map<WeshShellOption, boolean>;
   }): Promise<string> {
     const expanded = await this.expandWord({
       raw,
       env,
       cwd,
       mode,
+      shellOptions,
     });
     return expanded[0] ?? '';
   }
@@ -1580,6 +1746,7 @@ usage: alias [name[=value] ...]
       env: environment.env,
       cwd: environment.cwd,
       mode: 'redirection',
+      shellOptions: environment.shellOptions,
     }) : undefined;
 
     if (redirection.type === 'heredoc' || redirection.type === 'herestring') {
@@ -1722,6 +1889,7 @@ usage: alias [name[=value] ...]
           stderr: options.stderr,
         }),
         traps: this.traps,
+        shellOptions: this.shellOptions,
         positionalArgs: [],
         lastBackgroundPid: undefined,
       });
@@ -1736,6 +1904,7 @@ usage: alias [name[=value] ...]
 
       this.cwd = environment.cwd;
       this.aliases = environment.aliases;
+      this.shellOptions = environment.shellOptions;
       return await this.runExitTrapIfNeeded({
         result,
         environment,
@@ -1899,6 +2068,7 @@ usage: alias [name[=value] ...]
           env: environment.env,
           cwd: environment.cwd,
           mode: 'argv',
+          shellOptions: environment.shellOptions,
         });
         expandedItems.push(...itemFields);
       }
@@ -1921,6 +2091,7 @@ usage: alias [name[=value] ...]
           env: environment.env,
           cwd: environment.cwd,
           mode: 'assignment',
+          shellOptions: environment.shellOptions,
         }));
       }
       result = { exitCode: 0 };
@@ -2027,6 +2198,7 @@ usage: alias [name[=value] ...]
           env: environment.env,
           cwd: environment.cwd,
           mode: 'argv',
+          shellOptions: environment.shellOptions,
         });
         expandedArgs.push(...fields);
       } else if (arg.kind === 'processSubstitution') {
@@ -2086,6 +2258,7 @@ usage: alias [name[=value] ...]
       env: environment.env,
       cwd: environment.cwd,
       mode: 'assignment',
+      shellOptions: environment.shellOptions,
     });
     const resolvedCommand = this.resolveBuiltinCommand({
       name: cmdName,
@@ -2124,6 +2297,7 @@ usage: alias [name[=value] ...]
         env: environment.env,
         cwd: environment.cwd,
         mode: 'assignment',
+        shellOptions: environment.shellOptions,
       }));
     }
 
@@ -2221,6 +2395,12 @@ usage: alias [name[=value] ...]
         };
       },
       getJobs: () => Array.from(this.jobs.values()).map(j => ({ id: j.id, command: j.command, status: j.status })),
+      getShellOption: ({ name }) => environment.shellOptions.get(name) === true,
+      setShellOption: ({ name, enabled }) => {
+        environment.shellOptions.set(name, enabled);
+      },
+      getShellOptions: () => Array.from(environment.shellOptions.entries())
+        .sort(([leftName], [rightName]) => leftName.localeCompare(rightName)),
       executeCommand: ({ command, args, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr, ignoreAliases: nextIgnoreAliases }) => this.executeArgv({
         command,
         args,
@@ -2421,6 +2601,7 @@ usage: alias [name[=value] ...]
     cwd,
     fds,
     traps,
+    shellOptions,
     positionalArgs,
     lastBackgroundPid,
   }: {
@@ -2431,6 +2612,7 @@ usage: alias [name[=value] ...]
     cwd: string;
     fds: Map<number, WeshFileHandle>;
     traps: Map<string, WeshTrapDisposition>;
+    shellOptions: Map<WeshShellOption, boolean>;
     positionalArgs: string[];
     lastBackgroundPid: number | undefined;
   }): WeshExecutionEnvironment {
@@ -2442,6 +2624,7 @@ usage: alias [name[=value] ...]
       cwd,
       fds,
       traps,
+      shellOptions,
       positionalArgs,
       lastBackgroundPid,
     };
@@ -2468,6 +2651,7 @@ usage: alias [name[=value] ...]
       cwd: environment.cwd,
       fds: new Map(environment.fds),
       traps: new Map(environment.traps),
+      shellOptions: new Map(environment.shellOptions),
       positionalArgs: [...environment.positionalArgs],
       lastBackgroundPid: environment.lastBackgroundPid,
     });

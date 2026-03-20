@@ -1208,6 +1208,28 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     return this.mounts.some((mount) => mount.path === normalized && normalized !== '/');
   }
 
+  private isInvalidHandleNameError({
+    error,
+  }: {
+    error: unknown;
+  }): boolean {
+    return error instanceof Error && error.message.includes('Name is not allowed');
+  }
+
+  private rethrowPathLookupError({
+    error,
+    path,
+  }: {
+    error: unknown;
+    path: string;
+  }): never {
+    if (this.isInvalidHandleNameError({ error })) {
+      throw new Error(`Path not found: ${path}`);
+    }
+
+    throw error;
+  }
+
   private async _resolvePhysical({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {
     const normalized = this.normalizePath({ path });
     const mount = this.findMount({ path: normalized });
@@ -1221,22 +1243,40 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       if (part === undefined) continue;
-      current = await current.getDirectoryHandle(part);
+      try {
+        current = await current.getDirectoryHandle(part);
+      } catch (error: unknown) {
+        this.rethrowPathLookupError({
+          error,
+          path: normalized,
+        });
+      }
     }
     const lastPart = parts[parts.length - 1];
     if (lastPart === undefined) return { handle: current, readOnly: mount.readOnly, fullPath: normalized };
     try {
       const fileHandle = await current.getFileHandle(lastPart);
       return { handle: fileHandle, readOnly: mount.readOnly, fullPath: normalized };
-    } catch {
-      const dirHandle = await current.getDirectoryHandle(lastPart);
-      switch (dirHandle.kind) {
-      case 'directory':
-        return { handle: dirHandle, readOnly: mount.readOnly, fullPath: normalized };
-      default: {
-        const _ex: never = dirHandle.kind;
-        throw new Error(`Unhandled handle kind: ${_ex}`);
+    } catch (fileError: unknown) {
+      if (this.isInvalidHandleNameError({ error: fileError })) {
+        throw new Error(`Path not found: ${normalized}`);
       }
+
+      try {
+        const dirHandle = await current.getDirectoryHandle(lastPart);
+        switch (dirHandle.kind) {
+        case 'directory':
+          return { handle: dirHandle, readOnly: mount.readOnly, fullPath: normalized };
+        default: {
+          const _ex: never = dirHandle.kind;
+          throw new Error(`Unhandled handle kind: ${_ex}`);
+        }
+        }
+      } catch (dirError: unknown) {
+        this.rethrowPathLookupError({
+          error: dirError,
+          path: normalized,
+        });
       }
     }
   }

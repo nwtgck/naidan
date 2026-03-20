@@ -39,6 +39,7 @@ import { whichCommandDefinition } from './which/index.ts';
 import { commandCommandDefinition } from './command/index.ts';
 import { dateCommandDefinition } from './date/index.ts';
 import { sleepCommandDefinition } from './sleep/index.ts';
+import { shoptCommandDefinition } from './shopt/index.ts';
 import { historyCommandDefinition } from './history/index.ts';
 import { clearCommandDefinition } from './clear/index.ts';
 import { gzipCommandDefinition } from './gzip/index.ts';
@@ -102,6 +103,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   commandCommandDefinition,
   dateCommandDefinition,
   sleepCommandDefinition,
+  shoptCommandDefinition,
   historyCommandDefinition,
   clearCommandDefinition,
   gzipCommandDefinition,

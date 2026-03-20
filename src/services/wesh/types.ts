@@ -196,6 +196,8 @@ export type WeshTrapDisposition =
   | { kind: 'run'; action: string }
   | { kind: 'ignore' };
 
+export type WeshShellOption = 'dotglob' | 'failglob' | 'globstar' | 'nullglob';
+
 export type WeshResolvedCommand =
   | {
       kind: 'builtin';
@@ -239,6 +241,9 @@ export interface WeshCommandContext {
   getCommandNames(): string[];
   resolveCommand(options: { name: string }): WeshResolvedCommand;
   getJobs(): Array<{ id: number; command: string; status: 'running' | 'done' }>;
+  getShellOption(options: { name: WeshShellOption }): boolean;
+  setShellOption(options: { name: WeshShellOption; enabled: boolean }): void;
+  getShellOptions(): Array<[WeshShellOption, boolean]>;
   executeCommand(options: {
     command: string;
     args: string[];
