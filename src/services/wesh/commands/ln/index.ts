@@ -3,7 +3,10 @@ import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
-  return path.startsWith('/') ? path : `${cwd}/${path}`;
+  if (path.startsWith('/')) {
+    return path;
+  }
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
 function basename({ path }: { path: string }): string {
@@ -69,11 +72,21 @@ export const lnCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    if (parsed.positionals.length === 0 || parsed.positionals.length > 2) {
+    if (parsed.positionals.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'ln',
-        message: 'ln: expected one or two operands',
+        message: 'ln: missing file operand',
+        argvSpec: lnArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.positionals.length > 2) {
+      await writeCommandUsageError({
+        context,
+        command: 'ln',
+        message: `ln: extra operand '${parsed.positionals[2] ?? ''}'`,
         argvSpec: lnArgvSpec,
       });
       return { exitCode: 1 };
