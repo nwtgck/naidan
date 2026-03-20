@@ -242,6 +242,29 @@ export const catCommandDefinition: WeshCommandDefinition = {
             }
           }
         } catch (e: unknown) {
+          const shouldForwardSignal = (() => {
+            const waitStatus = context.kernel.getProcess({ pid: context.pid })?.waitStatus;
+            if (waitStatus === undefined) return false;
+
+            switch (waitStatus.kind) {
+            case 'signaled':
+              return true;
+            case 'exited':
+            case 'stopped':
+              return false;
+            default: {
+              const _ex: never = waitStatus;
+              throw new Error(`Unhandled wait status: ${JSON.stringify(_ex)}`);
+            }
+            }
+          })();
+
+          if (shouldForwardSignal) {
+            // TODO(wesh-signal): Remove this temporary waitStatus forwarding once
+            // command execution interrupts on kernel waitStatus without commands
+            // needing to propagate transitional I/O exceptions through catch blocks.
+            throw e;
+          }
           const message = e instanceof Error ? e.message : String(e);
           await text.error({ text: `cat: ${f}: ${message}\n` });
           hadError = true;

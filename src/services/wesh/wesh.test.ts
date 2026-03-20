@@ -177,4 +177,175 @@ describe('Wesh Shell', () => {
     await wesh.execute({ script: 'env', stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('TEST_MAP=1');
   });
+
+  it('treats a broken pipeline writer like SIGPIPE instead of a shell error', async () => {
+    const handle = await rootHandle.getFileHandle('large.txt', { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(`first\n${'x'.repeat(131072)}`);
+    await writable.close();
+
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: 'cat large.txt | head -n 1',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('first\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('does not leak pipeline builtin state changes back to the parent shell', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+echo value | read PIPE_VALUE
+echo "$PIPE_VALUE"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('runs pipeline commands in distinct processes that share a process group', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+    const seenProcesses: Array<{ pid: number; pgid: number }> = [];
+
+    wesh.registerCommand({
+      definition: {
+        meta: {
+          name: 'capture-proc',
+          description: 'Capture process identity for testing',
+          usage: 'capture-proc',
+        },
+        fn: async ({ context }) => {
+          const proc = context.kernel.getProcess({ pid: context.pid });
+          if (proc === undefined) {
+            throw new Error(`Missing process: ${context.pid}`);
+          }
+          seenProcesses.push({
+            pid: proc.pid,
+            pgid: proc.pgid,
+          });
+          return { exitCode: 0 };
+        },
+      },
+    });
+
+    const result = await wesh.execute({
+      script: 'capture-proc | capture-proc',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(seenProcesses).toHaveLength(2);
+    expect(seenProcesses[0]!.pid).not.toBe(seenProcesses[1]!.pid);
+    expect(seenProcesses[0]!.pgid).toBe(seenProcesses[1]!.pgid);
+    const processGroup = wesh.kernel.getProcessesByGroup({ pgid: seenProcesses[0]!.pgid });
+    expect(processGroup.some(proc => proc.pid === seenProcesses[0]!.pid)).toBe(true);
+    expect(processGroup.some(proc => proc.pid === seenProcesses[1]!.pid)).toBe(true);
+  });
+
+  it('stores traps in the current shell and lists them', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+trap -- 'echo bye' EXIT
+trap -p`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain(`trap -- 'echo bye' EXIT`);
+  });
+
+  it('keeps trap changes in subshells isolated from the parent shell', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+trap -- 'echo parent' EXIT
+(trap -- 'echo child' EXIT; trap -p)
+trap -p`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain(`trap -- 'echo child' EXIT`);
+    expect(stdout.text).toContain(`trap -- 'echo parent' EXIT`);
+  });
+
+  it('runs EXIT traps when the shell finishes', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+trap -- 'echo exit-trap' EXIT
+echo body`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+body
+exit-trap
+`);
+  });
+
+  it('runs subshell EXIT traps without overwriting the parent trap', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+trap -- 'echo parent-exit' EXIT
+(trap -- 'echo child-exit' EXIT)
+echo body`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toBe(`\
+child-exit
+body
+parent-exit
+`);
+  });
 });

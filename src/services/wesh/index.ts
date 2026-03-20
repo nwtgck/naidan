@@ -7,8 +7,9 @@ import type {
   WeshFileHandle,
   WeshCommandNode,
   WeshPipelineNode,
-  WeshFileType
+  WeshFileType,
 } from './types';
+import { weshWaitStatusToExitCode } from './types';
 import { WeshVFS } from './vfs';
 import { WeshKernel } from './kernel';
 import { parseCommandLine } from './parser';
@@ -24,10 +25,13 @@ interface WeshJob {
   status: 'running' | 'done';
 }
 
-interface WeshShellState {
+interface WeshExecutionEnvironment {
+  shellPid: number;
+  pgid: number;
   env: Map<string, string>;
   cwd: string;
   fds: Map<number, WeshFileHandle>;
+  traps: Map<string, string>;
 }
 
 type WeshExpansionMode = 'argv' | 'assignment' | 'redirection';
@@ -51,6 +55,7 @@ export class Wesh {
   private jobs: Map<number, WeshJob> = new Map();
   private nextJobId: number = 1;
   private shellFds: Map<number, WeshFileHandle> = new Map();
+  private traps: Map<string, string> = new Map();
 
   private shellPid: number = 0;
 
@@ -95,7 +100,7 @@ export class Wesh {
       image: 'wesh',
       args: ['-l'],
       env: this.env,
-      cwd: this.cwd
+      cwd: this.cwd,
     });
     this.shellPid = pid;
   }
@@ -817,15 +822,15 @@ export class Wesh {
 
   private async openRedirectionTarget({
     redirection,
-    state,
+    environment,
   }: {
     redirection: WeshCommandNode['redirections'][number];
-    state: WeshShellState;
+    environment: WeshExecutionEnvironment;
   }): Promise<WeshFileHandle | undefined> {
     const rawTarget = redirection.target ? await this.expandSingleWord({
       raw: redirection.target,
-      env: state.env,
-      cwd: state.cwd,
+      env: environment.env,
+      cwd: environment.cwd,
       mode: 'redirection',
     }) : undefined;
 
@@ -837,7 +842,7 @@ export class Wesh {
       const { read, write } = await this.kernel.pipe();
       const encoder = new TextEncoder();
       const content = redirection.type === 'heredoc' && redirection.contentExpansion === 'variables'
-        ? this.expandPartVariables({ text: redirection.content, env: state.env })
+        ? this.expandPartVariables({ text: redirection.content, env: environment.env })
         : redirection.content;
       await write.write({ buffer: encoder.encode(content + '\n') });
       await write.close();
@@ -853,7 +858,7 @@ export class Wesh {
         throw new Error(`Missing target fd for redirection ${redirection.type}`);
       }
 
-      const duplicated = state.fds.get(redirection.targetFd);
+      const duplicated = environment.fds.get(redirection.targetFd);
       if (duplicated === undefined) {
         throw new Error(`${redirection.targetFd}: bad file descriptor`);
       }
@@ -865,7 +870,7 @@ export class Wesh {
       return undefined;
     }
 
-    const fullTarget = rawTarget.startsWith('/') ? rawTarget : `${state.cwd}/${rawTarget}`;
+    const fullTarget = rawTarget.startsWith('/') ? rawTarget : `${environment.cwd}/${rawTarget}`;
 
     switch (redirection.type) {
     case 'read':
@@ -901,12 +906,12 @@ export class Wesh {
 
   private async applyRedirectionsToFdTable({
     redirections,
-    state,
+    environment,
     fdTable,
     trackOpenedHandle,
   }: {
     redirections: WeshCommandNode['redirections'];
-    state: WeshShellState;
+    environment: WeshExecutionEnvironment;
     fdTable: Map<number, WeshFileHandle>;
     trackOpenedHandle: ({ handle }: { handle: WeshFileHandle }) => void;
   }): Promise<void> {
@@ -920,7 +925,7 @@ export class Wesh {
         continue;
       }
 
-      const handle = await this.openRedirectionTarget({ redirection, state });
+      const handle = await this.openRedirectionTarget({ redirection, environment });
       if (handle === undefined) {
         continue;
       }
@@ -957,7 +962,9 @@ export class Wesh {
 
     try {
       const rootNode = parseCommandLine({ commandLine: script, env: this.env });
-      const state: WeshShellState = {
+      const environment = this.createExecutionEnvironment({
+        shellPid: this.shellPid,
+        pgid: this.shellPid,
         env: this.env,
         cwd: this.cwd,
         fds: this.createShellFdTable({
@@ -965,18 +972,25 @@ export class Wesh {
           stdout: options.stdout,
           stderr: options.stderr,
         }),
-      };
+        traps: this.traps,
+      });
 
       const result = await this.executeNode({
         node: rootNode,
-        state,
+        environment,
         stdin: options.stdin,
         stdout: options.stdout,
         stderr: options.stderr
       });
 
-      this.cwd = state.cwd;
-      return result;
+      this.cwd = environment.cwd;
+      return await this.runExitTrapIfNeeded({
+        result,
+        environment,
+        stdin: options.stdin,
+        stdout: options.stdout,
+        stderr: options.stderr,
+      });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       const encoder = new TextEncoder();
@@ -987,12 +1001,12 @@ export class Wesh {
 
   private async executeNode(options: {
     node: WeshASTNode,
-    state: WeshShellState,
+    environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
     stderr: WeshFileHandle
   }): Promise<WeshCommandResult> {
-    const { node, state, stdin, stdout, stderr } = options;
+    const { node, environment, stdin, stdout, stderr } = options;
     let result: WeshCommandResult;
 
     switch (node.kind) {
@@ -1014,11 +1028,14 @@ export class Wesh {
         case '&': {
           const jobId = this.nextJobId++;
           const cmdStr = "Background Job";
-          const jobState = { env: new Map(state.env), cwd: state.cwd, fds: new Map(state.fds) };
+          const jobEnvironment = await this.spawnChildExecutionEnvironment({
+            parentEnvironment: environment,
+            pgid: undefined,
+          });
 
           this.executeNode({
             node: part.node,
-            state: jobState,
+            environment: jobEnvironment,
             stdin, stdout, stderr
           }).then(res => {
             const job = this.jobs.get(jobId);
@@ -1029,7 +1046,7 @@ export class Wesh {
           this.jobs.set(jobId, {
             id: jobId,
             command: cmdStr,
-            pid: 0,
+            pid: jobEnvironment.shellPid,
             status: 'running'
           });
 
@@ -1046,7 +1063,7 @@ export class Wesh {
         case '||': {
           lastResult = await this.executeNode({
             node: part.node,
-            state,
+            environment,
             stdin, stdout, stderr
           });
           previousOperator = part.operator;
@@ -1074,15 +1091,21 @@ export class Wesh {
     }
 
     case 'subshell': {
-      const subshellState: WeshShellState = {
-        env: new Map(state.env),
-        cwd: state.cwd,
-        fds: new Map(state.fds),
-      };
+      const subshellEnvironment = await this.spawnChildExecutionEnvironment({
+        parentEnvironment: environment,
+        pgid: undefined,
+      });
       result = await this.executeNode({
         node: node.list,
-        state: subshellState,
+        environment: subshellEnvironment,
         stdin, stdout, stderr
+      });
+      result = await this.runExitTrapIfNeeded({
+        result,
+        environment: subshellEnvironment,
+        stdin,
+        stdout,
+        stderr,
       });
       break;
     }
@@ -1090,17 +1113,17 @@ export class Wesh {
     case 'if': {
       const conditionResult = await this.executeNode({
         node: node.condition,
-        state, stdin, stdout, stderr
+        environment, stdin, stdout, stderr
       });
       if (conditionResult.exitCode === 0) {
         result = await this.executeNode({
           node: node.thenBody,
-          state, stdin, stdout, stderr
+          environment, stdin, stdout, stderr
         });
       } else if (node.elseBody) {
         result = await this.executeNode({
           node: node.elseBody,
-          state, stdin, stdout, stderr
+          environment, stdin, stdout, stderr
         });
       } else {
         result = { exitCode: 0 };
@@ -1114,18 +1137,18 @@ export class Wesh {
       for (const item of node.items) {
         const itemFields = await this.expandWord({
           raw: item,
-          env: state.env,
-          cwd: state.cwd,
+          env: environment.env,
+          cwd: environment.cwd,
           mode: 'argv',
         });
         expandedItems.push(...itemFields);
       }
 
       for (const item of expandedItems) {
-        state.env.set(node.variable, item);
+        environment.env.set(node.variable, item);
         lastForRes = await this.executeNode({
           node: node.body,
-          state, stdin, stdout, stderr
+          environment, stdin, stdout, stderr
         });
       }
       result = lastForRes;
@@ -1134,10 +1157,10 @@ export class Wesh {
 
     case 'assignment':
       for (const assign of node.assignments) {
-        state.env.set(assign.key, await this.expandSingleWord({
+        environment.env.set(assign.key, await this.expandSingleWord({
           raw: assign.value,
-          env: state.env,
-          cwd: state.cwd,
+          env: environment.env,
+          cwd: environment.cwd,
           mode: 'assignment',
         }));
       }
@@ -1149,18 +1172,18 @@ export class Wesh {
     }
     }
 
-    state.env.set('?', result.exitCode.toString());
+    environment.env.set('?', result.exitCode.toString());
     return result;
   }
 
   private async executePipeline(options: {
     node: { commands: WeshASTNode[] },
-    state: WeshShellState,
+    environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
     stderr: WeshFileHandle
   }): Promise<WeshCommandResult> {
-    const { node, state, stdin, stdout, stderr } = options;
+    const { node, environment, stdin, stdout, stderr } = options;
     const commands = node.commands;
     if (commands.length === 0) return { exitCode: 0 };
 
@@ -1170,18 +1193,23 @@ export class Wesh {
     }
 
     const promises: Promise<WeshCommandResult>[] = [];
+    let pipelinePgid: number | undefined;
 
     for (let i = 0; i < commands.length; i++) {
       const cmd = commands[i]!;
       const myStdin = i === 0 ? stdin : pipes[i-1]!.read;
       const myStdout = i === commands.length - 1 ? stdout : pipes[i]!.write;
 
-      const pipelineState = { env: new Map(state.env), cwd: state.cwd, fds: new Map(state.fds) };
+      const pipelineEnvironment = await this.spawnChildExecutionEnvironment({
+        parentEnvironment: environment,
+        pgid: pipelinePgid,
+      });
+      pipelinePgid = pipelineEnvironment.pgid;
 
       promises.push(
         this.executeNode({
           node: cmd,
-          state: pipelineState,
+          environment: pipelineEnvironment,
           stdin: myStdin,
           stdout: myStdout,
           stderr: stderr
@@ -1203,24 +1231,24 @@ export class Wesh {
 
   private async executeCommand(options: {
     node: WeshCommandNode,
-    state: WeshShellState,
+    environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
     stderr: WeshFileHandle
   }): Promise<WeshCommandResult> {
-    const { node, state, stdin, stdout, stderr } = options;
+    const { node, environment, stdin, stdout, stderr } = options;
 
     const expandedArgs: string[] = [];
     const procSubCleanups: Array<() => void> = [];
     const openHandles: WeshFileHandle[] = [];
-    const cmdFds = new Map(state.fds);
+    const cmdFds = new Map(environment.fds);
 
     for (const arg of node.args) {
       if (typeof arg === 'string') {
         const fields = await this.expandWord({
           raw: arg,
-          env: state.env,
-          cwd: state.cwd,
+          env: environment.env,
+          cwd: environment.cwd,
           mode: 'argv',
         });
         expandedArgs.push(...fields);
@@ -1231,10 +1259,13 @@ export class Wesh {
 
         switch (arg.type) {
         case 'input': {
-          const subState = { env: new Map(state.env), cwd: state.cwd, fds: new Map(state.fds) };
+          const subEnvironment = await this.spawnChildExecutionEnvironment({
+            parentEnvironment: environment,
+            pgid: environment.pgid,
+          });
           this.executeNode({
             node: arg.list,
-            state: subState,
+            environment: subEnvironment,
             stdin, stdout: write, stderr
           }).then(() => write.close());
 
@@ -1247,10 +1278,13 @@ export class Wesh {
           break;
         }
         case 'output': {
-          const subState = { env: new Map(state.env), cwd: state.cwd, fds: new Map(state.fds) };
+          const subEnvironment = await this.spawnChildExecutionEnvironment({
+            parentEnvironment: environment,
+            pgid: environment.pgid,
+          });
           this.executeNode({
             node: arg.list,
-            state: subState,
+            environment: subEnvironment,
             stdin: read, stdout, stderr
           }).then(() => read.close());
 
@@ -1272,8 +1306,8 @@ export class Wesh {
 
     const cmdName = await this.expandSingleWord({
       raw: node.name,
-      env: state.env,
-      cwd: state.cwd,
+      env: environment.env,
+      cwd: environment.cwd,
       mode: 'assignment',
     });
     const definition = this.commands.get(cmdName);
@@ -1282,12 +1316,12 @@ export class Wesh {
       throw new Error(`Command not found: ${cmdName}`);
     }
 
-    const currentEnv = new Map(state.env);
+    const currentEnv = new Map(environment.env);
     for (const assign of node.assignments) {
       currentEnv.set(assign.key, await this.expandSingleWord({
         raw: assign.value,
-        env: state.env,
-        cwd: state.cwd,
+        env: environment.env,
+        cwd: environment.cwd,
         mode: 'assignment',
       }));
     }
@@ -1298,7 +1332,7 @@ export class Wesh {
 
     await this.applyRedirectionsToFdTable({
       redirections: node.redirections,
-      state,
+      environment,
       fdTable: cmdFds,
       trackOpenedHandle: ({ handle }) => {
         openHandles.push(handle);
@@ -1317,29 +1351,44 @@ export class Wesh {
       image: cmdName,
       args: expandedArgs,
       env: currentEnv,
-      cwd: state.cwd,
-      fds: cmdFds
+      cwd: environment.cwd,
+      fds: cmdFds,
+      ppid: environment.shellPid,
+      pgid: environment.pgid,
     });
+
+    proc.fds = this.kernel.bindFdTable({
+      pid,
+      fdTable: proc.fds,
+    });
+
+    const boundStdin = proc.fds.get(0);
+    const boundStdout = proc.fds.get(1);
+    const boundStderr = proc.fds.get(2);
+
+    if (boundStdin === undefined || boundStdout === undefined || boundStderr === undefined) {
+      throw new Error('Missing standard file descriptor after process binding');
+    }
 
     const context: WeshCommandContext = {
       args: expandedArgs,
       env: currentEnv,
-      cwd: state.cwd,
+      cwd: environment.cwd,
       pid: pid,
       kernel: this.kernel,
-      stdin: cmdStdin,
-      stdout: cmdStdout,
-      stderr: cmdStderr,
+      stdin: boundStdin,
+      stdout: boundStdout,
+      stderr: boundStderr,
       setCwd: ({ path }: { path: string }) => {
-        state.env.set('OLDPWD', state.cwd);
-        state.cwd = path;
-        state.env.set('PWD', path);
+        environment.env.set('OLDPWD', environment.cwd);
+        environment.cwd = path;
+        environment.env.set('PWD', path);
       },
       setEnv: ({ key, value }: { key: string; value: string }) => {
-        state.env.set(key, value);
+        environment.env.set(key, value);
       },
       unsetEnv: ({ key }: { key: string }) => {
-        state.env.delete(key);
+        environment.env.delete(key);
       },
       getHistory: () => [...this.history],
       getWeshCommandMeta: ({ name }: { name: string }) => this.commands.get(name)?.meta,
@@ -1363,25 +1412,29 @@ export class Wesh {
       executeCommand: ({ command, args, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr }) => this.executeArgv({
         command,
         args,
-        state,
-        stdin: nextStdin ?? cmdStdin,
-        stdout: nextStdout ?? cmdStdout,
-        stderr: nextStderr ?? cmdStderr,
+        environment,
+        stdin: nextStdin ?? boundStdin,
+        stdout: nextStdout ?? boundStdout,
+        stderr: nextStderr ?? boundStderr,
       }),
       executeShell: ({ script, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr }) => this.executeShellInState({
         script,
-        state,
-        stdin: nextStdin ?? cmdStdin,
-        stdout: nextStdout ?? cmdStdout,
-        stderr: nextStderr ?? cmdStderr,
+        environment,
+        stdin: nextStdin ?? boundStdin,
+        stdout: nextStdout ?? boundStdout,
+        stderr: nextStderr ?? boundStderr,
       }),
       getFileDescriptors: () => Array.from(proc.fds.entries()),
       getFileDescriptor: ({ fd }) => proc.fds.get(fd),
       setFileDescriptor: async ({ fd, handle, persist }) => {
-        proc.fds.set(fd, handle);
-        state.fds.set(fd, handle);
+        const boundHandle = this.kernel.bindFileHandle({
+          pid,
+          handle,
+        });
+        proc.fds.set(fd, boundHandle);
+        environment.fds.set(fd, boundHandle);
         if (persist) {
-          await this.setPersistentFd({ fd, handle });
+          await this.setPersistentFd({ fd, handle: boundHandle });
         }
       },
       closeFileDescriptor: async ({ fd, persist }) => {
@@ -1390,19 +1443,51 @@ export class Wesh {
           await current.close();
         }
         proc.fds.delete(fd);
-        state.fds.delete(fd);
+        environment.fds.delete(fd);
         if (persist) {
           await this.closePersistentFd({ fd });
         }
       },
-      text: () => createTextHelpers({ stdin: cmdStdin, stdout: cmdStdout, stderr: cmdStderr }),
+      setTrap: ({ condition, action }) => {
+        if (action === undefined) {
+          environment.traps.delete(condition);
+          return;
+        }
+        environment.traps.set(condition, action);
+      },
+      getTrapAction: ({ condition }) => {
+        return environment.traps.get(condition);
+      },
+      getTraps: () => {
+        return Array.from(environment.traps.entries())
+          .sort(([leftCondition], [rightCondition]) => leftCondition.localeCompare(rightCondition));
+      },
+      text: () => createTextHelpers({ stdin: boundStdin, stdout: boundStdout, stderr: boundStderr }),
     };
 
     try {
       const result = await definition.fn({ context });
       proc.state = 'terminated';
+      proc.waitStatus = result.waitStatus ?? {
+        kind: 'exited',
+        exitCode: result.exitCode,
+      };
       proc.exitCode = result.exitCode;
       return result;
+    } catch (error: unknown) {
+      if (proc.waitStatus?.kind === 'signaled' || proc.waitStatus?.kind === 'stopped') {
+        // TODO(wesh-signal): Remove this temporary exception-based bridge once
+        // process-bound handles can interrupt command execution without throwing
+        // through JS catch paths and kernel waitStatus is the only signal source.
+        const signalWaitStatus = proc.waitStatus;
+        return {
+          exitCode: weshWaitStatusToExitCode({
+            waitStatus: signalWaitStatus,
+          }),
+          waitStatus: signalWaitStatus,
+        };
+      }
+      throw error;
     } finally {
       for (const h of openHandles) {
         await h.close();
@@ -1414,16 +1499,15 @@ export class Wesh {
   private async executeArgv(options: {
     command: string;
     args: string[];
-    state: WeshShellState;
+    environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
   }): Promise<WeshCommandResult> {
-    const isolatedState: WeshShellState = {
-      env: new Map(options.state.env),
-      cwd: options.state.cwd,
-      fds: new Map(options.state.fds),
-    };
+    const isolatedEnvironment = await this.spawnChildExecutionEnvironment({
+      parentEnvironment: options.environment,
+      pgid: options.environment.pgid,
+    });
 
     return this.executeCommand({
       node: {
@@ -1433,28 +1517,125 @@ export class Wesh {
         args: options.args,
         redirections: [],
       },
-      state: isolatedState,
+      environment: isolatedEnvironment,
       stdin: options.stdin,
       stdout: options.stdout,
       stderr: options.stderr,
     });
   }
 
+  private createExecutionEnvironment({
+    shellPid,
+    pgid,
+    env,
+    cwd,
+    fds,
+    traps,
+  }: {
+    shellPid: number;
+    pgid: number;
+    env: Map<string, string>;
+    cwd: string;
+    fds: Map<number, WeshFileHandle>;
+    traps: Map<string, string>;
+  }): WeshExecutionEnvironment {
+    return {
+      shellPid,
+      pgid,
+      env,
+      cwd,
+      fds,
+      traps,
+    };
+  }
+
+  private cloneExecutionEnvironment({
+    environment,
+    shellPid,
+    pgid,
+  }: {
+    environment: WeshExecutionEnvironment;
+    shellPid: number | undefined;
+    pgid: number | undefined;
+  }): WeshExecutionEnvironment {
+    return this.createExecutionEnvironment({
+      shellPid: shellPid ?? environment.shellPid,
+      pgid: pgid ?? environment.pgid,
+      env: new Map(environment.env),
+      cwd: environment.cwd,
+      fds: new Map(environment.fds),
+      traps: new Map(environment.traps),
+    });
+  }
+
+  private async spawnChildExecutionEnvironment({
+    parentEnvironment,
+    pgid,
+  }: {
+    parentEnvironment: WeshExecutionEnvironment;
+    pgid: number | undefined;
+  }): Promise<WeshExecutionEnvironment> {
+    const childEnvironment = this.cloneExecutionEnvironment({
+      environment: parentEnvironment,
+      shellPid: undefined,
+      pgid,
+    });
+
+    const { pid } = await this.kernel.spawn({
+      image: 'wesh',
+      args: ['-c'],
+      env: childEnvironment.env,
+      cwd: childEnvironment.cwd,
+      fds: new Map(childEnvironment.fds),
+      ppid: parentEnvironment.shellPid,
+      pgid: pgid,
+    });
+
+    childEnvironment.shellPid = pid;
+    childEnvironment.pgid = pgid ?? pid;
+    return childEnvironment;
+  }
+
+  private async runExitTrapIfNeeded(options: {
+    result: WeshCommandResult;
+    environment: WeshExecutionEnvironment;
+    stdin: WeshFileHandle;
+    stdout: WeshFileHandle;
+    stderr: WeshFileHandle;
+  }): Promise<WeshCommandResult> {
+    const exitTrap = options.environment.traps.get('EXIT');
+    if (exitTrap === undefined) {
+      return options.result;
+    }
+
+    // TODO(wesh-trap): Preserve shell-compatible $? during trap execution and align
+    // signal-triggered EXIT behavior with process waitStatus once trap dispatch is
+    // integrated with the kernel-level signal model.
+    await this.executeShellInState({
+      script: exitTrap,
+      environment: options.environment,
+      stdin: options.stdin,
+      stdout: options.stdout,
+      stderr: options.stderr,
+    });
+    return options.result;
+  }
+
   private async executeShellInState(options: {
     script: string;
-    state: WeshShellState;
+    environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
   }): Promise<WeshCommandResult> {
     const rootNode = parseCommandLine({
       commandLine: options.script,
-      env: options.state.env,
+      env: options.environment.env,
     });
 
     return this.executeNode({
       node: rootNode,
-      state: options.state,
+      environment: options.environment,
       stdin: options.stdin,
       stdout: options.stdout,
       stderr: options.stderr,

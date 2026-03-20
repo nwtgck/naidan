@@ -6,8 +6,96 @@ import type {
   WeshIOResult,
   WeshStat,
   WeshFileType,
-  WeshOpenFlags
+  WeshOpenFlags,
 } from './types';
+import { WeshBrokenPipeError, weshWaitStatusToExitCode } from './types';
+
+export class WeshProcessSignalError extends Error {
+  public readonly signal: number;
+
+  constructor({
+    signal,
+  }: {
+    signal: number;
+  }) {
+    // TODO(wesh-signal): Remove this temporary exception type once pipe/VFS I/O can
+    // interrupt command execution through kernel-managed waitStatus transitions
+    // without surfacing a JS exception object through handle.write().
+    super(`Process terminated by signal ${signal}`);
+    this.signal = signal;
+    this.name = 'WeshProcessSignalError';
+  }
+}
+
+class WeshKernelProcessFileHandle implements WeshFileHandle {
+  private readonly handle: WeshFileHandle;
+  private readonly kernel: WeshKernel;
+  private readonly pid: number;
+
+  constructor({
+    handle,
+    kernel,
+    pid,
+  }: {
+    handle: WeshFileHandle;
+    kernel: WeshKernel;
+    pid: number;
+  }) {
+    this.handle = handle;
+    this.kernel = kernel;
+    this.pid = pid;
+  }
+
+  async read(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<WeshIOResult> {
+    return this.handle.read(options);
+  }
+
+  async write(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<WeshWriteResult> {
+    try {
+      return await this.handle.write(options);
+    } catch (error: unknown) {
+      if (error instanceof WeshBrokenPipeError) {
+        // TODO(wesh-signal): Remove this temporary BrokenPipe-to-SIGPIPE bridge once
+        // pipe/VFS write paths deliver SIGPIPE through kernel-managed process state
+        // transitions instead of surfacing a structured JS error to this wrapper.
+        await this.kernel.kill({
+          pid: this.pid,
+          signal: 13,
+        });
+        throw new WeshProcessSignalError({
+          signal: 13,
+        });
+      }
+      throw error;
+    }
+  }
+
+  async close(): Promise<void> {
+    await this.handle.close();
+  }
+
+  async stat(): Promise<WeshStat> {
+    return this.handle.stat();
+  }
+
+  async truncate(options: { size: number }): Promise<void> {
+    await this.handle.truncate(options);
+  }
+
+  async ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }> {
+    return this.handle.ioctl(options);
+  }
+}
 
 // --- Pipe Implementation ---
 class PipeHandle implements WeshFileHandle {
@@ -65,7 +153,7 @@ class PipeHandle implements WeshFileHandle {
       throw new Error(`Unhandled mode: ${_ex}`);
     }
     }
-    if (this.state.closed) throw new Error('Broken pipe');
+    if (this.state.closed) throw new WeshBrokenPipeError();
 
 
     const bufferOffset = options.offset ?? 0;
@@ -133,12 +221,14 @@ export class WeshKernel {
     env?: Map<string, string>;
     cwd?: string;
     fds?: Map<number, WeshFileHandle>;
+    ppid?: number;
+    pgid?: number;
   }): Promise<{ pid: number; process: WeshProcess }> {
     const pid = this.nextPid++;
     const process: WeshProcess = {
       pid,
-      ppid: 1,
-      pgid: pid,
+      ppid: options.ppid ?? 1,
+      pgid: options.pgid ?? pid,
       state: 'running',
       env: options.env ? new Map(options.env) : new Map(),
       cwd: options.cwd || '/',
@@ -173,7 +263,48 @@ export class WeshKernel {
     if (!proc) return;
 
     proc.state = 'terminated';
-    proc.exitCode = 128 + options.signal;
+    proc.waitStatus = {
+      kind: 'signaled',
+      signal: options.signal,
+    };
+    proc.exitCode = weshWaitStatusToExitCode({
+      waitStatus: proc.waitStatus,
+    });
+    proc.terminationSignal = options.signal;
+  }
+
+  async killProcessGroup(options: { pgid: number; signal: number }): Promise<void> {
+    const targets = Array.from(this.processes.values()).filter(proc => proc.pgid === options.pgid);
+    await Promise.all(targets.map(proc => this.kill({
+      pid: proc.pid,
+      signal: options.signal,
+    })));
+  }
+
+  bindFileHandle(options: {
+    pid: number;
+    handle: WeshFileHandle;
+  }): WeshFileHandle {
+    return new WeshKernelProcessFileHandle({
+      handle: options.handle,
+      kernel: this,
+      pid: options.pid,
+    });
+  }
+
+  bindFdTable(options: {
+    pid: number;
+    fdTable: Map<number, WeshFileHandle>;
+  }): Map<number, WeshFileHandle> {
+    return new Map(
+      Array.from(options.fdTable.entries()).map(([fd, handle]) => [
+        fd,
+        this.bindFileHandle({
+          pid: options.pid,
+          handle,
+        }),
+      ]),
+    );
   }
 
   async pipe(): Promise<{ read: WeshFileHandle; write: WeshFileHandle }> {
@@ -234,5 +365,9 @@ export class WeshKernel {
 
   getProcess(options: { pid: number }): WeshProcess | undefined {
     return this.processes.get(options.pid);
+  }
+
+  getProcessesByGroup(options: { pgid: number }): WeshProcess[] {
+    return Array.from(this.processes.values()).filter(proc => proc.pgid === options.pgid);
   }
 }

@@ -3,7 +3,7 @@
 *   **Zod**: Must be used for all data persistence and API communication to ensure safe serialization. All API responses MUST be validated to protect the application from unreliable external data structures. Persisted data must maintain backward compatibility.
 *   **Strong Typing**: Prefer strict static typing to catch errors at build-time. Avoid `any`.
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
-*   **Verification**: Run `npm run build`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.
+*   **Verification**: Run `npm run typecheck`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.
 *   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test:only-failed -- <paths...>`.
 
 # Function Signatures & Named Arguments

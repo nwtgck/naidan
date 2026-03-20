@@ -7,6 +7,7 @@ import type {
   WeshWriteResult,
   WeshOpenFlags
 } from './types';
+import { WeshBrokenPipeError } from './types';
 import {
   WeshRegistryEntrySchemaDto,
   type WeshRegistryEntryDto,
@@ -233,7 +234,7 @@ class FifoHandle implements WeshFileHandle {
   }
 
   async write(options: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshWriteResult> {
-    if (this.closed) throw new Error('Broken pipe');
+    if (this.closed) throw new WeshBrokenPipeError();
 
     const bufferOffset = options.offset ?? 0;
     const length = options.length ?? (options.buffer.length - bufferOffset);

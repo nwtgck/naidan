@@ -1,6 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { handleToStream } from '@/services/wesh/utils/fs';
 
 function parseCount({
   value,
@@ -106,57 +107,63 @@ export const headCommandDefinition: WeshCommandDefinition = {
 
     const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       const reader = stream.getReader();
+      let shouldCancel = false;
 
-      if (bytes !== undefined) {
-        let bytesReadCount = 0;
-        while (bytesReadCount < bytes) {
-          const { done, value } = await reader.read();
-          if (done) break;
+      try {
+        if (bytes !== undefined) {
+          let bytesReadCount = 0;
+          while (bytesReadCount < bytes) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          const toRead = Math.min(value.length, bytes - bytesReadCount);
-          await textOutput.print({ text: new TextDecoder().decode(value.subarray(0, toRead)) });
-          bytesReadCount += toRead;
-        }
-      } else {
-        const decoder = new TextDecoder();
-        let linesProcessed = 0;
-        let buffer = '';
-
-        while (linesProcessed < lines) {
-          const { done, value } = await reader.read();
-          if (done) {
-            if (buffer) await textOutput.print({ text: buffer });
-            break;
+            const toRead = Math.min(value.length, bytes - bytesReadCount);
+            await textOutput.print({ text: new TextDecoder().decode(value.subarray(0, toRead)) });
+            bytesReadCount += toRead;
+            if (bytesReadCount >= bytes) {
+              shouldCancel = true;
+              break;
+            }
           }
+        } else {
+          const decoder = new TextDecoder();
+          let linesProcessed = 0;
+          let buffer = '';
 
-          buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split('\n');
-          // If the last part isn't complete, keep it in buffer
-          buffer = parts.pop() || '';
+          while (linesProcessed < lines) {
+            const { done, value } = await reader.read();
+            if (done) {
+              if (buffer) await textOutput.print({ text: buffer });
+              break;
+            }
 
-          for (const line of parts) {
-            await textOutput.print({ text: line + '\n' });
-            linesProcessed++;
-            if (linesProcessed >= lines) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n');
+            // If the last part isn't complete, keep it in buffer
+            buffer = parts.pop() || '';
+
+            for (const line of parts) {
+              await textOutput.print({ text: line + '\n' });
+              linesProcessed++;
+              if (linesProcessed >= lines) {
+                shouldCancel = true;
+                break;
+              }
+            }
           }
         }
+
+        if (shouldCancel) {
+          await reader.cancel();
+          return;
+        }
+      } finally {
+        reader.releaseLock();
       }
-      reader.releaseLock();
     };
 
     if (positional.length === 0) {
       await processStream({
-        stream: new ReadableStream({
-          async pull(controller) {
-            const buf = new Uint8Array(4096);
-            const { bytesRead } = await context.stdin.read({ buffer: buf });
-            if (bytesRead === 0) {
-              controller.close();
-              return;
-            }
-            controller.enqueue(buf.subarray(0, bytesRead));
-          }
-        })
+        stream: handleToStream({ handle: context.stdin }),
       });
     } else {
       for (const f of positional) {
@@ -166,19 +173,8 @@ export const headCommandDefinition: WeshCommandDefinition = {
             path: fullPath,
             flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
           });
-          // Simple wrapper to use the stream
           await processStream({
-            stream: new ReadableStream({
-              async pull(controller) {
-                const buf = new Uint8Array(4096);
-                const { bytesRead } = await handle.read({ buffer: buf });
-                if (bytesRead === 0) {
-                  controller.close();
-                  return;
-                }
-                controller.enqueue(buf.subarray(0, bytesRead));
-              }
-            })
+            stream: handleToStream({ handle }),
           });
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);

@@ -22,6 +22,13 @@ export interface WeshWriteResult {
   bytesWritten: number;
 }
 
+export class WeshBrokenPipeError extends Error {
+  constructor() {
+    super('Broken pipe');
+    this.name = 'WeshBrokenPipeError';
+  }
+}
+
 /**
  * Low-level File Handle (similar to a file descriptor in kernel)
  */
@@ -58,12 +65,37 @@ export interface WeshFileHandle {
   ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }>;
 }
 
+export type WeshWaitStatus =
+  | { kind: 'exited'; exitCode: number }
+  | { kind: 'signaled'; signal: number }
+  | { kind: 'stopped'; signal: number };
+
+export function weshWaitStatusToExitCode({
+  waitStatus,
+}: {
+  waitStatus: WeshWaitStatus;
+}): number {
+  switch (waitStatus.kind) {
+  case 'exited':
+    return waitStatus.exitCode;
+  case 'signaled':
+  case 'stopped':
+    return 128 + waitStatus.signal;
+  default: {
+    const _ex: never = waitStatus;
+    throw new Error(`Unhandled wait status: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
 export interface WeshProcess {
   pid: number;
   ppid: number;
   pgid: number; // Process Group ID
   state: 'running' | 'stopped' | 'zombie' | 'terminated';
   exitCode?: number;
+  terminationSignal?: number;
+  waitStatus?: WeshWaitStatus;
 
   env: Map<string, string>;
   cwd: string;
@@ -146,6 +178,7 @@ export interface WeshMount {
 
 export interface WeshCommandResult {
   exitCode: number;
+  waitStatus?: WeshWaitStatus;
 }
 
 export type WeshResolvedCommand =
@@ -197,6 +230,9 @@ export interface WeshCommandContext {
   getFileDescriptor(options: { fd: number }): WeshFileHandle | undefined;
   setFileDescriptor(options: { fd: number; handle: WeshFileHandle; persist: boolean }): Promise<void>;
   closeFileDescriptor(options: { fd: number; persist: boolean }): Promise<void>;
+  setTrap(options: { condition: string; action: string | undefined }): void;
+  getTrapAction(options: { condition: string }): string | undefined;
+  getTraps(): Array<[string, string]>;
 }
 
 export type WeshCommandFunction = (options: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
