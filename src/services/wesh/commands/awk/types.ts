@@ -18,7 +18,9 @@ export type AwkPattern =
 export type AwkStatement =
   | { kind: 'print'; expressions: AwkExpression[] }
   | { kind: 'assign'; name: string; expression: AwkExpression }
-  | { kind: 'expression'; expression: AwkExpression };
+  | { kind: 'expression'; expression: AwkExpression }
+  | { kind: 'if'; condition: AwkExpression; thenStatements: AwkStatement[]; elseStatements: AwkStatement[] | undefined }
+  | { kind: 'next' };
 
 export type AwkExpression =
   | { kind: 'number'; value: number }
@@ -26,9 +28,13 @@ export type AwkExpression =
   | { kind: 'regex'; value: RegExp }
   | { kind: 'identifier'; name: string }
   | { kind: 'field'; index: number }
-  | { kind: 'binary'; operator: AwkBinaryOperator; left: AwkExpression; right: AwkExpression };
+  | { kind: 'binary'; operator: AwkBinaryOperator; left: AwkExpression; right: AwkExpression }
+  | { kind: 'unary'; operator: AwkUnaryOperator; expression: AwkExpression };
 
 export type AwkBinaryOperator =
+  | 'concat'
+  | '||'
+  | '&&'
   | '+'
   | '-'
   | '*'
@@ -40,6 +46,8 @@ export type AwkBinaryOperator =
   | '>='
   | '~'
   | '!~';
+
+export type AwkUnaryOperator = '!';
 
 export type AwkToken =
   | { kind: 'identifier'; value: string }

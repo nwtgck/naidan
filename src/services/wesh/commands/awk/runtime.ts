@@ -1,5 +1,7 @@
 import type { AwkExpression, AwkPattern, AwkProgram, AwkStatement, AwkValue } from './types';
 
+type AwkStatementControl = 'continue' | 'next';
+
 interface AwkRecord {
   text: string;
   fields: string[];
@@ -159,6 +161,12 @@ function evaluateExpression({
     const right = evaluateExpression({ expression: expression.right, state });
 
     switch (expression.operator) {
+    case 'concat':
+      return `${coerceToString({ value: left })}${coerceToString({ value: right })}`;
+    case '||':
+      return isTruthy({ value: left }) || isTruthy({ value: right }) ? 1 : 0;
+    case '&&':
+      return isTruthy({ value: left }) && isTruthy({ value: right }) ? 1 : 0;
     case '+':
       return coerceToNumber({ value: left }) + coerceToNumber({ value: right });
     case '-':
@@ -181,12 +189,20 @@ function evaluateExpression({
       return coerceToRegex({ value: right }).test(coerceToString({ value: left })) ? 1 : 0;
     case '!~':
       return coerceToRegex({ value: right }).test(coerceToString({ value: left })) ? 0 : 1;
-    default: {
-      const _ex: never = expression.operator;
-      throw new Error(`Unhandled awk operator: ${_ex}`);
     }
-    }
+    throw new Error('Unreachable awk binary operator');
   }
+  case 'unary':
+    switch (expression.operator) {
+    case '!':
+      return isTruthy({
+        value: evaluateExpression({
+          expression: expression.expression,
+          state,
+        }),
+      }) ? 0 : 1;
+    }
+    throw new Error('Unreachable awk unary operator');
   default: {
     const _ex: never = expression;
     throw new Error(`Unhandled awk expression: ${JSON.stringify(_ex)}`);
@@ -237,6 +253,7 @@ function matchesPattern({
     case 'identifier':
     case 'field':
     case 'binary':
+    case 'unary':
       return isTruthy({
         value: evaluateExpression({
           expression: pattern.expression,
@@ -264,22 +281,52 @@ function executeStatement({
   statement: AwkStatement;
   state: AwkRuntimeState;
   output: string[];
-}): void {
+}): AwkStatementControl {
   switch (statement.kind) {
   case 'assign': {
     const value = evaluateExpression({ expression: statement.expression, state });
     setVariable({ state, name: statement.name, value });
-    break;
+    return 'continue';
   }
   case 'expression':
     evaluateExpression({ expression: statement.expression, state });
-    break;
+    return 'continue';
+  case 'if': {
+    const statements = isTruthy({
+      value: evaluateExpression({
+        expression: statement.condition,
+        state,
+      }),
+    }) ? statement.thenStatements : statement.elseStatements ?? [];
+
+    for (const nestedStatement of statements) {
+      const control = executeStatement({
+        statement: nestedStatement,
+        state,
+        output,
+      });
+      switch (control) {
+      case 'continue':
+        break;
+      case 'next':
+        return 'next';
+      default: {
+        const _ex: never = control;
+        throw new Error(`Unhandled awk control flow: ${_ex}`);
+      }
+      }
+    }
+
+    return 'continue';
+  }
+  case 'next':
+    return 'next';
   case 'print': {
     const fieldSeparator = coerceToString({ value: getVariable({ state, name: 'OFS' }) });
     const recordSeparator = coerceToString({ value: getVariable({ state, name: 'ORS' }) });
     if (statement.expressions.length === 0) {
       output.push(`${state.currentRecord?.text ?? ''}${recordSeparator}`);
-      break;
+      return 'continue';
     }
 
     const values = statement.expressions.map((expression) =>
@@ -287,7 +334,7 @@ function executeStatement({
         value: evaluateExpression({ expression, state }),
       }));
     output.push(`${values.join(fieldSeparator)}${recordSeparator}`);
-    break;
+    return 'continue';
   }
   default: {
     const _ex: never = statement;
@@ -380,9 +427,23 @@ export function executeAwkProgram({
 
       for (const rule of program.rules) {
         if (!matchesPattern({ pattern: rule.pattern, state: runtime })) continue;
+        let nextRecord = false;
         for (const statement of rule.statements) {
-          executeStatement({ statement, state: runtime, output });
+          const control = executeStatement({ statement, state: runtime, output });
+          switch (control) {
+          case 'continue':
+            break;
+          case 'next':
+            nextRecord = true;
+            break;
+          default: {
+            const _ex: never = control;
+            throw new Error(`Unhandled awk control flow: ${_ex}`);
+          }
+          }
+          if (nextRecord) break;
         }
+        if (nextRecord) break;
       }
     }
   }

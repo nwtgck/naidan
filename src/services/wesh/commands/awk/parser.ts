@@ -156,13 +156,13 @@ export function tokenizeAwkProgram({
     }
 
     const twoCharacterOperator = script.slice(index, index + 2);
-    if (['==', '!=', '<=', '>=', '!~'].includes(twoCharacterOperator)) {
+    if (['==', '!=', '<=', '>=', '!~', '&&', '||'].includes(twoCharacterOperator)) {
       tokens.push({ kind: 'operator', value: twoCharacterOperator });
       index += 2;
       continue;
     }
 
-    if (['=', '<', '>', '~', '+', '-', '*'].includes(char)) {
+    if (['=', '<', '>', '~', '+', '-', '*', '!'].includes(char)) {
       tokens.push({ kind: 'operator', value: char });
       index += 1;
       continue;
@@ -318,6 +318,53 @@ class AwkParser {
       return { ok: true, statement: { kind: 'print', expressions } };
     }
 
+    if (token.kind === 'identifier' && token.value === 'next') {
+      this.index += 1;
+      return { ok: true, statement: { kind: 'next' } };
+    }
+
+    if (token.kind === 'identifier' && token.value === 'if') {
+      this.index += 1;
+      const open = this.consumePunctuation({ value: '(' });
+      if (!open.ok) return open;
+      const condition = this.parseExpression();
+      if (!condition.ok) return condition;
+      const close = this.consumePunctuation({ value: ')' });
+      if (!close.ok) return close;
+
+      this.skipSeparators();
+      const thenStatements = this.parseStatementBody();
+      if (!thenStatements.ok) return thenStatements;
+
+      this.skipSeparators();
+      const nextToken = this.peek();
+      if (nextToken.kind === 'identifier' && nextToken.value === 'else') {
+        this.index += 1;
+        this.skipSeparators();
+        const elseStatements = this.parseStatementBody();
+        if (!elseStatements.ok) return elseStatements;
+        return {
+          ok: true,
+          statement: {
+            kind: 'if',
+            condition: condition.expression,
+            thenStatements: thenStatements.statements,
+            elseStatements: elseStatements.statements,
+          },
+        };
+      }
+
+      return {
+        ok: true,
+        statement: {
+          kind: 'if',
+          condition: condition.expression,
+          thenStatements: thenStatements.statements,
+          elseStatements: undefined,
+        },
+      };
+    }
+
     switch (token.kind) {
     case 'identifier': {
       const nextToken = this.peekOffset({ offset: 1 });
@@ -348,18 +395,83 @@ class AwkParser {
     };
   }
 
+  private parseStatementBody(): { ok: true; statements: AwkStatement[] } | { ok: false; message: string } {
+    const token = this.peek();
+    if (token.kind === 'punctuation' && token.value === '{') {
+      return this.parseBlock();
+    }
+
+    const statement = this.parseStatement();
+    if (!statement.ok) return statement;
+    return { ok: true, statements: [statement.statement] };
+  }
+
   private parseExpression(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
-    return this.parseComparison();
+    return this.parseLogicalOr();
+  }
+
+  private parseLogicalOr(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+    let expression = this.parseLogicalAnd();
+    if (!expression.ok) return expression;
+
+    while (true) {
+      const token = this.peek();
+      if (!(token.kind === 'operator' && token.value === '||')) {
+        break;
+      }
+
+      this.index += 1;
+      const right = this.parseLogicalAnd();
+      if (!right.ok) return right;
+      expression = {
+        ok: true,
+        expression: {
+          kind: 'binary',
+          operator: '||',
+          left: expression.expression,
+          right: right.expression,
+        },
+      };
+    }
+
+    return expression;
+  }
+
+  private parseLogicalAnd(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+    let expression = this.parseComparison();
+    if (!expression.ok) return expression;
+
+    while (true) {
+      const token = this.peek();
+      if (!(token.kind === 'operator' && token.value === '&&')) {
+        break;
+      }
+
+      this.index += 1;
+      const right = this.parseComparison();
+      if (!right.ok) return right;
+      expression = {
+        ok: true,
+        expression: {
+          kind: 'binary',
+          operator: '&&',
+          left: expression.expression,
+          right: right.expression,
+        },
+      };
+    }
+
+    return expression;
   }
 
   private parseComparison(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
-    const left = this.parseAdditive();
+    const left = this.parseConcatenation();
     if (!left.ok) return left;
 
     const token = this.peek();
     if (token.kind === 'operator' && ['==', '!=', '<', '<=', '>', '>=', '~', '!~'].includes(token.value)) {
       this.index += 1;
-      const right = this.parseAdditive();
+      const right = this.parseConcatenation();
       if (!right.ok) return right;
       return {
         ok: true,
@@ -375,8 +487,29 @@ class AwkParser {
     return left;
   }
 
+  private parseConcatenation(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+    let expression = this.parseAdditive();
+    if (!expression.ok) return expression;
+
+    while (this.isExpressionStart({ token: this.peek() })) {
+      const right = this.parseAdditive();
+      if (!right.ok) return right;
+      expression = {
+        ok: true,
+        expression: {
+          kind: 'binary',
+          operator: 'concat',
+          left: expression.expression,
+          right: right.expression,
+        },
+      };
+    }
+
+    return expression;
+  }
+
   private parseAdditive(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
-    let expression = this.parseMultiplicative();
+    let expression = this.parseUnary();
     if (!expression.ok) return expression;
 
     while (true) {
@@ -386,7 +519,7 @@ class AwkParser {
       }
 
       this.index += 1;
-      const right = this.parseMultiplicative();
+      const right = this.parseUnary();
       if (!right.ok) return right;
       expression = {
         ok: true,
@@ -400,6 +533,25 @@ class AwkParser {
     }
 
     return expression;
+  }
+
+  private parseUnary(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
+    const token = this.peek();
+    if (token.kind === 'operator' && token.value === '!') {
+      this.index += 1;
+      const expression = this.parseUnary();
+      if (!expression.ok) return expression;
+      return {
+        ok: true,
+        expression: {
+          kind: 'unary',
+          operator: '!',
+          expression: expression.expression,
+        },
+      };
+    }
+
+    return this.parseMultiplicative();
   }
 
   private parseMultiplicative(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
@@ -427,6 +579,43 @@ class AwkParser {
     }
 
     return expression;
+  }
+
+  private isExpressionStart({ token }: { token: AwkToken }): boolean {
+    switch (token.kind) {
+    case 'number':
+    case 'string':
+    case 'regex':
+    case 'identifier':
+    case 'field':
+      return true;
+    case 'punctuation':
+      switch (token.value) {
+      case '(':
+        return true;
+      case '{':
+      case '}':
+      case ')':
+      case ',':
+      case ';':
+        return false;
+      }
+      break;
+    case 'operator':
+      switch (token.value) {
+      case '!':
+        return true;
+      default:
+        return false;
+      }
+    case 'newline':
+    case 'eof':
+      return false;
+    default: {
+      const _ex: never = token;
+      throw new Error(`Unhandled awk token: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
 
   private parsePrimary(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {

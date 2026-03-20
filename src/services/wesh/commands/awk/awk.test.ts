@@ -158,4 +158,51 @@ gamma
     expect(missingFile.stderr.text).toContain('awk: missing.txt:');
     expect(missingFile.result.exitCode).toBe(1);
   });
+
+  it('supports if/else with logical operators and string concatenation', async () => {
+    await writeFile({
+      path: 'scores.txt',
+      data: `\
+alice 10
+bob 20
+carol 30
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk '{ if ($2 >= 20 && !($1 == "carol")) print "ok:" $1; else print "skip:" $1 }' scores.txt`,
+    });
+
+    expect(stdout.text).toBe(`\
+skip:alice
+ok:bob
+skip:carol
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports next to skip remaining actions for a record', async () => {
+    await writeFile({
+      path: 'events.txt',
+      data: `\
+keep one
+skip two
+keep three
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk '/skip/ { next } { print $1 }' events.txt`,
+    });
+
+    expect(stdout.text).toBe(`\
+keep
+keep
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });
