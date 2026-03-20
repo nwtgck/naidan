@@ -132,6 +132,18 @@ describe('wesh grep', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports --count and --max-count together', async () => {
+    await writeFile({ path: 'notes.txt', data: 'alpha\nalpha\nalpha\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'grep --count --max-count=2 alpha notes.txt',
+    });
+
+    expect(stdout.text).toBe('2\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports -l to print only matching file names once', async () => {
     await writeFile({ path: 'left.txt', data: 'alpha\nbeta\nalpha\n' });
     await writeFile({ path: 'right.txt', data: 'gamma\n' });
@@ -246,6 +258,27 @@ describe('wesh grep', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports long recursive and filename-control options', async () => {
+    await writeFile({ path: 'src/keep.txt', data: 'alpha\n' });
+    await writeFile({ path: 'src/nested/keep.txt', data: 'alpha nested\n' });
+
+    const recursive = await execute({
+      script: 'grep --recursive --with-filename alpha src',
+    });
+    const noFilename = await execute({
+      script: 'grep --no-filename alpha src/keep.txt src/nested/keep.txt',
+    });
+
+    expect(recursive.stdout.text).toContain('src/keep.txt:alpha\n');
+    expect(recursive.stdout.text).toContain('src/nested/keep.txt:alpha nested\n');
+    expect(recursive.stderr.text).toBe('');
+    expect(recursive.result.exitCode).toBe(0);
+
+    expect(noFilename.stdout.text).toBe('alpha\nalpha nested\n');
+    expect(noFilename.stderr.text).toBe('');
+    expect(noFilename.result.exitCode).toBe(0);
+  });
+
   it('prints -- between separated context groups', async () => {
     await writeFile({
       path: 'notes.txt',
@@ -350,6 +383,26 @@ notes.txt-3-two
     expect(stdout.text).toContain('--extended-regexp');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('supports long file-selection modes', async () => {
+    await writeFile({ path: 'left.txt', data: 'alpha\n' });
+    await writeFile({ path: 'right.txt', data: 'beta\n' });
+
+    const matching = await execute({
+      script: 'grep --files-with-matches alpha left.txt right.txt',
+    });
+    const missing = await execute({
+      script: 'grep --files-without-match alpha left.txt right.txt',
+    });
+
+    expect(matching.stdout.text).toBe('left.txt\n');
+    expect(matching.stderr.text).toBe('');
+    expect(matching.result.exitCode).toBe(0);
+
+    expect(missing.stdout.text).toBe('right.txt\n');
+    expect(missing.stderr.text).toBe('');
+    expect(missing.result.exitCode).toBe(0);
   });
 
   it('works in a pipeline with head -20 using -E', async () => {

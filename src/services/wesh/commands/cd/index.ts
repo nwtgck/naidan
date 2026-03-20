@@ -85,6 +85,9 @@ export const cdCommandDefinition: WeshCommandDefinition = {
       })();
 
       context.setCwd({ path: res.fullPath });
+      if (target === '-') {
+        await text.print({ text: `${res.fullPath}\n` });
+      }
       return { exitCode: 0 };
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);

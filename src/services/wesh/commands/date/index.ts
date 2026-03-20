@@ -21,6 +21,46 @@ function pad2({
   return value.toString().padStart(2, '0');
 }
 
+const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+function formatTimezoneOffset({
+  date,
+  utc,
+}: {
+  date: Date;
+  utc: boolean;
+}): string {
+  if (utc) {
+    return '+0000';
+  }
+
+  const totalMinutes = -date.getTimezoneOffset();
+  const sign = totalMinutes >= 0 ? '+' : '-';
+  const absoluteMinutes = Math.abs(totalMinutes);
+  const hours = Math.floor(absoluteMinutes / 60);
+  const minutes = absoluteMinutes % 60;
+  return `${sign}${pad2({ value: hours })}${pad2({ value: minutes })}`;
+}
+
+function formatTimezoneName({
+  date,
+  utc,
+}: {
+  date: Date;
+  utc: boolean;
+}): string {
+  if (utc) {
+    return 'UTC';
+  }
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZoneName: 'short',
+  }).formatToParts(date);
+  const timeZoneName = parts.find((part) => part.type === 'timeZoneName')?.value;
+  return timeZoneName ?? 'UTC';
+}
+
 function formatDateToken({
   token,
   date,
@@ -33,17 +73,24 @@ function formatDateToken({
   const year = utc ? date.getUTCFullYear() : date.getFullYear();
   const month = utc ? date.getUTCMonth() + 1 : date.getMonth() + 1;
   const day = utc ? date.getUTCDate() : date.getDate();
+  const weekday = utc ? date.getUTCDay() : date.getDay();
   const hours = utc ? date.getUTCHours() : date.getHours();
   const minutes = utc ? date.getUTCMinutes() : date.getMinutes();
   const seconds = utc ? date.getUTCSeconds() : date.getSeconds();
 
   switch (token) {
+  case '%a':
+    return WEEKDAY_NAMES[weekday] ?? '';
+  case '%b':
+    return MONTH_NAMES[month - 1] ?? '';
   case '%Y':
     return year.toString().padStart(4, '0');
   case '%m':
     return pad2({ value: month });
   case '%d':
     return pad2({ value: day });
+  case '%e':
+    return day.toString().padStart(2, ' ');
   case '%H':
     return pad2({ value: hours });
   case '%M':
@@ -56,6 +103,10 @@ function formatDateToken({
     return `${formatDateToken({ token: '%H', date, utc })}:${formatDateToken({ token: '%M', date, utc })}:${formatDateToken({ token: '%S', date, utc })}`;
   case '%s':
     return Math.floor(date.getTime() / 1000).toString();
+  case '%z':
+    return formatTimezoneOffset({ date, utc });
+  case '%Z':
+    return formatTimezoneName({ date, utc });
   case '%%':
     return '%';
   default:
@@ -72,7 +123,7 @@ function formatDate({
   date: Date;
   utc: boolean;
 }): string {
-  return format.replace(/%[%YmdHMSTFs]/g, (token) => formatDateToken({
+  return format.replace(/%[%abdeHmMSYFTszZ]/g, (token) => formatDateToken({
     token,
     date,
     utc,

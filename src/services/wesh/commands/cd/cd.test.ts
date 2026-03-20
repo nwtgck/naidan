@@ -79,7 +79,7 @@ describe('wesh cd', () => {
     expect(changed.stderr.text).toBe('');
     expect(changed.result.exitCode).toBe(0);
 
-    expect(dashed.stdout.text).toBe('/old\n');
+    expect(dashed.stdout.text).toBe('/old\n/old\n');
     expect(dashed.stderr.text).toBe('');
     expect(dashed.result.exitCode).toBe(0);
   });

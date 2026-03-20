@@ -50,7 +50,7 @@ echo "$status"`,
     });
 
     expect(help.stdout.text).toContain('Read a line from standard input or a file descriptor into shell variables');
-    expect(help.stdout.text).toContain('usage: read [-r] [-u fd] [name...]');
+    expect(help.stdout.text).toContain('usage: read [-r] [-s] [-p prompt] [-u fd] [name...]');
     expect(help.stdout.text).toContain('--help');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
@@ -58,6 +58,27 @@ echo "$status"`,
     expect(badFd.stderr.text).toContain('read: 9: bad file descriptor');
     expect(badFd.stdout.text).toBe('1\n');
     expect(badFd.result.exitCode).toBe(0);
+  });
+
+  it('supports -p prompts and rejects unsupported -s', async () => {
+    const prompted = await execute({
+      script: `\
+read -p "Name: " value
+echo "$value"`,
+      stdinText: 'alice\n',
+    });
+    const silent = await execute({
+      script: 'read -s secret',
+      stdinText: 'value\n',
+    });
+
+    expect(prompted.stdout.text).toBe('Name: alice\n');
+    expect(prompted.stderr.text).toBe('');
+    expect(prompted.result.exitCode).toBe(0);
+
+    expect(silent.stdout.text).toBe('');
+    expect(silent.stderr.text).toContain('read: silent mode with -s is not supported in wesh yet');
+    expect(silent.result.exitCode).toBe(1);
   });
 
   it('assigns REPLY verbatim when no variable names are given', async () => {

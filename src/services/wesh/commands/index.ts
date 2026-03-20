@@ -12,6 +12,11 @@ import { grepCommandDefinition } from './grep/index.ts';
 import { findCommandDefinition } from './find/index.ts';
 import { headCommandDefinition } from './head/index.ts';
 import { tailCommandDefinition } from './tail/index.ts';
+import { printfCommandDefinition } from './printf/index.ts';
+import { dirnameCommandDefinition } from './dirname/index.ts';
+import { basenameCommandDefinition } from './basename/index.ts';
+import { seqCommandDefinition } from './seq/index.ts';
+import { teeCommandDefinition } from './tee/index.ts';
 import { touchCommandDefinition } from './touch/index.ts';
 import { cpCommandDefinition } from './cp/index.ts';
 import { mvCommandDefinition } from './mv/index.ts';
@@ -20,6 +25,13 @@ import { sortCommandDefinition } from './sort/index.ts';
 import { uniqCommandDefinition } from './uniq/index.ts';
 import { cutCommandDefinition } from './cut/index.ts';
 import { trCommandDefinition } from './tr/index.ts';
+import { shufCommandDefinition } from './shuf/index.ts';
+import { commCommandDefinition } from './comm/index.ts';
+import { pasteCommandDefinition } from './paste/index.ts';
+import { realpathCommandDefinition } from './realpath/index.ts';
+import { trueCommandDefinition } from './true/index.ts';
+import { falseCommandDefinition } from './false/index.ts';
+import { colonCommandDefinition } from './colon/index.ts';
 import { envCommandDefinition } from './env/index.ts';
 import { exportCmdCommandDefinition } from './export/index.ts';
 import { unsetCommandDefinition } from './unset/index.ts';
@@ -60,6 +72,11 @@ export const builtinCommands: WeshCommandDefinition[] = [
   findCommandDefinition,
   headCommandDefinition,
   tailCommandDefinition,
+  printfCommandDefinition,
+  dirnameCommandDefinition,
+  basenameCommandDefinition,
+  seqCommandDefinition,
+  teeCommandDefinition,
   touchCommandDefinition,
   cpCommandDefinition,
   mvCommandDefinition,
@@ -68,6 +85,13 @@ export const builtinCommands: WeshCommandDefinition[] = [
   uniqCommandDefinition,
   cutCommandDefinition,
   trCommandDefinition,
+  shufCommandDefinition,
+  commCommandDefinition,
+  pasteCommandDefinition,
+  realpathCommandDefinition,
+  trueCommandDefinition,
+  falseCommandDefinition,
+  colonCommandDefinition,
   envCommandDefinition,
   exportCmdCommandDefinition,
   unsetCommandDefinition,

@@ -19,11 +19,52 @@ const sleepArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
+function parseSleepOperand({
+  value,
+}: {
+  value: string;
+}): { ok: true; seconds: number } | { ok: false } {
+  const match = value.match(/^([0-9]+(?:\.[0-9]+)?)([smhd]?)$/);
+  if (match === null) {
+    return { ok: false };
+  }
+
+  const amount = Number.parseFloat(match[1] ?? '');
+  if (!Number.isFinite(amount)) {
+    return { ok: false };
+  }
+
+  const multiplier = (() => {
+    switch (match[2] ?? '') {
+    case '':
+    case 's':
+      return 1;
+    case 'm':
+      return 60;
+    case 'h':
+      return 60 * 60;
+    case 'd':
+      return 60 * 60 * 24;
+    default:
+      return undefined;
+    }
+  })();
+
+  if (multiplier === undefined) {
+    return { ok: false };
+  }
+
+  return {
+    ok: true,
+    seconds: amount * multiplier,
+  };
+}
+
 export const sleepCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'sleep',
     description: 'Delay for a specified amount of time',
-    usage: 'sleep number',
+    usage: 'sleep NUMBER[SUFFIX]...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
@@ -40,15 +81,31 @@ export const sleepCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
-    const seconds = parseFloat(context.args[0] || '0');
-    if (isNaN(seconds)) {
+    if (parsed.positionals.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'sleep',
-        message: `sleep: invalid time interval '${context.args[0]}'`,
+        message: 'sleep: missing operand',
         argvSpec: sleepArgvSpec,
       });
       return { exitCode: 1 };
+    }
+
+    let seconds = 0;
+    for (const operand of parsed.positionals) {
+      const parsedOperand = parseSleepOperand({
+        value: operand,
+      });
+      if (!parsedOperand.ok) {
+        await writeCommandUsageError({
+          context,
+          command: 'sleep',
+          message: `sleep: invalid time interval '${operand}'`,
+          argvSpec: sleepArgvSpec,
+        });
+        return { exitCode: 1 };
+      }
+      seconds += parsedOperand.seconds;
     }
 
     const waitStatus = await context.process.waitForSignalOrTimeout({

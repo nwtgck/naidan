@@ -7,6 +7,23 @@ const readArgvSpec: StandardArgvParserSpec = {
     { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'rawMode', value: true }], help: { summary: 'do not treat backslash as an escape character' } },
     {
       kind: 'value',
+      short: 'p',
+      long: undefined,
+      key: 'prompt',
+      valueName: 'prompt',
+      allowAttachedValue: false,
+      help: { summary: 'output the string PROMPT without a trailing newline before attempting to read', valueName: 'PROMPT' },
+      parseValue: undefined,
+    },
+    {
+      kind: 'flag',
+      short: 's',
+      long: undefined,
+      effects: [{ key: 'silent', value: true }],
+      help: { summary: 'do not echo input coming from a terminal', category: 'advanced' },
+    },
+    {
+      kind: 'value',
       short: 'u',
       long: undefined,
       key: 'fd',
@@ -118,7 +135,7 @@ export const readCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'read',
     description: 'Read a line from standard input or a file descriptor into shell variables',
-    usage: 'read [-r] [-u fd] [name...]',
+    usage: 'read [-r] [-s] [-p prompt] [-u fd] [name...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
@@ -149,13 +166,26 @@ export const readCommandDefinition: WeshCommandDefinition = {
     const fdValue = parsed.optionValues.fd;
     const fd = typeof fdValue === 'number' ? fdValue : 0;
     const rawMode = parsed.optionValues.rawMode === true;
+    const prompt = typeof parsed.optionValues.prompt === 'string' ? parsed.optionValues.prompt : undefined;
+    const silent = parsed.optionValues.silent === true;
     const variableNames = parsed.positionals;
     const ifs = context.env.get('IFS') ?? ' \t\n';
+
+    if (silent) {
+      await context.text().error({
+        text: 'read: silent mode with -s is not supported in wesh yet\n',
+      });
+      return { exitCode: 1 };
+    }
 
     const inputHandle = context.getFileDescriptor({ fd });
     if (inputHandle === undefined) {
       await context.text().error({ text: `read: ${fd}: bad file descriptor\n` });
       return { exitCode: 1 };
+    }
+
+    if (prompt !== undefined) {
+      await context.text().print({ text: prompt });
     }
 
     const decoder = new TextDecoder();

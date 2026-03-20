@@ -76,6 +76,29 @@ describe('wesh date', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports weekday, month, day, and timezone tokens', async () => {
+    const now = new Date();
+    const localOffsetMinutes = -now.getTimezoneOffset();
+    const localOffsetSign = localOffsetMinutes >= 0 ? '+' : '-';
+    const localOffsetHours = Math.floor(Math.abs(localOffsetMinutes) / 60).toString().padStart(2, '0');
+    const localOffsetRemainder = (Math.abs(localOffsetMinutes) % 60).toString().padStart(2, '0');
+
+    const local = await execute({
+      script: 'date +%a_%b_%e_%z',
+    });
+    const utc = await execute({
+      script: 'date -u +%a_%b_%e_%z_%Z',
+    });
+
+    expect(local.stdout.text).toBe(`Fri_Mar_20_${localOffsetSign}${localOffsetHours}${localOffsetRemainder}\n`);
+    expect(local.stderr.text).toBe('');
+    expect(local.result.exitCode).toBe(0);
+
+    expect(utc.stdout.text).toBe('Fri_Mar_20_+0000_UTC\n');
+    expect(utc.stderr.text).toBe('');
+    expect(utc.result.exitCode).toBe(0);
+  });
+
   it('supports -u with formatted output', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'date -u +%Y-%m-%dT%H:%M:%S',
