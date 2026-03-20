@@ -61,16 +61,16 @@ export const touchCommandDefinition: WeshCommandDefinition = {
       if (p === undefined) continue;
       try {
         const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
-        const isExists = await exists({ kernel: context.kernel, path: fullPath });
+        const isExists = await exists({ files: context.files, path: fullPath });
 
         if (!isExists) {
           // Create empty file
-          await writeFile({ kernel: context.kernel, path: fullPath, data: new Uint8Array(0) });
+          await writeFile({ files: context.files, path: fullPath, data: new Uint8Array(0) });
         } else {
           // Just update mtime - we don't have a direct utimes yet,
           // so we could potentially open and close it if we want to simulate it,
           // but the current VFS doesn't support manual mtime update via open.
-          const handle = await context.kernel.open({
+          const handle = await context.files.open({
             path: fullPath,
             flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
           });

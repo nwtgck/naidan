@@ -133,9 +133,9 @@ async function readStat({
   try {
     switch (followSymlinkMode) {
     case 'follow':
-      return await context.kernel.stat({ path });
+      return await context.files.stat({ path });
     case 'no-follow':
-      return await context.kernel.lstat({ path });
+      return await context.files.lstat({ path });
     default: {
       const _ex: never = followSymlinkMode;
       throw new Error(`Unhandled symlink mode: ${_ex}`);

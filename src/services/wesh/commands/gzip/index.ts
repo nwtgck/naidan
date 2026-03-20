@@ -60,7 +60,7 @@ export const gzipCommandDefinition: WeshCommandDefinition = {
       if (f === undefined) continue;
       try {
         const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-        const input = await readFile({ kernel: context.kernel, path: fullPath });
+        const input = await readFile({ files: context.files, path: fullPath });
         const compressor = new CompressionStream('gzip');
         const inputProvider = new ReadableStream({
           start(controller) {
@@ -86,8 +86,8 @@ export const gzipCommandDefinition: WeshCommandDefinition = {
           offset += chunk.length;
         }
 
-        await writeFile({ kernel: context.kernel, path: gzPath, data: result });
-        await context.kernel.unlink({ path: fullPath });
+        await writeFile({ files: context.files, path: gzPath, data: result });
+        await context.files.unlink({ path: fullPath });
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `gzip: ${f}: ${message}\n` });

@@ -114,7 +114,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
           symlinkMode,
           isCommandLineArgument: true,
         });
-        const entries = await context.kernel.readDir({ path: directoryPath });
+        const entries = await context.files.readDir({ path: directoryPath });
         const filtered = a ? entries : entries.filter((entry) => !entry.name.startsWith('.'));
 
         if (paths.length > 1) {
@@ -172,11 +172,11 @@ async function getPathStat({
 }): Promise<WeshStat> {
   switch (symlinkMode) {
   case 'logical':
-    return context.kernel.stat({ path });
+    return context.files.stat({ path });
   case 'command-line':
-    return isCommandLineArgument ? context.kernel.stat({ path }) : context.kernel.lstat({ path });
+    return isCommandLineArgument ? context.files.stat({ path }) : context.files.lstat({ path });
   case 'physical':
-    return context.kernel.lstat({ path });
+    return context.files.lstat({ path });
   default: {
     const _ex: never = symlinkMode;
     throw new Error(`Unhandled symlink mode: ${_ex}`);
@@ -203,7 +203,7 @@ async function getDirectoryReadPath({
   });
   switch (stat.type) {
   case 'directory':
-    return (await context.kernel.resolve({ path })).fullPath;
+    return (await context.files.resolve({ path })).fullPath;
   case 'file':
   case 'fifo':
   case 'chardev':

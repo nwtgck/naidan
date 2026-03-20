@@ -184,7 +184,7 @@ export const awkCommandDefinition: WeshCommandDefinition = {
       for (const programFile of programFiles) {
         try {
           const bytes = await readFile({
-            kernel: context.kernel,
+            files: context.files,
             path: resolvePath({ cwd: context.cwd, path: programFile }),
           });
           fragments.push(new TextDecoder().decode(bytes));
@@ -226,7 +226,7 @@ export const awkCommandDefinition: WeshCommandDefinition = {
           ? stdinText ??= await readTextStream({ stream: handleToStream({ handle: context.stdin }) })
           : await readTextStream({
             stream: handleToStream({
-              handle: await context.kernel.open({
+              handle: await context.files.open({
                 path: resolvePath({ cwd: context.cwd, path: input }),
                 flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
               }),

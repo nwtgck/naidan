@@ -61,24 +61,24 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     const force = parsed.optionValues.force === true;
 
     const removeRecursive = async (path: string) => {
-      const st = await context.kernel.lstat({ path });
+      const st = await context.files.lstat({ path });
       switch (st.type) {
       case 'directory': {
         if (!recursive) {
           throw new Error('is a directory');
         }
-        const entries = await context.kernel.readDir({ path });
+        const entries = await context.files.readDir({ path });
         for (const entry of entries) {
           await removeRecursive(`${path}/${entry.name}`);
         }
-        await context.kernel.rmdir({ path });
+        await context.files.rmdir({ path });
         break;
       }
       case 'file':
       case 'fifo':
       case 'chardev':
       case 'symlink':
-        await context.kernel.unlink({ path });
+        await context.files.unlink({ path });
         break;
       default: {
         const _ex: never = st.type;

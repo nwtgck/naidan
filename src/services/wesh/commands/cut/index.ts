@@ -576,7 +576,7 @@ export const cutCommandDefinition: WeshCommandDefinition = {
           ? stdinText ??= await readTextStream({ stream: createInputStream({ context }) })
           : await (async () => {
             const fullPath = resolvePath({ cwd: context.cwd, path: file });
-            const handle = await context.kernel.open({
+            const handle = await context.files.open({
               path: fullPath,
               flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
             });

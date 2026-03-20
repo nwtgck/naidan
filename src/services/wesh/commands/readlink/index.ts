@@ -71,8 +71,8 @@ export const readlinkCommandDefinition: WeshCommandDefinition = {
 
     try {
       const output = canonicalize
-        ? (await context.kernel.resolve({ path: inputPath })).fullPath
-        : await context.kernel.readlink({ path: inputPath });
+        ? (await context.files.resolve({ path: inputPath })).fullPath
+        : await context.files.readlink({ path: inputPath });
       await text.print({ text: noNewline ? output : `${output}\n` });
       return { exitCode: 0 };
     } catch (error: unknown) {

@@ -74,7 +74,7 @@ async function readInputText({
       return { ok: true, text: nextStdinText, stdinText: nextStdinText };
     }
 
-    const handle = await context.kernel.open({
+    const handle = await context.files.open({
       path: resolvePath({ cwd: context.cwd, path }),
       flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
     });

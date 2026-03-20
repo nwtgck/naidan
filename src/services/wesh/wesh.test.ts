@@ -233,13 +233,9 @@ echo "$PIPE_VALUE"`,
           usage: 'capture-proc',
         },
         fn: async ({ context }) => {
-          const proc = context.kernel.getProcess({ pid: context.pid });
-          if (proc === undefined) {
-            throw new Error(`Missing process: ${context.pid}`);
-          }
           seenProcesses.push({
-            pid: proc.pid,
-            pgid: proc.pgid,
+            pid: context.process.getPid(),
+            pgid: context.process.getGroupId(),
           });
           return { exitCode: 0 };
         },
@@ -411,8 +407,7 @@ pipe-trap
           usage: 'signal-pipe',
         },
         fn: async ({ context }) => {
-          await context.kernel.kill({
-            pid: context.pid,
+          await context.process.signalSelf({
             signal: 13,
           });
           return { exitCode: 0 };
@@ -453,12 +448,7 @@ signal-pipe`,
           usage: 'signal-int',
         },
         fn: async ({ context }) => {
-          const proc = context.kernel.getProcess({ pid: context.pid });
-          if (proc === undefined) {
-            throw new Error(`Missing process: ${context.pid}`);
-          }
-          await context.kernel.killProcessGroup({
-            pgid: proc.pgid,
+          await context.process.signalGroup({
             signal: 2,
           });
           throw new Error('foreground process group interrupted');
@@ -608,6 +598,39 @@ sleep 1 | cat`,
     await new Promise(resolve => setTimeout(resolve, 20));
     const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
     const result = await execution;
+    await write.close();
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+  });
+
+  it('interrupts commands blocked on reads from process-opened file handles', async () => {
+    const { read, write } = await wesh.kernel.pipe();
+    wesh.vfs.registerSpecialFile({
+      path: '/dev/hold',
+      handler: () => read,
+    });
+
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: 'cat /dev/hold',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await execution;
+
+    wesh.vfs.unregisterSpecialFile({ path: '/dev/hold' });
     await write.close();
 
     expect(signaled).toBe(true);

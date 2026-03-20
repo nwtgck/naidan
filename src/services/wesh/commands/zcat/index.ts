@@ -52,7 +52,7 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
       if (f === undefined) continue;
       try {
         const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-        const handle = await context.kernel.open({
+        const handle = await context.files.open({
           path: fullPath,
           flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
         });

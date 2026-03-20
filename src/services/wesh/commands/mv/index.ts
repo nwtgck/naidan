@@ -151,7 +151,7 @@ export const mvCommandDefinition: WeshCommandDefinition = {
       const treatDestAsDirectory = targetDirectory !== undefined || sourceOperands.length > 1;
 
       if (treatDestAsDirectory) {
-        const destStat = await context.kernel.stat({ path: fullDest });
+        const destStat = await context.files.stat({ path: fullDest });
         switch (destStat.type) {
         case 'directory':
           break;
@@ -175,10 +175,10 @@ export const mvCommandDefinition: WeshCommandDefinition = {
           }
 
           let destinationStat:
-            | Awaited<ReturnType<WeshCommandContext['kernel']['stat']>>
+            | Awaited<ReturnType<WeshCommandContext['files']['stat']>>
             | undefined;
           try {
-            destinationStat = await context.kernel.stat({ path: fullDest });
+            destinationStat = await context.files.stat({ path: fullDest });
           } catch {
             destinationStat = undefined;
           }
@@ -207,14 +207,14 @@ export const mvCommandDefinition: WeshCommandDefinition = {
 
         if (noClobber) {
           try {
-            await context.kernel.lstat({ path: targetPath });
+            await context.files.lstat({ path: targetPath });
             continue;
           } catch {
             // missing destination is fine
           }
         }
 
-        await context.kernel.rename({ oldPath: fullSrc, newPath: targetPath });
+        await context.files.rename({ oldPath: fullSrc, newPath: targetPath });
       }
 
       return { exitCode: 0 };

@@ -57,7 +57,7 @@ export const mkfifoCommandDefinition: WeshCommandDefinition = {
       try {
         const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
         // vfs.mknod is now in Kernel.
-        await context.kernel.mknod({ path: fullPath, type: 'fifo', mode: 0o644 });
+        await context.files.mknod({ path: fullPath, type: 'fifo', mode: 0o644 });
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `mkfifo: cannot create fifo '${p}': ${message}\n` });

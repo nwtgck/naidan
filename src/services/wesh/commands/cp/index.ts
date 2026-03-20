@@ -148,11 +148,11 @@ export const cpCommandDefinition: WeshCommandDefinition = {
     }) => {
       switch (symlinkMode) {
       case 'logical':
-        return context.kernel.stat({ path });
+        return context.files.stat({ path });
       case 'command-line':
-        return isCommandLineArgument ? context.kernel.stat({ path }) : context.kernel.lstat({ path });
+        return isCommandLineArgument ? context.files.stat({ path }) : context.files.lstat({ path });
       case 'physical':
-        return context.kernel.lstat({ path });
+        return context.files.lstat({ path });
       default: {
         const _ex: never = symlinkMode;
         throw new Error(`Unhandled symlink mode: ${_ex}`);
@@ -167,11 +167,11 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       srcPath: string;
       destPath: string;
     }) => {
-      const srcH = await context.kernel.open({
+      const srcH = await context.files.open({
         path: srcPath,
         flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
       });
-      const destH = await context.kernel.open({
+      const destH = await context.files.open({
         path: destPath,
         flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' }
       });
@@ -188,7 +188,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       destPath: string;
     }): Promise<'removed' | 'skipped' | 'missing'> => {
       try {
-        const existing = await context.kernel.lstat({ path: destPath });
+        const existing = await context.files.lstat({ path: destPath });
         if (noClobber) {
           return 'skipped';
         }
@@ -216,7 +216,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         case 'fifo':
         case 'chardev':
         case 'symlink':
-          await context.kernel.unlink({ path: destPath });
+          await context.files.unlink({ path: destPath });
           return 'removed';
         default: {
           const _ex: never = existing.type;
@@ -257,9 +257,9 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         if (!recursive) {
           throw new Error(`-r not specified; omitting directory '${srcPath}'`);
         }
-        await context.kernel.mkdir({ path: destPath, recursive: true });
-        const readPath = (await context.kernel.resolve({ path: srcPath })).fullPath;
-        const entries = await context.kernel.readDir({ path: readPath });
+        await context.files.mkdir({ path: destPath, recursive: true });
+        const readPath = (await context.files.resolve({ path: srcPath })).fullPath;
+        const entries = await context.files.readDir({ path: readPath });
         for (const entry of entries) {
           await copyOne({
             srcPath: `${readPath}/${entry.name}`,
@@ -274,8 +274,8 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         break;
       case 'symlink':
         if (symlinkMode === 'physical' || (symlinkMode === 'command-line' && !isCommandLineArgument)) {
-          const linkTarget = await context.kernel.readlink({ path: srcPath });
-          await context.kernel.symlink({
+          const linkTarget = await context.files.readlink({ path: srcPath });
+          await context.files.symlink({
             path: destPath,
             targetPath: linkTarget,
           });
@@ -307,7 +307,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       }
 
       try {
-        const destStat = await context.kernel.stat({ path: destPath });
+        const destStat = await context.files.stat({ path: destPath });
         switch (destStat.type) {
         case 'directory': {
           if (noTargetDirectory) {
@@ -343,7 +343,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       })();
 
       if (treatDestAsDirectory) {
-        const destStat = await context.kernel.stat({ path: fullDest });
+        const destStat = await context.files.stat({ path: fullDest });
         switch (destStat.type) {
         case 'directory':
           break;

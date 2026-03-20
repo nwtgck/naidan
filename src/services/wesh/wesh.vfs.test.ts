@@ -119,7 +119,7 @@ describe('wesh vfs mounts', () => {
     await append.write({ buffer: new TextEncoder().encode('second\n') });
     await append.close();
 
-    const data = await readFile({ kernel: wesh.kernel, path: '/append.txt' });
+    const data = await readFile({ files: wesh.kernel, path: '/append.txt' });
     expect(new TextDecoder().decode(data)).toBe('first\nsecond\n');
   });
 

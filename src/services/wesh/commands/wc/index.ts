@@ -269,7 +269,7 @@ export const wcCommandDefinition: WeshCommandDefinition = {
 
       try {
         const fullPath = inputName.startsWith('/') ? inputName : `${context.cwd}/${inputName}`;
-        const handle = await context.kernel.open({
+        const handle = await context.files.open({
           path: fullPath,
           flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
         });

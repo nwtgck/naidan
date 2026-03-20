@@ -256,7 +256,7 @@ async function writeOutput({
   }
 
   await writeFile({
-    kernel: context.kernel,
+    files: context.files,
     path: outputPath,
     data: new TextEncoder().encode(data),
   });
@@ -275,7 +275,7 @@ async function readInputText({
 
   try {
     const fullPath = inputPath.startsWith('/') ? inputPath : `${context.cwd}/${inputPath}`;
-    const bytes = await readFile({ kernel: context.kernel, path: fullPath });
+    const bytes = await readFile({ files: context.files, path: fullPath });
     return { ok: true, value: new TextDecoder().decode(bytes) };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

@@ -594,7 +594,7 @@ async function resolveFindExpressionReferences({
       expr: await resolveFindExpressionReferences({ expr: expr.expr, context }),
     };
   case 'newer': {
-    const stat = await context.kernel.stat({
+    const stat = await context.files.stat({
       path: resolvePath({
         cwd: context.cwd,
         path: expr.referencePath,
@@ -709,7 +709,7 @@ async function evaluateExpression({
   case 'empty':
     switch (entry.type) {
     case 'directory': {
-      const entries = await context.kernel.readDir({ path: entry.fullPath });
+      const entries = await context.files.readDir({ path: entry.fullPath });
       return {
         matched: entries.length === 0,
         actionInvoked: false,
@@ -774,13 +774,13 @@ async function evaluateExpression({
   case 'delete':
     switch (entry.type) {
     case 'directory':
-      await context.kernel.rmdir({ path: entry.fullPath });
+      await context.files.rmdir({ path: entry.fullPath });
       break;
     case 'file':
     case 'fifo':
     case 'chardev':
     case 'symlink':
-      await context.kernel.unlink({ path: entry.fullPath });
+      await context.files.unlink({ path: entry.fullPath });
       break;
     default: {
       const _ex: never = entry.type;
@@ -961,11 +961,11 @@ export const findCommandDefinition: WeshCommandDefinition = {
     }) => {
       switch (traversal.symlinkMode) {
       case 'logical':
-        return context.kernel.stat({ path });
+        return context.files.stat({ path });
       case 'command-line':
-        return isCommandLineArgument ? context.kernel.stat({ path }) : context.kernel.lstat({ path });
+        return isCommandLineArgument ? context.files.stat({ path }) : context.files.lstat({ path });
       case 'physical':
-        return context.kernel.lstat({ path });
+        return context.files.lstat({ path });
       default: {
         const _ex: never = traversal.symlinkMode;
         throw new Error(`Unhandled symlink mode: ${_ex}`);
@@ -997,7 +997,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
     }) => {
       switch (type) {
       case 'directory':
-        return (await context.kernel.resolve({ path })).fullPath;
+        return (await context.files.resolve({ path })).fullPath;
       case 'file':
       case 'fifo':
       case 'chardev':
@@ -1065,7 +1065,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
           && (traversal.maxDepth === undefined || depth < traversal.maxDepth);
 
         if (canDescend) {
-          const entries = await context.kernel.readDir({ path: entry.readPath });
+          const entries = await context.files.readDir({ path: entry.readPath });
           for (const child of entries) {
             const childFullPath = entry.readPath === '/' ? `/${child.name}` : `${entry.readPath}/${child.name}`;
             const childDisplayPath = displayPath === '/' ? `/${child.name}` : `${displayPath}/${child.name}`;

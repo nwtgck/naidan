@@ -231,7 +231,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
 
         try {
           const fullPath = resolvePath({ cwd: context.cwd, path: f });
-          const handle = await context.kernel.open({
+          const handle = await context.files.open({
             path: fullPath,
             flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
           });
@@ -246,7 +246,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
           }
         } catch (e: unknown) {
           const shouldForwardSignal = (() => {
-            const waitStatus = context.kernel.getWaitStatus({ pid: context.pid });
+            const waitStatus = context.process.getWaitStatus();
             if (waitStatus === undefined) return false;
 
             switch (waitStatus.kind) {

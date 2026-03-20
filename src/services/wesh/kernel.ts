@@ -16,6 +16,7 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
   private readonly handle: WeshFileHandle;
   private readonly kernel: WeshKernel;
   private readonly pid: number;
+  private closed = false;
 
   constructor({
     handle,
@@ -61,6 +62,14 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
   }
 
   async close(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.kernel.unregisterOwnedHandle({
+      pid: this.pid,
+      handle: this,
+    });
     await this.handle.close();
   }
 
@@ -188,6 +197,7 @@ export class WeshKernel {
       pgid: 1,
       state: 'running',
       pendingSignals: [],
+      ownedHandles: new Set(),
       env: new Map(),
       cwd: '/',
       args: ['init'],
@@ -214,6 +224,7 @@ export class WeshKernel {
       state: 'running',
       pendingSignals: [],
       signalDispositions: options.signalDispositions ? new Map(options.signalDispositions) : new Map(),
+      ownedHandles: new Set(),
       env: options.env ? new Map(options.env) : new Map(),
       cwd: options.cwd || '/',
       args: options.args,
@@ -337,12 +348,20 @@ export class WeshKernel {
   bindFileHandle(options: {
     pid: number;
     handle: WeshFileHandle;
+    trackOwnership: boolean;
   }): WeshFileHandle {
-    return new WeshKernelProcessFileHandle({
+    const boundHandle = new WeshKernelProcessFileHandle({
       handle: options.handle,
       kernel: this,
       pid: options.pid,
     });
+    if (options.trackOwnership) {
+      this.registerOwnedHandle({
+        pid: options.pid,
+        handle: boundHandle,
+      });
+    }
+    return boundHandle;
   }
 
   bindFdTable(options: {
@@ -355,6 +374,7 @@ export class WeshKernel {
         this.bindFileHandle({
           pid: options.pid,
           handle,
+          trackOwnership: false,
         }),
       ]),
     );
@@ -424,6 +444,26 @@ export class WeshKernel {
     return Array.from(this.processes.values()).filter(proc => proc.pgid === options.pgid);
   }
 
+  registerOwnedHandle(options: {
+    pid: number;
+    handle: WeshFileHandle;
+  }): void {
+    const proc = this.processes.get(options.pid);
+    if (proc === undefined) {
+      return;
+    }
+    proc.ownedHandles ??= new Set();
+    proc.ownedHandles.add(options.handle);
+  }
+
+  unregisterOwnedHandle(options: {
+    pid: number;
+    handle: WeshFileHandle;
+  }): void {
+    const proc = this.processes.get(options.pid);
+    proc?.ownedHandles?.delete(options.handle);
+  }
+
   private async closeProcessFileDescriptors(options: {
     proc: WeshProcess;
   }): Promise<void> {
@@ -432,6 +472,14 @@ export class WeshKernel {
       if (fd === 1 || fd === 2) {
         continue;
       }
+      if (closedHandles.has(handle)) {
+        continue;
+      }
+      closedHandles.add(handle);
+      await handle.close();
+    }
+
+    for (const handle of options.proc.ownedHandles ?? []) {
       if (closedHandles.has(handle)) {
         continue;
       }

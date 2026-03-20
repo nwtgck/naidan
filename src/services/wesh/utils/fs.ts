@@ -1,17 +1,21 @@
 import type { WeshOpenFlags, WeshFileHandle } from '@/services/wesh/types';
-import type { WeshKernel } from '@/services/wesh/kernel';
+
+interface WeshFileCapabilities {
+  open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
+  stat(options: { path: string }): Promise<unknown>;
+}
 
 /**
  * Read the entire content of a file as a Uint8Array.
  */
-export async function readFile({ kernel, path }: { kernel: WeshKernel; path: string }): Promise<Uint8Array> {
+export async function readFile({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<Uint8Array> {
   const flags: WeshOpenFlags = {
     access: 'read',
     creation: 'never',
     truncate: 'preserve',
     append: 'preserve',
   };
-  const handle = await kernel.open({ path, flags });
+  const handle = await files.open({ path, flags });
   try {
     const stat = await handle.stat();
     const buffer = new Uint8Array(stat.size);
@@ -35,11 +39,11 @@ export async function readFile({ kernel, path }: { kernel: WeshKernel; path: str
  * Write the entire content of a Uint8Array to a file.
  */
 export async function writeFile({
-  kernel,
+  files,
   path,
   data,
 }: {
-  kernel: WeshKernel;
+  files: WeshFileCapabilities;
   path: string;
   data: Uint8Array;
 }): Promise<void> {
@@ -49,7 +53,7 @@ export async function writeFile({
     truncate: 'truncate',
     append: 'preserve',
   };
-  const handle = await kernel.open({ path, flags });
+  const handle = await files.open({ path, flags });
   try {
     let totalWritten = 0;
     while (totalWritten < data.length) {
@@ -71,9 +75,9 @@ export async function writeFile({
 /**
  * Check if a file or directory exists.
  */
-export async function exists({ kernel, path }: { kernel: WeshKernel; path: string }): Promise<boolean> {
+export async function exists({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<boolean> {
   try {
-    await kernel.stat({ path });
+    await files.stat({ path });
     return true;
   } catch {
     return false;

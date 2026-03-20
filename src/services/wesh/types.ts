@@ -1,5 +1,3 @@
-import type { WeshKernel } from './kernel';
-
 // --- Kernel & Process Types ---
 
 export type WeshFileType = 'file' | 'directory' | 'fifo' | 'chardev' | 'symlink';
@@ -107,6 +105,7 @@ export interface WeshProcess {
 
   /** File Descriptor Table: fd -> handle */
   fds: Map<number, WeshFileHandle>;
+  ownedHandles?: Set<WeshFileHandle>;
 }
 
 // --- Virtual File System ---
@@ -199,8 +198,6 @@ export interface WeshCommandContext {
   env: Map<string, string>;
   cwd: string;
 
-  kernel: WeshKernel;
-
   // Standard Streams (FDs 0, 1, 2)
   stdin: WeshFileHandle;
   stdout: WeshFileHandle;
@@ -211,6 +208,10 @@ export interface WeshCommandContext {
     print(options: { text: string }): Promise<void>;
     error(options: { text: string }): Promise<void>;
   };
+
+  // Commands depend on capability-scoped APIs instead of the raw kernel so they
+  // cannot accidentally reach across process boundaries, bypass process-owned
+  // resource tracking, or couple themselves to internal runtime details.
 
   // State management (Built-in only)
   setCwd(options: { path: string }): void;
@@ -234,6 +235,35 @@ export interface WeshCommandContext {
     stdout?: WeshFileHandle;
     stderr?: WeshFileHandle;
   }): Promise<WeshCommandResult>;
+  files: {
+    open(options: {
+      path: string;
+      flags: WeshOpenFlags;
+      mode?: number;
+    }): Promise<WeshFileHandle>;
+    stat(options: { path: string }): Promise<WeshStat>;
+    lstat(options: { path: string }): Promise<WeshStat>;
+    readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
+    readlink(options: { path: string }): Promise<string>;
+    resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
+    mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
+    symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void>;
+    mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
+    unlink(options: { path: string }): Promise<void>;
+    rmdir(options: { path: string }): Promise<void>;
+    rename(options: { oldPath: string; newPath: string }): Promise<void>;
+  };
+  process: {
+    getPid(): number;
+    getGroupId(): number;
+    getWaitStatus(): WeshWaitStatus | undefined;
+    signalSelf(options: { signal: number }): Promise<void>;
+    signalGroup(options: { signal: number }): Promise<void>;
+    waitForSignalOrTimeout(options: {
+      timeoutMs: number;
+      pollIntervalMs?: number;
+    }): Promise<WeshWaitStatus | undefined>;
+  };
   getFileDescriptors(): Array<[number, WeshFileHandle]>;
   getFileDescriptor(options: { fd: number }): WeshFileHandle | undefined;
   setFileDescriptor(options: { fd: number; handle: WeshFileHandle; persist: boolean }): Promise<void>;

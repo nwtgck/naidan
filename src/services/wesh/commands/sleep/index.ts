@@ -51,8 +51,7 @@ export const sleepCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const waitStatus = await context.kernel.waitForSignalOrTimeout({
-      pid: context.pid,
+    const waitStatus = await context.process.waitForSignalOrTimeout({
       timeoutMs: seconds * 1000,
     });
     if (waitStatus !== undefined) {

@@ -65,7 +65,7 @@ export const gunzipCommandDefinition: WeshCommandDefinition = {
           continue;
         }
 
-        const input = await readFile({ kernel: context.kernel, path: fullPath });
+        const input = await readFile({ files: context.files, path: fullPath });
         const decompressor = new DecompressionStream('gzip');
         const inputProvider = new ReadableStream({
           start(controller) {
@@ -91,8 +91,8 @@ export const gunzipCommandDefinition: WeshCommandDefinition = {
           offset += chunk.length;
         }
 
-        await writeFile({ kernel: context.kernel, path: originalPath, data: result });
-        await context.kernel.unlink({ path: fullPath });
+        await writeFile({ files: context.files, path: originalPath, data: result });
+        await context.files.unlink({ path: fullPath });
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `gunzip: ${f}: ${message}\n` });

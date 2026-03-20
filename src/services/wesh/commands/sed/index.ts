@@ -682,7 +682,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
     for (const scriptFile of scriptFiles) {
       try {
         const fullPath = scriptFile.startsWith('/') ? scriptFile : `${context.cwd}/${scriptFile}`;
-        const bytes = await readFile({ kernel: context.kernel, path: fullPath });
+        const bytes = await readFile({ files: context.files, path: fullPath });
         scripts.push(new TextDecoder().decode(bytes));
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -760,7 +760,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
 
       try {
         const fullPath = file.startsWith('/') ? file : `${context.cwd}/${file}`;
-        const handle = await context.kernel.open({
+        const handle = await context.files.open({
           path: fullPath,
           flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
         });
@@ -770,13 +770,13 @@ export const sedCommandDefinition: WeshCommandDefinition = {
         if (inPlace) {
           if (inPlaceSuffix.length > 0) {
             await writeFile({
-              kernel: context.kernel,
+              files: context.files,
               path: `${fullPath}${inPlaceSuffix}`,
               data: new TextEncoder().encode(input),
             });
           }
           await writeFile({
-            kernel: context.kernel,
+            files: context.files,
             path: fullPath,
             data: encoder.encode(output),
           });

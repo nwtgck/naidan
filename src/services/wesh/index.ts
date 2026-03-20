@@ -1607,7 +1607,6 @@ export class Wesh {
       env: currentEnv,
       cwd: environment.cwd,
       pid: pid,
-      kernel: this.kernel,
       stdin: boundStdin,
       stdout: boundStdout,
       stderr: boundStderr,
@@ -1656,12 +1655,50 @@ export class Wesh {
         stdout: nextStdout ?? boundStdout,
         stderr: nextStderr ?? boundStderr,
       }),
+      files: {
+        open: async ({ path, flags, mode }) => {
+          const handle = await this.kernel.open({
+            path,
+            flags,
+            mode,
+          });
+          return this.kernel.bindFileHandle({
+            pid,
+            handle,
+            trackOwnership: true,
+          });
+        },
+        stat: ({ path }) => this.kernel.stat({ path }),
+        lstat: ({ path }) => this.kernel.lstat({ path }),
+        readDir: ({ path }) => this.kernel.readDir({ path }),
+        readlink: ({ path }) => this.kernel.readlink({ path }),
+        resolve: ({ path }) => this.kernel.resolve({ path }),
+        mkdir: ({ path, mode, recursive }) => this.kernel.mkdir({ path, mode, recursive }),
+        symlink: ({ path, targetPath, mode }) => this.kernel.symlink({ path, targetPath, mode }),
+        mknod: ({ path, type, mode }) => this.kernel.mknod({ path, type, mode }),
+        unlink: ({ path }) => this.kernel.unlink({ path }),
+        rmdir: ({ path }) => this.kernel.rmdir({ path }),
+        rename: ({ oldPath, newPath }) => this.kernel.rename({ oldPath, newPath }),
+      },
+      process: {
+        getPid: () => pid,
+        getGroupId: () => proc.pgid,
+        getWaitStatus: () => this.kernel.getWaitStatus({ pid }),
+        signalSelf: ({ signal }) => this.kernel.kill({ pid, signal }),
+        signalGroup: ({ signal }) => this.kernel.killProcessGroup({ pgid: proc.pgid, signal }),
+        waitForSignalOrTimeout: ({ timeoutMs, pollIntervalMs }) => this.kernel.waitForSignalOrTimeout({
+          pid,
+          timeoutMs,
+          pollIntervalMs,
+        }),
+      },
       getFileDescriptors: () => Array.from(proc.fds.entries()),
       getFileDescriptor: ({ fd }) => proc.fds.get(fd),
       setFileDescriptor: async ({ fd, handle, persist }) => {
         const boundHandle = this.kernel.bindFileHandle({
           pid,
           handle,
+          trackOwnership: false,
         });
         proc.fds.set(fd, boundHandle);
         environment.fds.set(fd, boundHandle);

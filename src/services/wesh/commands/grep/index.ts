@@ -101,7 +101,7 @@ async function readPatternFile({
   path: string;
 }): Promise<string[]> {
   const fullPath = path.startsWith('/') ? path : `${context.cwd}/${path}`;
-  const bytes = await readFile({ kernel: context.kernel, path: fullPath });
+  const bytes = await readFile({ files: context.files, path: fullPath });
   const content = new TextDecoder().decode(bytes);
   return content.split(/\r?\n/).filter((line, index, lines) => line.length > 0 || index < lines.length - 1);
 }
@@ -472,7 +472,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       }
 
       const fullPath = resolvePath({ cwd: context.cwd, path: file });
-      const stat = await context.kernel.stat({ path: fullPath });
+      const stat = await context.files.stat({ path: fullPath });
       switch (stat.type) {
       case 'directory': {
         if (!recursive) {
@@ -486,7 +486,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
           fullPath: string;
           displayPath: string;
         }) => {
-          const entries = await context.kernel.readDir({ path: currentFullPath });
+          const entries = await context.files.readDir({ path: currentFullPath });
           for (const entry of entries) {
             const childFullPath = currentFullPath === '/' ? `/${entry.name}` : `${currentFullPath}/${entry.name}`;
             const childDisplayPath = displayPath === '/' ? `/${entry.name}` : `${displayPath}/${entry.name}`;
@@ -564,7 +564,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
           })
           : await (async () => {
             const fullPath = resolvePath({ cwd: context.cwd, path: file });
-            const handle = await context.kernel.open({
+            const handle = await context.files.open({
               path: fullPath,
               flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
             });

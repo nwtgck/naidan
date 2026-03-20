@@ -967,7 +967,7 @@ async function readInputItems({
 
   try {
     const fullPath = file.startsWith('/') ? file : `${context.cwd}/${file}`;
-    const bytes = await readFile({ kernel: context.kernel, path: fullPath });
+    const bytes = await readFile({ files: context.files, path: fullPath });
     const text = new TextDecoder().decode(bytes);
     return {
       ok: true,
@@ -1174,7 +1174,7 @@ export const sortCommandDefinition: WeshCommandDefinition = {
     default: {
       const fullPath = options.outputPath.startsWith('/') ? options.outputPath : `${context.cwd}/${options.outputPath}`;
       await writeFile({
-        kernel: context.kernel,
+        files: context.files,
         path: fullPath,
         data: new TextEncoder().encode(outputText),
       });

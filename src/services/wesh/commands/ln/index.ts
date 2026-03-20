@@ -93,7 +93,7 @@ export const lnCommandDefinition: WeshCommandDefinition = {
 
       const destinationLstat = await (async () => {
         try {
-          return await context.kernel.lstat({ path: linkPath });
+          return await context.files.lstat({ path: linkPath });
         } catch {
           return undefined;
         }
@@ -109,7 +109,7 @@ export const lnCommandDefinition: WeshCommandDefinition = {
         }
 
         try {
-          const stat = await context.kernel.stat({ path: linkPath });
+          const stat = await context.files.stat({ path: linkPath });
           return stat.type === 'directory';
         } catch {
           return false;
@@ -117,14 +117,14 @@ export const lnCommandDefinition: WeshCommandDefinition = {
       })();
 
       if (destinationActsAsDirectory) {
-        const resolvedDirectory = await context.kernel.resolve({ path: linkPath });
+        const resolvedDirectory = await context.files.resolve({ path: linkPath });
         linkPath = `${resolvedDirectory.fullPath}/${basename({ path: targetPath })}`;
       }
 
       if (force) {
         const existing = await (async () => {
           try {
-            return await context.kernel.lstat({ path: linkPath });
+            return await context.files.lstat({ path: linkPath });
           } catch {
             return undefined;
           }
@@ -132,13 +132,13 @@ export const lnCommandDefinition: WeshCommandDefinition = {
         if (existing !== undefined) {
           switch (existing.type) {
           case 'directory':
-            await context.kernel.rmdir({ path: linkPath });
+            await context.files.rmdir({ path: linkPath });
             break;
           case 'file':
           case 'fifo':
           case 'chardev':
           case 'symlink':
-            await context.kernel.unlink({ path: linkPath });
+            await context.files.unlink({ path: linkPath });
             break;
           default: {
             const _ex: never = existing.type;
@@ -148,7 +148,7 @@ export const lnCommandDefinition: WeshCommandDefinition = {
         }
       }
 
-      await context.kernel.symlink({
+      await context.files.symlink({
         path: linkPath,
         targetPath,
       });

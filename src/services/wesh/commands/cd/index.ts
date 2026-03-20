@@ -66,7 +66,7 @@ export const cdCommandDefinition: WeshCommandDefinition = {
         fullPath = target.startsWith('/') ? target : `${context.cwd}/${target}`;
       }
 
-      const res = await context.kernel.resolve({ path: fullPath });
+      const res = await context.files.resolve({ path: fullPath });
       (() => {
         switch (res.stat.type) {
         case 'directory':
