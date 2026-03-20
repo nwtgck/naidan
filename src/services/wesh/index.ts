@@ -2953,6 +2953,7 @@ usage: alias [name[=value] ...]
         readlink: ({ path }) => this.kernel.readlink({ path }),
         resolve: ({ path }) => this.kernel.resolve({ path }),
         tryReadBlobEfficiently: ({ path }) => this.kernel.tryReadBlobEfficiently({ path }),
+        tryCreateFileWriterEfficiently: ({ path, mode }) => this.kernel.tryCreateFileWriterEfficiently({ path, mode }),
         mkdir: ({ path, mode, recursive }) => this.kernel.mkdir({ path, mode, recursive }),
         symlink: ({ path, targetPath, mode }) => this.kernel.symlink({ path, targetPath, mode }),
         mknod: ({ path, type, mode }) => this.kernel.mknod({ path, type, mode }),

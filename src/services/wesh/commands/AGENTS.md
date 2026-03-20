@@ -112,6 +112,26 @@ If you are unsure whether a helper belongs in `_shared` or core:
 - if it depends on `cwd`, env, VFS, shell state, or execution semantics, it is core
 - if it is only string manipulation or command-local formatting, it may be `_shared`
 
+## Efficient I/O Capabilities
+
+When a command handles large files or archives, do not assume the generic
+`open()` / `read()` / `write()` path is fast enough.
+
+Prefer core `try...Efficiently` capabilities when they exist, for example:
+- `tryReadBlobEfficiently`
+- `tryCreateFileWriterEfficiently`
+
+Rules:
+- these are optimization capabilities, not mandatory success paths
+- if they return `fallback-required`, use the normal generic path
+- do not reimplement backend-specific optimizations inside a command
+- keep backend-specific fast paths in core `wesh` / VFS layers
+- commands should choose the efficient capability first for large sequential I/O
+
+Examples:
+- archive readers should try blob-native reads before buffering through generic handles
+- archive extractors should try efficient file writers before chunking through generic `write()`
+
 ## Keep Shared Abstractions Small
 
 Before creating a new shared helper:

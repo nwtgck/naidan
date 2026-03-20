@@ -1,8 +1,16 @@
-import type { WeshOpenFlags, WeshFileHandle } from '@/services/wesh/types';
+import type {
+  WeshOpenFlags,
+  WeshFileHandle,
+  WeshEfficientFileWriteResult,
+} from '@/services/wesh/types';
 
 interface WeshFileCapabilities {
   open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
   stat(options: { path: string }): Promise<unknown>;
+  tryCreateFileWriterEfficiently?(options: {
+    path: string;
+    mode: 'truncate' | 'append';
+  }): Promise<WeshEfficientFileWriteResult>;
 }
 
 /**
@@ -149,4 +157,89 @@ export async function streamToHandle({
     reader.releaseLock();
     await handle.close();
   }
+}
+
+export async function streamToFilePath({
+  files,
+  path,
+  stream,
+  mode,
+}: {
+  files: WeshFileCapabilities;
+  path: string;
+  stream: ReadableStream<Uint8Array>;
+  mode: 'truncate' | 'append';
+}): Promise<void> {
+  const efficientWriterResult = files.tryCreateFileWriterEfficiently === undefined
+    ? undefined
+    : await files.tryCreateFileWriterEfficiently({
+      path,
+      mode,
+    });
+
+  switch (efficientWriterResult?.kind) {
+  case 'writer': {
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        await efficientWriterResult.writer.write({
+          chunk: value,
+        });
+      }
+      await efficientWriterResult.writer.close();
+      return;
+    } catch (error: unknown) {
+      await efficientWriterResult.writer.abort({
+        reason: error,
+      });
+      throw error;
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  case 'fallback-required':
+  case undefined:
+    break;
+  default: {
+    const _ex: never = efficientWriterResult;
+    throw new Error(`Unhandled efficient writer result: ${JSON.stringify(_ex)}`);
+  }
+  }
+
+  const fallbackFlags = (() => {
+    switch (mode) {
+    case 'truncate':
+      return {
+        access: 'write',
+        creation: 'if-needed',
+        truncate: 'truncate',
+        append: 'preserve',
+      } satisfies WeshOpenFlags;
+    case 'append':
+      return {
+        access: 'write',
+        creation: 'if-needed',
+        truncate: 'preserve',
+        append: 'append',
+      } satisfies WeshOpenFlags;
+    default: {
+      const _ex: never = mode;
+      throw new Error(`Unhandled stream-to-path mode: ${_ex}`);
+    }
+    }
+  })();
+
+  const handle = await files.open({
+    path,
+    flags: fallbackFlags,
+  });
+  await streamToHandle({
+    stream,
+    handle,
+  });
 }

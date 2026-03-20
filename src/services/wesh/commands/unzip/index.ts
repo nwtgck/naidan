@@ -6,9 +6,8 @@ import type {
   WeshCommandContext,
   WeshCommandDefinition,
   WeshCommandResult,
-  WeshOpenFlags,
 } from '@/services/wesh/types';
-import { handleToStream, readFile, streamToHandle } from '@/services/wesh/utils/fs';
+import { handleToStream, readFile, streamToFilePath } from '@/services/wesh/utils/fs';
 
 const unzipArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -260,21 +259,11 @@ async function writeEntryToFile({
     context,
     path: parentPath,
   });
-
-  const flags: WeshOpenFlags = {
-    access: 'write',
-    creation: 'if-needed',
-    truncate: 'truncate',
-    append: 'preserve',
-  };
-  const handle = await context.files.open({
+  await streamToFilePath({
+    files: context.files,
     path: destinationPath,
-    flags,
-  });
-
-  await streamToHandle({
     stream: zipObjectToReadableStream({ entry }),
-    handle,
+    mode: 'truncate',
   });
 }
 

@@ -140,6 +140,12 @@ export interface WeshOpenFlags {
   append: WeshOpenAppend;
 }
 
+export interface WeshEfficientFileWriter {
+  write(options: { chunk: Uint8Array }): Promise<void>;
+  close(): Promise<void>;
+  abort(options: { reason: unknown }): Promise<void>;
+}
+
 export interface WeshIVirtualFileSystem {
   mount(options: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void>;
   unmount(options: { path: string }): Promise<void>;
@@ -157,6 +163,10 @@ export interface WeshIVirtualFileSystem {
   resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
 
   tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
+  tryCreateFileWriterEfficiently(options: {
+    path: string;
+    mode: 'truncate' | 'append';
+  }): Promise<WeshEfficientFileWriteResult>;
 
   readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
 
@@ -180,10 +190,15 @@ export interface WeshMount {
 }
 
 export const WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED = Symbol('WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED');
+export const WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED = Symbol('WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED');
 
 export type WeshEfficientBlobReadResult =
   | { kind: 'blob'; blob: Blob }
   | { kind: 'fallback-required'; reason: typeof WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED };
+
+export type WeshEfficientFileWriteResult =
+  | { kind: 'writer'; writer: WeshEfficientFileWriter }
+  | { kind: 'fallback-required'; reason: typeof WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED };
 
 // --- Shell / Command Execution Context ---
 
@@ -270,6 +285,10 @@ export interface WeshCommandContext {
     readlink(options: { path: string }): Promise<string>;
     resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
     tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
+    tryCreateFileWriterEfficiently(options: {
+      path: string;
+      mode: 'truncate' | 'append';
+    }): Promise<WeshEfficientFileWriteResult>;
     mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
     symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void>;
     mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;

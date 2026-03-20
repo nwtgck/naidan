@@ -10,6 +10,7 @@ import type {
   WeshWaitStatus,
   WeshProcessSignalDisposition,
   WeshEfficientBlobReadResult,
+  WeshEfficientFileWriteResult,
 } from './types';
 import { WeshBrokenPipeError, weshWaitStatusToExitCode } from './types';
 
@@ -411,6 +412,16 @@ export class WeshKernel {
 
   async tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult> {
     return this.vfs.tryReadBlobEfficiently({ path: options.path });
+  }
+
+  async tryCreateFileWriterEfficiently(options: {
+    path: string;
+    mode: 'truncate' | 'append';
+  }): Promise<WeshEfficientFileWriteResult> {
+    return this.vfs.tryCreateFileWriterEfficiently({
+      path: options.path,
+      mode: options.mode,
+    });
   }
 
   async readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>> {

@@ -7,8 +7,13 @@ import type {
   WeshWriteResult,
   WeshOpenFlags,
   WeshEfficientBlobReadResult,
+  WeshEfficientFileWriteResult,
 } from './types';
-import { WeshBrokenPipeError, WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED } from './types';
+import {
+  WeshBrokenPipeError,
+  WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED,
+  WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED,
+} from './types';
 import {
   WeshRegistryEntrySchemaDto,
   type WeshRegistryEntryDto,
@@ -641,6 +646,111 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       return {
         kind: 'fallback-required',
         reason: WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED,
+      };
+    default: {
+      const _ex: never = resolved;
+      throw new Error(`Unhandled resolved node: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  async tryCreateFileWriterEfficiently(options: {
+    path: string;
+    mode: 'truncate' | 'append';
+  }): Promise<WeshEfficientFileWriteResult> {
+    let resolved: ResolvedNode;
+    try {
+      resolved = await this.resolveNode({
+        path: options.path,
+        finalSymlinkTreatment: 'follow',
+        depth: 0,
+      });
+    } catch {
+      const normalized = this.normalizePath({ path: options.path });
+      const parts = normalized.split('/');
+      const name = parts.pop();
+      if (name === undefined) {
+        throw new Error(`Invalid path: ${normalized}`);
+      }
+      const parentPath = parts.join('/') || '/';
+      const parent = await this.resolveExistingDirectory({
+        path: parentPath,
+        finalSymlinkTreatment: 'follow',
+      });
+      if (parent.readOnly) {
+        throw new Error(`Read-only file system: ${parentPath}`);
+      }
+
+      const newHandle = await parent.handle.getFileHandle(name, { create: true });
+      resolved = {
+        kind: 'handle',
+        handle: newHandle,
+        readOnly: false,
+        fullPath: normalized,
+      };
+    }
+
+    switch (resolved.kind) {
+    case 'handle':
+      switch (resolved.handle.kind) {
+      case 'file': {
+        const fileHandle = resolved.handle as FileSystemFileHandle;
+        const writable = await fileHandle.createWritable({
+          keepExistingData: (() => {
+            switch (options.mode) {
+            case 'append':
+              return true;
+            case 'truncate':
+              return false;
+            default: {
+              const _ex: never = options.mode;
+              throw new Error(`Unhandled writer mode: ${_ex}`);
+            }
+            }
+          })(),
+        });
+        switch (options.mode) {
+        case 'append': {
+          const file = await fileHandle.getFile();
+          await writable.seek(file.size);
+          break;
+        }
+        case 'truncate':
+          break;
+        default: {
+          const _ex: never = options.mode;
+          throw new Error(`Unhandled writer mode: ${_ex}`);
+        }
+        }
+
+        return {
+          kind: 'writer',
+          writer: {
+            write: async ({ chunk }: { chunk: Uint8Array }) => {
+              await writable.write(chunk as BufferSource);
+            },
+            close: async () => {
+              await writable.close();
+            },
+            abort: async ({ reason }: { reason: unknown }) => {
+              await writable.abort(reason);
+            },
+          },
+        };
+      }
+      case 'directory':
+        throw new Error(`Not a file: ${options.path}`);
+      default: {
+        const _ex: never = resolved.handle.kind;
+        throw new Error(`Unhandled handle kind: ${_ex}`);
+      }
+      }
+    case 'registry':
+    case 'special':
+    case 'synthetic-directory':
+      return {
+        kind: 'fallback-required',
+        reason: WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED,
       };
     default: {
       const _ex: never = resolved;
