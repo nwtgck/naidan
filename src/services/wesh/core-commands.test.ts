@@ -148,4 +148,25 @@ describe('wesh core command parsing', () => {
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('defines and expands shell aliases across commands', async () => {
+    const aliasResult = await execute({ script: "alias hi='echo hello'; hi world" });
+    const showResult = await execute({ script: 'alias hi' });
+
+    expect(aliasResult.stdout.text).toBe('hello world\n');
+    expect(aliasResult.stderr.text).toBe('');
+    expect(aliasResult.result.exitCode).toBe(0);
+
+    expect(showResult.stdout.text).toBe("alias hi='echo hello'\n");
+    expect(showResult.stderr.text).toBe('');
+    expect(showResult.result.exitCode).toBe(0);
+  });
+
+  it('guards against recursive alias expansion loops', async () => {
+    const { result, stdout, stderr } = await execute({ script: "alias loop='loop'; loop" });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('alias: expansion loop for loop');
+    expect(result.exitCode).toBe(1);
+  });
 });

@@ -89,6 +89,7 @@ export const commandCommandDefinition: WeshCommandDefinition = {
         stdin: context.stdin,
         stdout: context.stdout,
         stderr: context.stderr,
+        ignoreAliases: true,
       });
     case 'not-found':
       await text.error({ text: `command: ${cmdName} not found\n` });

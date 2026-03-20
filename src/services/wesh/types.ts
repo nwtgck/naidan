@@ -224,6 +224,9 @@ export interface WeshCommandContext {
   setEnv(options: { key: string; value: string }): void;
   unsetEnv(options: { key: string }): void;
   getHistory(): string[];
+  getAliases(): Array<{ name: string; value: string }>;
+  setAlias(options: { name: string; value: string }): void;
+  unsetAlias(options: { name: string }): void;
   getWeshCommandMeta(options: { name: string }): WeshCommandMeta | undefined;
   getCommandNames(): string[];
   resolveCommand(options: { name: string }): WeshResolvedCommand;
@@ -234,6 +237,7 @@ export interface WeshCommandContext {
     stdin?: WeshFileHandle;
     stdout?: WeshFileHandle;
     stderr?: WeshFileHandle;
+    ignoreAliases?: boolean;
   }): Promise<WeshCommandResult>;
   executeShell(options: {
     script: string;

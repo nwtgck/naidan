@@ -33,6 +33,7 @@ interface WeshExecutionEnvironment {
   shellPid: number;
   pgid: number;
   env: Map<string, string>;
+  aliases: Map<string, string>;
   cwd: string;
   fds: Map<number, WeshFileHandle>;
   traps: Map<string, WeshTrapDisposition>;
@@ -180,6 +181,7 @@ export class Wesh {
   public kernel: WeshKernel;
 
   private env: Map<string, string>;
+  private aliases: Map<string, string> = new Map();
   private cwd: string = '/';
   private history: string[] = [];
   private commands: Map<string, WeshCommandDefinition> = new Map();
@@ -216,6 +218,7 @@ export class Wesh {
       this.registerCommand({ definition });
     }
     this.registerCommand({ definition: helpCommandDefinition });
+    this.registerCommand({ definition: this.createAliasCommandDefinition() });
     this.registerCommand({ definition: this.createShellAliasCommandDefinition({ name: 'sh' }) });
     this.registerCommand({ definition: this.createShellAliasCommandDefinition({ name: 'bash' }) });
     this.vfs.registerSpecialFile({
@@ -351,6 +354,7 @@ usage: ${name} [-c command] [file [argument...]]
               shellPid: context.pid,
               pgid: context.process.getGroupId(),
               env: new Map(context.env),
+              aliases: new Map(context.getAliases().map(({ name: aliasName, value }) => [aliasName, value])),
               cwd: context.cwd,
               fds: new Map(),
               traps: new Map(),
@@ -376,6 +380,64 @@ usage: ${name} [-c command] [file [argument...]]
           await context.text().error({ text: `${name}: ${scriptPath}: ${message}\n` });
           return { exitCode: 1 };
         }
+      },
+    };
+  }
+
+  private createAliasCommandDefinition(): WeshCommandDefinition {
+    return {
+      meta: {
+        name: 'alias',
+        description: 'Define or display shell aliases',
+        usage: 'alias [name[=value] ...]',
+      },
+      fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+        if (context.args.length === 1 && context.args[0] === '--help') {
+          await context.text().print({
+            text: `\
+alias: define or display shell aliases
+usage: alias [name[=value] ...]
+`,
+          });
+          return { exitCode: 0 };
+        }
+
+        if (context.args.length === 0) {
+          for (const alias of context.getAliases()) {
+            await context.text().print({
+              text: `alias ${alias.name}='${alias.value.replaceAll("'", "'\\''")}'\n`,
+            });
+          }
+          return { exitCode: 0 };
+        }
+
+        let exitCode = 0;
+        for (const arg of context.args) {
+          const equalsIndex = arg.indexOf('=');
+          if (equalsIndex >= 0) {
+            const name = arg.slice(0, equalsIndex);
+            const value = arg.slice(equalsIndex + 1);
+            if (name.length === 0) {
+              await context.text().error({ text: 'alias: invalid alias name\n' });
+              exitCode = 1;
+              continue;
+            }
+            context.setAlias({ name, value });
+            continue;
+          }
+
+          const existing = context.getAliases().find((entry) => entry.name === arg);
+          if (existing === undefined) {
+            await context.text().error({ text: `alias: ${arg}: not found\n` });
+            exitCode = 1;
+            continue;
+          }
+          await context.text().print({
+            text: `alias ${existing.name}='${existing.value.replaceAll("'", "'\\''")}'\n`,
+          });
+        }
+
+        return { exitCode };
       },
     };
   }
@@ -576,6 +638,66 @@ usage: ${name} [-c command] [file [argument...]]
     }
 
     return undefined;
+  }
+
+  private expandAliasCommandNode({
+    node,
+    environment,
+    depth,
+  }: {
+    node: WeshCommandNode;
+    environment: WeshExecutionEnvironment;
+    depth: number;
+  }): WeshCommandNode {
+    if (depth >= 20) {
+      throw new Error(`alias: expansion loop for ${node.name}`);
+    }
+
+    const aliasValue = environment.aliases.get(node.name);
+    if (aliasValue === undefined) {
+      return node;
+    }
+
+    const parsed = parseCommandLine({
+      commandLine: aliasValue,
+      env: environment.env,
+    });
+    switch (parsed.kind) {
+    case 'command':
+      break;
+    case 'assignment':
+    case 'for':
+    case 'if':
+    case 'list':
+    case 'pipeline':
+    case 'subshell':
+      return node;
+    default: {
+      const _ex: never = parsed;
+      throw new Error(`Unhandled alias expansion node: ${JSON.stringify(_ex)}`);
+    }
+    }
+
+    return this.expandAliasCommandNode({
+      node: {
+        kind: 'command',
+        assignments: [
+          ...node.assignments,
+          ...parsed.assignments,
+        ],
+        name: parsed.name,
+        args: [
+          ...parsed.args,
+          ...node.args,
+        ],
+        redirections: [
+          ...parsed.redirections,
+          ...node.redirections,
+        ],
+      },
+      environment,
+      depth: depth + 1,
+    });
   }
 
   private parseWordParts({
@@ -1592,6 +1714,7 @@ usage: ${name} [-c command] [file [argument...]]
         shellPid: this.shellPid,
         pgid: this.shellPid,
         env: this.env,
+        aliases: this.aliases,
         cwd: this.cwd,
         fds: this.createShellFdTable({
           stdin: options.stdin,
@@ -1612,6 +1735,7 @@ usage: ${name} [-c command] [file [argument...]]
       });
 
       this.cwd = environment.cwd;
+      this.aliases = environment.aliases;
       return await this.runExitTrapIfNeeded({
         result,
         environment,
@@ -1872,16 +1996,31 @@ usage: ${name} [-c command] [file [argument...]]
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
-    stderr: WeshFileHandle
+    stderr: WeshFileHandle;
+    ignoreAliases?: boolean;
   }): Promise<WeshCommandResult> {
-    const { node, environment, stdin, stdout, stderr } = options;
+    const {
+      node,
+      environment,
+      stdin,
+      stdout,
+      stderr,
+      ignoreAliases,
+    } = options;
+    const aliasExpandedNode = ignoreAliases === true
+      ? node
+      : this.expandAliasCommandNode({
+        node,
+        environment,
+        depth: 0,
+      });
 
     const expandedArgs: string[] = [];
     const procSubCleanups: Array<() => void> = [];
     const openHandles: WeshFileHandle[] = [];
     const cmdFds = new Map(environment.fds);
 
-    for (const arg of node.args) {
+    for (const arg of aliasExpandedNode.args) {
       if (typeof arg === 'string') {
         const fields = await this.expandWord({
           raw: arg,
@@ -1943,7 +2082,7 @@ usage: ${name} [-c command] [file [argument...]]
     }
 
     const cmdName = await this.expandSingleWord({
-      raw: node.name,
+      raw: aliasExpandedNode.name,
       env: environment.env,
       cwd: environment.cwd,
       mode: 'assignment',
@@ -1979,7 +2118,7 @@ usage: ${name} [-c command] [file [argument...]]
     const definition = resolvedCommand.definition;
 
     const currentEnv = new Map(environment.env);
-    for (const assign of node.assignments) {
+    for (const assign of aliasExpandedNode.assignments) {
       currentEnv.set(assign.key, await this.expandSingleWord({
         raw: assign.value,
         env: environment.env,
@@ -1993,7 +2132,7 @@ usage: ${name} [-c command] [file [argument...]]
     cmdFds.set(2, stderr);
 
     await this.applyRedirectionsToFdTable({
-      redirections: node.redirections,
+      redirections: aliasExpandedNode.redirections,
       environment,
       fdTable: cmdFds,
       trackOpenedHandle: ({ handle }) => {
@@ -2055,6 +2194,15 @@ usage: ${name} [-c command] [file [argument...]]
         environment.env.delete(key);
       },
       getHistory: () => [...this.history],
+      getAliases: () => Array.from(environment.aliases.entries())
+        .sort(([leftName], [rightName]) => leftName.localeCompare(rightName))
+        .map(([name, value]) => ({ name, value })),
+      setAlias: ({ name, value }: { name: string; value: string }) => {
+        environment.aliases.set(name, value);
+      },
+      unsetAlias: ({ name }: { name: string }) => {
+        environment.aliases.delete(name);
+      },
       getWeshCommandMeta: ({ name }: { name: string }) => this.commands.get(name)?.meta,
       getCommandNames: () => Array.from(this.commands.keys()),
       resolveCommand: ({ name }) => {
@@ -2073,13 +2221,14 @@ usage: ${name} [-c command] [file [argument...]]
         };
       },
       getJobs: () => Array.from(this.jobs.values()).map(j => ({ id: j.id, command: j.command, status: j.status })),
-      executeCommand: ({ command, args, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr }) => this.executeArgv({
+      executeCommand: ({ command, args, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr, ignoreAliases: nextIgnoreAliases }) => this.executeArgv({
         command,
         args,
         environment,
         stdin: nextStdin ?? boundStdin,
         stdout: nextStdout ?? boundStdout,
         stderr: nextStderr ?? boundStderr,
+        ignoreAliases: nextIgnoreAliases,
       }),
       executeShell: ({ script, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr }) => this.executeShellInState({
         script,
@@ -2240,6 +2389,7 @@ usage: ${name} [-c command] [file [argument...]]
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
+    ignoreAliases?: boolean;
   }): Promise<WeshCommandResult> {
     const isolatedEnvironment = await this.spawnChildExecutionEnvironment({
       parentEnvironment: options.environment,
@@ -2258,6 +2408,7 @@ usage: ${name} [-c command] [file [argument...]]
       stdin: options.stdin,
       stdout: options.stdout,
       stderr: options.stderr,
+      ignoreAliases: options.ignoreAliases,
     });
   }
 
@@ -2265,6 +2416,7 @@ usage: ${name} [-c command] [file [argument...]]
     shellPid,
     pgid,
     env,
+    aliases,
     cwd,
     fds,
     traps,
@@ -2274,6 +2426,7 @@ usage: ${name} [-c command] [file [argument...]]
     shellPid: number;
     pgid: number;
     env: Map<string, string>;
+    aliases: Map<string, string>;
     cwd: string;
     fds: Map<number, WeshFileHandle>;
     traps: Map<string, WeshTrapDisposition>;
@@ -2284,6 +2437,7 @@ usage: ${name} [-c command] [file [argument...]]
       shellPid,
       pgid,
       env,
+      aliases,
       cwd,
       fds,
       traps,
@@ -2309,6 +2463,7 @@ usage: ${name} [-c command] [file [argument...]]
       shellPid: shellPid ?? environment.shellPid,
       pgid: pgid ?? environment.pgid,
       env: new Map(environment.env),
+      aliases: new Map(environment.aliases),
       cwd: environment.cwd,
       fds: new Map(environment.fds),
       traps: new Map(environment.traps),

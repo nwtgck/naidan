@@ -77,6 +77,19 @@ describe('wesh command', () => {
     expect(missing.result.exitCode).toBe(1);
   });
 
+  it('ignores shell aliases when executing commands', async () => {
+    const aliased = await execute({ script: "alias echo='printf aliased\\\\n'; echo hi" });
+    const bypassed = await execute({ script: "alias echo='printf aliased\\\\n'; command echo hi" });
+
+    expect(aliased.stdout.text).toBe('aliased\n');
+    expect(aliased.stderr.text).toBe('');
+    expect(aliased.result.exitCode).toBe(0);
+
+    expect(bypassed.stdout.text).toBe('hi\n');
+    expect(bypassed.stderr.text).toBe('');
+    expect(bypassed.result.exitCode).toBe(0);
+  });
+
   it('treats -- as the end of command options', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'command -- echo hello',
