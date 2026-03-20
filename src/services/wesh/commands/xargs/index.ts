@@ -124,7 +124,7 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       long: 'arg-file',
       key: 'argFile',
       valueName: 'FILE',
-      allowAttachedValue: false,
+      allowAttachedValue: true,
       parseValue: undefined,
       help: { summary: 'read items from FILE instead of standard input', valueName: 'FILE', category: 'common' },
     },
@@ -134,7 +134,7 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       long: 'max-args',
       key: 'maxArgs',
       valueName: 'MAX',
-      allowAttachedValue: false,
+      allowAttachedValue: true,
       parseValue: ({ value }) => /^\d+$/.test(value) && Number(value) > 0
         ? { ok: true, value: Number(value) }
         : { ok: false, message: `invalid max-args value '${value}'` },
@@ -146,7 +146,7 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       long: 'max-lines',
       key: 'maxLines',
       valueName: 'MAX',
-      allowAttachedValue: false,
+      allowAttachedValue: true,
       parseValue: ({ value }) => /^\d+$/.test(value) && Number(value) > 0
         ? { ok: true, value: Number(value) }
         : { ok: false, message: `invalid max-lines value '${value}'` },
@@ -158,7 +158,7 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       long: 'max-chars',
       key: 'maxChars',
       valueName: 'MAX',
-      allowAttachedValue: false,
+      allowAttachedValue: true,
       parseValue: ({ value }) => /^\d+$/.test(value) && Number(value) > 0
         ? { ok: true, value: Number(value) }
         : { ok: false, message: `invalid max-chars value '${value}'` },
@@ -170,7 +170,7 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       long: 'delimiter',
       key: 'delimiter',
       valueName: 'DELIM',
-      allowAttachedValue: false,
+      allowAttachedValue: true,
       parseValue: ({ value }) => {
         const parsed = parseXargsDelimiter({ value });
         return parsed.ok ? { ok: true, value: parsed.delimiter } : parsed;
@@ -183,7 +183,7 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       long: 'replace',
       key: 'replace',
       valueName: 'REPLSTR',
-      allowAttachedValue: false,
+      allowAttachedValue: true,
       parseValue: undefined,
       help: { summary: 'replace REPLSTR in initial arguments with each input item', valueName: 'REPLSTR', category: 'common' },
     },
@@ -193,7 +193,7 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       long: 'eof',
       key: 'eofString',
       valueName: 'EOFSTR',
-      allowAttachedValue: false,
+      allowAttachedValue: true,
       parseValue: undefined,
       help: { summary: 'set logical end-of-file marker string', valueName: 'EOFSTR', category: 'common' },
     },
@@ -207,7 +207,7 @@ const xargsArgvSpec: StandardArgvParserSpec = {
     {
       kind: 'flag',
       short: 't',
-      long: undefined,
+      long: 'verbose',
       effects: [{ key: 'trace', value: true }],
       help: { summary: 'print command line before executing it', category: 'common' },
     },
@@ -523,6 +523,26 @@ async function runCommand({
   });
 }
 
+async function handleCommandResult({
+  context,
+  result,
+}: {
+  context: WeshCommandContext;
+  result: WeshCommandResult;
+}): Promise<{ kind: 'continue'; normalizedExitCode: number } | { kind: 'stop'; exitCode: number }> {
+  if (result.exitCode === 255) {
+    await context.text().error({
+      text: 'xargs: command exited with status 255; aborting\n',
+    });
+    return { kind: 'stop', exitCode: 124 };
+  }
+
+  return {
+    kind: 'continue',
+    normalizedExitCode: normalizeXargsExitCode({ exitCode: result.exitCode }),
+  };
+}
+
 export const xargsCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'xargs',
@@ -671,12 +691,26 @@ export const xargsCommandDefinition: WeshCommandDefinition = {
           trace: parsed.optionValues.trace === true,
           stdin: childStdin,
         });
-        if (result.exitCode !== 0) {
-          lastExitCode = result.exitCode;
+        const handled = await handleCommandResult({
+          context,
+          result,
+        });
+        switch (handled.kind) {
+        case 'continue':
+          if (handled.normalizedExitCode !== 0) {
+            lastExitCode = handled.normalizedExitCode;
+          }
+          break;
+        case 'stop':
+          return { exitCode: handled.exitCode };
+        default: {
+          const _exhaustive: never = handled;
+          throw new Error(`Unhandled xargs command result handling: ${_exhaustive}`);
+        }
         }
       }
 
-      return { exitCode: normalizeXargsExitCode({ exitCode: lastExitCode }) };
+      return { exitCode: lastExitCode };
     }
 
     if (maxLines !== undefined) {
@@ -716,12 +750,26 @@ export const xargsCommandDefinition: WeshCommandDefinition = {
           trace: parsed.optionValues.trace === true,
           stdin: childStdin,
         });
-        if (result.exitCode !== 0) {
-          lastExitCode = result.exitCode;
+        const handled = await handleCommandResult({
+          context,
+          result,
+        });
+        switch (handled.kind) {
+        case 'continue':
+          if (handled.normalizedExitCode !== 0) {
+            lastExitCode = handled.normalizedExitCode;
+          }
+          break;
+        case 'stop':
+          return { exitCode: handled.exitCode };
+        default: {
+          const _exhaustive: never = handled;
+          throw new Error(`Unhandled xargs command result handling: ${_exhaustive}`);
+        }
         }
       }
 
-      return { exitCode: normalizeXargsExitCode({ exitCode: lastExitCode }) };
+      return { exitCode: lastExitCode };
     }
 
     const batches = buildBatches({
@@ -744,11 +792,25 @@ export const xargsCommandDefinition: WeshCommandDefinition = {
         trace: parsed.optionValues.trace === true,
         stdin: childStdin,
       });
-      if (result.exitCode !== 0) {
-        lastExitCode = result.exitCode;
+      const handled = await handleCommandResult({
+        context,
+        result,
+      });
+      switch (handled.kind) {
+      case 'continue':
+        if (handled.normalizedExitCode !== 0) {
+          lastExitCode = handled.normalizedExitCode;
+        }
+        break;
+      case 'stop':
+        return { exitCode: handled.exitCode };
+      default: {
+        const _exhaustive: never = handled;
+        throw new Error(`Unhandled xargs command result handling: ${_exhaustive}`);
+      }
       }
     }
 
-    return { exitCode: normalizeXargsExitCode({ exitCode: lastExitCode }) };
+    return { exitCode: lastExitCode };
   },
 };

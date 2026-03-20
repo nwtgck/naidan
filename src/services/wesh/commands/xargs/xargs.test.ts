@@ -275,6 +275,31 @@ prefix e
     expect(result.exitCode).toBe(0);
   });
 
+  it('accepts attached short option values like -n1 and -s8', async () => {
+    const batched = await execute({
+      script: 'xargs -n1 echo prefix',
+      stdinText: 'a b\n',
+    });
+    const sized = await execute({
+      script: 'xargs -s8 echo',
+      stdinText: 'abc defgh ij\n',
+    });
+
+    expect(batched.stdout.text).toBe(`\
+prefix a
+prefix b
+`);
+    expect(batched.stderr.text).toBe('');
+    expect(batched.result.exitCode).toBe(0);
+
+    expect(sized.stdout.text).toBe(`\
+abc
+defgh ij
+`);
+    expect(sized.stderr.text).toBe('');
+    expect(sized.result.exitCode).toBe(0);
+  });
+
   it('batches input lines with -L', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'xargs -L 2 echo prefix',
@@ -380,6 +405,17 @@ item:right
 
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports --verbose as an alias for -t', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'xargs --verbose echo prefix',
+      stdinText: 'alpha beta\n',
+    });
+
+    expect(stdout.text).toBe('prefix alpha beta\n');
+    expect(stderr.text).toContain('echo prefix alpha beta');
     expect(result.exitCode).toBe(0);
   });
 
