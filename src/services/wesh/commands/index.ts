@@ -43,6 +43,7 @@ import { leftBracketCommandDefinition, testCommandDefinition } from './test/inde
 import { awkCommandDefinition } from './awk/index.ts';
 import { jqCommandDefinition } from './jq/index.ts';
 import { trapCommandDefinition } from './trap/index.ts';
+import { xargsCommandDefinition } from './xargs/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -86,6 +87,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   lnCommandDefinition,
   readlinkCommandDefinition,
   awkCommandDefinition,
+  xargsCommandDefinition,
   jqCommandDefinition,
   trapCommandDefinition,
   testCommandDefinition,
