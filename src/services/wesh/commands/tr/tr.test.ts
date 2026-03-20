@@ -86,6 +86,17 @@ describe('wesh tr', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports escape sequences and octal escapes in sets', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: String.raw`tr '\141\n' 'X_'`,
+      stdinText: 'a\na',
+    });
+
+    expect(stdout.text).toBe('X_X');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('deletes characters with -d', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'tr -d ab',
@@ -100,6 +111,17 @@ describe('wesh tr', () => {
   it('deletes the complement of set1 with -c', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'tr -cd a-z',
+      stdinText: 'a1b!c2',
+    });
+
+    expect(stdout.text).toBe('abc');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports the -C alias for complement', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'tr -Cd a-z',
       stdinText: 'a1b!c2',
     });
 
@@ -128,6 +150,38 @@ describe('wesh tr', () => {
     expect(stdout.text).toBe('Xbc');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('supports GNU-style long options', async () => {
+    const deleteResult = await execute({
+      script: "tr --delete '[:digit:]'",
+      stdinText: 'a1b2c3',
+    });
+    const squeezeResult = await execute({
+      script: "tr --squeeze-repeats ' '",
+      stdinText: 'a   b',
+    });
+    const truncateResult = await execute({
+      script: 'tr --truncate-set1 abc X',
+      stdinText: 'abc',
+    });
+    const complementResult = await execute({
+      script: 'tr --complement --delete a-z',
+      stdinText: 'a1b!c2',
+    });
+
+    expect(deleteResult.stdout.text).toBe('abc');
+    expect(squeezeResult.stdout.text).toBe('a b');
+    expect(truncateResult.stdout.text).toBe('Xbc');
+    expect(complementResult.stdout.text).toBe('abc');
+    expect(deleteResult.stderr.text).toBe('');
+    expect(squeezeResult.stderr.text).toBe('');
+    expect(truncateResult.stderr.text).toBe('');
+    expect(complementResult.stderr.text).toBe('');
+    expect(deleteResult.result.exitCode).toBe(0);
+    expect(squeezeResult.result.exitCode).toBe(0);
+    expect(truncateResult.result.exitCode).toBe(0);
+    expect(complementResult.result.exitCode).toBe(0);
   });
 
   it('prints help with --help', async () => {

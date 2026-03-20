@@ -115,6 +115,19 @@ describe('wesh wc', () => {
     expect(maxLineLength.result.exitCode).toBe(0);
   });
 
+  it('supports GNU-style long counting options', async () => {
+    await writeFile({ path: 'sample.txt', data: 'alpha beta\nsecond\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'wc --lines --words --bytes sample.txt',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('       2       3      18 sample.txt\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('prints totals for multiple files', async () => {
     await writeFile({ path: 'first.txt', data: 'alpha\n' });
     await writeFile({ path: 'second.txt', data: 'beta gamma\n' });

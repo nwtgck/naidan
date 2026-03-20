@@ -90,6 +90,17 @@ x,y
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports GNU-style long options for fields and delimiters', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: "cut --fields=2- --delimiter=, --output-delimiter='|'",
+      stdinText: 'a,b,c\n',
+    });
+
+    expect(stdout.text).toBe('b|c\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('suppresses lines without delimiters in field mode when -s is set', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -99,6 +110,17 @@ cut -s -f1 -d,
 a,b
 single
 `,
+    });
+
+    expect(stdout.text).toBe('a\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports --only-delimited as a long alias for -s', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'cut --only-delimited --fields=1 --delimiter=,',
+      stdinText: 'a,b\nsingle\n',
     });
 
     expect(stdout.text).toBe('a\n');
@@ -127,6 +149,24 @@ single
     expect(stdout.text).toBe('ab\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('supports GNU-style long options for bytes and characters', async () => {
+    const bytesResult = await execute({
+      script: 'cut --bytes=1-2',
+      stdinText: 'abcdef\n',
+    });
+    const charsResult = await execute({
+      script: 'cut --characters=2-4',
+      stdinText: 'abcdef\n',
+    });
+
+    expect(bytesResult.stdout.text).toBe('ab\n');
+    expect(charsResult.stdout.text).toBe('bcd\n');
+    expect(bytesResult.stderr.text).toBe('');
+    expect(charsResult.stderr.text).toBe('');
+    expect(bytesResult.result.exitCode).toBe(0);
+    expect(charsResult.result.exitCode).toBe(0);
   });
 
   it('cuts characters and supports complement selection', async () => {

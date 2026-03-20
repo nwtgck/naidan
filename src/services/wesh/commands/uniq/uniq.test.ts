@@ -158,6 +158,21 @@ c other something
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports GNU-style long options for comparisons', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'uniq --ignore-case --skip-fields=1 --skip-chars=7 --check-chars=3',
+      stdinText: `\
+a prefix ABCDEF
+b prefix abczzz
+c other something
+`,
+    });
+
+    expect(stdout.text).toBe('a prefix ABCDEF\nc other something\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports explicit dash operands for stdin and stdout', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'uniq - -',
@@ -205,6 +220,31 @@ beta
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports GNU-style long output selection options', async () => {
+    const repeated = await execute({
+      script: 'uniq --repeated',
+      stdinText: 'alpha\nalpha\nbeta\n',
+    });
+    const unique = await execute({
+      script: 'uniq --unique',
+      stdinText: 'alpha\nalpha\nbeta\n',
+    });
+    const count = await execute({
+      script: 'uniq --count',
+      stdinText: 'alpha\nalpha\nbeta\n',
+    });
+
+    expect(repeated.stdout.text).toBe('alpha\n');
+    expect(unique.stdout.text).toBe('beta\n');
+    expect(count.stdout.text).toBe('      2 alpha\n      1 beta\n');
+    expect(repeated.stderr.text).toBe('');
+    expect(unique.stderr.text).toBe('');
+    expect(count.stderr.text).toBe('');
+    expect(repeated.result.exitCode).toBe(0);
+    expect(unique.result.exitCode).toBe(0);
+    expect(count.result.exitCode).toBe(0);
+  });
+
   it('prints help with --help', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'uniq --help',
@@ -239,6 +279,19 @@ beta
 
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('uniq: missing.txt:');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('reports invalid numeric arguments with usage', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'uniq --skip-fields=nope',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('uniq: invalid argument to skip-fields: nope');
+    expect(stderr.text).toContain('usage: uniq [OPTION]... [INPUT [OUTPUT]]');
+    expect(stderr.text).toContain('try:');
     expect(result.exitCode).toBe(1);
   });
 });

@@ -366,7 +366,7 @@ export const cutCommandDefinition: WeshCommandDefinition = {
         {
           kind: 'flag',
           short: 's',
-          long: undefined,
+          long: 'only-delimited',
           effects: [{ key: 'suppress', value: true }],
           help: { summary: 'suppress lines without delimiters in field mode', category: 'common' },
         },
@@ -380,7 +380,7 @@ export const cutCommandDefinition: WeshCommandDefinition = {
         {
           kind: 'value',
           short: 'b',
-          long: undefined,
+          long: 'bytes',
           key: 'bytes',
           valueName: 'list',
           allowAttachedValue: true,
@@ -390,7 +390,7 @@ export const cutCommandDefinition: WeshCommandDefinition = {
         {
           kind: 'value',
           short: 'c',
-          long: undefined,
+          long: 'characters',
           key: 'characters',
           valueName: 'list',
           allowAttachedValue: true,
@@ -400,7 +400,7 @@ export const cutCommandDefinition: WeshCommandDefinition = {
         {
           kind: 'value',
           short: 'f',
-          long: undefined,
+          long: 'fields',
           key: 'fields',
           valueName: 'list',
           allowAttachedValue: true,
@@ -410,7 +410,7 @@ export const cutCommandDefinition: WeshCommandDefinition = {
         {
           kind: 'value',
           short: 'd',
-          long: undefined,
+          long: 'delimiter',
           key: 'delimiter',
           valueName: 'delimiter',
           allowAttachedValue: true,

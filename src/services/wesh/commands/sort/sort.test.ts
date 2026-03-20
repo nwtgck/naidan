@@ -115,6 +115,17 @@ sort -n`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports GNU-style long sort options', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'sort --numeric-sort --reverse',
+      stdinText: '2\n10\n1\n',
+    });
+
+    expect(stdout.text).toBe('10\n2\n1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('preserves input order among equal keys with -s', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -155,6 +166,17 @@ sort -r`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -b -t: -k2,2`,
+      stdinText: 'row: b\nrow:a\n',
+    });
+
+    expect(stdout.text).toBe('row:a\nrow: b\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports GNU-style long key and field-separator options', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'sort --ignore-leading-blanks --field-separator=: --key=2,2',
       stdinText: 'row: b\nrow:a\n',
     });
 
@@ -270,6 +292,20 @@ sort -m left.txt right.txt`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -o output.txt input.txt`,
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(await readFile({ path: 'output.txt' })).toBe('alpha\nbeta\n');
+  });
+
+  it('supports the long --output form', async () => {
+    await writeFile({ path: 'input.txt', data: 'beta\nalpha\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'sort --output=output.txt input.txt',
       stdinText: undefined,
     });
 
