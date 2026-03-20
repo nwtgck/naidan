@@ -10,6 +10,7 @@ interface AwkRecord {
 
 interface AwkRuntimeState {
   variables: Map<string, AwkValue>;
+  arrays: Map<string, Map<string, AwkValue>>;
   currentRecord: AwkRecord | undefined;
   nr: number;
   fnr: number;
@@ -122,6 +123,18 @@ function getVariable({
   }
 }
 
+function getArrayValue({
+  state,
+  name,
+  index,
+}: {
+  state: AwkRuntimeState;
+  name: string;
+  index: string;
+}): AwkValue {
+  return state.arrays.get(name)?.get(index) ?? '';
+}
+
 function setVariable({
   state,
   name,
@@ -132,6 +145,25 @@ function setVariable({
   value: AwkValue;
 }): void {
   state.variables.set(name, value);
+}
+
+function setArrayValue({
+  state,
+  name,
+  index,
+  value,
+}: {
+  state: AwkRuntimeState;
+  name: string;
+  index: string;
+  value: AwkValue;
+}): void {
+  let entries = state.arrays.get(name);
+  if (entries === undefined) {
+    entries = new Map<string, AwkValue>();
+    state.arrays.set(name, entries);
+  }
+  entries.set(index, value);
 }
 
 function evaluateExpression({
@@ -150,11 +182,52 @@ function evaluateExpression({
     return expression.value;
   case 'identifier':
     return getVariable({ state, name: expression.name });
+  case 'indexed':
+    return getArrayValue({
+      state,
+      name: expression.name,
+      index: coerceToString({
+        value: evaluateExpression({
+          expression: expression.index,
+          state,
+        }),
+      }),
+    });
   case 'field': {
     if (expression.index === 0) {
       return state.currentRecord?.text ?? '';
     }
     return state.currentRecord?.fields[expression.index - 1] ?? '';
+  }
+  case 'call': {
+    const args = expression.args.map((argument) =>
+      evaluateExpression({
+        expression: argument,
+        state,
+      }));
+
+    switch (expression.callee) {
+    case 'length': {
+      const target = args[0] ?? (state.currentRecord?.text ?? '');
+      return coerceToString({ value: target }).length;
+    }
+    case 'index': {
+      const source = coerceToString({ value: args[0] ?? '' });
+      const needle = coerceToString({ value: args[1] ?? '' });
+      if (needle.length === 0) return 1;
+      const position = source.indexOf(needle);
+      return position === -1 ? 0 : position + 1;
+    }
+    case 'substr': {
+      const source = coerceToString({ value: args[0] ?? '' });
+      const start = Math.max(1, Math.trunc(coerceToNumber({ value: args[1] ?? 1 })));
+      const length = args[2] === undefined ? undefined : Math.max(0, Math.trunc(coerceToNumber({ value: args[2] })));
+      const startIndex = start - 1;
+      return length === undefined ? source.slice(startIndex) : source.slice(startIndex, startIndex + length);
+    }
+    default:
+      return '';
+    }
   }
   case 'binary': {
     const left = evaluateExpression({ expression: expression.left, state });
@@ -251,9 +324,11 @@ function matchesPattern({
     case 'number':
     case 'string':
     case 'identifier':
+    case 'indexed':
     case 'field':
     case 'binary':
     case 'unary':
+    case 'call':
       return isTruthy({
         value: evaluateExpression({
           expression: pattern.expression,
@@ -285,7 +360,28 @@ function executeStatement({
   switch (statement.kind) {
   case 'assign': {
     const value = evaluateExpression({ expression: statement.expression, state });
-    setVariable({ state, name: statement.name, value });
+    switch (statement.target.kind) {
+    case 'variable':
+      setVariable({ state, name: statement.target.name, value });
+      break;
+    case 'indexed':
+      setArrayValue({
+        state,
+        name: statement.target.name,
+        index: coerceToString({
+          value: evaluateExpression({
+            expression: statement.target.index,
+            state,
+          }),
+        }),
+        value,
+      });
+      break;
+    default: {
+      const _ex: never = statement.target;
+      throw new Error(`Unhandled awk assignment target: ${JSON.stringify(_ex)}`);
+    }
+    }
     return 'continue';
   }
   case 'expression':
@@ -370,6 +466,7 @@ export function createAwkRuntime({
 }): AwkRuntimeState {
   const state: AwkRuntimeState = {
     variables: new Map(variables),
+    arrays: new Map<string, Map<string, AwkValue>>(),
     currentRecord: undefined,
     nr: 0,
     fnr: 0,

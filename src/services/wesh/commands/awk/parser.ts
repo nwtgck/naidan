@@ -168,8 +168,8 @@ export function tokenizeAwkProgram({
       continue;
     }
 
-    if (['{', '}', '(', ')', ',', ';'].includes(char)) {
-      tokens.push({ kind: 'punctuation', value: char as '{' | '}' | '(' | ')' | ',' | ';' });
+    if (['{', '}', '(', ')', '[', ']', ',', ';'].includes(char)) {
+      tokens.push({ kind: 'punctuation', value: char as '{' | '}' | '(' | ')' | '[' | ']' | ',' | ';' });
       index += 1;
       continue;
     }
@@ -367,19 +367,23 @@ class AwkParser {
 
     switch (token.kind) {
     case 'identifier': {
-      const nextToken = this.peekOffset({ offset: 1 });
-      if (nextToken.kind === 'operator' && nextToken.value === '=') {
-        this.index += 2;
-        const expression = this.parseExpression();
-        if (!expression.ok) return expression;
-        return {
-          ok: true,
-          statement: {
-            kind: 'assign',
-            name: token.value,
-            expression: expression.expression,
-          },
-        };
+      const target = this.parseAssignmentTarget();
+      if (target.ok) {
+        const equalsToken = this.peek();
+        if (equalsToken.kind === 'operator' && equalsToken.value === '=') {
+          this.index += 1;
+          const expression = this.parseExpression();
+          if (!expression.ok) return expression;
+          return {
+            ok: true,
+            statement: {
+              kind: 'assign',
+              target: target.target,
+              expression: expression.expression,
+            },
+          };
+        }
+        this.index = target.startIndex;
       }
       break;
     }
@@ -392,6 +396,45 @@ class AwkParser {
     return {
       ok: true,
       statement: { kind: 'expression', expression: expression.expression },
+    };
+  }
+
+  private parseAssignmentTarget():
+    | { ok: true; target: { kind: 'variable'; name: string } | { kind: 'indexed'; name: string; index: AwkExpression }; startIndex: number }
+    | { ok: false } {
+    const startIndex = this.index;
+    const token = this.peek();
+    if (!(token.kind === 'identifier')) {
+      return { ok: false };
+    }
+
+    this.index += 1;
+    const openBracket = this.peek();
+    if (!(openBracket.kind === 'punctuation' && openBracket.value === '[')) {
+      return { ok: true, target: { kind: 'variable', name: token.value }, startIndex };
+    }
+
+    this.index += 1;
+    const indexExpression = this.parseExpression();
+    if (!indexExpression.ok) {
+      this.index = startIndex;
+      return { ok: false };
+    }
+
+    const closeBracket = this.consumePunctuation({ value: ']' });
+    if (!closeBracket.ok) {
+      this.index = startIndex;
+      return { ok: false };
+    }
+
+    return {
+      ok: true,
+      target: {
+        kind: 'indexed',
+        name: token.value,
+        index: indexExpression.expression,
+      },
+      startIndex,
     };
   }
 
@@ -595,6 +638,8 @@ class AwkParser {
         return true;
       case '{':
       case '}':
+      case '[':
+      case ']':
       case ')':
       case ',':
       case ';':
@@ -646,12 +691,58 @@ class AwkParser {
           message: error instanceof Error ? error.message : String(error),
         };
       }
-    case 'identifier':
+    case 'identifier': {
+      const nextToken = this.peekOffset({ offset: 1 });
+      if (nextToken.kind === 'punctuation' && nextToken.value === '[') {
+        const name = token.value;
+        this.index += 2;
+        const indexExpression = this.parseExpression();
+        if (!indexExpression.ok) return indexExpression;
+        const close = this.consumePunctuation({ value: ']' });
+        if (!close.ok) return close;
+        return {
+          ok: true,
+          expression: {
+            kind: 'indexed',
+            name,
+            index: indexExpression.expression,
+          },
+        };
+      }
+
+      if (nextToken.kind === 'punctuation' && nextToken.value === '(') {
+        const callee = token.value;
+        this.index += 2;
+        const args: AwkExpression[] = [];
+
+        const firstArgumentToken = this.peek();
+        if (!(firstArgumentToken.kind === 'punctuation' && firstArgumentToken.value === ')')) {
+          while (true) {
+            const argument = this.parseExpression();
+            if (!argument.ok) return argument;
+            args.push(argument.expression);
+
+            const separator = this.peek();
+            if (!(separator.kind === 'punctuation' && separator.value === ',')) {
+              break;
+            }
+            this.index += 1;
+          }
+        }
+
+        const close = this.consumePunctuation({ value: ')' });
+        if (!close.ok) return close;
+        return {
+          ok: true,
+          expression: { kind: 'call', callee, args },
+        };
+      }
       this.index += 1;
       return {
         ok: true,
         expression: { kind: 'identifier', name: token.value },
       };
+    }
     case 'field':
       this.index += 1;
       return {
@@ -677,7 +768,7 @@ class AwkParser {
     }
   }
 
-  private consumePunctuation({ value }: { value: '{' | '}' | '(' | ')' | ',' | ';' }): { ok: true } | { ok: false; message: string } {
+  private consumePunctuation({ value }: { value: '{' | '}' | '(' | ')' | '[' | ']' | ',' | ';' }): { ok: true } | { ok: false; message: string } {
     const token = this.peek();
     if (token.kind === 'punctuation' && token.value === value) {
       this.index += 1;
@@ -701,6 +792,8 @@ class AwkParser {
       case '{':
       case '(':
       case ')':
+      case '[':
+      case ']':
       case ',':
         return false;
       }
@@ -726,6 +819,8 @@ class AwkParser {
         case '}':
         case '(':
         case ')':
+        case '[':
+        case ']':
         case ',':
           break;
         }

@@ -17,19 +17,25 @@ export type AwkPattern =
 
 export type AwkStatement =
   | { kind: 'print'; expressions: AwkExpression[] }
-  | { kind: 'assign'; name: string; expression: AwkExpression }
+  | { kind: 'assign'; target: AwkAssignmentTarget; expression: AwkExpression }
   | { kind: 'expression'; expression: AwkExpression }
   | { kind: 'if'; condition: AwkExpression; thenStatements: AwkStatement[]; elseStatements: AwkStatement[] | undefined }
   | { kind: 'next' };
+
+export type AwkAssignmentTarget =
+  | { kind: 'variable'; name: string }
+  | { kind: 'indexed'; name: string; index: AwkExpression };
 
 export type AwkExpression =
   | { kind: 'number'; value: number }
   | { kind: 'string'; value: string }
   | { kind: 'regex'; value: RegExp }
   | { kind: 'identifier'; name: string }
+  | { kind: 'indexed'; name: string; index: AwkExpression }
   | { kind: 'field'; index: number }
   | { kind: 'binary'; operator: AwkBinaryOperator; left: AwkExpression; right: AwkExpression }
-  | { kind: 'unary'; operator: AwkUnaryOperator; expression: AwkExpression };
+  | { kind: 'unary'; operator: AwkUnaryOperator; expression: AwkExpression }
+  | { kind: 'call'; callee: string; args: AwkExpression[] };
 
 export type AwkBinaryOperator =
   | 'concat'
@@ -56,6 +62,6 @@ export type AwkToken =
   | { kind: 'regex'; value: string }
   | { kind: 'field'; value: number }
   | { kind: 'operator'; value: string }
-  | { kind: 'punctuation'; value: '{' | '}' | '(' | ')' | ',' | ';' }
+  | { kind: 'punctuation'; value: '{' | '}' | '(' | ')' | '[' | ']' | ',' | ';' }
   | { kind: 'newline' }
   | { kind: 'eof' };

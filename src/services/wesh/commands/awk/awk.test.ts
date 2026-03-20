@@ -205,4 +205,46 @@ keep
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('supports built-in functions length, index, and substr', async () => {
+    await writeFile({
+      path: 'words.txt',
+      data: `\
+alpha
+beta
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk '{ print length($1), index($1, "a"), substr($1, 2, 2) }' words.txt`,
+    });
+
+    expect(stdout.text).toBe(`\
+5 1 lp
+4 4 et
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports associative-array style indexed assignment and lookup', async () => {
+    await writeFile({
+      path: 'items.txt',
+      data: `\
+apple
+banana
+apple
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk '{ counts[$1] = counts[$1] + 1 } END { print counts["apple"], counts["banana"] }' items.txt`,
+    });
+
+    expect(stdout.text).toBe('2 1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });
