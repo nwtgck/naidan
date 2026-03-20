@@ -1,3 +1,5 @@
+import type { StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
@@ -80,6 +82,22 @@ const BINARY_STRING_OPERATORS = new Set<BinaryStringOperator>([
   '=',
   '!=',
 ]);
+
+const testArgvSpec: StandardArgvParserSpec = {
+  options: [
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'help',
+      effects: [{ key: 'help', value: true }],
+      help: { summary: 'display this help and exit', category: 'common' },
+    },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 function resolvePath({
   cwd,
@@ -718,6 +736,28 @@ function createTestCommandDefinition({
       })(),
     },
     fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+      const helpRequested = (() => {
+        switch (commandName) {
+        case 'test':
+          return context.args.length === 1 && context.args[0] === '--help';
+        case '[':
+          return context.args.length === 2 && context.args[0] === '--help' && context.args[1] === ']';
+        default: {
+          const _ex: never = commandName;
+          throw new Error(`Unhandled test command name: ${_ex}`);
+        }
+        }
+      })();
+
+      if (helpRequested) {
+        await writeCommandHelp({
+          context,
+          command: commandName,
+          argvSpec: testArgvSpec,
+        });
+        return { exitCode: 0 };
+      }
+
       const tokenResult = getExpressionTokens({
         args: context.args,
         commandName,
@@ -727,7 +767,12 @@ function createTestCommandDefinition({
       case 'tokens':
         break;
       case 'syntax-error':
-        await context.text().error({ text: `${commandName}: ${tokenResult.message}\n` });
+        await writeCommandUsageError({
+          context,
+          command: commandName,
+          message: `${commandName}: ${tokenResult.message}`,
+          argvSpec: testArgvSpec,
+        });
         return { exitCode: 2 };
       default: {
         const _ex: never = tokenResult;
@@ -744,7 +789,12 @@ function createTestCommandDefinition({
       case 'success':
         break;
       case 'syntax-error':
-        await context.text().error({ text: `${commandName}: ${evaluation.message}\n` });
+        await writeCommandUsageError({
+          context,
+          command: commandName,
+          message: `${commandName}: ${evaluation.message}`,
+          argvSpec: testArgvSpec,
+        });
         return { exitCode: 2 };
       default: {
         const _ex: never = evaluation;

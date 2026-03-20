@@ -192,7 +192,24 @@ echo $?`,
 
     expect(stdout.text).toBe('2\n2\n');
     expect(stderr.text).toContain("test: expected integer after '-eq'");
+    expect(stderr.text).toContain('usage: test EXPRESSION');
     expect(stderr.text).toContain("[: missing ']'");
+    expect(stderr.text).toContain('usage: [ EXPRESSION ]');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('prints help for test and bracket forms', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+test --help
+[ --help ]`,
+    });
+
+    expect(stdout.text).toContain('Evaluate shell conditional expressions');
+    expect(stdout.text).toContain('usage: test EXPRESSION');
+    expect(stdout.text).toContain('usage: [ EXPRESSION ]');
+    expect(stdout.text).toContain('--help');
+    expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 });
