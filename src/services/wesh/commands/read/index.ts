@@ -33,64 +33,85 @@ function isIfsWhitespace({
   return char === ' ' || char === '\t' || char === '\n';
 }
 
-function splitReadFields({
+function assignReadValues({
   line,
   ifs,
+  namesCount,
 }: {
   line: string;
   ifs: string;
+  namesCount: number;
 }): string[] {
+  if (namesCount <= 0) {
+    return [];
+  }
+
   if (ifs.length === 0) {
-    return [line];
+    return [line, ...Array.from({ length: Math.max(namesCount - 1, 0) }, () => '')];
   }
 
   const ifsCharacters = new Set(ifs.split(''));
   const whitespaceDelimiters = new Set(ifs.split('').filter((char) => isIfsWhitespace({ char })));
-
+  const values: string[] = [];
   let index = 0;
-  while (index < line.length && whitespaceDelimiters.has(line[index] ?? '')) {
-    index += 1;
-  }
 
-  const fields: string[] = [];
-  let current = '';
-
-  while (index < line.length) {
-    const char = line[index];
-    if (char === undefined) {
-      break;
-    }
-
-    if (!ifsCharacters.has(char)) {
-      current += char;
-      index += 1;
-      continue;
-    }
-
-    if (whitespaceDelimiters.has(char)) {
-      if (current.length > 0) {
-        fields.push(current);
-        current = '';
-      }
-      while (index < line.length && whitespaceDelimiters.has(line[index] ?? '')) {
-        index += 1;
-      }
-      continue;
-    }
-
-    fields.push(current);
-    current = '';
-    index += 1;
+  const skipIfsWhitespace = () => {
     while (index < line.length && whitespaceDelimiters.has(line[index] ?? '')) {
       index += 1;
     }
+  };
+
+  skipIfsWhitespace();
+
+  while (values.length < namesCount - 1) {
+    if (index >= line.length) {
+      values.push('');
+      continue;
+    }
+
+    const leadingChar = line[index];
+    if (leadingChar !== undefined && ifsCharacters.has(leadingChar) && !whitespaceDelimiters.has(leadingChar)) {
+      values.push('');
+      index += 1;
+      skipIfsWhitespace();
+      continue;
+    }
+
+    let current = '';
+    while (index < line.length) {
+      const char = line[index];
+      if (char === undefined || ifsCharacters.has(char)) {
+        break;
+      }
+      current += char;
+      index += 1;
+    }
+    values.push(current);
+
+    if (index >= line.length) {
+      continue;
+    }
+
+    const delimiter = line[index];
+    if (delimiter !== undefined && whitespaceDelimiters.has(delimiter)) {
+      skipIfsWhitespace();
+      continue;
+    }
+
+    index += 1;
+    skipIfsWhitespace();
   }
 
-  if (current.length > 0 || fields.length === 0) {
-    fields.push(current);
+  if (values.length >= namesCount) {
+    return values.slice(0, namesCount);
   }
 
-  return fields;
+  values.push(line.slice(index));
+  while (values.length < namesCount) {
+    values.push('');
+  }
+
+  return values;
 }
 
 export const readCommandDefinition: WeshCommandDefinition = {
@@ -189,22 +210,15 @@ export const readCommandDefinition: WeshCommandDefinition = {
       return { exitCode: didRead && endedWithNewline ? 0 : 1 };
     }
 
-    const fields = splitReadFields({
+    const fields = assignReadValues({
       line,
       ifs,
+      namesCount: names.length,
     });
 
     for (let index = 0; index < names.length; index++) {
       const name = names[index];
       if (name === undefined) {
-        continue;
-      }
-
-      if (index === names.length - 1) {
-        context.setEnv({
-          key: name,
-          value: fields.slice(index).join(ifs.includes(' ') ? ' ' : ''),
-        });
         continue;
       }
 

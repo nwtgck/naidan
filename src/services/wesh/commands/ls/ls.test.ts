@@ -101,6 +101,38 @@ describe('wesh ls', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports -a to include dotfiles', async () => {
+    await writeFile({ path: '.hidden.txt', data: 'hidden' });
+    await writeFile({ path: 'visible.txt', data: 'visible' });
+
+    const hidden = await execute({
+      script: 'ls',
+    });
+    const all = await execute({
+      script: 'ls -a',
+    });
+
+    expect(hidden.stdout.text).not.toContain('.hidden.txt');
+    expect(all.stdout.text).toContain('.hidden.txt');
+    expect(all.stdout.text).toContain('visible.txt');
+    expect(hidden.stderr.text).toBe('');
+    expect(all.stderr.text).toBe('');
+    expect(hidden.result.exitCode).toBe(0);
+    expect(all.result.exitCode).toBe(0);
+  });
+
+  it('lists root-relative paths correctly from /', async () => {
+    await writeFile({ path: 'root.txt', data: 'root' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cd /; ls',
+    });
+
+    expect(stdout.text).toContain('root.txt');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports -R to list subdirectories recursively', async () => {
     await writeFile({ path: 'tree/root.txt', data: 'root' });
     await writeFile({ path: 'tree/nested/deep.txt', data: 'deep' });

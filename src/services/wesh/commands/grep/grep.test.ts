@@ -246,6 +246,83 @@ describe('wesh grep', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('prints -- between separated context groups', async () => {
+    await writeFile({
+      path: 'notes.txt',
+      data: `\
+zero
+alpha
+two
+three
+four
+alpha
+five
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'grep -C 1 alpha notes.txt',
+    });
+
+    expect(stdout.text).toBe(`\
+zero
+alpha
+two
+--
+four
+alpha
+five
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('uses grep-style separators for matching and context lines with -n -C', async () => {
+    await writeFile({
+      path: 'notes.txt',
+      data: `\
+zero
+alpha
+two
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'grep -n -C 1 alpha notes.txt',
+    });
+
+    expect(stdout.text).toBe(`\
+1-zero
+2:alpha
+3-two
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('includes file names with grep-style separators for context output', async () => {
+    await writeFile({
+      path: 'notes.txt',
+      data: `\
+zero
+alpha
+two
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'grep -H -n -C 1 alpha notes.txt',
+    });
+
+    expect(stdout.text).toBe(`\
+notes.txt-1-zero
+notes.txt:2:alpha
+notes.txt-3-two
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('prints usage on invalid options', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'grep --definitely-not-real alpha',
@@ -286,6 +363,18 @@ describe('wesh grep', () => {
     expect(stdout.text.trimEnd().split('\n')).toHaveLength(20);
     expect(stdout.text).toContain('pages/0.xml.gz\t内閣総理大臣\n');
     expect(stdout.text).toContain('pages/19.xml.gz\t内閣総理大臣\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports root-relative files from /', async () => {
+    await writeFile({ path: 'root.txt', data: 'alpha\nbeta\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cd /; grep alpha root.txt',
+    });
+
+    expect(stdout.text).toBe('alpha\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

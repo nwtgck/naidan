@@ -14,7 +14,11 @@ interface GrepFileReport {
 type GrepOutputMode = 'lines' | 'count' | 'files-with-matches' | 'files-without-match' | 'only-matching';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
-  return path.startsWith('/') ? path : `${cwd}/${path}`;
+  if (path.startsWith('/')) {
+    return path;
+  }
+
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
 function basename({ path }: { path: string }): string {
@@ -100,7 +104,7 @@ async function readPatternFile({
   context: WeshCommandContext;
   path: string;
 }): Promise<string[]> {
-  const fullPath = path.startsWith('/') ? path : `${context.cwd}/${path}`;
+  const fullPath = resolvePath({ cwd: context.cwd, path });
   const bytes = await readFile({ files: context.files, path: fullPath });
   const content = new TextDecoder().decode(bytes);
   return content.split(/\r?\n/).filter((line, index, lines) => line.length > 0 || index < lines.length - 1);
@@ -400,12 +404,18 @@ export const grepCommandDefinition: WeshCommandDefinition = {
             const start = Math.max(0, i - before);
             const end = Math.min(allLines.length - 1, i + after);
 
+            if ((before > 0 || after > 0) && lastPrintedIndex >= 0 && start > lastPrintedIndex + 1 && outputLines.length > 0) {
+              outputLines.push('--\n');
+            }
+
             for (let j = start; j <= end; j++) {
               if (j <= lastPrintedIndex) continue;
 
               let output = '';
-              if (name !== undefined && showFilename) output += `${name}:`;
-              if (parsed.optionValues.lineNumber === true) output += `${j + 1}:`;
+              const isMatchingLine = matches[j] === true;
+              const prefixSeparator = isMatchingLine ? ':' : '-';
+              if (name !== undefined && showFilename) output += `${name}${prefixSeparator}`;
+              if (parsed.optionValues.lineNumber === true) output += `${j + 1}${prefixSeparator}`;
               output += allLines[j] + '\n';
               outputLines.push(output);
               lastPrintedIndex = j;

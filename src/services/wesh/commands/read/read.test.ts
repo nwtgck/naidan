@@ -91,7 +91,7 @@ echo "$first|$second|$third"`,
       script: `\
 IFS=, read first second
 echo "$first|$second"`,
-      stdinText: 'left,right value\n',
+      stdinText: 'left,right,value\n',
     });
     const rawResult = await execute({
       script: `\
@@ -100,13 +100,39 @@ echo "$value"`,
       stdinText: 'a\\ b\n',
     });
 
-    expect(ifsResult.stdout.text).toBe('left|right value\n');
+    expect(ifsResult.stdout.text).toBe('left|right,value\n');
     expect(ifsResult.stderr.text).toBe('');
     expect(ifsResult.result.exitCode).toBe(0);
 
     expect(rawResult.stdout.text).toBe('a\\ b\n');
     expect(rawResult.stderr.text).toBe('');
     expect(rawResult.result.exitCode).toBe(0);
+  });
+
+  it('preserves empty fields for non-whitespace IFS delimiters', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+IFS=, read first second third
+echo "$first|$second|$third"`,
+      stdinText: ',,tail\n',
+    });
+
+    expect(stdout.text).toBe('||tail\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('handles mixed whitespace and non-whitespace IFS delimiters', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+IFS=" ," read first second third
+echo "$first|$second|$third"`,
+      stdinText: '  alpha, beta,,gamma delta\n',
+    });
+
+    expect(stdout.text).toBe('alpha|beta|,gamma delta\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('joins escaped characters by default and continues on backslash-newline', async () => {
