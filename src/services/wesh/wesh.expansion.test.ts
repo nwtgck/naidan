@@ -132,4 +132,46 @@ EOF`,
     expect(after.stderr.text).toBe('');
     expect(after.result.exitCode).toBe(0);
   });
+
+  it('supports default, alternate, and length parameter expansion', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+unset EMPTY MISSING
+EMPTY=
+echo "\${MISSING:-fallback}"
+echo "\${EMPTY:-fallback}"
+echo "\${EMPTY-fallback}"
+echo "\${FOO:+present}"
+echo "\${#FOO}"`,
+    });
+
+    expect(stdout.text).toBe('fallback\nfallback\n\npresent\n9\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports assignment parameter expansion and persists the assigned value', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+unset CREATED
+echo "\${CREATED:=made}"
+echo "$CREATED"`,
+    });
+
+    expect(stdout.text).toBe('made\nmade\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports parameter expansion errors with :? semantics', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+unset REQUIRED
+echo "\${REQUIRED:?required value}"`,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('wesh: REQUIRED: required value');
+    expect(result.exitCode).toBe(1);
+  });
 });

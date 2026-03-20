@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { parseFlags } from '@/services/wesh/utils/args';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
 export const grepCommandDefinition: WeshCommandDefinition = {
@@ -10,23 +10,38 @@ export const grepCommandDefinition: WeshCommandDefinition = {
     usage: 'grep [flags] pattern [file...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional, unknown } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['i', 'v', 'n', 'w', 'F', 'I'],
-      stringFlags: ['A', 'B', 'C'],
+      spec: {
+        options: [
+          { kind: 'flag', short: 'i', long: undefined, effects: [{ key: 'ignoreCase', value: true }] },
+          { kind: 'flag', short: 'v', long: undefined, effects: [{ key: 'invertMatch', value: true }] },
+          { kind: 'flag', short: 'n', long: undefined, effects: [{ key: 'lineNumber', value: true }] },
+          { kind: 'flag', short: 'w', long: undefined, effects: [{ key: 'wordRegexp', value: true }] },
+          { kind: 'flag', short: 'F', long: undefined, effects: [{ key: 'fixedStrings', value: true }] },
+          { kind: 'flag', short: 'I', long: undefined, effects: [{ key: 'binaryWithoutMatch', value: true }] },
+          { kind: 'value', short: 'A', long: undefined, key: 'afterContext', valueName: 'lines', allowAttachedValue: true, parseValue: undefined },
+          { kind: 'value', short: 'B', long: undefined, key: 'beforeContext', valueName: 'lines', allowAttachedValue: true, parseValue: undefined },
+          { kind: 'value', short: 'C', long: undefined, key: 'context', valueName: 'lines', allowAttachedValue: true, parseValue: undefined },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
-    if (unknown.length > 0) {
+    if (parsed.diagnostics.length > 0) {
       await writeCommandUsageError({
         context,
         command: 'grep',
-        message: `grep: invalid option -- '${unknown[0]}'`,
+        message: `grep: ${parsed.diagnostics[0]!.message}`,
       });
       return { exitCode: 2 };
     }
 
     const text = context.text();
-    if (positional.length === 0) {
+    if (parsed.positionals.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'grep',
@@ -35,12 +50,17 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const pattern = flags.F ? positional[0]!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : positional[0]!;
-    const regex = new RegExp(flags.w ? `\\b${pattern}\\b` : pattern, flags.i ? 'i' : undefined);
-    const files = positional.slice(1);
+    const pattern = parsed.optionValues.fixedStrings === true
+      ? parsed.positionals[0]!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      : parsed.positionals[0]!;
+    const regex = new RegExp(
+      parsed.optionValues.wordRegexp === true ? `\\b${pattern}\\b` : pattern,
+      parsed.optionValues.ignoreCase === true ? 'i' : undefined,
+    );
+    const files = parsed.positionals.slice(1);
 
-    const before = parseInt(flags.B as string) || parseInt(flags.C as string) || 0;
-    const contextAfter = parseInt(flags.A as string) || parseInt(flags.C as string) || 0;
+    const before = Number(parsed.optionValues.beforeContext ?? parsed.optionValues.context ?? 0) || 0;
+    const contextAfter = Number(parsed.optionValues.afterContext ?? parsed.optionValues.context ?? 0) || 0;
 
     const processStream = async ({
       stream,
@@ -58,7 +78,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
         const { done, value } = await reader.read();
         if (done) break;
 
-        if (flags.I) {
+        if (parsed.optionValues.binaryWithoutMatch === true) {
           const isBinary = value.some(byte => byte === 0);
           if (isBinary) return;
         }
@@ -73,7 +93,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       const matches = new Array(allLines.length).fill(false);
       for (let i = 0; i < allLines.length; i++) {
         const match = regex.test(allLines[i]!);
-        matches[i] = flags.v ? !match : match;
+        matches[i] = parsed.optionValues.invertMatch === true ? !match : match;
       }
 
       for (let i = 0; i < allLines.length; i++) {
@@ -84,7 +104,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
           for (let j = start; j <= end; j++) {
             let output = '';
             if (name) output += `${name}:`;
-            if (flags.n) output += `${j + 1}:`;
+            if (parsed.optionValues.lineNumber === true) output += `${j + 1}:`;
             output += allLines[j] + '\n';
             await text.print({ text: output });
           }

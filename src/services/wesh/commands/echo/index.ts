@@ -1,5 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
+import { parseStandardArgv } from '@/services/wesh/argv';
 
 export const echoCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -8,16 +8,23 @@ export const echoCommandDefinition: WeshCommandDefinition = {
     usage: 'echo [-n] [string...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['n'],
-      stringFlags: [],
+      spec: {
+        options: [
+          { kind: 'flag', short: 'n', long: undefined, effects: [{ key: 'noNewline', value: true }] },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
     const text = context.text();
-    await text.print({ text: positional.join(' ') });
+    await text.print({ text: parsed.positionals.join(' ') });
 
-    if (!flags.n) {
+    if (parsed.optionValues.noNewline !== true) {
       await text.print({ text: '\n' });
     }
 

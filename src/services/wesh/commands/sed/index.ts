@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { parseFlags } from '@/services/wesh/utils/args';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
 export const sedCommandDefinition: WeshCommandDefinition = {
@@ -10,23 +10,42 @@ export const sedCommandDefinition: WeshCommandDefinition = {
     usage: 'sed [flags] command [file...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional, unknown } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['n', 'e', 'r', 'E'],
-      stringFlags: ['i'],
+      spec: {
+        options: [
+          { kind: 'flag', short: 'n', long: undefined, effects: [{ key: 'quiet', value: true }] },
+          { kind: 'flag', short: 'e', long: undefined, effects: [{ key: 'expressionFlag', value: true }] },
+          { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'extendedRegexp', value: true }] },
+          { kind: 'flag', short: 'E', long: undefined, effects: [{ key: 'extendedRegexp', value: true }] },
+          {
+            kind: 'value',
+            short: 'i',
+            long: undefined,
+            key: 'inPlaceSuffix',
+            valueName: 'suffix',
+            allowAttachedValue: true,
+            parseValue: undefined,
+          },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
-    if (unknown.length > 0) {
+    if (parsed.diagnostics.length > 0) {
       await writeCommandUsageError({
         context,
         command: 'sed',
-        message: `sed: invalid option -- '${unknown[0]}'`,
+        message: `sed: ${parsed.diagnostics[0]!.message}`,
       });
       return { exitCode: 2 };
     }
 
     const text = context.text();
-    if (positional.length === 0) {
+    if (parsed.positionals.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'sed',
@@ -35,8 +54,8 @@ export const sedCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const expression = positional[0]!;
-    const files = positional.slice(1);
+    const expression = parsed.positionals[0]!;
+    const files = parsed.positionals.slice(1);
 
     // Basic sed command parsing (only supports s/regex/replacement/g)
     const match = expression.match(/^s([|/])((?:(?=(\\?))\3.)*?)\1((?:(?=(\\?))\5.)*?)\1([g]?)$/);
@@ -69,14 +88,14 @@ export const sedCommandDefinition: WeshCommandDefinition = {
 
         for (const line of lines) {
           const transformed = line.replace(regex, replacement);
-          if (!flags.n) {
+          if (parsed.optionValues.quiet !== true) {
             await text.print({ text: `${transformed}\n` });
           }
         }
       }
       if (buffer) {
         const transformed = buffer.replace(regex, replacement);
-        if (!flags.n) {
+        if (parsed.optionValues.quiet !== true) {
           await text.print({ text: `${transformed}\n` });
         }
       }

@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { parseFlags } from '@/services/wesh/utils/args';
 import { readFile, writeFile } from '@/services/wesh/utils/fs';
 
 export const gzipCommandDefinition: WeshCommandDefinition = {
@@ -10,14 +10,19 @@ export const gzipCommandDefinition: WeshCommandDefinition = {
     usage: 'gzip [file...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: [],
-      stringFlags: [],
+      spec: {
+        options: [],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
     const text = context.text();
-    if (positional.length === 0) {
+    if (parsed.positionals.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'gzip',
@@ -26,7 +31,7 @@ export const gzipCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    for (const f of positional) {
+    for (const f of parsed.positionals) {
       if (f === undefined) continue;
       try {
         const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;

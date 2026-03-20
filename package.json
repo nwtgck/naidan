@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:only-failed": "vitest --reporter=./src/FailedOnlyReporter.ts --run",
-    "typecheck": "vue-tsc --noEmit",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix"
   },

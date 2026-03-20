@@ -1,5 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
+import { parseStandardArgv } from '@/services/wesh/argv';
 
 export const exportCmdCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -8,21 +8,28 @@ export const exportCmdCommandDefinition: WeshCommandDefinition = {
     usage: 'export [-p] name=value...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['p'],
-      stringFlags: [],
+      spec: {
+        options: [
+          { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'print', value: true }] },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
     const text = context.text();
-    if (flags.p) {
+    if (parsed.optionValues.print === true) {
       for (const [key, val] of context.env) {
         await text.print({ text: `export ${key}='${val}'\n` });
       }
       return { exitCode: 0 };
     }
 
-    for (const p of positional) {
+    for (const p of parsed.positionals) {
       const idx = p.indexOf('=');
       if (idx !== -1) {
         const key = p.slice(0, idx);

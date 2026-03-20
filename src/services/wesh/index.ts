@@ -273,17 +273,14 @@ export class Wesh {
       }
 
       if (nextChar === '{') {
-        const endIndex = text.indexOf('}', index + 2);
-        if (endIndex !== -1) {
-          const key = text.slice(index + 2, endIndex);
-          if (key === 'RANDOM') {
-            result += Math.floor(Math.random() * 32768).toString();
-          } else {
-            result += env.get(key) ?? '';
-          }
-          index = endIndex;
-          continue;
-        }
+        const expansion = this.expandBracedParameter({
+          text,
+          startIndex: index,
+          env,
+        });
+        result += expansion.value;
+        index = expansion.endIndex;
+        continue;
       }
 
       if (nextChar !== undefined && /[A-Za-z_]/.test(nextChar)) {
@@ -306,6 +303,134 @@ export class Wesh {
     }
 
     return result;
+  }
+
+  private expandBracedParameter({
+    text,
+    startIndex,
+    env,
+  }: {
+    text: string;
+    startIndex: number;
+    env: Map<string, string>;
+  }): {
+    value: string;
+    endIndex: number;
+  } {
+    const endIndex = text.indexOf('}', startIndex + 2);
+    if (endIndex === -1) {
+      return {
+        value: '$',
+        endIndex: startIndex,
+      };
+    }
+
+    const expression = text.slice(startIndex + 2, endIndex);
+    const expansionValue = this.evaluateParameterExpansion({
+      expression,
+      env,
+    });
+    return {
+      value: expansionValue,
+      endIndex,
+    };
+  }
+
+  private evaluateParameterExpansion({
+    expression,
+    env,
+  }: {
+    expression: string;
+    env: Map<string, string>;
+  }): string {
+    if (expression.length === 0) {
+      return '';
+    }
+
+    if (expression.startsWith('#')) {
+      const name = expression.slice(1);
+      return this.getParameterValue({
+        name,
+        env,
+      }).length.toString();
+    }
+
+    const operatorMatch = expression.match(/^([A-Za-z_][A-Za-z0-9_]*)(:?[-=?+])(.*)$/);
+    if (operatorMatch !== null) {
+      const name = operatorMatch[1]!;
+      const operator = operatorMatch[2]!;
+      const operand = operatorMatch[3] ?? '';
+      return this.evaluateParameterOperator({
+        name,
+        operator,
+        operand,
+        env,
+      });
+    }
+
+    return this.getParameterValue({
+      name: expression,
+      env,
+    });
+  }
+
+  private evaluateParameterOperator({
+    name,
+    operator,
+    operand,
+    env,
+  }: {
+    name: string;
+    operator: string;
+    operand: string;
+    env: Map<string, string>;
+  }): string {
+    const currentValue = env.get(name);
+    const isSet = currentValue !== undefined;
+    const isNull = currentValue === '';
+    const requireNonNull = operator.startsWith(':');
+    const shouldUseOperand = requireNonNull ? !isSet || isNull : !isSet;
+    const expandedOperand = this.expandPartVariables({
+      text: operand,
+      env,
+    });
+
+    switch (operator) {
+    case ':-':
+    case '-':
+      return shouldUseOperand ? expandedOperand : currentValue ?? '';
+    case ':=':
+    case '=':
+      if (shouldUseOperand) {
+        env.set(name, expandedOperand);
+        return expandedOperand;
+      }
+      return currentValue ?? '';
+    case ':+':
+    case '+':
+      return shouldUseOperand ? '' : expandedOperand;
+    case ':?':
+    case '?':
+      if (shouldUseOperand) {
+        throw new Error(expandedOperand.length > 0 ? `${name}: ${expandedOperand}` : `${name}: parameter null or not set`);
+      }
+      return currentValue ?? '';
+    default:
+      return currentValue ?? '';
+    }
+  }
+
+  private getParameterValue({
+    name,
+    env,
+  }: {
+    name: string;
+    env: Map<string, string>;
+  }): string {
+    if (name === 'RANDOM') {
+      return Math.floor(Math.random() * 32768).toString();
+    }
+    return env.get(name) ?? '';
   }
 
   private splitExpandedFields({

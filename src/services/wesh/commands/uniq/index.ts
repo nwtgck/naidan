@@ -1,5 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
+import { parseStandardArgv } from '@/services/wesh/argv';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
 export const uniqCommandDefinition: WeshCommandDefinition = {
@@ -9,11 +10,30 @@ export const uniqCommandDefinition: WeshCommandDefinition = {
     usage: 'uniq [file] [-c] [-d] [-u]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['c', 'd', 'u'],
-      stringFlags: [],
+      spec: {
+        options: [
+          { kind: 'flag', short: 'c', long: undefined, effects: [{ key: 'count', value: true }] },
+          { kind: 'flag', short: 'd', long: undefined, effects: [{ key: 'duplicatesOnly', value: true }] },
+          { kind: 'flag', short: 'u', long: undefined, effects: [{ key: 'uniqueOnly', value: true }] },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
+
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'uniq',
+        message: `uniq: ${diagnostic.message}`,
+      });
+      return { exitCode: 1 };
+    }
 
     const text = context.text();
 
@@ -39,19 +59,20 @@ export const uniqCommandDefinition: WeshCommandDefinition = {
     };
 
     const writeLine = async (line: string, cnt: number) => {
-      const showLine = (!flags.d || cnt > 1) && (!flags.u || cnt === 1);
+      const showLine = (parsed.optionValues.duplicatesOnly !== true || cnt > 1)
+        && (parsed.optionValues.uniqueOnly !== true || cnt === 1);
       if (showLine) {
         let out = '';
-        if (flags.c) out += cnt.toString().padStart(7) + ' ';
+        if (parsed.optionValues.count === true) out += cnt.toString().padStart(7) + ' ';
         out += line + '\n';
         await text.print({ text: out });
       }
     };
 
-    if (positional.length === 0) {
+    if (parsed.positionals.length === 0) {
       await process({ input: text.input });
     } else {
-      const f = positional[0]!;
+      const f = parsed.positionals[0]!;
       try {
         const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
         const handle = await context.kernel.open({

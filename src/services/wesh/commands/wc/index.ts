@@ -1,5 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
+import { parseStandardArgv } from '@/services/wesh/argv';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
 export const wcCommandDefinition: WeshCommandDefinition = {
@@ -9,17 +10,42 @@ export const wcCommandDefinition: WeshCommandDefinition = {
     usage: 'wc [file...] [-l] [-w] [-c] [-m]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['l', 'w', 'c', 'm'],
-      stringFlags: [],
+      spec: {
+        options: [
+          { kind: 'flag', short: 'l', long: undefined, effects: [{ key: 'lines', value: true }] },
+          { kind: 'flag', short: 'w', long: undefined, effects: [{ key: 'words', value: true }] },
+          { kind: 'flag', short: 'c', long: undefined, effects: [{ key: 'bytes', value: true }] },
+          { kind: 'flag', short: 'm', long: undefined, effects: [{ key: 'chars', value: true }] },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'wc',
+        message: `wc: ${diagnostic.message}`,
+      });
+      return { exitCode: 1 };
+    }
+
     const text = context.text();
-    const showLines = flags.l || (!flags.l && !flags.w && !flags.c && !flags.m);
-    const showWords = flags.w || (!flags.l && !flags.w && !flags.c && !flags.m);
-    const showBytes = flags.c || (!flags.l && !flags.w && !flags.c && !flags.m);
-    const showChars = flags.m;
+    const linesRequested = Boolean(parsed.optionValues.lines);
+    const wordsRequested = Boolean(parsed.optionValues.words);
+    const bytesRequested = Boolean(parsed.optionValues.bytes);
+    const charsRequested = Boolean(parsed.optionValues.chars);
+    const showDefaultColumns = !linesRequested && !wordsRequested && !bytesRequested && !charsRequested;
+    const showLines = linesRequested || showDefaultColumns;
+    const showWords = wordsRequested || showDefaultColumns;
+    const showBytes = bytesRequested || showDefaultColumns;
+    const showChars = charsRequested;
 
     const results: Array<{ lines: number; words: number; bytes: number; chars: number; name: string }> = [];
 
@@ -53,7 +79,7 @@ export const wcCommandDefinition: WeshCommandDefinition = {
       results.push({ lines, words, bytes, chars, name });
     };
 
-    if (positional.length === 0) {
+    if (parsed.positionals.length === 0) {
       // Use stdin if no files provided
       const input = new ReadableStream({
         async pull(controller) {
@@ -68,7 +94,7 @@ export const wcCommandDefinition: WeshCommandDefinition = {
       });
       await processStream(input, '');
     } else {
-      for (const f of positional) {
+      for (const f of parsed.positionals) {
         if (f === undefined) continue;
         try {
           const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;

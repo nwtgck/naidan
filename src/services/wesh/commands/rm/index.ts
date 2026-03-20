@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { parseFlags } from '@/services/wesh/utils/args';
 
 export const rmCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -9,14 +9,32 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     usage: 'rm [-r] [-f] path...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['r', 'f'],
-      stringFlags: [],
+      spec: {
+        options: [
+          { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'recursive', value: true }] },
+          { kind: 'flag', short: 'f', long: undefined, effects: [{ key: 'force', value: true }] },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'rm',
+        message: `rm: ${diagnostic.message}`,
+      });
+      return { exitCode: 1 };
+    }
+
     const text = context.text();
-    if (positional.length === 0) {
+    if (parsed.positionals.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'rm',
@@ -25,8 +43,8 @@ export const rmCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const recursive = !!flags.r;
-    const force = !!flags.f;
+    const recursive = parsed.optionValues.recursive === true;
+    const force = parsed.optionValues.force === true;
 
     const removeRecursive = async (path: string) => {
       const st = await context.kernel.lstat({ path });
@@ -55,7 +73,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
       }
     };
 
-    for (const p of positional) {
+    for (const p of parsed.positionals) {
       try {
         const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
         await removeRecursive(fullPath);

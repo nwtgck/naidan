@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { parseFlags } from '@/services/wesh/utils/args';
 
 export const trCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -9,14 +9,30 @@ export const trCommandDefinition: WeshCommandDefinition = {
     usage: 'tr [-d] set1 [set2]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['d'],
-      stringFlags: [],
+      spec: {
+        options: [
+          { kind: 'flag', short: 'd', long: undefined, effects: [{ key: 'delete', value: true }] },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
     const text = context.text();
-    if (positional.length < 1) {
+    if (parsed.diagnostics.length > 0) {
+      await writeCommandUsageError({
+        context,
+        command: 'tr',
+        message: `tr: ${parsed.diagnostics[0]!.message}`,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.positionals.length < 1) {
       await writeCommandUsageError({
         context,
         command: 'tr',
@@ -25,9 +41,9 @@ export const trCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const set1 = positional[0]!;
-    const set2 = positional[1] || '';
-    const deleteMode = !!flags.d;
+    const set1 = parsed.positionals[0]!;
+    const set2 = parsed.positionals[1] || '';
+    const deleteMode = parsed.optionValues.delete === true;
 
     const map = new Map<string, string>();
     if (!deleteMode) {

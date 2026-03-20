@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { parseFlags } from '@/services/wesh/utils/args';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
 type CutMode = 'b' | 'c' | 'f';
@@ -12,24 +12,37 @@ export const cutCommandDefinition: WeshCommandDefinition = {
     usage: 'cut [OPTION]... [FILE]...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional, unknown } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['s', 'complement'],
-      stringFlags: ['b', 'c', 'f', 'd', 'output-delimiter'],
+      spec: {
+        options: [
+          { kind: 'flag', short: 's', long: undefined, effects: [{ key: 'onlyDelimited', value: true }] },
+          { kind: 'flag', short: undefined, long: 'complement', effects: [{ key: 'complement', value: true }] },
+          { kind: 'value', short: 'b', long: undefined, key: 'bytes', valueName: 'list', allowAttachedValue: true, parseValue: undefined },
+          { kind: 'value', short: 'c', long: undefined, key: 'characters', valueName: 'list', allowAttachedValue: true, parseValue: undefined },
+          { kind: 'value', short: 'f', long: undefined, key: 'fields', valueName: 'list', allowAttachedValue: true, parseValue: undefined },
+          { kind: 'value', short: 'd', long: undefined, key: 'delimiter', valueName: 'delimiter', allowAttachedValue: true, parseValue: undefined },
+          { kind: 'value', short: undefined, long: 'output-delimiter', key: 'outputDelimiter', valueName: 'string', allowAttachedValue: false, parseValue: undefined },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
-    if (unknown.length > 0) {
+    if (parsed.diagnostics.length > 0) {
       await writeCommandUsageError({
         context,
         command: 'cut',
-        message: `cut: invalid option -- '${unknown[0]}'`,
+        message: `cut: ${parsed.diagnostics[0]!.message}`,
       });
       return { exitCode: 1 };
     }
 
     const text = context.text();
-    const delimiter = (flags.d as string) ?? '\t';
-    const outputDelimiter = (flags['output-delimiter'] as string) ?? delimiter;
+    const delimiter = (parsed.optionValues.delimiter as string | undefined) ?? '\t';
+    const outputDelimiter = (parsed.optionValues.outputDelimiter as string | undefined) ?? delimiter;
 
     // Simple range parser for list (e.g., "1,3-5,7-")
     const parseList = (list: string): number[] => {
@@ -48,8 +61,14 @@ export const cutCommandDefinition: WeshCommandDefinition = {
       return Array.from(indices).sort((a, b) => a - b);
     };
 
-    const mode: CutMode | null = flags.b ? 'b' : flags.c ? 'c' : flags.f ? 'f' : null;
-    const listStr = (flags.b ?? flags.c ?? flags.f) as string | undefined;
+    const mode: CutMode | null = parsed.optionValues.bytes
+      ? 'b'
+      : parsed.optionValues.characters
+        ? 'c'
+        : parsed.optionValues.fields
+          ? 'f'
+          : null;
+    const listStr = (parsed.optionValues.bytes ?? parsed.optionValues.characters ?? parsed.optionValues.fields) as string | undefined;
 
     if (!mode) {
       await writeCommandUsageError({
@@ -66,10 +85,10 @@ export const cutCommandDefinition: WeshCommandDefinition = {
       switch (mode) {
       case 'f': {
         const parts = line.split(delimiter);
-        if (parts.length === 1 && line.includes(delimiter) === false && flags.s) return null;
+        if (parts.length === 1 && line.includes(delimiter) === false && parsed.optionValues.onlyDelimited === true) return null;
 
         const result: string[] = [];
-        if (flags.complement) {
+        if (parsed.optionValues.complement === true) {
           for (let i = 1; i <= parts.length; i++) {
             if (!indices.includes(i)) result.push(parts[i - 1]!);
           }
@@ -85,7 +104,7 @@ export const cutCommandDefinition: WeshCommandDefinition = {
         // -b or -c (simplified to character-based for this implementation)
         const chars = [...line];
         const result: string[] = [];
-        if (flags.complement) {
+        if (parsed.optionValues.complement === true) {
           for (let i = 1; i <= chars.length; i++) {
             if (!indices.includes(i)) result.push(chars[i - 1]!);
           }
@@ -126,10 +145,10 @@ export const cutCommandDefinition: WeshCommandDefinition = {
       }
     };
 
-    if (positional.length === 0) {
+    if (parsed.positionals.length === 0) {
       await processStream({ stream: handleToStream({ handle: context.stdin }) });
     } else {
-      for (const f of positional) {
+      for (const f of parsed.positionals) {
         if (f === undefined) continue;
         try {
           const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;

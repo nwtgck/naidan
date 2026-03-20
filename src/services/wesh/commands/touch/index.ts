@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { parseFlags } from '@/services/wesh/utils/args';
 import { exists, writeFile } from '@/services/wesh/utils/fs';
 
 export const touchCommandDefinition: WeshCommandDefinition = {
@@ -10,13 +10,18 @@ export const touchCommandDefinition: WeshCommandDefinition = {
     usage: 'touch path...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: [],
-      stringFlags: [],
+      spec: {
+        options: [],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
-    if (positional.length === 0) {
+    if (parsed.positionals.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'touch',
@@ -27,7 +32,7 @@ export const touchCommandDefinition: WeshCommandDefinition = {
 
     const text = context.text();
 
-    for (const p of positional) {
+    for (const p of parsed.positionals) {
       if (p === undefined) continue;
       try {
         const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;

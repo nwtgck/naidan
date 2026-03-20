@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { parseFlags } from '@/services/wesh/utils/args';
 
 export const mkdirCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -9,13 +9,29 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
     usage: 'mkdir [-p] path...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { flags, positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: ['p'],
-      stringFlags: [],
+      spec: {
+        options: [
+          { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'parents', value: true }] },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
-    if (positional.length === 0) {
+    if (parsed.diagnostics.length > 0) {
+      await writeCommandUsageError({
+        context,
+        command: 'mkdir',
+        message: `mkdir: ${parsed.diagnostics[0]!.message}`,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.positionals.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'mkdir',
@@ -24,10 +40,10 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const recursive = !!flags.p;
+    const recursive = parsed.optionValues.parents === true;
     const text = context.text();
 
-    for (const p of positional) {
+    for (const p of parsed.positionals) {
       try {
         const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
         await context.kernel.mkdir({ path: fullPath, recursive });

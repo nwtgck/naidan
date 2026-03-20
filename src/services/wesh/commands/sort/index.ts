@@ -1,5 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseFlags } from '@/services/wesh/utils/args';
+import { parseStandardArgv } from '@/services/wesh/argv';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
 export const sortCommandDefinition: WeshCommandDefinition = {
@@ -9,10 +9,15 @@ export const sortCommandDefinition: WeshCommandDefinition = {
     usage: 'sort [file...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const { positional } = parseFlags({
+    const parsed = parseStandardArgv({
       args: context.args,
-      booleanFlags: [],
-      stringFlags: [],
+      spec: {
+        options: [],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: true,
+        specialTokenParsers: [],
+      },
     });
 
     const text = context.text();
@@ -22,10 +27,10 @@ export const sortCommandDefinition: WeshCommandDefinition = {
       for await (const line of input) lines.push(line);
     };
 
-    if (positional.length === 0) {
+    if (parsed.positionals.length === 0) {
       await read({ input: text.input });
     } else {
-      for (const f of positional) {
+      for (const f of parsed.positionals) {
         if (f === undefined) continue;
         try {
           const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
