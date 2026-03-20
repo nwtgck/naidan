@@ -479,6 +479,81 @@ jq '.text | ascii_upcase'`,
     expect(upcase.result.exitCode).toBe(0);
   });
 
+  it('supports range and tonumber', async () => {
+    const range = await execute({
+      script: `\
+jq 'range(1, 6, 2)'`,
+      stdinText: 'null',
+    });
+
+    expect(range.stdout.text).toBe(`\
+1
+3
+5
+`);
+    expect(range.stderr.text).toBe('');
+    expect(range.result.exitCode).toBe(0);
+
+    const tonumber = await execute({
+      script: `\
+jq '.items[] | tonumber'`,
+      stdinText: `\
+{"items":["10","-2.5",3]}`,
+    });
+
+    expect(tonumber.stdout.text).toBe(`\
+10
+-2.5
+3
+`);
+    expect(tonumber.stderr.text).toBe('');
+    expect(tonumber.result.exitCode).toBe(0);
+  });
+
+  it('supports floor, ceil, and round', async () => {
+    const numeric = await execute({
+      script: `\
+jq '.items[] | [floor, ceil, round]'`,
+      stdinText: `\
+{"items":[1.2,1.5,-1.2]}`,
+    });
+
+    expect(numeric.stdout.text).toBe(`\
+[1,2,1]
+[1,2,2]
+[-2,-1,-1]
+`);
+    expect(numeric.stderr.text).toBe('');
+    expect(numeric.result.exitCode).toBe(0);
+  });
+
+  it('supports as variable bindings', async () => {
+    const objectBinding = await execute({
+      script: `\
+jq '.user.name as $name | {name: $name, age: .user.age}'`,
+      stdinText: `\
+{"user":{"name":"alice","age":20}}`,
+    });
+
+    expect(objectBinding.stdout.text).toBe('{"name":"alice","age":20}\n');
+    expect(objectBinding.stderr.text).toBe('');
+    expect(objectBinding.result.exitCode).toBe(0);
+
+    const iterateBinding = await execute({
+      script: `\
+jq '.items[] as $item | $item.name'`,
+      stdinText: `\
+{"items":[{"name":"alice"},{"name":"bob"}]}`,
+    });
+
+    expect(iterateBinding.stdout.text).toBe(`\
+"alice"
+"bob"
+`);
+    expect(iterateBinding.stderr.text).toBe('');
+    expect(iterateBinding.result.exitCode).toBe(0);
+  });
+
   it('supports sort_by, unique, unique_by, group_by, and map_values', async () => {
     const sortBy = await execute({
       script: `\

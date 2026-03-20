@@ -6,6 +6,10 @@ export interface JqRuntimeError {
   message: string;
 }
 
+interface JqRuntimeContext {
+  variables: Record<string, JsonValue>;
+}
+
 export type JqRuntimeFilterEvaluator = (options: {
   filter: JqFilter;
   input: JsonValue;
@@ -204,12 +208,37 @@ export function evaluateJqFilter({
   filter: JqFilter;
   input: JsonValue;
 }): { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError } {
+  return evaluateJqFilterWithContext({
+    filter,
+    input,
+    context: {
+      variables: {},
+    },
+  });
+}
+
+function evaluateJqFilterWithContext({
+  filter,
+  input,
+  context,
+}: {
+  filter: JqFilter;
+  input: JsonValue;
+  context: JqRuntimeContext;
+}): { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError } {
   const evaluate: JqRuntimeFilterEvaluator = ({ filter: nestedFilter, input: nestedInput }) =>
-    evaluateJqFilter({ filter: nestedFilter, input: nestedInput });
+    evaluateJqFilterWithContext({ filter: nestedFilter, input: nestedInput, context });
 
   switch (filter.kind) {
   case 'identity':
     return { ok: true, outputs: [input] };
+  case 'variable': {
+    const value = context.variables[filter.name];
+    if (value === undefined) {
+      return { ok: false, error: { message: `$${filter.name} is not defined` } };
+    }
+    return { ok: true, outputs: [cloneJson({ value })] };
+  }
   case 'literal':
     return { ok: true, outputs: [cloneJson({ value: filter.value })] };
   case 'field': {
@@ -458,6 +487,26 @@ export function evaluateJqFilter({
     }
     }
     throw new Error('Unreachable jq unary operator');
+  }
+  case 'bind': {
+    const binding = evaluate({ filter: filter.binding, input });
+    if (!binding.ok) return binding;
+    const outputs: JsonValue[] = [];
+    for (const boundValue of binding.outputs) {
+      const scoped = evaluateJqFilterWithContext({
+        filter: filter.body,
+        input,
+        context: {
+          variables: {
+            ...context.variables,
+            [filter.name]: cloneJson({ value: boundValue }),
+          },
+        },
+      });
+      if (!scoped.ok) return scoped;
+      outputs.push(...scoped.outputs);
+    }
+    return { ok: true, outputs };
   }
   case 'assign': {
     const assigned = applyPathAssignment({

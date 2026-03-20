@@ -120,6 +120,22 @@ export function lexJq({
       tokens.push({ kind: 'operator', value: char });
       index += 1;
       continue;
+    case '$': {
+      const next = source[index + 1];
+      if (next === undefined || !isIdentifierStart({ char: next })) {
+        return { ok: false, message: "expected variable name after '$'" };
+      }
+      let value = next;
+      index += 2;
+      while (index < source.length) {
+        const current = source[index];
+        if (current === undefined || !isIdentifierPart({ char: current })) break;
+        value += current;
+        index += 1;
+      }
+      tokens.push({ kind: 'variable', value });
+      continue;
+    }
     case '[':
     case ']':
     case '{':
@@ -201,6 +217,7 @@ export function lexJq({
       case 'end':
       case 'try':
       case 'catch':
+      case 'as':
         tokens.push({ kind: 'keyword', value });
         break;
       default:

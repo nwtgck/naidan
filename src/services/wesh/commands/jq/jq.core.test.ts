@@ -484,6 +484,70 @@ jq 'ascii_downcase'`,
     expect(asciiType.stderr.text).toContain('jq: error: ascii_downcase input must be a string');
     expect(asciiType.result.exitCode).toBe(4);
 
+    const rangeType = await execute({
+      script: `\
+jq 'range(1, "x")'`,
+      stdinText: 'null',
+    });
+    expect(rangeType.stderr.text).toContain('jq: error: range arguments must be finite numbers');
+    expect(rangeType.result.exitCode).toBe(4);
+
+    const rangeStep = await execute({
+      script: `\
+jq 'range(1, 4, 0)'`,
+      stdinText: 'null',
+    });
+    expect(rangeStep.stderr.text).toContain('jq: error: range step must not be zero');
+    expect(rangeStep.result.exitCode).toBe(4);
+
+    const tonumberType = await execute({
+      script: `\
+jq 'tonumber'`,
+      stdinText: 'true',
+    });
+    expect(tonumberType.stderr.text).toContain('jq: error: tonumber input must be a string or number');
+    expect(tonumberType.result.exitCode).toBe(4);
+
+    const tonumberParse = await execute({
+      script: `\
+jq 'tonumber'`,
+      stdinText: '"not-a-number"',
+    });
+    expect(tonumberParse.stderr.text).toContain('jq: error: cannot parse number from string "not-a-number"');
+    expect(tonumberParse.result.exitCode).toBe(4);
+
+    const errorBuiltin = await execute({
+      script: `\
+jq 'error("boom")'`,
+      stdinText: 'null',
+    });
+    expect(errorBuiltin.stderr.text).toContain('jq: error: boom');
+    expect(errorBuiltin.result.exitCode).toBe(4);
+
+    const undefinedVariable = await execute({
+      script: `\
+jq '$missing'`,
+      stdinText: 'null',
+    });
+    expect(undefinedVariable.stderr.text).toContain('jq: error: $missing is not defined');
+    expect(undefinedVariable.result.exitCode).toBe(4);
+
+    const invalidAs = await execute({
+      script: `\
+jq '.foo as .bar'`,
+      stdinText: '{"foo":1}',
+    });
+    expect(invalidAs.stderr.text).toContain("jq: parse error: expected variable name after 'as'");
+    expect(invalidAs.result.exitCode).toBe(3);
+
+    const floorType = await execute({
+      script: `\
+jq 'floor'`,
+      stdinText: '"1.2"',
+    });
+    expect(floorType.stderr.text).toContain('jq: error: floor input must be a number');
+    expect(floorType.result.exitCode).toBe(4);
+
     const mapValuesType = await execute({
       script: `\
 jq 'map_values(. + 1)'`,

@@ -134,6 +134,22 @@ function trimEndSuffix({
   return value.endsWith(suffix) ? value.slice(0, value.length - suffix.length) : value;
 }
 
+function parseStrictNumber({
+  value,
+}: {
+  value: string;
+}): number | undefined {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+  if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)) {
+    return undefined;
+  }
+  const number = Number(trimmed);
+  return Number.isFinite(number) ? number : undefined;
+}
+
 function evaluateSingleOutput({
   filter,
   input,
@@ -512,6 +528,32 @@ export function evaluateBuiltin({
       return { ok: false, error: { message: 'booleans does not take arguments' } };
     }
     return { ok: true, outputs: typeFilter({ input, expected: 'boolean' }) };
+  case 'ceil':
+  case 'floor':
+  case 'round':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: `${name} does not take arguments` } };
+    }
+    if (typeof input !== 'number') {
+      return { ok: false, error: { message: `${name} input must be a number` } };
+    }
+    return {
+      ok: true,
+      outputs: [(() => {
+        switch (name) {
+        case 'ceil':
+          return Math.ceil(input);
+        case 'floor':
+          return Math.floor(input);
+        case 'round':
+          return Math.round(input);
+        default: {
+          const _ex: never = name;
+          throw new Error(`Unhandled numeric builtin: ${_ex}`);
+        }
+        }
+      })()],
+    };
   case 'contains': {
     const expected = args[0];
     if (expected === undefined) {
@@ -555,6 +597,24 @@ export function evaluateBuiltin({
       return { ok: false, error: { message: 'empty does not take arguments' } };
     }
     return { ok: true, outputs: [] };
+  case 'error': {
+    if (args.length > 1) {
+      return { ok: false, error: { message: 'error takes at most one argument' } };
+    }
+    if (args[0] === undefined) {
+      return { ok: false, error: { message: JSON.stringify(input) } };
+    }
+    const message = evaluateSingleOutput({
+      filter: args[0],
+      input,
+      evaluate,
+    });
+    if (!message.ok) return message;
+    return {
+      ok: false,
+      error: { message: typeof message.value === 'string' ? message.value : JSON.stringify(message.value) },
+    };
+  }
   case 'explode':
     if (args.length !== 0) {
       return { ok: false, error: { message: 'explode does not take arguments' } };
@@ -814,6 +874,56 @@ export function evaluateBuiltin({
       });
     }
     return { ok: true, outputs: [root] };
+  }
+  case 'range': {
+    if (args.length === 0 || args.length > 3) {
+      return { ok: false, error: { message: 'range takes one to three arguments' } };
+    }
+    const evaluatedArgs: JsonValue[] = [];
+    for (const arg of args) {
+      const evaluated = evaluateSingleOutput({
+        filter: arg,
+        input,
+        evaluate,
+      });
+      if (!evaluated.ok) return evaluated;
+      evaluatedArgs.push(evaluated.value);
+    }
+    const numericArgs: number[] = [];
+    for (const value of evaluatedArgs) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return { ok: false, error: { message: 'range arguments must be finite numbers' } };
+      }
+      numericArgs.push(value);
+    }
+    const [start, end, step] = (() => {
+      switch (numericArgs.length) {
+      case 1:
+        return [0, numericArgs[0]!, 1] as const;
+      case 2:
+        return [numericArgs[0]!, numericArgs[1]!, 1] as const;
+      case 3:
+        return [numericArgs[0]!, numericArgs[1]!, numericArgs[2]!] as const;
+      default: {
+        const _ex: never = numericArgs.length as never;
+        throw new Error(`Unhandled range arity: ${_ex}`);
+      }
+      }
+    })();
+    if (step === 0) {
+      return { ok: false, error: { message: 'range step must not be zero' } };
+    }
+    const outputs: JsonValue[] = [];
+    if (step > 0) {
+      for (let value = start; value < end; value += step) {
+        outputs.push(value);
+      }
+      return { ok: true, outputs };
+    }
+    for (let value = start; value > end; value += step) {
+      outputs.push(value);
+    }
+    return { ok: true, outputs };
   }
   case 'recurse': {
     if (args.length > 1) {
@@ -1243,6 +1353,23 @@ export function evaluateBuiltin({
       return { ok: false, error: { message: 'tojson does not take arguments' } };
     }
     return { ok: true, outputs: [JSON.stringify(input)] };
+  case 'tonumber':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'tonumber does not take arguments' } };
+    }
+    switch (typeof input) {
+    case 'number':
+      return { ok: true, outputs: [input] };
+    case 'string': {
+      const parsed = parseStrictNumber({ value: input });
+      if (parsed === undefined) {
+        return { ok: false, error: { message: `cannot parse number from string ${JSON.stringify(input)}` } };
+      }
+      return { ok: true, outputs: [parsed] };
+    }
+    default:
+      return { ok: false, error: { message: 'tonumber input must be a string or number' } };
+    }
   case 'values':
     if (args.length !== 0) {
       return { ok: false, error: { message: 'values does not take arguments' } };

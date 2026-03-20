@@ -7,6 +7,7 @@ export interface JqProgram {
 
 export type JqFilter =
   | { kind: 'identity' }
+  | { kind: 'variable'; name: string }
   | { kind: 'literal'; value: JsonValue }
   | { kind: 'array'; items: JqFilter[] }
   | { kind: 'object'; entries: JqObjectEntry[] }
@@ -21,6 +22,7 @@ export type JqFilter =
   | { kind: 'call'; name: JqBuiltinName; args: JqFilter[] }
   | { kind: 'binary'; operator: JqBinaryOperator; left: JqFilter; right: JqFilter }
   | { kind: 'unary'; operator: JqUnaryOperator; value: JqFilter }
+  | { kind: 'bind'; binding: JqFilter; name: string; body: JqFilter }
   | { kind: 'assign'; path: JqPath; value: JqFilter }
   | { kind: 'update'; path: JqPath; value: JqFilter };
 
@@ -48,9 +50,12 @@ export type JqBuiltinName =
   | 'contains'
   | 'del'
   | 'empty'
+  | 'error'
+  | 'ceil'
   | 'explode'
   | 'first'
   | 'flatten'
+  | 'floor'
   | 'fromjson'
   | 'group_by'
   | 'implode'
@@ -73,6 +78,7 @@ export type JqBuiltinName =
   | 'paths'
   | 'pick'
   | 'recurse'
+  | 'range'
   | 'reverse'
   | 'rindex'
   | 'rtrimstr'
@@ -89,6 +95,8 @@ export type JqBuiltinName =
   | 'has'
   | 'map_values'
   | 'tojson'
+  | 'tonumber'
+  | 'round'
   | 'values'
   | 'tostring'
   | 'walk';
@@ -115,9 +123,10 @@ export type JqUnaryOperator = 'not' | 'neg';
 export type JqToken =
   | { kind: 'dot' }
   | { kind: 'identifier'; value: string }
+  | { kind: 'variable'; value: string }
   | { kind: 'number'; value: number }
   | { kind: 'string'; value: string }
-  | { kind: 'keyword'; value: 'true' | 'false' | 'null' | 'and' | 'or' | 'not' | 'if' | 'then' | 'elif' | 'else' | 'end' | 'try' | 'catch' }
+  | { kind: 'keyword'; value: 'true' | 'false' | 'null' | 'and' | 'or' | 'not' | 'if' | 'then' | 'elif' | 'else' | 'end' | 'try' | 'catch' | 'as' }
   | { kind: 'operator'; value: '|' | '//' | ',' | '==' | '!=' | '<' | '<=' | '>' | '>=' | '=' | '|=' | '+' | '-' | '*' | '/' | ':' | '?' }
   | { kind: 'punctuation'; value: '[' | ']' | '{' | '}' | '(' | ')' }
   | { kind: 'eof' };

@@ -22,13 +22,16 @@ function toBuiltinName({
   case 'arrays':
   case 'any':
   case 'booleans':
+  case 'ceil':
   case 'contains':
   case 'del':
   case 'endswith':
   case 'empty':
+  case 'error':
   case 'explode':
   case 'first':
   case 'flatten':
+  case 'floor':
   case 'fromjson':
   case 'group_by':
   case 'implode':
@@ -47,6 +50,8 @@ function toBuiltinName({
   case 'paths':
   case 'pick':
   case 'recurse':
+  case 'range':
+  case 'round':
   case 'scalars':
   case 'select':
   case 'map':
@@ -66,6 +71,7 @@ function toBuiltinName({
   case 'unique_by':
   case 'has':
   case 'tojson':
+  case 'tonumber':
   case 'values':
   case 'tostring':
   case 'walk':
@@ -232,14 +238,44 @@ class JqParser {
 
     while (true) {
       const token = this.peek();
-      if (!(token.kind === 'operator' && token.value === '|')) break;
-      this.index += 1;
-      const right = this.parseAlternative();
-      if (!right.ok) return right;
-      filter = {
-        ok: true,
-        filter: { kind: 'pipe', left: filter.filter, right: right.filter },
-      };
+      if (token.kind === 'keyword' && token.value === 'as') {
+        this.index += 1;
+        const variable = this.peek();
+        switch (variable.kind) {
+        case 'variable':
+          break;
+        default:
+          return { ok: false, message: "expected variable name after 'as'" };
+        }
+        this.index += 1;
+        const separator = this.peek();
+        if (!(separator.kind === 'operator' && separator.value === '|')) {
+          return { ok: false, message: "unsupported syntax: 'as' requires '|'" };
+        }
+        this.index += 1;
+        const body = this.parsePipe();
+        if (!body.ok) return body;
+        return {
+          ok: true,
+          filter: {
+            kind: 'bind',
+            binding: filter.filter,
+            name: variable.value,
+            body: body.filter,
+          },
+        };
+      }
+      if (token.kind === 'operator' && token.value === '|') {
+        this.index += 1;
+        const right = this.parseAlternative();
+        if (!right.ok) return right;
+        filter = {
+          ok: true,
+          filter: { kind: 'pipe', left: filter.filter, right: right.filter },
+        };
+        continue;
+      }
+      break;
     }
 
     return filter;
@@ -647,6 +683,9 @@ class JqParser {
       default:
         return { ok: false, message: `unexpected keyword '${token.value}'` };
       }
+    case 'variable':
+      this.index += 1;
+      return { ok: true, filter: { kind: 'variable', name: token.value } };
     case 'identifier': {
       const builtinName = toBuiltinName({ name: token.value });
       if (builtinName === undefined) {
