@@ -199,6 +199,8 @@ export function lexJq({
       case 'elif':
       case 'else':
       case 'end':
+      case 'try':
+      case 'catch':
         tokens.push({ kind: 'keyword', value });
         break;
       default:

@@ -192,6 +192,34 @@ jq '.items[] | if .kind == "a" then .name elif .kind == "b" then .name + "-b" el
     expect(elifConditional.result.exitCode).toBe(0);
   });
 
+  it('supports try and catch', async () => {
+    const fallback = await execute({
+      script: `\
+jq '.items[] | try .name catch "missing"'`,
+      stdinText: `\
+{"items":[{"name":"alice"},1,{"name":"bob"}]}`,
+    });
+
+    expect(fallback.stdout.text).toBe(`\
+"alice"
+"missing"
+"bob"
+`);
+    expect(fallback.stderr.text).toBe('');
+    expect(fallback.result.exitCode).toBe(0);
+
+    const errorMessage = await execute({
+      script: `\
+jq '.items[] | try .name catch .'`,
+      stdinText: `\
+{"items":[1]}`,
+    });
+
+    expect(errorMessage.stdout.text).toContain('cannot access field');
+    expect(errorMessage.stderr.text).toBe('');
+    expect(errorMessage.result.exitCode).toBe(0);
+  });
+
   it('supports any and all', async () => {
     const any = await execute({
       script: `\
@@ -390,6 +418,139 @@ jq '.metrics | map_values(. + 1)'`,
     expect(mapValues.stdout.text).toBe('{"a":2,"b":3}\n');
     expect(mapValues.stderr.text).toBe('');
     expect(mapValues.result.exitCode).toBe(0);
+  });
+
+  it('supports paths and pick', async () => {
+    const paths = await execute({
+      script: `\
+jq 'paths'`,
+      stdinText: `\
+{"user":{"name":"alice"},"items":[1,2]}`,
+    });
+
+    expect(paths.stdout.text).toBe(`\
+["user"]
+["user","name"]
+["items"]
+["items",0]
+["items",1]
+`);
+    expect(paths.stderr.text).toBe('');
+    expect(paths.result.exitCode).toBe(0);
+
+    const pick = await execute({
+      script: `\
+jq 'pick(.user.name, .items[1])'`,
+      stdinText: `\
+{"user":{"name":"alice","role":"admin"},"items":[1,2,3],"other":true}`,
+    });
+
+    expect(pick.stdout.text).toBe('{"user":{"name":"alice"},"items":[null,2]}\n');
+    expect(pick.stderr.text).toBe('');
+    expect(pick.result.exitCode).toBe(0);
+  });
+
+  it('supports type filter builtins', async () => {
+    const filtered = await execute({
+      script: `\
+jq '.items[] | (arrays, booleans, nulls, numbers, objects, scalars, strings)'`,
+      stdinText: `\
+{"items":[[1],true,null,2,{"a":1},"x"]}`,
+    });
+
+    expect(filtered.stdout.text).toBe(`\
+[1]
+true
+true
+null
+null
+2
+2
+{"a":1}
+"x"
+"x"
+`);
+    expect(filtered.stderr.text).toBe('');
+    expect(filtered.result.exitCode).toBe(0);
+  });
+
+  it('supports walk', async () => {
+    const walked = await execute({
+      script: `\
+jq 'walk(if type == "number" then . + 1 else . end)'`,
+      stdinText: `\
+{"a":1,"items":[2,{"b":3}],"name":"x"}`,
+    });
+
+    expect(walked.stdout.text).toBe('{"a":2,"items":[3,{"b":4}],"name":"x"}\n');
+    expect(walked.stderr.text).toBe('');
+    expect(walked.result.exitCode).toBe(0);
+  });
+
+  it('supports recurse', async () => {
+    const recurseTree = await execute({
+      script: `\
+jq '.tree | recurse(.children[]?) | .name'`,
+      stdinText: `\
+{"tree":{"name":"root","children":[{"name":"a","children":[]},{"name":"b","children":[{"name":"c","children":[]}]}]}}`,
+    });
+
+    expect(recurseTree.stdout.text).toBe(`\
+"root"
+"a"
+"b"
+"c"
+`);
+    expect(recurseTree.stderr.text).toBe('');
+    expect(recurseTree.result.exitCode).toBe(0);
+
+    const recurseBare = await execute({
+      script: `\
+jq '.data | recurse | numbers'`,
+      stdinText: `\
+{"data":[1,[2,3],{"x":4}]}`,
+    });
+
+    expect(recurseBare.stdout.text).toBe(`\
+1
+2
+3
+4
+`);
+    expect(recurseBare.stderr.text).toBe('');
+    expect(recurseBare.result.exitCode).toBe(0);
+  });
+
+  it('supports index, rindex, and indices', async () => {
+    const stringSearch = await execute({
+      script: `\
+jq '.text | (index("ana"), rindex("ana"), indices("ana"))'`,
+      stdinText: `\
+{"text":"bananas"}`,
+    });
+
+    expect(stringSearch.stdout.text).toBe(`\
+1
+3
+[1,3]
+`);
+    expect(stringSearch.stderr.text).toBe('');
+    expect(stringSearch.result.exitCode).toBe(0);
+
+    const arraySearch = await execute({
+      script: `\
+jq '.items | (index(2), rindex(2), indices(2))'`,
+      stdinText: `\
+{"items":[1,2,3,2]}`,
+    });
+
+    expect(arraySearch.stdout.text).toBe(`\
+1
+3
+[1,3]
+`);
+    expect(arraySearch.stderr.text).toBe('');
+    expect(arraySearch.result.exitCode).toBe(0);
   });
 
   it('supports multiple input JSON values and file input', async () => {

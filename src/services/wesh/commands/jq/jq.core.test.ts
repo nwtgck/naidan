@@ -371,6 +371,15 @@ jq 'if .flag then .value end'`,
     expect(conditionalElse.stderr.text).toContain("jq: parse error: unsupported syntax: 'if' requires 'else' or 'elif'");
     expect(conditionalElse.result.exitCode).toBe(3);
 
+    const tryCatch = await execute({
+      script: `\
+jq 'try .foo'`,
+      stdinText: `\
+{"foo":1}`,
+    });
+    expect(tryCatch.stderr.text).toContain("jq: parse error: unsupported syntax: 'try' requires 'catch'");
+    expect(tryCatch.result.exitCode).toBe(3);
+
     const anyType = await execute({
       script: `\
 jq 'any'`,
@@ -410,5 +419,37 @@ jq 'map_values(. + 1)'`,
     });
     expect(mapValuesType.stderr.text).toContain('jq: error: map_values input must be an object');
     expect(mapValuesType.result.exitCode).toBe(4);
+
+    const pickType = await execute({
+      script: `\
+jq 'pick(length)'`,
+      stdinText: '{"a":1}',
+    });
+    expect(pickType.stderr.text).toContain('jq: error: pick arguments must be paths');
+    expect(pickType.result.exitCode).toBe(4);
+
+    const walkType = await execute({
+      script: `\
+jq 'walk'`,
+      stdinText: '{"a":1}',
+    });
+    expect(walkType.stderr.text).toContain('jq: error: walk requires one argument');
+    expect(walkType.result.exitCode).toBe(4);
+
+    const indexType = await execute({
+      script: `\
+jq 'index(1)'`,
+      stdinText: '{"a":1}',
+    });
+    expect(indexType.stderr.text).toContain('jq: error: index input must be an array or string');
+    expect(indexType.result.exitCode).toBe(4);
+
+    const recurseArity = await execute({
+      script: `\
+jq 'recurse(., .)'`,
+      stdinText: '{"a":1}',
+    });
+    expect(recurseArity.stderr.text).toContain('jq: error: recurse takes at most one argument');
+    expect(recurseArity.result.exitCode).toBe(4);
   });
 });

@@ -334,6 +334,14 @@ export function evaluateJqFilter({
       : filter.elseBranch;
     return evaluate({ filter: selectedBranch, input });
   }
+  case 'trycatch': {
+    const attempted = evaluate({ filter: filter.body, input });
+    if (attempted.ok) return attempted;
+    return evaluate({
+      filter: filter.catchBranch,
+      input: attempted.error.message,
+    });
+  }
   case 'array': {
     const array: JsonValue[] = [];
     for (const item of filter.items) {

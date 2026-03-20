@@ -17,7 +17,9 @@ function toBuiltinName({
   switch (name) {
   case 'add':
   case 'all':
+  case 'arrays':
   case 'any':
+  case 'booleans':
   case 'contains':
   case 'del':
   case 'endswith':
@@ -25,19 +27,30 @@ function toBuiltinName({
   case 'flatten':
   case 'fromjson':
   case 'group_by':
+  case 'index':
+  case 'indices':
   case 'join':
   case 'map_values':
   case 'max':
   case 'min':
+  case 'nulls':
+  case 'numbers':
+  case 'objects':
+  case 'paths':
+  case 'pick':
+  case 'recurse':
+  case 'scalars':
   case 'select':
   case 'map':
   case 'length':
   case 'keys':
   case 'keys_unsorted':
   case 'reverse':
+  case 'rindex':
   case 'sort':
   case 'sort_by':
   case 'startswith':
+  case 'strings':
   case 'type':
   case 'unique':
   case 'unique_by':
@@ -45,6 +58,7 @@ function toBuiltinName({
   case 'tojson':
   case 'values':
   case 'tostring':
+  case 'walk':
     return name;
   default:
     return undefined;
@@ -608,6 +622,9 @@ class JqParser {
       case 'if': {
         return this.parseConditional();
       }
+      case 'try': {
+        return this.parseTryCatch();
+      }
       case 'true':
         this.index += 1;
         return { ok: true, filter: { kind: 'literal', value: true } };
@@ -835,7 +852,7 @@ class JqParser {
   private consumeKeyword({
     value,
   }: {
-    value: 'then' | 'elif' | 'else' | 'end';
+    value: 'then' | 'elif' | 'else' | 'end' | 'try' | 'catch';
   }): { ok: true } | { ok: false; message: string } {
     const token = this.peek();
     if (token.kind === 'keyword' && token.value === value) {
@@ -943,6 +960,31 @@ class JqParser {
       throw new Error(`Unhandled conditional tail keyword: ${_ex}`);
     }
     }
+  }
+
+  private parseTryCatch(): { ok: true; filter: JqFilter } | { ok: false; message: string } {
+    const tryKeyword = this.consumeKeyword({ value: 'try' });
+    if (!tryKeyword.ok) return tryKeyword;
+
+    const body = this.parseAssignment();
+    if (!body.ok) return body;
+
+    const catchKeyword = this.consumeKeyword({ value: 'catch' });
+    if (!catchKeyword.ok) {
+      return { ok: false, message: "unsupported syntax: 'try' requires 'catch'" };
+    }
+
+    const catchBranch = this.parseAssignment();
+    if (!catchBranch.ok) return catchBranch;
+
+    return {
+      ok: true,
+      filter: {
+        kind: 'trycatch',
+        body: body.filter,
+        catchBranch: catchBranch.filter,
+      },
+    };
   }
 }
 

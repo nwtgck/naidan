@@ -118,6 +118,252 @@ function evaluateSingleOutput({
   return { ok: true, value: result.outputs[0] ?? null };
 }
 
+function walkValue({
+  value,
+  mapper,
+}: {
+  value: JsonValue;
+  mapper: (options: { input: JsonValue }) => { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError };
+}): { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError } {
+  if (Array.isArray(value)) {
+    const mappedItems: JsonValue[] = [];
+    for (const item of value) {
+      const walked = walkValue({
+        value: item,
+        mapper,
+      });
+      if (!walked.ok) return walked;
+      mappedItems.push(walked.value);
+    }
+    return mapper({ input: mappedItems });
+  }
+
+  if (value !== null && typeof value === 'object') {
+    const mappedObject: Record<string, JsonValue> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      const walked = walkValue({
+        value: nested,
+        mapper,
+      });
+      if (!walked.ok) return walked;
+      mappedObject[key] = walked.value;
+    }
+    return mapper({ input: mappedObject });
+  }
+
+  return mapper({ input: value });
+}
+
+function recurseChildren({
+  input,
+}: {
+  input: JsonValue;
+}): JsonValue[] {
+  if (Array.isArray(input)) {
+    return [...input];
+  }
+  if (input !== null && typeof input === 'object') {
+    return Object.values(input);
+  }
+  return [];
+}
+
+function recurseValues({
+  input,
+  evaluateNext,
+}: {
+  input: JsonValue;
+  evaluateNext: (options: { input: JsonValue }) => { ok: true; values: JsonValue[] } | { ok: false; error: JqRuntimeError };
+}): { ok: true; values: JsonValue[] } | { ok: false; error: JqRuntimeError } {
+  const outputs: JsonValue[] = [input];
+  const next = evaluateNext({ input });
+  if (!next.ok) return next;
+
+  for (const child of next.values) {
+    const nested = recurseValues({
+      input: child,
+      evaluateNext,
+    });
+    if (!nested.ok) return nested;
+    outputs.push(...nested.values);
+  }
+
+  return { ok: true, values: outputs };
+}
+
+function typeFilter({
+  input,
+  expected,
+}: {
+  input: JsonValue;
+  expected: 'array' | 'boolean' | 'null' | 'number' | 'object' | 'scalar' | 'string';
+}): JsonValue[] {
+  switch (expected) {
+  case 'array':
+    return Array.isArray(input) ? [input] : [];
+  case 'boolean':
+    return typeof input === 'boolean' ? [input] : [];
+  case 'null':
+    return input === null ? [input] : [];
+  case 'number':
+    return typeof input === 'number' ? [input] : [];
+  case 'object':
+    return input !== null && typeof input === 'object' && !Array.isArray(input) ? [input] : [];
+  case 'scalar':
+    return input === null || typeof input === 'boolean' || typeof input === 'number' || typeof input === 'string'
+      ? [input]
+      : [];
+  case 'string':
+    return typeof input === 'string' ? [input] : [];
+  default: {
+    const _ex: never = expected;
+    throw new Error(`Unhandled jq type filter: ${_ex}`);
+  }
+  }
+}
+
+function findIndices({
+  input,
+  search,
+}: {
+  input: JsonValue;
+  search: JsonValue;
+}): number[] | undefined {
+  if (typeof input === 'string' && typeof search === 'string') {
+    if (search.length === 0) {
+      return Array.from({ length: input.length + 1 }, (_value, index) => index);
+    }
+    const indices: number[] = [];
+    let start = 0;
+    while (start <= input.length - search.length) {
+      const index = input.indexOf(search, start);
+      if (index === -1) break;
+      indices.push(index);
+      start = index + 1;
+    }
+    return indices;
+  }
+
+  if (Array.isArray(input)) {
+    const indices: number[] = [];
+    for (let index = 0; index < input.length; index++) {
+      if (compareJsonValues({ left: input[index]!, right: search }) === 0) {
+        indices.push(index);
+      }
+    }
+    return indices;
+  }
+
+  return undefined;
+}
+
+function collectPaths({
+  value,
+  current,
+}: {
+  value: JsonValue;
+  current: (string | number)[];
+}): JsonValue[] {
+  const paths: JsonValue[] = [];
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++) {
+      const nextPath = [...current, index];
+      paths.push(nextPath);
+      paths.push(...collectPaths({ value: value[index]!, current: nextPath }));
+    }
+    return paths;
+  }
+  if (value !== null && typeof value === 'object') {
+    for (const [key, nested] of Object.entries(value)) {
+      const nextPath = [...current, key];
+      paths.push(nextPath);
+      paths.push(...collectPaths({ value: nested, current: nextPath }));
+    }
+  }
+  return paths;
+}
+
+function assignPickedValue({
+  container,
+  path,
+  value,
+}: {
+  container: JsonValue;
+  path: (string | number)[];
+  value: JsonValue;
+}): void {
+  const [head, ...tail] = path;
+  if (head === undefined) {
+    return;
+  }
+
+  const isLeaf = tail.length === 0;
+  if (typeof head === 'string') {
+    if (container === null || Array.isArray(container) || typeof container !== 'object') {
+      return;
+    }
+    if (isLeaf) {
+      container[head] = value;
+      return;
+    }
+    const next = container[head];
+    if (next === undefined) {
+      container[head] = typeof tail[0] === 'number' ? [] : {};
+    }
+    assignPickedValue({
+      container: container[head]!,
+      path: tail,
+      value,
+    });
+    return;
+  }
+
+  if (!Array.isArray(container)) {
+    return;
+  }
+  while (container.length <= head) {
+    container.push(null);
+  }
+  if (isLeaf) {
+    container[head] = value;
+    return;
+  }
+  const next = container[head];
+  if (next === null || next === undefined || typeof next !== 'object') {
+    container[head] = typeof tail[0] === 'number' ? [] : {};
+  }
+  assignPickedValue({
+    container: container[head]!,
+    path: tail,
+    value,
+  });
+}
+
+function readPathValue({
+  input,
+  path,
+}: {
+  input: JsonValue;
+  path: (string | number)[];
+}): JsonValue | undefined {
+  let current: JsonValue | undefined = input;
+  for (const segment of path) {
+    if (typeof segment === 'string') {
+      if (current === null || Array.isArray(current) || typeof current !== 'object' || !Object.hasOwn(current, segment)) {
+        return undefined;
+      }
+      current = current[segment];
+      continue;
+    }
+
+    if (!Array.isArray(current) || segment < 0 || segment >= current.length) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
 export function evaluateBuiltin({
   name,
   args,
@@ -154,6 +400,11 @@ export function evaluateBuiltin({
       }
       return { ok: true, outputs: [accumulator] };
     }
+  case 'arrays':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'arrays does not take arguments' } };
+    }
+    return { ok: true, outputs: typeFilter({ input, expected: 'array' }) };
   case 'all':
   case 'any': {
     if (!Array.isArray(input)) {
@@ -200,6 +451,11 @@ export function evaluateBuiltin({
     }
     }
   }
+  case 'booleans':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'booleans does not take arguments' } };
+    }
+    return { ok: true, outputs: typeFilter({ input, expected: 'boolean' }) };
   case 'contains': {
     const expected = args[0];
     if (expected === undefined) {
@@ -299,6 +555,32 @@ export function evaluateBuiltin({
     }
     return { ok: true, outputs: [groups.map((group) => group.items)] };
   }
+  case 'index':
+  case 'indices': {
+    const searchFilter = args[0];
+    if (searchFilter === undefined) {
+      return { ok: false, error: { message: `${name} requires one argument` } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: `${name} takes exactly one argument` } };
+    }
+    const searched = evaluateSingleOutput({
+      filter: searchFilter,
+      input,
+      evaluate,
+    });
+    if (!searched.ok) return searched;
+    const indices = findIndices({
+      input,
+      search: searched.value,
+    });
+    if (indices === undefined) {
+      return { ok: false, error: { message: `${name} input must be an array or string` } };
+    }
+    return name === 'indices'
+      ? { ok: true, outputs: [indices] }
+      : { ok: true, outputs: [indices[0] ?? null] };
+  }
   case 'select': {
     const condition = args[0];
     if (condition === undefined) {
@@ -352,6 +634,82 @@ export function evaluateBuiltin({
       result[key] = mapped.value;
     }
     return { ok: true, outputs: [result] };
+  }
+  case 'nulls':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'nulls does not take arguments' } };
+    }
+    return { ok: true, outputs: typeFilter({ input, expected: 'null' }) };
+  case 'numbers':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'numbers does not take arguments' } };
+    }
+    return { ok: true, outputs: typeFilter({ input, expected: 'number' }) };
+  case 'objects':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'objects does not take arguments' } };
+    }
+    return { ok: true, outputs: typeFilter({ input, expected: 'object' }) };
+  case 'paths':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'paths does not take arguments' } };
+    }
+    return { ok: true, outputs: collectPaths({ value: input, current: [] }) };
+  case 'pick': {
+    if (args.length === 0) {
+      return { ok: false, error: { message: 'pick requires at least one path' } };
+    }
+    const root: JsonValue = Array.isArray(input) ? [] : {};
+    for (const arg of args) {
+      const jqPath = extractJqPath({ filter: arg });
+      if (jqPath === undefined) {
+        return { ok: false, error: { message: 'pick arguments must be paths' } };
+      }
+      const materializedPath = jqPath.segments.map((segment) => {
+        switch (segment.kind) {
+        case 'field':
+          return segment.key;
+        case 'index':
+          return segment.index;
+        default: {
+          const _ex: never = segment;
+          throw new Error(`Unhandled jq path segment: ${JSON.stringify(_ex)}`);
+        }
+        }
+      });
+      const value = readPathValue({
+        input,
+        path: materializedPath,
+      });
+      if (value === undefined) {
+        continue;
+      }
+      assignPickedValue({
+        container: root,
+        path: materializedPath,
+        value,
+      });
+    }
+    return { ok: true, outputs: [root] };
+  }
+  case 'recurse': {
+    if (args.length > 1) {
+      return { ok: false, error: { message: 'recurse takes at most one argument' } };
+    }
+    const nextFilter = args[0];
+    const recursed = recurseValues({
+      input,
+      evaluateNext: ({ input: nestedInput }) => {
+        if (nextFilter === undefined) {
+          return { ok: true, values: recurseChildren({ input: nestedInput }) };
+        }
+        const next = evaluate({ filter: nextFilter, input: nestedInput });
+        if (!next.ok) return next;
+        return { ok: true, values: next.outputs };
+      },
+    });
+    if (!recursed.ok) return recursed;
+    return { ok: true, outputs: recursed.values };
   }
   case 'length':
     if (args.length !== 0) {
@@ -461,6 +819,34 @@ export function evaluateBuiltin({
       return { ok: true, outputs: [[...input].reverse().join('')] };
     }
     return { ok: false, error: { message: 'reverse input must be an array or string' } };
+  case 'rindex': {
+    const searchFilter = args[0];
+    if (searchFilter === undefined) {
+      return { ok: false, error: { message: 'rindex requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'rindex takes exactly one argument' } };
+    }
+    const searched = evaluateSingleOutput({
+      filter: searchFilter,
+      input,
+      evaluate,
+    });
+    if (!searched.ok) return searched;
+    const indices = findIndices({
+      input,
+      search: searched.value,
+    });
+    if (indices === undefined) {
+      return { ok: false, error: { message: 'rindex input must be an array or string' } };
+    }
+    return { ok: true, outputs: [indices.at(-1) ?? null] };
+  }
+  case 'scalars':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'scalars does not take arguments' } };
+    }
+    return { ok: true, outputs: typeFilter({ input, expected: 'scalar' }) };
   case 'sort':
     if (args.length !== 0) {
       return { ok: false, error: { message: 'sort does not take arguments' } };
@@ -542,6 +928,11 @@ export function evaluateBuiltin({
     }
     return { ok: true, outputs: [input.startsWith(value)] };
   }
+  case 'strings':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'strings does not take arguments' } };
+    }
+    return { ok: true, outputs: typeFilter({ input, expected: 'string' }) };
   case 'unique':
     if (args.length !== 0) {
       return { ok: false, error: { message: 'unique does not take arguments' } };
@@ -610,6 +1001,25 @@ export function evaluateBuiltin({
       throw new Error(`Unhandled jq value: ${JSON.stringify(_ex)}`);
     }
     }
+  case 'walk': {
+    const mapper = args[0];
+    if (mapper === undefined) {
+      return { ok: false, error: { message: 'walk requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'walk takes exactly one argument' } };
+    }
+    const walked = walkValue({
+      value: input,
+      mapper: ({ input: nestedInput }) => evaluateSingleOutput({
+        filter: mapper,
+        input: nestedInput,
+        evaluate,
+      }),
+    });
+    if (!walked.ok) return walked;
+    return { ok: true, outputs: [walked.value] };
+  }
   case 'has': {
     const arg = args[0];
     if (arg === undefined) {
