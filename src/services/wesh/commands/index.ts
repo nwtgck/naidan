@@ -54,6 +54,7 @@ import { readlinkCommandDefinition } from './readlink/index.ts';
 import { leftBracketCommandDefinition, testCommandDefinition } from './test/index.ts';
 import { awkCommandDefinition } from './awk/index.ts';
 import { jqCommandDefinition } from './jq/index.ts';
+import { fileCommandDefinition } from './file/index.ts';
 import { trapCommandDefinition } from './trap/index.ts';
 import { xargsCommandDefinition } from './xargs/index.ts';
 import { xmlCommandDefinition } from './xml/index.ts';
@@ -119,6 +120,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   unzipCommandDefinition,
   xargsCommandDefinition,
   jqCommandDefinition,
+  fileCommandDefinition,
   trapCommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
