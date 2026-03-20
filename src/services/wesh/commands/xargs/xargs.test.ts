@@ -77,6 +77,67 @@ describe('wesh xargs', () => {
     expect(invalid.result.exitCode).toBe(2);
   });
 
+  it('supports --show-limits', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'xargs --show-limits',
+      stdinText: '',
+    });
+
+    expect(stdout.text).toContain('POSIX upper limit on argument length');
+    expect(stdout.text).toContain('Maximum parallelism');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports --version', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'xargs --version',
+      stdinText: '',
+    });
+
+    expect(stdout.text).toContain('xargs (wesh)');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('accepts -P 1 and rejects unsupported parallelism', async () => {
+    const sequential = await execute({
+      script: 'xargs -P 1 echo prefix',
+      stdinText: 'alpha beta\n',
+    });
+    const parallel = await execute({
+      script: 'xargs -P 2 echo prefix',
+      stdinText: 'alpha beta\n',
+    });
+
+    expect(sequential.stdout.text).toBe('prefix alpha beta\n');
+    expect(sequential.stderr.text).toBe('');
+    expect(sequential.result.exitCode).toBe(0);
+
+    expect(parallel.stdout.text).toBe('');
+    expect(parallel.stderr.text).toContain('parallel execution with --max-procs/-P is not supported in wesh yet');
+    expect(parallel.result.exitCode).toBe(1);
+  });
+
+  it('rejects unsupported tty-dependent options', async () => {
+    const interactive = await execute({
+      script: 'xargs -p echo',
+      stdinText: 'alpha\n',
+    });
+    const openTty = await execute({
+      script: 'xargs -o echo',
+      stdinText: 'alpha\n',
+    });
+
+    expect(interactive.stdout.text).toBe('');
+    expect(interactive.stderr.text).toContain('interactive prompting with --interactive/-p is not supported in wesh yet');
+    expect(interactive.result.exitCode).toBe(1);
+
+    expect(openTty.stdout.text).toBe('');
+    expect(openTty.stderr.text).toContain('reopening stdin as /dev/tty with --open-tty/-o is not supported in wesh yet');
+    expect(openTty.result.exitCode).toBe(1);
+  });
+
   it('splits standard input using xargs-style quoting and escaping', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'xargs echo',

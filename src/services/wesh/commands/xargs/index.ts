@@ -12,6 +12,7 @@ import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, Wesh
 import { readFile } from '@/services/wesh/utils/fs';
 
 const DEFAULT_MAX_CHARS = 131072;
+const XARGS_VERSION = 'xargs (wesh) 0.25.1-dev';
 
 function parseDeprecatedIOption({
   token,
@@ -142,6 +143,18 @@ const xargsArgvSpec: StandardArgvParserSpec = {
     },
     {
       kind: 'value',
+      short: 'P',
+      long: 'max-procs',
+      key: 'maxProcs',
+      valueName: 'MAX',
+      allowAttachedValue: true,
+      parseValue: ({ value }) => /^\d+$/.test(value)
+        ? { ok: true, value: Number(value) }
+        : { ok: false, message: `invalid max-procs value '${value}'` },
+      help: { summary: 'run up to MAX processes at a time', valueName: 'MAX', category: 'advanced' },
+    },
+    {
+      kind: 'value',
       short: 'L',
       long: 'max-lines',
       key: 'maxLines',
@@ -199,6 +212,20 @@ const xargsArgvSpec: StandardArgvParserSpec = {
     },
     {
       kind: 'flag',
+      short: 'o',
+      long: 'open-tty',
+      effects: [{ key: 'openTty', value: true }],
+      help: { summary: 'reopen stdin as /dev/tty in the child before executing the command', category: 'advanced' },
+    },
+    {
+      kind: 'flag',
+      short: 'p',
+      long: 'interactive',
+      effects: [{ key: 'interactive', value: true }, { key: 'trace', value: true }],
+      help: { summary: 'prompt before running each command line; implies --verbose', category: 'advanced' },
+    },
+    {
+      kind: 'flag',
       short: 'r',
       long: 'no-run-if-empty',
       effects: [{ key: 'noRunIfEmpty', value: true }],
@@ -217,6 +244,20 @@ const xargsArgvSpec: StandardArgvParserSpec = {
       long: 'exit',
       effects: [{ key: 'exitIfTooLong', value: true }],
       help: { summary: 'exit if the size is exceeded', category: 'common' },
+    },
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'version',
+      effects: [{ key: 'version', value: true }],
+      help: { summary: 'output version information and exit', category: 'advanced' },
+    },
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'show-limits',
+      effects: [{ key: 'showLimits', value: true }],
+      help: { summary: 'display command-line length limits and exit', category: 'advanced' },
     },
     {
       kind: 'flag',
@@ -575,6 +616,41 @@ export const xargsCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
+    if (parsed.optionValues.version === true) {
+      await context.text().print({
+        text: `${XARGS_VERSION}\n`,
+      });
+      return { exitCode: 0 };
+    }
+
+    if (parsed.optionValues.showLimits === true) {
+      await context.text().print({
+        text: `\
+Your environment variables take up 0 bytes
+POSIX upper limit on argument length (this system): ${DEFAULT_MAX_CHARS}
+POSIX smallest allowable upper limit on argument length (all systems): 4096
+Maximum length of command we could actually use: ${DEFAULT_MAX_CHARS}
+Size of command buffer we are actually using: ${DEFAULT_MAX_CHARS}
+Maximum parallelism (--max-procs must be no greater): 1
+`,
+      });
+      return { exitCode: 0 };
+    }
+
+    if (parsed.optionValues.interactive === true) {
+      await context.text().error({
+        text: 'xargs: interactive prompting with --interactive/-p is not supported in wesh yet\n',
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.openTty === true) {
+      await context.text().error({
+        text: 'xargs: reopening stdin as /dev/tty with --open-tty/-o is not supported in wesh yet\n',
+      });
+      return { exitCode: 1 };
+    }
+
     const argFileOccurrence = getLastValueOccurrence({
       occurrences: parsed.occurrences,
       key: 'argFile',
@@ -613,6 +689,11 @@ export const xargsCommandDefinition: WeshCommandDefinition = {
       key: 'maxChars',
     });
     const maxChars = typeof maxCharsOccurrence?.value === 'number' ? maxCharsOccurrence.value : DEFAULT_MAX_CHARS;
+    const maxProcsOccurrence = getLastValueOccurrence({
+      occurrences: parsed.occurrences,
+      key: 'maxProcs',
+    });
+    const maxProcs = typeof maxProcsOccurrence?.value === 'number' ? maxProcsOccurrence.value : 1;
     const delimiterOccurrence = getLastValueOccurrence({
       occurrences: parsed.occurrences,
       key: 'delimiter',
@@ -630,6 +711,13 @@ export const xargsCommandDefinition: WeshCommandDefinition = {
         command: 'xargs',
         message: "xargs: options '--null' and '--delimiter' are mutually exclusive",
         argvSpec: xargsArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (maxProcs > 1 || maxProcs === 0) {
+      await context.text().error({
+        text: 'xargs: parallel execution with --max-procs/-P is not supported in wesh yet\n',
       });
       return { exitCode: 1 };
     }
