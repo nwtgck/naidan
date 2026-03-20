@@ -846,6 +846,354 @@ usage: alias [name[=value] ...]
     return parts;
   }
 
+  private findBraceExpansion({
+    raw,
+  }: {
+    raw: string;
+  }): { start: number; end: number; parts: string[] } | undefined {
+    let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
+
+    for (let index = 0; index < raw.length; index += 1) {
+      const char = raw[index];
+      if (char === undefined) {
+        continue;
+      }
+
+      switch (mode) {
+      case 'single':
+        if (char === "'") {
+          mode = 'unquoted';
+        }
+        continue;
+      case 'double':
+        if (char === '"') {
+          mode = 'unquoted';
+          continue;
+        }
+        if (char === '\\') {
+          index += 1;
+        }
+        continue;
+      case 'unquoted':
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled mode: ${_ex}`);
+      }
+      }
+
+      if (char === '\\') {
+        index += 1;
+        continue;
+      }
+
+      if (char === "'") {
+        mode = 'single';
+        continue;
+      }
+
+      if (char === '"') {
+        mode = 'double';
+        continue;
+      }
+
+      if (char !== '{') {
+        continue;
+      }
+
+      const expansion = this.findBraceExpansionEnding({
+        raw,
+        startIndex: index,
+      });
+      if (expansion !== undefined) {
+        return expansion;
+      }
+    }
+
+    return undefined;
+  }
+
+  private findBraceExpansionEnding({
+    raw,
+    startIndex,
+  }: {
+    raw: string;
+    startIndex: number;
+  }): { start: number; end: number; parts: string[] } | undefined {
+    let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
+    let depth = 0;
+    let currentPart = '';
+    const parts: string[] = [];
+    let sawComma = false;
+
+    for (let index = startIndex; index < raw.length; index += 1) {
+      const char = raw[index];
+      if (char === undefined) {
+        continue;
+      }
+
+      if (index === startIndex) {
+        depth = 1;
+        continue;
+      }
+
+      switch (mode) {
+      case 'single':
+        if (char === "'") {
+          mode = 'unquoted';
+        }
+        currentPart += char;
+        continue;
+      case 'double':
+        if (char === '"') {
+          mode = 'unquoted';
+          currentPart += char;
+          continue;
+        }
+        if (char === '\\') {
+          const nextChar = raw[index + 1];
+          currentPart += char;
+          if (nextChar !== undefined) {
+            currentPart += nextChar;
+            index += 1;
+          }
+          continue;
+        }
+        currentPart += char;
+        continue;
+      case 'unquoted':
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled mode: ${_ex}`);
+      }
+      }
+
+      if (char === '\\') {
+        const nextChar = raw[index + 1];
+        currentPart += char;
+        if (nextChar !== undefined) {
+          currentPart += nextChar;
+          index += 1;
+        }
+        continue;
+      }
+
+      if (char === "'") {
+        mode = 'single';
+        currentPart += char;
+        continue;
+      }
+
+      if (char === '"') {
+        mode = 'double';
+        currentPart += char;
+        continue;
+      }
+
+      if (char === '{') {
+        depth += 1;
+        currentPart += char;
+        continue;
+      }
+
+      if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          if (!sawComma) {
+            const rangeParts = this.expandBraceRange({
+              content: currentPart,
+            });
+            if (rangeParts === undefined) {
+              return undefined;
+            }
+            return {
+              start: startIndex,
+              end: index,
+              parts: rangeParts,
+            };
+          }
+          parts.push(currentPart);
+          return {
+            start: startIndex,
+            end: index,
+            parts,
+          };
+        }
+        currentPart += char;
+        continue;
+      }
+
+      if (char === ',' && depth === 1) {
+        sawComma = true;
+        parts.push(currentPart);
+        currentPart = '';
+        continue;
+      }
+
+      currentPart += char;
+    }
+
+    return undefined;
+  }
+
+  private expandBraceRange({
+    content,
+  }: {
+    content: string;
+  }): string[] | undefined {
+    const parts = content.split('..');
+    if (parts.length !== 2 && parts.length !== 3) {
+      return undefined;
+    }
+
+    const [startRaw, endRaw, stepRaw] = parts;
+
+    if (startRaw === undefined || endRaw === undefined) {
+      return undefined;
+    }
+
+    const numericRange = this.expandNumericBraceRange({
+      startRaw,
+      endRaw,
+      stepRaw,
+    });
+    if (numericRange !== undefined) {
+      return numericRange;
+    }
+
+    return this.expandCharacterBraceRange({
+      startRaw,
+      endRaw,
+      stepRaw,
+    });
+  }
+
+  private expandNumericBraceRange({
+    startRaw,
+    endRaw,
+    stepRaw,
+  }: {
+    startRaw: string;
+    endRaw: string;
+    stepRaw: string | undefined;
+  }): string[] | undefined {
+    if (!/^-?\d+$/u.test(startRaw) || !/^-?\d+$/u.test(endRaw)) {
+      return undefined;
+    }
+
+    const start = Number.parseInt(startRaw, 10);
+    const end = Number.parseInt(endRaw, 10);
+    const stepMagnitude = stepRaw === undefined
+      ? 1
+      : Math.abs(Number.parseInt(stepRaw, 10));
+
+    if (!Number.isInteger(stepMagnitude) || stepMagnitude === 0) {
+      return undefined;
+    }
+
+    const step = start <= end ? stepMagnitude : -stepMagnitude;
+
+    const width = Math.max(startRaw.replace(/^-/, '').length, endRaw.replace(/^-/, '').length);
+    const pad = /^-?0\d/u.test(startRaw) || /^-?0\d/u.test(endRaw);
+    const values: string[] = [];
+
+    if (step > 0) {
+      for (let value = start; value <= end; value += step) {
+        values.push(this.formatBraceNumericValue({ value, width, pad }));
+      }
+      return values;
+    }
+
+    for (let value = start; value >= end; value += step) {
+      values.push(this.formatBraceNumericValue({ value, width, pad }));
+    }
+    return values;
+  }
+
+  private formatBraceNumericValue({
+    value,
+    width,
+    pad,
+  }: {
+    value: number;
+    width: number;
+    pad: boolean;
+  }): string {
+    if (!pad) {
+      return value.toString();
+    }
+
+    const sign = value < 0 ? '-' : '';
+    const digits = Math.abs(value).toString().padStart(width, '0');
+    return `${sign}${digits}`;
+  }
+
+  private expandCharacterBraceRange({
+    startRaw,
+    endRaw,
+    stepRaw,
+  }: {
+    startRaw: string;
+    endRaw: string;
+    stepRaw: string | undefined;
+  }): string[] | undefined {
+    if (startRaw.length !== 1 || endRaw.length !== 1) {
+      return undefined;
+    }
+
+    const start = startRaw.codePointAt(0);
+    const end = endRaw.codePointAt(0);
+    if (start === undefined || end === undefined) {
+      return undefined;
+    }
+
+    const stepMagnitude = stepRaw === undefined
+      ? 1
+      : Math.abs(Number.parseInt(stepRaw, 10));
+
+    if (!Number.isInteger(stepMagnitude) || stepMagnitude === 0) {
+      return undefined;
+    }
+
+    const step = start <= end ? stepMagnitude : -stepMagnitude;
+
+    const values: string[] = [];
+    if (step > 0) {
+      for (let value = start; value <= end; value += step) {
+        values.push(String.fromCodePoint(value));
+      }
+      return values;
+    }
+
+    for (let value = start; value >= end; value += step) {
+      values.push(String.fromCodePoint(value));
+    }
+    return values;
+  }
+
+  private expandBraceExpressions({
+    raw,
+  }: {
+    raw: string;
+  }): string[] {
+    const expansion = this.findBraceExpansion({ raw });
+    if (expansion === undefined) {
+      return [raw];
+    }
+
+    const prefix = raw.slice(0, expansion.start);
+    const suffix = raw.slice(expansion.end + 1);
+    const expanded: string[] = [];
+
+    for (const part of expansion.parts) {
+      const combined = `${prefix}${part}${suffix}`;
+      expanded.push(...this.expandBraceExpressions({ raw: combined }));
+    }
+
+    return expanded;
+  }
+
   private expandPartVariables({
     text,
     env,
@@ -1629,35 +1977,37 @@ usage: alias [name[=value] ...]
     mode: WeshExpansionMode;
     shellOptions: Map<WeshShellOption, boolean>;
   }): Promise<string[]> {
-    const parsedParts = this.parseWordParts({ raw });
-    const homeDirectory = env.get('HOME') ?? '/home';
-    const tildeExpandedParts = parsedParts.map((part, index) => {
-      if (
-        index === 0 &&
-        !part.quoted &&
-        part.text.startsWith('~') &&
-        (part.text.length === 1 || part.text[1] === '/')
-      ) {
-        const suffix = part.text.slice(1);
-        return {
-          ...part,
-          text: homeDirectory === '/' ? `/${suffix.replace(/^\/+/, '')}` : `${homeDirectory}${suffix}`,
-        };
-      }
-
-      return part;
-    });
-    const expandedParts = tildeExpandedParts.map((part) => ({
-      text: part.expandVariables ? this.expandPartVariables({ text: part.text, env }) : part.text,
-      quoted: part.quoted,
-    }));
-
-    const fields = this.splitExpandedFields({ parts: expandedParts, mode });
     const expandedFields: string[] = [];
 
-    for (const field of fields) {
-      const globbed = await this.globField({ field, cwd, shellOptions });
-      expandedFields.push(...globbed);
+    for (const braceExpandedRaw of this.expandBraceExpressions({ raw })) {
+      const parsedParts = this.parseWordParts({ raw: braceExpandedRaw });
+      const homeDirectory = env.get('HOME') ?? '/home';
+      const tildeExpandedParts = parsedParts.map((part, index) => {
+        if (
+          index === 0 &&
+          !part.quoted &&
+          part.text.startsWith('~') &&
+          (part.text.length === 1 || part.text[1] === '/')
+        ) {
+          const suffix = part.text.slice(1);
+          return {
+            ...part,
+            text: homeDirectory === '/' ? `/${suffix.replace(/^\/+/, '')}` : `${homeDirectory}${suffix}`,
+          };
+        }
+
+        return part;
+      });
+      const expandedParts = tildeExpandedParts.map((part) => ({
+        text: part.expandVariables ? this.expandPartVariables({ text: part.text, env }) : part.text,
+        quoted: part.quoted,
+      }));
+
+      const fields = this.splitExpandedFields({ parts: expandedParts, mode });
+      for (const field of fields) {
+        const globbed = await this.globField({ field, cwd, shellOptions });
+        expandedFields.push(...globbed);
+      }
     }
 
     return expandedFields;

@@ -103,6 +103,65 @@ describe('wesh shell expansion', () => {
     expect(quoted.result.exitCode).toBe(0);
   });
 
+  it('supports brace expansion while leaving quoted and escaped braces untouched', async () => {
+    await writeFile({ path: 'alpha.txt', data: 'a' });
+    await writeFile({ path: 'beta.txt', data: 'b' });
+
+    const expanded = await execute({
+      script: 'for file in {alpha,beta}.txt; do echo "$file"; done',
+    });
+    expect(expanded.stdout.text).toBe(`\
+alpha.txt
+beta.txt
+`);
+    expect(expanded.stderr.text).toBe('');
+    expect(expanded.result.exitCode).toBe(0);
+
+    const nested = await execute({
+      script: 'echo pre{a,b{1,2}}post',
+    });
+    expect(nested.stdout.text).toBe('preapost preb1post preb2post\n');
+    expect(nested.stderr.text).toBe('');
+    expect(nested.result.exitCode).toBe(0);
+
+    const quoted = await execute({
+      script: "echo '{alpha,beta}.txt'",
+    });
+    expect(quoted.stdout.text).toBe('{alpha,beta}.txt\n');
+    expect(quoted.stderr.text).toBe('');
+    expect(quoted.result.exitCode).toBe(0);
+
+    const escaped = await execute({
+      script: 'echo \\{alpha,beta\\}.txt',
+    });
+    expect(escaped.stdout.text).toBe('{alpha,beta}.txt\n');
+    expect(escaped.stderr.text).toBe('');
+    expect(escaped.result.exitCode).toBe(0);
+  });
+
+  it('supports numeric and character brace ranges', async () => {
+    const numeric = await execute({
+      script: 'echo file{1..3}.txt',
+    });
+    expect(numeric.stdout.text).toBe('file1.txt file2.txt file3.txt\n');
+    expect(numeric.stderr.text).toBe('');
+    expect(numeric.result.exitCode).toBe(0);
+
+    const padded = await execute({
+      script: 'echo item{08..10}.txt',
+    });
+    expect(padded.stdout.text).toBe('item08.txt item09.txt item10.txt\n');
+    expect(padded.stderr.text).toBe('');
+    expect(padded.result.exitCode).toBe(0);
+
+    const descending = await execute({
+      script: 'echo {c..a} {5..1..2}',
+    });
+    expect(descending.stdout.text).toBe('c b a 5 3 1\n');
+    expect(descending.stderr.text).toBe('');
+    expect(descending.result.exitCode).toBe(0);
+  });
+
   it('supports question-mark and character-class globs', async () => {
     await writeFile({ path: 'file1.txt', data: 'a' });
     await writeFile({ path: 'file2.txt', data: 'b' });
