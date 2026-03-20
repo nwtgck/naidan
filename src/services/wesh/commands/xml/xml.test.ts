@@ -90,6 +90,26 @@ describe('wesh xml', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports multiple template actions in order', async () => {
+    await writeFile({
+      path: 'books.xml',
+      data: `\
+<catalog>
+  <book id="b1"><title>Alpha</title></book>
+</catalog>`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: `xml sel -t -v 'string(//book/@id)' -n -c '//book/title' -n books.xml`,
+      stdinText: '',
+    });
+
+    expect(stdout.text).toContain('b1\n');
+    expect(stdout.text).toContain('<title>Alpha</title>\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports xml sel -t -c against stdin', async () => {
     const { result, stdout, stderr } = await execute({
       script: `xml sel -t -c '//book[@id="b1"]' -n -`,

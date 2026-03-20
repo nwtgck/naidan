@@ -145,12 +145,14 @@ options:
           output += evaluateXPathString({
             document: parsed.document,
             expression: action.expression,
+            namespaces: new Map(),
           });
           break;
         case 'copy':
           output += evaluateXPathNodes({
             document: parsed.document,
             expression: action.expression,
+            namespaces: new Map(),
           }).map((node) => serializeXmlNode({ node })).join('');
           break;
         case 'newline':
