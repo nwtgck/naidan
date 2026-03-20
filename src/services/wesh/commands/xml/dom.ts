@@ -317,7 +317,8 @@ function evaluateSimpleXPathNodes({
           continue;
         }
 
-        if (step.axis === 'descendant') {
+        switch (step.axis) {
+        case 'descendant': {
           const root = isDocumentNode(currentNode) ? currentNode.documentElement : currentNode;
           if (root === null) {
             continue;
@@ -330,14 +331,21 @@ function evaluateSimpleXPathNodes({
           }
           continue;
         }
-
-        const children = isDocumentNode(currentNode)
-          ? (currentNode.documentElement === null ? [] : [currentNode.documentElement])
-          : Array.from(currentNode.children);
-        for (const child of children) {
-          if (elementMatchesStep({ element: child, step, namespaces })) {
-            nextNodes.push(child);
+        case 'child': {
+          const children = isDocumentNode(currentNode)
+            ? (currentNode.documentElement === null ? [] : [currentNode.documentElement])
+            : Array.from(currentNode.children);
+          for (const child of children) {
+            if (elementMatchesStep({ element: child, step, namespaces })) {
+              nextNodes.push(child);
+            }
           }
+          break;
+        }
+        default: {
+          const _exhaustive: never = step.axis;
+          throw new Error(`Unhandled XML axis: ${_exhaustive}`);
+        }
         }
       }
       currentNodes = nextNodes;
