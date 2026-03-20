@@ -38,6 +38,18 @@ describe('wesh mv', () => {
     await writable.close();
   }
 
+  async function mkdir({
+    path,
+  }: {
+    path: string;
+  }) {
+    const segments = path.split('/').filter(Boolean);
+    let dir = rootHandle;
+    for (const segment of segments) {
+      dir = await dir.getDirectoryHandle(segment, { create: true });
+    }
+  }
+
   async function execute({
     script,
   }: {
@@ -77,6 +89,53 @@ describe('wesh mv', () => {
     expect(original.result.exitCode).toBe(1);
   });
 
+  it('supports moving multiple sources into a target directory with -t', async () => {
+    await writeFile({ path: 'first.txt', data: 'first\n' });
+    await writeFile({ path: 'second.txt', data: 'second\n' });
+    await mkdir({ path: 'dest' });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mv -t dest first.txt second.txt
+cat dest/first.txt
+cat dest/second.txt`,
+    });
+
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('first\nsecond\n');
+  });
+
+  it('supports -T to forbid treating the destination as a directory', async () => {
+    await writeFile({ path: 'source.txt', data: 'alpha\n' });
+    await mkdir({ path: 'dest' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'mv -T source.txt dest',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("cannot overwrite directory 'dest' with non-directory");
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('supports -n to avoid overwriting an existing destination', async () => {
+    await writeFile({ path: 'source.txt', data: 'source\n' });
+    await writeFile({ path: 'dest.txt', data: 'dest\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mv -n source.txt dest.txt
+cat dest.txt
+test -e source.txt
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('dest\n0\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('reports missing operands with usage', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'mv source.txt',
@@ -87,6 +146,20 @@ describe('wesh mv', () => {
     expect(stderr.text).toContain('usage: mv source destination');
     expect(stderr.text).toContain('try:');
     expect(stderr.text).toContain('--help');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('reports non-directory targets for multiple sources', async () => {
+    await writeFile({ path: 'first.txt', data: 'first\n' });
+    await writeFile({ path: 'second.txt', data: 'second\n' });
+    await writeFile({ path: 'dest.txt', data: 'dest\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'mv first.txt second.txt dest.txt',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("target 'dest.txt' is not a directory");
     expect(result.exitCode).toBe(1);
   });
 

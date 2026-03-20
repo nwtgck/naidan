@@ -284,4 +284,33 @@ describe('wesh find', () => {
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('supports -newer using the reference file mtime', async () => {
+    await writeFile({ path: 'src/reference.txt', data: 'old\n' });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 5);
+    });
+    await writeFile({ path: 'src/fresh.txt', data: 'new\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -type f -newer src/reference.txt',
+    });
+
+    expect(stdout.text).toBe('src/fresh.txt\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -print0 for null-delimited output', async () => {
+    await writeFile({ path: 'src/app.ts', data: 'console.log(1);\n' });
+    await writeFile({ path: 'src/main.ts', data: 'console.log(2);\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -name "*.ts" -print0',
+    });
+
+    expect(Array.from(stdout.buffer)).toEqual(Array.from(new TextEncoder().encode('src/app.ts\0src/main.ts\0')));
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });

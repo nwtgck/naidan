@@ -6,7 +6,10 @@ import { handleToStream, streamToHandle } from '@/services/wesh/utils/fs';
 type CpSymlinkMode = 'physical' | 'logical' | 'command-line';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
-  return path.startsWith('/') ? path : `${cwd}/${path}`;
+  if (path.startsWith('/')) {
+    return path;
+  }
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
 function basename({ path }: { path: string }): string {

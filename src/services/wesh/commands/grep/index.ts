@@ -288,7 +288,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       case 'always':
         return true;
       case 'auto':
-        return files.length > 1;
+        return recursive || files.length > 1;
       default: {
         const _ex: never = filenameMode;
         throw new Error(`Unhandled filename mode: ${_ex}`);

@@ -282,4 +282,44 @@ readlink archived.link`,
     expect(copied.result.exitCode).toBe(0);
     expect((await wesh.vfs.lstat({ path: '/archived.link' })).type).toBe('symlink');
   });
+
+  it('reports directories without -R', async () => {
+    await writeFile({ path: 'tree/file.txt', data: 'payload' });
+
+    const copied = await execute({
+      script: 'cp tree copied',
+    });
+
+    expect(copied.stdout.text).toBe('');
+    expect(copied.stderr.text).toContain("-r not specified; omitting directory '/tree'");
+    expect(copied.result.exitCode).toBe(1);
+  });
+
+  it('reports non-directory targets for multiple sources', async () => {
+    await writeFile({ path: 'first.txt', data: 'first' });
+    await writeFile({ path: 'second.txt', data: 'second' });
+    await writeFile({ path: 'dest.txt', data: 'dest' });
+
+    const copied = await execute({
+      script: 'cp first.txt second.txt dest.txt',
+    });
+
+    expect(copied.stdout.text).toBe('');
+    expect(copied.stderr.text).toContain("target 'dest.txt' is not a directory");
+    expect(copied.result.exitCode).toBe(1);
+  });
+
+  it('reports extra operands with -T', async () => {
+    await writeFile({ path: 'first.txt', data: 'first' });
+    await writeFile({ path: 'second.txt', data: 'second' });
+
+    const copied = await execute({
+      script: 'cp -T first.txt second.txt dest.txt',
+    });
+
+    expect(copied.stdout.text).toBe('');
+    expect(copied.stderr.text).toContain('cp: extra operand with -T');
+    expect(copied.stderr.text).toContain('usage: cp');
+    expect(copied.result.exitCode).toBe(1);
+  });
 });

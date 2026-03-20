@@ -151,13 +151,37 @@ describe('wesh sed', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports q to quit after the addressed line', async () => {
+    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\ngamma\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: "sed '2q' input.txt",
+    });
+
+    expect(stdout.text).toBe('alpha\nbeta\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports y for character translation', async () => {
+    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: "sed 'y/ab/AB/' input.txt",
+    });
+
+    expect(stdout.text).toBe('AlphA\nBetA\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('reports unsupported commands with usage', async () => {
     const { result, stdout, stderr } = await execute({
-      script: "sed 'q' input.txt",
+      script: "sed 'a\\hello' input.txt",
     });
 
     expect(stdout.text).toBe('');
-    expect(stderr.text).toContain("sed: unsupported sed command 'q'");
+    expect(stderr.text).toContain("sed: unsupported sed command 'a'");
     expect(stderr.text).toContain('usage: sed');
     expect(result.exitCode).toBe(1);
   });

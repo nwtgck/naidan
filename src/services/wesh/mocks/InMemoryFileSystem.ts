@@ -111,6 +111,9 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
       else if (d instanceof Uint8Array) bytes = d;
       else if (d instanceof ArrayBuffer) bytes = new Uint8Array(d);
       else throw new Error("Unsupported write data type in mock");
+    } else if (data && typeof data === 'object' && 'arrayBuffer' in data && typeof (data as { arrayBuffer: unknown }).arrayBuffer === 'function') {
+      const arrayBuffer = await (data as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer();
+      bytes = new Uint8Array(arrayBuffer);
     } else {
       // fallback
       try {

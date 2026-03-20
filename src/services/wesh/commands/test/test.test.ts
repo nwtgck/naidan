@@ -102,6 +102,22 @@ echo $?`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('treats no-argument test as false and keeps -a higher precedence than -o', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+test
+echo $?
+test value -o "" -a ""
+echo $?
+test "" -o value -a ""
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('1\n0\n1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports integer comparisons including -l string length', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -157,6 +173,24 @@ echo $?`,
     });
 
     expect(stdout.text).toBe('0\n0\n0\n1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -h as an alias for -L on symlinks', async () => {
+    await writeFile({ path: 'real.txt', data: 'payload' });
+    await wesh.vfs.symlink({
+      path: '/real.link',
+      targetPath: '/real.txt',
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+test -h real.link
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('0\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -223,14 +257,17 @@ echo $?`,
 test 1 -eq
 echo $?
 [ alpha = alpha
+echo $?
+test value extra
 echo $?`,
     });
 
-    expect(stdout.text).toBe('2\n2\n');
+    expect(stdout.text).toBe('2\n2\n2\n');
     expect(stderr.text).toContain("test: expected integer after '-eq'");
     expect(stderr.text).toContain('usage: test EXPRESSION');
     expect(stderr.text).toContain("[: missing ']'");
     expect(stderr.text).toContain('usage: [ EXPRESSION ]');
+    expect(stderr.text).toContain("test: unexpected argument 'extra'");
     expect(result.exitCode).toBe(0);
   });
 

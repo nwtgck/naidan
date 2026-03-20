@@ -10,8 +10,10 @@ type SedAddress =
 
 type SedCommand =
   | { kind: 'substitute'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; regex: RegExp; replacement: string; global: boolean; print: boolean }
+  | { kind: 'translate'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; source: string; target: string }
   | { kind: 'print'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined }
-  | { kind: 'delete'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined };
+  | { kind: 'delete'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined }
+  | { kind: 'quit'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined };
 
 interface SedRuntimeCommand {
   command: SedCommand;
@@ -187,6 +189,84 @@ function parseSubstituteCommand({
   }
 }
 
+function parseDelimitedSedText({
+  script,
+  index,
+  label,
+}: {
+  script: string;
+  index: number;
+  label: string;
+}): { ok: true; text: string; nextIndex: number } | { ok: false; message: string } {
+  const delimiter = script[index];
+  if (delimiter === undefined) {
+    return { ok: false, message: `unterminated ${label} command` };
+  }
+
+  let cursor = index + 1;
+  let text = '';
+  let escaped = false;
+
+  while (cursor < script.length) {
+    const char = script[cursor];
+    if (char === undefined) break;
+    if (!escaped && char === delimiter) {
+      return {
+        ok: true,
+        text,
+        nextIndex: cursor + 1,
+      };
+    }
+    text += char;
+    escaped = !escaped && char === '\\';
+    cursor += 1;
+  }
+
+  return { ok: false, message: `unterminated ${label} command` };
+}
+
+function parseTranslateCommand({
+  script,
+  index,
+  address,
+  rangeEnd,
+}: {
+  script: string;
+  index: number;
+  address: SedAddress | undefined;
+  rangeEnd: SedAddress | undefined;
+}): { ok: true; command: SedCommand; nextIndex: number } | { ok: false; message: string } {
+  const source = parseDelimitedSedText({
+    script,
+    index: index + 1,
+    label: 'translate',
+  });
+  if (!source.ok) return source;
+
+  const target = parseDelimitedSedText({
+    script,
+    index: source.nextIndex - 1,
+    label: 'translate',
+  });
+  if (!target.ok) return target;
+
+  if (source.text.length !== target.text.length) {
+    return { ok: false, message: 'strings for y command are different lengths' };
+  }
+
+  return {
+    ok: true,
+    command: {
+      kind: 'translate',
+      address,
+      rangeEnd,
+      source: source.text,
+      target: target.text,
+    },
+    nextIndex: target.nextIndex,
+  };
+}
+
 function skipSeparators({
   script,
   index,
@@ -257,6 +337,22 @@ function parseSedScript({
       commands.push({ kind: 'delete', address, rangeEnd });
       index += 1;
       break;
+    case 'q':
+      commands.push({ kind: 'quit', address, rangeEnd });
+      index += 1;
+      break;
+    case 'y': {
+      const parsed = parseTranslateCommand({
+        script,
+        index,
+        address,
+        rangeEnd,
+      });
+      if (!parsed.ok) return parsed;
+      commands.push(parsed.command);
+      index = parsed.nextIndex;
+      break;
+    }
     default:
       return { ok: false, message: `unsupported sed command '${commandChar}'` };
     }
@@ -385,6 +481,7 @@ function buildSedOutput({
   }));
   const outputParts: string[] = [];
   const lines = splitLines({ text: input });
+  let shouldQuit = false;
 
   for (let index = 0; index < lines.length; index++) {
     const current = lines[index];
@@ -392,6 +489,7 @@ function buildSedOutput({
 
     let patternSpace = current.line;
     let deleted = false;
+    let quitAfterLine = false;
     const explicitPrints: string[] = [];
 
     for (const runtimeCommand of runtimeCommands) {
@@ -416,11 +514,25 @@ function buildSedOutput({
         }
         break;
       }
+      case 'translate': {
+        const translated = patternSpace
+          .split('')
+          .map((char) => {
+            const sourceIndex = runtimeCommand.command.source.indexOf(char);
+            return sourceIndex >= 0 ? runtimeCommand.command.target[sourceIndex] ?? char : char;
+          })
+          .join('');
+        patternSpace = translated;
+        break;
+      }
       case 'print':
         explicitPrints.push(patternSpace);
         break;
       case 'delete':
         deleted = true;
+        break;
+      case 'quit':
+        quitAfterLine = true;
         break;
       default: {
         const _ex: never = runtimeCommand.command;
@@ -437,6 +549,13 @@ function buildSedOutput({
 
     if (!deleted && !quiet) {
       outputParts.push(current.hadNewline ? `${patternSpace}\n` : patternSpace);
+    }
+
+    if (quitAfterLine) {
+      shouldQuit = true;
+    }
+    if (shouldQuit) {
+      break;
     }
   }
 

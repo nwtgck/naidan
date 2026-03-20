@@ -22,7 +22,9 @@ type FindExpression =
   | { kind: 'type'; expected: WeshFileType }
   | { kind: 'empty' }
   | { kind: 'size'; comparison: 'eq' | 'lt' | 'gt'; sizeInBytes: number }
+  | { kind: 'newer'; referencePath: string; referenceMtime: number }
   | { kind: 'print' }
+  | { kind: 'print0' }
   | { kind: 'prune' }
   | { kind: 'delete' }
   | { kind: 'quit' }
@@ -36,6 +38,7 @@ interface FindEntry {
   type: WeshFileType;
   name: string;
   size: number;
+  mtime: number;
   readPath: string;
 }
 
@@ -75,7 +78,10 @@ const findHelpArgvSpec: StandardArgvParserSpec = {
 };
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
-  return path.startsWith('/') ? path : `${cwd}/${path}`;
+  if (path.startsWith('/')) {
+    return path;
+  }
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
 function basename({ path }: { path: string }): string {
@@ -322,7 +328,9 @@ function tokenizeFindExpression({
       '-type',
       '-empty',
       '-size',
+      '-newer',
       '-print',
+      '-print0',
       '-prune',
       '-delete',
       '-quit',
@@ -340,6 +348,7 @@ function tokenizeFindExpression({
     case 'not':
       return containsAction({ expr: expr.expr });
     case 'print':
+    case 'print0':
     case 'prune':
     case 'delete':
     case 'quit':
@@ -351,6 +360,7 @@ function tokenizeFindExpression({
     case 'type':
     case 'empty':
     case 'size':
+    case 'newer':
     case 'true':
     case 'false':
       return false;
@@ -467,8 +477,19 @@ function tokenizeFindExpression({
       if (!parsed.ok) return parsed.message;
       return { kind: 'size', comparison: parsed.comparison, sizeInBytes: parsed.sizeInBytes };
     }
+    case '-newer': {
+      const referencePath = next();
+      if (referencePath === undefined) return "missing argument to '-newer'";
+      return {
+        kind: 'newer',
+        referencePath,
+        referenceMtime: Number.NaN,
+      };
+    }
     case '-print':
       return { kind: 'print' };
+    case '-print0':
+      return { kind: 'print0' };
     case '-prune':
       return { kind: 'prune' };
     case '-delete':
@@ -545,6 +566,66 @@ function tokenizeFindExpression({
     expr,
     hasAction: containsAction({ expr }),
   };
+}
+
+async function resolveFindExpressionReferences({
+  expr,
+  context,
+}: {
+  expr: FindExpression;
+  context: WeshCommandContext;
+}): Promise<FindExpression> {
+  switch (expr.kind) {
+  case 'and':
+    return {
+      kind: 'and',
+      left: await resolveFindExpressionReferences({ expr: expr.left, context }),
+      right: await resolveFindExpressionReferences({ expr: expr.right, context }),
+    };
+  case 'or':
+    return {
+      kind: 'or',
+      left: await resolveFindExpressionReferences({ expr: expr.left, context }),
+      right: await resolveFindExpressionReferences({ expr: expr.right, context }),
+    };
+  case 'not':
+    return {
+      kind: 'not',
+      expr: await resolveFindExpressionReferences({ expr: expr.expr, context }),
+    };
+  case 'newer': {
+    const stat = await context.kernel.stat({
+      path: resolvePath({
+        cwd: context.cwd,
+        path: expr.referencePath,
+      }),
+    });
+    return {
+      kind: 'newer',
+      referencePath: expr.referencePath,
+      referenceMtime: stat.mtime,
+    };
+  }
+  case 'name':
+  case 'path':
+  case 'regex':
+  case 'type':
+  case 'empty':
+  case 'size':
+  case 'print':
+  case 'print0':
+  case 'prune':
+  case 'delete':
+  case 'quit':
+  case 'true':
+  case 'false':
+  case 'exec':
+    return expr;
+  default: {
+    const _ex: never = expr;
+    throw new Error(`Unhandled find expression: ${_ex}`);
+  }
+  }
 }
 
 async function evaluateExpression({
@@ -674,8 +755,19 @@ async function evaluateExpression({
       shouldQuit: false,
       exitCode: 0,
     };
+  case 'newer':
+    return {
+      matched: entry.mtime > expr.referenceMtime,
+      actionInvoked: false,
+      shouldPrune: false,
+      shouldQuit: false,
+      exitCode: 0,
+    };
   case 'print':
     await context.text().print({ text: `${entry.displayPath}\n` });
+    return { matched: true, actionInvoked: true, shouldPrune: false, shouldQuit: false, exitCode: 0 };
+  case 'print0':
+    await context.text().print({ text: `${entry.displayPath}\0` });
     return { matched: true, actionInvoked: true, shouldPrune: false, shouldQuit: false, exitCode: 0 };
   case 'prune':
     return { matched: true, actionInvoked: true, shouldPrune: true, shouldQuit: false, exitCode: 0 };
@@ -793,7 +885,9 @@ function hasDeleteAction({
   case 'type':
   case 'empty':
   case 'size':
+  case 'newer':
   case 'print':
+  case 'print0':
   case 'prune':
   case 'quit':
   case 'true':
@@ -856,6 +950,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
       ...expression.traversal,
       depthFirst: expression.traversal.depthFirst || hasDeleteAction({ expr: expression.expr }),
     };
+    let resolvedExpression: FindExpression;
 
     const getPathStat = async ({
       path,
@@ -877,6 +972,21 @@ export const findCommandDefinition: WeshCommandDefinition = {
       }
       }
     };
+
+    try {
+      resolvedExpression = await resolveFindExpressionReferences({
+        expr: expression.expr,
+        context,
+      });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      await writeCommandUsageError({
+        context,
+        command: 'find',
+        message: `find: ${message}`,
+      });
+      return { exitCode: 1 };
+    }
 
     const getReadPath = async ({
       path,
@@ -921,6 +1031,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
           type: stat.type,
           name: basename({ path: displayPath }),
           size: stat.size,
+          mtime: stat.mtime,
           readPath: await getReadPath({ path: fullPath, type: stat.type }),
         };
 
@@ -930,7 +1041,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
 
         if (!traversal.depthFirst && shouldEvaluate) {
           evaluation = await evaluateExpression({
-            expr: expression.expr,
+            expr: resolvedExpression,
             entry,
             context,
             pendingExecBatches,
@@ -970,7 +1081,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
 
         if (traversal.depthFirst && !shouldQuit && shouldEvaluate) {
           evaluation = await evaluateExpression({
-            expr: expression.expr,
+            expr: resolvedExpression,
             entry,
             context,
             pendingExecBatches,

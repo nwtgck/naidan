@@ -46,7 +46,6 @@ function splitReadFields({
 
   const ifsCharacters = new Set(ifs.split(''));
   const whitespaceDelimiters = new Set(ifs.split('').filter((char) => isIfsWhitespace({ char })));
-  const nonWhitespaceDelimiters = new Set(ifs.split('').filter((char) => !isIfsWhitespace({ char })));
 
   let index = 0;
   while (index < line.length && whitespaceDelimiters.has(line[index] ?? '')) {

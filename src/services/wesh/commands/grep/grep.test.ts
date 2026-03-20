@@ -145,6 +145,19 @@ describe('wesh grep', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports -L to print only files without matches', async () => {
+    await writeFile({ path: 'left.txt', data: 'alpha\n' });
+    await writeFile({ path: 'right.txt', data: 'beta\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'grep -L alpha left.txt right.txt',
+    });
+
+    expect(stdout.text).toBe('right.txt\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports -h and -H to control filename prefixes', async () => {
     await writeFile({ path: 'left.txt', data: 'alpha\n' });
     await writeFile({ path: 'right.txt', data: 'alpha\n' });
@@ -178,6 +191,32 @@ describe('wesh grep', () => {
     expect(missed.result.exitCode).toBe(1);
   });
 
+  it('supports -o and -m together', async () => {
+    await writeFile({ path: 'notes.txt', data: 'alpha beta alpha\nalpha\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'grep -o -m 2 alpha notes.txt',
+    });
+
+    expect(stdout.text).toBe('alpha\nalpha\nalpha\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -s to suppress missing-file errors', async () => {
+    const noisy = await execute({
+      script: 'grep alpha missing.txt',
+    });
+    const quiet = await execute({
+      script: 'grep -s alpha missing.txt',
+    });
+
+    expect(noisy.stderr.text).toContain('grep: missing.txt:');
+    expect(noisy.result.exitCode).toBe(2);
+    expect(quiet.stderr.text).toBe('');
+    expect(quiet.result.exitCode).toBe(2);
+  });
+
   it('treats - as stdin when it appears in the file list', async () => {
     await writeFile({ path: 'notes.txt', data: 'alpha file\nbeta file\n' });
 
@@ -187,6 +226,22 @@ describe('wesh grep', () => {
     });
 
     expect(stdout.text).toBe('(standard input):alpha stdin\nnotes.txt:alpha file\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports recursive search with include and exclude globs', async () => {
+    await writeFile({ path: 'src/keep.txt', data: 'alpha\n' });
+    await writeFile({ path: 'src/skip.log', data: 'alpha\n' });
+    await writeFile({ path: 'src/nested/keep.txt', data: 'alpha nested\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'grep -r --include "*.txt" --exclude "skip*" alpha src',
+    });
+
+    expect(stdout.text).toContain('src/keep.txt:alpha\n');
+    expect(stdout.text).toContain('src/nested/keep.txt:alpha nested\n');
+    expect(stdout.text).not.toContain('skip.log');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
