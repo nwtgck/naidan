@@ -512,6 +512,21 @@ class AwkParser {
     if (!left.ok) return left;
 
     const token = this.peek();
+    if (token.kind === 'identifier' && token.value === 'in') {
+      this.index += 1;
+      const right = this.parseConcatenation();
+      if (!right.ok) return right;
+      return {
+        ok: true,
+        expression: {
+          kind: 'binary',
+          operator: 'in',
+          left: left.expression,
+          right: right.expression,
+        },
+      };
+    }
+
     if (token.kind === 'operator' && ['==', '!=', '<', '<=', '>', '>=', '~', '!~'].includes(token.value)) {
       this.index += 1;
       const right = this.parseConcatenation();
@@ -580,7 +595,8 @@ class AwkParser {
 
   private parseUnary(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
     const token = this.peek();
-    if (token.kind === 'operator') {
+    switch (token.kind) {
+    case 'operator':
       switch (token.value) {
       case '!': {
         this.index += 1;
@@ -615,6 +631,20 @@ class AwkParser {
       default:
         break;
       }
+      break;
+    case 'identifier':
+    case 'number':
+    case 'string':
+    case 'regex':
+    case 'field':
+    case 'punctuation':
+    case 'newline':
+    case 'eof':
+      break;
+    default: {
+      const _ex: never = token;
+      throw new Error(`Unhandled awk token: ${JSON.stringify(_ex)}`);
+    }
     }
 
     return this.parseMultiplicative();
@@ -652,9 +682,10 @@ class AwkParser {
     case 'number':
     case 'string':
     case 'regex':
-    case 'identifier':
     case 'field':
       return true;
+    case 'identifier':
+      return token.value !== 'in';
     case 'punctuation':
       switch (token.value) {
       case '(':
@@ -832,6 +863,7 @@ class AwkParser {
       case 'binary':
       case 'unary':
       case 'call':
+      case 'assign':
       case 'update':
         return { ok: false, message: `expected assignable target before '${nextToken.value}'` };
       default: {

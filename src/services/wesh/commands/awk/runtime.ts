@@ -166,6 +166,18 @@ function setArrayValue({
   entries.set(index, value);
 }
 
+function clearArray({
+  state,
+  name,
+}: {
+  state: AwkRuntimeState;
+  name: string;
+}): Map<string, AwkValue> {
+  const entries = new Map<string, AwkValue>();
+  state.arrays.set(name, entries);
+  return entries;
+}
+
 function updateTarget({
   state,
   target,
@@ -177,7 +189,37 @@ function updateTarget({
   operator: Extract<AwkExpression, { kind: 'update' }>['operator'];
   position: Extract<AwkExpression, { kind: 'update' }>['position'];
 }): AwkValue {
-  const delta = operator === '++' ? 1 : -1;
+  const delta = (() => {
+    switch (operator) {
+    case '++':
+      return 1;
+    case '--':
+      return -1;
+    default: {
+      const _ex: never = operator;
+      throw new Error(`Unhandled awk update operator: ${_ex}`);
+    }
+    }
+  })();
+
+  const selectReturnValue = ({
+    currentNumber,
+    nextValue,
+  }: {
+    currentNumber: number;
+    nextValue: number;
+  }): number => {
+    switch (position) {
+    case 'prefix':
+      return nextValue;
+    case 'postfix':
+      return currentNumber;
+    default: {
+      const _ex: never = position;
+      throw new Error(`Unhandled awk update position: ${_ex}`);
+    }
+    }
+  };
 
   switch (target.kind) {
   case 'variable': {
@@ -185,7 +227,7 @@ function updateTarget({
     const currentNumber = coerceToNumber({ value: current });
     const nextValue = currentNumber + delta;
     setVariable({ state, name: target.name, value: nextValue });
-    return position === 'prefix' ? nextValue : currentNumber;
+    return selectReturnValue({ currentNumber, nextValue });
   }
   case 'indexed': {
     const index = coerceToString({
@@ -207,7 +249,7 @@ function updateTarget({
       index,
       value: nextValue,
     });
-    return position === 'prefix' ? nextValue : currentNumber;
+    return selectReturnValue({ currentNumber, nextValue });
   }
   default: {
     const _ex: never = target;
@@ -275,6 +317,33 @@ function evaluateExpression({
       const startIndex = start - 1;
       return length === undefined ? source.slice(startIndex) : source.slice(startIndex, startIndex + length);
     }
+    case 'split': {
+      const source = coerceToString({ value: args[0] ?? '' });
+      const targetExpression = expression.args[1];
+      if (targetExpression === undefined || targetExpression.kind !== 'identifier') {
+        throw new Error("awk: split requires an array variable as its second argument");
+      }
+      const separator = expression.args[2] === undefined
+        ? coerceToString({ value: getVariable({ state, name: 'FS' }) })
+        : coerceToString({
+          value: evaluateExpression({
+            expression: expression.args[2],
+            state,
+          }),
+        });
+      const parts = splitFields({
+        line: source,
+        fieldSeparator: separator,
+      });
+      const entries = clearArray({
+        state,
+        name: targetExpression.name,
+      });
+      for (const [index, part] of parts.entries()) {
+        entries.set(String(index + 1), part);
+      }
+      return parts.length;
+    }
     default:
       throw new Error(`awk: unsupported builtin function '${expression.callee}'`);
     }
@@ -297,6 +366,15 @@ function evaluateExpression({
       return isTruthy({ value: left }) || isTruthy({ value: right }) ? 1 : 0;
     case '&&':
       return isTruthy({ value: left }) && isTruthy({ value: right }) ? 1 : 0;
+    case 'in': {
+      const index = coerceToString({ value: left });
+      switch (expression.right.kind) {
+      case 'identifier':
+        return state.arrays.get(expression.right.name)?.has(index) === true ? 1 : 0;
+      default:
+        throw new Error("awk: right operand of 'in' must be an array variable");
+      }
+    }
     case '+':
       return coerceToNumber({ value: left }) + coerceToNumber({ value: right });
     case '-':

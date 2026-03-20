@@ -42,6 +42,7 @@ export type AwkBinaryOperator =
   | 'concat'
   | '||'
   | '&&'
+  | 'in'
   | '+'
   | '-'
   | '*'

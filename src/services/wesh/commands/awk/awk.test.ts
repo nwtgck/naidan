@@ -278,4 +278,34 @@ awk 'BEGIN { print toupper("abc") }'`,
     expect(stderr.text).toContain("awk: unsupported builtin function 'toupper'");
     expect(result.exitCode).toBe(2);
   });
+
+  it('supports split into arrays and the in operator', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk 'BEGIN { n = split("red blue", parts, " "); print n, parts[1], ("2" in parts), ("3" in parts) }'`,
+    });
+
+    expect(stdout.text).toBe('2 red 1 0\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('reports invalid split and in usage explicitly', async () => {
+    const badSplit = await execute({
+      script: `\
+awk 'BEGIN { print split("a b", value[1], " ") }'`,
+    });
+    const badIn = await execute({
+      script: `\
+awk 'BEGIN { arr["1"] = 1; print ("1" in arr["1"]) }'`,
+    });
+
+    expect(badSplit.stdout.text).toBe('');
+    expect(badSplit.stderr.text).toContain('awk: split requires an array variable as its second argument');
+    expect(badSplit.result.exitCode).toBe(2);
+
+    expect(badIn.stdout.text).toBe('');
+    expect(badIn.stderr.text).toContain("awk: right operand of 'in' must be an array variable");
+    expect(badIn.result.exitCode).toBe(2);
+  });
 });
