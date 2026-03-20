@@ -16,8 +16,7 @@ export interface ArgvFlagOptionSpec {
   short: string | undefined;
   long: string | undefined;
   effects: ArgvOptionEffect[];
-  // TODO: make help required after all wesh commands are migrated.
-  help?: ArgvOptionHelp;
+  help: ArgvOptionHelp;
 }
 
 export interface ArgvValueOptionSpec {
@@ -28,8 +27,7 @@ export interface ArgvValueOptionSpec {
   valueName: string;
   allowAttachedValue: boolean;
   parseValue: ((options: { value: string }) => { ok: true; value: ArgvValue } | { ok: false; message: string }) | undefined;
-  // TODO: make help required after all wesh commands are migrated.
-  help?: ArgvOptionHelp;
+  help: ArgvOptionHelp;
 }
 
 export type ArgvOptionSpec = ArgvFlagOptionSpec | ArgvValueOptionSpec;

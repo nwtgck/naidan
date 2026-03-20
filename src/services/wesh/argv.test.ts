@@ -7,8 +7,8 @@ describe('wesh argv', () => {
       args: ['-abn10', '--label=value', 'file.txt'],
       spec: {
         options: [
-          { kind: 'flag', short: 'a', long: 'all', effects: [{ key: 'all', value: true }] },
-          { kind: 'flag', short: 'b', long: 'binary', effects: [{ key: 'binary', value: true }] },
+          { kind: 'flag', short: 'a', long: 'all', effects: [{ key: 'all', value: true }], help: { summary: 'test all flag' } },
+          { kind: 'flag', short: 'b', long: 'binary', effects: [{ key: 'binary', value: true }], help: { summary: 'test binary flag' } },
           {
             kind: 'value',
             short: 'n',
@@ -17,6 +17,7 @@ describe('wesh argv', () => {
             valueName: 'number',
             allowAttachedValue: true,
             parseValue: ({ value }) => ({ ok: true, value: parseInt(value, 10) }),
+            help: { summary: 'test numeric value', valueName: 'NUMBER' },
           },
           {
             kind: 'value',
@@ -26,6 +27,7 @@ describe('wesh argv', () => {
             valueName: 'label',
             allowAttachedValue: true,
             parseValue: undefined,
+            help: { summary: 'test label value', valueName: 'LABEL' },
           },
         ],
         allowShortFlagBundles: true,
@@ -64,6 +66,7 @@ describe('wesh argv', () => {
             valueName: 'pattern',
             allowAttachedValue: true,
             parseValue: undefined,
+            help: { summary: 'test repeated value option', valueName: 'PATTERN' },
           },
         ],
         allowShortFlagBundles: true,
@@ -122,6 +125,7 @@ describe('wesh argv', () => {
                         short: undefined,
                         long: 'verbose',
                         effects: [{ key: 'verbose', value: true }],
+                        help: { summary: 'test verbose flag' },
                       },
                     ],
                     allowShortFlagBundles: true,

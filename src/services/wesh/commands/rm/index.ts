@@ -13,8 +13,8 @@ export const rmCommandDefinition: WeshCommandDefinition = {
       args: context.args,
       spec: {
         options: [
-          { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'recursive', value: true }] },
-          { kind: 'flag', short: 'f', long: undefined, effects: [{ key: 'force', value: true }] },
+          { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'recursive', value: true }], help: { summary: 'remove directories and their contents recursively' } },
+          { kind: 'flag', short: 'f', long: undefined, effects: [{ key: 'force', value: true }], help: { summary: 'ignore nonexistent files and arguments, never prompt' } },
         ],
         allowShortFlagBundles: true,
         stopAtDoubleDash: true,

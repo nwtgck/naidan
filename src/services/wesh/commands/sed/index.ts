@@ -452,8 +452,20 @@ export const sedCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const sedArgvSpec: StandardArgvParserSpec = {
       options: [
-        { kind: 'flag', short: 'n', long: 'quiet', effects: [{ key: 'quiet', value: true }] },
-        { kind: 'flag', short: undefined, long: 'silent', effects: [{ key: 'quiet', value: true }] },
+        {
+          kind: 'flag',
+          short: 'n',
+          long: 'quiet',
+          effects: [{ key: 'quiet', value: true }],
+          help: { summary: 'suppress automatic printing of pattern space', category: 'common' },
+        },
+        {
+          kind: 'flag',
+          short: undefined,
+          long: 'silent',
+          effects: [{ key: 'quiet', value: true }],
+          help: { summary: 'suppress automatic printing of pattern space', category: 'common' },
+        },
         {
           kind: 'value',
           short: 'e',
@@ -462,6 +474,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           valueName: 'script',
           allowAttachedValue: true,
           parseValue: undefined,
+          help: { summary: 'add a script to the commands to be executed', category: 'common' },
         },
         {
           kind: 'value',
@@ -471,9 +484,22 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           valueName: 'script-file',
           allowAttachedValue: true,
           parseValue: undefined,
+          help: { summary: 'add a script file to the commands to be executed', category: 'common' },
         },
-        { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'extendedRegexp', value: true }] },
-        { kind: 'flag', short: 'E', long: undefined, effects: [{ key: 'extendedRegexp', value: true }] },
+        {
+          kind: 'flag',
+          short: 'r',
+          long: undefined,
+          effects: [{ key: 'extendedRegexp', value: true }],
+          help: { summary: 'use extended regular expressions', category: 'common' },
+        },
+        {
+          kind: 'flag',
+          short: 'E',
+          long: undefined,
+          effects: [{ key: 'extendedRegexp', value: true }],
+          help: { summary: 'use extended regular expressions', category: 'common' },
+        },
         {
           kind: 'value',
           short: 'i',
@@ -482,6 +508,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           valueName: 'suffix',
           allowAttachedValue: true,
           parseValue: undefined,
+          help: { summary: 'edit files in place, optionally keeping a backup suffix', category: 'advanced' },
         },
       ],
       allowShortFlagBundles: true,
@@ -500,6 +527,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'sed',
         message: `sed: ${parsed.diagnostics[0]!.message}`,
+        argvSpec: sedArgvSpec,
       });
       return { exitCode: 2 };
     }
@@ -535,6 +563,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           context,
           command: 'sed',
           message: 'sed: missing expression',
+          argvSpec: sedArgvSpec,
         });
         return { exitCode: 1 };
       }
@@ -549,6 +578,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           context,
           command: 'sed',
           message: `sed: ${parsedScript.message}`,
+          argvSpec: sedArgvSpec,
         });
         return { exitCode: 1 };
       }
@@ -576,6 +606,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           context,
           command: 'sed',
           message: 'sed: cannot use in-place editing with standard input',
+          argvSpec: sedArgvSpec,
         });
         return { exitCode: 1 };
       }

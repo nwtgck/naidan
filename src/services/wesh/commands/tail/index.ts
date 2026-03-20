@@ -33,6 +33,7 @@ export const tailCommandDefinition: WeshCommandDefinition = {
             valueName: 'lines',
             allowAttachedValue: true,
             parseValue: ({ value }) => parseLineCount({ value }),
+            help: { summary: 'output the last NUM lines, or start at line NUM with +NUM', valueName: 'NUM', category: 'common' },
           },
         ],
         allowShortFlagBundles: true,

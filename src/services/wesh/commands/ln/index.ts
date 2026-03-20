@@ -22,10 +22,10 @@ export const lnCommandDefinition: WeshCommandDefinition = {
       args: context.args,
       spec: {
         options: [
-          { kind: 'flag', short: 's', long: 'symbolic', effects: [{ key: 'symbolic', value: true }] },
-          { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }] },
-          { kind: 'flag', short: 'n', long: 'no-dereference', effects: [{ key: 'noDereference', value: true }] },
-          { kind: 'flag', short: 'T', long: 'no-target-directory', effects: [{ key: 'noTargetDirectory', value: true }] },
+          { kind: 'flag', short: 's', long: 'symbolic', effects: [{ key: 'symbolic', value: true }], help: { summary: 'make symbolic links instead of hard links', category: 'common' } },
+          { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }], help: { summary: 'remove existing destination files', category: 'common' } },
+          { kind: 'flag', short: 'n', long: 'no-dereference', effects: [{ key: 'noDereference', value: true }], help: { summary: 'treat a destination symlink to a directory as a normal file', category: 'advanced' } },
+          { kind: 'flag', short: 'T', long: 'no-target-directory', effects: [{ key: 'noTargetDirectory', value: true }], help: { summary: 'treat LINK_NAME as a normal file always', category: 'advanced' } },
         ],
         allowShortFlagBundles: true,
         stopAtDoubleDash: true,

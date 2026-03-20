@@ -12,7 +12,7 @@ export const echoCommandDefinition: WeshCommandDefinition = {
       args: context.args,
       spec: {
         options: [
-          { kind: 'flag', short: 'n', long: undefined, effects: [{ key: 'noNewline', value: true }] },
+          { kind: 'flag', short: 'n', long: undefined, effects: [{ key: 'noNewline', value: true }], help: { summary: 'do not output the trailing newline' } },
         ],
         allowShortFlagBundles: true,
         stopAtDoubleDash: true,

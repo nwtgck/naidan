@@ -13,7 +13,7 @@ export const dateCommandDefinition: WeshCommandDefinition = {
       args: context.args,
       spec: {
         options: [
-          { kind: 'flag', short: 'u', long: undefined, effects: [{ key: 'utc', value: true }] },
+          { kind: 'flag', short: 'u', long: undefined, effects: [{ key: 'utc', value: true }], help: { summary: 'display the time in UTC' } },
         ],
         allowShortFlagBundles: true,
         stopAtDoubleDash: true,

@@ -12,7 +12,7 @@ export const exportCmdCommandDefinition: WeshCommandDefinition = {
       args: context.args,
       spec: {
         options: [
-          { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'print', value: true }] },
+          { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'print', value: true }], help: { summary: 'list exported variables in a reusable format' } },
         ],
         allowShortFlagBundles: true,
         stopAtDoubleDash: true,

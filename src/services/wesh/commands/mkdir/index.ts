@@ -13,7 +13,7 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
       args: context.args,
       spec: {
         options: [
-          { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'parents', value: true }] },
+          { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'parents', value: true }], help: { summary: 'make parent directories as needed' } },
         ],
         allowShortFlagBundles: true,
         stopAtDoubleDash: true,

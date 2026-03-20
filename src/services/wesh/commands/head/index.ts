@@ -39,6 +39,7 @@ export const headCommandDefinition: WeshCommandDefinition = {
               value,
               errorPrefix: 'invalid number of lines',
             }),
+            help: { summary: 'print the first NUM lines', valueName: 'NUM', category: 'common' },
           },
           {
             kind: 'value',
@@ -51,6 +52,7 @@ export const headCommandDefinition: WeshCommandDefinition = {
               value,
               errorPrefix: 'invalid number of bytes',
             }),
+            help: { summary: 'print the first NUM bytes', valueName: 'NUM', category: 'advanced' },
           },
         ],
         allowShortFlagBundles: true,

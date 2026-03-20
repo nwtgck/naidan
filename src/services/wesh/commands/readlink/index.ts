@@ -16,9 +16,9 @@ export const readlinkCommandDefinition: WeshCommandDefinition = {
       args: context.args,
       spec: {
         options: [
-          { kind: 'flag', short: 'f', long: 'canonicalize', effects: [{ key: 'canonicalize', value: true }] },
-          { kind: 'flag', short: 'n', long: 'no-newline', effects: [{ key: 'noNewline', value: true }] },
-          { kind: 'flag', short: 'e', long: 'canonicalize-existing', effects: [{ key: 'canonicalize', value: true }] },
+          { kind: 'flag', short: 'f', long: 'canonicalize', effects: [{ key: 'canonicalize', value: true }], help: { summary: 'canonicalize the path and resolve symlinks' } },
+          { kind: 'flag', short: 'n', long: 'no-newline', effects: [{ key: 'noNewline', value: true }], help: { summary: 'do not print the trailing newline' } },
+          { kind: 'flag', short: 'e', long: 'canonicalize-existing', effects: [{ key: 'canonicalize', value: true }], help: { summary: 'canonicalize the path, requiring every component to exist' } },
         ],
         allowShortFlagBundles: true,
         stopAtDoubleDash: true,

@@ -13,7 +13,7 @@ export const commandCommandDefinition: WeshCommandDefinition = {
       args: context.args,
       spec: {
         options: [
-          { kind: 'flag', short: 'v', long: undefined, effects: [{ key: 'verbose', value: true }] },
+          { kind: 'flag', short: 'v', long: undefined, effects: [{ key: 'verbose', value: true }], help: { summary: 'print the resolved command name and stop' } },
         ],
         allowShortFlagBundles: true,
         stopAtDoubleDash: true,

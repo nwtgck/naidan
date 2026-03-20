@@ -12,7 +12,7 @@ export const readCommandDefinition: WeshCommandDefinition = {
       args: context.args,
       spec: {
         options: [
-          { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'rawMode', value: true }] },
+          { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'rawMode', value: true }], help: { summary: 'do not treat backslash as an escape character' } },
           {
             kind: 'value',
             short: 'u',
@@ -20,6 +20,7 @@ export const readCommandDefinition: WeshCommandDefinition = {
             key: 'fd',
             valueName: 'fd',
             allowAttachedValue: false,
+            help: { summary: 'read from file descriptor fd' },
             parseValue: ({ value }) => /^\d+$/.test(value)
               ? { ok: true, value: parseInt(value, 10) }
               : { ok: false, message: `invalid file descriptor '${value}'` },
