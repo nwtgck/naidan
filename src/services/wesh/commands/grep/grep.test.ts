@@ -199,7 +199,25 @@ describe('wesh grep', () => {
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain("grep: unrecognized option '--definitely-not-real'");
     expect(stderr.text).toContain('usage: grep');
+    expect(stderr.text).toContain('try:');
+    expect(stderr.text).toContain('-E');
+    expect(stderr.text).toContain('-e PATTERN');
+    expect(stderr.text).toContain('--help');
     expect(result.exitCode).toBe(2);
+  });
+
+  it('prints help with --help', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'grep --help',
+    });
+
+    expect(stdout.text).toContain('Search for patterns in files');
+    expect(stdout.text).toContain('usage: grep [OPTION]... PATTERNS [FILE]...');
+    expect(stdout.text).toContain('options:');
+    expect(stdout.text).toContain('--help');
+    expect(stdout.text).toContain('--extended-regexp');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('works in a pipeline with head -20 using -E', async () => {

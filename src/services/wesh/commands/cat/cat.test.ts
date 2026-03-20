@@ -315,6 +315,21 @@ describe('wesh cat', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('prints help with --help', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'cat --help',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toContain('Concatenate files and print on the standard output');
+    expect(stdout.text).toContain('usage: cat [OPTION]... [FILE]...');
+    expect(stdout.text).toContain('options:');
+    expect(stdout.text).toContain('--help');
+    expect(stdout.text).toContain('--show-all');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('prints usage guidance for invalid short options', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'cat -z',
@@ -325,6 +340,7 @@ describe('wesh cat', () => {
     expect(stderr.text).toContain("cat: invalid option -- 'z'");
     expect(stderr.text).toContain('usage: cat [OPTION]... [FILE]...');
     expect(stderr.text).toContain('--show-all');
+    expect(stderr.text).toContain('--help');
     expect(result.exitCode).toBe(1);
   });
 
@@ -338,6 +354,7 @@ describe('wesh cat', () => {
     expect(stderr.text).toContain("cat: unrecognized option '--unknown'");
     expect(stderr.text).toContain('usage: cat [OPTION]... [FILE]...');
     expect(stderr.text).toContain('--number-nonblank');
+    expect(stderr.text).toContain('--help');
     expect(result.exitCode).toBe(1);
   });
 });

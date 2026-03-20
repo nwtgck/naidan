@@ -1,21 +1,8 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/services/wesh/types';
 import { parseStandardArgv } from '@/services/wesh/argv';
+import type { StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { handleToStream } from '@/services/wesh/utils/fs';
-
-const CAT_USAGE_LINES = [
-  'usage: cat [OPTION]... [FILE]...',
-  'options:',
-  '  -A, --show-all            equivalent to -vET',
-  '  -b, --number-nonblank     number nonempty output lines',
-  '  -E, --show-ends           display $ at end of each line',
-  '  -n, --number              number all output lines',
-  '  -s, --squeeze-blank       suppress repeated empty output lines',
-  '  -T, --show-tabs           display TAB characters as ^I',
-  '  -u                        accepted for compatibility',
-  '  -v, --show-nonprinting    use ^ and M- notation, except for LFD and TAB',
-  '  -e                        equivalent to -vE',
-  '  -t                        equivalent to -vT',
-].join('\n');
 
 function renderVisibleAscii(char: string): string {
   if (char === '\t') return char;
@@ -50,80 +37,84 @@ async function writeAll({
   }
 }
 
-async function writeUsageError({
-  context,
-  message,
-}: {
-  context: WeshCommandContext;
-  message: string;
-}): Promise<void> {
-  const encoder = new TextEncoder();
-  await context.stderr.write({
-    buffer: encoder.encode(`${message}\n${CAT_USAGE_LINES}\n`),
-  });
-}
+const catArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+    { kind: 'flag', short: 'n', long: 'number', effects: [{ key: 'numberAllLines', value: true }], help: { summary: 'number all output lines', category: 'common' } },
+    { kind: 'flag', short: 'b', long: 'number-nonblank', effects: [{ key: 'numberNonBlankLines', value: true }], help: { summary: 'number nonempty output lines', category: 'common' } },
+    { kind: 'flag', short: 'E', long: 'show-ends', effects: [{ key: 'showEnds', value: true }], help: { summary: 'display $ at end of each line', category: 'common' } },
+    { kind: 'flag', short: 'T', long: 'show-tabs', effects: [{ key: 'showTabs', value: true }], help: { summary: 'display TAB characters as ^I', category: 'common' } },
+    { kind: 'flag', short: 'v', long: 'show-nonprinting', effects: [{ key: 'showNonPrinting', value: true }], help: { summary: 'show non-printing characters except TAB and LF', category: 'common' } },
+    {
+      kind: 'flag',
+      short: 'A',
+      long: 'show-all',
+      effects: [
+        { key: 'showEnds', value: true },
+        { key: 'showTabs', value: true },
+        { key: 'showNonPrinting', value: true },
+      ],
+      help: { summary: 'equivalent to -vET', category: 'common' },
+    },
+    {
+      kind: 'flag',
+      short: 'e',
+      long: undefined,
+      effects: [
+        { key: 'showEnds', value: true },
+        { key: 'showNonPrinting', value: true },
+      ],
+      help: { summary: 'equivalent to -vE', category: 'advanced' },
+    },
+    {
+      kind: 'flag',
+      short: 't',
+      long: undefined,
+      effects: [
+        { key: 'showTabs', value: true },
+        { key: 'showNonPrinting', value: true },
+      ],
+      help: { summary: 'equivalent to -vT', category: 'advanced' },
+    },
+    { kind: 'flag', short: 's', long: 'squeeze-blank', effects: [{ key: 'squeezeBlank', value: true }], help: { summary: 'suppress repeated empty output lines', category: 'common' } },
+    { kind: 'flag', short: 'u', long: 'u', effects: [], help: { summary: 'accepted for compatibility', category: 'advanced' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 export const catCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'cat',
     description: 'Concatenate files and print on the standard output',
-    usage: 'cat [flags] [file...]',
+    usage: 'cat [OPTION]... [FILE]...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          { kind: 'flag', short: 'n', long: 'number', effects: [{ key: 'numberAllLines', value: true }] },
-          { kind: 'flag', short: 'b', long: 'number-nonblank', effects: [{ key: 'numberNonBlankLines', value: true }] },
-          { kind: 'flag', short: 'E', long: 'show-ends', effects: [{ key: 'showEnds', value: true }] },
-          { kind: 'flag', short: 'T', long: 'show-tabs', effects: [{ key: 'showTabs', value: true }] },
-          { kind: 'flag', short: 'v', long: 'show-nonprinting', effects: [{ key: 'showNonPrinting', value: true }] },
-          {
-            kind: 'flag',
-            short: 'A',
-            long: 'show-all',
-            effects: [
-              { key: 'showEnds', value: true },
-              { key: 'showTabs', value: true },
-              { key: 'showNonPrinting', value: true },
-            ],
-          },
-          {
-            kind: 'flag',
-            short: 'e',
-            long: undefined,
-            effects: [
-              { key: 'showEnds', value: true },
-              { key: 'showNonPrinting', value: true },
-            ],
-          },
-          {
-            kind: 'flag',
-            short: 't',
-            long: undefined,
-            effects: [
-              { key: 'showTabs', value: true },
-              { key: 'showNonPrinting', value: true },
-            ],
-          },
-          { kind: 'flag', short: 's', long: 'squeeze-blank', effects: [{ key: 'squeezeBlank', value: true }] },
-          { kind: 'flag', short: 'u', long: 'u', effects: [] },
-        ],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [],
-      },
+      spec: catArgvSpec,
     });
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
-      await writeUsageError({
+      await writeCommandUsageError({
         context,
+        command: 'cat',
         message: `cat: ${diagnostic.message}`,
+        argvSpec: catArgvSpec,
       });
       return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'cat',
+        argvSpec: catArgvSpec,
+      });
+      return { exitCode: 0 };
     }
 
     const files = parsed.positionals;
