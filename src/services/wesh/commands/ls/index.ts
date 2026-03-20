@@ -10,11 +10,26 @@ import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/comman
 
 type LsSymlinkMode = 'logical' | 'command-line' | 'physical';
 
+function resolvePath({
+  cwd,
+  path,
+}: {
+  cwd: string;
+  path: string;
+}): string {
+  if (path.startsWith('/')) {
+    return path;
+  }
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
+
 const lsArgvSpec: StandardArgvParserSpec = {
   options: [
     { kind: 'flag', short: 'l', long: 'l', effects: [{ key: 'l', value: true }], help: { summary: 'use a long listing format', category: 'common' } },
     { kind: 'flag', short: 'a', long: 'a', effects: [{ key: 'a', value: true }], help: { summary: 'include directory entries whose names begin with .', category: 'common' } },
     { kind: 'flag', short: 'R', long: 'R', effects: [{ key: 'R', value: true }], help: { summary: 'list subdirectories recursively', category: 'common' } },
+    { kind: 'flag', short: 'd', long: 'directory', effects: [{ key: 'directory', value: true }], help: { summary: 'list directories themselves, not their contents', category: 'common' } },
+    { kind: 'flag', short: 'F', long: 'classify', effects: [{ key: 'classify', value: true }], help: { summary: 'append indicator characters to entries', category: 'common' } },
     { kind: 'flag', short: '1', long: '1', effects: [{ key: '1', value: true }], help: { summary: 'list one file per line', category: 'advanced' } },
     { kind: 'flag', short: 'h', long: 'h', effects: [{ key: 'h', value: true }], help: { summary: 'with -l, print sizes in human readable format', category: 'common' } },
     { kind: 'flag', short: 'L', long: undefined, effects: [{ key: 'symlinkMode', value: 'logical' }], help: { summary: 'when listing symlinks, show the target type', category: 'advanced' } },
@@ -66,62 +81,59 @@ export const lsCommandDefinition: WeshCommandDefinition = {
     const a = parsed.optionValues.a === true;
     const one = parsed.optionValues['1'] === true;
     const h = parsed.optionValues.h === true;
+    const d = parsed.optionValues.directory === true;
+    const R = parsed.optionValues.R === true;
+    const classify = parsed.optionValues.classify === true;
     const symlinkMode = (parsed.optionValues.symlinkMode as LsSymlinkMode | undefined) ?? 'physical';
 
-    for (let index = 0; index < paths.length; index++) {
-      const p = paths[index];
-      if (p === undefined) {
-        continue;
-      }
+    async function listPath({
+      displayPath,
+      fullPath,
+      isCommandLineArgument,
+      printHeader,
+    }: {
+      displayPath: string;
+      fullPath: string;
+      isCommandLineArgument: boolean;
+      printHeader: boolean;
+    }): Promise<void> {
       try {
-        const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
         const directStat = await getPathStat({
           context,
           path: fullPath,
           symlinkMode,
-          isCommandLineArgument: true,
+          isCommandLineArgument,
         });
 
-        switch (directStat.type) {
-        case 'directory':
-          break;
-        case 'file':
-        case 'fifo':
-        case 'chardev':
-        case 'symlink': {
+        if (d || directStat.type !== 'directory') {
           const line = await formatEntry({
             context,
-            displayName: p,
+            displayName: displayPath,
             fullPath,
             type: directStat.type,
             longFormat: l,
             humanReadable: h,
+            classify,
             symlinkMode,
-            isCommandLineArgument: true,
+            isCommandLineArgument,
           });
           await text.print({ text: `${line}\n` });
-          continue;
-        }
-        default: {
-          const _ex: never = directStat.type;
-          throw new Error(`Unhandled file type: ${_ex}`);
-        }
+          return;
         }
 
         const directoryPath = await getDirectoryReadPath({
           context,
           path: fullPath,
           symlinkMode,
-          isCommandLineArgument: true,
+          isCommandLineArgument,
         });
         const entries = await context.files.readDir({ path: directoryPath });
-        const filtered = a ? entries : entries.filter((entry) => !entry.name.startsWith('.'));
+        const filtered = (a ? entries : entries.filter((entry) => !entry.name.startsWith('.')))
+          .slice()
+          .sort((left, right) => left.name.localeCompare(right.name));
 
-        if (paths.length > 1) {
-          if (index > 0) {
-            await text.print({ text: '\n' });
-          }
-          await text.print({ text: `${p}:\n` });
+        if (printHeader) {
+          await text.print({ text: `${displayPath}:\n` });
         }
 
         for (const entry of filtered) {
@@ -133,6 +145,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
             type: entry.type,
             longFormat: l,
             humanReadable: h,
+            classify,
             symlinkMode,
             isCommandLineArgument: false,
           });
@@ -142,10 +155,44 @@ export const lsCommandDefinition: WeshCommandDefinition = {
         if (!one && !l && filtered.length > 0) {
           await text.print({ text: '\n' });
         }
+
+        if (R) {
+          const childDirectories = filtered.filter((entry) => entry.type === 'directory');
+          for (const entry of childDirectories) {
+            if (entry.name === '.' || entry.name === '..') {
+              continue;
+            }
+            const childDisplayPath = displayPath === '/' ? `/${entry.name}` : `${displayPath}/${entry.name}`;
+            const childFullPath = directoryPath.endsWith('/') ? `${directoryPath}${entry.name}` : `${directoryPath}/${entry.name}`;
+            await text.print({ text: '\n' });
+            await listPath({
+              displayPath: childDisplayPath,
+              fullPath: childFullPath,
+              isCommandLineArgument: false,
+              printHeader: true,
+            });
+          }
+        }
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
-        await text.error({ text: `ls: ${p}: ${message}\n` });
+        await text.error({ text: `ls: ${displayPath}: ${message}\n` });
       }
+    }
+
+    for (let index = 0; index < paths.length; index++) {
+      const p = paths[index];
+      if (p === undefined) {
+        continue;
+      }
+      if (index > 0) {
+        await text.print({ text: '\n' });
+      }
+      await listPath({
+        displayPath: p,
+        fullPath: resolvePath({ cwd: context.cwd, path: p }),
+        isCommandLineArgument: true,
+        printHeader: paths.length > 1,
+      });
     }
 
     return { exitCode: 0 };
@@ -223,6 +270,7 @@ async function formatEntry({
   type,
   longFormat,
   humanReadable,
+  classify,
   symlinkMode,
   isCommandLineArgument,
 }: {
@@ -232,27 +280,32 @@ async function formatEntry({
   type: WeshFileType;
   longFormat: boolean;
   humanReadable: boolean;
+  classify: boolean;
   symlinkMode: LsSymlinkMode;
   isCommandLineArgument: boolean;
 }): Promise<string> {
   let line = displayName;
-  switch (type) {
-  case 'directory':
-    line += '/';
-    break;
-  case 'fifo':
-    line += '|';
-    break;
-  case 'chardev':
-    line += '@';
-    break;
-  case 'file':
-  case 'symlink':
-    break;
-  default: {
-    const _ex: never = type;
-    throw new Error(`Unhandled file type: ${_ex}`);
-  }
+  if (classify) {
+    switch (type) {
+    case 'directory':
+      line += '/';
+      break;
+    case 'fifo':
+      line += '|';
+      break;
+    case 'chardev':
+      line += '@';
+      break;
+    case 'symlink':
+      line += '@';
+      break;
+    case 'file':
+      break;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled file type: ${_ex}`);
+    }
+    }
   }
 
   if (!longFormat) {

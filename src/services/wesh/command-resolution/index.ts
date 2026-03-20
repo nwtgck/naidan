@@ -15,13 +15,15 @@ export function formatResolvedCommand({
   mode,
 }: {
   resolved: WeshResolvedCommand;
-  mode: 'command-v' | 'which';
+  mode: 'command-v' | 'command-V' | 'which';
 }): string | undefined {
   switch (resolved.kind) {
   case 'builtin':
     switch (mode) {
     case 'command-v':
       return resolved.name;
+    case 'command-V':
+      return `${resolved.name} is a shell builtin`;
     case 'which':
       return `${resolved.name}: builtin command`;
     default: {

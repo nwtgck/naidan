@@ -34,12 +34,13 @@ describe('wesh command', () => {
     return { result, stdout, stderr };
   }
 
-  it('prints help and supports command -v', async () => {
+  it('prints help and supports command -v and -V', async () => {
     const help = await execute({ script: 'command --help' });
     const verbose = await execute({ script: 'command -v env missing-command' });
+    const described = await execute({ script: 'command -V env missing-command' });
 
     expect(help.stdout.text).toContain('Run command with arguments, ignoring any function or alias');
-    expect(help.stdout.text).toContain('usage: command [-v] command [argument...]');
+    expect(help.stdout.text).toContain('usage: command [-vV] command [argument...]');
     expect(help.stdout.text).toContain('--help');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
@@ -47,6 +48,10 @@ describe('wesh command', () => {
     expect(verbose.stdout.text).toBe('env\n');
     expect(verbose.stderr.text).toBe('');
     expect(verbose.result.exitCode).toBe(1);
+
+    expect(described.stdout.text).toBe('env is a shell builtin\n');
+    expect(described.stderr.text).toBe('');
+    expect(described.result.exitCode).toBe(1);
   });
 
   it('executes the resolved builtin command and reports unknown commands', async () => {

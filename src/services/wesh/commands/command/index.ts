@@ -6,6 +6,7 @@ import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/comman
 const commandArgvSpec: StandardArgvParserSpec = {
   options: [
     { kind: 'flag', short: 'v', long: undefined, effects: [{ key: 'verbose', value: true }], help: { summary: 'print the resolved command name and stop' } },
+    { kind: 'flag', short: 'V', long: undefined, effects: [{ key: 'describe', value: true }], help: { summary: 'print a description of the resolved command and stop' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
   ],
   allowShortFlagBundles: true,
@@ -18,7 +19,7 @@ export const commandCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'command',
     description: 'Run command with arguments, ignoring any function or alias',
-    usage: 'command [-v] command [argument...]',
+    usage: 'command [-vV] command [argument...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
@@ -49,8 +50,9 @@ export const commandCommandDefinition: WeshCommandDefinition = {
 
     if (parsed.positionals.length === 0) return { exitCode: 0 };
 
-    if (parsed.optionValues.verbose === true) {
+    if (parsed.optionValues.verbose === true || parsed.optionValues.describe === true) {
       let foundAll = true;
+      const formatMode = parsed.optionValues.describe === true ? 'command-V' : 'command-v';
 
       for (const name of parsed.positionals) {
         const resolved = resolveCommand({
@@ -59,7 +61,7 @@ export const commandCommandDefinition: WeshCommandDefinition = {
         });
         const formatted = formatResolvedCommand({
           resolved,
-          mode: 'command-v',
+          mode: formatMode,
         });
 
         if (formatted === undefined) {
