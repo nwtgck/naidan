@@ -108,4 +108,57 @@ echo "$value"`,
     expect(rawResult.stderr.text).toBe('');
     expect(rawResult.result.exitCode).toBe(0);
   });
+
+  it('joins escaped characters by default and continues on backslash-newline', async () => {
+    const escapedSpace = await execute({
+      script: `\
+read value
+echo "$value"`,
+      stdinText: 'a\\ b\n',
+    });
+    const continuedLine = await execute({
+      script: `\
+read value
+echo "$value"`,
+      stdinText: `\
+hello\\
+world
+`,
+    });
+
+    expect(escapedSpace.stdout.text).toBe('a b\n');
+    expect(escapedSpace.stderr.text).toBe('');
+    expect(escapedSpace.result.exitCode).toBe(0);
+
+    expect(continuedLine.stdout.text).toBe('helloworld\n');
+    expect(continuedLine.stderr.text).toBe('');
+    expect(continuedLine.result.exitCode).toBe(0);
+  });
+
+  it('returns failure on EOF while still assigning the partial line', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+read value
+echo "$?"
+echo "$value"`,
+      stdinText: 'partial-without-newline',
+    });
+
+    expect(stdout.text).toBe('1\npartial-without-newline\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('treats empty IFS as no splitting', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+IFS= read first second
+echo "$first|$second"`,
+      stdinText: 'alpha beta gamma\n',
+    });
+
+    expect(stdout.text).toBe('alpha beta gamma|\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });

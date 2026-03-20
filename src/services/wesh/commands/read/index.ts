@@ -141,6 +141,7 @@ export const readCommandDefinition: WeshCommandDefinition = {
     const buffer = new Uint8Array(1);
     let line = '';
     let didRead = false;
+    let endedWithNewline = false;
 
     while (true) {
       const { bytesRead } = await inputHandle.read({ buffer });
@@ -156,6 +157,7 @@ export const readCommandDefinition: WeshCommandDefinition = {
       }
 
       if (char === '\n') {
+        endedWithNewline = true;
         break;
       }
 
@@ -184,7 +186,7 @@ export const readCommandDefinition: WeshCommandDefinition = {
         key: 'REPLY',
         value: line,
       });
-      return { exitCode: didRead ? 0 : 1 };
+      return { exitCode: didRead && endedWithNewline ? 0 : 1 };
     }
 
     const fields = splitReadFields({
@@ -212,6 +214,6 @@ export const readCommandDefinition: WeshCommandDefinition = {
       });
     }
 
-    return { exitCode: didRead ? 0 : 1 };
+    return { exitCode: didRead && endedWithNewline ? 0 : 1 };
   },
 };
