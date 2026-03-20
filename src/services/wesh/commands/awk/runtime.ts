@@ -178,6 +178,18 @@ function clearArray({
   return entries;
 }
 
+function deleteArrayEntry({
+  state,
+  name,
+  index,
+}: {
+  state: AwkRuntimeState;
+  name: string;
+  index: string;
+}): void {
+  state.arrays.get(name)?.delete(index);
+}
+
 function updateTarget({
   state,
   target,
@@ -551,6 +563,64 @@ function executeStatement({
 
     return 'continue';
   }
+  case 'while': {
+    let iterationCount = 0;
+    while (isTruthy({
+      value: evaluateExpression({
+        expression: statement.condition,
+        state,
+      }),
+    })) {
+      iterationCount += 1;
+      if (iterationCount > 100000) {
+        throw new Error('awk: while loop iteration limit exceeded');
+      }
+
+      for (const nestedStatement of statement.statements) {
+        const control = executeStatement({
+          statement: nestedStatement,
+          state,
+          output,
+        });
+        switch (control) {
+        case 'continue':
+          break;
+        case 'next':
+          return 'next';
+        default: {
+          const _ex: never = control;
+          throw new Error(`Unhandled awk control flow: ${_ex}`);
+        }
+        }
+      }
+    }
+    return 'continue';
+  }
+  case 'delete':
+    switch (statement.target.kind) {
+    case 'array':
+      clearArray({
+        state,
+        name: statement.target.name,
+      });
+      return 'continue';
+    case 'indexed':
+      deleteArrayEntry({
+        state,
+        name: statement.target.name,
+        index: coerceToString({
+          value: evaluateExpression({
+            expression: statement.target.index,
+            state,
+          }),
+        }),
+      });
+      return 'continue';
+    default: {
+      const _ex: never = statement.target;
+      throw new Error(`Unhandled awk delete target: ${JSON.stringify(_ex)}`);
+    }
+    }
   case 'next':
     return 'next';
   case 'print': {

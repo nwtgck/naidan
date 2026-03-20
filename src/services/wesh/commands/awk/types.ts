@@ -20,10 +20,16 @@ export type AwkStatement =
   | { kind: 'assign'; target: AwkAssignmentTarget; expression: AwkExpression }
   | { kind: 'expression'; expression: AwkExpression }
   | { kind: 'if'; condition: AwkExpression; thenStatements: AwkStatement[]; elseStatements: AwkStatement[] | undefined }
+  | { kind: 'while'; condition: AwkExpression; statements: AwkStatement[] }
+  | { kind: 'delete'; target: AwkDeleteTarget }
   | { kind: 'next' };
 
 export type AwkAssignmentTarget =
   | { kind: 'variable'; name: string }
+  | { kind: 'indexed'; name: string; index: AwkExpression };
+
+export type AwkDeleteTarget =
+  | { kind: 'array'; name: string }
   | { kind: 'indexed'; name: string; index: AwkExpression };
 
 export type AwkExpression =

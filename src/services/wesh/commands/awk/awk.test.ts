@@ -308,4 +308,33 @@ awk 'BEGIN { arr["1"] = 1; print ("1" in arr["1"]) }'`,
     expect(badIn.stderr.text).toContain("awk: right operand of 'in' must be an array variable");
     expect(badIn.result.exitCode).toBe(2);
   });
+
+  it('supports while loops', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk 'BEGIN { i = 0; while (i < 3) { print i; i++ } }'`,
+    });
+
+    expect(stdout.text).toBe(`\
+0
+1
+2
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports delete for array entries and whole arrays', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk 'BEGIN { arr["a"] = 1; arr["b"] = 2; delete arr["a"]; print ("a" in arr), ("b" in arr); delete arr; print ("b" in arr) }'`,
+    });
+
+    expect(stdout.text).toBe(`\
+0 1
+0
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });

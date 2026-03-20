@@ -365,6 +365,43 @@ class AwkParser {
       };
     }
 
+    if (token.kind === 'identifier' && token.value === 'while') {
+      this.index += 1;
+      const open = this.consumePunctuation({ value: '(' });
+      if (!open.ok) return open;
+      const condition = this.parseExpression();
+      if (!condition.ok) return condition;
+      const close = this.consumePunctuation({ value: ')' });
+      if (!close.ok) return close;
+
+      this.skipSeparators();
+      const statements = this.parseStatementBody();
+      if (!statements.ok) return statements;
+      return {
+        ok: true,
+        statement: {
+          kind: 'while',
+          condition: condition.expression,
+          statements: statements.statements,
+        },
+      };
+    }
+
+    if (token.kind === 'identifier' && token.value === 'delete') {
+      this.index += 1;
+      const deleteTarget = this.parseDeleteTarget();
+      if (!deleteTarget.ok) {
+        return { ok: false, message: "delete requires an array or array element target" };
+      }
+      return {
+        ok: true,
+        statement: {
+          kind: 'delete',
+          target: deleteTarget.target,
+        },
+      };
+    }
+
     switch (token.kind) {
     case 'identifier': {
       const target = this.parseAssignmentTarget();
@@ -435,6 +472,50 @@ class AwkParser {
         index: indexExpression.expression,
       },
       startIndex,
+    };
+  }
+
+  private parseDeleteTarget():
+    | { ok: true; target: { kind: 'array'; name: string } | { kind: 'indexed'; name: string; index: AwkExpression } }
+    | { ok: false } {
+    const startIndex = this.index;
+    const token = this.peek();
+    if (!(token.kind === 'identifier')) {
+      return { ok: false };
+    }
+
+    this.index += 1;
+    const nextToken = this.peek();
+    if (!(nextToken.kind === 'punctuation' && nextToken.value === '[')) {
+      return {
+        ok: true,
+        target: {
+          kind: 'array',
+          name: token.value,
+        },
+      };
+    }
+
+    this.index += 1;
+    const indexExpression = this.parseExpression();
+    if (!indexExpression.ok) {
+      this.index = startIndex;
+      return { ok: false };
+    }
+
+    const closeBracket = this.consumePunctuation({ value: ']' });
+    if (!closeBracket.ok) {
+      this.index = startIndex;
+      return { ok: false };
+    }
+
+    return {
+      ok: true,
+      target: {
+        kind: 'indexed',
+        name: token.value,
+        index: indexExpression.expression,
+      },
     };
   }
 
