@@ -1,5 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { formatResolvedCommand, resolveCommand } from '@/services/wesh/command-resolution';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 const commandArgvSpec: StandardArgvParserSpec = {
@@ -48,22 +49,52 @@ export const commandCommandDefinition: WeshCommandDefinition = {
 
     if (parsed.positionals.length === 0) return { exitCode: 0 };
 
-    const cmdName = parsed.positionals[0]!;
-    const meta = context.getWeshCommandMeta({ name: cmdName });
-
     if (parsed.optionValues.verbose === true) {
-      if (meta) {
-        await text.print({ text: `${cmdName}\n` });
-        return { exitCode: 0 };
+      let foundAll = true;
+
+      for (const name of parsed.positionals) {
+        const resolved = resolveCommand({
+          context,
+          name,
+        });
+        const formatted = formatResolvedCommand({
+          resolved,
+          mode: 'command-v',
+        });
+
+        if (formatted === undefined) {
+          foundAll = false;
+          continue;
+        }
+
+        await text.print({ text: `${formatted}\n` });
       }
-      return { exitCode: 1 };
+
+      return { exitCode: foundAll ? 0 : 1 };
     }
 
-    if (!meta) {
+    const cmdName = parsed.positionals[0]!;
+    const resolved = resolveCommand({
+      context,
+      name: cmdName,
+    });
+
+    switch (resolved.kind) {
+    case 'builtin':
+      return context.executeCommand({
+        command: cmdName,
+        args: parsed.positionals.slice(1),
+        stdin: context.stdin,
+        stdout: context.stdout,
+        stderr: context.stderr,
+      });
+    case 'not-found':
       await text.error({ text: `command: ${cmdName} not found\n` });
       return { exitCode: 1 };
+    default: {
+      const _ex: never = resolved;
+      throw new Error(`Unhandled resolved command: ${JSON.stringify(_ex)}`);
     }
-
-    return { exitCode: 0 };
+    }
   },
 };

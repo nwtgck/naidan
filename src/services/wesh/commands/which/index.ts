@@ -1,5 +1,6 @@
 import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
+import { formatResolvedCommand, resolveCommand } from '@/services/wesh/command-resolution';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 
@@ -59,9 +60,17 @@ export const whichCommandDefinition: WeshCommandDefinition = {
     let foundAll = true;
 
     for (const name of parsed.positionals) {
-      const meta = context.getWeshCommandMeta({ name });
-      if (meta) {
-        await text.print({ text: `${name}: builtin command\n` });
+      const resolved = resolveCommand({
+        context,
+        name,
+      });
+      const formatted = formatResolvedCommand({
+        resolved,
+        mode: 'which',
+      });
+
+      if (formatted !== undefined) {
+        await text.print({ text: `${formatted}\n` });
       } else {
         await text.error({ text: `${name} not found\n` });
         foundAll = false;

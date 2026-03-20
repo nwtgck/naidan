@@ -148,6 +148,10 @@ export interface WeshCommandResult {
   exitCode: number;
 }
 
+export type WeshResolvedCommand =
+  | { kind: 'builtin'; name: string; meta: WeshCommandMeta }
+  | { kind: 'not-found'; name: string };
+
 export interface WeshCommandContext {
   pid: number;
   args: string[];
@@ -174,6 +178,7 @@ export interface WeshCommandContext {
   getHistory(): string[];
   getWeshCommandMeta(options: { name: string }): WeshCommandMeta | undefined;
   getCommandNames(): string[];
+  resolveCommand(options: { name: string }): WeshResolvedCommand;
   getJobs(): Array<{ id: number; command: string; status: 'running' | 'done' }>;
   executeCommand(options: {
     command: string;

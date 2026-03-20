@@ -1344,6 +1344,21 @@ export class Wesh {
       getHistory: () => [...this.history],
       getWeshCommandMeta: ({ name }: { name: string }) => this.commands.get(name)?.meta,
       getCommandNames: () => Array.from(this.commands.keys()),
+      resolveCommand: ({ name }) => {
+        const meta = this.commands.get(name)?.meta;
+        if (meta !== undefined) {
+          return {
+            kind: 'builtin',
+            name,
+            meta,
+          };
+        }
+
+        return {
+          kind: 'not-found',
+          name,
+        };
+      },
       getJobs: () => Array.from(this.jobs.values()).map(j => ({ id: j.id, command: j.command, status: j.status })),
       executeCommand: ({ command, args, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr }) => this.executeArgv({
         command,

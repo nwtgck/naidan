@@ -56,4 +56,14 @@ describe('wesh which', () => {
     expect(stderr.text).toContain('missing-command not found');
     expect(result.exitCode).toBe(1);
   });
+
+  it('matches command -v for resolved builtins', async () => {
+    const whichResult = await execute({ script: 'which env' });
+    const commandResult = await execute({ script: 'command -v env' });
+
+    expect(whichResult.stdout.text).toBe('env: builtin command\n');
+    expect(commandResult.stdout.text).toBe('env\n');
+    expect(whichResult.stderr.text).toBe('');
+    expect(commandResult.stderr.text).toBe('');
+  });
 });
