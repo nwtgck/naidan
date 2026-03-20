@@ -374,6 +374,40 @@ a 1
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports break and continue inside loops', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk 'BEGIN { for (i = 0; i < 6; i++) { if (i == 2) continue; if (i == 4) break; print i } }'`,
+    });
+
+    expect(stdout.text).toBe(`\
+0
+1
+3
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('reports break and continue outside loops explicitly', async () => {
+    const badBreak = await execute({
+      script: `\
+awk 'BEGIN { break }'`,
+    });
+    const badContinue = await execute({
+      script: `\
+awk 'BEGIN { continue }'`,
+    });
+
+    expect(badBreak.stdout.text).toBe('');
+    expect(badBreak.stderr.text).toContain("awk: 'break' is not allowed outside loops");
+    expect(badBreak.result.exitCode).toBe(2);
+
+    expect(badContinue.stdout.text).toBe('');
+    expect(badContinue.stderr.text).toContain("awk: 'continue' is not allowed outside loops");
+    expect(badContinue.result.exitCode).toBe(2);
+  });
+
   it('reports unsupported printf formats explicitly', async () => {
     const badPrintf = await execute({
       script: `\

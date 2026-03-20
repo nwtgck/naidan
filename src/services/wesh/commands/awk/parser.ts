@@ -350,6 +350,16 @@ class AwkParser {
       return { ok: true, statement: { kind: 'next' } };
     }
 
+    if (token.kind === 'identifier' && token.value === 'break') {
+      this.index += 1;
+      return { ok: true, statement: { kind: 'break' } };
+    }
+
+    if (token.kind === 'identifier' && token.value === 'continue') {
+      this.index += 1;
+      return { ok: true, statement: { kind: 'continue' } };
+    }
+
     if (token.kind === 'identifier' && token.value === 'if') {
       this.index += 1;
       const open = this.consumePunctuation({ value: '(' });

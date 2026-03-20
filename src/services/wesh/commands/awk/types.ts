@@ -25,6 +25,8 @@ export type AwkStatement =
   | { kind: 'for'; initializer: AwkForClausePart | undefined; condition: AwkExpression | undefined; increment: AwkForClausePart | undefined; statements: AwkStatement[] }
   | { kind: 'forIn'; variableName: string; arrayName: string; statements: AwkStatement[] }
   | { kind: 'delete'; target: AwkDeleteTarget }
+  | { kind: 'break' }
+  | { kind: 'continue' }
   | { kind: 'next' };
 
 export type AwkForClausePart =

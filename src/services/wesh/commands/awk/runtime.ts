@@ -1,6 +1,6 @@
 import type { AwkExpression, AwkPattern, AwkProgram, AwkStatement, AwkValue } from './types';
 
-type AwkStatementControl = 'continue' | 'next';
+type AwkStatementControl = 'normal' | 'next' | 'break' | 'continue_loop';
 
 interface AwkRecord {
   text: string;
@@ -630,11 +630,11 @@ function executeStatement({
       throw new Error(`Unhandled awk assignment target: ${JSON.stringify(_ex)}`);
     }
     }
-    return 'continue';
+    return 'normal';
   }
   case 'expression':
     evaluateExpression({ expression: statement.expression, state });
-    return 'continue';
+    return 'normal';
   case 'if': {
     const statements = isTruthy({
       value: evaluateExpression({
@@ -650,10 +650,12 @@ function executeStatement({
         output,
       });
       switch (control) {
-      case 'continue':
+      case 'normal':
         break;
       case 'next':
-        return 'next';
+      case 'break':
+      case 'continue_loop':
+        return control;
       default: {
         const _ex: never = control;
         throw new Error(`Unhandled awk control flow: ${_ex}`);
@@ -661,7 +663,7 @@ function executeStatement({
       }
     }
 
-    return 'continue';
+    return 'normal';
   }
   case 'while': {
     let iterationCount = 0;
@@ -676,6 +678,7 @@ function executeStatement({
         throw new Error('awk: while loop iteration limit exceeded');
       }
 
+      let shouldContinueLoop = false;
       for (const nestedStatement of statement.statements) {
         const control = executeStatement({
           statement: nestedStatement,
@@ -683,8 +686,13 @@ function executeStatement({
           output,
         });
         switch (control) {
-        case 'continue':
+        case 'normal':
           break;
+        case 'continue_loop':
+          shouldContinueLoop = true;
+          break;
+        case 'break':
+          return 'normal';
         case 'next':
           return 'next';
         default: {
@@ -692,9 +700,11 @@ function executeStatement({
           throw new Error(`Unhandled awk control flow: ${_ex}`);
         }
         }
+        if (shouldContinueLoop) break;
       }
+      if (shouldContinueLoop) continue;
     }
-    return 'continue';
+    return 'normal';
   }
   case 'for': {
     executeForClausePart({
@@ -714,6 +724,7 @@ function executeStatement({
         throw new Error('awk: for loop iteration limit exceeded');
       }
 
+      let shouldContinueLoop = false;
       for (const nestedStatement of statement.statements) {
         const control = executeStatement({
           statement: nestedStatement,
@@ -721,8 +732,13 @@ function executeStatement({
           output,
         });
         switch (control) {
-        case 'continue':
+        case 'normal':
           break;
+        case 'continue_loop':
+          shouldContinueLoop = true;
+          break;
+        case 'break':
+          return 'normal';
         case 'next':
           return 'next';
         default: {
@@ -730,14 +746,16 @@ function executeStatement({
           throw new Error(`Unhandled awk control flow: ${_ex}`);
         }
         }
+        if (shouldContinueLoop) break;
       }
 
       executeForClausePart({
         part: statement.increment,
         state,
       });
+      if (shouldContinueLoop) continue;
     }
-    return 'continue';
+    return 'normal';
   }
   case 'forIn': {
     const keys = [...(state.arrays.get(statement.arrayName)?.keys() ?? [])];
@@ -748,6 +766,7 @@ function executeStatement({
         value: key,
       });
 
+      let shouldContinueLoop = false;
       for (const nestedStatement of statement.statements) {
         const control = executeStatement({
           statement: nestedStatement,
@@ -755,8 +774,13 @@ function executeStatement({
           output,
         });
         switch (control) {
-        case 'continue':
+        case 'normal':
           break;
+        case 'continue_loop':
+          shouldContinueLoop = true;
+          break;
+        case 'break':
+          return 'normal';
         case 'next':
           return 'next';
         default: {
@@ -764,9 +788,11 @@ function executeStatement({
           throw new Error(`Unhandled awk control flow: ${_ex}`);
         }
         }
+        if (shouldContinueLoop) break;
       }
+      if (shouldContinueLoop) continue;
     }
-    return 'continue';
+    return 'normal';
   }
   case 'delete':
     switch (statement.target.kind) {
@@ -775,7 +801,7 @@ function executeStatement({
         state,
         name: statement.target.name,
       });
-      return 'continue';
+      return 'normal';
     case 'indexed':
       deleteArrayEntry({
         state,
@@ -787,7 +813,7 @@ function executeStatement({
           }),
         }),
       });
-      return 'continue';
+      return 'normal';
     default: {
       const _ex: never = statement.target;
       throw new Error(`Unhandled awk delete target: ${JSON.stringify(_ex)}`);
@@ -795,12 +821,16 @@ function executeStatement({
     }
   case 'next':
     return 'next';
+  case 'break':
+    return 'break';
+  case 'continue':
+    return 'continue_loop';
   case 'print': {
     const fieldSeparator = coerceToString({ value: getVariable({ state, name: 'OFS' }) });
     const recordSeparator = coerceToString({ value: getVariable({ state, name: 'ORS' }) });
     if (statement.expressions.length === 0) {
       output.push(`${state.currentRecord?.text ?? ''}${recordSeparator}`);
-      return 'continue';
+      return 'normal';
     }
 
     const values = statement.expressions.map((expression) =>
@@ -808,7 +838,7 @@ function executeStatement({
         value: evaluateExpression({ expression, state }),
       }));
     output.push(`${values.join(fieldSeparator)}${recordSeparator}`);
-    return 'continue';
+    return 'normal';
   }
   case 'printf': {
     const formatted = formatPrintfOutput({
@@ -822,7 +852,7 @@ function executeStatement({
         evaluateExpression({ expression, state })),
     });
     output.push(formatted);
-    return 'continue';
+    return 'normal';
   }
   default: {
     const _ex: never = statement;
@@ -885,7 +915,21 @@ export function executeAwkProgram({
     switch (rule.pattern.kind) {
     case 'begin':
       for (const statement of rule.statements) {
-        executeStatement({ statement, state: runtime, output });
+        const control = executeStatement({ statement, state: runtime, output });
+        switch (control) {
+        case 'normal':
+          break;
+        case 'next':
+          throw new Error("awk: 'next' is not allowed in BEGIN");
+        case 'break':
+          throw new Error("awk: 'break' is not allowed outside loops");
+        case 'continue_loop':
+          throw new Error("awk: 'continue' is not allowed outside loops");
+        default: {
+          const _ex: never = control;
+          throw new Error(`Unhandled awk control flow: ${_ex}`);
+        }
+        }
       }
       break;
     case 'end':
@@ -920,11 +964,15 @@ export function executeAwkProgram({
         for (const statement of rule.statements) {
           const control = executeStatement({ statement, state: runtime, output });
           switch (control) {
-          case 'continue':
+          case 'normal':
             break;
           case 'next':
             nextRecord = true;
             break;
+          case 'break':
+            throw new Error("awk: 'break' is not allowed outside loops");
+          case 'continue_loop':
+            throw new Error("awk: 'continue' is not allowed outside loops");
           default: {
             const _ex: never = control;
             throw new Error(`Unhandled awk control flow: ${_ex}`);
@@ -942,7 +990,21 @@ export function executeAwkProgram({
     switch (rule.pattern.kind) {
     case 'end':
       for (const statement of rule.statements) {
-        executeStatement({ statement, state: runtime, output });
+        const control = executeStatement({ statement, state: runtime, output });
+        switch (control) {
+        case 'normal':
+          break;
+        case 'next':
+          throw new Error("awk: 'next' is not allowed in END");
+        case 'break':
+          throw new Error("awk: 'break' is not allowed outside loops");
+        case 'continue_loop':
+          throw new Error("awk: 'continue' is not allowed outside loops");
+        default: {
+          const _ex: never = control;
+          throw new Error(`Unhandled awk control flow: ${_ex}`);
+        }
+        }
       }
       break;
     case 'begin':
