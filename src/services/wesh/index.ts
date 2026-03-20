@@ -50,6 +50,97 @@ interface WeshExpandedField {
   }>;
 }
 
+const WESH_SHELL_SPECIAL_FILES = {
+  sh: '/bin/sh',
+  bash: '/bin/bash',
+} as const;
+
+const WESH_SHELL_SPECIAL_FILE_CONTENT = {
+  sh: '#!/bin/wesh\n# virtual sh entrypoint provided by wesh\n',
+  bash: '#!/bin/wesh\n# virtual bash entrypoint provided by wesh\n',
+} as const;
+
+function stripShebangLine({
+  script,
+}: {
+  script: string;
+}): string {
+  if (!script.startsWith('#!')) {
+    return script;
+  }
+
+  const newlineIndex = script.indexOf('\n');
+  if (newlineIndex < 0) {
+    return '';
+  }
+  return script.slice(newlineIndex + 1);
+}
+
+class StaticTextFileHandle implements WeshFileHandle {
+  private readonly bytes: Uint8Array;
+  private readonly mode: number;
+  private position = 0;
+
+  constructor({
+    text,
+    mode,
+  }: {
+    text: string;
+    mode: number;
+  }) {
+    this.bytes = new TextEncoder().encode(text);
+    this.mode = mode;
+  }
+
+  async read(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<{ bytesRead: number }> {
+    const bufferOffset = options.offset ?? 0;
+    const length = options.length ?? (options.buffer.length - bufferOffset);
+    const start = options.position ?? this.position;
+    if (start >= this.bytes.length) {
+      return { bytesRead: 0 };
+    }
+
+    const end = Math.min(start + length, this.bytes.length);
+    const slice = this.bytes.subarray(start, end);
+    options.buffer.set(slice, bufferOffset);
+    if (options.position === undefined) {
+      this.position = end;
+    }
+    return { bytesRead: slice.length };
+  }
+
+  async write(): Promise<{ bytesWritten: number }> {
+    throw new Error('File is read-only');
+  }
+
+  async close(): Promise<void> {}
+
+  async stat() {
+    return {
+      size: this.bytes.length,
+      mode: this.mode,
+      type: 'file' as const,
+      mtime: 0,
+      ino: 0,
+      uid: 0,
+      gid: 0,
+    };
+  }
+
+  async truncate(): Promise<void> {
+    throw new Error('File is read-only');
+  }
+
+  async ioctl(): Promise<{ ret: number }> {
+    return { ret: 0 };
+  }
+}
+
 function weshSignalConditionNames({
   signal,
 }: {
@@ -125,6 +216,22 @@ export class Wesh {
       this.registerCommand({ definition });
     }
     this.registerCommand({ definition: helpCommandDefinition });
+    this.registerCommand({ definition: this.createShellAliasCommandDefinition({ name: 'sh' }) });
+    this.registerCommand({ definition: this.createShellAliasCommandDefinition({ name: 'bash' }) });
+    this.vfs.registerSpecialFile({
+      path: WESH_SHELL_SPECIAL_FILES.sh,
+      handler: () => new StaticTextFileHandle({
+        text: WESH_SHELL_SPECIAL_FILE_CONTENT.sh,
+        mode: 0o555,
+      }),
+    });
+    this.vfs.registerSpecialFile({
+      path: WESH_SHELL_SPECIAL_FILES.bash,
+      handler: () => new StaticTextFileHandle({
+        text: WESH_SHELL_SPECIAL_FILE_CONTENT.bash,
+        mode: 0o555,
+      }),
+    });
 
     this.registerInternalCommand('jobs', async ({ context }) => {
       const jobs = context.getJobs();
@@ -170,6 +277,109 @@ export class Wesh {
     });
   }
 
+  private createShellAliasCommandDefinition({
+    name,
+  }: {
+    name: 'sh' | 'bash';
+  }): WeshCommandDefinition {
+    return {
+      meta: {
+        name,
+        description: `Run commands using the ${name} shell compatibility entrypoint`,
+        usage: `${name} [-c command] [file [argument...]]`,
+      },
+      fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+        if (context.args.length === 1 && context.args[0] === '--help') {
+          await context.text().print({
+            text: `\
+${name}: ${name} shell compatibility entrypoint
+usage: ${name} [-c command] [file [argument...]]
+`,
+          });
+          return { exitCode: 0 };
+        }
+
+        if (context.args[0] === '-c') {
+          const script = context.args[1];
+          if (script === undefined) {
+            await context.text().error({
+              text: `${name}: option requires an argument -- 'c'\n`,
+            });
+            return { exitCode: 2 };
+          }
+          return context.executeShell({
+            script,
+            stdin: context.stdin,
+            stdout: context.stdout,
+            stderr: context.stderr,
+          });
+        }
+
+        const scriptPath = context.args[0];
+        if (scriptPath === undefined) {
+          const scriptBytes = await this.readHandleToBytes({ handle: context.stdin });
+          return context.executeShell({
+            script: new TextDecoder().decode(scriptBytes),
+            stdin: context.stdin,
+            stdout: context.stdout,
+            stderr: context.stderr,
+          });
+        }
+
+        try {
+          const path = resolvePath({
+            cwd: context.cwd,
+            path: scriptPath,
+          });
+          const bytes = await this.kernel.open({
+            path,
+            flags: {
+              access: 'read',
+              creation: 'never',
+              truncate: 'preserve',
+              append: 'preserve',
+            },
+          }).then(async (handle) => {
+            try {
+              return await this.readHandleToBytes({ handle });
+            } finally {
+              await handle.close();
+            }
+          });
+          const childEnvironment = await this.spawnChildExecutionEnvironment({
+            parentEnvironment: this.createExecutionEnvironment({
+              shellPid: context.pid,
+              pgid: context.process.getGroupId(),
+              env: new Map(context.env),
+              cwd: context.cwd,
+              fds: new Map(),
+              traps: new Map(),
+              positionalArgs: context.args.slice(1),
+              lastBackgroundPid: undefined,
+            }),
+            pgid: context.process.getGroupId(),
+          });
+          childEnvironment.positionalArgs = context.args.slice(1);
+          childEnvironment.env.set('0', scriptPath);
+          this.syncSpecialParameters({ environment: childEnvironment });
+          return this.executeShellInState({
+            script: stripShebangLine({
+              script: new TextDecoder().decode(bytes),
+            }),
+            environment: childEnvironment,
+            stdin: context.stdin,
+            stdout: context.stdout,
+            stderr: context.stderr,
+          });
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          await context.text().error({ text: `${name}: ${scriptPath}: ${message}\n` });
+          return { exitCode: 1 };
+        }
+      },
+    };
+  }
+
   private resolveBuiltinCommand({
     name,
     cwd,
@@ -190,14 +400,24 @@ export class Wesh {
   } | undefined {
     const direct = this.commands.get(name);
     if (direct !== undefined) {
+      const shellAliasPath = (() => {
+        switch (name) {
+        case 'sh':
+          return WESH_SHELL_SPECIAL_FILES.sh;
+        case 'bash':
+          return WESH_SHELL_SPECIAL_FILES.bash;
+        default:
+          return undefined;
+        }
+      })();
       return {
         definition: direct,
         resolved: {
           kind: 'builtin',
           name,
           meta: direct.meta,
-          invocationPath: undefined,
-          resolution: 'builtin-name',
+          invocationPath: shellAliasPath,
+          resolution: shellAliasPath === undefined ? 'builtin-name' : 'path-lookup',
         },
       };
     }
@@ -247,6 +467,111 @@ export class Wesh {
             resolution: 'path-lookup',
           },
         };
+      }
+    }
+
+    return undefined;
+  }
+
+  private async readHandleToBytes({
+    handle,
+  }: {
+    handle: WeshFileHandle;
+  }): Promise<Uint8Array> {
+    const chunks: Uint8Array[] = [];
+    let totalLength = 0;
+
+    while (true) {
+      const buffer = new Uint8Array(64 * 1024);
+      const { bytesRead } = await handle.read({ buffer });
+      if (bytesRead === 0) {
+        break;
+      }
+      const chunk = new Uint8Array(buffer.subarray(0, bytesRead));
+      chunks.push(chunk);
+      totalLength += chunk.length;
+    }
+
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return result;
+  }
+
+  private async resolveShebangScript({
+    name,
+    cwd,
+    env,
+  }: {
+    name: string;
+    cwd: string;
+    env: Map<string, string>;
+  }): Promise<{ scriptPath: string; interpreter: string; interpreterArgs: string[] } | undefined> {
+    const candidatePaths = (() => {
+      if (name.includes('/')) {
+        return [resolvePath({ cwd, path: name })];
+      }
+
+      const pathValue = env.get('PATH') ?? '';
+      const pathEntries = pathValue.split(':').filter((entry) => entry.length > 0);
+      return pathEntries.map((entry) => {
+        const base = resolvePath({
+          cwd,
+          path: entry,
+        });
+        return base === '/' ? `/${name}` : `${base}/${name}`;
+      });
+    })();
+
+    for (const candidatePath of candidatePaths) {
+      try {
+        const handle = await this.kernel.open({
+          path: candidatePath,
+          flags: {
+            access: 'read',
+            creation: 'never',
+            truncate: 'preserve',
+            append: 'preserve',
+          },
+        });
+        const bytes = await this.readHandleToBytes({ handle });
+        await handle.close();
+        const text = new TextDecoder().decode(bytes);
+        const firstLine = text.split('\n', 1)[0] ?? '';
+        if (!firstLine.startsWith('#!')) {
+          continue;
+        }
+        const shebang = firstLine.slice(2).trim();
+        if (shebang.length === 0) {
+          continue;
+        }
+        const parts = shebang.split(/\s+/u);
+        const interpreter = parts[0];
+        if (interpreter === undefined) {
+          continue;
+        }
+        const interpreterArgs = parts.slice(1);
+        if (interpreter === '/usr/bin/env') {
+          const envInterpreter = interpreterArgs[0];
+          if (envInterpreter === undefined) {
+            continue;
+          }
+          return {
+            scriptPath: candidatePath,
+            interpreter: envInterpreter,
+            interpreterArgs: interpreterArgs.slice(1),
+          };
+        }
+        return {
+          scriptPath: candidatePath,
+          interpreter,
+          interpreterArgs,
+        };
+      } catch {
+        continue;
       }
     }
 
@@ -1630,6 +1955,25 @@ export class Wesh {
     });
 
     if (resolvedCommand === undefined) {
+      const shebangScript = await this.resolveShebangScript({
+        name: cmdName,
+        cwd: environment.cwd,
+        env: environment.env,
+      });
+      if (shebangScript !== undefined) {
+        return this.executeArgv({
+          command: shebangScript.interpreter,
+          args: [
+            ...shebangScript.interpreterArgs,
+            shebangScript.scriptPath,
+            ...expandedArgs,
+          ],
+          environment,
+          stdin,
+          stdout,
+          stderr,
+        });
+      }
       throw new Error(`Command not found: ${cmdName}`);
     }
     const definition = resolvedCommand.definition;

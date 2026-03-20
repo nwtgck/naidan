@@ -102,4 +102,50 @@ describe('wesh core command parsing', () => {
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('exposes /bin/sh and /bin/bash as virtual shell files', async () => {
+    const shResult = await execute({ script: 'cat /bin/sh' });
+    const bashResult = await execute({ script: 'cat /bin/bash' });
+
+    expect(shResult.stdout.text).toContain('#!/bin/wesh');
+    expect(shResult.stdout.text).toContain('virtual sh entrypoint');
+    expect(shResult.stderr.text).toBe('');
+    expect(shResult.result.exitCode).toBe(0);
+
+    expect(bashResult.stdout.text).toContain('#!/bin/wesh');
+    expect(bashResult.stdout.text).toContain('virtual bash entrypoint');
+    expect(bashResult.stderr.text).toBe('');
+    expect(bashResult.result.exitCode).toBe(0);
+  });
+
+  it('supports sh and bash shell aliases', async () => {
+    const shResult = await execute({ script: "sh -c 'echo shell'" });
+    const bashResult = await execute({ script: "bash -c 'echo shell'" });
+    const pathResult = await execute({ script: "/bin/sh -c 'echo shell'" });
+
+    expect(shResult.stdout.text).toBe('shell\n');
+    expect(shResult.stderr.text).toBe('');
+    expect(shResult.result.exitCode).toBe(0);
+
+    expect(bashResult.stdout.text).toBe('shell\n');
+    expect(bashResult.stderr.text).toBe('');
+    expect(bashResult.result.exitCode).toBe(0);
+
+    expect(pathResult.stdout.text).toBe('shell\n');
+    expect(pathResult.stderr.text).toBe('');
+    expect(pathResult.result.exitCode).toBe(0);
+  });
+
+  it('executes shebang scripts through the resolved interpreter', async () => {
+    await writeFile({
+      name: 'hello.sh',
+      data: '#!/bin/sh\necho shebang\n',
+    });
+
+    const { result, stdout, stderr } = await execute({ script: './hello.sh' });
+
+    expect(stdout.text).toBe('shebang\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });
