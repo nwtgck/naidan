@@ -1,5 +1,23 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { writeCommandHelp } from '@/services/wesh/commands/_shared/usage';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+
+const rmdirArgvSpec: StandardArgvParserSpec = {
+  options: [
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'help',
+      effects: [{ key: 'help', value: true }],
+      help: { summary: 'display this help and exit', category: 'common' },
+    },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 export const rmdirCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -8,12 +26,27 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
     usage: 'rmdir directory...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const parsed = parseStandardArgv({
+      args: context.args,
+      spec: rmdirArgvSpec,
+    });
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'rmdir',
+        argvSpec: rmdirArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
     const text = context.text();
     if (context.args.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'rmdir',
         message: 'rmdir: missing operand',
+        argvSpec: rmdirArgvSpec,
       });
       return { exitCode: 1 };
     }

@@ -1,4 +1,16 @@
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+
+const cdArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 export const cdCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -7,8 +19,34 @@ export const cdCommandDefinition: WeshCommandDefinition = {
     usage: 'cd [path]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const target = context.args[0] || '/';
+    const parsed = parseStandardArgv({
+      args: context.args,
+      spec: cdArgvSpec,
+    });
+
     const text = context.text();
+
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'cd',
+        message: `cd: ${diagnostic.message}`,
+        argvSpec: cdArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'cd',
+        argvSpec: cdArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
+    const target = parsed.positionals[0] || '/';
 
     try {
       let fullPath: string;

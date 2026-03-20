@@ -1,5 +1,18 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv } from '@/services/wesh/argv';
+import type { StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+
+const exportArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+    { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'print', value: true }], help: { summary: 'show exported names and values in a reusable format', category: 'common' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 export const exportCmdCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -10,16 +23,28 @@ export const exportCmdCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'print', value: true }], help: { summary: 'list exported variables in a reusable format' } },
-        ],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [],
-      },
+      spec: exportArgvSpec,
     });
+
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'export',
+        message: `export: ${diagnostic.message}`,
+        argvSpec: exportArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'export',
+        argvSpec: exportArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
 
     const text = context.text();
     if (parsed.optionValues.print === true) {

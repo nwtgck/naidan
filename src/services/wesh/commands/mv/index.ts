@@ -1,5 +1,23 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { writeCommandHelp } from '@/services/wesh/commands/_shared/usage';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+
+const mvArgvSpec: StandardArgvParserSpec = {
+  options: [
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'help',
+      effects: [{ key: 'help', value: true }],
+      help: { summary: 'display this help and exit', category: 'common' },
+    },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 export const mvCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -8,12 +26,27 @@ export const mvCommandDefinition: WeshCommandDefinition = {
     usage: 'mv source destination',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const parsed = parseStandardArgv({
+      args: context.args,
+      spec: mvArgvSpec,
+    });
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'mv',
+        argvSpec: mvArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
     const text = context.text();
     if (context.args.length < 2) {
       await writeCommandUsageError({
         context,
         command: 'mv',
         message: 'mv: missing file operand',
+        argvSpec: mvArgvSpec,
       });
       return { exitCode: 1 };
     }

@@ -1,5 +1,23 @@
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp } from '@/services/wesh/commands/_shared/usage';
 import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+
+const mkfifoArgvSpec: StandardArgvParserSpec = {
+  options: [
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'help',
+      effects: [{ key: 'help', value: true }],
+      help: { summary: 'display this help and exit', category: 'common' },
+    },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 export const mkfifoCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -8,6 +26,20 @@ export const mkfifoCommandDefinition: WeshCommandDefinition = {
     usage: 'mkfifo [path...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const parsed = parseStandardArgv({
+      args: context.args,
+      spec: mkfifoArgvSpec,
+    });
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'mkfifo',
+        argvSpec: mkfifoArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
     const paths = context.args;
     const text = context.text();
 
@@ -16,6 +48,7 @@ export const mkfifoCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'mkfifo',
         message: 'mkfifo: missing operand',
+        argvSpec: mkfifoArgvSpec,
       });
       return { exitCode: 1 };
     }
