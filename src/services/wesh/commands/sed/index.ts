@@ -1,6 +1,6 @@
 import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
-import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
 import { handleToStream, readFile, writeFile } from '@/services/wesh/utils/fs';
 
@@ -510,6 +510,13 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           parseValue: undefined,
           help: { summary: 'edit files in place, optionally keeping a backup suffix', category: 'advanced' },
         },
+        {
+          kind: 'flag',
+          short: undefined,
+          long: 'help',
+          effects: [{ key: 'help', value: true }],
+          help: { summary: 'display this help and exit', category: 'common' },
+        },
       ],
       allowShortFlagBundles: true,
       stopAtDoubleDash: true,
@@ -530,6 +537,15 @@ export const sedCommandDefinition: WeshCommandDefinition = {
         argvSpec: sedArgvSpec,
       });
       return { exitCode: 2 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'sed',
+        argvSpec: sedArgvSpec,
+      });
+      return { exitCode: 0 };
     }
 
     const inlineScripts = parsed.occurrences

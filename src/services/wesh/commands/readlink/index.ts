@@ -1,9 +1,23 @@
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { parseStandardArgv } from '@/services/wesh/argv';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   return path.startsWith('/') ? path : `${cwd}/${path}`;
 }
+
+const readlinkArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: 'f', long: 'canonicalize', effects: [{ key: 'canonicalize', value: true }], help: { summary: 'canonicalize the path and resolve symlinks' } },
+    { kind: 'flag', short: 'n', long: 'no-newline', effects: [{ key: 'noNewline', value: true }], help: { summary: 'do not print the trailing newline' } },
+    { kind: 'flag', short: 'e', long: 'canonicalize-existing', effects: [{ key: 'canonicalize', value: true }], help: { summary: 'canonicalize the path, requiring every component to exist' } },
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 export const readlinkCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -14,28 +28,37 @@ export const readlinkCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          { kind: 'flag', short: 'f', long: 'canonicalize', effects: [{ key: 'canonicalize', value: true }], help: { summary: 'canonicalize the path and resolve symlinks' } },
-          { kind: 'flag', short: 'n', long: 'no-newline', effects: [{ key: 'noNewline', value: true }], help: { summary: 'do not print the trailing newline' } },
-          { kind: 'flag', short: 'e', long: 'canonicalize-existing', effects: [{ key: 'canonicalize', value: true }], help: { summary: 'canonicalize the path, requiring every component to exist' } },
-        ],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [],
-      },
+      spec: readlinkArgvSpec,
     });
 
     const diagnostic = parsed.diagnostics[0];
     const text = context.text();
     if (diagnostic !== undefined) {
-      await text.error({ text: `readlink: ${diagnostic.message}\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'readlink',
+        message: `readlink: ${diagnostic.message}`,
+        argvSpec: readlinkArgvSpec,
+      });
       return { exitCode: 1 };
     }
 
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'readlink',
+        argvSpec: readlinkArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
     if (parsed.positionals.length !== 1) {
-      await text.error({ text: 'readlink: expected exactly one operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'readlink',
+        message: 'readlink: expected exactly one operand',
+        argvSpec: readlinkArgvSpec,
+      });
       return { exitCode: 1 };
     }
 

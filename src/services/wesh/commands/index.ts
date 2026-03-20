@@ -40,6 +40,7 @@ import { readCommandDefinition } from './read/index.ts';
 import { lnCommandDefinition } from './ln/index.ts';
 import { readlinkCommandDefinition } from './readlink/index.ts';
 import { leftBracketCommandDefinition, testCommandDefinition } from './test/index.ts';
+import { awkCommandDefinition } from './awk/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -82,6 +83,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   readCommandDefinition,
   lnCommandDefinition,
   readlinkCommandDefinition,
+  awkCommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
 ];

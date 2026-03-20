@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseStandardArgv } from '@/services/wesh/argv';
-import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { handleToStream, streamToHandle } from '@/services/wesh/utils/fs';
 
 type CpSymlinkMode = 'physical' | 'logical' | 'command-line';
@@ -15,6 +15,44 @@ function basename({ path }: { path: string }): string {
   return parts[parts.length - 1] ?? normalized;
 }
 
+const cpArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: 'R', long: 'recursive', effects: [{ key: 'recursive', value: true }], help: { summary: 'copy directories recursively', category: 'common' } },
+    { kind: 'flag', short: 'r', long: 'r', effects: [{ key: 'recursive', value: true }], help: { summary: 'copy directories recursively', category: 'advanced' } },
+    {
+      kind: 'flag',
+      short: 'a',
+      long: 'archive',
+      effects: [
+        { key: 'recursive', value: true },
+        { key: 'symlinkMode', value: 'physical' },
+      ],
+      help: { summary: 'archive mode', category: 'common' },
+    },
+    { kind: 'flag', short: 'H', long: undefined, effects: [{ key: 'symlinkMode', value: 'command-line' }], help: { summary: 'follow command-line symlinks', category: 'advanced' } },
+    { kind: 'flag', short: 'L', long: 'dereference', effects: [{ key: 'symlinkMode', value: 'logical' }], help: { summary: 'always follow symlinks', category: 'advanced' } },
+    { kind: 'flag', short: 'P', long: 'no-dereference', effects: [{ key: 'symlinkMode', value: 'physical' }], help: { summary: 'never follow symlinks', category: 'advanced' } },
+    { kind: 'flag', short: 'T', long: 'no-target-directory', effects: [{ key: 'noTargetDirectory', value: true }], help: { summary: 'treat destination as a normal file', category: 'advanced' } },
+    { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }], help: { summary: 'remove existing destination files', category: 'common' } },
+    { kind: 'flag', short: 'n', long: 'no-clobber', effects: [{ key: 'noClobber', value: true }], help: { summary: 'do not overwrite existing files', category: 'common' } },
+    {
+      kind: 'value',
+      short: 't',
+      long: 'target-directory',
+      key: 'targetDirectory',
+      valueName: 'DIRECTORY',
+      allowAttachedValue: true,
+      parseValue: undefined,
+      help: { summary: 'copy all source arguments into DIRECTORY', valueName: 'DIRECTORY', category: 'common' },
+    },
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
+
 export const cpCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'cp',
@@ -25,42 +63,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          { kind: 'flag', short: 'R', long: 'recursive', effects: [{ key: 'recursive', value: true }], help: { summary: 'copy directories recursively', category: 'common' } },
-          { kind: 'flag', short: 'r', long: 'r', effects: [{ key: 'recursive', value: true }], help: { summary: 'copy directories recursively', category: 'advanced' } },
-          {
-            kind: 'flag',
-            short: 'a',
-            long: 'archive',
-            effects: [
-              { key: 'recursive', value: true },
-              { key: 'symlinkMode', value: 'physical' },
-            ],
-            help: { summary: 'archive mode', category: 'common' },
-          },
-          { kind: 'flag', short: 'H', long: undefined, effects: [{ key: 'symlinkMode', value: 'command-line' }], help: { summary: 'follow command-line symlinks', category: 'advanced' } },
-          { kind: 'flag', short: 'L', long: 'dereference', effects: [{ key: 'symlinkMode', value: 'logical' }], help: { summary: 'always follow symlinks', category: 'advanced' } },
-          { kind: 'flag', short: 'P', long: 'no-dereference', effects: [{ key: 'symlinkMode', value: 'physical' }], help: { summary: 'never follow symlinks', category: 'advanced' } },
-          { kind: 'flag', short: 'T', long: 'no-target-directory', effects: [{ key: 'noTargetDirectory', value: true }], help: { summary: 'treat destination as a normal file', category: 'advanced' } },
-          { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }], help: { summary: 'remove existing destination files', category: 'common' } },
-          { kind: 'flag', short: 'n', long: 'no-clobber', effects: [{ key: 'noClobber', value: true }], help: { summary: 'do not overwrite existing files', category: 'common' } },
-          {
-            kind: 'value',
-            short: 't',
-            long: 'target-directory',
-            key: 'targetDirectory',
-            valueName: 'DIRECTORY',
-            allowAttachedValue: true,
-            parseValue: undefined,
-            help: { summary: 'copy all source arguments into DIRECTORY', valueName: 'DIRECTORY', category: 'common' },
-          },
-        ],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [],
-      },
+      spec: cpArgvSpec,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -69,8 +72,18 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'cp',
         message: `cp: ${diagnostic.message}`,
+        argvSpec: cpArgvSpec,
       });
       return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'cp',
+        argvSpec: cpArgvSpec,
+      });
+      return { exitCode: 0 };
     }
 
     const targetDirectory = typeof parsed.optionValues.targetDirectory === 'string'
@@ -82,6 +95,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'cp',
         message: 'cp: missing file operand',
+        argvSpec: cpArgvSpec,
       });
       return { exitCode: 1 };
     }
@@ -107,6 +121,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'cp',
         message: 'cp: missing destination file operand',
+        argvSpec: cpArgvSpec,
       });
       return { exitCode: 1 };
     }
@@ -116,6 +131,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'cp',
         message: 'cp: extra operand with -T',
+        argvSpec: cpArgvSpec,
       });
       return { exitCode: 1 };
     }

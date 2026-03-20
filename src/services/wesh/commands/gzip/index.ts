@@ -1,7 +1,17 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseStandardArgv } from '@/services/wesh/argv';
-import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { readFile, writeFile } from '@/services/wesh/utils/fs';
+
+const gzipArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 export const gzipCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -12,21 +22,36 @@ export const gzipCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [],
-      },
+      spec: gzipArgvSpec,
     });
 
     const text = context.text();
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'gzip',
+        message: `gzip: ${diagnostic.message}`,
+        argvSpec: gzipArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'gzip',
+        argvSpec: gzipArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
     if (parsed.positionals.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'gzip',
         message: 'gzip: missing file operand',
+        argvSpec: gzipArgvSpec,
       });
       return { exitCode: 1 };
     }

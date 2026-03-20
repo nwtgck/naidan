@@ -1,5 +1,6 @@
 import { parseFindLikeArgv } from '@/services/wesh/argv';
-import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import type { StandardArgvParserSpec } from '@/services/wesh/argv';
+import { maybeWriteStandaloneCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
@@ -55,6 +56,19 @@ interface FindTraversalOptions {
   depthFirst: boolean;
   symlinkMode: 'physical' | 'command-line' | 'logical';
 }
+
+const findHelpArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: 'H', long: undefined, effects: [{ key: 'symlinkMode', value: 'command-line' }], help: { summary: 'follow command-line symbolic links', category: 'advanced' } },
+    { kind: 'flag', short: 'L', long: undefined, effects: [{ key: 'symlinkMode', value: 'logical' }], help: { summary: 'follow symbolic links', category: 'advanced' } },
+    { kind: 'flag', short: 'P', long: undefined, effects: [{ key: 'symlinkMode', value: 'physical' }], help: { summary: 'never follow symbolic links', category: 'advanced' } },
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   return path.startsWith('/') ? path : `${cwd}/${path}`;
@@ -796,6 +810,23 @@ export const findCommandDefinition: WeshCommandDefinition = {
     usage: 'find [path...] [expression]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const helpStatus = await maybeWriteStandaloneCommandHelp({
+      context,
+      command: 'find',
+      argvSpec: findHelpArgvSpec,
+      mode: context.args.length === 1 && context.args[0] === '--help' ? 'help-requested' : 'not-requested',
+    });
+    switch (helpStatus) {
+    case 'handled':
+      return { exitCode: 0 };
+    case 'not-handled':
+      break;
+    default: {
+      const _ex: never = helpStatus;
+      throw new Error(`Unhandled help status: ${_ex}`);
+    }
+    }
+
     const split = splitFindLeadingOptions({ args: context.args });
     const parsed = parseFindLikeArgv({ args: split.remainingArgs });
     const expression = tokenizeFindExpression({

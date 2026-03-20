@@ -1,5 +1,5 @@
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
-import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { maybeWriteStandaloneCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
@@ -736,26 +736,34 @@ function createTestCommandDefinition({
       })(),
     },
     fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-      const helpRequested = (() => {
-        switch (commandName) {
-        case 'test':
-          return context.args.length === 1 && context.args[0] === '--help';
-        case '[':
-          return context.args.length === 2 && context.args[0] === '--help' && context.args[1] === ']';
-        default: {
-          const _ex: never = commandName;
-          throw new Error(`Unhandled test command name: ${_ex}`);
-        }
-        }
-      })();
-
-      if (helpRequested) {
-        await writeCommandHelp({
-          context,
-          command: commandName,
-          argvSpec: testArgvSpec,
-        });
+      const helpStatus = await maybeWriteStandaloneCommandHelp({
+        context,
+        command: commandName,
+        argvSpec: testArgvSpec,
+        mode: (() => {
+          switch (commandName) {
+          case 'test':
+            return context.args.length === 1 && context.args[0] === '--help' ? 'help-requested' : 'not-requested';
+          case '[':
+            return context.args.length === 2 && context.args[0] === '--help' && context.args[1] === ']'
+              ? 'help-requested'
+              : 'not-requested';
+          default: {
+            const _ex: never = commandName;
+            throw new Error(`Unhandled test command name: ${_ex}`);
+          }
+          }
+        })(),
+      });
+      switch (helpStatus) {
+      case 'handled':
         return { exitCode: 0 };
+      case 'not-handled':
+        break;
+      default: {
+        const _ex: never = helpStatus;
+        throw new Error(`Unhandled help status: ${_ex}`);
+      }
       }
 
       const tokenResult = getExpressionTokens({

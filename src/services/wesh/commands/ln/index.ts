@@ -1,5 +1,6 @@
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { parseStandardArgv } from '@/services/wesh/argv';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   return path.startsWith('/') ? path : `${cwd}/${path}`;
@@ -11,6 +12,20 @@ function basename({ path }: { path: string }): string {
   return parts[parts.length - 1] ?? normalized;
 }
 
+const lnArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: 's', long: 'symbolic', effects: [{ key: 'symbolic', value: true }], help: { summary: 'make symbolic links instead of hard links', category: 'common' } },
+    { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }], help: { summary: 'remove existing destination files', category: 'common' } },
+    { kind: 'flag', short: 'n', long: 'no-dereference', effects: [{ key: 'noDereference', value: true }], help: { summary: 'treat a destination symlink to a directory as a normal file', category: 'advanced' } },
+    { kind: 'flag', short: 'T', long: 'no-target-directory', effects: [{ key: 'noTargetDirectory', value: true }], help: { summary: 'treat LINK_NAME as a normal file always', category: 'advanced' } },
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
+
 export const lnCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'ln',
@@ -20,34 +35,47 @@ export const lnCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          { kind: 'flag', short: 's', long: 'symbolic', effects: [{ key: 'symbolic', value: true }], help: { summary: 'make symbolic links instead of hard links', category: 'common' } },
-          { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }], help: { summary: 'remove existing destination files', category: 'common' } },
-          { kind: 'flag', short: 'n', long: 'no-dereference', effects: [{ key: 'noDereference', value: true }], help: { summary: 'treat a destination symlink to a directory as a normal file', category: 'advanced' } },
-          { kind: 'flag', short: 'T', long: 'no-target-directory', effects: [{ key: 'noTargetDirectory', value: true }], help: { summary: 'treat LINK_NAME as a normal file always', category: 'advanced' } },
-        ],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [],
-      },
+      spec: lnArgvSpec,
     });
 
     const text = context.text();
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
-      await text.error({ text: `ln: ${diagnostic.message}\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'ln',
+        message: `ln: ${diagnostic.message}`,
+        argvSpec: lnArgvSpec,
+      });
       return { exitCode: 1 };
     }
 
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'ln',
+        argvSpec: lnArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
     if (parsed.optionValues.symbolic !== true) {
-      await text.error({ text: 'ln: hard links are not supported; use -s\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'ln',
+        message: 'ln: hard links are not supported; use -s',
+        argvSpec: lnArgvSpec,
+      });
       return { exitCode: 1 };
     }
 
     if (parsed.positionals.length === 0 || parsed.positionals.length > 2) {
-      await text.error({ text: 'ln: expected one or two operands\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'ln',
+        message: 'ln: expected one or two operands',
+        argvSpec: lnArgvSpec,
+      });
       return { exitCode: 1 };
     }
 

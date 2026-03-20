@@ -1,6 +1,17 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseStandardArgv } from '@/services/wesh/argv';
-import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+
+const commandArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: 'v', long: undefined, effects: [{ key: 'verbose', value: true }], help: { summary: 'print the resolved command name and stop' } },
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: false,
+  specialTokenParsers: [],
+};
 
 export const commandCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -11,15 +22,7 @@ export const commandCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          { kind: 'flag', short: 'v', long: undefined, effects: [{ key: 'verbose', value: true }], help: { summary: 'print the resolved command name and stop' } },
-        ],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: false,
-        specialTokenParsers: [],
-      },
+      spec: commandArgvSpec,
     });
 
     const text = context.text();
@@ -29,8 +32,18 @@ export const commandCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'command',
         message: `command: ${diagnostic.message}`,
+        argvSpec: commandArgvSpec,
       });
       return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'command',
+        argvSpec: commandArgvSpec,
+      });
+      return { exitCode: 0 };
     }
 
     if (parsed.positionals.length === 0) return { exitCode: 0 };

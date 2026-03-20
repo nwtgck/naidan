@@ -1,6 +1,18 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseStandardArgv } from '@/services/wesh/argv';
-import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+
+const rmArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'recursive', value: true }], help: { summary: 'remove directories and their contents recursively' } },
+    { kind: 'flag', short: 'f', long: undefined, effects: [{ key: 'force', value: true }], help: { summary: 'ignore nonexistent files and arguments, never prompt' } },
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 export const rmCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -11,16 +23,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'recursive', value: true }], help: { summary: 'remove directories and their contents recursively' } },
-          { kind: 'flag', short: 'f', long: undefined, effects: [{ key: 'force', value: true }], help: { summary: 'ignore nonexistent files and arguments, never prompt' } },
-        ],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [],
-      },
+      spec: rmArgvSpec,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -29,8 +32,18 @@ export const rmCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'rm',
         message: `rm: ${diagnostic.message}`,
+        argvSpec: rmArgvSpec,
       });
       return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'rm',
+        argvSpec: rmArgvSpec,
+      });
+      return { exitCode: 0 };
     }
 
     const text = context.text();
@@ -39,6 +52,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'rm',
         message: 'rm: missing operand',
+        argvSpec: rmArgvSpec,
       });
       return { exitCode: 1 };
     }

@@ -181,6 +181,26 @@ echo $?`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports access predicates and empty-string checks', async () => {
+    await writeFile({ path: 'script.sh', data: 'echo hi\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+test -r script.sh
+echo $?
+test -w script.sh
+echo $?
+test -x script.sh
+echo $?
+test -z ""
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('0\n0\n1\n0\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('returns exit status 2 for syntax errors', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

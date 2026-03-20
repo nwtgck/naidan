@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseStandardArgv } from '@/services/wesh/argv';
-import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 function parseCount({
   value,
@@ -16,6 +16,57 @@ function parseCount({
   return { ok: true, value: parsed };
 }
 
+const headArgvSpec: StandardArgvParserSpec = {
+  options: [
+    {
+      kind: 'value',
+      short: 'n',
+      long: 'lines',
+      key: 'lines',
+      valueName: 'lines',
+      allowAttachedValue: true,
+      parseValue: ({ value }) => parseCount({
+        value,
+        errorPrefix: 'invalid number of lines',
+      }),
+      help: { summary: 'print the first NUM lines', valueName: 'NUM', category: 'common' },
+    },
+    {
+      kind: 'value',
+      short: 'c',
+      long: 'bytes',
+      key: 'bytes',
+      valueName: 'bytes',
+      allowAttachedValue: true,
+      parseValue: ({ value }) => parseCount({
+        value,
+        errorPrefix: 'invalid number of bytes',
+      }),
+      help: { summary: 'print the first NUM bytes', valueName: 'NUM', category: 'advanced' },
+    },
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'help',
+      effects: [{ key: 'help', value: true }],
+      help: { summary: 'display this help and exit', category: 'common' },
+    },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [
+    ({ token }) => {
+      if (!/^-\d+$/.test(token)) return undefined;
+      return {
+        kind: 'matched',
+        consumeCount: 1,
+        effects: [{ key: 'lines', value: parseInt(token.slice(1), 10) }],
+      };
+    },
+  ],
+};
+
 export const headCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'head',
@@ -26,49 +77,7 @@ export const headCommandDefinition: WeshCommandDefinition = {
     const textOutput = context.text();
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          {
-            kind: 'value',
-            short: 'n',
-            long: 'lines',
-            key: 'lines',
-            valueName: 'lines',
-            allowAttachedValue: true,
-            parseValue: ({ value }) => parseCount({
-              value,
-              errorPrefix: 'invalid number of lines',
-            }),
-            help: { summary: 'print the first NUM lines', valueName: 'NUM', category: 'common' },
-          },
-          {
-            kind: 'value',
-            short: 'c',
-            long: 'bytes',
-            key: 'bytes',
-            valueName: 'bytes',
-            allowAttachedValue: true,
-            parseValue: ({ value }) => parseCount({
-              value,
-              errorPrefix: 'invalid number of bytes',
-            }),
-            help: { summary: 'print the first NUM bytes', valueName: 'NUM', category: 'advanced' },
-          },
-        ],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [
-          ({ token }) => {
-            if (!/^-\d+$/.test(token)) return undefined;
-            return {
-              kind: 'matched',
-              consumeCount: 1,
-              effects: [{ key: 'lines', value: parseInt(token.slice(1), 10) }],
-            };
-          },
-        ],
-      },
+      spec: headArgvSpec,
     });
 
     const diagnostic = parsed.diagnostics[0];
@@ -77,8 +86,18 @@ export const headCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'head',
         message: `head: ${diagnostic.message}`,
+        argvSpec: headArgvSpec,
       });
       return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'head',
+        argvSpec: headArgvSpec,
+      });
+      return { exitCode: 0 };
     }
 
     const lines = typeof parsed.optionValues.lines === 'number' ? parsed.optionValues.lines : 10;

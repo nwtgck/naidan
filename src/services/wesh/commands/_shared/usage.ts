@@ -41,3 +41,31 @@ export async function writeCommandHelp({
   ].filter((line) => line !== undefined).join('\n') + '\n';
   await context.text().print({ text });
 }
+
+export async function maybeWriteStandaloneCommandHelp({
+  context,
+  command,
+  argvSpec,
+  mode,
+}: {
+  context: WeshCommandContext;
+  command: string;
+  argvSpec?: StandardArgvParserSpec;
+  mode: 'help-requested' | 'not-requested';
+}): Promise<'handled' | 'not-handled'> {
+  switch (mode) {
+  case 'help-requested':
+    await writeCommandHelp({
+      context,
+      command,
+      argvSpec,
+    });
+    return 'handled';
+  case 'not-requested':
+    return 'not-handled';
+  default: {
+    const _ex: never = mode;
+    throw new Error(`Unhandled help mode: ${_ex}`);
+  }
+  }
+}

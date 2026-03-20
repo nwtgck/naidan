@@ -1,6 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { parseStandardArgv } from '@/services/wesh/argv';
-import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
 function parseLineCount({
@@ -14,6 +14,41 @@ function parseLineCount({
   return { ok: true, value };
 }
 
+const tailArgvSpec: StandardArgvParserSpec = {
+  options: [
+    {
+      kind: 'value',
+      short: 'n',
+      long: 'lines',
+      key: 'lines',
+      valueName: 'lines',
+      allowAttachedValue: true,
+      parseValue: ({ value }) => parseLineCount({ value }),
+      help: { summary: 'output the last NUM lines, or start at line NUM with +NUM', valueName: 'NUM', category: 'common' },
+    },
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'help',
+      effects: [{ key: 'help', value: true }],
+      help: { summary: 'display this help and exit', category: 'common' },
+    },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [
+    ({ token }) => {
+      if (!/^[+-]\d+$/.test(token)) return undefined;
+      return {
+        kind: 'matched',
+        consumeCount: 1,
+        effects: [{ key: 'lines', value: token }],
+      };
+    },
+  ],
+};
+
 export const tailCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'tail',
@@ -23,33 +58,7 @@ export const tailCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          {
-            kind: 'value',
-            short: 'n',
-            long: 'lines',
-            key: 'lines',
-            valueName: 'lines',
-            allowAttachedValue: true,
-            parseValue: ({ value }) => parseLineCount({ value }),
-            help: { summary: 'output the last NUM lines, or start at line NUM with +NUM', valueName: 'NUM', category: 'common' },
-          },
-        ],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [
-          ({ token }) => {
-            if (!/^[+-]\d+$/.test(token)) return undefined;
-            return {
-              kind: 'matched',
-              consumeCount: 1,
-              effects: [{ key: 'lines', value: token }],
-            };
-          },
-        ],
-      },
+      spec: tailArgvSpec,
     });
 
     const text = context.text();
@@ -59,8 +68,18 @@ export const tailCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'tail',
         message: `tail: ${diagnostic.message}`,
+        argvSpec: tailArgvSpec,
       });
       return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'tail',
+        argvSpec: tailArgvSpec,
+      });
+      return { exitCode: 0 };
     }
 
     const rawLineCount = typeof parsed.optionValues.lines === 'string' ? parsed.optionValues.lines : '10';

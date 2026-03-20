@@ -1,5 +1,29 @@
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { parseStandardArgv } from '@/services/wesh/argv';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+
+const readArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'rawMode', value: true }], help: { summary: 'do not treat backslash as an escape character' } },
+    {
+      kind: 'value',
+      short: 'u',
+      long: undefined,
+      key: 'fd',
+      valueName: 'fd',
+      allowAttachedValue: false,
+      help: { summary: 'read from file descriptor fd' },
+      parseValue: ({ value }) => /^\d+$/.test(value)
+        ? { ok: true, value: parseInt(value, 10) }
+        : { ok: false, message: `invalid file descriptor '${value}'` },
+    },
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+  ],
+  allowShortFlagBundles: false,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: true,
+  specialTokenParsers: [],
+};
 
 export const readCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -10,33 +34,27 @@ export const readCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'rawMode', value: true }], help: { summary: 'do not treat backslash as an escape character' } },
-          {
-            kind: 'value',
-            short: 'u',
-            long: undefined,
-            key: 'fd',
-            valueName: 'fd',
-            allowAttachedValue: false,
-            help: { summary: 'read from file descriptor fd' },
-            parseValue: ({ value }) => /^\d+$/.test(value)
-              ? { ok: true, value: parseInt(value, 10) }
-              : { ok: false, message: `invalid file descriptor '${value}'` },
-          },
-        ],
-        allowShortFlagBundles: false,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [],
-      },
+      spec: readArgvSpec,
     });
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
-      await context.text().error({ text: `read: ${diagnostic.message}\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'read',
+        message: `read: ${diagnostic.message}`,
+        argvSpec: readArgvSpec,
+      });
       return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'read',
+        argvSpec: readArgvSpec,
+      });
+      return { exitCode: 0 };
     }
 
     const fdValue = parsed.optionValues.fd;
