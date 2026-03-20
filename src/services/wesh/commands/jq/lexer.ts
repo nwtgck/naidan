@@ -86,6 +86,20 @@ export function lexJq({
       index += 2;
       continue;
     }
+    if (twoCharacter === '//') {
+      tokens.push({ kind: 'operator', value: '//' });
+      index += 2;
+      continue;
+    }
+
+    if (char === '-') {
+      const numberMatch = source.slice(index).match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
+      if (numberMatch?.[0] !== undefined && numberMatch[0] !== '-') {
+        tokens.push({ kind: 'number', value: Number(numberMatch[0]) });
+        index += numberMatch[0].length;
+        continue;
+      }
+    }
 
     switch (char) {
     case '.':
@@ -98,7 +112,11 @@ export function lexJq({
     case '>':
     case '=':
     case '+':
+    case '-':
+    case '*':
+    case '/':
     case ':':
+    case '?':
       tokens.push({ kind: 'operator', value: char });
       index += 1;
       continue;
@@ -149,8 +167,8 @@ export function lexJq({
       break;
     }
 
-    if (char === '-' || /\d/.test(char)) {
-      const match = source.slice(index).match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
+    if (/\d/.test(char)) {
+      const match = source.slice(index).match(/^(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
       if (match?.[0] === undefined) {
         return { ok: false, message: `invalid number near '${source.slice(index)}'` };
       }
@@ -176,6 +194,10 @@ export function lexJq({
       case 'and':
       case 'or':
       case 'not':
+      case 'if':
+      case 'then':
+      case 'else':
+      case 'end':
         tokens.push({ kind: 'keyword', value });
         break;
       default:

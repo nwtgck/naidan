@@ -1,5 +1,6 @@
 import type { JsonValue, JqFilter, JqPath, JqPathSegment } from './ast';
 import { evaluateBuiltin } from './builtins';
+import { cloneJson, normalizeArrayIndex } from './path';
 
 export interface JqRuntimeError {
   message: string;
@@ -52,32 +53,6 @@ function deepEqual({
   return false;
 }
 
-function cloneJson({
-  value,
-}: {
-  value: JsonValue;
-}): JsonValue {
-  if (value === null) return null;
-  if (Array.isArray(value)) return value.map((item) => cloneJson({ value: item }));
-  switch (typeof value) {
-  case 'boolean':
-  case 'number':
-  case 'string':
-    return value;
-  case 'object': {
-    const clone: { [key: string]: JsonValue } = {};
-    for (const [key, nested] of Object.entries(value)) {
-      clone[key] = cloneJson({ value: nested });
-    }
-    return clone;
-  }
-  default: {
-    const _ex: never = value;
-    throw new Error(`Unhandled jq value: ${JSON.stringify(_ex)}`);
-  }
-  }
-}
-
 function compareValues({
   left,
   right,
@@ -97,19 +72,6 @@ function compareValues({
   const rightJson = JSON.stringify(right);
   if (leftJson === rightJson) return 0;
   return leftJson < rightJson ? -1 : 1;
-}
-
-function normalizeArrayIndex({
-  array,
-  index,
-}: {
-  array: JsonValue[];
-  index: number;
-}): number | undefined {
-  if (!Number.isInteger(index)) return undefined;
-  const normalized = index >= 0 ? index : array.length + index;
-  if (normalized < 0 || normalized >= array.length) return undefined;
-  return normalized;
 }
 
 function applyPathAssignment({
@@ -245,6 +207,9 @@ export function evaluateJqFilter({
         outputs.push(Object.hasOwn(value, filter.key) ? value[filter.key]! : null);
         continue;
       }
+      if (filter.optional) {
+        continue;
+      }
       return { ok: false, error: { message: `cannot access field '${filter.key}' on non-object` } };
     }
     return { ok: true, outputs };
@@ -262,6 +227,9 @@ export function evaluateJqFilter({
         outputs.push(normalizedIndex === undefined ? null : (value[normalizedIndex] ?? null));
         continue;
       }
+      if (filter.optional) {
+        continue;
+      }
       return { ok: false, error: { message: `cannot index [${filter.index}] on non-array` } };
     }
     return { ok: true, outputs };
@@ -277,6 +245,9 @@ export function evaluateJqFilter({
       }
       if (value !== null && typeof value === 'object') {
         outputs.push(...Object.values(value));
+        continue;
+      }
+      if (filter.optional) {
         continue;
       }
       return { ok: false, error: { message: 'cannot iterate over non-array/object' } };
@@ -300,6 +271,14 @@ export function evaluateJqFilter({
     const right = evaluate({ filter: filter.right, input });
     if (!right.ok) return right;
     return { ok: true, outputs: [...left.outputs, ...right.outputs] };
+  }
+  case 'conditional': {
+    const condition = evaluate({ filter: filter.condition, input });
+    if (!condition.ok) return condition;
+    const selectedBranch = truthy({ value: condition.outputs[0] ?? null })
+      ? filter.thenBranch
+      : filter.elseBranch;
+    return evaluate({ filter: selectedBranch, input });
   }
   case 'array': {
     const array: JsonValue[] = [];
@@ -340,6 +319,13 @@ export function evaluateJqFilter({
     case 'pipe':
     case 'comma':
       return { ok: false, error: { message: `unexpected operator ${filter.operator}` } };
+    case 'alternative': {
+      const truthyOutputs = left.outputs.filter((output) => truthy({ value: output }));
+      if (truthyOutputs.length > 0) {
+        return { ok: true, outputs: truthyOutputs };
+      }
+      return right;
+    }
     case 'or':
       return { ok: true, outputs: [truthy({ value: leftValue }) || truthy({ value: rightValue })] };
     case 'and':
@@ -377,6 +363,21 @@ export function evaluateJqFilter({
         return { ok: true, outputs: [{ ...leftValue, ...rightValue }] };
       }
       return { ok: false, error: { message: 'unsupported operands for +' } };
+    case 'sub':
+      if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+        return { ok: true, outputs: [leftValue - rightValue] };
+      }
+      return { ok: false, error: { message: 'unsupported operands for -' } };
+    case 'mul':
+      if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+        return { ok: true, outputs: [leftValue * rightValue] };
+      }
+      return { ok: false, error: { message: 'unsupported operands for *' } };
+    case 'div':
+      if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+        return { ok: true, outputs: [leftValue / rightValue] };
+      }
+      return { ok: false, error: { message: 'unsupported operands for /' } };
     }
     throw new Error('Unreachable jq binary operator');
   }
@@ -386,6 +387,13 @@ export function evaluateJqFilter({
     switch (filter.operator) {
     case 'not':
       return { ok: true, outputs: [!truthy({ value: value.outputs[0] ?? null })] };
+    case 'neg': {
+      const unaryValue = value.outputs[0] ?? null;
+      if (typeof unaryValue !== 'number') {
+        return { ok: false, error: { message: 'unary - expects a number' } };
+      }
+      return { ok: true, outputs: [-unaryValue] };
+    }
     }
     throw new Error('Unreachable jq unary operator');
   }

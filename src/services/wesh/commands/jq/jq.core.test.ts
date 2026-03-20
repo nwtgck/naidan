@@ -90,6 +90,152 @@ true
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports values and tostring', async () => {
+    const values = await execute({
+      script: `\
+jq '.items[] | values'`,
+      stdinText: `\
+{"items":[1,null,false,"x"]}`,
+    });
+
+    expect(values.stdout.text).toBe(`\
+1
+"x"
+`);
+    expect(values.stderr.text).toBe('');
+    expect(values.result.exitCode).toBe(0);
+
+    const tostring = await execute({
+      script: `\
+jq '.items[] | tostring'`,
+      stdinText: `\
+{"items":[1,true,{"a":1},"x"]}`,
+    });
+
+    expect(tostring.stdout.text).toBe([
+      '"1"',
+      '"true"',
+      JSON.stringify('{"a":1}'),
+      '"x"',
+      '',
+    ].join('\n'));
+    expect(tostring.stderr.text).toBe('');
+    expect(tostring.result.exitCode).toBe(0);
+
+    const tojson = await execute({
+      script: `\
+jq '.payload | tojson'`,
+      stdinText: `\
+{"payload":{"a":1,"b":[2,3]}}`,
+    });
+
+    expect(tojson.stdout.text).toBe(`${JSON.stringify('{"a":1,"b":[2,3]}')}\n`);
+    expect(tojson.stderr.text).toBe('');
+    expect(tojson.result.exitCode).toBe(0);
+
+    const fromjson = await execute({
+      script: `\
+jq '.payload | fromjson'`,
+      stdinText: JSON.stringify({
+        payload: JSON.stringify({ a: 1, b: [2, 3] }),
+      }),
+    });
+
+    expect(fromjson.stdout.text).toBe('{"a":1,"b":[2,3]}\n');
+    expect(fromjson.stderr.text).toBe('');
+    expect(fromjson.result.exitCode).toBe(0);
+  });
+
+  it('supports optional access and keys_unsorted', async () => {
+    const optionalField = await execute({
+      script: `\
+jq '.items[] | .name?'`,
+      stdinText: `\
+{"items":[{"name":"alice"},1,{"name":"bob"}]}`,
+    });
+
+    expect(optionalField.stdout.text).toBe(`\
+"alice"
+"bob"
+`);
+    expect(optionalField.stderr.text).toBe('');
+    expect(optionalField.result.exitCode).toBe(0);
+
+    const optionalIterate = await execute({
+      script: `\
+jq '.items[] | .tags[]?'`,
+      stdinText: `\
+{"items":[{"tags":["x","y"]},{"tags":null},{"tags":["z"]}]}`,
+    });
+
+    expect(optionalIterate.stdout.text).toBe(`\
+"x"
+"y"
+"z"
+`);
+    expect(optionalIterate.stderr.text).toBe('');
+    expect(optionalIterate.result.exitCode).toBe(0);
+
+    const unsortedKeys = await execute({
+      script: `\
+jq 'keys_unsorted'`,
+      stdinText: `\
+{"b":1,"a":2,"c":3}`,
+    });
+
+    expect(unsortedKeys.stdout.text).toBe('["b","a","c"]\n');
+    expect(unsortedKeys.stderr.text).toBe('');
+    expect(unsortedKeys.result.exitCode).toBe(0);
+  });
+
+  it('supports alternative operator', async () => {
+    const fallback = await execute({
+      script: `\
+jq '.missing // "fallback"'`,
+      stdinText: `\
+{"value":1}`,
+    });
+
+    expect(fallback.stdout.text).toBe('"fallback"\n');
+    expect(fallback.stderr.text).toBe('');
+    expect(fallback.result.exitCode).toBe(0);
+
+    const keepTruthy = await execute({
+      script: `\
+jq '.items[] // 99'`,
+      stdinText: `\
+{"items":[null,false,2]}`,
+    });
+
+    expect(keepTruthy.stdout.text).toBe('2\n');
+    expect(keepTruthy.stderr.text).toBe('');
+    expect(keepTruthy.result.exitCode).toBe(0);
+  });
+
+  it('supports arithmetic operators and unary minus', async () => {
+    const arithmetic = await execute({
+      script: `\
+jq '.n * 4 - 3 / 3'`,
+      stdinText: `\
+{"n":2}`,
+    });
+
+    expect(arithmetic.stdout.text).toBe('7\n');
+    expect(arithmetic.stderr.text).toBe('');
+    expect(arithmetic.result.exitCode).toBe(0);
+
+    const unaryMinus = await execute({
+      script: `\
+jq -- '-.n'`,
+      stdinText: `\
+{"n":5}`,
+    });
+
+    expect(unaryMinus.stdout.text).toBe('-5\n');
+    expect(unaryMinus.stderr.text).toBe('');
+    expect(unaryMinus.result.exitCode).toBe(0);
+  });
+
   it('supports empty and bracket field/index access', async () => {
     const bracketField = await execute({
       script: `\
@@ -162,5 +308,63 @@ jq 'length(1)'`,
     });
     expect(builtinArity.stderr.text).toContain('jq: error: length does not take arguments');
     expect(builtinArity.result.exitCode).toBe(4);
+
+    const delArgument = await execute({
+      script: `\
+jq 'del(length)'`,
+      stdinText: '{"a":1}',
+    });
+    expect(delArgument.stderr.text).toContain('jq: error: del argument must be a path');
+    expect(delArgument.result.exitCode).toBe(4);
+
+    const fromjsonType = await execute({
+      script: `\
+jq 'fromjson'`,
+      stdinText: '1',
+    });
+    expect(fromjsonType.stderr.text).toContain('jq: error: fromjson input must be a string');
+    expect(fromjsonType.result.exitCode).toBe(4);
+
+    const unaryMinusType = await execute({
+      script: `\
+jq -- '-.name'`,
+      stdinText: `\
+{"name":"alice"}`,
+    });
+    expect(unaryMinusType.stderr.text).toContain('jq: error: unary - expects a number');
+    expect(unaryMinusType.result.exitCode).toBe(4);
+
+    const conditionalElse = await execute({
+      script: `\
+jq 'if .flag then .value end'`,
+      stdinText: `\
+{"flag":true,"value":1}`,
+    });
+    expect(conditionalElse.stderr.text).toContain("jq: parse error: unsupported syntax: 'if' requires 'else'");
+    expect(conditionalElse.result.exitCode).toBe(3);
+
+    const anyType = await execute({
+      script: `\
+jq 'any'`,
+      stdinText: '{"flag":true}',
+    });
+    expect(anyType.stderr.text).toContain('jq: error: any input must be an array');
+    expect(anyType.result.exitCode).toBe(4);
+
+    const reverseType = await execute({
+      script: `\
+jq 'reverse'`,
+      stdinText: '1',
+    });
+    expect(reverseType.stderr.text).toContain('jq: error: reverse input must be an array or string');
+    expect(reverseType.result.exitCode).toBe(4);
+
+    const startswithType = await execute({
+      script: `\
+jq 'startswith(1)'`,
+      stdinText: '"alice"',
+    });
+    expect(startswithType.stderr.text).toContain('jq: error: startswith expects string input and argument');
+    expect(startswithType.result.exitCode).toBe(4);
   });
 });

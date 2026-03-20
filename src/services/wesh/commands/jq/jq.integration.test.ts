@@ -140,6 +140,130 @@ jq '.[-1].name |= . + "!"'`,
     expect(negativeIndex.result.exitCode).toBe(0);
   });
 
+  it('supports del on object and array paths', async () => {
+    const objectDelete = await execute({
+      script: `\
+jq 'del(.user.name)'`,
+      stdinText: `\
+{"user":{"name":"alice","role":"admin"},"other":1}`,
+    });
+    expect(objectDelete.stdout.text).toBe('{"user":{"role":"admin"},"other":1}\n');
+    expect(objectDelete.stderr.text).toBe('');
+    expect(objectDelete.result.exitCode).toBe(0);
+
+    const arrayDelete = await execute({
+      script: `\
+jq 'del(.[-1])'`,
+      stdinText: `\
+[1,2,3]`,
+    });
+    expect(arrayDelete.stdout.text).toBe('[1,2]\n');
+    expect(arrayDelete.stderr.text).toBe('');
+    expect(arrayDelete.result.exitCode).toBe(0);
+  });
+
+  it('supports conditional filters', async () => {
+    const conditional = await execute({
+      script: `\
+jq '.items[] | if .active then .name else empty end'`,
+      stdinText: `\
+{"items":[{"name":"a","active":true},{"name":"b","active":false},{"name":"c","active":true}]}`,
+    });
+
+    expect(conditional.stdout.text).toBe(`\
+"a"
+"c"
+`);
+    expect(conditional.stderr.text).toBe('');
+    expect(conditional.result.exitCode).toBe(0);
+  });
+
+  it('supports any and all', async () => {
+    const any = await execute({
+      script: `\
+jq '.groups | any(.active)'`,
+      stdinText: `\
+{"groups":[{"active":false},{"active":true}]}`,
+    });
+
+    expect(any.stdout.text).toBe('true\n');
+    expect(any.stderr.text).toBe('');
+    expect(any.result.exitCode).toBe(0);
+
+    const all = await execute({
+      script: `\
+jq '.groups | all(.active)'`,
+      stdinText: `\
+{"groups":[{"active":true},{"active":true}]}`,
+    });
+
+    expect(all.stdout.text).toBe('true\n');
+    expect(all.stderr.text).toBe('');
+    expect(all.result.exitCode).toBe(0);
+  });
+
+  it('supports reverse and sort', async () => {
+    const reverse = await execute({
+      script: `\
+jq '.items | reverse'`,
+      stdinText: `\
+{"items":[3,1,2]}`,
+    });
+
+    expect(reverse.stdout.text).toBe('[2,1,3]\n');
+    expect(reverse.stderr.text).toBe('');
+    expect(reverse.result.exitCode).toBe(0);
+
+    const sort = await execute({
+      script: `\
+jq '.items | sort'`,
+      stdinText: `\
+{"items":[3,1,2]}`,
+    });
+
+    expect(sort.stdout.text).toBe('[1,2,3]\n');
+    expect(sort.stderr.text).toBe('');
+    expect(sort.result.exitCode).toBe(0);
+  });
+
+  it('supports contains, startswith, and endswith', async () => {
+    const contains = await execute({
+      script: `\
+jq '.items[] | select(.name | contains("ali")) | .name'`,
+      stdinText: `\
+{"items":[{"name":"alice"},{"name":"bob"},{"name":"alicia"}]}`,
+    });
+
+    expect(contains.stdout.text).toBe(`\
+"alice"
+"alicia"
+`);
+    expect(contains.stderr.text).toBe('');
+    expect(contains.result.exitCode).toBe(0);
+
+    const startswith = await execute({
+      script: `\
+jq '.items[] | select(.name | startswith("al")) | .name'`,
+      stdinText: `\
+{"items":[{"name":"alice"},{"name":"bob"}]}`,
+    });
+
+    expect(startswith.stdout.text).toBe('"alice"\n');
+    expect(startswith.stderr.text).toBe('');
+    expect(startswith.result.exitCode).toBe(0);
+
+    const endswith = await execute({
+      script: `\
+jq '.items[] | select(.name | endswith("ce")) | .name'`,
+      stdinText: `\
+{"items":[{"name":"alice"},{"name":"alicia"}]}`,
+    });
+
+    expect(endswith.stdout.text).toBe('"alice"\n');
+    expect(endswith.stderr.text).toBe('');
+    expect(endswith.result.exitCode).toBe(0);
+  });
+
   it('supports multiple input JSON values and file input', async () => {
     await writeFile({
       path: 'input.json',

@@ -15,13 +15,26 @@ function toBuiltinName({
   name: string;
 }): JqBuiltinName | undefined {
   switch (name) {
+  case 'all':
+  case 'any':
+  case 'contains':
+  case 'del':
+  case 'endswith':
   case 'empty':
+  case 'fromjson':
   case 'select':
   case 'map':
   case 'length':
   case 'keys':
+  case 'keys_unsorted':
+  case 'reverse':
+  case 'sort':
+  case 'startswith':
   case 'type':
   case 'has':
+  case 'tojson':
+  case 'values':
+  case 'tostring':
     return name;
   default:
     return undefined;
@@ -180,18 +193,37 @@ class JqParser {
   }
 
   private parsePipe(): { ok: true; filter: JqFilter } | { ok: false; message: string } {
-    let filter = this.parseOr();
+    let filter = this.parseAlternative();
     if (!filter.ok) return filter;
 
     while (true) {
       const token = this.peek();
       if (!(token.kind === 'operator' && token.value === '|')) break;
       this.index += 1;
-      const right = this.parseOr();
+      const right = this.parseAlternative();
       if (!right.ok) return right;
       filter = {
         ok: true,
         filter: { kind: 'pipe', left: filter.filter, right: right.filter },
+      };
+    }
+
+    return filter;
+  }
+
+  private parseAlternative(): { ok: true; filter: JqFilter } | { ok: false; message: string } {
+    let filter = this.parseOr();
+    if (!filter.ok) return filter;
+
+    while (true) {
+      const token = this.peek();
+      if (!(token.kind === 'operator' && token.value === '//')) break;
+      this.index += 1;
+      const right = this.parseOr();
+      if (!right.ok) return right;
+      filter = {
+        ok: true,
+        filter: { kind: 'binary', operator: 'alternative', left: filter.filter, right: right.filter },
       };
     }
 
@@ -282,18 +314,61 @@ class JqParser {
   }
 
   private parseAddition(): { ok: true; filter: JqFilter } | { ok: false; message: string } {
+    let filter = this.parseMultiplicative();
+    if (!filter.ok) return filter;
+
+    while (true) {
+      const token = this.peek();
+      if (!(token.kind === 'operator' && (token.value === '+' || token.value === '-'))) break;
+      this.index += 1;
+      const right = this.parseMultiplicative();
+      if (!right.ok) return right;
+      const operator = (() => {
+        switch (token.value) {
+        case '+':
+          return 'add';
+        case '-':
+          return 'sub';
+        default: {
+          const _ex: never = token.value;
+          throw new Error(`Unhandled additive operator: ${_ex}`);
+        }
+        }
+      })();
+      filter = {
+        ok: true,
+        filter: { kind: 'binary', operator, left: filter.filter, right: right.filter },
+      };
+    }
+
+    return filter;
+  }
+
+  private parseMultiplicative(): { ok: true; filter: JqFilter } | { ok: false; message: string } {
     let filter = this.parseUnary();
     if (!filter.ok) return filter;
 
     while (true) {
       const token = this.peek();
-      if (!(token.kind === 'operator' && token.value === '+')) break;
+      if (!(token.kind === 'operator' && (token.value === '*' || token.value === '/'))) break;
       this.index += 1;
       const right = this.parseUnary();
       if (!right.ok) return right;
+      const operator = (() => {
+        switch (token.value) {
+        case '*':
+          return 'mul';
+        case '/':
+          return 'div';
+        default: {
+          const _ex: never = token.value;
+          throw new Error(`Unhandled multiplicative operator: ${_ex}`);
+        }
+        }
+      })();
       filter = {
         ok: true,
-        filter: { kind: 'binary', operator: 'add', left: filter.filter, right: right.filter },
+        filter: { kind: 'binary', operator, left: filter.filter, right: right.filter },
       };
     }
 
@@ -307,6 +382,12 @@ class JqParser {
       const value = this.parseUnary();
       if (!value.ok) return value;
       return { ok: true, filter: { kind: 'unary', operator: 'not', value: value.filter } };
+    }
+    if (token.kind === 'operator' && token.value === '-') {
+      this.index += 1;
+      const value = this.parseUnary();
+      if (!value.ok) return value;
+      return { ok: true, filter: { kind: 'unary', operator: 'neg', value: value.filter } };
     }
 
     return this.parsePostfix();
@@ -323,9 +404,10 @@ class JqParser {
         this.index += 1;
         const field = this.consumeIdentifier();
         if (!field.ok) return field;
+        const optional = this.consumeOptionalMarker();
         filter = {
           ok: true,
-          filter: { kind: 'field', input: filter.filter, key: field.value },
+          filter: { kind: 'field', input: filter.filter, key: field.value, optional },
         };
         continue;
       }
@@ -336,7 +418,7 @@ class JqParser {
           const next = this.peek();
           if (next.kind === 'punctuation' && next.value === ']') {
             this.index += 1;
-            filter = { ok: true, filter: { kind: 'iterate', input: filter.filter } };
+            filter = { ok: true, filter: { kind: 'iterate', input: filter.filter, optional: this.consumeOptionalMarker() } };
             continue;
           }
 
@@ -352,7 +434,7 @@ class JqParser {
               this.index += 1;
               filter = {
                 ok: true,
-                filter: { kind: 'index', input: filter.filter, index: indexToken.value },
+                filter: { kind: 'index', input: filter.filter, index: indexToken.value, optional: this.consumeOptionalMarker() },
               };
             }
             continue;
@@ -366,7 +448,7 @@ class JqParser {
               this.index += 1;
               filter = {
                 ok: true,
-                filter: { kind: 'field', input: filter.filter, key: indexToken.value },
+                filter: { kind: 'field', input: filter.filter, key: indexToken.value, optional: this.consumeOptionalMarker() },
               };
             }
             continue;
@@ -395,7 +477,7 @@ class JqParser {
         switch (next.kind) {
         case 'identifier':
           this.index += 1;
-          filter = { kind: 'field', input: filter, key: next.value };
+          filter = { kind: 'field', input: filter, key: next.value, optional: this.consumeOptionalMarker() };
           continue;
         case 'punctuation':
           switch (next.value) {
@@ -404,7 +486,7 @@ class JqParser {
             const content = this.peek();
             if (content.kind === 'punctuation' && content.value === ']') {
               this.index += 1;
-              filter = { kind: 'iterate', input: filter };
+              filter = { kind: 'iterate', input: filter, optional: this.consumeOptionalMarker() };
               continue;
             }
             switch (content.kind) {
@@ -415,7 +497,7 @@ class JqParser {
                 return { ok: false, message: 'unsupported syntax inside []' };
               }
               this.index += 1;
-              filter = { kind: 'index', input: filter, index: content.value };
+              filter = { kind: 'index', input: filter, index: content.value, optional: this.consumeOptionalMarker() };
               continue;
             }
             case 'string': {
@@ -425,7 +507,7 @@ class JqParser {
                 return { ok: false, message: 'unsupported syntax inside []' };
               }
               this.index += 1;
-              filter = { kind: 'field', input: filter, key: content.value };
+              filter = { kind: 'field', input: filter, key: content.value, optional: this.consumeOptionalMarker() };
               continue;
             }
             default:
@@ -447,13 +529,41 @@ class JqParser {
       this.index += 1;
       return { ok: true, filter: { kind: 'literal', value: token.value } };
     case 'keyword':
-      this.index += 1;
       switch (token.value) {
+      case 'if': {
+        this.index += 1;
+        const condition = this.parseAssignment();
+        if (!condition.ok) return condition;
+        const thenKeyword = this.consumeKeyword({ value: 'then' });
+        if (!thenKeyword.ok) return thenKeyword;
+        const thenBranch = this.parseAssignment();
+        if (!thenBranch.ok) return thenBranch;
+        const elseKeyword = this.consumeKeyword({ value: 'else' });
+        if (!elseKeyword.ok) {
+          return { ok: false, message: "unsupported syntax: 'if' requires 'else'" };
+        }
+        const elseBranch = this.parseAssignment();
+        if (!elseBranch.ok) return elseBranch;
+        const endKeyword = this.consumeKeyword({ value: 'end' });
+        if (!endKeyword.ok) return endKeyword;
+        return {
+          ok: true,
+          filter: {
+            kind: 'conditional',
+            condition: condition.filter,
+            thenBranch: thenBranch.filter,
+            elseBranch: elseBranch.filter,
+          },
+        };
+      }
       case 'true':
+        this.index += 1;
         return { ok: true, filter: { kind: 'literal', value: true } };
       case 'false':
+        this.index += 1;
         return { ok: true, filter: { kind: 'literal', value: false } };
       case 'null':
+        this.index += 1;
         return { ok: true, filter: { kind: 'literal', value: null } };
       default:
         return { ok: false, message: `unexpected keyword '${token.value}'` };
@@ -577,7 +687,7 @@ class JqParser {
             }
             entries.push({
               key,
-              value: { kind: 'field', input: { kind: 'identity' }, key: shorthandKey },
+              value: { kind: 'field', input: { kind: 'identity' }, key: shorthandKey, optional: false },
             });
             break;
           default:
@@ -592,7 +702,7 @@ class JqParser {
             }
             entries.push({
               key,
-              value: { kind: 'field', input: { kind: 'identity' }, key: shorthandKey },
+              value: { kind: 'field', input: { kind: 'identity' }, key: shorthandKey, optional: false },
             });
             break;
           default:
@@ -649,6 +759,28 @@ class JqParser {
   }): JqToken {
     return this.tokens[this.index + offset] ?? { kind: 'eof' };
   }
+
+  private consumeOptionalMarker(): boolean {
+    const token = this.peek();
+    if (token.kind === 'operator' && token.value === '?') {
+      this.index += 1;
+      return true;
+    }
+    return false;
+  }
+
+  private consumeKeyword({
+    value,
+  }: {
+    value: 'then' | 'else' | 'end';
+  }): { ok: true } | { ok: false; message: string } {
+    const token = this.peek();
+    if (token.kind === 'keyword' && token.value === value) {
+      this.index += 1;
+      return { ok: true };
+    }
+    return { ok: false, message: `expected '${value}'` };
+  }
 }
 
 export function parseJqProgram({
@@ -672,10 +804,12 @@ export function extractPath({
   while (true) {
     switch (current.kind) {
     case 'field':
+      if (current.optional) return undefined;
       segments.unshift({ kind: 'field', key: current.key });
       current = current.input;
       continue;
     case 'index':
+      if (current.optional) return undefined;
       segments.unshift({ kind: 'index', index: current.index });
       current = current.input;
       continue;
