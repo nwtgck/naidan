@@ -26,6 +26,16 @@ const zipArgvSpec: StandardArgvParserSpec = {
     { kind: 'flag', short: '7', long: undefined, effects: [{ key: 'compressionLevel', value: 7 }], help: { summary: 'compress better', category: 'advanced' } },
     { kind: 'flag', short: '8', long: undefined, effects: [{ key: 'compressionLevel', value: 8 }], help: { summary: 'compress better', category: 'advanced' } },
     { kind: 'flag', short: '9', long: undefined, effects: [{ key: 'compressionLevel', value: 9 }], help: { summary: 'compress better', category: 'advanced' } },
+    {
+      kind: 'value',
+      short: 'x',
+      long: undefined,
+      key: 'excludePattern',
+      valueName: 'PATTERN',
+      allowAttachedValue: false,
+      parseValue: undefined,
+      help: { summary: 'exclude the following names', valueName: 'PATTERN', category: 'common' },
+    },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
   ],
   allowShortFlagBundles: true,
@@ -38,6 +48,11 @@ interface PendingZipEntry {
   sourcePath: string;
   archivePath: string;
   type: WeshFileType;
+}
+
+interface SplitZipArgsResult {
+  mainArgs: string[];
+  excludePatterns: string[];
 }
 
 function resolvePath({
@@ -70,6 +85,64 @@ function sanitizeArchiveRootName({
   path: string;
 }): string {
   return path.replace(/^\/+/, '');
+}
+
+function splitZipArgs({
+  args,
+}: {
+  args: string[];
+}): SplitZipArgsResult {
+  const excludeIndex = args.indexOf('-x');
+  if (excludeIndex === -1) {
+    return {
+      mainArgs: args,
+      excludePatterns: [],
+    };
+  }
+
+  return {
+    mainArgs: args.slice(0, excludeIndex),
+    excludePatterns: args.slice(excludeIndex + 1),
+  };
+}
+
+function globToRegExp({
+  pattern,
+}: {
+  pattern: string;
+}): RegExp {
+  let source = '^';
+
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    if (char === undefined) {
+      continue;
+    }
+
+    if (char === '*') {
+      source += '.*';
+      continue;
+    }
+
+    if (char === '?') {
+      source += '.';
+      continue;
+    }
+
+    if (char === '[') {
+      const endIndex = pattern.indexOf(']', index + 1);
+      if (endIndex > index) {
+        source += pattern.slice(index, endIndex + 1);
+        index = endIndex;
+        continue;
+      }
+    }
+
+    source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  source += '$';
+  return new RegExp(source);
 }
 
 function buildArchivePath({
@@ -331,8 +404,11 @@ export const zipCommandDefinition: WeshCommandDefinition = {
     usage: 'zip [-rjq0-9] zipfile file...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
+    const splitArgs = splitZipArgs({
       args: context.args,
+    });
+    const parsed = parseStandardArgv({
+      args: splitArgs.mainArgs,
       spec: zipArgvSpec,
     });
 
@@ -371,6 +447,7 @@ export const zipCommandDefinition: WeshCommandDefinition = {
     const compressionLevelValue = parsed.optionValues.compressionLevel;
     const compressionLevel = typeof compressionLevelValue === 'number' ? compressionLevelValue : 6;
     const compression = compressionMode === 'store' ? 'STORE' : 'DEFLATE';
+    const excludeMatchers = splitArgs.excludePatterns.map((pattern) => globToRegExp({ pattern }));
 
     const archivePath = resolvePath({
       cwd: context.cwd,
@@ -390,6 +467,7 @@ export const zipCommandDefinition: WeshCommandDefinition = {
 
     const zip = new JSZip();
     let hadError = false;
+    let matchedInput = false;
 
     for (const operand of inputOperands) {
       try {
@@ -399,8 +477,16 @@ export const zipCommandDefinition: WeshCommandDefinition = {
           recursive,
           junkPaths,
         });
+        const includedEntries = entries.filter((entry) => {
+          return !excludeMatchers.some((matcher) => matcher.test(entry.archivePath));
+        });
 
-        for (const entry of entries) {
+        if (includedEntries.length === 0) {
+          continue;
+        }
+        matchedInput = true;
+
+        for (const entry of includedEntries) {
           switch (entry.type) {
           case 'directory':
             zip.file(entry.archivePath, null, {
@@ -433,15 +519,21 @@ export const zipCommandDefinition: WeshCommandDefinition = {
         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        await context.text().error({
-          text: `zip error: ${message}\n`,
-        });
-        hadError = true;
+        if (message.includes('NotFoundError')) {
+          await context.text().error({
+            text: `\tzip warning: name not matched: ${operand}\n`,
+          });
+        } else {
+          await context.text().error({
+            text: `zip error: ${message}\n`,
+          });
+          hadError = true;
+        }
       }
     }
 
     const entryNames = Object.keys(zip.files);
-    if (entryNames.length === 0) {
+    if (entryNames.length === 0 || !matchedInput) {
       await context.text().error({
         text: `zip error: Nothing to do! (${archiveOperand})\n`,
       });

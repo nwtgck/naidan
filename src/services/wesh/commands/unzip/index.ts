@@ -28,6 +28,16 @@ const unzipArgvSpec: StandardArgvParserSpec = {
       parseValue: undefined,
       help: { summary: 'extract into exdir', valueName: 'DIR', category: 'common' },
     },
+    {
+      kind: 'value',
+      short: 'x',
+      long: undefined,
+      key: 'excludePattern',
+      valueName: 'PATTERN',
+      allowAttachedValue: false,
+      parseValue: undefined,
+      help: { summary: 'exclude files that match a pattern', valueName: 'PATTERN', category: 'common' },
+    },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
   ],
   allowShortFlagBundles: true,
@@ -120,6 +130,30 @@ function globToRegExp({
 
   source += '$';
   return new RegExp(source);
+}
+
+interface SplitUnzipArgsResult {
+  mainArgs: string[];
+  excludePatterns: string[];
+}
+
+function splitUnzipArgs({
+  args,
+}: {
+  args: string[];
+}): SplitUnzipArgsResult {
+  const excludeIndex = args.indexOf('-x');
+  if (excludeIndex === -1) {
+    return {
+      mainArgs: args,
+      excludePatterns: [],
+    };
+  }
+
+  return {
+    mainArgs: args.slice(0, excludeIndex),
+    excludePatterns: args.slice(excludeIndex + 1),
+  };
 }
 
 async function loadZipArchive({
@@ -284,8 +318,11 @@ export const unzipCommandDefinition: WeshCommandDefinition = {
     usage: 'unzip [-lpnjoq] [-d dir] archive[.zip] [file ...]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const parsed = parseStandardArgv({
+    const splitArgs = splitUnzipArgs({
       args: context.args,
+    });
+    const parsed = parseStandardArgv({
+      args: splitArgs.mainArgs,
       spec: unzipArgvSpec,
     });
 
@@ -342,12 +379,14 @@ export const unzipCommandDefinition: WeshCommandDefinition = {
 
       const patterns = parsed.positionals.slice(1);
       const matchers = patterns.map((pattern) => globToRegExp({ pattern }));
+      const excludeMatchers = splitArgs.excludePatterns.map((pattern) => globToRegExp({ pattern }));
       const selectedEntries = Object.values(zip.files)
         .filter((entry) => {
           if (patterns.length === 0) {
-            return true;
+            return !excludeMatchers.some((matcher) => matcher.test(entry.name));
           }
-          return matchers.some((matcher) => matcher.test(entry.name));
+          return matchers.some((matcher) => matcher.test(entry.name))
+            && !excludeMatchers.some((matcher) => matcher.test(entry.name));
         })
         .sort((left, right) => left.name.localeCompare(right.name));
 
@@ -442,6 +481,12 @@ export const unzipCommandDefinition: WeshCommandDefinition = {
       return { exitCode: hadError ? 1 : 0 };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('NotFoundError')) {
+        await context.text().error({
+          text: `unzip:  cannot find or open ${archiveOperand}, ${archiveOperand}.zip or ${archiveOperand}.ZIP.\n`,
+        });
+        return { exitCode: 9 };
+      }
       await context.text().error({
         text: `unzip: ${message}\n`,
       });

@@ -111,6 +111,29 @@ describe('wesh zip and unzip', () => {
     expect(listed.result.exitCode).toBe(0);
   });
 
+  it('supports zip -x exclude patterns', async () => {
+    await writeFile({
+      path: 'docs/a.txt',
+      data: 'alpha\n',
+    });
+    await writeFile({
+      path: 'docs/sub/b.txt',
+      data: 'beta\n',
+    });
+
+    await execute({
+      script: `zip -r archive.zip docs -x 'docs/sub/*'`,
+      stdinText: '',
+    });
+    const listed = await execute({
+      script: 'unzip -l archive.zip',
+      stdinText: '',
+    });
+
+    expect(listed.stdout.text).toContain('docs/a.txt');
+    expect(listed.stdout.text).not.toContain('docs/sub/b.txt');
+  });
+
   it('supports stdin entries using zip archive.zip - and unzip -p', async () => {
     const zipped = await execute({
       script: 'zip stream.zip -',
@@ -239,5 +262,51 @@ describe('wesh zip and unzip', () => {
     expect(nothing.stdout.text).toBe('');
     expect(nothing.stderr.text).toContain('zip error: Nothing to do! (archive.zip)');
     expect(nothing.result.exitCode).toBe(12);
+  });
+
+  it('warns when zip operands do not match files', async () => {
+    const missing = await execute({
+      script: 'zip archive.zip missing.txt',
+      stdinText: '',
+    });
+
+    expect(missing.stdout.text).toBe('');
+    expect(missing.stderr.text).toContain('zip warning: name not matched: /missing.txt');
+    expect(missing.stderr.text).toContain('zip error: Nothing to do! (archive.zip)');
+    expect(missing.result.exitCode).toBe(12);
+  });
+
+  it('supports unzip -x exclude patterns and reports missing archives like unzip', async () => {
+    await writeFile({
+      path: 'docs/a.txt',
+      data: 'alpha\n',
+    });
+    await writeFile({
+      path: 'docs/sub/b.txt',
+      data: 'beta\n',
+    });
+
+    await execute({
+      script: 'zip -r archive.zip docs',
+      stdinText: '',
+    });
+
+    const extracted = await execute({
+      script: `unzip archive.zip -d out -x 'docs/sub/*'`,
+      stdinText: '',
+    });
+    const missingArchive = await execute({
+      script: 'unzip missing.zip',
+      stdinText: '',
+    });
+
+    expect(extracted.stderr.text).toBe('');
+    expect(extracted.result.exitCode).toBe(0);
+    expect(await readFile({ path: 'out/docs/a.txt' })).toBe('alpha\n');
+    await expect(readFile({ path: 'out/docs/sub/b.txt' })).rejects.toThrow();
+
+    expect(missingArchive.stdout.text).toBe('');
+    expect(missingArchive.stderr.text).toContain('cannot find or open missing.zip, missing.zip.zip or missing.zip.ZIP.');
+    expect(missingArchive.result.exitCode).toBe(9);
   });
 });
