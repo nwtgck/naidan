@@ -44,6 +44,7 @@ import { awkCommandDefinition } from './awk/index.ts';
 import { jqCommandDefinition } from './jq/index.ts';
 import { trapCommandDefinition } from './trap/index.ts';
 import { xargsCommandDefinition } from './xargs/index.ts';
+import { xmlCommandDefinition } from './xml/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -87,6 +88,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   lnCommandDefinition,
   readlinkCommandDefinition,
   awkCommandDefinition,
+  xmlCommandDefinition,
   xargsCommandDefinition,
   jqCommandDefinition,
   trapCommandDefinition,
