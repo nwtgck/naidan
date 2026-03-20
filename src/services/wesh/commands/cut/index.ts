@@ -1,9 +1,344 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv } from '@/services/wesh/argv';
-import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import type { StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
-type CutMode = 'b' | 'c' | 'f';
+type CutMode = 'bytes' | 'characters' | 'fields';
+
+interface CutRange {
+  start: number | undefined;
+  end: number | undefined;
+}
+
+interface CutLine {
+  text: string;
+  hadNewline: boolean;
+}
+
+function parsePositiveInteger({
+  value,
+  label,
+}: {
+  value: string;
+  label: string;
+}): { ok: true; value: number } | { ok: false; message: string } {
+  if (!/^[1-9]\d*$/.test(value)) {
+    return { ok: false, message: `invalid ${label}: '${value}'` };
+  }
+
+  return { ok: true, value: parseInt(value, 10) };
+}
+
+function parseCutRange({
+  token,
+}: {
+  token: string;
+}): { ok: true; value: CutRange } | { ok: false; message: string } {
+  if (token === '') {
+    return { ok: false, message: 'empty list is not allowed' };
+  }
+
+  if (!token.includes('-')) {
+    const parsed = parsePositiveInteger({ value: token, label: 'list' });
+    if (!parsed.ok) return parsed;
+    return {
+      ok: true,
+      value: {
+        start: parsed.value,
+        end: parsed.value,
+      },
+    };
+  }
+
+  const match = token.match(/^(\d*)-(\d*)$/);
+  if (match === null) {
+    return { ok: false, message: `invalid list: '${token}'` };
+  }
+
+  const startRaw = match[1] ?? '';
+  const endRaw = match[2] ?? '';
+  const start = startRaw === undefined || startRaw === ''
+    ? undefined
+    : parsePositiveInteger({ value: startRaw, label: 'list' });
+  const end = endRaw === undefined || endRaw === ''
+    ? undefined
+    : parsePositiveInteger({ value: endRaw, label: 'list' });
+
+  if (start !== undefined && !start.ok) return start;
+  if (end !== undefined && !end.ok) return end;
+
+  const normalizedStart = start?.ok === true ? start.value : undefined;
+  const normalizedEnd = end?.ok === true ? end.value : undefined;
+
+  if (normalizedStart === undefined && normalizedEnd === undefined) {
+    return { ok: false, message: `invalid list: '${token}'` };
+  }
+
+  if (
+    normalizedStart !== undefined
+    && normalizedEnd !== undefined
+    && normalizedStart > normalizedEnd
+  ) {
+    return { ok: false, message: `invalid list: '${token}'` };
+  }
+
+  return {
+    ok: true,
+    value: {
+      start: normalizedStart,
+      end: normalizedEnd,
+    },
+  };
+}
+
+function parseCutList({
+  value,
+}: {
+  value: string;
+}): { ok: true; value: CutRange[] } | { ok: false; message: string } {
+  if (value.trim().length === 0) {
+    return { ok: false, message: 'empty list is not allowed' };
+  }
+
+  const ranges: CutRange[] = [];
+  for (const token of value.split(',')) {
+    const parsed = parseCutRange({ token });
+    if (!parsed.ok) return parsed;
+    ranges.push(parsed.value);
+  }
+
+  return { ok: true, value: ranges };
+}
+
+function normalizeCutRanges({
+  ranges,
+  length,
+}: {
+  ranges: CutRange[];
+  length: number;
+}): Set<number> {
+  const selected = new Set<number>();
+
+  for (const range of ranges) {
+    const start = range.start ?? 1;
+    const end = range.end ?? length;
+    for (let index = start; index <= end; index++) {
+      if (index <= length) {
+        selected.add(index);
+      }
+    }
+  }
+
+  return selected;
+}
+
+function splitLines({
+  text,
+}: {
+  text: string;
+}): CutLine[] {
+  const lines: CutLine[] = [];
+  let start = 0;
+
+  while (start < text.length) {
+    const newlineIndex = text.indexOf('\n', start);
+    if (newlineIndex === -1) break;
+
+    const lineEnd = newlineIndex > start && text[newlineIndex - 1] === '\r'
+      ? newlineIndex - 1
+      : newlineIndex;
+
+    lines.push({
+      text: text.slice(start, lineEnd),
+      hadNewline: true,
+    });
+    start = newlineIndex + 1;
+  }
+
+  if (start < text.length) {
+    const last = text.slice(start);
+    lines.push({
+      text: last.endsWith('\r') ? last.slice(0, -1) : last,
+      hadNewline: false,
+    });
+  }
+
+  return lines;
+}
+
+function resolvePath({
+  cwd,
+  path,
+}: {
+  cwd: string;
+  path: string;
+}): string {
+  return path.startsWith('/') ? path : `${cwd}/${path}`;
+}
+
+function selectBytes({
+  line,
+  ranges,
+  complement,
+}: {
+  line: string;
+  ranges: CutRange[];
+  complement: boolean;
+}): string {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const bytes = encoder.encode(line);
+  const selected = normalizeCutRanges({ ranges, length: bytes.length });
+  const result: number[] = [];
+
+  for (let index = 0; index < bytes.length; index++) {
+    const position = index + 1;
+    const isSelected = selected.has(position);
+    if (complement ? !isSelected : isSelected) {
+      result.push(bytes[index]!);
+    }
+  }
+
+  return decoder.decode(new Uint8Array(result));
+}
+
+function selectCharacters({
+  line,
+  ranges,
+  complement,
+}: {
+  line: string;
+  ranges: CutRange[];
+  complement: boolean;
+}): string {
+  const characters = Array.from(line);
+  const selected = normalizeCutRanges({ ranges, length: characters.length });
+  const result: string[] = [];
+
+  for (let index = 0; index < characters.length; index++) {
+    const position = index + 1;
+    const isSelected = selected.has(position);
+    if (complement ? !isSelected : isSelected) {
+      result.push(characters[index]!);
+    }
+  }
+
+  return result.join('');
+}
+
+function selectFields({
+  line,
+  delimiter,
+  outputDelimiter,
+  ranges,
+  complement,
+  suppressNoDelimiterLines,
+}: {
+  line: string;
+  delimiter: string;
+  outputDelimiter: string;
+  ranges: CutRange[];
+  complement: boolean;
+  suppressNoDelimiterLines: boolean;
+}): string | undefined {
+  if (!line.includes(delimiter)) {
+    return suppressNoDelimiterLines ? undefined : line;
+  }
+
+  const fields = line.split(delimiter);
+  const selected = normalizeCutRanges({ ranges, length: fields.length });
+  const result: string[] = [];
+
+  for (let index = 0; index < fields.length; index++) {
+    const position = index + 1;
+    const isSelected = selected.has(position);
+    if (complement ? !isSelected : isSelected) {
+      result.push(fields[index]!);
+    }
+  }
+
+  return result.join(outputDelimiter);
+}
+
+function selectLine({
+  line,
+  mode,
+  ranges,
+  fieldDelimiter,
+  outputDelimiter,
+  complement,
+  suppressNoDelimiterLines,
+}: {
+  line: string;
+  mode: CutMode;
+  ranges: CutRange[];
+  fieldDelimiter: string | undefined;
+  outputDelimiter: string | undefined;
+  complement: boolean;
+  suppressNoDelimiterLines: boolean;
+}): string | undefined {
+  switch (mode) {
+  case 'bytes':
+    return selectBytes({ line, ranges, complement });
+  case 'characters':
+    return selectCharacters({ line, ranges, complement });
+  case 'fields':
+    return selectFields({
+      line,
+      delimiter: fieldDelimiter ?? '\t',
+      outputDelimiter: outputDelimiter ?? fieldDelimiter ?? '\t',
+      ranges,
+      complement,
+      suppressNoDelimiterLines,
+    });
+  default: {
+    const _ex: never = mode;
+    throw new Error(`Unhandled cut mode: ${_ex}`);
+  }
+  }
+}
+
+function createInputStream({
+  context,
+}: {
+  context: WeshCommandContext;
+}): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    async pull(controller) {
+      const buffer = new Uint8Array(4096);
+      const { bytesRead } = await context.stdin.read({ buffer });
+      if (bytesRead === 0) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(buffer.subarray(0, bytesRead));
+    },
+  });
+}
+
+async function readTextStream({
+  stream,
+}: {
+  stream: ReadableStream<Uint8Array>;
+}): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+
+  return text;
+}
 
 export const cutCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -12,23 +347,96 @@ export const cutCommandDefinition: WeshCommandDefinition = {
     usage: 'cut [OPTION]... [FILE]...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const cutArgvSpec: StandardArgvParserSpec = {
+      options: [
+        {
+          kind: 'flag',
+          short: undefined,
+          long: 'help',
+          effects: [{ key: 'help', value: true }],
+          help: { summary: 'display this help and exit', category: 'common' },
+        },
+        {
+          kind: 'flag',
+          short: 'n',
+          long: undefined,
+          effects: [{ key: 'compatibilityNoOp', value: true }],
+          help: { summary: 'ignored for compatibility', category: 'advanced' },
+        },
+        {
+          kind: 'flag',
+          short: 's',
+          long: undefined,
+          effects: [{ key: 'suppress', value: true }],
+          help: { summary: 'suppress lines without delimiters in field mode', category: 'common' },
+        },
+        {
+          kind: 'flag',
+          short: undefined,
+          long: 'complement',
+          effects: [{ key: 'complement', value: true }],
+          help: { summary: 'complement the selected bytes, characters, or fields', category: 'common' },
+        },
+        {
+          kind: 'value',
+          short: 'b',
+          long: undefined,
+          key: 'bytes',
+          valueName: 'list',
+          allowAttachedValue: true,
+          parseValue: undefined,
+          help: { summary: 'select only these bytes', valueName: 'LIST', category: 'common' },
+        },
+        {
+          kind: 'value',
+          short: 'c',
+          long: undefined,
+          key: 'characters',
+          valueName: 'list',
+          allowAttachedValue: true,
+          parseValue: undefined,
+          help: { summary: 'select only these characters', valueName: 'LIST', category: 'common' },
+        },
+        {
+          kind: 'value',
+          short: 'f',
+          long: undefined,
+          key: 'fields',
+          valueName: 'list',
+          allowAttachedValue: true,
+          parseValue: undefined,
+          help: { summary: 'select only these fields', valueName: 'LIST', category: 'common' },
+        },
+        {
+          kind: 'value',
+          short: 'd',
+          long: undefined,
+          key: 'delimiter',
+          valueName: 'delimiter',
+          allowAttachedValue: true,
+          parseValue: undefined,
+          help: { summary: 'use DELIM instead of TAB for fields', valueName: 'DELIM', category: 'common' },
+        },
+        {
+          kind: 'value',
+          short: undefined,
+          long: 'output-delimiter',
+          key: 'outputDelimiter',
+          valueName: 'string',
+          allowAttachedValue: true,
+          parseValue: undefined,
+          help: { summary: 'use STRING as the output delimiter', valueName: 'STRING', category: 'advanced' },
+        },
+      ],
+      allowShortFlagBundles: true,
+      stopAtDoubleDash: true,
+      treatSingleDashAsPositional: true,
+      specialTokenParsers: [],
+    };
+
     const parsed = parseStandardArgv({
       args: context.args,
-      spec: {
-        options: [
-          { kind: 'flag', short: 's', long: undefined, effects: [{ key: 'onlyDelimited', value: true }] },
-          { kind: 'flag', short: undefined, long: 'complement', effects: [{ key: 'complement', value: true }] },
-          { kind: 'value', short: 'b', long: undefined, key: 'bytes', valueName: 'list', allowAttachedValue: true, parseValue: undefined },
-          { kind: 'value', short: 'c', long: undefined, key: 'characters', valueName: 'list', allowAttachedValue: true, parseValue: undefined },
-          { kind: 'value', short: 'f', long: undefined, key: 'fields', valueName: 'list', allowAttachedValue: true, parseValue: undefined },
-          { kind: 'value', short: 'd', long: undefined, key: 'delimiter', valueName: 'delimiter', allowAttachedValue: true, parseValue: undefined },
-          { kind: 'value', short: undefined, long: 'output-delimiter', key: 'outputDelimiter', valueName: 'string', allowAttachedValue: false, parseValue: undefined },
-        ],
-        allowShortFlagBundles: true,
-        stopAtDoubleDash: true,
-        treatSingleDashAsPositional: true,
-        specialTokenParsers: [],
-      },
+      spec: cutArgvSpec,
     });
 
     if (parsed.diagnostics.length > 0) {
@@ -36,134 +444,152 @@ export const cutCommandDefinition: WeshCommandDefinition = {
         context,
         command: 'cut',
         message: `cut: ${parsed.diagnostics[0]!.message}`,
+        argvSpec: cutArgvSpec,
       });
       return { exitCode: 1 };
     }
 
-    const text = context.text();
-    const delimiter = (parsed.optionValues.delimiter as string | undefined) ?? '\t';
-    const outputDelimiter = (parsed.optionValues.outputDelimiter as string | undefined) ?? delimiter;
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'cut',
+        argvSpec: cutArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
 
-    // Simple range parser for list (e.g., "1,3-5,7-")
-    const parseList = (list: string): number[] => {
-      const indices = new Set<number>();
-      for (const part of list.split(',')) {
-        if (part.includes('-')) {
-          const [start, end] = part.split('-').map(s => s === '' ? undefined : parseInt(s, 10));
-          if (start === undefined && end === undefined) continue;
-          const s = start ?? 1;
-          const e = end ?? Infinity;
-          for (let i = s; i <= e; i++) indices.add(i);
-        } else {
-          indices.add(parseInt(part, 10));
-        }
-      }
-      return Array.from(indices).sort((a, b) => a - b);
-    };
-
-    const mode: CutMode | null = parsed.optionValues.bytes
-      ? 'b'
-      : parsed.optionValues.characters
-        ? 'c'
-        : parsed.optionValues.fields
-          ? 'f'
-          : null;
-    const listStr = (parsed.optionValues.bytes ?? parsed.optionValues.characters ?? parsed.optionValues.fields) as string | undefined;
-
-    if (!mode) {
+    const hasBytes = parsed.optionValues.bytes !== undefined;
+    const hasCharacters = parsed.optionValues.characters !== undefined;
+    const hasFields = parsed.optionValues.fields !== undefined;
+    const selectedModeCount = [hasBytes, hasCharacters, hasFields].filter(Boolean).length;
+    if (selectedModeCount !== 1) {
       await writeCommandUsageError({
         context,
         command: 'cut',
-        message: 'cut: must specify one of -b, -c, or -f',
+        message: 'cut: must specify exactly one of -b, -c, or -f',
+        argvSpec: cutArgvSpec,
       });
       return { exitCode: 1 };
     }
 
-    const indices = listStr ? parseList(listStr) : [];
+    const mode: CutMode = hasBytes
+      ? 'bytes'
+      : hasCharacters
+        ? 'characters'
+        : 'fields';
 
-    const processLine = (line: string): string | null => {
+    const listValue = (() => {
       switch (mode) {
-      case 'f': {
-        const parts = line.split(delimiter);
-        if (parts.length === 1 && line.includes(delimiter) === false && parsed.optionValues.onlyDelimited === true) return null;
-
-        const result: string[] = [];
-        if (parsed.optionValues.complement === true) {
-          for (let i = 1; i <= parts.length; i++) {
-            if (!indices.includes(i)) result.push(parts[i - 1]!);
-          }
-        } else {
-          for (const idx of indices) {
-            if (parts[idx - 1] !== undefined) result.push(parts[idx - 1]!);
-          }
-        }
-        return result.join(outputDelimiter);
-      }
-      case 'b':
-      case 'c': {
-        // -b or -c (simplified to character-based for this implementation)
-        const chars = [...line];
-        const result: string[] = [];
-        if (parsed.optionValues.complement === true) {
-          for (let i = 1; i <= chars.length; i++) {
-            if (!indices.includes(i)) result.push(chars[i - 1]!);
-          }
-        } else {
-          for (const idx of indices) {
-            if (chars[idx - 1] !== undefined) result.push(chars[idx - 1]!);
-          }
-        }
-        return result.join('');
-      }
+      case 'bytes':
+        return parsed.optionValues.bytes;
+      case 'characters':
+        return parsed.optionValues.characters;
+      case 'fields':
+        return parsed.optionValues.fields;
       default: {
-        const _exhaustive: never = mode;
-        throw new Error(`Unhandled cut mode: ${_exhaustive}`);
+        const _ex: never = mode;
+        throw new Error(`Unhandled cut mode: ${_ex}`);
       }
       }
+    })();
+
+    if (typeof listValue !== 'string') {
+      await writeCommandUsageError({
+        context,
+        command: 'cut',
+        message: `cut: missing ${mode} list`,
+        argvSpec: cutArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    const parsedList = parseCutList({ value: listValue });
+    if (!parsedList.ok) {
+      await writeCommandUsageError({
+        context,
+        command: 'cut',
+        message: `cut: ${parsedList.message}`,
+        argvSpec: cutArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    const delimiterValue = typeof parsed.optionValues.delimiter === 'string'
+      ? parsed.optionValues.delimiter
+      : undefined;
+    const fieldDelimiter = delimiterValue !== undefined ? delimiterValue.charAt(0) : undefined;
+    if (mode === 'fields' && delimiterValue !== undefined && fieldDelimiter === '') {
+      await writeCommandUsageError({
+        context,
+        command: 'cut',
+        message: 'cut: empty delimiter',
+        argvSpec: cutArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    const outputDelimiter = typeof parsed.optionValues.outputDelimiter === 'string'
+      ? parsed.optionValues.outputDelimiter
+      : undefined;
+    const complement = parsed.optionValues.complement === true;
+    const suppress = parsed.optionValues.suppress === true;
+    const processText = async ({
+      text,
+    }: {
+      text: string;
+    }): Promise<string> => {
+      const lines = splitLines({ text });
+      const output: string[] = [];
+
+      for (const line of lines) {
+        const selected = selectLine({
+          line: line.text,
+          mode,
+          ranges: parsedList.value,
+          fieldDelimiter,
+          outputDelimiter,
+          complement,
+          suppressNoDelimiterLines: suppress && mode === 'fields',
+        });
+
+        if (selected === undefined) {
+          continue;
+        }
+
+        output.push(line.hadNewline ? `${selected}\n` : selected);
+      }
+
+      return output.join('');
     };
 
-    const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
-      const decoder = new TextDecoder();
-      const reader = stream.getReader();
-      let buffer = '';
+    const text = context.text();
+    let exitCode = 0;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() ?? '';
-        for (const line of lines) {
-          const res = processLine(line);
-          if (res !== null) await text.print({ text: res + '\n' });
-        }
-      }
+    const inputFiles = parsed.positionals.length === 0 ? ['-'] : parsed.positionals;
+    let stdinText: string | undefined;
 
-      if (buffer) {
-        const res = processLine(buffer);
-        if (res !== null) await text.print({ text: res + '\n' });
-      }
-    };
+    for (const file of inputFiles) {
+      if (file === undefined) continue;
 
-    if (parsed.positionals.length === 0) {
-      await processStream({ stream: handleToStream({ handle: context.stdin }) });
-    } else {
-      for (const f of parsed.positionals) {
-        if (f === undefined) continue;
-        try {
-          const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-          const handle = await context.kernel.open({
-            path: fullPath,
-            flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-          });
-          await processStream({ stream: handleToStream({ handle }) });
-        } catch (e: unknown) {
-          const message = e instanceof Error ? e.message : String(e);
-          await text.error({ text: `cut: ${f}: ${message}\n` });
-        }
+      try {
+        const content = file === '-'
+          ? stdinText ??= await readTextStream({ stream: createInputStream({ context }) })
+          : await (async () => {
+            const fullPath = resolvePath({ cwd: context.cwd, path: file });
+            const handle = await context.kernel.open({
+              path: fullPath,
+              flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+            });
+            return readTextStream({ stream: handleToStream({ handle }) });
+          })();
+        await text.print({ text: await processText({ text: content }) });
+      } catch (error: unknown) {
+        exitCode = 1;
+        const message = error instanceof Error ? error.message : String(error);
+        await text.error({ text: `cut: ${file}: ${message}\n` });
       }
     }
 
-    return { exitCode: 0 };
+    return { exitCode };
   },
 };
