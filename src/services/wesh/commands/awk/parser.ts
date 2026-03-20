@@ -156,7 +156,7 @@ export function tokenizeAwkProgram({
     }
 
     const twoCharacterOperator = script.slice(index, index + 2);
-    if (['==', '!=', '<=', '>=', '!~', '&&', '||'].includes(twoCharacterOperator)) {
+    if (['==', '!=', '<=', '>=', '!~', '&&', '||', '++', '--'].includes(twoCharacterOperator)) {
       tokens.push({ kind: 'operator', value: twoCharacterOperator });
       index += 2;
       continue;
@@ -580,18 +580,41 @@ class AwkParser {
 
   private parseUnary(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
     const token = this.peek();
-    if (token.kind === 'operator' && token.value === '!') {
-      this.index += 1;
-      const expression = this.parseUnary();
-      if (!expression.ok) return expression;
-      return {
-        ok: true,
-        expression: {
-          kind: 'unary',
-          operator: '!',
-          expression: expression.expression,
-        },
-      };
+    if (token.kind === 'operator') {
+      switch (token.value) {
+      case '!': {
+        this.index += 1;
+        const expression = this.parseUnary();
+        if (!expression.ok) return expression;
+        return {
+          ok: true,
+          expression: {
+            kind: 'unary',
+            operator: '!',
+            expression: expression.expression,
+          },
+        };
+      }
+      case '++':
+      case '--': {
+        this.index += 1;
+        const target = this.parseAssignmentTarget();
+        if (!target.ok) {
+          return { ok: false, message: `expected assignable target after '${token.value}'` };
+        }
+        return {
+          ok: true,
+          expression: {
+            kind: 'update',
+            target: target.target,
+            operator: token.value,
+            position: 'prefix',
+          },
+        };
+      }
+      default:
+        break;
+      }
     }
 
     return this.parseMultiplicative();
@@ -665,107 +688,160 @@ class AwkParser {
 
   private parsePrimary(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
     const token = this.peek();
-    switch (token.kind) {
-    case 'number':
-      this.index += 1;
-      return {
-        ok: true,
-        expression: { kind: 'number', value: Number(token.value) },
-      };
-    case 'string':
-      this.index += 1;
-      return {
-        ok: true,
-        expression: { kind: 'string', value: token.value },
-      };
-    case 'regex':
-      this.index += 1;
-      try {
+    const primary: { ok: true; expression: AwkExpression } | { ok: false; message: string } = (() => {
+      switch (token.kind) {
+      case 'number':
+        this.index += 1;
         return {
           ok: true,
-          expression: { kind: 'regex', value: new RegExp(token.value) },
+          expression: { kind: 'number', value: Number(token.value) },
         };
-      } catch (error: unknown) {
+      case 'string':
+        this.index += 1;
         return {
-          ok: false,
-          message: error instanceof Error ? error.message : String(error),
+          ok: true,
+          expression: { kind: 'string', value: token.value },
+        };
+      case 'regex':
+        this.index += 1;
+        try {
+          return {
+            ok: true,
+            expression: { kind: 'regex', value: new RegExp(token.value) },
+          };
+        } catch (error: unknown) {
+          return {
+            ok: false,
+            message: error instanceof Error ? error.message : String(error),
+          };
+        }
+      case 'identifier': {
+        const nextToken = this.peekOffset({ offset: 1 });
+        if (nextToken.kind === 'punctuation' && nextToken.value === '[') {
+          const name = token.value;
+          this.index += 2;
+          const indexExpression = this.parseExpression();
+          if (!indexExpression.ok) return indexExpression;
+          const close = this.consumePunctuation({ value: ']' });
+          if (!close.ok) return close;
+          return {
+            ok: true,
+            expression: {
+              kind: 'indexed',
+              name,
+              index: indexExpression.expression,
+            },
+          };
+        }
+
+        if (nextToken.kind === 'punctuation' && nextToken.value === '(') {
+          const callee = token.value;
+          this.index += 2;
+          const args: AwkExpression[] = [];
+
+          const firstArgumentToken = this.peek();
+          if (!(firstArgumentToken.kind === 'punctuation' && firstArgumentToken.value === ')')) {
+            while (true) {
+              const argument = this.parseExpression();
+              if (!argument.ok) return argument;
+              args.push(argument.expression);
+
+              const separator = this.peek();
+              if (!(separator.kind === 'punctuation' && separator.value === ',')) {
+                break;
+              }
+              this.index += 1;
+            }
+          }
+
+          const close = this.consumePunctuation({ value: ')' });
+          if (!close.ok) return close;
+          return {
+            ok: true,
+            expression: { kind: 'call', callee, args },
+          };
+        }
+        this.index += 1;
+        return {
+          ok: true,
+          expression: { kind: 'identifier', name: token.value },
         };
       }
-    case 'identifier': {
-      const nextToken = this.peekOffset({ offset: 1 });
-      if (nextToken.kind === 'punctuation' && nextToken.value === '[') {
-        const name = token.value;
-        this.index += 2;
-        const indexExpression = this.parseExpression();
-        if (!indexExpression.ok) return indexExpression;
-        const close = this.consumePunctuation({ value: ']' });
-        if (!close.ok) return close;
+      case 'field':
+        this.index += 1;
+        return {
+          ok: true,
+          expression: { kind: 'field', index: token.value },
+        };
+      case 'punctuation': {
+        switch (token.value) {
+        case '(': {
+          this.index += 1;
+          const nested = this.parseExpression();
+          if (!nested.ok) return nested;
+          const close = this.consumePunctuation({ value: ')' });
+          if (!close.ok) return close;
+          return nested;
+        }
+        default:
+          return { ok: false, message: `unexpected token '${token.value}'` };
+        }
+      }
+      default:
+        return { ok: false, message: 'expected expression' };
+      }
+    })();
+
+    if (!primary.ok) {
+      return primary;
+    }
+
+    const nextToken = this.peek();
+    if (nextToken.kind === 'operator' && (nextToken.value === '++' || nextToken.value === '--')) {
+      switch (primary.expression.kind) {
+      case 'identifier':
+        this.index += 1;
         return {
           ok: true,
           expression: {
-            kind: 'indexed',
-            name,
-            index: indexExpression.expression,
+            kind: 'update',
+            target: { kind: 'variable', name: primary.expression.name },
+            operator: nextToken.value,
+            position: 'postfix',
           },
         };
-      }
-
-      if (nextToken.kind === 'punctuation' && nextToken.value === '(') {
-        const callee = token.value;
-        this.index += 2;
-        const args: AwkExpression[] = [];
-
-        const firstArgumentToken = this.peek();
-        if (!(firstArgumentToken.kind === 'punctuation' && firstArgumentToken.value === ')')) {
-          while (true) {
-            const argument = this.parseExpression();
-            if (!argument.ok) return argument;
-            args.push(argument.expression);
-
-            const separator = this.peek();
-            if (!(separator.kind === 'punctuation' && separator.value === ',')) {
-              break;
-            }
-            this.index += 1;
-          }
-        }
-
-        const close = this.consumePunctuation({ value: ')' });
-        if (!close.ok) return close;
+      case 'indexed':
+        this.index += 1;
         return {
           ok: true,
-          expression: { kind: 'call', callee, args },
+          expression: {
+            kind: 'update',
+            target: {
+              kind: 'indexed',
+              name: primary.expression.name,
+              index: primary.expression.index,
+            },
+            operator: nextToken.value,
+            position: 'postfix',
+          },
         };
+      case 'number':
+      case 'string':
+      case 'regex':
+      case 'field':
+      case 'binary':
+      case 'unary':
+      case 'call':
+      case 'update':
+        return { ok: false, message: `expected assignable target before '${nextToken.value}'` };
+      default: {
+        const _ex: never = primary.expression;
+        throw new Error(`Unhandled awk primary expression: ${JSON.stringify(_ex)}`);
       }
-      this.index += 1;
-      return {
-        ok: true,
-        expression: { kind: 'identifier', name: token.value },
-      };
-    }
-    case 'field':
-      this.index += 1;
-      return {
-        ok: true,
-        expression: { kind: 'field', index: token.value },
-      };
-    case 'punctuation': {
-      switch (token.value) {
-      case '(': {
-        this.index += 1;
-        const nested = this.parseExpression();
-        if (!nested.ok) return nested;
-        const close = this.consumePunctuation({ value: ')' });
-        if (!close.ok) return close;
-        return nested;
-      }
-      default:
-        return { ok: false, message: `unexpected token '${token.value}'` };
       }
     }
-    default:
-      return { ok: false, message: 'expected expression' };
-    }
+
+    return primary;
   }
 
   private consumePunctuation({ value }: { value: '{' | '}' | '(' | ')' | '[' | ']' | ',' | ';' }): { ok: true } | { ok: false; message: string } {

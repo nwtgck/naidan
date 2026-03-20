@@ -247,13 +247,19 @@ export const awkCommandDefinition: WeshCommandDefinition = {
     const runtime = createAwkRuntime({
       variables: runtimeVariables,
     });
-    await text.print({
-      text: executeAwkProgram({
-        program: parsedProgram.program,
-        runtime,
-        inputs: contents,
-      }),
-    });
+    try {
+      await text.print({
+        text: executeAwkProgram({
+          program: parsedProgram.program,
+          runtime,
+          inputs: contents,
+        }),
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      await text.error({ text: `${message}\n` });
+      return { exitCode: 2 };
+    }
 
     return { exitCode };
   },

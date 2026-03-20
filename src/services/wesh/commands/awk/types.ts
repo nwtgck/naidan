@@ -35,7 +35,8 @@ export type AwkExpression =
   | { kind: 'field'; index: number }
   | { kind: 'binary'; operator: AwkBinaryOperator; left: AwkExpression; right: AwkExpression }
   | { kind: 'unary'; operator: AwkUnaryOperator; expression: AwkExpression }
-  | { kind: 'call'; callee: string; args: AwkExpression[] };
+  | { kind: 'call'; callee: string; args: AwkExpression[] }
+  | { kind: 'update'; target: AwkAssignmentTarget; operator: AwkUpdateOperator; position: AwkUpdatePosition };
 
 export type AwkBinaryOperator =
   | 'concat'
@@ -54,6 +55,10 @@ export type AwkBinaryOperator =
   | '!~';
 
 export type AwkUnaryOperator = '!';
+
+export type AwkUpdateOperator = '++' | '--';
+
+export type AwkUpdatePosition = 'prefix' | 'postfix';
 
 export type AwkToken =
   | { kind: 'identifier'; value: string }

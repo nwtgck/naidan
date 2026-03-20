@@ -247,4 +247,35 @@ awk '{ counts[$1] = counts[$1] + 1 } END { print counts["apple"], counts["banana
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('supports postfix increment on indexed variables', async () => {
+    await writeFile({
+      path: 'items-plus.txt',
+      data: `\
+apple
+banana
+apple
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk '{ counts[$1]++ } END { print counts["apple"], counts["banana"] }' items-plus.txt`,
+    });
+
+    expect(stdout.text).toBe('2 1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('reports unsupported builtin functions explicitly', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk 'BEGIN { print toupper("abc") }'`,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("awk: unsupported builtin function 'toupper'");
+    expect(result.exitCode).toBe(2);
+  });
 });

@@ -166,6 +166,56 @@ function setArrayValue({
   entries.set(index, value);
 }
 
+function updateTarget({
+  state,
+  target,
+  operator,
+  position,
+}: {
+  state: AwkRuntimeState;
+  target: Extract<AwkExpression, { kind: 'update' }>['target'];
+  operator: Extract<AwkExpression, { kind: 'update' }>['operator'];
+  position: Extract<AwkExpression, { kind: 'update' }>['position'];
+}): AwkValue {
+  const delta = operator === '++' ? 1 : -1;
+
+  switch (target.kind) {
+  case 'variable': {
+    const current = getVariable({ state, name: target.name });
+    const currentNumber = coerceToNumber({ value: current });
+    const nextValue = currentNumber + delta;
+    setVariable({ state, name: target.name, value: nextValue });
+    return position === 'prefix' ? nextValue : currentNumber;
+  }
+  case 'indexed': {
+    const index = coerceToString({
+      value: evaluateExpression({
+        expression: target.index,
+        state,
+      }),
+    });
+    const current = getArrayValue({
+      state,
+      name: target.name,
+      index,
+    });
+    const currentNumber = coerceToNumber({ value: current });
+    const nextValue = currentNumber + delta;
+    setArrayValue({
+      state,
+      name: target.name,
+      index,
+      value: nextValue,
+    });
+    return position === 'prefix' ? nextValue : currentNumber;
+  }
+  default: {
+    const _ex: never = target;
+    throw new Error(`Unhandled awk update target: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
 function evaluateExpression({
   expression,
   state,
@@ -226,9 +276,16 @@ function evaluateExpression({
       return length === undefined ? source.slice(startIndex) : source.slice(startIndex, startIndex + length);
     }
     default:
-      return '';
+      throw new Error(`awk: unsupported builtin function '${expression.callee}'`);
     }
   }
+  case 'update':
+    return updateTarget({
+      state,
+      target: expression.target,
+      operator: expression.operator,
+      position: expression.position,
+    });
   case 'binary': {
     const left = evaluateExpression({ expression: expression.left, state });
     const right = evaluateExpression({ expression: expression.right, state });
@@ -326,6 +383,7 @@ function matchesPattern({
     case 'identifier':
     case 'indexed':
     case 'field':
+    case 'update':
     case 'binary':
     case 'unary':
     case 'call':
