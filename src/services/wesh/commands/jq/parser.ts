@@ -9,11 +9,11 @@ import type {
 } from './ast';
 import { lexJq } from './lexer';
 
-function isBuiltinName({
+function toBuiltinName({
   name,
 }: {
   name: string;
-}): name is JqBuiltinName {
+}): JqBuiltinName | undefined {
   switch (name) {
   case 'select':
   case 'map':
@@ -21,9 +21,9 @@ function isBuiltinName({
   case 'keys':
   case 'type':
   case 'has':
-    return true;
+    return name;
   default:
-    return false;
+    return undefined;
   }
 }
 
@@ -434,7 +434,8 @@ class JqParser {
         return { ok: false, message: `unexpected keyword '${token.value}'` };
       }
     case 'identifier': {
-      if (!isBuiltinName({ name: token.value })) {
+      const builtinName = toBuiltinName({ name: token.value });
+      if (builtinName === undefined) {
         return { ok: false, message: `unsupported syntax: identifier '${token.value}'` };
       }
       this.index += 1;
@@ -442,7 +443,7 @@ class JqParser {
       if (!(next.kind === 'punctuation' && next.value === '(')) {
         return {
           ok: true,
-          filter: { kind: 'call', name: token.value, args: [] },
+          filter: { kind: 'call', name: builtinName, args: [] },
         };
       }
 
@@ -459,7 +460,7 @@ class JqParser {
       if (!close.ok) return close;
       return {
         ok: true,
-        filter: { kind: 'call', name: token.value, args },
+        filter: { kind: 'call', name: builtinName, args },
       };
     }
     case 'punctuation':

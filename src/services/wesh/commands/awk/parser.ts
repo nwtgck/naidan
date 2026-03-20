@@ -944,7 +944,6 @@ class AwkParser {
       case 'binary':
       case 'unary':
       case 'call':
-      case 'assign':
       case 'update':
         return { ok: false, message: `expected assignable target before '${nextToken.value}'` };
       default: {

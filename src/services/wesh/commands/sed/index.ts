@@ -515,11 +515,12 @@ function buildSedOutput({
         break;
       }
       case 'translate': {
+        const command = runtimeCommand.command;
         const translated = patternSpace
           .split('')
           .map((char) => {
-            const sourceIndex = runtimeCommand.command.source.indexOf(char);
-            return sourceIndex >= 0 ? runtimeCommand.command.target[sourceIndex] ?? char : char;
+            const sourceIndex = command.source.indexOf(char);
+            return sourceIndex >= 0 ? command.target[sourceIndex] ?? char : char;
           })
           .join('');
         patternSpace = translated;
