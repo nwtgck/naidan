@@ -86,6 +86,22 @@ echo $?`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports bare operand truthiness and negation', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+test ""
+echo $?
+test ! ""
+echo $?
+[ ! value ]
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('1\n0\n1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports integer comparisons including -l string length', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

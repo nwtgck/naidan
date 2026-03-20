@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { builtinCommands } from '@/services/wesh/commands/index';
 import { Wesh } from '@/services/wesh/index';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
@@ -42,6 +43,28 @@ describe('wesh help', () => {
     expect(delegated.stderr.text).toBe(direct.stderr.text);
     expect(delegated.result.exitCode).toBe(0);
   });
+
+  for (const command of builtinCommands) {
+    it(`matches ${command.meta.name} --help output`, async () => {
+      const direct = await execute({
+        script: (() => {
+          switch (command.meta.name) {
+          case '[':
+            return '[ --help ]';
+          default:
+            return `${command.meta.name} --help`;
+          }
+        })(),
+      });
+      const delegated = await execute({
+        script: `help ${command.meta.name}`,
+      });
+
+      expect(delegated.stdout.text).toBe(direct.stdout.text);
+      expect(delegated.stderr.text).toBe(direct.stderr.text);
+      expect(delegated.result.exitCode).toBe(direct.result.exitCode);
+    });
+  }
 
   it('prints help command help with --help', async () => {
     const { result, stdout, stderr } = await execute({ script: 'help --help' });

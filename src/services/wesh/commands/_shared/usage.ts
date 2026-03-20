@@ -69,3 +69,19 @@ export async function maybeWriteStandaloneCommandHelp({
   }
   }
 }
+
+export function isStandaloneCommandHelpRequest({
+  args,
+  acceptedForms,
+}: {
+  args: string[];
+  acceptedForms: string[][];
+}): boolean {
+  return acceptedForms.some((acceptedForm) => {
+    if (args.length !== acceptedForm.length) {
+      return false;
+    }
+
+    return acceptedForm.every((token, index) => args[index] === token);
+  });
+}

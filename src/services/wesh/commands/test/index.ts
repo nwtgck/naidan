@@ -1,5 +1,9 @@
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
-import { maybeWriteStandaloneCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import {
+  isStandaloneCommandHelpRequest,
+  maybeWriteStandaloneCommandHelp,
+  writeCommandUsageError,
+} from '@/services/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
@@ -743,11 +747,15 @@ function createTestCommandDefinition({
         mode: (() => {
           switch (commandName) {
           case 'test':
-            return context.args.length === 1 && context.args[0] === '--help' ? 'help-requested' : 'not-requested';
+            return isStandaloneCommandHelpRequest({
+              args: context.args,
+              acceptedForms: [['--help']],
+            }) ? 'help-requested' : 'not-requested';
           case '[':
-            return context.args.length === 2 && context.args[0] === '--help' && context.args[1] === ']'
-              ? 'help-requested'
-              : 'not-requested';
+            return isStandaloneCommandHelpRequest({
+              args: context.args,
+              acceptedForms: [['--help', ']']],
+            }) ? 'help-requested' : 'not-requested';
           default: {
             const _ex: never = commandName;
             throw new Error(`Unhandled test command name: ${_ex}`);

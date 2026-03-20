@@ -63,7 +63,14 @@ export const helpCommandDefinition: WeshCommandDefinition = {
 
       return context.executeCommand({
         command: target,
-        args: ['--help'],
+        args: (() => {
+          switch (target) {
+          case '[':
+            return ['--help', ']'];
+          default:
+            return ['--help'];
+          }
+        })(),
         stdin: context.stdin,
         stdout: context.stdout,
         stderr: context.stderr,

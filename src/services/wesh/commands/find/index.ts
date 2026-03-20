@@ -1,6 +1,10 @@
 import { parseFindLikeArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
-import { maybeWriteStandaloneCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import {
+  isStandaloneCommandHelpRequest,
+  maybeWriteStandaloneCommandHelp,
+  writeCommandUsageError,
+} from '@/services/wesh/commands/_shared/usage';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
@@ -814,7 +818,10 @@ export const findCommandDefinition: WeshCommandDefinition = {
       context,
       command: 'find',
       argvSpec: findHelpArgvSpec,
-      mode: context.args.length === 1 && context.args[0] === '--help' ? 'help-requested' : 'not-requested',
+      mode: isStandaloneCommandHelpRequest({
+        args: context.args,
+        acceptedForms: [['--help']],
+      }) ? 'help-requested' : 'not-requested',
     });
     switch (helpStatus) {
     case 'handled':
