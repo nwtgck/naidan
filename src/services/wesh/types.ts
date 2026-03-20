@@ -96,6 +96,7 @@ export interface WeshProcess {
   exitCode?: number;
   terminationSignal?: number;
   waitStatus?: WeshWaitStatus;
+  pendingSignals?: number[];
 
   env: Map<string, string>;
   cwd: string;

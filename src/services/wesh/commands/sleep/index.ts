@@ -51,7 +51,19 @@ export const sleepCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+    const waitStatus = await context.kernel.waitForSignalOrTimeout({
+      pid: context.pid,
+      timeoutMs: seconds * 1000,
+    });
+    if (waitStatus !== undefined) {
+      // TODO(wesh-signal): Replace per-command waiting helpers with shared command
+      // execution interruption once signal dispatch is fully kernel-driven.
+      return {
+        exitCode: 0,
+        waitStatus,
+      };
+    }
+
     return { exitCode: 0 };
   },
 };

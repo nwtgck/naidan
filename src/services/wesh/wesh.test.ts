@@ -348,4 +348,136 @@ body
 parent-exit
 `);
   });
+
+  it('runs PIPE traps when a pipeline writer gets SIGPIPE', async () => {
+    const handle = await rootHandle.getFileHandle('large.txt', { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(`first\n${'x'.repeat(131072)}`);
+    await writable.close();
+
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+trap -- 'echo pipe-trap >&2' PIPE
+cat large.txt | head -n 1`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe(`\
+first
+`);
+    expect(stderr.text).toBe(`\
+pipe-trap
+`);
+  });
+
+  it('runs INT traps when a command signals its foreground process group', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    wesh.registerCommand({
+      definition: {
+        meta: {
+          name: 'signal-int',
+          description: 'Send SIGINT to the current process group',
+          usage: 'signal-int',
+        },
+        fn: async ({ context }) => {
+          const proc = context.kernel.getProcess({ pid: context.pid });
+          if (proc === undefined) {
+            throw new Error(`Missing process: ${context.pid}`);
+          }
+          await context.kernel.killProcessGroup({
+            pgid: proc.pgid,
+            signal: 2,
+          });
+          throw new Error('foreground process group interrupted');
+        },
+      },
+    });
+
+    const result = await wesh.execute({
+      script: `\
+trap -- 'echo int-trap >&2' INT
+signal-int`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe(`\
+int-trap
+`);
+  });
+
+  it('signals the foreground process group through the shell API', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: `\
+trap -- 'echo shell-int >&2' INT
+sleep 1`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await execution;
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe(`\
+shell-int
+`);
+  });
+
+  it('signals the foreground pipeline process group through the shell API', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: `\
+trap -- 'echo pipeline-int >&2' INT
+sleep 1 | cat`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await execution;
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('pipeline-int\n');
+  });
 });

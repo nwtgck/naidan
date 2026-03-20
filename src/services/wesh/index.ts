@@ -44,6 +44,21 @@ interface WeshExpandedField {
   }>;
 }
 
+function weshSignalConditionNames({
+  signal,
+}: {
+  signal: number;
+}): string[] {
+  switch (signal) {
+  case 2:
+    return ['INT', 'SIGINT', '2'];
+  case 13:
+    return ['PIPE', 'SIGPIPE', '13'];
+  default:
+    return [signal.toString()];
+  }
+}
+
 export class Wesh {
   public vfs: WeshIVirtualFileSystem;
   public kernel: WeshKernel;
@@ -56,6 +71,7 @@ export class Wesh {
   private nextJobId: number = 1;
   private shellFds: Map<number, WeshFileHandle> = new Map();
   private traps: Map<string, string> = new Map();
+  private foregroundProcessGroupId: number | undefined;
 
   private shellPid: number = 0;
 
@@ -107,6 +123,18 @@ export class Wesh {
 
   registerCommand({ definition }: { definition: WeshCommandDefinition }): void {
     this.commands.set(definition.meta.name, definition);
+  }
+
+  async signalForegroundProcessGroup(options: { signal: number }): Promise<boolean> {
+    if (this.foregroundProcessGroupId === undefined) {
+      return false;
+    }
+
+    await this.kernel.killProcessGroup({
+      pgid: this.foregroundProcessGroupId,
+      signal: options.signal,
+    });
+    return true;
   }
 
   private registerInternalCommand(name: string, fn: ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult>) {
@@ -1086,7 +1114,10 @@ export class Wesh {
     }
 
     case 'command': {
-      result = await this.executeCommand({ ...options, node: node as WeshCommandNode });
+      result = await this.runWithForegroundProcessGroup({
+        pgid: environment.pgid,
+        fn: async () => this.executeCommand({ ...options, node: node as WeshCommandNode }),
+      });
       break;
     }
 
@@ -1225,7 +1256,10 @@ export class Wesh {
       );
     }
 
-    const results = await Promise.all(promises);
+    const results = await this.runWithForegroundProcessGroup({
+      pgid: pipelinePgid ?? environment.pgid,
+      fn: async () => Promise.all(promises),
+    });
     return results[results.length - 1]!;
   }
 
@@ -1467,19 +1501,89 @@ export class Wesh {
 
     try {
       const result = await definition.fn({ context });
+      if (proc.waitStatus?.kind === 'signaled' || proc.waitStatus?.kind === 'stopped') {
+        const signalWaitStatus = proc.waitStatus;
+        switch (signalWaitStatus.kind) {
+        case 'signaled':
+          await this.runSignalTrapIfNeeded({
+            signal: signalWaitStatus.signal,
+            environment,
+            stdin: boundStdin,
+            stdout: boundStdout,
+            stderr: boundStderr,
+          });
+          break;
+        case 'stopped':
+          break;
+        default: {
+          const _ex: never = signalWaitStatus;
+          throw new Error(`Unhandled wait status: ${JSON.stringify(_ex)}`);
+        }
+        }
+        return {
+          exitCode: weshWaitStatusToExitCode({
+            waitStatus: signalWaitStatus,
+          }),
+          waitStatus: signalWaitStatus,
+        };
+      }
+
       proc.state = 'terminated';
       proc.waitStatus = result.waitStatus ?? {
         kind: 'exited',
         exitCode: result.exitCode,
       };
       proc.exitCode = result.exitCode;
-      return result;
+
+      switch (proc.waitStatus.kind) {
+      case 'signaled':
+        await this.runSignalTrapIfNeeded({
+          signal: proc.waitStatus.signal,
+          environment,
+          stdin: boundStdin,
+          stdout: boundStdout,
+          stderr: boundStderr,
+        });
+        break;
+      case 'exited':
+      case 'stopped':
+        break;
+      default: {
+        const _ex: never = proc.waitStatus;
+        throw new Error(`Unhandled wait status: ${JSON.stringify(_ex)}`);
+      }
+      }
+
+      return {
+        ...result,
+        exitCode: weshWaitStatusToExitCode({
+          waitStatus: proc.waitStatus,
+        }),
+        waitStatus: proc.waitStatus,
+      };
     } catch (error: unknown) {
       if (proc.waitStatus?.kind === 'signaled' || proc.waitStatus?.kind === 'stopped') {
         // TODO(wesh-signal): Remove this temporary exception-based bridge once
         // process-bound handles can interrupt command execution without throwing
         // through JS catch paths and kernel waitStatus is the only signal source.
         const signalWaitStatus = proc.waitStatus;
+        switch (signalWaitStatus.kind) {
+        case 'signaled':
+          await this.runSignalTrapIfNeeded({
+            signal: signalWaitStatus.signal,
+            environment,
+            stdin: boundStdin,
+            stdout: boundStdout,
+            stderr: boundStderr,
+          });
+          break;
+        case 'stopped':
+          break;
+        default: {
+          const _ex: never = signalWaitStatus;
+          throw new Error(`Unhandled wait status: ${JSON.stringify(_ex)}`);
+        }
+        }
         return {
           exitCode: weshWaitStatusToExitCode({
             waitStatus: signalWaitStatus,
@@ -1619,6 +1723,46 @@ export class Wesh {
       stderr: options.stderr,
     });
     return options.result;
+  }
+
+  private async runSignalTrapIfNeeded(options: {
+    signal: number;
+    environment: WeshExecutionEnvironment;
+    stdin: WeshFileHandle;
+    stdout: WeshFileHandle;
+    stderr: WeshFileHandle;
+  }): Promise<void> {
+    for (const condition of weshSignalConditionNames({ signal: options.signal })) {
+      const trapAction = options.environment.traps.get(condition);
+      if (trapAction === undefined) {
+        continue;
+      }
+
+      // TODO(wesh-trap): Align signal-trap dispatch with kernel-level signal
+      // dispositions and real shell reentrancy semantics instead of running the
+      // trap eagerly from command exception bridging.
+      await this.executeShellInState({
+        script: trapAction,
+        environment: options.environment,
+        stdin: options.stdin,
+        stdout: options.stdout,
+        stderr: options.stderr,
+      });
+      return;
+    }
+  }
+
+  private async runWithForegroundProcessGroup<T>(options: {
+    pgid: number;
+    fn: () => Promise<T>;
+  }): Promise<T> {
+    const previousForegroundProcessGroupId = this.foregroundProcessGroupId;
+    this.foregroundProcessGroupId = options.pgid;
+    try {
+      return await options.fn();
+    } finally {
+      this.foregroundProcessGroupId = previousForegroundProcessGroupId;
+    }
   }
 
   private async executeShellInState(options: {

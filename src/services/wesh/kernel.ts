@@ -7,6 +7,7 @@ import type {
   WeshStat,
   WeshFileType,
   WeshOpenFlags,
+  WeshWaitStatus,
 } from './types';
 import { WeshBrokenPipeError, weshWaitStatusToExitCode } from './types';
 
@@ -207,6 +208,7 @@ export class WeshKernel {
       ppid: 0,
       pgid: 1,
       state: 'running',
+      pendingSignals: [],
       env: new Map(),
       cwd: '/',
       args: ['init'],
@@ -230,6 +232,7 @@ export class WeshKernel {
       ppid: options.ppid ?? 1,
       pgid: options.pgid ?? pid,
       state: 'running',
+      pendingSignals: [],
       env: options.env ? new Map(options.env) : new Map(),
       cwd: options.cwd || '/',
       args: options.args,
@@ -262,6 +265,8 @@ export class WeshKernel {
     const proc = this.processes.get(options.pid);
     if (!proc) return;
 
+    proc.pendingSignals ??= [];
+    proc.pendingSignals.push(options.signal);
     proc.state = 'terminated';
     proc.waitStatus = {
       kind: 'signaled',
@@ -271,6 +276,47 @@ export class WeshKernel {
       waitStatus: proc.waitStatus,
     });
     proc.terminationSignal = options.signal;
+  }
+
+  getPendingSignals(options: { pid: number }): number[] {
+    const proc = this.processes.get(options.pid);
+    return proc?.pendingSignals ? [...proc.pendingSignals] : [];
+  }
+
+  consumePendingSignals(options: { pid: number }): number[] {
+    const proc = this.processes.get(options.pid);
+    if (proc?.pendingSignals === undefined || proc.pendingSignals.length === 0) {
+      return [];
+    }
+
+    const pendingSignals = [...proc.pendingSignals];
+    proc.pendingSignals = [];
+    return pendingSignals;
+  }
+
+  getWaitStatus(options: { pid: number }) {
+    return this.processes.get(options.pid)?.waitStatus;
+  }
+
+  async waitForSignalOrTimeout(options: {
+    pid: number;
+    timeoutMs: number;
+    pollIntervalMs?: number;
+  }): Promise<WeshWaitStatus | undefined> {
+    const deadline = Date.now() + options.timeoutMs;
+    const pollIntervalMs = options.pollIntervalMs ?? 10;
+
+    while (Date.now() < deadline) {
+      const waitStatus = this.getWaitStatus({ pid: options.pid });
+      if (waitStatus !== undefined) {
+        this.consumePendingSignals({ pid: options.pid });
+        return waitStatus;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, Math.min(pollIntervalMs, deadline - Date.now())));
+    }
+
+    return this.getWaitStatus({ pid: options.pid });
   }
 
   async killProcessGroup(options: { pgid: number; signal: number }): Promise<void> {
