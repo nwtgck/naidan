@@ -270,6 +270,106 @@ function updateTarget({
   }
 }
 
+function formatPrintfOutput({
+  format,
+  argumentsList,
+}: {
+  format: string;
+  argumentsList: AwkValue[];
+}): string {
+  let output = '';
+  let argumentIndex = 0;
+
+  for (let index = 0; index < format.length; index += 1) {
+    const char = format[index];
+    if (char !== '%') {
+      output += char;
+      continue;
+    }
+
+    const nextChar = format[index + 1];
+    if (nextChar === undefined) {
+      throw new Error("awk: incomplete printf format specifier");
+    }
+
+    if (nextChar === '%') {
+      output += '%';
+      index += 1;
+      continue;
+    }
+
+    const argument = argumentsList[argumentIndex];
+    argumentIndex += 1;
+    switch (nextChar) {
+    case 's':
+      output += coerceToString({ value: argument ?? '' });
+      break;
+    case 'd':
+    case 'i':
+      output += String(Math.trunc(coerceToNumber({ value: argument ?? 0 })));
+      break;
+    case 'f':
+      output += String(coerceToNumber({ value: argument ?? 0 }));
+      break;
+    case 'c': {
+      const code = Math.trunc(coerceToNumber({ value: argument ?? 0 }));
+      output += String.fromCodePoint(code);
+      break;
+    }
+    default:
+      throw new Error(`awk: unsupported printf format '%${nextChar}'`);
+    }
+    index += 1;
+  }
+
+  return output;
+}
+
+function executeForClausePart({
+  part,
+  state,
+}: {
+  part: Extract<AwkStatement, { kind: 'for' }>['initializer'];
+  state: AwkRuntimeState;
+}): void {
+  if (part === undefined) return;
+
+  switch (part.kind) {
+  case 'assign': {
+    const value = evaluateExpression({ expression: part.expression, state });
+    switch (part.target.kind) {
+    case 'variable':
+      setVariable({ state, name: part.target.name, value });
+      return;
+    case 'indexed':
+      setArrayValue({
+        state,
+        name: part.target.name,
+        index: coerceToString({
+          value: evaluateExpression({
+            expression: part.target.index,
+            state,
+          }),
+        }),
+        value,
+      });
+      return;
+    default: {
+      const _ex: never = part.target;
+      throw new Error(`Unhandled awk for assignment target: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+  case 'expression':
+    evaluateExpression({ expression: part.expression, state });
+    return;
+  default: {
+    const _ex: never = part;
+    throw new Error(`Unhandled awk for clause part: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
 function evaluateExpression({
   expression,
   state,
@@ -596,6 +696,78 @@ function executeStatement({
     }
     return 'continue';
   }
+  case 'for': {
+    executeForClausePart({
+      part: statement.initializer,
+      state,
+    });
+
+    let iterationCount = 0;
+    while (statement.condition === undefined || isTruthy({
+      value: evaluateExpression({
+        expression: statement.condition,
+        state,
+      }),
+    })) {
+      iterationCount += 1;
+      if (iterationCount > 100000) {
+        throw new Error('awk: for loop iteration limit exceeded');
+      }
+
+      for (const nestedStatement of statement.statements) {
+        const control = executeStatement({
+          statement: nestedStatement,
+          state,
+          output,
+        });
+        switch (control) {
+        case 'continue':
+          break;
+        case 'next':
+          return 'next';
+        default: {
+          const _ex: never = control;
+          throw new Error(`Unhandled awk control flow: ${_ex}`);
+        }
+        }
+      }
+
+      executeForClausePart({
+        part: statement.increment,
+        state,
+      });
+    }
+    return 'continue';
+  }
+  case 'forIn': {
+    const keys = [...(state.arrays.get(statement.arrayName)?.keys() ?? [])];
+    for (const key of keys) {
+      setVariable({
+        state,
+        name: statement.variableName,
+        value: key,
+      });
+
+      for (const nestedStatement of statement.statements) {
+        const control = executeStatement({
+          statement: nestedStatement,
+          state,
+          output,
+        });
+        switch (control) {
+        case 'continue':
+          break;
+        case 'next':
+          return 'next';
+        default: {
+          const _ex: never = control;
+          throw new Error(`Unhandled awk control flow: ${_ex}`);
+        }
+        }
+      }
+    }
+    return 'continue';
+  }
   case 'delete':
     switch (statement.target.kind) {
     case 'array':
@@ -636,6 +808,20 @@ function executeStatement({
         value: evaluateExpression({ expression, state }),
       }));
     output.push(`${values.join(fieldSeparator)}${recordSeparator}`);
+    return 'continue';
+  }
+  case 'printf': {
+    const formatted = formatPrintfOutput({
+      format: coerceToString({
+        value: evaluateExpression({
+          expression: statement.format,
+          state,
+        }),
+      }),
+      argumentsList: statement.arguments.map((expression) =>
+        evaluateExpression({ expression, state })),
+    });
+    output.push(formatted);
     return 'continue';
   }
   default: {

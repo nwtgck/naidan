@@ -337,4 +337,51 @@ awk 'BEGIN { arr["a"] = 1; arr["b"] = 2; delete arr["a"]; print ("a" in arr), ("
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('supports C-style for loops', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk 'BEGIN { for (i = 0; i < 3; i++) printf "%d,", i }'`,
+    });
+
+    expect(stdout.text).toBe('0,1,2,');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports printf without automatically appending a newline', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk 'BEGIN { printf "%s:%d:%f:%%", "id", 7, 1.5 }'`,
+    });
+
+    expect(stdout.text).toBe('id:7:1.5:%');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports for-in loops over arrays', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk 'BEGIN { arr["b"] = 2; arr["a"] = 1; for (key in arr) print key, arr[key] }'`,
+    });
+
+    expect(stdout.text).toBe(`\
+b 2
+a 1
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('reports unsupported printf formats explicitly', async () => {
+    const badPrintf = await execute({
+      script: `\
+awk 'BEGIN { printf "%q", 1 }'`,
+    });
+
+    expect(badPrintf.stdout.text).toBe('');
+    expect(badPrintf.stderr.text).toContain("awk: unsupported printf format '%q'");
+    expect(badPrintf.result.exitCode).toBe(2);
+  });
 });

@@ -17,12 +17,19 @@ export type AwkPattern =
 
 export type AwkStatement =
   | { kind: 'print'; expressions: AwkExpression[] }
+  | { kind: 'printf'; format: AwkExpression; arguments: AwkExpression[] }
   | { kind: 'assign'; target: AwkAssignmentTarget; expression: AwkExpression }
   | { kind: 'expression'; expression: AwkExpression }
   | { kind: 'if'; condition: AwkExpression; thenStatements: AwkStatement[]; elseStatements: AwkStatement[] | undefined }
   | { kind: 'while'; condition: AwkExpression; statements: AwkStatement[] }
+  | { kind: 'for'; initializer: AwkForClausePart | undefined; condition: AwkExpression | undefined; increment: AwkForClausePart | undefined; statements: AwkStatement[] }
+  | { kind: 'forIn'; variableName: string; arrayName: string; statements: AwkStatement[] }
   | { kind: 'delete'; target: AwkDeleteTarget }
   | { kind: 'next' };
+
+export type AwkForClausePart =
+  | { kind: 'assign'; target: AwkAssignmentTarget; expression: AwkExpression }
+  | { kind: 'expression'; expression: AwkExpression };
 
 export type AwkAssignmentTarget =
   | { kind: 'variable'; name: string }

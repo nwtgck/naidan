@@ -318,6 +318,33 @@ class AwkParser {
       return { ok: true, statement: { kind: 'print', expressions } };
     }
 
+    if (token.kind === 'identifier' && token.value === 'printf') {
+      this.index += 1;
+      const format = this.parseExpression();
+      if (!format.ok) return format;
+
+      const argumentsList: AwkExpression[] = [];
+      while (true) {
+        const separator = this.peek();
+        if (!(separator.kind === 'punctuation' && separator.value === ',')) {
+          break;
+        }
+        this.index += 1;
+        const argument = this.parseExpression();
+        if (!argument.ok) return argument;
+        argumentsList.push(argument.expression);
+      }
+
+      return {
+        ok: true,
+        statement: {
+          kind: 'printf',
+          format: format.expression,
+          arguments: argumentsList,
+        },
+      };
+    }
+
     if (token.kind === 'identifier' && token.value === 'next') {
       this.index += 1;
       return { ok: true, statement: { kind: 'next' } };
@@ -382,6 +409,60 @@ class AwkParser {
         statement: {
           kind: 'while',
           condition: condition.expression,
+          statements: statements.statements,
+        },
+      };
+    }
+
+    if (token.kind === 'identifier' && token.value === 'for') {
+      this.index += 1;
+      const open = this.consumePunctuation({ value: '(' });
+      if (!open.ok) return open;
+
+      const forIn = this.parseForInClause();
+      if (forIn.ok) {
+        const close = this.consumePunctuation({ value: ')' });
+        if (!close.ok) return close;
+
+        this.skipSeparators();
+        const statements = this.parseStatementBody();
+        if (!statements.ok) return statements;
+        return {
+          ok: true,
+          statement: {
+            kind: 'forIn',
+            variableName: forIn.variableName,
+            arrayName: forIn.arrayName,
+            statements: statements.statements,
+          },
+        };
+      }
+
+      const initializer = this.parseForClausePart();
+      if (!initializer.ok) return initializer;
+      const firstSeparator = this.consumePunctuation({ value: ';' });
+      if (!firstSeparator.ok) return firstSeparator;
+
+      const condition = this.parseOptionalExpressionUntil({ terminator: ';' });
+      if (!condition.ok) return condition;
+      const secondSeparator = this.consumePunctuation({ value: ';' });
+      if (!secondSeparator.ok) return secondSeparator;
+
+      const increment = this.parseForClausePart();
+      if (!increment.ok) return increment;
+      const close = this.consumePunctuation({ value: ')' });
+      if (!close.ok) return close;
+
+      this.skipSeparators();
+      const statements = this.parseStatementBody();
+      if (!statements.ok) return statements;
+      return {
+        ok: true,
+        statement: {
+          kind: 'for',
+          initializer: initializer.part,
+          condition: condition.expression,
+          increment: increment.part,
           statements: statements.statements,
         },
       };
@@ -528,6 +609,84 @@ class AwkParser {
     const statement = this.parseStatement();
     if (!statement.ok) return statement;
     return { ok: true, statements: [statement.statement] };
+  }
+
+  private parseOptionalExpressionUntil({
+    terminator,
+  }: {
+    terminator: ';' | ')';
+  }): { ok: true; expression: AwkExpression | undefined } | { ok: false; message: string } {
+    const token = this.peek();
+    if (token.kind === 'punctuation' && token.value === terminator) {
+      return { ok: true, expression: undefined };
+    }
+
+    const expression = this.parseExpression();
+    if (!expression.ok) return expression;
+    return { ok: true, expression: expression.expression };
+  }
+
+  private parseForClausePart():
+    | { ok: true; part: { kind: 'assign'; target: { kind: 'variable'; name: string } | { kind: 'indexed'; name: string; index: AwkExpression }; expression: AwkExpression } | { kind: 'expression'; expression: AwkExpression } | undefined }
+    | { ok: false; message: string } {
+    const token = this.peek();
+    if (
+      token.kind === 'punctuation'
+      && (token.value === ';' || token.value === ')')
+    ) {
+      return { ok: true, part: undefined };
+    }
+
+    const target = this.parseAssignmentTarget();
+    if (target.ok) {
+      const equalsToken = this.peek();
+      if (equalsToken.kind === 'operator' && equalsToken.value === '=') {
+        this.index += 1;
+        const expression = this.parseExpression();
+        if (!expression.ok) return expression;
+        return {
+          ok: true,
+          part: {
+            kind: 'assign',
+            target: target.target,
+            expression: expression.expression,
+          },
+        };
+      }
+      this.index = target.startIndex;
+    }
+
+    const expression = this.parseExpression();
+    if (!expression.ok) return expression;
+    return { ok: true, part: { kind: 'expression', expression: expression.expression } };
+  }
+
+  private parseForInClause():
+    | { ok: true; variableName: string; arrayName: string }
+    | { ok: false } {
+    const startIndex = this.index;
+    const variableToken = this.peek();
+    if (!(variableToken.kind === 'identifier')) {
+      return { ok: false };
+    }
+
+    const inToken = this.peekOffset({ offset: 1 });
+    if (!(inToken.kind === 'identifier' && inToken.value === 'in')) {
+      return { ok: false };
+    }
+
+    const arrayToken = this.peekOffset({ offset: 2 });
+    if (!(arrayToken.kind === 'identifier')) {
+      this.index = startIndex;
+      return { ok: false };
+    }
+
+    this.index += 3;
+    return {
+      ok: true,
+      variableName: variableToken.value,
+      arrayName: arrayToken.value,
+    };
   }
 
   private parseExpression(): { ok: true; expression: AwkExpression } | { ok: false; message: string } {
