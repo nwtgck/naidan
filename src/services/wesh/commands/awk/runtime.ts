@@ -135,6 +135,20 @@ function getArrayValue({
   return state.arrays.get(name)?.get(index) ?? '';
 }
 
+function requireArrayEntries({
+  state,
+  name,
+}: {
+  state: AwkRuntimeState;
+  name: string;
+}): Map<string, AwkValue> {
+  const entries = state.arrays.get(name);
+  if (entries === undefined) {
+    throw new Error(`awk: '${name}' is not an array`);
+  }
+  return entries;
+}
+
 function setVariable({
   state,
   name,
@@ -145,6 +159,55 @@ function setVariable({
   value: AwkValue;
 }): void {
   state.variables.set(name, value);
+}
+
+function setCurrentRecordText({
+  state,
+  text,
+}: {
+  state: AwkRuntimeState;
+  text: string;
+}): void {
+  if (state.currentRecord === undefined) {
+    throw new Error('awk: no current record available');
+  }
+
+  const fieldSeparator = coerceToString({ value: getVariable({ state, name: 'FS' }) });
+  state.currentRecord = {
+    ...state.currentRecord,
+    text,
+    fields: splitFields({
+      line: text,
+      fieldSeparator,
+    }),
+  };
+}
+
+function setFieldValue({
+  state,
+  index,
+  value,
+}: {
+  state: AwkRuntimeState;
+  index: number;
+  value: string;
+}): void {
+  if (state.currentRecord === undefined) {
+    throw new Error('awk: no current record available');
+  }
+
+  const fields = [...state.currentRecord.fields];
+  while (fields.length < index) {
+    fields.push('');
+  }
+  fields[index - 1] = value;
+
+  const outputFieldSeparator = coerceToString({ value: getVariable({ state, name: 'OFS' }) });
+  state.currentRecord = {
+    ...state.currentRecord,
+    fields,
+    text: fields.join(outputFieldSeparator),
+  };
 }
 
 function setArrayValue({
@@ -176,6 +239,217 @@ function clearArray({
   const entries = new Map<string, AwkValue>();
   state.arrays.set(name, entries);
   return entries;
+}
+
+function applyAwkReplacement({
+  replacement,
+  match,
+}: {
+  replacement: string;
+  match: string;
+}): string {
+  let output = '';
+
+  for (let index = 0; index < replacement.length; index += 1) {
+    const char = replacement[index];
+    const nextChar = replacement[index + 1];
+
+    if (char === '\\' && nextChar !== undefined) {
+      if (nextChar === '&' || nextChar === '\\') {
+        output += nextChar;
+        index += 1;
+        continue;
+      }
+    }
+
+    if (char === '&') {
+      output += match;
+      continue;
+    }
+
+    output += char;
+  }
+
+  return output;
+}
+
+function replaceInText({
+  source,
+  pattern,
+  replacement,
+  mode,
+}: {
+  source: string;
+  pattern: RegExp;
+  replacement: string;
+  mode: 'first' | 'global';
+}): { text: string; count: number } {
+  const flags = [...new Set(pattern.flags.split(''))].join('');
+  const regexFlags = (() => {
+    switch (mode) {
+    case 'global':
+      return [...new Set(`${flags}g`.split(''))].join('');
+    case 'first':
+      return flags.replace(/g/g, '');
+    default: {
+      const _ex: never = mode;
+      throw new Error(`Unhandled substitution mode: ${_ex}`);
+    }
+    }
+  })();
+  const regex = new RegExp(pattern.source, regexFlags);
+
+  let count = 0;
+  const text = source.replace(regex, (matched) => {
+    count += 1;
+    if (mode === 'first' && count > 1) {
+      return matched;
+    }
+    return applyAwkReplacement({
+      replacement,
+      match: matched,
+    });
+  });
+
+  const normalizedCount = (() => {
+    switch (mode) {
+    case 'first':
+      return Math.min(count, 1);
+    case 'global':
+      return count;
+    default: {
+      const _ex: never = mode;
+      throw new Error(`Unhandled substitution mode: ${_ex}`);
+    }
+    }
+  })();
+
+  return {
+    text,
+    count: normalizedCount,
+  };
+}
+
+function applySubstitution({
+  state,
+  expression,
+  mode,
+}: {
+  state: AwkRuntimeState;
+  expression: Extract<AwkExpression, { kind: 'call' }>;
+  mode: 'first' | 'global';
+}): number {
+  const pattern = coerceToRegex({
+    value: evaluateExpression({
+      expression: expression.args[0] ?? { kind: 'string', value: '' },
+      state,
+    }),
+  });
+  const replacement = coerceToString({
+    value: evaluateExpression({
+      expression: expression.args[1] ?? { kind: 'string', value: '' },
+      state,
+    }),
+  });
+
+  const targetExpression = expression.args[2];
+  if (targetExpression === undefined) {
+    const source = state.currentRecord?.text ?? '';
+    const result = replaceInText({
+      source,
+      pattern,
+      replacement,
+      mode,
+    });
+    setCurrentRecordText({
+      state,
+      text: result.text,
+    });
+    return result.count;
+  }
+
+  switch (targetExpression.kind) {
+  case 'identifier': {
+    const source = coerceToString({
+      value: getVariable({
+        state,
+        name: targetExpression.name,
+      }),
+    });
+    const result = replaceInText({
+      source,
+      pattern,
+      replacement,
+      mode,
+    });
+    setVariable({
+      state,
+      name: targetExpression.name,
+      value: result.text,
+    });
+    return result.count;
+  }
+  case 'indexed': {
+    const index = coerceToString({
+      value: evaluateExpression({
+        expression: targetExpression.index,
+        state,
+      }),
+    });
+    const source = coerceToString({
+      value: getArrayValue({
+        state,
+        name: targetExpression.name,
+        index,
+      }),
+    });
+    const result = replaceInText({
+      source,
+      pattern,
+      replacement,
+      mode,
+    });
+    setArrayValue({
+      state,
+      name: targetExpression.name,
+      index,
+      value: result.text,
+    });
+    return result.count;
+  }
+  case 'field': {
+    if (targetExpression.index === 0) {
+      const source = state.currentRecord?.text ?? '';
+      const result = replaceInText({
+        source,
+        pattern,
+        replacement,
+        mode,
+      });
+      setCurrentRecordText({
+        state,
+        text: result.text,
+      });
+      return result.count;
+    }
+
+    const source = state.currentRecord?.fields[targetExpression.index - 1] ?? '';
+    const result = replaceInText({
+      source,
+      pattern,
+      replacement,
+      mode,
+    });
+    setFieldValue({
+      state,
+      index: targetExpression.index,
+      value: result.text,
+    });
+    return result.count;
+  }
+  default:
+    throw new Error("awk: sub requires a variable, field, or array element as its third argument");
+  }
 }
 
 function deleteArrayEntry({
@@ -309,7 +583,7 @@ function formatPrintfOutput({
       output += String(Math.trunc(coerceToNumber({ value: argument ?? 0 })));
       break;
     case 'f':
-      output += String(coerceToNumber({ value: argument ?? 0 }));
+      output += coerceToNumber({ value: argument ?? 0 }).toFixed(6);
       break;
     case 'c': {
       const code = Math.trunc(coerceToNumber({ value: argument ?? 0 }));
@@ -429,6 +703,27 @@ function evaluateExpression({
       const startIndex = start - 1;
       return length === undefined ? source.slice(startIndex) : source.slice(startIndex, startIndex + length);
     }
+    case 'tolower':
+      return coerceToString({ value: args[0] ?? '' }).toLowerCase();
+    case 'toupper':
+      return coerceToString({ value: args[0] ?? '' }).toUpperCase();
+    case 'match': {
+      const source = coerceToString({ value: args[0] ?? '' });
+      const pattern = coerceToRegex({ value: args[1] ?? '' });
+      const matched = source.match(pattern);
+      if (matched === null || matched.index === undefined) {
+        setVariable({ state, name: 'RSTART', value: 0 });
+        setVariable({ state, name: 'RLENGTH', value: -1 });
+        return 0;
+      }
+      setVariable({ state, name: 'RSTART', value: matched.index + 1 });
+      setVariable({ state, name: 'RLENGTH', value: matched[0].length });
+      return matched.index + 1;
+    }
+    case 'sub':
+      return applySubstitution({ state, expression, mode: 'first' });
+    case 'gsub':
+      return applySubstitution({ state, expression, mode: 'global' });
     case 'split': {
       const source = coerceToString({ value: args[0] ?? '' });
       const targetExpression = expression.args[1];
@@ -482,7 +777,10 @@ function evaluateExpression({
       const index = coerceToString({ value: left });
       switch (expression.right.kind) {
       case 'identifier':
-        return state.arrays.get(expression.right.name)?.has(index) === true ? 1 : 0;
+        return requireArrayEntries({
+          state,
+          name: expression.right.name,
+        }).has(index) ? 1 : 0;
       default:
         throw new Error("awk: right operand of 'in' must be an array variable");
       }
@@ -758,7 +1056,10 @@ function executeStatement({
     return 'normal';
   }
   case 'forIn': {
-    const keys = [...(state.arrays.get(statement.arrayName)?.keys() ?? [])];
+    const keys = [...requireArrayEntries({
+      state,
+      name: statement.arrayName,
+    }).keys()];
     for (const key of keys) {
       setVariable({
         state,

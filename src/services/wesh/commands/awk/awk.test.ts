@@ -206,7 +206,7 @@ keep
     expect(result.exitCode).toBe(0);
   });
 
-  it('supports built-in functions length, index, and substr', async () => {
+  it('supports built-in functions length, index, substr, tolower, and toupper', async () => {
     await writeFile({
       path: 'words.txt',
       data: `\
@@ -217,12 +217,12 @@ beta
 
     const { result, stdout, stderr } = await execute({
       script: `\
-awk '{ print length($1), index($1, "a"), substr($1, 2, 2) }' words.txt`,
+awk '{ print length($1), index($1, "a"), substr($1, 2, 2), tolower($1), toupper($1) }' words.txt`,
     });
 
     expect(stdout.text).toBe(`\
-5 1 lp
-4 4 et
+5 1 lp alpha ALPHA
+4 4 et beta BETA
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
@@ -268,15 +268,53 @@ awk '{ counts[$1]++ } END { print counts["apple"], counts["banana"] }' items-plu
     expect(result.exitCode).toBe(0);
   });
 
-  it('reports unsupported builtin functions explicitly', async () => {
+  it('supports match and still reports unsupported builtin functions explicitly', async () => {
+    const supported = await execute({
+      script: `\
+awk 'BEGIN { print match("abc", "b"), RSTART, RLENGTH; print match("abc", "z"), RSTART, RLENGTH }'`,
+    });
     const { result, stdout, stderr } = await execute({
       script: `\
-awk 'BEGIN { print toupper("abc") }'`,
+awk 'BEGIN { print gensub("abc", "b") }'`,
     });
 
+    expect(supported.stdout.text).toBe(`\
+2 2 1
+0 0 -1
+`);
+    expect(supported.stderr.text).toBe('');
+    expect(supported.result.exitCode).toBe(0);
+
     expect(stdout.text).toBe('');
-    expect(stderr.text).toContain("awk: unsupported builtin function 'toupper'");
+    expect(stderr.text).toContain("awk: unsupported builtin function 'gensub'");
     expect(result.exitCode).toBe(2);
+  });
+
+  it('supports sub and gsub against records, variables, and fields', async () => {
+    await writeFile({
+      path: 'replace.txt',
+      data: `\
+alpha beta alpha
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+awk '{
+  text = $0
+  print sub("alpha", "A", text), text
+  print gsub("alpha", "A", $0), $0
+  print sub("beta", "B", $2), $0
+}' replace.txt`,
+    });
+
+    expect(stdout.text).toBe(`\
+1 A beta alpha
+2 A beta A
+1 A B A
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('supports split into arrays and the in operator', async () => {
@@ -355,7 +393,7 @@ awk 'BEGIN { for (i = 0; i < 3; i++) printf "%d,", i }'`,
 awk 'BEGIN { printf "%s:%d:%f:%%", "id", 7, 1.5 }'`,
     });
 
-    expect(stdout.text).toBe('id:7:1.5:%');
+    expect(stdout.text).toBe('id:7:1.500000:%');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -372,6 +410,25 @@ a 1
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('reports non-array for-in and in operands explicitly', async () => {
+    const badForIn = await execute({
+      script: `\
+awk 'BEGIN { value = 1; for (key in value) print key }'`,
+    });
+    const badIn = await execute({
+      script: `\
+awk 'BEGIN { value = 1; print ("x" in value) }'`,
+    });
+
+    expect(badForIn.stdout.text).toBe('');
+    expect(badForIn.stderr.text).toContain("awk: 'value' is not an array");
+    expect(badForIn.result.exitCode).toBe(2);
+
+    expect(badIn.stdout.text).toBe('');
+    expect(badIn.stderr.text).toContain("awk: 'value' is not an array");
+    expect(badIn.result.exitCode).toBe(2);
   });
 
   it('supports break and continue inside loops', async () => {
