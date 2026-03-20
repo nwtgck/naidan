@@ -4,7 +4,7 @@ import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/comman
 
 const mkdirArgvSpec: StandardArgvParserSpec = {
   options: [
-    { kind: 'flag', short: 'p', long: undefined, effects: [{ key: 'parents', value: true }], help: { summary: 'make parent directories as needed' } },
+    { kind: 'flag', short: 'p', long: 'parents', effects: [{ key: 'parents', value: true }], help: { summary: 'make parent directories as needed' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
   ],
   allowShortFlagBundles: true,
@@ -17,7 +17,7 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'mkdir',
     description: 'Create directories',
-    usage: 'mkdir [-p] path...',
+    usage: 'mkdir [-p] [--parents] path...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({

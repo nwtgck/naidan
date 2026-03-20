@@ -101,6 +101,66 @@ describe('wesh ls', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports -P and -L for command-line symlinks', async () => {
+    await writeFile({ path: 'target/file.txt', data: 'payload' });
+    await wesh.vfs.symlink({
+      path: '/target.link',
+      targetPath: '/target',
+    });
+
+    const physical = await execute({
+      script: 'ls -dF -P target.link',
+    });
+    const logical = await execute({
+      script: 'ls -dF -L target.link',
+    });
+
+    expect(physical.stdout.text).toBe('target.link@\n');
+    expect(logical.stdout.text).toBe('target.link/\n');
+    expect(physical.stderr.text).toBe('');
+    expect(logical.stderr.text).toBe('');
+    expect(physical.result.exitCode).toBe(0);
+    expect(logical.result.exitCode).toBe(0);
+  });
+
+  it('shows symlink targets in long format', async () => {
+    await writeFile({ path: 'target.txt', data: 'payload' });
+    await wesh.vfs.symlink({
+      path: '/target.link',
+      targetPath: '/target.txt',
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'ls -l target.link',
+    });
+
+    expect(stdout.text).toContain('target.link -> /target.txt');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -H for command-line symlink traversal', async () => {
+    await writeFile({ path: 'dir/file.txt', data: 'payload' });
+    await wesh.vfs.symlink({
+      path: '/dir.link',
+      targetPath: '/dir',
+    });
+
+    const physical = await execute({
+      script: 'ls dir.link',
+    });
+    const commandLine = await execute({
+      script: 'ls -H dir.link',
+    });
+
+    expect(physical.stdout.text).toBe('dir.link\n');
+    expect(commandLine.stdout.text).toBe('file.txt  \n');
+    expect(physical.stderr.text).toBe('');
+    expect(commandLine.stderr.text).toBe('');
+    expect(physical.result.exitCode).toBe(0);
+    expect(commandLine.result.exitCode).toBe(0);
+  });
+
   it('supports -a to include dotfiles', async () => {
     await writeFile({ path: '.hidden.txt', data: 'hidden' });
     await writeFile({ path: 'visible.txt', data: 'visible' });
@@ -149,5 +209,17 @@ deep.txt
 `);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('continues after missing operands but returns a non-zero exit code', async () => {
+    await writeFile({ path: 'dir/file.txt', data: 'payload' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'ls dir missing',
+    });
+
+    expect(stdout.text).toContain('dir:\nfile.txt');
+    expect(stderr.text).toContain('ls: missing:');
+    expect(result.exitCode).toBe(1);
   });
 });

@@ -45,7 +45,7 @@ describe('wesh date', () => {
     const extra = await execute({ script: 'date +%F unexpected' });
 
     expect(help.stdout.text).toContain('Print the system date and time');
-    expect(help.stdout.text).toContain('usage: date [-u] [+FORMAT]');
+    expect(help.stdout.text).toContain('usage: date [-u] [--utc] [+FORMAT]');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
 
@@ -79,6 +79,16 @@ describe('wesh date', () => {
   it('supports -u with formatted output', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'date -u +%Y-%m-%dT%H:%M:%S',
+    });
+
+    expect(stdout.text).toBe('2026-03-20T01:02:03\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports --utc as a long option alias', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'date --utc +%Y-%m-%dT%H:%M:%S',
     });
 
     expect(stdout.text).toBe('2026-03-20T01:02:03\n');

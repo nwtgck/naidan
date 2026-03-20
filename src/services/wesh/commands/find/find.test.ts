@@ -271,6 +271,30 @@ describe('wesh find', () => {
     expect(greater.stdout.text).toBe('src/three.txt\n');
   });
 
+  it('supports -perm with exact, all-bit, and any-bit matching', async () => {
+    await writeFile({ path: 'src/file.txt', data: 'payload' });
+    await mkdir({ path: 'src/dir' });
+    await wesh.vfs.symlink({
+      path: '/src/link',
+      targetPath: '/src/file.txt',
+    });
+
+    const exact = await execute({
+      script: 'find src -perm 644',
+    });
+    expect(exact.stdout.text).toBe('src/file.txt\n');
+
+    const allBits = await execute({
+      script: 'find src -perm -111',
+    });
+    expect(allBits.stdout.text).toBe('src\nsrc/dir\nsrc/link\n');
+
+    const anyBits = await execute({
+      script: 'find src -perm /001',
+    });
+    expect(anyBits.stdout.text).toBe('src\nsrc/dir\nsrc/link\n');
+  });
+
   it('supports -regex against the displayed path', async () => {
     await writeFile({ path: 'src/app.ts', data: 'console.log(1);\n' });
     await writeFile({ path: 'src/lib/util.ts', data: 'console.log(2);\n' });

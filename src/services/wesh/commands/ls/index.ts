@@ -85,6 +85,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
     const R = parsed.optionValues.R === true;
     const classify = parsed.optionValues.classify === true;
     const symlinkMode = (parsed.optionValues.symlinkMode as LsSymlinkMode | undefined) ?? 'physical';
+    let exitCode = 0;
 
     async function listPath({
       displayPath,
@@ -176,6 +177,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `ls: ${displayPath}: ${message}\n` });
+        exitCode = 1;
       }
     }
 
@@ -195,7 +197,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
       });
     }
 
-    return { exitCode: 0 };
+    return { exitCode };
   },
 };
 
@@ -341,5 +343,26 @@ async function formatEntry({
   }
   }
 
-  return `${typeChar} ${size.padStart(10)} ${line}`;
+  let renderedName = line;
+  switch (stat.type) {
+  case 'symlink':
+    try {
+      const target = await context.files.readlink({ path: fullPath });
+      renderedName += ` -> ${target}`;
+    } catch {
+      // Leave the symlink target suffix off if it cannot be read.
+    }
+    break;
+  case 'directory':
+  case 'chardev':
+  case 'fifo':
+  case 'file':
+    break;
+  default: {
+    const _ex: never = stat.type;
+    throw new Error(`Unhandled file type: ${_ex}`);
+  }
+  }
+
+  return `${typeChar} ${size.padStart(10)} ${renderedName}`;
 }

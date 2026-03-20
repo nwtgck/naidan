@@ -48,6 +48,13 @@ const tailArgvSpec: StandardArgvParserSpec = {
     },
     {
       kind: 'flag',
+      short: undefined,
+      long: 'silent',
+      effects: [{ key: 'headerMode', value: 'never' }],
+      help: { summary: 'same as --quiet', category: 'advanced' },
+    },
+    {
+      kind: 'flag',
       short: 'v',
       long: 'verbose',
       effects: [{ key: 'headerMode', value: 'always' }],

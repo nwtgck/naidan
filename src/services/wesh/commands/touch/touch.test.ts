@@ -67,7 +67,7 @@ describe('wesh touch', () => {
     });
 
     expect(help.stdout.text).toContain('Update file timestamps or create empty files');
-    expect(help.stdout.text).toContain('usage: touch path...');
+    expect(help.stdout.text).toContain('usage: touch [-c] [-r FILE] path...');
     expect(help.stdout.text).toContain('--help');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
@@ -122,5 +122,51 @@ cat file.txt`,
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
     expect(after.mtime).toBeGreaterThan(before.mtime);
+  });
+
+  it('returns non-zero when a target path cannot be touched', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+touch missing/file.txt
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('1\n');
+    expect(stderr.text).toContain("touch: cannot touch 'missing/file.txt':");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('accepts -r and --reference when the reference file exists', async () => {
+    await writeFile({ path: 'reference.txt', data: 'ref' });
+
+    const shortResult = await execute({
+      script: `\
+touch -r reference.txt short.txt
+test -e short.txt
+echo $?`,
+    });
+    const longResult = await execute({
+      script: `\
+touch --reference=reference.txt long.txt
+test -e long.txt
+echo $?`,
+    });
+
+    expect(shortResult.stdout.text).toBe('0\n');
+    expect(shortResult.stderr.text).toBe('');
+    expect(longResult.stdout.text).toBe('0\n');
+    expect(longResult.stderr.text).toBe('');
+  });
+
+  it('fails when the reference file does not exist', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+touch -r missing.txt target.txt
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('1\n');
+    expect(stderr.text).toContain("touch: failed to get attributes of 'missing.txt':");
+    expect(result.exitCode).toBe(0);
   });
 });

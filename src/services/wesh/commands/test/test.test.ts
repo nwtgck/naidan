@@ -231,6 +231,28 @@ echo $?`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('returns false for non-matching file comparisons', async () => {
+    await writeFile({ path: 'left.txt', data: 'left' });
+    await new Promise<void>(resolve => {
+      setTimeout(resolve, 5);
+    });
+    await writeFile({ path: 'right.txt', data: 'right' });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+test left.txt -ef right.txt
+echo $?
+test left.txt -nt right.txt
+echo $?
+test right.txt -ot left.txt
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('1\n1\n1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports access predicates and empty-string checks', async () => {
     await writeFile({ path: 'script.sh', data: 'echo hi\n' });
 

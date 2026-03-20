@@ -88,6 +88,21 @@ describe('wesh readlink', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports --no-newline as a long option alias', async () => {
+    await wesh.vfs.symlink({
+      path: '/alias.txt',
+      targetPath: '/target.txt',
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'readlink --no-newline alias.txt',
+    });
+
+    expect(stdout.text).toBe('/target.txt');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports -f to print the canonical absolute path', async () => {
     await writeFile({ path: 'target.txt', data: 'target\n' });
     await wesh.vfs.mkdir({ path: '/dir', recursive: true });
@@ -113,5 +128,55 @@ describe('wesh readlink', () => {
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('readlink: missing.txt:');
     expect(result.exitCode).toBe(1);
+  });
+
+  it('supports -e for existing canonical paths', async () => {
+    await writeFile({ path: 'target.txt', data: 'target\n' });
+    await wesh.vfs.symlink({
+      path: '/alias.txt',
+      targetPath: '/target.txt',
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'readlink -e alias.txt',
+    });
+
+    expect(stdout.text).toBe('/target.txt\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('allows a missing final path component with -f', async () => {
+    await wesh.vfs.mkdir({ path: '/dir', recursive: true });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'readlink -f dir/missing.txt',
+    });
+
+    expect(stdout.text).toBe('/dir/missing.txt\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports long canonicalize aliases', async () => {
+    await writeFile({ path: 'target.txt', data: 'target\n' });
+    await wesh.vfs.symlink({
+      path: '/alias.txt',
+      targetPath: '/target.txt',
+    });
+
+    const canonicalize = await execute({
+      script: 'readlink --canonicalize alias.txt',
+    });
+    const existing = await execute({
+      script: 'readlink --canonicalize-existing alias.txt',
+    });
+
+    expect(canonicalize.stdout.text).toBe('/target.txt\n');
+    expect(canonicalize.stderr.text).toBe('');
+    expect(canonicalize.result.exitCode).toBe(0);
+    expect(existing.stdout.text).toBe('/target.txt\n');
+    expect(existing.stderr.text).toBe('');
+    expect(existing.result.exitCode).toBe(0);
   });
 });

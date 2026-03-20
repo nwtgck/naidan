@@ -86,6 +86,23 @@ b2
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports long option aliases for header and line selection', async () => {
+    await writeFile({ name: 'a.txt', data: 'a1\na2\n' });
+    await writeFile({ name: 'b.txt', data: 'b1\nb2\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'tail --silent --lines=1 a.txt b.txt',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe(`\
+a2
+b2
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('forces headers with -v for a single file', async () => {
     await writeFile({ name: 'a.txt', data: 'a1\na2\n' });
 
@@ -156,6 +173,19 @@ a2
     });
 
     expect(stdout.text).toBe('cdef');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports long byte-count options', async () => {
+    await writeFile({ name: 'bytes.txt', data: 'abcdef' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'tail --bytes=3 bytes.txt',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('def');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

@@ -66,4 +66,14 @@ describe('wesh command', () => {
     expect(missing.stderr.text).toContain('command: missing-command not found');
     expect(missing.result.exitCode).toBe(1);
   });
+
+  it('treats -- as the end of command options', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'command -- echo hello',
+    });
+
+    expect(stdout.text).toBe('hello\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });

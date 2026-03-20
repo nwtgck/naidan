@@ -5,6 +5,16 @@ import { exists, writeFile } from '@/services/wesh/utils/fs';
 
 const touchArgvSpec: StandardArgvParserSpec = {
   options: [
+    {
+      kind: 'value',
+      short: 'r',
+      long: 'reference',
+      key: 'reference',
+      valueName: 'FILE',
+      allowAttachedValue: false,
+      parseValue: undefined,
+      help: { valueName: 'FILE', summary: 'use this file timestamps instead of current time', category: 'common' },
+    },
     { kind: 'flag', short: 'c', long: 'no-create', effects: [{ key: 'noCreate', value: true }], help: { summary: 'do not create any files', category: 'common' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
   ],
@@ -18,7 +28,7 @@ export const touchCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'touch',
     description: 'Update file timestamps or create empty files',
-    usage: 'touch path...',
+    usage: 'touch [-c] [-r FILE] path...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({
@@ -58,6 +68,20 @@ export const touchCommandDefinition: WeshCommandDefinition = {
 
     const text = context.text();
     const noCreate = parsed.optionValues.noCreate === true;
+    const referencePath = parsed.optionValues.reference as string | undefined;
+    let exitCode = 0;
+
+    if (referencePath !== undefined) {
+      try {
+        await context.files.stat({
+          path: referencePath.startsWith('/') ? referencePath : (context.cwd === '/' ? `/${referencePath}` : `${context.cwd}/${referencePath}`),
+        });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        await text.error({ text: `touch: failed to get attributes of '${referencePath}': ${message}\n` });
+        return { exitCode: 1 };
+      }
+    }
 
     for (const p of parsed.positionals) {
       if (p === undefined) continue;
@@ -89,9 +113,10 @@ export const touchCommandDefinition: WeshCommandDefinition = {
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `touch: cannot touch '${p}': ${message}\n` });
+        exitCode = 1;
       }
     }
 
-    return { exitCode: 0 };
+    return { exitCode };
   },
 };

@@ -10,10 +10,10 @@ function parseCount({
   value: string;
   errorPrefix: string;
 }): { ok: true; value: number } | { ok: false; message: string } {
-  const parsed = parseInt(value, 10);
-  if (Number.isNaN(parsed)) {
+  if (!/^\d+$/.test(value)) {
     return { ok: false, message: `${errorPrefix}: '${value}'` };
   }
+  const parsed = parseInt(value, 10);
   return { ok: true, value: parsed };
 }
 
@@ -25,6 +25,13 @@ const headArgvSpec: StandardArgvParserSpec = {
       long: 'quiet',
       effects: [{ key: 'headerMode', value: 'never' }],
       help: { summary: 'never print headers with file names', category: 'common' },
+    },
+    {
+      kind: 'flag',
+      short: undefined,
+      long: 'silent',
+      effects: [{ key: 'headerMode', value: 'never' }],
+      help: { summary: 'same as --quiet', category: 'advanced' },
     },
     {
       kind: 'flag',

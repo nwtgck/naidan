@@ -4,7 +4,7 @@ import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/comman
 
 const dateArgvSpec: StandardArgvParserSpec = {
   options: [
-    { kind: 'flag', short: 'u', long: undefined, effects: [{ key: 'utc', value: true }], help: { summary: 'display the time in UTC' } },
+    { kind: 'flag', short: 'u', long: 'utc', effects: [{ key: 'utc', value: true }], help: { summary: 'display the time in UTC' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
   ],
   allowShortFlagBundles: true,
@@ -83,7 +83,7 @@ export const dateCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'date',
     description: 'Print the system date and time',
-    usage: 'date [-u] [+FORMAT]',
+    usage: 'date [-u] [--utc] [+FORMAT]',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const parsed = parseStandardArgv({

@@ -22,6 +22,7 @@ type FindExpression =
   | { kind: 'type'; expected: WeshFileType }
   | { kind: 'empty' }
   | { kind: 'size'; comparison: 'eq' | 'lt' | 'gt'; sizeInBytes: number }
+  | { kind: 'perm'; matchMode: 'exact' | 'all' | 'any'; mode: number }
   | { kind: 'newer'; referencePath: string; referenceMtime: number }
   | { kind: 'print' }
   | { kind: 'print0' }
@@ -195,6 +196,27 @@ function parseFindSize({
   };
 }
 
+function parseFindPerm({
+  value,
+}: {
+  value: string;
+}): { ok: true; matchMode: 'exact' | 'all' | 'any'; mode: number } | { ok: false; message: string } {
+  const match = value.match(/^([-/]?)([0-7]+)$/);
+  if (match === null) {
+    return { ok: false, message: `invalid argument to -perm: ${value}` };
+  }
+
+  const prefix = match[1] ?? '';
+  const digits = match[2] ?? '';
+  const mode = Number.parseInt(digits, 8);
+
+  return {
+    ok: true,
+    matchMode: prefix === '-' ? 'all' : prefix === '/' ? 'any' : 'exact',
+    mode,
+  };
+}
+
 function splitFindLeadingOptions({
   args,
 }: {
@@ -328,6 +350,7 @@ function tokenizeFindExpression({
       '-type',
       '-empty',
       '-size',
+      '-perm',
       '-newer',
       '-print',
       '-print0',
@@ -360,6 +383,7 @@ function tokenizeFindExpression({
     case 'type':
     case 'empty':
     case 'size':
+    case 'perm':
     case 'newer':
     case 'true':
     case 'false':
@@ -476,6 +500,13 @@ function tokenizeFindExpression({
       const parsed = parseFindSize({ value: sizeToken });
       if (!parsed.ok) return parsed.message;
       return { kind: 'size', comparison: parsed.comparison, sizeInBytes: parsed.sizeInBytes };
+    }
+    case '-perm': {
+      const permToken = next();
+      if (permToken === undefined) return "missing argument to '-perm'";
+      const parsed = parseFindPerm({ value: permToken });
+      if (!parsed.ok) return parsed.message;
+      return { kind: 'perm', matchMode: parsed.matchMode, mode: parsed.mode };
     }
     case '-newer': {
       const referencePath = next();
@@ -612,6 +643,7 @@ async function resolveFindExpressionReferences({
   case 'type':
   case 'empty':
   case 'size':
+  case 'perm':
   case 'print':
   case 'print0':
   case 'prune':
@@ -755,6 +787,44 @@ async function evaluateExpression({
       shouldQuit: false,
       exitCode: 0,
     };
+  case 'perm':
+    return {
+      matched: (() => {
+        const permissionBits = (() => {
+          switch (entry.type) {
+          case 'directory':
+            return 0o755;
+          case 'symlink':
+            return 0o777;
+          case 'chardev':
+            return 0o666;
+          case 'fifo':
+          case 'file':
+            return 0o644;
+          default: {
+            const _ex: never = entry.type;
+            throw new Error(`Unhandled file type: ${_ex}`);
+          }
+          }
+        })();
+        switch (expr.matchMode) {
+        case 'exact':
+          return permissionBits === expr.mode;
+        case 'all':
+          return (permissionBits & expr.mode) === expr.mode;
+        case 'any':
+          return (permissionBits & expr.mode) !== 0;
+        default: {
+          const _ex: never = expr.matchMode;
+          throw new Error(`Unhandled permission match mode: ${_ex}`);
+        }
+        }
+      })(),
+      actionInvoked: false,
+      shouldPrune: false,
+      shouldQuit: false,
+      exitCode: 0,
+    };
   case 'newer':
     return {
       matched: entry.mtime > expr.referenceMtime,
@@ -795,7 +865,8 @@ async function evaluateExpression({
   case 'false':
     return { matched: false, actionInvoked: false, shouldPrune: false, shouldQuit: false, exitCode: 0 };
   case 'exec': {
-    switch (expr.mode) {
+    const execMode: 'single' | 'batch' = expr.mode;
+    switch (execMode) {
     case 'batch': {
       const existing = pendingExecBatches.get(expr.id);
       if (existing === undefined) {
@@ -831,7 +902,7 @@ async function evaluateExpression({
       };
     }
     default: {
-      const _ex: never = expr.mode;
+      const _ex: never = execMode;
       throw new Error(`Unhandled exec mode: ${_ex}`);
     }
     }
@@ -885,6 +956,7 @@ function hasDeleteAction({
   case 'type':
   case 'empty':
   case 'size':
+  case 'perm':
   case 'newer':
   case 'print':
   case 'print0':

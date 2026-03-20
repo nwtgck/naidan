@@ -66,4 +66,12 @@ describe('wesh which', () => {
     expect(whichResult.stderr.text).toBe('');
     expect(commandResult.stderr.text).toBe('');
   });
+
+  it('treats -- as the end of options', async () => {
+    const { result, stdout, stderr } = await execute({ script: 'which -- env' });
+
+    expect(stdout.text).toBe('env: builtin command\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });

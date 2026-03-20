@@ -47,7 +47,7 @@ describe('wesh ls/find symlink semantics', () => {
     });
 
     const physical = await execute({ script: 'ls -lP dir.link' });
-    expect(physical.stdout.text).toBe('l          5 dir.link\n');
+    expect(physical.stdout.text).toBe('l          5 dir.link -> /real\n');
     expect(physical.stderr.text).toBe('');
     expect(physical.result.exitCode).toBe(0);
 

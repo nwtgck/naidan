@@ -106,12 +106,42 @@ cat dest/second.txt`,
     expect(stdout.text).toBe('first\nsecond\n');
   });
 
+  it('supports --target-directory as a long option alias', async () => {
+    await writeFile({ path: 'first.txt', data: 'first\n' });
+    await writeFile({ path: 'second.txt', data: 'second\n' });
+    await mkdir({ path: 'dest' });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mv --target-directory=dest first.txt second.txt
+cat dest/first.txt
+cat dest/second.txt`,
+    });
+
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('first\nsecond\n');
+  });
+
   it('supports -T to forbid treating the destination as a directory', async () => {
     await writeFile({ path: 'source.txt', data: 'alpha\n' });
     await mkdir({ path: 'dest' });
 
     const { result, stdout, stderr } = await execute({
       script: 'mv -T source.txt dest',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("cannot overwrite directory 'dest' with non-directory");
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('supports --no-target-directory as a long option alias', async () => {
+    await writeFile({ path: 'source.txt', data: 'alpha\n' });
+    await mkdir({ path: 'dest' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'mv --no-target-directory source.txt dest',
     });
 
     expect(stdout.text).toBe('');
@@ -126,6 +156,23 @@ cat dest/second.txt`,
     const { result, stdout, stderr } = await execute({
       script: `\
 mv -n source.txt dest.txt
+cat dest.txt
+test -e source.txt
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('dest\n0\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports --no-clobber as a long option alias', async () => {
+    await writeFile({ path: 'source.txt', data: 'source\n' });
+    await writeFile({ path: 'dest.txt', data: 'dest\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mv --no-clobber source.txt dest.txt
 cat dest.txt
 test -e source.txt
 echo $?`,

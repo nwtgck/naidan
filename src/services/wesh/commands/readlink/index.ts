@@ -9,6 +9,74 @@ function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
+function normalizeAbsolutePath({
+  path,
+}: {
+  path: string;
+}): string {
+  const parts = path.split('/');
+  const normalized: string[] = [];
+
+  for (const part of parts) {
+    if (part === '' || part === '.') {
+      continue;
+    }
+    if (part === '..') {
+      normalized.pop();
+      continue;
+    }
+    normalized.push(part);
+  }
+
+  return normalized.length === 0 ? '/' : `/${normalized.join('/')}`;
+}
+
+function joinAbsolutePath({
+  base,
+  part,
+}: {
+  base: string;
+  part: string;
+}): string {
+  const combined = base === '/' ? `/${part}` : `${base}/${part}`;
+  return normalizeAbsolutePath({ path: combined });
+}
+
+async function canonicalizePathAllowingMissingLeaf({
+  context,
+  path,
+}: {
+  context: WeshCommandContext;
+  path: string;
+}): Promise<string> {
+  const normalizedInput = normalizeAbsolutePath({ path });
+  if (normalizedInput === '/') {
+    return '/';
+  }
+
+  const segments = normalizedInput.split('/').filter(Boolean);
+  let current = '/';
+
+  for (let index = 0; index < segments.length; index++) {
+    const segment = segments[index];
+    if (segment === undefined) {
+      continue;
+    }
+
+    const candidate = joinAbsolutePath({ base: current, part: segment });
+    try {
+      current = (await context.files.resolve({ path: candidate })).fullPath;
+    } catch (error) {
+      if (index === segments.length - 1) {
+        return candidate;
+      }
+      throw error;
+    }
+  }
+
+  return current;
+}
+
 const readlinkArgvSpec: StandardArgvParserSpec = {
   options: [
     { kind: 'flag', short: 'f', long: 'canonicalize', effects: [{ key: 'canonicalize', value: true }], help: { summary: 'canonicalize the path and resolve symlinks' } },
@@ -80,11 +148,14 @@ export const readlinkCommandDefinition: WeshCommandDefinition = {
       path: parsed.positionals[0]!,
     });
     const canonicalize = parsed.optionValues.canonicalize === true;
+    const canonicalizeExisting = context.args.includes('-e') || context.args.includes('--canonicalize-existing');
     const noNewline = parsed.optionValues.noNewline === true;
 
     try {
       const output = canonicalize
-        ? (await context.files.resolve({ path: inputPath })).fullPath
+        ? (canonicalizeExisting
+          ? (await context.files.resolve({ path: inputPath })).fullPath
+          : await canonicalizePathAllowingMissingLeaf({ context, path: inputPath }))
         : await context.files.readlink({ path: inputPath });
       await text.print({ text: noNewline ? output : `${output}\n` });
       return { exitCode: 0 };

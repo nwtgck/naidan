@@ -4,8 +4,8 @@ import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/comman
 
 const rmArgvSpec: StandardArgvParserSpec = {
   options: [
-    { kind: 'flag', short: 'r', long: undefined, effects: [{ key: 'recursive', value: true }], help: { summary: 'remove directories and their contents recursively' } },
-    { kind: 'flag', short: 'f', long: undefined, effects: [{ key: 'force', value: true }], help: { summary: 'ignore nonexistent files and arguments, never prompt' } },
+    { kind: 'flag', short: 'r', long: 'recursive', effects: [{ key: 'recursive', value: true }], help: { summary: 'remove directories and their contents recursively' } },
+    { kind: 'flag', short: 'f', long: 'force', effects: [{ key: 'force', value: true }], help: { summary: 'ignore nonexistent files and arguments, never prompt' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
   ],
   allowShortFlagBundles: true,

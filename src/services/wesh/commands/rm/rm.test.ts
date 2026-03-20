@@ -83,4 +83,27 @@ echo $?`,
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('supports --recursive and --force long options', async () => {
+    await writeFile({ path: 'tree/file.txt', data: 'payload' });
+
+    const recursive = await execute({
+      script: `\
+rm --recursive tree
+test -e tree
+echo $?`,
+    });
+    const force = await execute({
+      script: `\
+rm --force missing.txt
+echo $?`,
+    });
+
+    expect(recursive.stdout.text).toBe('1\n');
+    expect(recursive.stderr.text).toBe('');
+    expect(recursive.result.exitCode).toBe(0);
+    expect(force.stdout.text).toBe('0\n');
+    expect(force.stderr.text).toBe('');
+    expect(force.result.exitCode).toBe(0);
+  });
 });

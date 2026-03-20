@@ -47,6 +47,19 @@ echo $?`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports --parents as a long option alias', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mkdir --parents nested/a/b
+test -d nested/a/b
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('0\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('reports errors and returns non-zero on failure', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

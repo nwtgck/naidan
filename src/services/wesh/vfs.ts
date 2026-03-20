@@ -96,6 +96,23 @@ function mapDomainToDto(entry: RegistryEntry): WeshRegistryEntryDto {
   }
 }
 
+function computeStableInode({
+  kind,
+  path,
+}: {
+  kind: 'handle' | 'registry' | 'synthetic-directory' | 'special';
+  path: string;
+}): number {
+  let hash = 2166136261;
+  const input = `${kind}:${path}`;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0) || 1;
+}
+
 // --- File Handles ---
 
 class StandardFileHandle implements WeshFileHandle {
@@ -1389,7 +1406,14 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     case 'special': {
       const handle = resolved.handler();
       try {
-        return await handle.stat();
+        const stat = await handle.stat();
+        return {
+          ...stat,
+          ino: computeStableInode({
+            kind: 'special',
+            path: resolved.fullPath,
+          }),
+        };
       } finally {
         await handle.close();
       }
@@ -1400,7 +1424,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         mode: 0o555,
         type: 'directory',
         mtime: Date.now(),
-        ino: 0,
+        ino: computeStableInode({
+          kind: 'synthetic-directory',
+          path: resolved.fullPath,
+        }),
         uid: 0,
         gid: 0,
       };
@@ -1423,7 +1450,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         mode: resolved.resolution.entry.mode,
         type: resolved.resolution.entry.type,
         mtime: resolved.resolution.entry.mtime ?? Date.now(),
-        ino: 0,
+        ino: computeStableInode({
+          kind: 'registry',
+          path: resolved.fullPath,
+        }),
         uid: resolved.resolution.entry.uid ?? 0,
         gid: resolved.resolution.entry.gid ?? 0,
       };
@@ -1437,7 +1467,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
           mode: resolved.readOnly ? 0o444 : 0o644,
           type: 'file',
           mtime: file.lastModified,
-          ino: 0,
+          ino: computeStableInode({
+            kind: 'handle',
+            path: resolved.fullPath,
+          }),
           uid: 0,
           gid: 0,
         };
@@ -1448,7 +1481,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
           mode: resolved.readOnly ? 0o555 : 0o755,
           type: 'directory',
           mtime: Date.now(),
-          ino: 0,
+          ino: computeStableInode({
+            kind: 'handle',
+            path: resolved.fullPath,
+          }),
           uid: 0,
           gid: 0,
         };

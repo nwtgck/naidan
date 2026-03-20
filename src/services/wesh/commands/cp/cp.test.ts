@@ -215,12 +215,43 @@ cat out/second.txt`,
     expect(copied.result.exitCode).toBe(0);
   });
 
+  it('supports --target-directory as a long option alias', async () => {
+    await writeFile({ path: 'first.txt', data: 'first' });
+    await writeFile({ path: 'second.txt', data: 'second' });
+    await mkdir({ path: 'out' });
+
+    const copied = await execute({
+      script: `\
+cp --target-directory=out first.txt second.txt
+cat out/first.txt
+cat out/second.txt`,
+    });
+
+    expect(copied.stdout.text).toBe('firstsecond');
+    expect(copied.stderr.text).toBe('');
+    expect(copied.result.exitCode).toBe(0);
+  });
+
   it('supports -T to force treating the destination as a normal file path', async () => {
     await writeFile({ path: 'plain.txt', data: 'plain' });
 
     const copied = await execute({
       script: `\
 cp -T plain.txt explicit.out
+cat explicit.out`,
+    });
+
+    expect(copied.stdout.text).toBe('plain');
+    expect(copied.stderr.text).toBe('');
+    expect(copied.result.exitCode).toBe(0);
+  });
+
+  it('supports --no-target-directory as a long option alias', async () => {
+    await writeFile({ path: 'plain.txt', data: 'plain' });
+
+    const copied = await execute({
+      script: `\
+cp --no-target-directory plain.txt explicit.out
 cat explicit.out`,
     });
 
@@ -236,6 +267,21 @@ cat explicit.out`,
     const copied = await execute({
       script: `\
 cp -n source.txt dest.txt
+cat dest.txt`,
+    });
+
+    expect(copied.stdout.text).toBe('dest');
+    expect(copied.stderr.text).toBe('');
+    expect(copied.result.exitCode).toBe(0);
+  });
+
+  it('supports --no-clobber as a long option alias', async () => {
+    await writeFile({ path: 'source.txt', data: 'source' });
+    await writeFile({ path: 'dest.txt', data: 'dest' });
+
+    const copied = await execute({
+      script: `\
+cp --no-clobber source.txt dest.txt
 cat dest.txt`,
     });
 

@@ -86,6 +86,23 @@ b1
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports long option aliases for header and line selection', async () => {
+    await writeFile({ name: 'a.txt', data: 'a1\na2\n' });
+    await writeFile({ name: 'b.txt', data: 'b1\nb2\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'head --silent --lines=1 a.txt b.txt',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe(`\
+a1
+b1
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('forces headers with -v for a single file', async () => {
     await writeFile({ name: 'a.txt', data: 'a1\na2\n' });
 
@@ -131,6 +148,18 @@ a1
 
     expect(stdout.text).toContain('==> a.txt <==');
     expect(stderr.text).toContain('head: missing.txt:');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('rejects invalid line counts with usage', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'head --lines=1x',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain("head: invalid number of lines: '1x'");
+    expect(stderr.text).toContain('usage: head');
     expect(result.exitCode).toBe(1);
   });
 });
