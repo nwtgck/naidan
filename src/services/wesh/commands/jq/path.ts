@@ -63,6 +63,8 @@ export function extractJqPath({
       segments: [...parent.segments, { kind: 'index', index: filter.index }],
     };
   }
+  case 'slice':
+    return undefined;
   default:
     return undefined;
   }

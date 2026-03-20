@@ -59,6 +59,48 @@ function containsJson({
   return compareJsonValues({ left: input, right: expected }) === 0;
 }
 
+function addValues({
+  left,
+  right,
+}: {
+  left: JsonValue;
+  right: JsonValue;
+}): JsonValue | undefined {
+  if (typeof left === 'number' && typeof right === 'number') {
+    return left + right;
+  }
+  if (typeof left === 'string' && typeof right === 'string') {
+    return `${left}${right}`;
+  }
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return [...left, ...right];
+  }
+  if (
+    left !== null &&
+    right !== null &&
+    typeof left === 'object' &&
+    typeof right === 'object' &&
+    !Array.isArray(left) &&
+    !Array.isArray(right)
+  ) {
+    return { ...left, ...right };
+  }
+  return undefined;
+}
+
+function flattenJson({
+  value,
+}: {
+  value: JsonValue;
+}): JsonValue[] {
+  if (!Array.isArray(value)) return [value];
+  const flattened: JsonValue[] = [];
+  for (const item of value) {
+    flattened.push(...flattenJson({ value: item }));
+  }
+  return flattened;
+}
+
 export function evaluateBuiltin({
   name,
   args,
@@ -71,6 +113,30 @@ export function evaluateBuiltin({
   evaluate: JqRuntimeFilterEvaluator;
 }): { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError } {
   switch (name) {
+  case 'add':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'add does not take arguments' } };
+    }
+    if (!Array.isArray(input)) {
+      return { ok: false, error: { message: 'add input must be an array' } };
+    }
+    if (input.length === 0) {
+      return { ok: true, outputs: [null] };
+    }
+    {
+      let accumulator = input[0]!;
+      for (const item of input.slice(1)) {
+        const combined = addValues({
+          left: accumulator,
+          right: item,
+        });
+        if (combined === undefined) {
+          return { ok: false, error: { message: 'add input elements must have compatible types' } };
+        }
+        accumulator = combined;
+      }
+      return { ok: true, outputs: [accumulator] };
+    }
   case 'all':
   case 'any': {
     if (!Array.isArray(input)) {
@@ -160,6 +226,14 @@ export function evaluateBuiltin({
       return { ok: false, error: { message: 'empty does not take arguments' } };
     }
     return { ok: true, outputs: [] };
+  case 'flatten':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'flatten does not take arguments' } };
+    }
+    if (!Array.isArray(input)) {
+      return { ok: false, error: { message: 'flatten input must be an array' } };
+    }
+    return { ok: true, outputs: [flattenJson({ value: input })] };
   case 'fromjson':
     if (args.length !== 0) {
       return { ok: false, error: { message: 'fromjson does not take arguments' } };
@@ -245,6 +319,45 @@ export function evaluateBuiltin({
       return { ok: true, outputs: [Object.keys(input)] };
     }
     return { ok: false, error: { message: 'keys_unsorted input must be an array or object' } };
+  case 'join': {
+    const separatorFilter = args[0];
+    if (separatorFilter === undefined) {
+      return { ok: false, error: { message: 'join requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'join takes exactly one argument' } };
+    }
+    if (!Array.isArray(input)) {
+      return { ok: false, error: { message: 'join input must be an array' } };
+    }
+    const evaluated = evaluate({ filter: separatorFilter, input });
+    if (!evaluated.ok) return evaluated;
+    const separator = evaluated.outputs[0];
+    if (typeof separator !== 'string') {
+      return { ok: false, error: { message: 'join separator must be a string' } };
+    }
+    const parts: string[] = [];
+    for (const item of input) {
+      switch (typeof item) {
+      case 'string':
+      case 'number':
+      case 'boolean':
+        parts.push(String(item));
+        break;
+      case 'object':
+        if (item === null) {
+          parts.push('null');
+          break;
+        }
+        return { ok: false, error: { message: 'join input elements must be scalars' } };
+      default: {
+        const _ex: never = item;
+        throw new Error(`Unhandled jq join value: ${JSON.stringify(_ex)}`);
+      }
+      }
+    }
+    return { ok: true, outputs: [parts.join(separator)] };
+  }
   case 'endswith': {
     const suffix = args[0];
     if (suffix === undefined) {
@@ -282,6 +395,34 @@ export function evaluateBuiltin({
     return {
       ok: true,
       outputs: [[...input].sort((left, right) => compareJsonValues({ left, right }))],
+    };
+  case 'max':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'max does not take arguments' } };
+    }
+    if (!Array.isArray(input)) {
+      return { ok: false, error: { message: 'max input must be an array' } };
+    }
+    if (input.length === 0) {
+      return { ok: true, outputs: [null] };
+    }
+    return {
+      ok: true,
+      outputs: [[...input].sort((left, right) => compareJsonValues({ left, right })).at(-1) ?? null],
+    };
+  case 'min':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'min does not take arguments' } };
+    }
+    if (!Array.isArray(input)) {
+      return { ok: false, error: { message: 'min input must be an array' } };
+    }
+    if (input.length === 0) {
+      return { ok: true, outputs: [null] };
+    }
+    return {
+      ok: true,
+      outputs: [[...input].sort((left, right) => compareJsonValues({ left, right }))[0] ?? null],
     };
   case 'startswith': {
     const prefix = args[0];

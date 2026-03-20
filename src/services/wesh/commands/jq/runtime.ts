@@ -74,6 +74,20 @@ function compareValues({
   return leftJson < rightJson ? -1 : 1;
 }
 
+function normalizeSliceBound({
+  length,
+  bound,
+  fallback,
+}: {
+  length: number;
+  bound: number | undefined;
+  fallback: 0 | 'length';
+}): number {
+  const raw = bound ?? (fallback === 'length' ? length : 0);
+  const normalized = raw < 0 ? length + raw : raw;
+  return Math.min(Math.max(normalized, 0), length);
+}
+
 function applyPathAssignment({
   root,
   path,
@@ -231,6 +245,46 @@ export function evaluateJqFilter({
         continue;
       }
       return { ok: false, error: { message: `cannot index [${filter.index}] on non-array` } };
+    }
+    return { ok: true, outputs };
+  }
+  case 'slice': {
+    const parent = evaluate({ filter: filter.input, input });
+    if (!parent.ok) return parent;
+    const outputs: JsonValue[] = [];
+    for (const value of parent.outputs) {
+      if (Array.isArray(value)) {
+        const start = normalizeSliceBound({
+          length: value.length,
+          bound: filter.start,
+          fallback: 0,
+        });
+        const end = normalizeSliceBound({
+          length: value.length,
+          bound: filter.end,
+          fallback: 'length',
+        });
+        outputs.push(value.slice(start, end));
+        continue;
+      }
+      if (typeof value === 'string') {
+        const start = normalizeSliceBound({
+          length: value.length,
+          bound: filter.start,
+          fallback: 0,
+        });
+        const end = normalizeSliceBound({
+          length: value.length,
+          bound: filter.end,
+          fallback: 'length',
+        });
+        outputs.push(value.slice(start, end));
+        continue;
+      }
+      if (filter.optional) {
+        continue;
+      }
+      return { ok: false, error: { message: 'cannot slice non-array/string' } };
     }
     return { ok: true, outputs };
   }

@@ -15,13 +15,18 @@ function toBuiltinName({
   name: string;
 }): JqBuiltinName | undefined {
   switch (name) {
+  case 'add':
   case 'all':
   case 'any':
   case 'contains':
   case 'del':
   case 'endswith':
   case 'empty':
+  case 'flatten':
   case 'fromjson':
+  case 'join':
+  case 'max':
+  case 'min':
   case 'select':
   case 'map':
   case 'length':
@@ -422,13 +427,55 @@ class JqParser {
             continue;
           }
 
+          if (next.kind === 'operator' && next.value === ':') {
+            this.index += 1;
+            const end = this.parseSliceBound();
+            const closeToken = this.peek();
+            if (!(closeToken.kind === 'punctuation' && closeToken.value === ']')) {
+              return { ok: false, message: 'unsupported syntax inside []' };
+            }
+            this.index += 1;
+            filter = {
+              ok: true,
+              filter: {
+                kind: 'slice',
+                input: filter.filter,
+                start: undefined,
+                end,
+                optional: this.consumeOptionalMarker(),
+              },
+            };
+            continue;
+          }
+
           const indexToken = this.peek();
           switch (indexToken.kind) {
           case 'number':
             this.index += 1;
             {
-              const closeToken = this.peek();
-              if (!(closeToken.kind === 'punctuation' && closeToken.value === ']')) {
+              const separatorToken = this.peek();
+              if (separatorToken.kind === 'operator' && separatorToken.value === ':') {
+                this.index += 1;
+                const end = this.parseSliceBound();
+                const closeToken = this.peek();
+                if (!(closeToken.kind === 'punctuation' && closeToken.value === ']')) {
+                  return { ok: false, message: 'unsupported syntax inside []' };
+                }
+                this.index += 1;
+                filter = {
+                  ok: true,
+                  filter: {
+                    kind: 'slice',
+                    input: filter.filter,
+                    start: indexToken.value,
+                    end,
+                    optional: this.consumeOptionalMarker(),
+                  },
+                };
+                continue;
+              }
+
+              if (!(separatorToken.kind === 'punctuation' && separatorToken.value === ']')) {
                 return { ok: false, message: 'unsupported syntax inside []' };
               }
               this.index += 1;
@@ -489,11 +536,34 @@ class JqParser {
               filter = { kind: 'iterate', input: filter, optional: this.consumeOptionalMarker() };
               continue;
             }
+            if (content.kind === 'operator' && content.value === ':') {
+              this.index += 1;
+              const end = this.parseSliceBound();
+              const closeToken = this.peek();
+              if (!(closeToken.kind === 'punctuation' && closeToken.value === ']')) {
+                return { ok: false, message: 'unsupported syntax inside []' };
+              }
+              this.index += 1;
+              filter = { kind: 'slice', input: filter, start: undefined, end, optional: this.consumeOptionalMarker() };
+              continue;
+            }
             switch (content.kind) {
             case 'number': {
               this.index += 1;
-              const closeToken = this.peek();
-              if (!(closeToken.kind === 'punctuation' && closeToken.value === ']')) {
+              const separatorToken = this.peek();
+              if (separatorToken.kind === 'operator' && separatorToken.value === ':') {
+                this.index += 1;
+                const end = this.parseSliceBound();
+                const closeToken = this.peek();
+                if (!(closeToken.kind === 'punctuation' && closeToken.value === ']')) {
+                  return { ok: false, message: 'unsupported syntax inside []' };
+                }
+                this.index += 1;
+                filter = { kind: 'slice', input: filter, start: content.value, end, optional: this.consumeOptionalMarker() };
+                continue;
+              }
+
+              if (!(separatorToken.kind === 'punctuation' && separatorToken.value === ']')) {
                 return { ok: false, message: 'unsupported syntax inside []' };
               }
               this.index += 1;
@@ -531,30 +601,7 @@ class JqParser {
     case 'keyword':
       switch (token.value) {
       case 'if': {
-        this.index += 1;
-        const condition = this.parseAssignment();
-        if (!condition.ok) return condition;
-        const thenKeyword = this.consumeKeyword({ value: 'then' });
-        if (!thenKeyword.ok) return thenKeyword;
-        const thenBranch = this.parseAssignment();
-        if (!thenBranch.ok) return thenBranch;
-        const elseKeyword = this.consumeKeyword({ value: 'else' });
-        if (!elseKeyword.ok) {
-          return { ok: false, message: "unsupported syntax: 'if' requires 'else'" };
-        }
-        const elseBranch = this.parseAssignment();
-        if (!elseBranch.ok) return elseBranch;
-        const endKeyword = this.consumeKeyword({ value: 'end' });
-        if (!endKeyword.ok) return endKeyword;
-        return {
-          ok: true,
-          filter: {
-            kind: 'conditional',
-            condition: condition.filter,
-            thenBranch: thenBranch.filter,
-            elseBranch: elseBranch.filter,
-          },
-        };
+        return this.parseConditional();
       }
       case 'true':
         this.index += 1;
@@ -769,10 +816,21 @@ class JqParser {
     return false;
   }
 
+  private parseSliceBound(): number | undefined {
+    const token = this.peek();
+    switch (token.kind) {
+    case 'number':
+      this.index += 1;
+      return token.value;
+    default:
+      return undefined;
+    }
+  }
+
   private consumeKeyword({
     value,
   }: {
-    value: 'then' | 'else' | 'end';
+    value: 'then' | 'elif' | 'else' | 'end';
   }): { ok: true } | { ok: false; message: string } {
     const token = this.peek();
     if (token.kind === 'keyword' && token.value === value) {
@@ -780,6 +838,106 @@ class JqParser {
       return { ok: true };
     }
     return { ok: false, message: `expected '${value}'` };
+  }
+
+  private parseConditional(): { ok: true; filter: JqFilter } | { ok: false; message: string } {
+    const ifKeyword = this.consumeKeyword({ value: 'if' });
+    if (!ifKeyword.ok) return ifKeyword;
+
+    const condition = this.parseAssignment();
+    if (!condition.ok) return condition;
+    const thenKeyword = this.consumeKeyword({ value: 'then' });
+    if (!thenKeyword.ok) return thenKeyword;
+    const thenBranch = this.parseAssignment();
+    if (!thenBranch.ok) return thenBranch;
+
+    const next = this.peek();
+    if (!(next.kind === 'keyword' && (next.value === 'else' || next.value === 'elif'))) {
+      return { ok: false, message: "unsupported syntax: 'if' requires 'else' or 'elif'" };
+    }
+
+    let elseBranch: JqFilter;
+    switch (next.value) {
+    case 'else': {
+      this.index += 1;
+      const parsedElse = this.parseAssignment();
+      if (!parsedElse.ok) return parsedElse;
+      elseBranch = parsedElse.filter;
+      break;
+    }
+    case 'elif': {
+      this.index += 1;
+      const elifCondition = this.parseAssignment();
+      if (!elifCondition.ok) return elifCondition;
+      const elifThen = this.consumeKeyword({ value: 'then' });
+      if (!elifThen.ok) return elifThen;
+      const elifThenBranch = this.parseAssignment();
+      if (!elifThenBranch.ok) return elifThenBranch;
+      const elifTail = this.parseConditionalTail();
+      if (!elifTail.ok) return elifTail;
+      elseBranch = {
+        kind: 'conditional',
+        condition: elifCondition.filter,
+        thenBranch: elifThenBranch.filter,
+        elseBranch: elifTail.filter,
+      };
+      break;
+    }
+    default: {
+      const _ex: never = next.value;
+      throw new Error(`Unhandled conditional branch keyword: ${_ex}`);
+    }
+    }
+
+    const endKeyword = this.consumeKeyword({ value: 'end' });
+    if (!endKeyword.ok) return endKeyword;
+    return {
+      ok: true,
+      filter: {
+        kind: 'conditional',
+        condition: condition.filter,
+        thenBranch: thenBranch.filter,
+        elseBranch,
+      },
+    };
+  }
+
+  private parseConditionalTail(): { ok: true; filter: JqFilter } | { ok: false; message: string } {
+    const next = this.peek();
+    if (!(next.kind === 'keyword' && (next.value === 'else' || next.value === 'elif'))) {
+      return { ok: false, message: "unsupported syntax: 'if' requires 'else' or 'elif'" };
+    }
+
+    switch (next.value) {
+    case 'else': {
+      this.index += 1;
+      return this.parseAssignment();
+    }
+    case 'elif': {
+      this.index += 1;
+      const condition = this.parseAssignment();
+      if (!condition.ok) return condition;
+      const thenKeyword = this.consumeKeyword({ value: 'then' });
+      if (!thenKeyword.ok) return thenKeyword;
+      const thenBranch = this.parseAssignment();
+      if (!thenBranch.ok) return thenBranch;
+      const tail = this.parseConditionalTail();
+      if (!tail.ok) return tail;
+      return {
+        ok: true,
+        filter: {
+          kind: 'conditional',
+          condition: condition.filter,
+          thenBranch: thenBranch.filter,
+          elseBranch: tail.filter,
+        },
+      };
+    }
+    default: {
+      const _ex: never = next.value;
+      throw new Error(`Unhandled conditional tail keyword: ${_ex}`);
+    }
+    }
   }
 }
 

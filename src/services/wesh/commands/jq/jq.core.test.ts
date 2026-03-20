@@ -266,6 +266,34 @@ jq '.items[] | (. + 10, empty)'`,
     expect(empty.result.exitCode).toBe(0);
   });
 
+  it('supports slice access on arrays and strings', async () => {
+    const arraySlice = await execute({
+      script: `\
+jq '.items[1:3], .items[:2], .items[2:]'`,
+      stdinText: `\
+{"items":[1,2,3,4]}`,
+    });
+
+    expect(arraySlice.stdout.text).toBe(`\
+[2,3]
+[1,2]
+[3,4]
+`);
+    expect(arraySlice.stderr.text).toBe('');
+    expect(arraySlice.result.exitCode).toBe(0);
+
+    const stringSlice = await execute({
+      script: `\
+jq '.name[1:4]'`,
+      stdinText: `\
+{"name":"alice"}`,
+    });
+
+    expect(stringSlice.stdout.text).toBe('"lic"\n');
+    expect(stringSlice.stderr.text).toBe('');
+    expect(stringSlice.result.exitCode).toBe(0);
+  });
+
   it('reports parse and input errors', async () => {
     const parse = await execute({
       script: `\
@@ -295,7 +323,7 @@ jq 'foo'`,
 
     const bracketSyntax = await execute({
       script: `\
-jq '.[1:3]'`,
+jq '.[1,2]'`,
       stdinText: '[1,2,3]',
     });
     expect(bracketSyntax.stderr.text).toContain('jq: parse error: unsupported syntax inside []');
@@ -340,7 +368,7 @@ jq 'if .flag then .value end'`,
       stdinText: `\
 {"flag":true,"value":1}`,
     });
-    expect(conditionalElse.stderr.text).toContain("jq: parse error: unsupported syntax: 'if' requires 'else'");
+    expect(conditionalElse.stderr.text).toContain("jq: parse error: unsupported syntax: 'if' requires 'else' or 'elif'");
     expect(conditionalElse.result.exitCode).toBe(3);
 
     const anyType = await execute({
@@ -366,5 +394,13 @@ jq 'startswith(1)'`,
     });
     expect(startswithType.stderr.text).toContain('jq: error: startswith expects string input and argument');
     expect(startswithType.result.exitCode).toBe(4);
+
+    const joinType = await execute({
+      script: `\
+jq 'join(1)'`,
+      stdinText: '["a","b"]',
+    });
+    expect(joinType.stderr.text).toContain('jq: error: join separator must be a string');
+    expect(joinType.result.exitCode).toBe(4);
   });
 });

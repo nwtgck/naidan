@@ -196,6 +196,7 @@ export function lexJq({
       case 'not':
       case 'if':
       case 'then':
+      case 'elif':
       case 'else':
       case 'end':
         tokens.push({ kind: 'keyword', value });

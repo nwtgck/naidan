@@ -12,6 +12,7 @@ export type JqFilter =
   | { kind: 'object'; entries: JqObjectEntry[] }
   | { kind: 'field'; input: JqFilter; key: string; optional: boolean }
   | { kind: 'index'; input: JqFilter; index: number; optional: boolean }
+  | { kind: 'slice'; input: JqFilter; start: number | undefined; end: number | undefined; optional: boolean }
   | { kind: 'iterate'; input: JqFilter; optional: boolean }
   | { kind: 'pipe'; left: JqFilter; right: JqFilter }
   | { kind: 'comma'; left: JqFilter; right: JqFilter }
@@ -36,17 +37,22 @@ export type JqPathSegment =
   | { kind: 'index'; index: number };
 
 export type JqBuiltinName =
+  | 'add'
   | 'all'
   | 'any'
   | 'contains'
   | 'del'
   | 'empty'
+  | 'flatten'
   | 'fromjson'
+  | 'join'
   | 'select'
   | 'map'
   | 'length'
   | 'keys'
   | 'keys_unsorted'
+  | 'max'
+  | 'min'
   | 'reverse'
   | 'sort'
   | 'startswith'
@@ -81,7 +87,7 @@ export type JqToken =
   | { kind: 'identifier'; value: string }
   | { kind: 'number'; value: number }
   | { kind: 'string'; value: string }
-  | { kind: 'keyword'; value: 'true' | 'false' | 'null' | 'and' | 'or' | 'not' | 'if' | 'then' | 'else' | 'end' }
+  | { kind: 'keyword'; value: 'true' | 'false' | 'null' | 'and' | 'or' | 'not' | 'if' | 'then' | 'elif' | 'else' | 'end' }
   | { kind: 'operator'; value: '|' | '//' | ',' | '==' | '!=' | '<' | '<=' | '>' | '>=' | '=' | '|=' | '+' | '-' | '*' | '/' | ':' | '?' }
   | { kind: 'punctuation'; value: '[' | ']' | '{' | '}' | '(' | ')' }
   | { kind: 'eof' };

@@ -176,6 +176,20 @@ jq '.items[] | if .active then .name else empty end'`,
 `);
     expect(conditional.stderr.text).toBe('');
     expect(conditional.result.exitCode).toBe(0);
+
+    const elifConditional = await execute({
+      script: `\
+jq '.items[] | if .kind == "a" then .name elif .kind == "b" then .name + "-b" else empty end'`,
+      stdinText: `\
+{"items":[{"kind":"a","name":"one"},{"kind":"b","name":"two"},{"kind":"c","name":"three"}]}`,
+    });
+
+    expect(elifConditional.stdout.text).toBe(`\
+"one"
+"two-b"
+`);
+    expect(elifConditional.stderr.text).toBe('');
+    expect(elifConditional.result.exitCode).toBe(0);
   });
 
   it('supports any and all', async () => {
@@ -262,6 +276,63 @@ jq '.items[] | select(.name | endswith("ce")) | .name'`,
     expect(endswith.stdout.text).toBe('"alice"\n');
     expect(endswith.stderr.text).toBe('');
     expect(endswith.result.exitCode).toBe(0);
+  });
+
+  it('supports flatten, join, min, max, and add', async () => {
+    const flatten = await execute({
+      script: `\
+jq '.items | flatten'`,
+      stdinText: `\
+{"items":[1,[2,[3]],4]}`,
+    });
+
+    expect(flatten.stdout.text).toBe('[1,2,3,4]\n');
+    expect(flatten.stderr.text).toBe('');
+    expect(flatten.result.exitCode).toBe(0);
+
+    const join = await execute({
+      script: `\
+jq '.items | join("-")'`,
+      stdinText: `\
+{"items":["a","b","c"]}`,
+    });
+
+    expect(join.stdout.text).toBe('"a-b-c"\n');
+    expect(join.stderr.text).toBe('');
+    expect(join.result.exitCode).toBe(0);
+
+    const min = await execute({
+      script: `\
+jq '.items | min'`,
+      stdinText: `\
+{"items":[3,1,2]}`,
+    });
+
+    expect(min.stdout.text).toBe('1\n');
+    expect(min.stderr.text).toBe('');
+    expect(min.result.exitCode).toBe(0);
+
+    const max = await execute({
+      script: `\
+jq '.items | max'`,
+      stdinText: `\
+{"items":[3,1,2]}`,
+    });
+
+    expect(max.stdout.text).toBe('3\n');
+    expect(max.stderr.text).toBe('');
+    expect(max.result.exitCode).toBe(0);
+
+    const add = await execute({
+      script: `\
+jq '.items | add'`,
+      stdinText: `\
+{"items":[1,2,3]}`,
+    });
+
+    expect(add.stdout.text).toBe('6\n');
+    expect(add.stderr.text).toBe('');
+    expect(add.result.exitCode).toBe(0);
   });
 
   it('supports multiple input JSON values and file input', async () => {
