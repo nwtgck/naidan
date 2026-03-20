@@ -48,7 +48,7 @@ describe('wesh vfs mounts', () => {
       readOnly: false,
     });
 
-    const listed = await execute({ script: 'ls /' });
+    const listed = await execute({ script: 'ls -F /' });
     expect(listed.stdout.text).toContain('mnt/');
     expect(listed.stderr.text).toBe('');
     expect(listed.result.exitCode).toBe(0);
@@ -72,10 +72,10 @@ describe('wesh vfs mounts', () => {
       readOnly: false,
     });
 
-    const listedParent = await execute({ script: 'ls /' });
+    const listedParent = await execute({ script: 'ls -F /' });
     expect(listedParent.stdout.text).toContain('volumes/');
 
-    const listedSynthetic = await execute({ script: 'ls /volumes' });
+    const listedSynthetic = await execute({ script: 'ls -F /volumes' });
     expect(listedSynthetic.stdout.text).toContain('work/');
     expect(listedSynthetic.stderr.text).toBe('');
     expect(listedSynthetic.result.exitCode).toBe(0);
@@ -87,7 +87,7 @@ describe('wesh vfs mounts', () => {
   });
 
   it('lists synthetic special directories like /dev from their parent', async () => {
-    const listedRoot = await execute({ script: 'ls -l /' });
+    const listedRoot = await execute({ script: 'ls -lF /' });
     expect(listedRoot.stdout.text).toContain('dev/');
     expect(listedRoot.stderr.text).toBe('');
     expect(listedRoot.result.exitCode).toBe(0);
@@ -240,7 +240,7 @@ describe('wesh vfs mounts', () => {
     const stat = await wesh.vfs.stat({ path: '/pipe.new' });
     expect(stat.type).toBe('fifo');
 
-    const listed = await execute({ script: 'ls -l /' });
+    const listed = await execute({ script: 'ls -lF /' });
     expect(listed.stdout.text).toContain('pipe.new|');
     expect(listed.stderr.text).toBe('');
     expect(listed.result.exitCode).toBe(0);
