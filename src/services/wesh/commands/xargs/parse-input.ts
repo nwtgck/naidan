@@ -103,9 +103,13 @@ export function parseXargsNullDelimitedInput({
 }: {
   text: string;
 }): { ok: true; items: string[] } {
+  const items = text.split('\0');
+  if (text.endsWith('\0')) {
+    items.pop();
+  }
   return {
     ok: true,
-    items: text.split('\0').filter((item) => item.length > 0),
+    items,
   };
 }
 
@@ -193,9 +197,13 @@ export function parseXargsDelimitedInput({
   text: string;
   delimiter: string;
 }): { ok: true; items: string[] } {
+  const items = text.split(delimiter);
+  if (text.endsWith(delimiter)) {
+    items.pop();
+  }
   return {
     ok: true,
-    items: text.split(delimiter).filter((item) => item.length > 0),
+    items,
   };
 }
 

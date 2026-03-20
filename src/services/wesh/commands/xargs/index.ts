@@ -447,12 +447,14 @@ async function resolveExecutionLimits({
 }
 
 function buildBatches({
+  command,
   items,
   initialArgs,
   maxArgs,
   maxChars,
   exitIfTooLong,
 }: {
+  command: string;
   items: string[];
   initialArgs: string[];
   maxArgs: number | undefined;
@@ -461,7 +463,8 @@ function buildBatches({
 }): { ok: true; batches: string[][] } | { ok: false; message: string } {
   const batches: string[][] = [];
   let currentBatch: string[] = [];
-  let currentChars = initialArgs.join(' ').length;
+  const baseChars = [command, ...initialArgs].join(' ').length;
+  let currentChars = baseChars;
 
   for (const item of items) {
     const wouldExceedLimits = ({
@@ -481,7 +484,7 @@ function buildBatches({
     if (currentBatch.length > 0 && wouldExceedLimits({ batch: currentBatch, chars: currentChars })) {
       batches.push(currentBatch);
       currentBatch = [];
-      currentChars = initialArgs.join(' ').length;
+      currentChars = baseChars;
     }
 
     if (currentBatch.length === 0 && wouldExceedLimits({ batch: currentBatch, chars: currentChars })) {
@@ -490,7 +493,7 @@ function buildBatches({
       }
       batches.push([item]);
       currentBatch = [];
-      currentChars = initialArgs.join(' ').length;
+      currentChars = baseChars;
       continue;
     }
 
@@ -584,6 +587,84 @@ async function handleCommandResult({
   };
 }
 
+interface XargsInvocation {
+  args: string[];
+}
+
+async function executeInvocations({
+  context,
+  command,
+  invocations,
+  trace,
+  stdin,
+  maxProcs,
+}: {
+  context: WeshCommandContext;
+  command: string;
+  invocations: XargsInvocation[];
+  trace: boolean;
+  stdin: WeshFileHandle;
+  maxProcs: number;
+}): Promise<WeshCommandResult> {
+  let nextIndex = 0;
+  let lastExitCode = 0;
+  let stopExitCode: number | undefined;
+  const workerCount = (() => {
+    if (invocations.length === 0) return 1;
+    if (maxProcs === 0) return invocations.length;
+    return Math.max(1, Math.min(maxProcs, invocations.length));
+  })();
+
+  const worker = async (): Promise<void> => {
+    while (true) {
+      if (stopExitCode !== undefined) {
+        return;
+      }
+
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      const invocation = invocations[currentIndex];
+      if (invocation === undefined) {
+        return;
+      }
+
+      const result = await runCommand({
+        context,
+        command,
+        args: invocation.args,
+        trace,
+        stdin,
+      });
+      const handled = await handleCommandResult({
+        context,
+        result,
+      });
+      switch (handled.kind) {
+      case 'continue':
+        if (handled.normalizedExitCode !== 0) {
+          lastExitCode = handled.normalizedExitCode;
+        }
+        break;
+      case 'stop':
+        stopExitCode = handled.exitCode;
+        return;
+      default: {
+        const _exhaustive: never = handled;
+        throw new Error(`Unhandled xargs command result handling: ${_exhaustive}`);
+      }
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  if (stopExitCode !== undefined) {
+    return { exitCode: stopExitCode };
+  }
+
+  return { exitCode: lastExitCode };
+}
+
 export const xargsCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'xargs',
@@ -631,7 +712,7 @@ POSIX upper limit on argument length (this system): ${DEFAULT_MAX_CHARS}
 POSIX smallest allowable upper limit on argument length (all systems): 4096
 Maximum length of command we could actually use: ${DEFAULT_MAX_CHARS}
 Size of command buffer we are actually using: ${DEFAULT_MAX_CHARS}
-Maximum parallelism (--max-procs must be no greater): 1
+Maximum parallelism (--max-procs must be no greater): unlimited
 `,
       });
       return { exitCode: 0 };
@@ -715,13 +796,6 @@ Maximum parallelism (--max-procs must be no greater): 1
       return { exitCode: 1 };
     }
 
-    if (maxProcs > 1 || maxProcs === 0) {
-      await context.text().error({
-        text: 'xargs: parallel execution with --max-procs/-P is not supported in wesh yet\n',
-      });
-      return { exitCode: 1 };
-    }
-
     const items = (() => {
       if (typeof replaceValue === 'string') {
         return parseXargsInsertInput({ text: inputText });
@@ -764,41 +838,22 @@ Maximum parallelism (--max-procs must be no greater): 1
       return { exitCode: 0 };
     }
 
-    let lastExitCode = 0;
     if (typeof replaceValue === 'string') {
       const values = filteredItems.length === 0 ? [''] : filteredItems;
-      for (const value of values) {
-        const result = await runCommand({
-          context,
-          command,
+      return executeInvocations({
+        context,
+        command,
+        invocations: values.map((value) => ({
           args: replaceTemplateArgs({
             args: initialArgs,
             placeholder: replaceValue,
             value,
           }),
-          trace: parsed.optionValues.trace === true,
-          stdin: childStdin,
-        });
-        const handled = await handleCommandResult({
-          context,
-          result,
-        });
-        switch (handled.kind) {
-        case 'continue':
-          if (handled.normalizedExitCode !== 0) {
-            lastExitCode = handled.normalizedExitCode;
-          }
-          break;
-        case 'stop':
-          return { exitCode: handled.exitCode };
-        default: {
-          const _exhaustive: never = handled;
-          throw new Error(`Unhandled xargs command result handling: ${_exhaustive}`);
-        }
-        }
-      }
-
-      return { exitCode: lastExitCode };
+        })),
+        trace: parsed.optionValues.trace === true,
+        stdin: childStdin,
+        maxProcs,
+      });
     }
 
     if (maxLines !== undefined) {
@@ -830,37 +885,22 @@ Maximum parallelism (--max-procs must be no greater): 1
           await context.text().error({ text: 'xargs: argument list too long\n' });
           return { exitCode: 1 };
         }
-
-        const result = await runCommand({
-          context,
-          command,
-          args: [...initialArgs, ...batch],
-          trace: parsed.optionValues.trace === true,
-          stdin: childStdin,
-        });
-        const handled = await handleCommandResult({
-          context,
-          result,
-        });
-        switch (handled.kind) {
-        case 'continue':
-          if (handled.normalizedExitCode !== 0) {
-            lastExitCode = handled.normalizedExitCode;
-          }
-          break;
-        case 'stop':
-          return { exitCode: handled.exitCode };
-        default: {
-          const _exhaustive: never = handled;
-          throw new Error(`Unhandled xargs command result handling: ${_exhaustive}`);
-        }
-        }
       }
 
-      return { exitCode: lastExitCode };
+      return executeInvocations({
+        context,
+        command,
+        invocations: groupedLines.map((batch) => ({
+          args: [...initialArgs, ...batch],
+        })),
+        trace: parsed.optionValues.trace === true,
+        stdin: childStdin,
+        maxProcs,
+      });
     }
 
     const batches = buildBatches({
+      command,
       items: filteredItems,
       initialArgs,
       maxArgs,
@@ -872,33 +912,15 @@ Maximum parallelism (--max-procs must be no greater): 1
       return { exitCode: 1 };
     }
     const effectiveBatches = batches.batches.length === 0 ? [[]] : batches.batches;
-    for (const batch of effectiveBatches) {
-      const result = await runCommand({
-        context,
-        command,
+    return executeInvocations({
+      context,
+      command,
+      invocations: effectiveBatches.map((batch) => ({
         args: [...initialArgs, ...batch],
-        trace: parsed.optionValues.trace === true,
-        stdin: childStdin,
-      });
-      const handled = await handleCommandResult({
-        context,
-        result,
-      });
-      switch (handled.kind) {
-      case 'continue':
-        if (handled.normalizedExitCode !== 0) {
-          lastExitCode = handled.normalizedExitCode;
-        }
-        break;
-      case 'stop':
-        return { exitCode: handled.exitCode };
-      default: {
-        const _exhaustive: never = handled;
-        throw new Error(`Unhandled xargs command result handling: ${_exhaustive}`);
-      }
-      }
-    }
-
-    return { exitCode: lastExitCode };
+      })),
+      trace: parsed.optionValues.trace === true,
+      stdin: childStdin,
+      maxProcs,
+    });
   },
 };

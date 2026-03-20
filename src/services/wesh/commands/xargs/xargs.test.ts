@@ -100,23 +100,64 @@ describe('wesh xargs', () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it('accepts -P 1 and rejects unsupported parallelism', async () => {
+  it('runs the command once on empty input unless -r is used', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'xargs echo prefix',
+      stdinText: ' \n\t\n',
+    });
+
+    expect(stdout.text).toBe('prefix\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports max-procs batching with -P', async () => {
     const sequential = await execute({
       script: 'xargs -P 1 echo prefix',
       stdinText: 'alpha beta\n',
     });
-    const parallel = await execute({
-      script: 'xargs -P 2 echo prefix',
+    const unlimited = await execute({
+      script: 'xargs -P 0 echo prefix',
       stdinText: 'alpha beta\n',
     });
+    const startedAt = Date.now();
+    const parallelSleep = await execute({
+      script: 'xargs -n 1 -P 2 sleep',
+      stdinText: `\
+0.05
+0.05
+0.05
+0.05
+`,
+    });
+    const elapsedMs = Date.now() - startedAt;
 
     expect(sequential.stdout.text).toBe('prefix alpha beta\n');
     expect(sequential.stderr.text).toBe('');
     expect(sequential.result.exitCode).toBe(0);
 
-    expect(parallel.stdout.text).toBe('');
-    expect(parallel.stderr.text).toContain('parallel execution with --max-procs/-P is not supported in wesh yet');
-    expect(parallel.result.exitCode).toBe(1);
+    expect(unlimited.stdout.text).toBe('prefix alpha beta\n');
+    expect(unlimited.stderr.text).toBe('');
+    expect(unlimited.result.exitCode).toBe(0);
+
+    expect(parallelSleep.stdout.text).toBe('');
+    expect(parallelSleep.stderr.text).toBe('');
+    expect(parallelSleep.result.exitCode).toBe(0);
+    expect(elapsedMs).toBeLessThan(170);
+  });
+
+  it('normalizes child failures under parallel execution', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'xargs -L 1 -P 2 eval',
+      stdinText: `\
+test ok = ok
+test ok = ng
+`,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(123);
   });
 
   it('rejects unsupported tty-dependent options', async () => {
@@ -154,10 +195,22 @@ describe('wesh xargs', () => {
       script: 'xargs -0 echo',
       stdinText: 'alpha beta\0two words\0',
     });
+    const withEmpty = await execute({
+      script: 'xargs -0 -n1 echo prefix',
+      stdinText: 'alpha\0\0two words\0',
+    });
 
     expect(stdout.text).toBe('alpha beta two words\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+
+    expect(withEmpty.stdout.text).toBe(`\
+prefix alpha
+prefix
+prefix two words
+`);
+    expect(withEmpty.stderr.text).toBe('');
+    expect(withEmpty.result.exitCode).toBe(0);
   });
 
   it('supports reading input from -a files', async () => {
@@ -211,6 +264,10 @@ beta gamma
       script: `xargs -d '\\x2c' echo`,
       stdinText: 'one,two',
     });
+    const withEmpty = await execute({
+      script: 'xargs -d , -n1 echo prefix',
+      stdinText: 'one,,two,',
+    });
 
     expect(stdout.text).toBe('alpha beta gamma delta\n');
     expect(stderr.text).toBe('');
@@ -223,6 +280,14 @@ beta gamma
     expect(hexEscaped.stdout.text).toBe('one two\n');
     expect(hexEscaped.stderr.text).toBe('');
     expect(hexEscaped.result.exitCode).toBe(0);
+
+    expect(withEmpty.stdout.text).toBe(`\
+prefix one
+prefix
+prefix two
+`);
+    expect(withEmpty.stderr.text).toBe('');
+    expect(withEmpty.result.exitCode).toBe(0);
   });
 
   it('supports logical end-of-file markers with -E', async () => {
@@ -355,7 +420,8 @@ prefix b
 
     expect(sized.stdout.text).toBe(`\
 abc
-defgh ij
+defgh
+ij
 `);
     expect(sized.stderr.text).toBe('');
     expect(sized.result.exitCode).toBe(0);
@@ -492,7 +558,8 @@ item:right
 
     expect(softLimit.stdout.text).toBe(`\
 abc
-defgh ij
+defgh
+ij
 `);
     expect(softLimit.stderr.text).toBe('');
     expect(softLimit.result.exitCode).toBe(0);
@@ -500,6 +567,20 @@ defgh ij
     expect(hardLimit.stdout.text).toBe('');
     expect(hardLimit.stderr.text).toContain('xargs: argument list too long');
     expect(hardLimit.result.exitCode).toBe(1);
+  });
+
+  it('counts initial arguments toward --max-chars', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'xargs -s 14 echo prefix',
+      stdinText: 'alpha beta\n',
+    });
+
+    expect(stdout.text).toBe(`\
+prefix alpha
+prefix beta
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('reports malformed quoted input', async () => {
