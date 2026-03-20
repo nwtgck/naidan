@@ -59,6 +59,19 @@ function containsJson({
   return compareJsonValues({ left: input, right: expected }) === 0;
 }
 
+function insideJson({
+  input,
+  expected,
+}: {
+  input: JsonValue;
+  expected: JsonValue;
+}): boolean {
+  return containsJson({
+    input: expected,
+    expected: input,
+  });
+}
+
 function addValues({
   left,
   right,
@@ -99,6 +112,26 @@ function flattenJson({
     flattened.push(...flattenJson({ value: item }));
   }
   return flattened;
+}
+
+function trimStartPrefix({
+  value,
+  prefix,
+}: {
+  value: string;
+  prefix: string;
+}): string {
+  return value.startsWith(prefix) ? value.slice(prefix.length) : value;
+}
+
+function trimEndSuffix({
+  value,
+  suffix,
+}: {
+  value: string;
+  suffix: string;
+}): string {
+  return value.endsWith(suffix) ? value.slice(0, value.length - suffix.length) : value;
 }
 
 function evaluateSingleOutput({
@@ -387,7 +420,7 @@ export function evaluateBuiltin({
       return { ok: true, outputs: [null] };
     }
     {
-      let accumulator = input[0]!;
+      let accumulator: JsonValue = input[0] ?? null;
       for (const item of input.slice(1)) {
         const combined = addValues({
           left: accumulator,
@@ -400,6 +433,29 @@ export function evaluateBuiltin({
       }
       return { ok: true, outputs: [accumulator] };
     }
+  case 'ascii_downcase':
+  case 'ascii_upcase':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: `${name} does not take arguments` } };
+    }
+    if (typeof input !== 'string') {
+      return { ok: false, error: { message: `${name} input must be a string` } };
+    }
+    return {
+      ok: true,
+      outputs: [(() => {
+        switch (name) {
+        case 'ascii_downcase':
+          return input.toLowerCase();
+        case 'ascii_upcase':
+          return input.toUpperCase();
+        default: {
+          const _ex: never = name;
+          throw new Error(`Unhandled ascii builtin: ${_ex}`);
+        }
+        }
+      })()],
+    };
   case 'arrays':
     if (args.length !== 0) {
       return { ok: false, error: { message: 'arrays does not take arguments' } };
@@ -499,6 +555,28 @@ export function evaluateBuiltin({
       return { ok: false, error: { message: 'empty does not take arguments' } };
     }
     return { ok: true, outputs: [] };
+  case 'explode':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'explode does not take arguments' } };
+    }
+    if (typeof input !== 'string') {
+      return { ok: false, error: { message: 'explode input must be a string' } };
+    }
+    return { ok: true, outputs: [[...input].map((character) => character.codePointAt(0) ?? 0)] };
+  case 'first': {
+    if (args.length > 1) {
+      return { ok: false, error: { message: 'first takes at most one argument' } };
+    }
+    if (args[0] === undefined) {
+      return { ok: true, outputs: [input] };
+    }
+    const outputs = evaluate({
+      filter: args[0],
+      input,
+    });
+    if (!outputs.ok) return outputs;
+    return { ok: true, outputs: outputs.outputs[0] === undefined ? [] : [outputs.outputs[0]] };
+  }
   case 'flatten':
     if (args.length !== 0) {
       return { ok: false, error: { message: 'flatten does not take arguments' } };
@@ -555,6 +633,23 @@ export function evaluateBuiltin({
     }
     return { ok: true, outputs: [groups.map((group) => group.items)] };
   }
+  case 'implode':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'implode does not take arguments' } };
+    }
+    if (!Array.isArray(input)) {
+      return { ok: false, error: { message: 'implode input must be an array' } };
+    }
+    {
+      let output = '';
+      for (const item of input) {
+        if (typeof item !== 'number' || !Number.isInteger(item) || item < 0 || item > 0x10FFFF) {
+          return { ok: false, error: { message: 'implode input elements must be valid Unicode code points' } };
+        }
+        output += String.fromCodePoint(item);
+      }
+      return { ok: true, outputs: [output] };
+    }
   case 'index':
   case 'indices': {
     const searchFilter = args[0];
@@ -577,9 +672,37 @@ export function evaluateBuiltin({
     if (indices === undefined) {
       return { ok: false, error: { message: `${name} input must be an array or string` } };
     }
-    return name === 'indices'
-      ? { ok: true, outputs: [indices] }
-      : { ok: true, outputs: [indices[0] ?? null] };
+    return (() => {
+      switch (name) {
+      case 'indices':
+        return { ok: true, outputs: [indices] } as const;
+      case 'index':
+        return { ok: true, outputs: [indices[0] ?? null] } as const;
+      default: {
+        const _ex: never = name;
+        throw new Error(`Unhandled index builtin: ${_ex}`);
+      }
+      }
+    })();
+  }
+  case 'inside': {
+    const expected = args[0];
+    if (expected === undefined) {
+      return { ok: false, error: { message: 'inside requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'inside takes exactly one argument' } };
+    }
+    const evaluated = evaluateSingleOutput({
+      filter: expected,
+      input,
+      evaluate,
+    });
+    if (!evaluated.ok) return evaluated;
+    return {
+      ok: true,
+      outputs: [insideJson({ input, expected: evaluated.value })],
+    };
   }
   case 'select': {
     const condition = args[0];
@@ -792,6 +915,40 @@ export function evaluateBuiltin({
     }
     return { ok: true, outputs: [parts.join(separator)] };
   }
+  case 'last': {
+    if (args.length > 1) {
+      return { ok: false, error: { message: 'last takes at most one argument' } };
+    }
+    if (args[0] === undefined) {
+      return { ok: true, outputs: [input] };
+    }
+    const outputs = evaluate({
+      filter: args[0],
+      input,
+    });
+    if (!outputs.ok) return outputs;
+    const value = outputs.outputs.at(-1);
+    return { ok: true, outputs: value === undefined ? [] : [value] };
+  }
+  case 'ltrimstr': {
+    const prefixFilter = args[0];
+    if (prefixFilter === undefined) {
+      return { ok: false, error: { message: 'ltrimstr requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'ltrimstr takes exactly one argument' } };
+    }
+    const prefix = evaluateSingleOutput({
+      filter: prefixFilter,
+      input,
+      evaluate,
+    });
+    if (!prefix.ok) return prefix;
+    if (typeof input !== 'string' || typeof prefix.value !== 'string') {
+      return { ok: false, error: { message: 'ltrimstr expects string input and argument' } };
+    }
+    return { ok: true, outputs: [trimStartPrefix({ value: input, prefix: prefix.value })] };
+  }
   case 'endswith': {
     const suffix = args[0];
     if (suffix === undefined) {
@@ -842,6 +999,25 @@ export function evaluateBuiltin({
     }
     return { ok: true, outputs: [indices.at(-1) ?? null] };
   }
+  case 'rtrimstr': {
+    const suffixFilter = args[0];
+    if (suffixFilter === undefined) {
+      return { ok: false, error: { message: 'rtrimstr requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'rtrimstr takes exactly one argument' } };
+    }
+    const suffix = evaluateSingleOutput({
+      filter: suffixFilter,
+      input,
+      evaluate,
+    });
+    if (!suffix.ok) return suffix;
+    if (typeof input !== 'string' || typeof suffix.value !== 'string') {
+      return { ok: false, error: { message: 'rtrimstr expects string input and argument' } };
+    }
+    return { ok: true, outputs: [trimEndSuffix({ value: input, suffix: suffix.value })] };
+  }
   case 'scalars':
     if (args.length !== 0) {
       return { ok: false, error: { message: 'scalars does not take arguments' } };
@@ -883,6 +1059,25 @@ export function evaluateBuiltin({
 
     keyed.sort((left, right) => compareJsonValues({ left: left.key, right: right.key }));
     return { ok: true, outputs: [keyed.map((entry) => entry.item)] };
+  }
+  case 'split': {
+    const separatorFilter = args[0];
+    if (separatorFilter === undefined) {
+      return { ok: false, error: { message: 'split requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'split takes exactly one argument' } };
+    }
+    const separator = evaluateSingleOutput({
+      filter: separatorFilter,
+      input,
+      evaluate,
+    });
+    if (!separator.ok) return separator;
+    if (typeof input !== 'string' || typeof separator.value !== 'string') {
+      return { ok: false, error: { message: 'split expects string input and argument' } };
+    }
+    return { ok: true, outputs: [input.split(separator.value)] };
   }
   case 'max':
     if (args.length !== 0) {

@@ -17,6 +17,8 @@ function toBuiltinName({
   switch (name) {
   case 'add':
   case 'all':
+  case 'ascii_downcase':
+  case 'ascii_upcase':
   case 'arrays':
   case 'any':
   case 'booleans':
@@ -24,12 +26,18 @@ function toBuiltinName({
   case 'del':
   case 'endswith':
   case 'empty':
+  case 'explode':
+  case 'first':
   case 'flatten':
   case 'fromjson':
   case 'group_by':
+  case 'implode':
   case 'index':
   case 'indices':
+  case 'inside':
   case 'join':
+  case 'last':
+  case 'ltrimstr':
   case 'map_values':
   case 'max':
   case 'min':
@@ -47,8 +55,10 @@ function toBuiltinName({
   case 'keys_unsorted':
   case 'reverse':
   case 'rindex':
+  case 'rtrimstr':
   case 'sort':
   case 'sort_by':
+  case 'split':
   case 'startswith':
   case 'strings':
   case 'type':
@@ -852,7 +862,7 @@ class JqParser {
   private consumeKeyword({
     value,
   }: {
-    value: 'then' | 'elif' | 'else' | 'end' | 'try' | 'catch';
+    value: 'if' | 'then' | 'elif' | 'else' | 'end' | 'try' | 'catch';
   }): { ok: true } | { ok: false; message: string } {
     const token = this.peek();
     if (token.kind === 'keyword' && token.value === value) {

@@ -363,6 +363,122 @@ jq '.items | add'`,
     expect(add.result.exitCode).toBe(0);
   });
 
+  it('supports split, explode, implode, inside, ltrimstr, and rtrimstr', async () => {
+    const split = await execute({
+      script: `\
+jq '.text | split(",")'`,
+      stdinText: `\
+{"text":"a,b,c"}`,
+    });
+
+    expect(split.stdout.text).toBe('["a","b","c"]\n');
+    expect(split.stderr.text).toBe('');
+    expect(split.result.exitCode).toBe(0);
+
+    const explode = await execute({
+      script: `\
+jq '.text | explode'`,
+      stdinText: `\
+{"text":"A😀"}`,
+    });
+
+    expect(explode.stdout.text).toBe('[65,128512]\n');
+    expect(explode.stderr.text).toBe('');
+    expect(explode.result.exitCode).toBe(0);
+
+    const implode = await execute({
+      script: `\
+jq '.codes | implode'`,
+      stdinText: `\
+{"codes":[65,128512]}`,
+    });
+
+    expect(implode.stdout.text).toBe('"A😀"\n');
+    expect(implode.stderr.text).toBe('');
+    expect(implode.result.exitCode).toBe(0);
+
+    const inside = await execute({
+      script: `\
+jq '.item | inside({"name":"alice","role":"admin"})'`,
+      stdinText: `\
+{"item":{"name":"alice"},"container":{"name":"alice","role":"admin"}}`,
+    });
+
+    expect(inside.stdout.text).toBe('true\n');
+    expect(inside.stderr.text).toBe('');
+    expect(inside.result.exitCode).toBe(0);
+
+    const ltrimstr = await execute({
+      script: `\
+jq '.text | ltrimstr("pre-")'`,
+      stdinText: `\
+{"text":"pre-value"}`,
+    });
+
+    expect(ltrimstr.stdout.text).toBe('"value"\n');
+    expect(ltrimstr.stderr.text).toBe('');
+    expect(ltrimstr.result.exitCode).toBe(0);
+
+    const rtrimstr = await execute({
+      script: `\
+jq '.text | rtrimstr(".tmp")'`,
+      stdinText: `\
+{"text":"report.tmp"}`,
+    });
+
+    expect(rtrimstr.stdout.text).toBe('"report"\n');
+    expect(rtrimstr.stderr.text).toBe('');
+    expect(rtrimstr.result.exitCode).toBe(0);
+  });
+
+  it('supports first and last', async () => {
+    const first = await execute({
+      script: `\
+jq 'first(.items[])'`,
+      stdinText: `\
+{"items":[3,1,2]}`,
+    });
+
+    expect(first.stdout.text).toBe('3\n');
+    expect(first.stderr.text).toBe('');
+    expect(first.result.exitCode).toBe(0);
+
+    const last = await execute({
+      script: `\
+jq 'last(.items[] | .name)'`,
+      stdinText: `\
+{"items":[{"name":"alice"},{"name":"bob"}]}`,
+    });
+
+    expect(last.stdout.text).toBe('"bob"\n');
+    expect(last.stderr.text).toBe('');
+    expect(last.result.exitCode).toBe(0);
+  });
+
+  it('supports ascii case conversion builtins', async () => {
+    const downcase = await execute({
+      script: `\
+jq '.text | ascii_downcase'`,
+      stdinText: `\
+{"text":"AbC-123"}`,
+    });
+
+    expect(downcase.stdout.text).toBe('"abc-123"\n');
+    expect(downcase.stderr.text).toBe('');
+    expect(downcase.result.exitCode).toBe(0);
+
+    const upcase = await execute({
+      script: `\
+jq '.text | ascii_upcase'`,
+      stdinText: `\
+{"text":"AbC-123"}`,
+    });
+
+    expect(upcase.stdout.text).toBe('"ABC-123"\n');
+    expect(upcase.stderr.text).toBe('');
+    expect(upcase.result.exitCode).toBe(0);
+  });
+
   it('supports sort_by, unique, unique_by, group_by, and map_values', async () => {
     const sortBy = await execute({
       script: `\

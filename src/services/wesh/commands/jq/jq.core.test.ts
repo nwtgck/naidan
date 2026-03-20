@@ -412,6 +412,78 @@ jq 'join(1)'`,
     expect(joinType.stderr.text).toContain('jq: error: join separator must be a string');
     expect(joinType.result.exitCode).toBe(4);
 
+    const splitType = await execute({
+      script: `\
+jq 'split(1)'`,
+      stdinText: '"a,b"',
+    });
+    expect(splitType.stderr.text).toContain('jq: error: split expects string input and argument');
+    expect(splitType.result.exitCode).toBe(4);
+
+    const explodeType = await execute({
+      script: `\
+jq 'explode'`,
+      stdinText: '1',
+    });
+    expect(explodeType.stderr.text).toContain('jq: error: explode input must be a string');
+    expect(explodeType.result.exitCode).toBe(4);
+
+    const implodeType = await execute({
+      script: `\
+jq 'implode'`,
+      stdinText: '[65,-1]',
+    });
+    expect(implodeType.stderr.text).toContain('jq: error: implode input elements must be valid Unicode code points');
+    expect(implodeType.result.exitCode).toBe(4);
+
+    const insideArity = await execute({
+      script: `\
+jq 'inside'`,
+      stdinText: '{"a":1}',
+    });
+    expect(insideArity.stderr.text).toContain('jq: error: inside requires one argument');
+    expect(insideArity.result.exitCode).toBe(4);
+
+    const ltrimstrType = await execute({
+      script: `\
+jq 'ltrimstr(1)'`,
+      stdinText: '"prefix-value"',
+    });
+    expect(ltrimstrType.stderr.text).toContain('jq: error: ltrimstr expects string input and argument');
+    expect(ltrimstrType.result.exitCode).toBe(4);
+
+    const rtrimstrType = await execute({
+      script: `\
+jq 'rtrimstr(1)'`,
+      stdinText: '"value-suffix"',
+    });
+    expect(rtrimstrType.stderr.text).toContain('jq: error: rtrimstr expects string input and argument');
+    expect(rtrimstrType.result.exitCode).toBe(4);
+
+    const firstArity = await execute({
+      script: `\
+jq 'first(., .)'`,
+      stdinText: '1',
+    });
+    expect(firstArity.stderr.text).toContain('jq: error: first takes at most one argument');
+    expect(firstArity.result.exitCode).toBe(4);
+
+    const lastArity = await execute({
+      script: `\
+jq 'last(., .)'`,
+      stdinText: '1',
+    });
+    expect(lastArity.stderr.text).toContain('jq: error: last takes at most one argument');
+    expect(lastArity.result.exitCode).toBe(4);
+
+    const asciiType = await execute({
+      script: `\
+jq 'ascii_downcase'`,
+      stdinText: '1',
+    });
+    expect(asciiType.stderr.text).toContain('jq: error: ascii_downcase input must be a string');
+    expect(asciiType.result.exitCode).toBe(4);
+
     const mapValuesType = await execute({
       script: `\
 jq 'map_values(. + 1)'`,
