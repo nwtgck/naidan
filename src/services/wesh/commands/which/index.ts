@@ -45,6 +45,16 @@ export const whichCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
+    if (parsed.positionals.length === 0) {
+      await writeCommandUsageError({
+        context,
+        command: 'which',
+        message: 'which: missing operand',
+        argvSpec: whichArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
     const text = context.text();
     let foundAll = true;
 

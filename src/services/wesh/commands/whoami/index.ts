@@ -44,6 +44,16 @@ export const whoamiCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
+    if (parsed.positionals.length > 0) {
+      await writeCommandUsageError({
+        context,
+        command: 'whoami',
+        message: 'whoami: too many arguments',
+        argvSpec: whoamiArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
     const user = context.env.get('USER') || 'user';
     const text = context.text();
     await text.print({ text: user + '\n' });

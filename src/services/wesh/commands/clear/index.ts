@@ -44,6 +44,16 @@ export const clearCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
+    if (parsed.positionals.length > 0) {
+      await writeCommandUsageError({
+        context,
+        command: 'clear',
+        message: 'clear: too many arguments',
+        argvSpec: clearArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
     const text = context.text();
     /** Standard clear escape code */
     await text.print({ text: '\x1b[2J\x1b[H' });

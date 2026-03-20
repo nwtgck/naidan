@@ -44,6 +44,16 @@ export const pwdCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
+    if (parsed.positionals.length > 0) {
+      await writeCommandUsageError({
+        context,
+        command: 'pwd',
+        message: 'pwd: too many arguments',
+        argvSpec: pwdArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
     const text = context.text();
     await text.print({ text: context.cwd + '\n' });
     return { exitCode: 0 };

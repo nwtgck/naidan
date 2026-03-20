@@ -46,6 +46,16 @@ export const cdCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
+    if (parsed.positionals.length > 1) {
+      await writeCommandUsageError({
+        context,
+        command: 'cd',
+        message: 'cd: too many arguments',
+        argvSpec: cdArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
     const target = parsed.positionals[0] || '/';
 
     try {
