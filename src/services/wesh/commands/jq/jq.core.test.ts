@@ -90,6 +90,36 @@ true
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports empty and bracket field/index access', async () => {
+    const bracketField = await execute({
+      script: `\
+jq '.["name"], .items[-1]'`,
+      stdinText: `\
+{"name":"alice","items":[1,2,3]}`,
+    });
+
+    expect(bracketField.stdout.text).toBe(`\
+"alice"
+3
+`);
+    expect(bracketField.stderr.text).toBe('');
+    expect(bracketField.result.exitCode).toBe(0);
+
+    const empty = await execute({
+      script: `\
+jq '.items[] | (. + 10, empty)'`,
+      stdinText: `\
+{"items":[1,2]}`,
+    });
+
+    expect(empty.stdout.text).toBe(`\
+11
+12
+`);
+    expect(empty.stderr.text).toBe('');
+    expect(empty.result.exitCode).toBe(0);
+  });
+
   it('reports parse and input errors', async () => {
     const parse = await execute({
       script: `\
@@ -124,5 +154,13 @@ jq '.[1:3]'`,
     });
     expect(bracketSyntax.stderr.text).toContain('jq: parse error: unsupported syntax inside []');
     expect(bracketSyntax.result.exitCode).toBe(3);
+
+    const builtinArity = await execute({
+      script: `\
+jq 'length(1)'`,
+      stdinText: '[1,2]',
+    });
+    expect(builtinArity.stderr.text).toContain('jq: error: length does not take arguments');
+    expect(builtinArity.result.exitCode).toBe(4);
   });
 });

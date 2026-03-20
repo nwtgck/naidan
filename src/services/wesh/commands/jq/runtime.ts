@@ -99,6 +99,19 @@ function compareValues({
   return leftJson < rightJson ? -1 : 1;
 }
 
+function normalizeArrayIndex({
+  array,
+  index,
+}: {
+  array: JsonValue[];
+  index: number;
+}): number | undefined {
+  if (!Number.isInteger(index)) return undefined;
+  const normalized = index >= 0 ? index : array.length + index;
+  if (normalized < 0 || normalized >= array.length) return undefined;
+  return normalized;
+}
+
 function applyPathAssignment({
   root,
   path,
@@ -174,19 +187,23 @@ function assignIntoPath({
     if (!Array.isArray(container)) {
       return { ok: false, error: { message: `cannot index [${head.index}] on non-array` } };
     }
-    if (!Number.isInteger(head.index) || head.index < 0 || head.index >= container.length) {
+    const normalizedIndex = normalizeArrayIndex({
+      array: container,
+      index: head.index,
+    });
+    if (normalizedIndex === undefined) {
       return { ok: false, error: { message: `invalid array index ${head.index}` } };
     }
 
     if (isLeaf) {
-      const current = container[head.index];
+      const current = container[normalizedIndex];
       const assigned = assignValue({ currentValue: current });
       if (!assigned.ok) return assigned;
-      container[head.index] = assigned.value;
+      container[normalizedIndex] = assigned.value;
       return { ok: true };
     }
 
-    const existing = container[head.index];
+    const existing = container[normalizedIndex];
     if (existing === undefined || existing === null || Array.isArray(existing) || typeof existing !== 'object') {
       return { ok: false, error: { message: `cannot descend into [${head.index}]` } };
     }
@@ -238,7 +255,11 @@ export function evaluateJqFilter({
     const outputs: JsonValue[] = [];
     for (const value of parent.outputs) {
       if (Array.isArray(value)) {
-        outputs.push(value[filter.index] ?? null);
+        const normalizedIndex = normalizeArrayIndex({
+          array: value,
+          index: filter.index,
+        });
+        outputs.push(normalizedIndex === undefined ? null : (value[normalizedIndex] ?? null));
         continue;
       }
       return { ok: false, error: { message: `cannot index [${filter.index}] on non-array` } };

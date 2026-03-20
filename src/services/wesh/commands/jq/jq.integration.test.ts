@@ -95,6 +95,17 @@ jq '{user: .name, tags: [.tags[]]}'`,
     expect(stdout.text).toBe('{"user":"alice","tags":["x","y"]}\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+
+    const shorthand = await execute({
+      script: `\
+jq '{name, count}'`,
+      stdinText: `\
+{"name":"alice","count":2,"ignored":true}`,
+    });
+
+    expect(shorthand.stdout.text).toBe('{"name":"alice","count":2}\n');
+    expect(shorthand.stderr.text).toBe('');
+    expect(shorthand.result.exitCode).toBe(0);
   });
 
   it('supports assignment and update assignment', async () => {
@@ -117,6 +128,16 @@ jq '.count |= . + 1'`,
     expect(update.stdout.text).toBe('{"count":2}\n');
     expect(update.stderr.text).toBe('');
     expect(update.result.exitCode).toBe(0);
+
+    const negativeIndex = await execute({
+      script: `\
+jq '.[-1].name |= . + "!"'`,
+      stdinText: `\
+[{"name":"alice"},{"name":"bob"}]`,
+    });
+    expect(negativeIndex.stdout.text).toBe('[{"name":"alice"},{"name":"bob!"}]\n');
+    expect(negativeIndex.stderr.text).toBe('');
+    expect(negativeIndex.result.exitCode).toBe(0);
   });
 
   it('supports multiple input JSON values and file input', async () => {

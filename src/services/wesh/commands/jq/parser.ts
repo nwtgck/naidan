@@ -15,6 +15,7 @@ function toBuiltinName({
   name: string;
 }): JqBuiltinName | undefined {
   switch (name) {
+  case 'empty':
   case 'select':
   case 'map':
   case 'length':
@@ -355,6 +356,20 @@ class JqParser {
               };
             }
             continue;
+          case 'string':
+            this.index += 1;
+            {
+              const closeToken = this.peek();
+              if (!(closeToken.kind === 'punctuation' && closeToken.value === ']')) {
+                return { ok: false, message: 'unsupported syntax inside []' };
+              }
+              this.index += 1;
+              filter = {
+                ok: true,
+                filter: { kind: 'field', input: filter.filter, key: indexToken.value },
+              };
+            }
+            continue;
           default:
             return { ok: false, message: 'unsupported syntax inside []' };
           }
@@ -401,6 +416,16 @@ class JqParser {
               }
               this.index += 1;
               filter = { kind: 'index', input: filter, index: content.value };
+              continue;
+            }
+            case 'string': {
+              this.index += 1;
+              const closeToken = this.peek();
+              if (!(closeToken.kind === 'punctuation' && closeToken.value === ']')) {
+                return { ok: false, message: 'unsupported syntax inside []' };
+              }
+              this.index += 1;
+              filter = { kind: 'field', input: filter, key: content.value };
               continue;
             }
             default:
@@ -512,24 +537,74 @@ class JqParser {
       while (true) {
         const keyToken = this.peek();
         let key: string;
+        let shorthandKey: string | undefined;
         switch (keyToken.kind) {
         case 'identifier':
         case 'string':
           this.index += 1;
           key = keyToken.value;
+          shorthandKey = (() => {
+            switch (keyToken.kind) {
+            case 'identifier':
+              return keyToken.value;
+            case 'string':
+              return undefined;
+            default: {
+              const _ex: never = keyToken;
+              throw new Error(`Unhandled object key token: ${JSON.stringify(_ex)}`);
+            }
+            }
+          })();
           break;
         default:
           return { ok: false, message: 'expected object key' };
         }
 
-        const colon = this.consumeOperator({ value: ':' });
-        if (!colon.ok) return colon;
-        const parsedValue = this.parseAssignmentItem();
-        if (!parsedValue.ok) return parsedValue;
-        entries.push({ key, value: parsedValue.filter });
-
         const separator = this.peek();
-        if (!(separator.kind === 'operator' && separator.value === ',')) break;
+        switch (separator.kind) {
+        case 'operator':
+          switch (separator.value) {
+          case ':': {
+            this.index += 1;
+            const parsedValue = this.parseAssignmentItem();
+            if (!parsedValue.ok) return parsedValue;
+            entries.push({ key, value: parsedValue.filter });
+            break;
+          }
+          case ',':
+            if (shorthandKey === undefined) {
+              return { ok: false, message: `expected ':' after object key '${key}'` };
+            }
+            entries.push({
+              key,
+              value: { kind: 'field', input: { kind: 'identity' }, key: shorthandKey },
+            });
+            break;
+          default:
+            return { ok: false, message: `expected ':' after object key '${key}'` };
+          }
+          break;
+        case 'punctuation':
+          switch (separator.value) {
+          case '}':
+            if (shorthandKey === undefined) {
+              return { ok: false, message: `expected ':' after object key '${key}'` };
+            }
+            entries.push({
+              key,
+              value: { kind: 'field', input: { kind: 'identity' }, key: shorthandKey },
+            });
+            break;
+          default:
+            return { ok: false, message: `expected ':' after object key '${key}'` };
+          }
+          break;
+        default:
+          return { ok: false, message: `expected ':' after object key '${key}'` };
+        }
+
+        const nextEntry = this.peek();
+        if (!(nextEntry.kind === 'operator' && nextEntry.value === ',')) break;
         this.index += 1;
       }
     }
@@ -546,19 +621,6 @@ class JqParser {
   }): { ok: true } | { ok: false; message: string } {
     const token = this.peek();
     if (token.kind === 'punctuation' && token.value === value) {
-      this.index += 1;
-      return { ok: true };
-    }
-    return { ok: false, message: `expected '${value}'` };
-  }
-
-  private consumeOperator({
-    value,
-  }: {
-    value: ':';
-  }): { ok: true } | { ok: false; message: string } {
-    const token = this.peek();
-    if (token.kind === 'operator' && token.value === value) {
       this.index += 1;
       return { ok: true };
     }

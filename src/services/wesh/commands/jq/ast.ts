@@ -35,6 +35,7 @@ export type JqPathSegment =
   | { kind: 'index'; index: number };
 
 export type JqBuiltinName =
+  | 'empty'
   | 'select'
   | 'map'
   | 'length'

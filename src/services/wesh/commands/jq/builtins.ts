@@ -21,6 +21,11 @@ export function evaluateBuiltin({
   evaluate: JqRuntimeFilterEvaluator;
 }): { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError } {
   switch (name) {
+  case 'empty':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'empty does not take arguments' } };
+    }
+    return { ok: true, outputs: [] };
   case 'select': {
     const condition = args[0];
     if (condition === undefined) {
@@ -52,6 +57,9 @@ export function evaluateBuiltin({
     return { ok: true, outputs: [result] };
   }
   case 'length':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'length does not take arguments' } };
+    }
     switch (typeof input) {
     case 'string':
       return { ok: true, outputs: [input.length] };
@@ -69,6 +77,9 @@ export function evaluateBuiltin({
     }
     }
   case 'keys':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'keys does not take arguments' } };
+    }
     if (Array.isArray(input)) {
       return { ok: true, outputs: [input.map((_value, index) => index)] };
     }
@@ -77,6 +88,9 @@ export function evaluateBuiltin({
     }
     return { ok: false, error: { message: 'keys input must be an array or object' } };
   case 'type':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'type does not take arguments' } };
+    }
     if (input === null) return { ok: true, outputs: ['null'] };
     if (Array.isArray(input)) return { ok: true, outputs: ['array'] };
     switch (typeof input) {
