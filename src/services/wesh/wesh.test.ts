@@ -516,6 +516,55 @@ shell-int
 `);
   });
 
+  it('ignores foreground SIGINT when trap disposition is ignore', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: `\
+trap -- '' INT
+sleep 0.05`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await execution;
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'exited',
+      exitCode: 0,
+    });
+    expect(result.exitCode).toBe(0);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+  });
+
+  it('does not mark the top-level shell process as signaled when interrupting the foreground group', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: `\
+sleep 1`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    await wesh.signalForegroundProcessGroup({ signal: 2 });
+    await execution;
+
+    const shellPid = (wesh as unknown as { shellPid: number }).shellPid;
+    expect(wesh.kernel.getWaitStatus({ pid: shellPid })).toBeUndefined();
+  });
+
   it('signals the foreground pipeline process group through the shell API', async () => {
     const stdin = createWeshReadFileHandleFromText({ text: '' });
     const stdout = createWeshWriteCaptureHandle();
@@ -542,5 +591,51 @@ sleep 1 | cat`,
     expect(result.exitCode).toBe(130);
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('pipeline-int\n');
+  });
+
+  it('interrupts commands blocked on input reads', async () => {
+    const { read, write } = await wesh.kernel.pipe();
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: 'cat',
+      stdin: read,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await execution;
+    await write.close();
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+  });
+
+  it('does not rewrite wait status when signaling an already terminated process', async () => {
+    const spawned = await wesh.kernel.spawn({
+      image: 'test-proc',
+      args: [],
+    });
+
+    await wesh.kernel.kill({
+      pid: spawned.pid,
+      signal: 2,
+    });
+    await wesh.kernel.kill({
+      pid: spawned.pid,
+      signal: 15,
+    });
+
+    expect(wesh.kernel.getWaitStatus({ pid: spawned.pid })).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
   });
 });

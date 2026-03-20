@@ -8,6 +8,9 @@ import type {
   WeshCommandNode,
   WeshPipelineNode,
   WeshFileType,
+  WeshTrapDisposition,
+  WeshWaitStatus,
+  WeshProcessSignalDisposition,
 } from './types';
 import { weshWaitStatusToExitCode } from './types';
 import { WeshVFS } from './vfs';
@@ -31,7 +34,7 @@ interface WeshExecutionEnvironment {
   env: Map<string, string>;
   cwd: string;
   fds: Map<number, WeshFileHandle>;
-  traps: Map<string, string>;
+  traps: Map<string, WeshTrapDisposition>;
   positionalArgs: string[];
   lastBackgroundPid: number | undefined;
 }
@@ -61,6 +64,25 @@ function weshSignalConditionNames({
   }
 }
 
+function weshSignalNumbersForCondition({
+  condition,
+}: {
+  condition: string;
+}): number[] {
+  switch (condition) {
+  case 'INT':
+  case 'SIGINT':
+  case '2':
+    return [2];
+  case 'PIPE':
+  case 'SIGPIPE':
+  case '13':
+    return [13];
+  default:
+    return [];
+  }
+}
+
 export class Wesh {
   public vfs: WeshIVirtualFileSystem;
   public kernel: WeshKernel;
@@ -72,7 +94,7 @@ export class Wesh {
   private jobs: Map<number, WeshJob> = new Map();
   private nextJobId: number = 1;
   private shellFds: Map<number, WeshFileHandle> = new Map();
-  private traps: Map<string, string> = new Map();
+  private traps: Map<string, WeshTrapDisposition> = new Map();
   private foregroundProcessGroupId: number | undefined;
 
   private shellPid: number = 0;
@@ -135,6 +157,7 @@ export class Wesh {
     await this.kernel.killProcessGroup({
       pgid: this.foregroundProcessGroupId,
       signal: options.signal,
+      excludedPids: [this.shellPid],
     });
     return true;
   }
@@ -1561,6 +1584,9 @@ export class Wesh {
       fds: cmdFds,
       ppid: environment.shellPid,
       pgid: environment.pgid,
+      signalDispositions: this.buildProcessSignalDispositions({
+        environment,
+      }),
     });
 
     proc.fds = this.kernel.bindFdTable({
@@ -1654,12 +1680,12 @@ export class Wesh {
           await this.closePersistentFd({ fd });
         }
       },
-      setTrap: ({ condition, action }) => {
-        if (action === undefined) {
+      setTrap: ({ condition, disposition }) => {
+        if (disposition === undefined) {
           environment.traps.delete(condition);
           return;
         }
-        environment.traps.set(condition, action);
+        environment.traps.set(condition, disposition);
       },
       getTrapAction: ({ condition }) => {
         return environment.traps.get(condition);
@@ -1780,7 +1806,7 @@ export class Wesh {
     env: Map<string, string>;
     cwd: string;
     fds: Map<number, WeshFileHandle>;
-    traps: Map<string, string>;
+    traps: Map<string, WeshTrapDisposition>;
     positionalArgs: string[];
     lastBackgroundPid: number | undefined;
   }): WeshExecutionEnvironment {
@@ -1842,6 +1868,9 @@ export class Wesh {
       fds: new Map(childEnvironment.fds),
       ppid: parentEnvironment.shellPid,
       pgid: pgid,
+      signalDispositions: this.buildProcessSignalDispositions({
+        environment: childEnvironment,
+      }),
     });
 
     childEnvironment.shellPid = pid;
@@ -1857,12 +1886,12 @@ export class Wesh {
     stderr: WeshFileHandle;
   }): Promise<WeshCommandResult> {
     const exitTrap = options.environment.traps.get('EXIT');
-    if (exitTrap === undefined) {
+    if (exitTrap === undefined || exitTrap.kind !== 'run') {
       return options.result;
     }
 
     await this.runTrapScript({
-      script: exitTrap,
+      script: exitTrap.action,
       trapStatus: options.result.waitStatus ?? {
         kind: 'exited',
         exitCode: options.result.exitCode,
@@ -1883,29 +1912,38 @@ export class Wesh {
     stderr: WeshFileHandle;
   }): Promise<void> {
     for (const condition of weshSignalConditionNames({ signal: options.signal })) {
-      const trapAction = options.environment.traps.get(condition);
-      if (trapAction === undefined) {
+      const trapDisposition = options.environment.traps.get(condition);
+      if (trapDisposition === undefined) {
         continue;
       }
 
-      await this.runTrapScript({
-        script: trapAction,
-        trapStatus: {
-          kind: 'signaled',
-          signal: options.signal,
-        },
-        environment: options.environment,
-        stdin: options.stdin,
-        stdout: options.stdout,
-        stderr: options.stderr,
-      });
-      return;
+      switch (trapDisposition.kind) {
+      case 'ignore':
+        return;
+      case 'run':
+        await this.runTrapScript({
+          script: trapDisposition.action,
+          trapStatus: {
+            kind: 'signaled',
+            signal: options.signal,
+          },
+          environment: options.environment,
+          stdin: options.stdin,
+          stdout: options.stdout,
+          stderr: options.stderr,
+        });
+        return;
+      default: {
+        const _ex: never = trapDisposition;
+        throw new Error(`Unhandled trap disposition: ${JSON.stringify(_ex)}`);
+      }
+      }
     }
   }
 
   private async runTrapScript(options: {
     script: string;
-    trapStatus: import('./types').WeshWaitStatus;
+    trapStatus: WeshWaitStatus;
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
@@ -1991,6 +2029,30 @@ export class Wesh {
     } finally {
       this.foregroundProcessGroupId = previousForegroundProcessGroupId;
     }
+  }
+
+  private buildProcessSignalDispositions(options: {
+    environment: WeshExecutionEnvironment;
+  }): Map<number, WeshProcessSignalDisposition> {
+    const signalDispositions = new Map<number, WeshProcessSignalDisposition>();
+
+    for (const [condition, disposition] of options.environment.traps.entries()) {
+      switch (disposition.kind) {
+      case 'ignore':
+        for (const signal of weshSignalNumbersForCondition({ condition })) {
+          signalDispositions.set(signal, 'ignore');
+        }
+        break;
+      case 'run':
+        break;
+      default: {
+        const _ex: never = disposition;
+        throw new Error(`Unhandled trap disposition: ${JSON.stringify(_ex)}`);
+      }
+      }
+    }
+
+    return signalDispositions;
   }
 
   private syncSpecialParameters(options: {

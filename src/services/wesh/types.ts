@@ -70,6 +70,8 @@ export type WeshWaitStatus =
   | { kind: 'signaled'; signal: number }
   | { kind: 'stopped'; signal: number };
 
+export type WeshProcessSignalDisposition = 'default' | 'ignore';
+
 export function weshWaitStatusToExitCode({
   waitStatus,
 }: {
@@ -97,6 +99,7 @@ export interface WeshProcess {
   terminationSignal?: number;
   waitStatus?: WeshWaitStatus;
   pendingSignals?: number[];
+  signalDispositions?: Map<number, WeshProcessSignalDisposition>;
 
   env: Map<string, string>;
   cwd: string;
@@ -182,6 +185,10 @@ export interface WeshCommandResult {
   waitStatus?: WeshWaitStatus;
 }
 
+export type WeshTrapDisposition =
+  | { kind: 'run'; action: string }
+  | { kind: 'ignore' };
+
 export type WeshResolvedCommand =
   | { kind: 'builtin'; name: string; meta: WeshCommandMeta }
   | { kind: 'not-found'; name: string };
@@ -231,9 +238,9 @@ export interface WeshCommandContext {
   getFileDescriptor(options: { fd: number }): WeshFileHandle | undefined;
   setFileDescriptor(options: { fd: number; handle: WeshFileHandle; persist: boolean }): Promise<void>;
   closeFileDescriptor(options: { fd: number; persist: boolean }): Promise<void>;
-  setTrap(options: { condition: string; action: string | undefined }): void;
-  getTrapAction(options: { condition: string }): string | undefined;
-  getTraps(): Array<[string, string]>;
+  setTrap(options: { condition: string; disposition: WeshTrapDisposition | undefined }): void;
+  getTrapAction(options: { condition: string }): WeshTrapDisposition | undefined;
+  getTraps(): Array<[string, WeshTrapDisposition]>;
 }
 
 export type WeshCommandFunction = (options: { context: WeshCommandContext }) => Promise<WeshCommandResult>;

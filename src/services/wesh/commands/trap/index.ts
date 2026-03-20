@@ -1,6 +1,11 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
+import type {
+  WeshCommandContext,
+  WeshCommandDefinition,
+  WeshCommandResult,
+  WeshTrapDisposition,
+} from '@/services/wesh/types';
 
 const trapArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -67,10 +72,23 @@ export const trapCommandDefinition: WeshCommandDefinition = {
 
     if (parsed.optionValues.print === true || parsed.positionals.length === 0) {
       const { print } = context.text();
-      for (const [condition, action] of context.getTraps()) {
-        await print({
-          text: `trap -- ${shellQuote({ text: action })} ${condition}\n`,
-        });
+      for (const [condition, disposition] of context.getTraps()) {
+        switch (disposition.kind) {
+        case 'ignore':
+          await print({
+            text: `trap -- '' ${condition}\n`,
+          });
+          break;
+        case 'run':
+          await print({
+            text: `trap -- ${shellQuote({ text: disposition.action })} ${condition}\n`,
+          });
+          break;
+        default: {
+          const _ex: never = disposition;
+          throw new Error(`Unhandled trap disposition: ${JSON.stringify(_ex)}`);
+        }
+        }
       }
       return { exitCode: 0 };
     }
@@ -86,21 +104,25 @@ export const trapCommandDefinition: WeshCommandDefinition = {
     }
 
     const [action, ...conditions] = parsed.positionals;
+    const trapAction = action ?? '';
     for (const condition of conditions) {
-      switch (action) {
+      let disposition: WeshTrapDisposition | undefined;
+      switch (trapAction) {
       case '-':
-        context.setTrap({
-          condition,
-          action: undefined,
-        });
+        disposition = undefined;
+        break;
+      case '':
+        disposition = { kind: 'ignore' };
         break;
       default:
-        context.setTrap({
-          condition,
-          action,
-        });
+        disposition = { kind: 'run', action: trapAction };
         break;
       }
+
+      context.setTrap({
+        condition,
+        disposition,
+      });
     }
 
     return { exitCode: 0 };

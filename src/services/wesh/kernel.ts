@@ -8,6 +8,7 @@ import type {
   WeshFileType,
   WeshOpenFlags,
   WeshWaitStatus,
+  WeshProcessSignalDisposition,
 } from './types';
 import { WeshBrokenPipeError, weshWaitStatusToExitCode } from './types';
 
@@ -203,6 +204,7 @@ export class WeshKernel {
     fds?: Map<number, WeshFileHandle>;
     ppid?: number;
     pgid?: number;
+    signalDispositions?: Map<number, WeshProcessSignalDisposition>;
   }): Promise<{ pid: number; process: WeshProcess }> {
     const pid = this.nextPid++;
     const process: WeshProcess = {
@@ -211,6 +213,7 @@ export class WeshKernel {
       pgid: options.pgid ?? pid,
       state: 'running',
       pendingSignals: [],
+      signalDispositions: options.signalDispositions ? new Map(options.signalDispositions) : new Map(),
       env: options.env ? new Map(options.env) : new Map(),
       cwd: options.cwd || '/',
       args: options.args,
@@ -242,6 +245,21 @@ export class WeshKernel {
   async kill(options: { pid: number; signal: number }): Promise<void> {
     const proc = this.processes.get(options.pid);
     if (!proc) return;
+    if (proc.state === 'terminated' || proc.state === 'zombie') {
+      return;
+    }
+
+    const disposition = proc.signalDispositions?.get(options.signal) ?? 'default';
+    switch (disposition) {
+    case 'default':
+      break;
+    case 'ignore':
+      return;
+    default: {
+      const _ex: never = disposition;
+      throw new Error(`Unhandled signal disposition: ${_ex}`);
+    }
+    }
 
     proc.pendingSignals ??= [];
     proc.pendingSignals.push(options.signal);
@@ -254,6 +272,9 @@ export class WeshKernel {
       waitStatus: proc.waitStatus,
     });
     proc.terminationSignal = options.signal;
+    await this.closeProcessFileDescriptors({
+      proc,
+    });
   }
 
   getPendingSignals(options: { pid: number }): number[] {
@@ -297,8 +318,16 @@ export class WeshKernel {
     return this.getWaitStatus({ pid: options.pid });
   }
 
-  async killProcessGroup(options: { pgid: number; signal: number }): Promise<void> {
-    const targets = Array.from(this.processes.values()).filter(proc => proc.pgid === options.pgid);
+  async killProcessGroup(options: {
+    pgid: number;
+    signal: number;
+    excludedPids?: number[];
+  }): Promise<void> {
+    const excludedPids = new Set(options.excludedPids ?? []);
+    const targets = Array.from(this.processes.values()).filter(proc => (
+      proc.pgid === options.pgid &&
+      !excludedPids.has(proc.pid)
+    ));
     await Promise.all(targets.map(proc => this.kill({
       pid: proc.pid,
       signal: options.signal,
@@ -393,5 +422,21 @@ export class WeshKernel {
 
   getProcessesByGroup(options: { pgid: number }): WeshProcess[] {
     return Array.from(this.processes.values()).filter(proc => proc.pgid === options.pgid);
+  }
+
+  private async closeProcessFileDescriptors(options: {
+    proc: WeshProcess;
+  }): Promise<void> {
+    const closedHandles = new Set<WeshFileHandle>();
+    for (const [fd, handle] of options.proc.fds.entries()) {
+      if (fd === 1 || fd === 2) {
+        continue;
+      }
+      if (closedHandles.has(handle)) {
+        continue;
+      }
+      closedHandles.add(handle);
+      await handle.close();
+    }
   }
 }
