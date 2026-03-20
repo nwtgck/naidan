@@ -7,7 +7,7 @@ import type {
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
-const KNOWN_SHELL_OPTIONS: WeshShellOption[] = ['dotglob', 'failglob', 'globstar', 'nullglob'];
+const KNOWN_SHELL_OPTIONS: WeshShellOption[] = ['dotglob', 'extglob', 'failglob', 'globstar', 'nullglob'];
 
 const shoptArgvSpec: StandardArgvParserSpec = {
   options: [

@@ -196,7 +196,7 @@ export type WeshTrapDisposition =
   | { kind: 'run'; action: string }
   | { kind: 'ignore' };
 
-export type WeshShellOption = 'dotglob' | 'failglob' | 'globstar' | 'nullglob';
+export type WeshShellOption = 'dotglob' | 'extglob' | 'failglob' | 'globstar' | 'nullglob';
 
 export type WeshResolvedCommand =
   | {

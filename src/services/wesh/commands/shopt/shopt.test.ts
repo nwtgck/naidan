@@ -51,9 +51,9 @@ describe('shopt command', () => {
   it('sets, unsets, prints, and queries shell options', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
-shopt -s globstar nullglob
-shopt -p globstar nullglob
-shopt -q globstar nullglob
+shopt -s extglob globstar nullglob
+shopt -p extglob globstar nullglob
+shopt -q extglob globstar nullglob
 echo $?
 shopt -u nullglob
 shopt -q nullglob
@@ -61,6 +61,7 @@ echo $?`,
     });
 
     expect(stdout.text).toBe(`\
+shopt -s extglob
 shopt -s globstar
 shopt -s nullglob
 0

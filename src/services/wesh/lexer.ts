@@ -144,6 +144,7 @@ export class Lexer {
     const start = this.position;
     let inQuote: "'" | '"' | null = null;
     let escaped = false;
+    let extglobDepth = 0;
 
     while (this.position < this.length) {
       const char = this.input[this.position];
@@ -170,6 +171,24 @@ export class Lexer {
 
       if (char === "'" || char === '"') {
         inQuote = char;
+        this.position++;
+        continue;
+      }
+
+      if (
+        char !== undefined &&
+        ['?', '*', '+', '@', '!'].includes(char) &&
+        this.input[this.position + 1] === '('
+      ) {
+        extglobDepth += 1;
+        this.position += 2;
+        continue;
+      }
+
+      if (extglobDepth > 0) {
+        if (char === ')') {
+          extglobDepth -= 1;
+        }
         this.position++;
         continue;
       }

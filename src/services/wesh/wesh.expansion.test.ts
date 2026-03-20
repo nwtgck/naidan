@@ -315,6 +315,32 @@ visible.txt
     expect(dotglob.result.exitCode).toBe(0);
   });
 
+  it('supports extglob patterns when extglob is enabled', async () => {
+    await writeFile({ path: 'extglob/alpha.ts', data: 'a' });
+    await writeFile({ path: 'extglob/beta.js', data: 'b' });
+    await writeFile({ path: 'extglob/gamma.txt', data: 'c' });
+
+    const disabled = await execute({
+      script: 'echo /extglob/@(*.ts|*.js)',
+    });
+    expect(disabled.stdout.text).toBe('/extglob/@(*.ts|*.js)\n');
+    expect(disabled.stderr.text).toBe('');
+    expect(disabled.result.exitCode).toBe(0);
+
+    const enabled = await execute({
+      script: `\
+shopt -s extglob
+echo /extglob/@(*.ts|*.js)
+echo /extglob/!(*.txt)`,
+    });
+    expect(enabled.stdout.text).toBe(`\
+/extglob/alpha.ts /extglob/beta.js
+/extglob/alpha.ts /extglob/beta.js
+`);
+    expect(enabled.stderr.text).toBe('');
+    expect(enabled.result.exitCode).toBe(0);
+  });
+
   it('expands a leading tilde during execution', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'echo ~/project',

@@ -192,6 +192,7 @@ export class Wesh {
   private traps: Map<string, WeshTrapDisposition> = new Map();
   private shellOptions: Map<WeshShellOption, boolean> = new Map([
     ['dotglob', false],
+    ['extglob', false],
     ['failglob', false],
     ['globstar', false],
     ['nullglob', false],
@@ -1637,10 +1638,26 @@ usage: alias [name[=value] ...]
 
   private hasActiveGlob({
     field,
+    shellOptions,
   }: {
     field: WeshExpandedField;
+    shellOptions: Map<WeshShellOption, boolean>;
   }): boolean {
-    return field.parts.some((part) => !part.quoted && /[[*?]/.test(part.text));
+    return field.parts.some((part) => {
+      if (part.quoted) {
+        return false;
+      }
+
+      if (/[[*?]/.test(part.text)) {
+        return true;
+      }
+
+      if (shellOptions.get('extglob') === true) {
+        return /(^|[^\\])[?*@!+]\(/.test(part.text);
+      }
+
+      return false;
+    });
   }
 
   private buildGlobPattern({
@@ -1655,64 +1672,214 @@ usage: alias [name[=value] ...]
 
   private compileGlobComponent({
     pattern,
+    shellOptions,
   }: {
     pattern: string;
+    shellOptions: Map<WeshShellOption, boolean>;
   }): RegExp {
-    let source = '^';
+    const parsePattern = ({
+      text,
+      stopAtPipeOrParen,
+    }: {
+      text: string;
+      stopAtPipeOrParen: boolean;
+    }): { source: string; nextIndex: number } => {
+      let source = '';
+      let index = 0;
 
-    for (let index = 0; index < pattern.length; index++) {
-      const char = pattern[index];
-      if (char === undefined) {
-        continue;
-      }
-
-      if (char === '\\') {
-        const nextChar = pattern[index + 1];
-        if (nextChar !== undefined) {
-          source += nextChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      while (index < text.length) {
+        const char = text[index];
+        if (char === undefined) {
           index += 1;
           continue;
         }
-        source += '\\\\';
-        continue;
-      }
 
-      if (char === '*') {
-        source += '[^/]*';
-        continue;
-      }
+        if (stopAtPipeOrParen && (char === '|' || char === ')')) {
+          break;
+        }
 
-      if (char === '?') {
-        source += '[^/]';
-        continue;
-      }
-
-      if (char === '[') {
-        const endIndex = pattern.indexOf(']', index + 1);
-        if (endIndex !== -1) {
-          let classContent = pattern.slice(index + 1, endIndex);
-          if (classContent.startsWith('!')) {
-            classContent = '^' + classContent.slice(1);
+        if (char === '\\') {
+          const nextChar = text[index + 1];
+          if (nextChar !== undefined) {
+            source += nextChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            index += 2;
+            continue;
           }
-          source += `[${classContent}]`;
-          index = endIndex;
+          source += '\\\\';
+          index += 1;
           continue;
         }
+
+        if (
+          shellOptions.get('extglob') === true &&
+          ['?', '*', '+', '@', '!'].includes(char) &&
+          text[index + 1] === '('
+        ) {
+          const operator = char as '?' | '*' | '+' | '@' | '!';
+          const parsedExtglob = this.parseExtglobPattern({
+            text,
+            startIndex: index + 2,
+            shellOptions,
+          });
+          if (parsedExtglob !== undefined) {
+            switch (operator) {
+            case '@':
+              source += `(?:${parsedExtglob.source})`;
+              break;
+            case '?':
+              source += `(?:${parsedExtglob.source})?`;
+              break;
+            case '*':
+              source += `(?:${parsedExtglob.source})*`;
+              break;
+            case '+':
+              source += `(?:${parsedExtglob.source})+`;
+              break;
+            case '!':
+              source += `(?:(?!^(?:${parsedExtglob.source})$)[^/]+)`;
+              break;
+            default: {
+              const _ex: never = operator;
+              throw new Error(`Unhandled extglob operator: ${_ex}`);
+            }
+            }
+            index = parsedExtglob.nextIndex;
+            continue;
+          }
+        }
+
+        if (char === '*') {
+          source += '[^/]*';
+          index += 1;
+          continue;
+        }
+
+        if (char === '?') {
+          source += '[^/]';
+          index += 1;
+          continue;
+        }
+
+        if (char === '[') {
+          const endIndex = text.indexOf(']', index + 1);
+          if (endIndex !== -1) {
+            let classContent = text.slice(index + 1, endIndex);
+            if (classContent.startsWith('!')) {
+              classContent = '^' + classContent.slice(1);
+            }
+            source += `[${classContent}]`;
+            index = endIndex + 1;
+            continue;
+          }
+        }
+
+        source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        index += 1;
       }
 
-      source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
+      return {
+        source,
+        nextIndex: index,
+      };
+    };
 
+    const parsed = parsePattern({
+      text: pattern,
+      stopAtPipeOrParen: false,
+    });
+
+    let source = '^';
+    source += parsed.source;
     source += '$';
     return new RegExp(source);
   }
 
+  private parseExtglobPattern({
+    text,
+    startIndex,
+    shellOptions,
+  }: {
+    text: string;
+    startIndex: number;
+    shellOptions: Map<WeshShellOption, boolean>;
+  }): { source: string; nextIndex: number } | undefined {
+    const branches: string[] = [];
+    let branch = '';
+    let index = startIndex;
+
+    while (index < text.length) {
+      const char = text[index];
+      if (char === undefined) {
+        return undefined;
+      }
+
+      if (char === '\\') {
+        const nextChar = text[index + 1];
+        branch += char;
+        if (nextChar !== undefined) {
+          branch += nextChar;
+          index += 2;
+          continue;
+        }
+        index += 1;
+        continue;
+      }
+
+      if (
+        ['?', '*', '+', '@', '!'].includes(char) &&
+        text[index + 1] === '('
+      ) {
+        const nested = this.parseExtglobPattern({
+          text,
+          startIndex: index + 2,
+          shellOptions,
+        });
+        if (nested === undefined) {
+          return undefined;
+        }
+        branch += `${char}(${text.slice(index + 2, nested.nextIndex - 1)})`;
+        index = nested.nextIndex;
+        continue;
+      }
+
+      if (char === '|') {
+        branches.push(branch);
+        branch = '';
+        index += 1;
+        continue;
+      }
+
+      if (char === ')') {
+        branches.push(branch);
+        const compiledBranches = branches.map((value) => this.compileGlobComponent({
+          pattern: value,
+          shellOptions,
+        }).source.slice(1, -1));
+        return {
+          source: compiledBranches.join('|'),
+          nextIndex: index + 1,
+        };
+      }
+
+      branch += char;
+      index += 1;
+    }
+
+    return undefined;
+  }
+
   private isGlobPatternSegment({
     segment,
+    shellOptions,
   }: {
     segment: string;
+    shellOptions: Map<WeshShellOption, boolean>;
   }): boolean {
-    return /(^|[^\\])[[*?]/.test(segment);
+    if (/(^|[^\\])[[*?]/.test(segment)) {
+      return true;
+    }
+
+    return shellOptions.get('extglob') === true && /(^|[^\\])[?*@!+]\(/.test(segment);
   }
 
   private isGlobStarSegment({
@@ -1814,8 +1981,8 @@ usage: alias [name[=value] ...]
     }
 
     const nextBases: string[] = [];
-    const segmentHasGlob = this.isGlobPatternSegment({ segment });
-    const matcher = segmentHasGlob ? this.compileGlobComponent({ pattern: segment }) : undefined;
+    const segmentHasGlob = this.isGlobPatternSegment({ segment, shellOptions });
+    const matcher = segmentHasGlob ? this.compileGlobComponent({ pattern: segment, shellOptions }) : undefined;
     const includeHiddenEntries = this.shouldIncludeHiddenGlobEntry({
       patternSegment: segment,
       shellOptions,
@@ -1928,7 +2095,7 @@ usage: alias [name[=value] ...]
     cwd: string;
     shellOptions: Map<WeshShellOption, boolean>;
   }): Promise<string[]> {
-    if (!this.hasActiveGlob({ field })) {
+    if (!this.hasActiveGlob({ field, shellOptions })) {
       return [field.text];
     }
 
