@@ -20,6 +20,20 @@ function parseCount({
 const headArgvSpec: StandardArgvParserSpec = {
   options: [
     {
+      kind: 'flag',
+      short: 'q',
+      long: 'quiet',
+      effects: [{ key: 'headerMode', value: 'never' }],
+      help: { summary: 'never print headers with file names', category: 'common' },
+    },
+    {
+      kind: 'flag',
+      short: 'v',
+      long: 'verbose',
+      effects: [{ key: 'headerMode', value: 'always' }],
+      help: { summary: 'always print headers with file names', category: 'common' },
+    },
+    {
       kind: 'value',
       short: 'n',
       long: 'lines',
@@ -104,6 +118,12 @@ export const headCommandDefinition: WeshCommandDefinition = {
     const lines = typeof parsed.optionValues.lines === 'number' ? parsed.optionValues.lines : 10;
     const bytes = typeof parsed.optionValues.bytes === 'number' ? parsed.optionValues.bytes : undefined;
     const positional = parsed.positionals;
+    const headerMode = parsed.optionValues.headerMode === 'always'
+      ? 'always'
+      : parsed.optionValues.headerMode === 'never'
+        ? 'never'
+        : 'auto';
+    let hadError = false;
 
     const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       const reader = stream.getReader();
@@ -166,23 +186,35 @@ export const headCommandDefinition: WeshCommandDefinition = {
         stream: handleToStream({ handle: context.stdin }),
       });
     } else {
-      for (const f of positional) {
+      for (const [index, f] of positional.entries()) {
         try {
-          const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-          const handle = await context.files.open({
-            path: fullPath,
-            flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-          });
+          const showHeader = headerMode === 'always' || (headerMode === 'auto' && positional.length > 1);
+          if (showHeader) {
+            if (index > 0) {
+              await textOutput.print({ text: '\n' });
+            }
+            await textOutput.print({ text: `==> ${f === '-' ? 'standard input' : f} <==\n` });
+          }
+
+          const stream = f === '-'
+            ? handleToStream({ handle: context.stdin })
+            : handleToStream({
+              handle: await context.files.open({
+                path: f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`),
+                flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+              })
+            });
           await processStream({
-            stream: handleToStream({ handle }),
+            stream,
           });
         } catch (e: unknown) {
+          hadError = true;
           const message = e instanceof Error ? e.message : String(e);
           await textOutput.error({ text: `head: ${f}: ${message}\n` });
         }
       }
     }
 
-    return { exitCode: 0 };
+    return { exitCode: hadError ? 1 : 0 };
   },
 };

@@ -163,6 +163,37 @@ echo $?`,
     expect(result.exitCode).toBe(1);
   });
 
+  it('continues after a missing source when moving multiple files into a directory', async () => {
+    await writeFile({ path: 'present.txt', data: 'present\n' });
+    await mkdir({ path: 'dest' });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+mv -t dest missing.txt present.txt
+echo $?
+cat dest/present.txt`,
+    });
+
+    expect(stdout.text).toBe('1\npresent\n');
+    expect(stderr.text).toContain('mv: missing.txt:');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports root-relative source and destination paths from /', async () => {
+    await writeFile({ path: 'root-source.txt', data: 'alpha\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+cd /
+mv root-source.txt root-dest.txt
+cat /root-dest.txt`,
+    });
+
+    expect(stdout.text).toBe('alpha\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('prints help with --help', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'mv --help',

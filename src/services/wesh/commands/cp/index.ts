@@ -359,20 +359,28 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         }
       }
 
+      let hadError = false;
+
       for (const sourceOperand of sourceOperands) {
-        const fullSrc = resolvePath({ cwd: context.cwd, path: sourceOperand });
-        const targetPath = await resolveDestinationPath({
-          srcPath: fullSrc,
-          destPath: fullDest,
-          treatDestAsDirectory,
-        });
-        await copyOne({
-          srcPath: fullSrc,
-          destPath: targetPath,
-          isCommandLineArgument: true,
-        });
+        try {
+          const fullSrc = resolvePath({ cwd: context.cwd, path: sourceOperand });
+          const targetPath = await resolveDestinationPath({
+            srcPath: fullSrc,
+            destPath: fullDest,
+            treatDestAsDirectory,
+          });
+          await copyOne({
+            srcPath: fullSrc,
+            destPath: targetPath,
+            isCommandLineArgument: true,
+          });
+        } catch (e: unknown) {
+          hadError = true;
+          const message = e instanceof Error ? e.message : String(e);
+          await text.error({ text: `cp: ${sourceOperand}: ${message}\n` });
+        }
       }
-      return { exitCode: 0 };
+      return { exitCode: hadError ? 1 : 0 };
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       await text.error({ text: `cp: ${sourceOperands[0] ?? ''}: ${message}\n` });

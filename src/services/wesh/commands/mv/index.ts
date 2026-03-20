@@ -167,57 +167,65 @@ export const mvCommandDefinition: WeshCommandDefinition = {
         }
       }
 
+      let hadError = false;
+
       for (const sourceOperand of sourceOperands) {
-        const fullSrc = resolvePath({ cwd: context.cwd, path: sourceOperand });
-        const targetPath = await (async () => {
-          if (treatDestAsDirectory) {
-            return `${fullDest}/${basename({ path: fullSrc })}`;
-          }
-
-          let destinationStat:
-            | Awaited<ReturnType<WeshCommandContext['files']['stat']>>
-            | undefined;
-          try {
-            destinationStat = await context.files.stat({ path: fullDest });
-          } catch {
-            destinationStat = undefined;
-          }
-
-          if (destinationStat === undefined) {
-            return fullDest;
-          }
-
-          switch (destinationStat.type) {
-          case 'directory':
-            if (noTargetDirectory) {
-              throw new Error(`cannot overwrite directory '${destOperand}' with non-directory`);
+        try {
+          const fullSrc = resolvePath({ cwd: context.cwd, path: sourceOperand });
+          const targetPath = await (async () => {
+            if (treatDestAsDirectory) {
+              return `${fullDest}/${basename({ path: fullSrc })}`;
             }
-            return `${fullDest}/${basename({ path: fullSrc })}`;
-          case 'file':
-          case 'fifo':
-          case 'chardev':
-          case 'symlink':
-            return fullDest;
-          default: {
-            const _ex: never = destinationStat.type;
-            throw new Error(`Unhandled destination type: ${_ex}`);
-          }
-          }
-        })();
 
-        if (noClobber) {
-          try {
-            await context.files.lstat({ path: targetPath });
-            continue;
-          } catch {
-            // missing destination is fine
+            let destinationStat:
+              | Awaited<ReturnType<WeshCommandContext['files']['stat']>>
+              | undefined;
+            try {
+              destinationStat = await context.files.stat({ path: fullDest });
+            } catch {
+              destinationStat = undefined;
+            }
+
+            if (destinationStat === undefined) {
+              return fullDest;
+            }
+
+            switch (destinationStat.type) {
+            case 'directory':
+              if (noTargetDirectory) {
+                throw new Error(`cannot overwrite directory '${destOperand}' with non-directory`);
+              }
+              return `${fullDest}/${basename({ path: fullSrc })}`;
+            case 'file':
+            case 'fifo':
+            case 'chardev':
+            case 'symlink':
+              return fullDest;
+            default: {
+              const _ex: never = destinationStat.type;
+              throw new Error(`Unhandled destination type: ${_ex}`);
+            }
+            }
+          })();
+
+          if (noClobber) {
+            try {
+              await context.files.lstat({ path: targetPath });
+              continue;
+            } catch {
+              // missing destination is fine
+            }
           }
+
+          await context.files.rename({ oldPath: fullSrc, newPath: targetPath });
+        } catch (e: unknown) {
+          hadError = true;
+          const message = e instanceof Error ? e.message : String(e);
+          await text.error({ text: `mv: ${sourceOperand}: ${message}\n` });
         }
-
-        await context.files.rename({ oldPath: fullSrc, newPath: targetPath });
       }
 
-      return { exitCode: 0 };
+      return { exitCode: hadError ? 1 : 0 };
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       await text.error({ text: `mv: ${sourceOperands[0] ?? ''}: ${message}\n` });

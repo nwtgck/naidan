@@ -315,6 +315,20 @@ sort -o output.txt input.txt`,
     expect(await readFile({ path: 'output.txt' })).toBe('alpha\nbeta\n');
   });
 
+  it('supports root-relative input and output paths from /', async () => {
+    await writeFile({ path: 'root-input.txt', data: 'beta\nalpha\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cd /; sort /root-input.txt -o root-output.txt',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(await readFile({ path: 'root-output.txt' })).toBe('alpha\nbeta\n');
+  });
+
   it('supports zero-terminated input and output with -z', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

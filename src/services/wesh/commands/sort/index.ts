@@ -50,6 +50,20 @@ interface SortResolvedOptions {
   keySpecs: SortResolvedKeySpec[];
 }
 
+function resolveInputPath({
+  cwd,
+  path,
+}: {
+  cwd: string;
+  path: string;
+}): string {
+  if (path.startsWith('/')) {
+    return path;
+  }
+
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
+
 type SortKeyParseResult = { ok: true; value: SortKeySpec } | { ok: false; message: string };
 type SortResolvedOptionsResult = { ok: true; value: SortResolvedOptions } | { ok: false; message: string };
 
@@ -966,7 +980,7 @@ async function readInputItems({
   }
 
   try {
-    const fullPath = file.startsWith('/') ? file : `${context.cwd}/${file}`;
+    const fullPath = resolveInputPath({ cwd: context.cwd, path: file });
     const bytes = await readFile({ files: context.files, path: fullPath });
     const text = new TextDecoder().decode(bytes);
     return {
@@ -1172,7 +1186,7 @@ export const sortCommandDefinition: WeshCommandDefinition = {
       }
       break;
     default: {
-      const fullPath = options.outputPath.startsWith('/') ? options.outputPath : `${context.cwd}/${options.outputPath}`;
+      const fullPath = resolveInputPath({ cwd: context.cwd, path: options.outputPath });
       await writeFile({
         files: context.files,
         path: fullPath,

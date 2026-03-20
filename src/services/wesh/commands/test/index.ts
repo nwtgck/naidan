@@ -110,7 +110,11 @@ function resolvePath({
   cwd: string;
   path: string;
 }): string {
-  return path.startsWith('/') ? path : `${cwd}/${path}`;
+  if (path.startsWith('/')) {
+    return path;
+  }
+
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
 function truthy({

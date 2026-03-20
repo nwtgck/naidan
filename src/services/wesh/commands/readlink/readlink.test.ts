@@ -16,6 +16,30 @@ describe('wesh readlink', () => {
     await wesh.init();
   });
 
+  async function writeFile({
+    path,
+    data,
+  }: {
+    path: string;
+    data: string;
+  }) {
+    const segments = path.split('/').filter(Boolean);
+    const fileName = segments.pop();
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
+
+    let dir = rootHandle;
+    for (const segment of segments) {
+      dir = await dir.getDirectoryHandle(segment, { create: true });
+    }
+
+    const handle = await dir.getFileHandle(fileName, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(data);
+    await writable.close();
+  }
+
   async function execute({
     script,
   }: {
@@ -62,5 +86,32 @@ describe('wesh readlink', () => {
     expect(stdout.text).toBe('/target.txt');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -f to print the canonical absolute path', async () => {
+    await writeFile({ path: 'target.txt', data: 'target\n' });
+    await wesh.vfs.mkdir({ path: '/dir', recursive: true });
+    await wesh.vfs.symlink({
+      path: '/alias.txt',
+      targetPath: '/dir/../target.txt',
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'readlink -f alias.txt',
+    });
+
+    expect(stdout.text).toBe('/target.txt\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('reports missing targets when canonicalizing existing paths', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'readlink -e missing.txt',
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('readlink: missing.txt:');
+    expect(result.exitCode).toBe(1);
   });
 });

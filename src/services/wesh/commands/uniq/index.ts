@@ -19,6 +19,20 @@ interface UniqComparisonOptions {
   checkChars: number | undefined;
 }
 
+function resolveInputPath({
+  cwd,
+  path,
+}: {
+  cwd: string;
+  path: string;
+}): string {
+  if (path.startsWith('/')) {
+    return path;
+  }
+
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
+
 function parseNonNegativeInteger({
   value,
   label,
@@ -257,7 +271,7 @@ async function writeOutput({
 
   await writeFile({
     files: context.files,
-    path: outputPath,
+    path: resolveInputPath({ cwd: context.cwd, path: outputPath }),
     data: new TextEncoder().encode(data),
   });
 }
@@ -274,7 +288,7 @@ async function readInputText({
   }
 
   try {
-    const fullPath = inputPath.startsWith('/') ? inputPath : `${context.cwd}/${inputPath}`;
+    const fullPath = resolveInputPath({ cwd: context.cwd, path: inputPath });
     const bytes = await readFile({ files: context.files, path: fullPath });
     return { ok: true, value: new TextDecoder().decode(bytes) };
   } catch (error: unknown) {

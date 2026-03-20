@@ -56,11 +56,22 @@ describe('wesh date', () => {
   });
 
   it('supports +FORMAT tokens', async () => {
+    const now = new Date();
+    const localExpected = [
+      now.getFullYear().toString().padStart(4, '0'),
+      (now.getMonth() + 1).toString().padStart(2, '0'),
+      now.getDate().toString().padStart(2, '0'),
+    ].join('-') + '_' + [
+      now.getHours().toString().padStart(2, '0'),
+      now.getMinutes().toString().padStart(2, '0'),
+      now.getSeconds().toString().padStart(2, '0'),
+    ].join(':') + `_${Math.floor(now.getTime() / 1000)}_%`;
+
     const { result, stdout, stderr } = await execute({
       script: 'date +%F_%T_%s_%%',
     });
 
-    expect(stdout.text).toBe('2026-03-20_10:02:03_1773968523_%\n');
+    expect(stdout.text).toBe(`${localExpected}\n`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

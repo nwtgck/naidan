@@ -209,6 +209,27 @@ beta
     expect(await readFileText({ path: 'output.txt' })).toBe('alpha\nbeta\n');
   });
 
+  it('supports root-relative input and output paths from /', async () => {
+    await writeFile({
+      path: 'input.txt',
+      data: `\
+alpha
+alpha
+beta
+`,
+    });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'cd /; uniq input.txt output.txt',
+      stdinText: undefined,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(await readFileText({ path: 'output.txt' })).toBe('alpha\nbeta\n');
+  });
+
   it('supports zero-terminated records with -z', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'uniq -z',

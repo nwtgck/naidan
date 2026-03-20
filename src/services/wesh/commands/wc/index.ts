@@ -18,6 +18,20 @@ interface WcEntry {
   counts: WcCounts;
 }
 
+function resolveInputPath({
+  cwd,
+  path,
+}: {
+  cwd: string;
+  path: string;
+}): string {
+  if (path.startsWith('/')) {
+    return path;
+  }
+
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
+
 const wcArgvSpec: StandardArgvParserSpec = {
   options: [
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
@@ -268,7 +282,7 @@ export const wcCommandDefinition: WeshCommandDefinition = {
       }
 
       try {
-        const fullPath = inputName.startsWith('/') ? inputName : `${context.cwd}/${inputName}`;
+        const fullPath = resolveInputPath({ cwd: context.cwd, path: inputName });
         const handle = await context.files.open({
           path: fullPath,
           flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }

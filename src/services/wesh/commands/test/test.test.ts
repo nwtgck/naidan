@@ -251,6 +251,23 @@ echo $?`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports file predicates from / with relative operands', async () => {
+    await writeFile({ path: 'root.txt', data: 'payload' });
+
+    const { result, stdout, stderr } = await execute({
+      script: `\
+cd /
+test -e root.txt
+echo $?
+test -f root.txt
+echo $?`,
+    });
+
+    expect(stdout.text).toBe('0\n0\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('returns exit status 2 for syntax errors', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\

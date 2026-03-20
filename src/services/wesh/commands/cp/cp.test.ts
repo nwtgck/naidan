@@ -322,4 +322,35 @@ readlink archived.link`,
     expect(copied.stderr.text).toContain('usage: cp');
     expect(copied.result.exitCode).toBe(1);
   });
+
+  it('continues after a missing source when copying multiple files into a directory', async () => {
+    await writeFile({ path: 'present.txt', data: 'present' });
+    await mkdir({ path: 'dest' });
+
+    const copied = await execute({
+      script: `\
+cp -t dest missing.txt present.txt
+echo $?
+cat dest/present.txt`,
+    });
+
+    expect(copied.stdout.text).toBe('1\npresent');
+    expect(copied.stderr.text).toContain('cp: missing.txt:');
+    expect(copied.result.exitCode).toBe(0);
+  });
+
+  it('supports root-relative source and destination paths from /', async () => {
+    await writeFile({ path: 'root-source.txt', data: 'root-data' });
+
+    const copied = await execute({
+      script: `\
+cd /
+cp root-source.txt root-dest.txt
+cat /root-dest.txt`,
+    });
+
+    expect(copied.stdout.text).toBe('root-data');
+    expect(copied.stderr.text).toBe('');
+    expect(copied.result.exitCode).toBe(0);
+  });
 });
