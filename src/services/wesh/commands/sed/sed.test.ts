@@ -175,13 +175,44 @@ describe('wesh sed', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports i and a text commands', async () => {
+    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\ngamma\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: "sed -e '2i\\BEFORE' -e '2a\\AFTER' input.txt",
+    });
+
+    expect(stdout.text).toBe('alpha\nBEFORE\nbeta\nAFTER\ngamma\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports c for line and range replacement', async () => {
+    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\ngamma\ndelta\n' });
+
+    const single = await execute({
+      script: "sed '2c\\MIDDLE' input.txt",
+    });
+    const ranged = await execute({
+      script: "sed '2,3c\\BLOCK' input.txt",
+    });
+
+    expect(single.stdout.text).toBe('alpha\nMIDDLE\ngamma\ndelta\n');
+    expect(single.stderr.text).toBe('');
+    expect(single.result.exitCode).toBe(0);
+
+    expect(ranged.stdout.text).toBe('alpha\nBLOCK\ndelta\n');
+    expect(ranged.stderr.text).toBe('');
+    expect(ranged.result.exitCode).toBe(0);
+  });
+
   it('reports unsupported commands with usage', async () => {
     const { result, stdout, stderr } = await execute({
-      script: "sed 'a\\hello' input.txt",
+      script: "sed 'b label' input.txt",
     });
 
     expect(stdout.text).toBe('');
-    expect(stderr.text).toContain("sed: unsupported sed command 'a'");
+    expect(stderr.text).toContain("sed: unsupported sed command 'b'");
     expect(stderr.text).toContain('usage: sed');
     expect(result.exitCode).toBe(1);
   });

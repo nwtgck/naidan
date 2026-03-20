@@ -189,7 +189,13 @@ export type WeshTrapDisposition =
   | { kind: 'ignore' };
 
 export type WeshResolvedCommand =
-  | { kind: 'builtin'; name: string; meta: WeshCommandMeta }
+  | {
+      kind: 'builtin';
+      name: string;
+      meta: WeshCommandMeta;
+      invocationPath: string | undefined;
+      resolution: 'builtin-name' | 'path-lookup' | 'explicit-path';
+    }
   | { kind: 'not-found'; name: string };
 
 export interface WeshCommandContext {

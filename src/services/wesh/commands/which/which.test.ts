@@ -60,11 +60,16 @@ describe('wesh which', () => {
   it('matches command -v for resolved builtins', async () => {
     const whichResult = await execute({ script: 'which env' });
     const commandResult = await execute({ script: 'command -v env' });
+    const explicitPath = await execute({ script: 'which /bin/env' });
 
     expect(whichResult.stdout.text).toBe('env: builtin command\n');
     expect(commandResult.stdout.text).toBe('env\n');
     expect(whichResult.stderr.text).toBe('');
     expect(commandResult.stderr.text).toBe('');
+
+    expect(explicitPath.stdout.text).toBe('/bin/env\n');
+    expect(explicitPath.stderr.text).toBe('');
+    expect(explicitPath.result.exitCode).toBe(0);
   });
 
   it('treats -- as the end of options', async () => {

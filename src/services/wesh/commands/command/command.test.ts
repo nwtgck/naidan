@@ -38,6 +38,7 @@ describe('wesh command', () => {
     const help = await execute({ script: 'command --help' });
     const verbose = await execute({ script: 'command -v env missing-command' });
     const described = await execute({ script: 'command -V env missing-command' });
+    const pathVerbose = await execute({ script: 'command -v /bin/env' });
 
     expect(help.stdout.text).toContain('Run command with arguments, ignoring any function or alias');
     expect(help.stdout.text).toContain('usage: command [-vV] command [argument...]');
@@ -52,15 +53,24 @@ describe('wesh command', () => {
     expect(described.stdout.text).toBe('env is a shell builtin\n');
     expect(described.stderr.text).toBe('');
     expect(described.result.exitCode).toBe(1);
+
+    expect(pathVerbose.stdout.text).toBe('/bin/env\n');
+    expect(pathVerbose.stderr.text).toBe('');
+    expect(pathVerbose.result.exitCode).toBe(0);
   });
 
   it('executes the resolved builtin command and reports unknown commands', async () => {
     const executed = await execute({ script: 'command echo hello world' });
+    const executedByPath = await execute({ script: 'command /bin/echo hello world' });
     const missing = await execute({ script: 'command missing-command' });
 
     expect(executed.stdout.text).toBe('hello world\n');
     expect(executed.stderr.text).toBe('');
     expect(executed.result.exitCode).toBe(0);
+
+    expect(executedByPath.stdout.text).toBe('hello world\n');
+    expect(executedByPath.stderr.text).toBe('');
+    expect(executedByPath.result.exitCode).toBe(0);
 
     expect(missing.stdout.text).toBe('');
     expect(missing.stderr.text).toContain('command: missing-command not found');

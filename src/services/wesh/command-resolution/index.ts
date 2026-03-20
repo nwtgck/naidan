@@ -21,10 +21,33 @@ export function formatResolvedCommand({
   case 'builtin':
     switch (mode) {
     case 'command-v':
-      return resolved.name;
+      switch (resolved.resolution) {
+      case 'builtin-name':
+        return resolved.name;
+      case 'path-lookup':
+      case 'explicit-path':
+        return resolved.invocationPath ?? resolved.name;
+      default: {
+        const _ex: never = resolved.resolution;
+        throw new Error(`Unhandled builtin resolution: ${_ex}`);
+      }
+      }
     case 'command-V':
-      return `${resolved.name} is a shell builtin`;
+      switch (resolved.resolution) {
+      case 'builtin-name':
+        return `${resolved.name} is a shell builtin`;
+      case 'path-lookup':
+      case 'explicit-path':
+        return `${resolved.invocationPath ?? resolved.name} is a shell builtin`;
+      default: {
+        const _ex: never = resolved.resolution;
+        throw new Error(`Unhandled builtin resolution: ${_ex}`);
+      }
+      }
     case 'which':
+      if (resolved.invocationPath !== undefined) {
+        return resolved.invocationPath;
+      }
       return `${resolved.name}: builtin command`;
     default: {
       const _ex: never = mode;

@@ -1,5 +1,35 @@
 import type { WeshCommandContext } from '@/services/wesh/types';
 
+export function normalizePath({
+  cwd,
+  path,
+}: {
+  cwd: string;
+  path: string;
+}): string {
+  const joined = path.startsWith('/')
+    ? path
+    : cwd === '/'
+      ? `/${path}`
+      : `${cwd}/${path}`;
+
+  const segments = joined.split('/');
+  const normalizedSegments: string[] = [];
+
+  for (const segment of segments) {
+    if (segment.length === 0 || segment === '.') {
+      continue;
+    }
+    if (segment === '..') {
+      normalizedSegments.pop();
+      continue;
+    }
+    normalizedSegments.push(segment);
+  }
+
+  return normalizedSegments.length === 0 ? '/' : `/${normalizedSegments.join('/')}`;
+}
+
 export function resolvePath({
   cwd,
   path,
@@ -7,11 +37,7 @@ export function resolvePath({
   cwd: string;
   path: string;
 }): string {
-  if (path.startsWith('/')) {
-    return path;
-  }
-
-  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+  return normalizePath({ cwd, path });
 }
 
 export async function canonicalizePathAllowingMissingLeaf({

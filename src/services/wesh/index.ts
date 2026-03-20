@@ -17,6 +17,7 @@ import { WeshVFS } from './vfs';
 import { WeshKernel } from './kernel';
 import { parseCommandLine } from './parser';
 import { createTextHelpers } from './utils/io';
+import { normalizePath, resolvePath } from './path';
 
 import { builtinCommands } from './commands';
 import { helpCommandDefinition } from './commands/help';
@@ -167,6 +168,89 @@ export class Wesh {
       fn,
       meta: { name, description: 'Built-in command', usage: name }
     });
+  }
+
+  private resolveBuiltinCommand({
+    name,
+    cwd,
+    env,
+  }: {
+    name: string;
+    cwd: string;
+    env: Map<string, string>;
+  }): {
+    definition: WeshCommandDefinition;
+    resolved: {
+      kind: 'builtin';
+      name: string;
+      meta: WeshCommandDefinition['meta'];
+      invocationPath: string | undefined;
+      resolution: 'builtin-name' | 'path-lookup' | 'explicit-path';
+    };
+  } | undefined {
+    const direct = this.commands.get(name);
+    if (direct !== undefined) {
+      return {
+        definition: direct,
+        resolved: {
+          kind: 'builtin',
+          name,
+          meta: direct.meta,
+          invocationPath: undefined,
+          resolution: 'builtin-name',
+        },
+      };
+    }
+
+    if (name.includes('/')) {
+      const normalizedPath = normalizePath({
+        cwd,
+        path: name,
+      });
+      const basename = normalizedPath.slice(normalizedPath.lastIndexOf('/') + 1);
+      const definition = this.commands.get(basename);
+      if (definition !== undefined) {
+        return {
+          definition,
+          resolved: {
+            kind: 'builtin',
+            name: basename,
+            meta: definition.meta,
+            invocationPath: normalizedPath,
+            resolution: 'explicit-path',
+          },
+        };
+      }
+
+      return undefined;
+    }
+
+    const pathValue = env.get('PATH') ?? '';
+    const pathEntries = pathValue.split(':').filter((entry) => entry.length > 0);
+    for (const entry of pathEntries) {
+      const candidate = resolvePath({
+        cwd,
+        path: entry === '' ? '.' : entry,
+      });
+      const invocationPath = candidate === '/'
+        ? `/${name}`
+        : `${candidate}/${name}`;
+      const definition = this.commands.get(name);
+      if (definition !== undefined) {
+        return {
+          definition,
+          resolved: {
+            kind: 'builtin',
+            name,
+            meta: definition.meta,
+            invocationPath,
+            resolution: 'path-lookup',
+          },
+        };
+      }
+    }
+
+    return undefined;
   }
 
   private parseWordParts({
@@ -1539,11 +1623,16 @@ export class Wesh {
       cwd: environment.cwd,
       mode: 'assignment',
     });
-    const definition = this.commands.get(cmdName);
+    const resolvedCommand = this.resolveBuiltinCommand({
+      name: cmdName,
+      cwd: environment.cwd,
+      env: environment.env,
+    });
 
-    if (!definition) {
+    if (resolvedCommand === undefined) {
       throw new Error(`Command not found: ${cmdName}`);
     }
+    const definition = resolvedCommand.definition;
 
     const currentEnv = new Map(environment.env);
     for (const assign of node.assignments) {
@@ -1577,7 +1666,7 @@ export class Wesh {
     }
 
     const { pid, process: proc } = await this.kernel.spawn({
-      image: cmdName,
+      image: resolvedCommand.resolved.invocationPath ?? cmdName,
       args: expandedArgs,
       env: currentEnv,
       cwd: environment.cwd,
@@ -1625,13 +1714,13 @@ export class Wesh {
       getWeshCommandMeta: ({ name }: { name: string }) => this.commands.get(name)?.meta,
       getCommandNames: () => Array.from(this.commands.keys()),
       resolveCommand: ({ name }) => {
-        const meta = this.commands.get(name)?.meta;
-        if (meta !== undefined) {
-          return {
-            kind: 'builtin',
-            name,
-            meta,
-          };
+        const resolved = this.resolveBuiltinCommand({
+          name,
+          cwd: environment.cwd,
+          env: environment.env,
+        });
+        if (resolved !== undefined) {
+          return resolved.resolved;
         }
 
         return {

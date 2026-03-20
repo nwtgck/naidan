@@ -94,4 +94,12 @@ describe('wesh core command parsing', () => {
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('resolves builtin commands through explicit paths', async () => {
+    const { result, stdout, stderr } = await execute({ script: '/bin/echo hello' });
+
+    expect(stdout.text).toBe('hello\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });

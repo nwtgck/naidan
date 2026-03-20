@@ -11,6 +11,9 @@ type SedAddress =
 type SedCommand =
   | { kind: 'substitute'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; regex: RegExp; replacement: string; global: boolean; print: boolean }
   | { kind: 'translate'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; source: string; target: string }
+  | { kind: 'append'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
+  | { kind: 'insert'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
+  | { kind: 'change'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
   | { kind: 'print'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined }
   | { kind: 'delete'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined }
   | { kind: 'quit'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined };
@@ -267,6 +270,60 @@ function parseTranslateCommand({
   };
 }
 
+function parseTextCommand({
+  script,
+  index,
+  label,
+  address,
+  rangeEnd,
+}: {
+  script: string;
+  index: number;
+  label: 'append' | 'insert' | 'change';
+  address: SedAddress | undefined;
+  rangeEnd: SedAddress | undefined;
+}): { ok: true; command: SedCommand; nextIndex: number } | { ok: false; message: string } {
+  let cursor = index + 1;
+  if (script[cursor] === '\\') {
+    cursor += 1;
+  }
+
+  let text = '';
+  while (cursor < script.length) {
+    const char = script[cursor];
+    if (char === undefined || char === ';' || char === '\n') {
+      break;
+    }
+    text += char;
+    cursor += 1;
+  }
+
+  switch (label) {
+  case 'append':
+    return {
+      ok: true,
+      command: { kind: 'append', address, rangeEnd, text },
+      nextIndex: cursor,
+    };
+  case 'insert':
+    return {
+      ok: true,
+      command: { kind: 'insert', address, rangeEnd, text },
+      nextIndex: cursor,
+    };
+  case 'change':
+    return {
+      ok: true,
+      command: { kind: 'change', address, rangeEnd, text },
+      nextIndex: cursor,
+    };
+  default: {
+    const _ex: never = label;
+    throw new Error(`Unhandled sed text command: ${_ex}`);
+  }
+  }
+}
+
 function skipSeparators({
   script,
   index,
@@ -345,6 +402,45 @@ function parseSedScript({
       const parsed = parseTranslateCommand({
         script,
         index,
+        address,
+        rangeEnd,
+      });
+      if (!parsed.ok) return parsed;
+      commands.push(parsed.command);
+      index = parsed.nextIndex;
+      break;
+    }
+    case 'a': {
+      const parsed = parseTextCommand({
+        script,
+        index,
+        label: 'append',
+        address,
+        rangeEnd,
+      });
+      if (!parsed.ok) return parsed;
+      commands.push(parsed.command);
+      index = parsed.nextIndex;
+      break;
+    }
+    case 'i': {
+      const parsed = parseTextCommand({
+        script,
+        index,
+        label: 'insert',
+        address,
+        rangeEnd,
+      });
+      if (!parsed.ok) return parsed;
+      commands.push(parsed.command);
+      index = parsed.nextIndex;
+      break;
+    }
+    case 'c': {
+      const parsed = parseTextCommand({
+        script,
+        index,
+        label: 'change',
         address,
         rangeEnd,
       });
@@ -491,8 +587,12 @@ function buildSedOutput({
     let deleted = false;
     let quitAfterLine = false;
     const explicitPrints: string[] = [];
+    const prependedPrints: string[] = [];
+    const appendedPrints: string[] = [];
+    let changedReplacement: string | undefined;
 
     for (const runtimeCommand of runtimeCommands) {
+      const wasInRange = runtimeCommand.inRange;
       if (!commandApplies({
         runtimeCommand,
         lineNumber: index + 1,
@@ -526,6 +626,18 @@ function buildSedOutput({
         patternSpace = translated;
         break;
       }
+      case 'append':
+        appendedPrints.push(runtimeCommand.command.text);
+        break;
+      case 'insert':
+        prependedPrints.push(runtimeCommand.command.text);
+        break;
+      case 'change':
+        if (runtimeCommand.command.rangeEnd === undefined || !wasInRange) {
+          changedReplacement = runtimeCommand.command.text;
+        }
+        deleted = true;
+        break;
       case 'print':
         explicitPrints.push(patternSpace);
         break;
@@ -544,12 +656,22 @@ function buildSedOutput({
       if (deleted) break;
     }
 
+    for (const printed of prependedPrints) {
+      outputParts.push(current.hadNewline ? `${printed}\n` : printed);
+    }
+
     for (const printed of explicitPrints) {
       outputParts.push(current.hadNewline ? `${printed}\n` : printed);
     }
 
-    if (!deleted && !quiet) {
+    if (changedReplacement !== undefined) {
+      outputParts.push(current.hadNewline ? `${changedReplacement}\n` : changedReplacement);
+    } else if (!deleted && !quiet) {
       outputParts.push(current.hadNewline ? `${patternSpace}\n` : patternSpace);
+    }
+
+    for (const printed of appendedPrints) {
+      outputParts.push(current.hadNewline ? `${printed}\n` : printed);
     }
 
     if (quitAfterLine) {
