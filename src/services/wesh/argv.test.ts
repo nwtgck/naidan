@@ -43,6 +43,43 @@ describe('wesh argv', () => {
       label: 'value',
     });
     expect(parsed.positionals).toEqual(['file.txt']);
+    expect(parsed.occurrences).toEqual([
+      { kind: 'flag', option: '-a', effects: [{ key: 'all', value: true }] },
+      { kind: 'flag', option: '-b', effects: [{ key: 'binary', value: true }] },
+      { kind: 'value', option: '-n', key: 'number', value: 10 },
+      { kind: 'value', option: '--label', key: 'label', value: 'value' },
+    ]);
+  });
+
+  it('preserves repeated value option occurrences in order', () => {
+    const parsed = parseStandardArgv({
+      args: ['-e', 'alpha', '--regexp=beta', '-e', 'gamma'],
+      spec: {
+        options: [
+          {
+            kind: 'value',
+            short: 'e',
+            long: 'regexp',
+            key: 'regexp',
+            valueName: 'pattern',
+            allowAttachedValue: true,
+            parseValue: undefined,
+          },
+        ],
+        allowShortFlagBundles: true,
+        stopAtDoubleDash: true,
+        treatSingleDashAsPositional: false,
+        specialTokenParsers: [],
+      },
+    });
+
+    expect(parsed.diagnostics).toEqual([]);
+    expect(parsed.optionValues.regexp).toBe('gamma');
+    expect(parsed.occurrences).toEqual([
+      { kind: 'value', option: '-e', key: 'regexp', value: 'alpha' },
+      { kind: 'value', option: '--regexp', key: 'regexp', value: 'beta' },
+      { kind: 'value', option: '-e', key: 'regexp', value: 'gamma' },
+    ]);
   });
 
   it('supports nested subcommands with per-command parsing', () => {

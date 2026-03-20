@@ -34,6 +34,7 @@ export interface ArgvSpecialParseResult {
   kind: 'matched';
   consumeCount: number;
   effects: ArgvOptionEffect[];
+  occurrences?: ArgvOptionOccurrence[];
 }
 
 export type ArgvSpecialTokenParser = (options: {
@@ -53,7 +54,32 @@ export interface ParsedStandardArgv {
   optionValues: Record<string, ArgvValue>;
   positionals: string[];
   diagnostics: ArgvDiagnostic[];
+  occurrences: ArgvOptionOccurrence[];
 }
+
+export interface ArgvFlagOptionOccurrence {
+  kind: 'flag';
+  option: string;
+  effects: ArgvOptionEffect[];
+}
+
+export interface ArgvValueOptionOccurrence {
+  kind: 'value';
+  option: string;
+  key: string;
+  value: ArgvValue;
+}
+
+export interface ArgvSpecialOptionOccurrence {
+  kind: 'special';
+  option: string;
+  effects: ArgvOptionEffect[];
+}
+
+export type ArgvOptionOccurrence =
+  | ArgvFlagOptionOccurrence
+  | ArgvValueOptionOccurrence
+  | ArgvSpecialOptionOccurrence;
 
 export interface SubcommandArgvParserSpec {
   name: string;

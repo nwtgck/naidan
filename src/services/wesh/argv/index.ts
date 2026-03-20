@@ -5,6 +5,7 @@ export { parseSubcommandArgv } from './subcommand-parser';
 export type {
   ArgvDiagnostic,
   ArgvFlagOptionSpec,
+  ArgvOptionOccurrence,
   ArgvOptionEffect,
   ArgvOptionSpec,
   ArgvSpecialParseResult,

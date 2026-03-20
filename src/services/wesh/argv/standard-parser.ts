@@ -1,6 +1,7 @@
 import { ArgvScanner } from './scanner';
 import type {
   ArgvDiagnostic,
+  ArgvOptionOccurrence,
   ArgvOptionEffect,
   ArgvOptionSpec,
   ParsedStandardArgv,
@@ -69,6 +70,7 @@ export function parseStandardArgv({
   const optionValues: Record<string, boolean | string | number> = {};
   const positionals: string[] = [];
   const diagnostics: ArgvDiagnostic[] = [];
+  const occurrences: ArgvOptionOccurrence[] = [];
   const shortOptions = new Map<string, ArgvOptionSpec>();
   const longOptions = new Map<string, ArgvOptionSpec>();
 
@@ -100,6 +102,9 @@ export function parseStandardArgv({
         if (result === undefined) continue;
 
         applyEffects({ optionValues, effects: result.effects });
+        if (result.occurrences !== undefined) {
+          occurrences.push(...result.occurrences);
+        }
         scanner.consumeMany({ count: result.consumeCount });
         handledSpecial = true;
         break;
@@ -131,6 +136,11 @@ export function parseStandardArgv({
       switch (option.kind) {
       case 'flag':
         applyEffects({ optionValues, effects: option.effects });
+        occurrences.push({
+          kind: 'flag',
+          option: `--${key}`,
+          effects: option.effects,
+        });
         continue;
       case 'value': {
         const value = inlineValue ?? scanner.next();
@@ -149,6 +159,12 @@ export function parseStandardArgv({
         }
 
         optionValues[option.key] = parsedValue.value;
+        occurrences.push({
+          kind: 'value',
+          option: `--${key}`,
+          key: option.key,
+          value: parsedValue.value,
+        });
         continue;
       }
       default: {
@@ -187,6 +203,11 @@ export function parseStandardArgv({
         switch (option.kind) {
         case 'flag':
           applyEffects({ optionValues, effects: option.effects });
+          occurrences.push({
+            kind: 'flag',
+            option: `-${short}`,
+            effects: option.effects,
+          });
           if (!spec.allowShortFlagBundles && index < shortBody.length - 1) {
             positionals.push(`-${shortBody.slice(index + 1)}`);
             break shortOptionLoop;
@@ -214,6 +235,12 @@ export function parseStandardArgv({
           }
 
           optionValues[option.key] = parsedValue.value;
+          occurrences.push({
+            kind: 'value',
+            option: `-${short}`,
+            key: option.key,
+            value: parsedValue.value,
+          });
           break shortOptionLoop;
         }
         default: {
@@ -229,5 +256,5 @@ export function parseStandardArgv({
     scanner.next();
   }
 
-  return { optionValues, positionals, diagnostics };
+  return { optionValues, positionals, diagnostics, occurrences };
 }
