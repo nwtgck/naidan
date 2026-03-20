@@ -1,4 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { parseFlags } from '@/services/wesh/utils/args';
 import { readFile, writeFile } from '@/services/wesh/utils/fs';
 
@@ -17,7 +18,11 @@ export const gunzipCommandDefinition: WeshCommandDefinition = {
 
     const text = context.text();
     if (positional.length === 0) {
-      await text.error({ text: 'gunzip: missing file operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'gunzip',
+        message: 'gunzip: missing file operand',
+      });
       return { exitCode: 1 };
     }
 

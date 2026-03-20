@@ -1,4 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { parseFlags } from '@/services/wesh/utils/args';
 import { exists, writeFile } from '@/services/wesh/utils/fs';
 
@@ -16,8 +17,11 @@ export const touchCommandDefinition: WeshCommandDefinition = {
     });
 
     if (positional.length === 0) {
-      const text = context.text();
-      await text.error({ text: 'touch: missing file operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'touch',
+        message: 'touch: missing file operand',
+      });
       return { exitCode: 1 };
     }
 

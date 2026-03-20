@@ -1,4 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { parseFlags } from '@/services/wesh/utils/args';
 
 export const rmCommandDefinition: WeshCommandDefinition = {
@@ -16,7 +17,11 @@ export const rmCommandDefinition: WeshCommandDefinition = {
 
     const text = context.text();
     if (positional.length === 0) {
-      await text.error({ text: 'rm: missing operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'rm',
+        message: 'rm: missing operand',
+      });
       return { exitCode: 1 };
     }
 

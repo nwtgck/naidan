@@ -1,4 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { parseFlags } from '@/services/wesh/utils/args';
 
 export const mkdirCommandDefinition: WeshCommandDefinition = {
@@ -15,8 +16,11 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
     });
 
     if (positional.length === 0) {
-      const text = context.text();
-      await text.error({ text: 'mkdir: missing operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'mkdir',
+        message: 'mkdir: missing operand',
+      });
       return { exitCode: 1 };
     }
 

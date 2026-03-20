@@ -39,6 +39,7 @@ import { execCommandDefinition } from './exec';
 import { readCommandDefinition } from './read';
 import { lnCommandDefinition } from './ln';
 import { readlinkCommandDefinition } from './readlink';
+import { leftBracketCommandDefinition, testCommandDefinition } from './test';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -81,4 +82,6 @@ export const builtinCommands: WeshCommandDefinition[] = [
   readCommandDefinition,
   lnCommandDefinition,
   readlinkCommandDefinition,
+  testCommandDefinition,
+  leftBracketCommandDefinition,
 ];

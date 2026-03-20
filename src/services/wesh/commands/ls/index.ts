@@ -6,6 +6,7 @@ import type {
   WeshStat,
 } from '@/services/wesh/types';
 import { parseStandardArgv } from '@/services/wesh/argv';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 type LsSymlinkMode = 'logical' | 'command-line' | 'physical';
 
@@ -39,7 +40,11 @@ export const lsCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
-      await text.error({ text: `ls: ${diagnostic.message}\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'ls',
+        message: `ls: ${diagnostic.message}`,
+      });
       return { exitCode: 1 };
     }
 

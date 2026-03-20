@@ -1,4 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { parseFlags } from '@/services/wesh/utils/args';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
@@ -16,13 +17,21 @@ export const grepCommandDefinition: WeshCommandDefinition = {
     });
 
     if (unknown.length > 0) {
-      await context.text().error({ text: `grep: invalid option -- '${unknown[0]}'\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'grep',
+        message: `grep: invalid option -- '${unknown[0]}'`,
+      });
       return { exitCode: 2 };
     }
 
     const text = context.text();
     if (positional.length === 0) {
-      await text.error({ text: 'grep: missing pattern operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'grep',
+        message: 'grep: missing pattern operand',
+      });
       return { exitCode: 1 };
     }
 

@@ -1,4 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 export const mvCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -9,7 +10,11 @@ export const mvCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const text = context.text();
     if (context.args.length < 2) {
-      await text.error({ text: 'mv: missing file operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'mv',
+        message: 'mv: missing file operand',
+      });
       return { exitCode: 1 };
     }
 

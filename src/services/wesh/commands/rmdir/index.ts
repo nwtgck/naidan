@@ -1,4 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 export const rmdirCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -9,7 +10,11 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
     const text = context.text();
     if (context.args.length === 0) {
-      await text.error({ text: 'rmdir: missing operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'rmdir',
+        message: 'rmdir: missing operand',
+      });
       return { exitCode: 1 };
     }
 

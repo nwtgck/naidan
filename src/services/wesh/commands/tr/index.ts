@@ -1,4 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { parseFlags } from '@/services/wesh/utils/args';
 
 export const trCommandDefinition: WeshCommandDefinition = {
@@ -16,7 +17,11 @@ export const trCommandDefinition: WeshCommandDefinition = {
 
     const text = context.text();
     if (positional.length < 1) {
-      await text.error({ text: 'tr: missing operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'tr',
+        message: 'tr: missing operand',
+      });
       return { exitCode: 1 };
     }
 

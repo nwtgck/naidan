@@ -1,3 +1,4 @@
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 
 export const mkfifoCommandDefinition: WeshCommandDefinition = {
@@ -11,7 +12,11 @@ export const mkfifoCommandDefinition: WeshCommandDefinition = {
     const text = context.text();
 
     if (paths.length === 0) {
-      await text.error({ text: "mkfifo: missing operand\n" });
+      await writeCommandUsageError({
+        context,
+        command: 'mkfifo',
+        message: 'mkfifo: missing operand',
+      });
       return { exitCode: 1 };
     }
 

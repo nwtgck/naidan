@@ -1,4 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { parseFlags } from '@/services/wesh/utils/args';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
@@ -18,7 +19,11 @@ export const cutCommandDefinition: WeshCommandDefinition = {
     });
 
     if (unknown.length > 0) {
-      await context.text().error({ text: `cut: invalid option -- '${unknown[0]}'\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'cut',
+        message: `cut: invalid option -- '${unknown[0]}'`,
+      });
       return { exitCode: 1 };
     }
 
@@ -47,7 +52,11 @@ export const cutCommandDefinition: WeshCommandDefinition = {
     const listStr = (flags.b ?? flags.c ?? flags.f) as string | undefined;
 
     if (!mode) {
-      await text.error({ text: 'cut: must specify one of -b, -c, or -f\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'cut',
+        message: 'cut: must specify one of -b, -c, or -f',
+      });
       return { exitCode: 1 };
     }
 

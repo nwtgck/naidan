@@ -868,6 +868,7 @@ export class Wesh {
     stderr: WeshFileHandle
   }): Promise<WeshCommandResult> {
     const { node, state, stdin, stdout, stderr } = options;
+    let result: WeshCommandResult;
 
     switch (node.kind) {
     case 'list': {
@@ -933,14 +934,19 @@ export class Wesh {
         }
 
       }
-      return lastResult;
+      result = lastResult;
+      break;
     }
 
-    case 'pipeline':
-      return this.executePipeline({ ...options, node: node as WeshPipelineNode });
+    case 'pipeline': {
+      result = await this.executePipeline({ ...options, node: node as WeshPipelineNode });
+      break;
+    }
 
-    case 'command':
-      return this.executeCommand({ ...options, node: node as WeshCommandNode });
+    case 'command': {
+      result = await this.executeCommand({ ...options, node: node as WeshCommandNode });
+      break;
+    }
 
     case 'subshell': {
       const subshellState: WeshShellState = {
@@ -948,11 +954,12 @@ export class Wesh {
         cwd: state.cwd,
         fds: new Map(state.fds),
       };
-      return this.executeNode({
+      result = await this.executeNode({
         node: node.list,
         state: subshellState,
         stdin, stdout, stderr
       });
+      break;
     }
 
     case 'if': {
@@ -961,17 +968,19 @@ export class Wesh {
         state, stdin, stdout, stderr
       });
       if (conditionResult.exitCode === 0) {
-        return this.executeNode({
+        result = await this.executeNode({
           node: node.thenBody,
           state, stdin, stdout, stderr
         });
       } else if (node.elseBody) {
-        return this.executeNode({
+        result = await this.executeNode({
           node: node.elseBody,
           state, stdin, stdout, stderr
         });
+      } else {
+        result = { exitCode: 0 };
       }
-      return { exitCode: 0 };
+      break;
     }
 
     case 'for': {
@@ -994,7 +1003,8 @@ export class Wesh {
           state, stdin, stdout, stderr
         });
       }
-      return lastForRes;
+      result = lastForRes;
+      break;
     }
 
     case 'assignment':
@@ -1006,8 +1016,16 @@ export class Wesh {
           mode: 'assignment',
         }));
       }
-      return { exitCode: 0 };
+      result = { exitCode: 0 };
+      break;
+    default: {
+      const _ex: never = node;
+      throw new Error(`Unhandled AST node kind: ${JSON.stringify(_ex)}`);
     }
+    }
+
+    state.env.set('?', result.exitCode.toString());
+    return result;
   }
 
   private async executePipeline(options: {
@@ -1055,11 +1073,7 @@ export class Wesh {
     }
 
     const results = await Promise.all(promises);
-    const lastResult = results[results.length - 1]!;
-
-    state.env.set('?', lastResult.exitCode.toString());
-
-    return lastResult;
+    return results[results.length - 1]!;
   }
 
   private async executeCommand(options: {

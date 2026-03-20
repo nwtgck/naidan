@@ -1,4 +1,5 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { parseFlags } from '@/services/wesh/utils/args';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
@@ -16,13 +17,21 @@ export const sedCommandDefinition: WeshCommandDefinition = {
     });
 
     if (unknown.length > 0) {
-      await context.text().error({ text: `sed: invalid option -- '${unknown[0]}'\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'sed',
+        message: `sed: invalid option -- '${unknown[0]}'`,
+      });
       return { exitCode: 2 };
     }
 
     const text = context.text();
     if (positional.length === 0) {
-      await text.error({ text: 'sed: missing expression\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'sed',
+        message: 'sed: missing expression',
+      });
       return { exitCode: 1 };
     }
 
@@ -32,7 +41,11 @@ export const sedCommandDefinition: WeshCommandDefinition = {
     // Basic sed command parsing (only supports s/regex/replacement/g)
     const match = expression.match(/^s([|/])((?:(?=(\\?))\3.)*?)\1((?:(?=(\\?))\5.)*?)\1([g]?)$/);
     if (!match) {
-      await text.error({ text: `sed: invalid expression '${expression}'\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'sed',
+        message: `sed: invalid expression '${expression}'`,
+      });
       return { exitCode: 1 };
     }
 

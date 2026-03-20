@@ -1,5 +1,6 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv } from '@/services/wesh/argv';
+import { writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { handleToStream, streamToHandle } from '@/services/wesh/utils/fs';
 
 type CpSymlinkMode = 'physical' | 'logical' | 'command-line';
@@ -62,7 +63,11 @@ export const cpCommandDefinition: WeshCommandDefinition = {
 
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
-      await text.error({ text: `cp: ${diagnostic.message}\n` });
+      await writeCommandUsageError({
+        context,
+        command: 'cp',
+        message: `cp: ${diagnostic.message}`,
+      });
       return { exitCode: 1 };
     }
 
@@ -71,7 +76,11 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       : undefined;
 
     if (parsed.positionals.length < (targetDirectory === undefined ? 2 : 1)) {
-      await text.error({ text: 'cp: missing file operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'cp',
+        message: 'cp: missing file operand',
+      });
       return { exitCode: 1 };
     }
 
@@ -92,12 +101,20 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       : parsed.positionals.slice();
     const destOperand = targetDirectory ?? parsed.positionals[parsed.positionals.length - 1];
     if (destOperand === undefined) {
-      await text.error({ text: 'cp: missing destination file operand\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'cp',
+        message: 'cp: missing destination file operand',
+      });
       return { exitCode: 1 };
     }
 
     if (noTargetDirectory && sourceOperands.length > 1) {
-      await text.error({ text: 'cp: extra operand with -T\n' });
+      await writeCommandUsageError({
+        context,
+        command: 'cp',
+        message: 'cp: extra operand with -T',
+      });
       return { exitCode: 1 };
     }
 
