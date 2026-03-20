@@ -25,6 +25,75 @@ const readArgvSpec: StandardArgvParserSpec = {
   specialTokenParsers: [],
 };
 
+function isIfsWhitespace({
+  char,
+}: {
+  char: string;
+}): boolean {
+  return char === ' ' || char === '\t' || char === '\n';
+}
+
+function splitReadFields({
+  line,
+  ifs,
+}: {
+  line: string;
+  ifs: string;
+}): string[] {
+  if (ifs.length === 0) {
+    return [line];
+  }
+
+  const ifsCharacters = new Set(ifs.split(''));
+  const whitespaceDelimiters = new Set(ifs.split('').filter((char) => isIfsWhitespace({ char })));
+  const nonWhitespaceDelimiters = new Set(ifs.split('').filter((char) => !isIfsWhitespace({ char })));
+
+  let index = 0;
+  while (index < line.length && whitespaceDelimiters.has(line[index] ?? '')) {
+    index += 1;
+  }
+
+  const fields: string[] = [];
+  let current = '';
+
+  while (index < line.length) {
+    const char = line[index];
+    if (char === undefined) {
+      break;
+    }
+
+    if (!ifsCharacters.has(char)) {
+      current += char;
+      index += 1;
+      continue;
+    }
+
+    if (whitespaceDelimiters.has(char)) {
+      if (current.length > 0) {
+        fields.push(current);
+        current = '';
+      }
+      while (index < line.length && whitespaceDelimiters.has(line[index] ?? '')) {
+        index += 1;
+      }
+      continue;
+    }
+
+    fields.push(current);
+    current = '';
+    index += 1;
+    while (index < line.length && whitespaceDelimiters.has(line[index] ?? '')) {
+      index += 1;
+    }
+  }
+
+  if (current.length > 0 || fields.length === 0) {
+    fields.push(current);
+  }
+
+  return fields;
+}
+
 export const readCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'read',
@@ -61,6 +130,7 @@ export const readCommandDefinition: WeshCommandDefinition = {
     const fd = typeof fdValue === 'number' ? fdValue : 0;
     const rawMode = parsed.optionValues.rawMode === true;
     const variableNames = parsed.positionals;
+    const ifs = context.env.get('IFS') ?? ' \t\n';
 
     const inputHandle = context.getFileDescriptor({ fd });
     if (inputHandle === undefined) {
@@ -110,7 +180,18 @@ export const readCommandDefinition: WeshCommandDefinition = {
     }
 
     const names = variableNames.length > 0 ? variableNames : ['REPLY'];
-    const fields = line.trim().length === 0 ? [''] : line.trim().split(/\s+/);
+    if (variableNames.length === 0) {
+      context.setEnv({
+        key: 'REPLY',
+        value: line,
+      });
+      return { exitCode: didRead ? 0 : 1 };
+    }
+
+    const fields = splitReadFields({
+      line,
+      ifs,
+    });
 
     for (let index = 0; index < names.length; index++) {
       const name = names[index];
@@ -121,7 +202,7 @@ export const readCommandDefinition: WeshCommandDefinition = {
       if (index === names.length - 1) {
         context.setEnv({
           key: name,
-          value: fields.slice(index).join(' '),
+          value: fields.slice(index).join(ifs.includes(' ') ? ' ' : ''),
         });
         continue;
       }
