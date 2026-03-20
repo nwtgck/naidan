@@ -59,6 +59,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
 
     const recursive = parsed.optionValues.recursive === true;
     const force = parsed.optionValues.force === true;
+    let exitCode = 0;
 
     const removeRecursive = async (path: string) => {
       const st = await context.files.lstat({ path });
@@ -89,16 +90,17 @@ export const rmCommandDefinition: WeshCommandDefinition = {
 
     for (const p of parsed.positionals) {
       try {
-        const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
+        const fullPath = p.startsWith('/') ? p : (context.cwd === '/' ? `/${p}` : `${context.cwd}/${p}`);
         await removeRecursive(fullPath);
       } catch (e: unknown) {
         if (!force) {
           const message = e instanceof Error ? e.message : String(e);
           await text.error({ text: `rm: cannot remove '${p}': ${message}\n` });
+          exitCode = 1;
         }
       }
     }
 
-    return { exitCode: 0 };
+    return { exitCode };
   },
 };

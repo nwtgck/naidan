@@ -31,6 +31,17 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
       spec: rmdirArgvSpec,
     });
 
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'rmdir',
+        message: `rmdir: ${diagnostic.message}`,
+        argvSpec: rmdirArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
     if (parsed.optionValues.help === true) {
       await writeCommandHelp({
         context,
@@ -41,7 +52,7 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
     }
 
     const text = context.text();
-    if (context.args.length === 0) {
+    if (parsed.positionals.length === 0) {
       await writeCommandUsageError({
         context,
         command: 'rmdir',
@@ -51,9 +62,11 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    for (const p of context.args) {
+    let exitCode = 0;
+
+    for (const p of parsed.positionals) {
       try {
-        const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
+        const fullPath = p.startsWith('/') ? p : (context.cwd === '/' ? `/${p}` : `${context.cwd}/${p}`);
         const entries = await context.files.readDir({ path: fullPath });
         if (entries.length > 0) {
           throw new Error('Directory not empty');
@@ -62,9 +75,10 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `rmdir: failed to remove '${p}': ${message}\n` });
+        exitCode = 1;
       }
     }
 
-    return { exitCode: 0 };
+    return { exitCode };
   },
 };

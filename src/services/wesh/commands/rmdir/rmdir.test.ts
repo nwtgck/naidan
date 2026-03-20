@@ -77,7 +77,7 @@ describe('wesh rmdir', () => {
     expect(result.exitCode).toBe(1);
   });
 
-  it('reports non-empty directories and continues with exit code 0', async () => {
+  it('reports non-empty directories and returns non-zero', async () => {
     const dir = await createDir({ path: 'full' });
     const handle = await dir.getFileHandle('file.txt', { create: true });
     const writable = await handle.createWritable();
@@ -90,7 +90,7 @@ describe('wesh rmdir', () => {
 
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain("rmdir: failed to remove 'full':");
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(1);
   });
 
   it('prints help with --help', async () => {

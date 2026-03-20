@@ -46,18 +46,20 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
+    const inputs = parsed.positionals.length > 0 ? parsed.positionals : ['-'];
     const decoder = new TextDecoder();
 
-    for (const f of parsed.positionals) {
+    for (const f of inputs) {
       if (f === undefined) continue;
       try {
-        const fullPath = f.startsWith('/') ? f : `${context.cwd}/${f}`;
-        const handle = await context.files.open({
-          path: fullPath,
-          flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-        });
-
-        const stream = handleToStream({ handle });
+        const stream = f === '-'
+          ? handleToStream({ handle: context.stdin })
+          : handleToStream({
+            handle: await context.files.open({
+              path: f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`),
+              flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+            }),
+          });
         const decompressor = new DecompressionStream('gzip');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const decompressedStream = stream.pipeThrough(decompressor as any) as ReadableStream<Uint8Array>;

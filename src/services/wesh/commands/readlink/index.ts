@@ -3,7 +3,10 @@ import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
-  return path.startsWith('/') ? path : `${cwd}/${path}`;
+  if (path.startsWith('/')) {
+    return path;
+  }
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
 const readlinkArgvSpec: StandardArgvParserSpec = {
@@ -52,11 +55,21 @@ export const readlinkCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 0 };
     }
 
+    if (parsed.positionals.length === 0) {
+      await writeCommandUsageError({
+        context,
+        command: 'readlink',
+        message: 'readlink: missing operand',
+        argvSpec: readlinkArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
     if (parsed.positionals.length !== 1) {
       await writeCommandUsageError({
         context,
         command: 'readlink',
-        message: 'readlink: expected exactly one operand',
+        message: `readlink: extra operand '${parsed.positionals[1] ?? ''}'`,
         argvSpec: readlinkArgvSpec,
       });
       return { exitCode: 1 };

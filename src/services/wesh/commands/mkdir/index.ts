@@ -56,17 +56,19 @@ export const mkdirCommandDefinition: WeshCommandDefinition = {
 
     const recursive = parsed.optionValues.parents === true;
     const text = context.text();
+    let exitCode = 0;
 
     for (const p of parsed.positionals) {
       try {
-        const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
+        const fullPath = p.startsWith('/') ? p : (context.cwd === '/' ? `/${p}` : `${context.cwd}/${p}`);
         await context.files.mkdir({ path: fullPath, recursive });
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
         await text.error({ text: `mkdir: cannot create directory '${p}': ${message}\n` });
+        exitCode = 1;
       }
     }
 
-    return { exitCode: 0 };
+    return { exitCode };
   },
 };

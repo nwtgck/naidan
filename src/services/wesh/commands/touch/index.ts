@@ -5,6 +5,7 @@ import { exists, writeFile } from '@/services/wesh/utils/fs';
 
 const touchArgvSpec: StandardArgvParserSpec = {
   options: [
+    { kind: 'flag', short: 'c', long: 'no-create', effects: [{ key: 'noCreate', value: true }], help: { summary: 'do not create any files', category: 'common' } },
     { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
   ],
   allowShortFlagBundles: true,
@@ -56,25 +57,34 @@ export const touchCommandDefinition: WeshCommandDefinition = {
     }
 
     const text = context.text();
+    const noCreate = parsed.optionValues.noCreate === true;
 
     for (const p of parsed.positionals) {
       if (p === undefined) continue;
       try {
-        const fullPath = p.startsWith('/') ? p : `${context.cwd}/${p}`;
+        const fullPath = p.startsWith('/') ? p : (context.cwd === '/' ? `/${p}` : `${context.cwd}/${p}`);
         const isExists = await exists({ files: context.files, path: fullPath });
 
         if (!isExists) {
+          if (noCreate) {
+            continue;
+          }
           // Create empty file
           await writeFile({ files: context.files, path: fullPath, data: new Uint8Array(0) });
         } else {
-          // Just update mtime - we don't have a direct utimes yet,
-          // so we could potentially open and close it if we want to simulate it,
-          // but the current VFS doesn't support manual mtime update via open.
           const handle = await context.files.open({
             path: fullPath,
-            flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+            flags: { access: 'write', creation: 'never', truncate: 'preserve', append: 'preserve' }
           });
-          await handle.close();
+          try {
+            const stat = await handle.stat();
+            await handle.write({
+              buffer: new Uint8Array(0),
+              position: stat.size,
+            });
+          } finally {
+            await handle.close();
+          }
         }
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
