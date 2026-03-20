@@ -101,6 +101,23 @@ function flattenJson({
   return flattened;
 }
 
+function evaluateSingleOutput({
+  filter,
+  input,
+  evaluate,
+}: {
+  filter: import('./ast').JqFilter;
+  input: JsonValue;
+  evaluate: JqRuntimeFilterEvaluator;
+}): { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError } {
+  const result = evaluate({ filter, input });
+  if (!result.ok) return result;
+  if (result.outputs.length !== 1) {
+    return { ok: false, error: { message: 'filter must yield exactly one value here' } };
+  }
+  return { ok: true, value: result.outputs[0] ?? null };
+}
+
 export function evaluateBuiltin({
   name,
   args,
@@ -247,6 +264,41 @@ export function evaluateBuiltin({
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, error: { message: `fromjson parse error: ${message}` } };
     }
+  case 'group_by': {
+    const keyFilter = args[0];
+    if (keyFilter === undefined) {
+      return { ok: false, error: { message: 'group_by requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'group_by takes exactly one argument' } };
+    }
+    if (!Array.isArray(input)) {
+      return { ok: false, error: { message: 'group_by input must be an array' } };
+    }
+
+    const keyed = [];
+    for (const item of input) {
+      const key = evaluateSingleOutput({
+        filter: keyFilter,
+        input: item,
+        evaluate,
+      });
+      if (!key.ok) return key;
+      keyed.push({ key: key.value, item });
+    }
+
+    keyed.sort((left, right) => compareJsonValues({ left: left.key, right: right.key }));
+    const groups: { key: JsonValue; items: JsonValue[] }[] = [];
+    for (const entry of keyed) {
+      const lastGroup = groups.at(-1);
+      if (lastGroup !== undefined && compareJsonValues({ left: entry.key, right: lastGroup.key }) === 0) {
+        lastGroup.items.push(entry.item);
+        continue;
+      }
+      groups.push({ key: entry.key, items: [entry.item] });
+    }
+    return { ok: true, outputs: [groups.map((group) => group.items)] };
+  }
   case 'select': {
     const condition = args[0];
     if (condition === undefined) {
@@ -274,6 +326,30 @@ export function evaluateBuiltin({
       const mapped = evaluate({ filter: mapper, input: item });
       if (!mapped.ok) return mapped;
       result.push(...mapped.outputs);
+    }
+    return { ok: true, outputs: [result] };
+  }
+  case 'map_values': {
+    const mapper = args[0];
+    if (mapper === undefined) {
+      return { ok: false, error: { message: 'map_values requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'map_values takes exactly one argument' } };
+    }
+    if (input === null || Array.isArray(input) || typeof input !== 'object') {
+      return { ok: false, error: { message: 'map_values input must be an object' } };
+    }
+
+    const result: Record<string, JsonValue> = {};
+    for (const [key, value] of Object.entries(input)) {
+      const mapped = evaluateSingleOutput({
+        filter: mapper,
+        input: value,
+        evaluate,
+      });
+      if (!mapped.ok) return mapped;
+      result[key] = mapped.value;
     }
     return { ok: true, outputs: [result] };
   }
@@ -396,6 +472,32 @@ export function evaluateBuiltin({
       ok: true,
       outputs: [[...input].sort((left, right) => compareJsonValues({ left, right }))],
     };
+  case 'sort_by': {
+    const keyFilter = args[0];
+    if (keyFilter === undefined) {
+      return { ok: false, error: { message: 'sort_by requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'sort_by takes exactly one argument' } };
+    }
+    if (!Array.isArray(input)) {
+      return { ok: false, error: { message: 'sort_by input must be an array' } };
+    }
+
+    const keyed = [];
+    for (const item of input) {
+      const key = evaluateSingleOutput({
+        filter: keyFilter,
+        input: item,
+        evaluate,
+      });
+      if (!key.ok) return key;
+      keyed.push({ key: key.value, item });
+    }
+
+    keyed.sort((left, right) => compareJsonValues({ left: left.key, right: right.key }));
+    return { ok: true, outputs: [keyed.map((entry) => entry.item)] };
+  }
   case 'max':
     if (args.length !== 0) {
       return { ok: false, error: { message: 'max does not take arguments' } };
@@ -439,6 +541,54 @@ export function evaluateBuiltin({
       return { ok: false, error: { message: 'startswith expects string input and argument' } };
     }
     return { ok: true, outputs: [input.startsWith(value)] };
+  }
+  case 'unique':
+    if (args.length !== 0) {
+      return { ok: false, error: { message: 'unique does not take arguments' } };
+    }
+    if (!Array.isArray(input)) {
+      return { ok: false, error: { message: 'unique input must be an array' } };
+    }
+    return {
+      ok: true,
+      outputs: [[...input].sort((left, right) => compareJsonValues({ left, right })).filter((item, index, items) => (
+        index === 0 || compareJsonValues({ left: item, right: items[index - 1]! }) !== 0
+      ))],
+    };
+  case 'unique_by': {
+    const keyFilter = args[0];
+    if (keyFilter === undefined) {
+      return { ok: false, error: { message: 'unique_by requires one argument' } };
+    }
+    if (args.length !== 1) {
+      return { ok: false, error: { message: 'unique_by takes exactly one argument' } };
+    }
+    if (!Array.isArray(input)) {
+      return { ok: false, error: { message: 'unique_by input must be an array' } };
+    }
+
+    const keyed = [];
+    for (const item of input) {
+      const key = evaluateSingleOutput({
+        filter: keyFilter,
+        input: item,
+        evaluate,
+      });
+      if (!key.ok) return key;
+      keyed.push({ key: key.value, item });
+    }
+
+    keyed.sort((left, right) => compareJsonValues({ left: left.key, right: right.key }));
+    const uniqueItems: JsonValue[] = [];
+    let previousKey: JsonValue | undefined;
+    for (const entry of keyed) {
+      if (previousKey !== undefined && compareJsonValues({ left: entry.key, right: previousKey }) === 0) {
+        continue;
+      }
+      uniqueItems.push(entry.item);
+      previousKey = entry.key;
+    }
+    return { ok: true, outputs: [uniqueItems] };
   }
   case 'type':
     if (args.length !== 0) {

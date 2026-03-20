@@ -24,7 +24,9 @@ function toBuiltinName({
   case 'empty':
   case 'flatten':
   case 'fromjson':
+  case 'group_by':
   case 'join':
+  case 'map_values':
   case 'max':
   case 'min':
   case 'select':
@@ -34,8 +36,11 @@ function toBuiltinName({
   case 'keys_unsorted':
   case 'reverse':
   case 'sort':
+  case 'sort_by':
   case 'startswith':
   case 'type':
+  case 'unique':
+  case 'unique_by':
   case 'has':
   case 'tojson':
   case 'values':

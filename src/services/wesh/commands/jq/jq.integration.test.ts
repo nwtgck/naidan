@@ -335,6 +335,63 @@ jq '.items | add'`,
     expect(add.result.exitCode).toBe(0);
   });
 
+  it('supports sort_by, unique, unique_by, group_by, and map_values', async () => {
+    const sortBy = await execute({
+      script: `\
+jq '.items | sort_by(.id)'`,
+      stdinText: `\
+{"items":[{"id":2},{"id":1},{"id":3}]}`,
+    });
+
+    expect(sortBy.stdout.text).toBe('[{"id":1},{"id":2},{"id":3}]\n');
+    expect(sortBy.stderr.text).toBe('');
+    expect(sortBy.result.exitCode).toBe(0);
+
+    const unique = await execute({
+      script: `\
+jq '.items | unique'`,
+      stdinText: `\
+{"items":[3,1,2,1,3]}`,
+    });
+
+    expect(unique.stdout.text).toBe('[1,2,3]\n');
+    expect(unique.stderr.text).toBe('');
+    expect(unique.result.exitCode).toBe(0);
+
+    const uniqueBy = await execute({
+      script: `\
+jq '.items | unique_by(.id)'`,
+      stdinText: `\
+{"items":[{"id":2,"name":"b"},{"id":1,"name":"a"},{"id":2,"name":"bb"}]}`,
+    });
+
+    expect(uniqueBy.stdout.text).toBe('[{"id":1,"name":"a"},{"id":2,"name":"b"}]\n');
+    expect(uniqueBy.stderr.text).toBe('');
+    expect(uniqueBy.result.exitCode).toBe(0);
+
+    const groupBy = await execute({
+      script: `\
+jq '.items | group_by(.kind)'`,
+      stdinText: `\
+{"items":[{"kind":"a","id":1},{"kind":"b","id":2},{"kind":"a","id":3}]}`,
+    });
+
+    expect(groupBy.stdout.text).toBe('[[{"kind":"a","id":1},{"kind":"a","id":3}],[{"kind":"b","id":2}]]\n');
+    expect(groupBy.stderr.text).toBe('');
+    expect(groupBy.result.exitCode).toBe(0);
+
+    const mapValues = await execute({
+      script: `\
+jq '.metrics | map_values(. + 1)'`,
+      stdinText: `\
+{"metrics":{"a":1,"b":2}}`,
+    });
+
+    expect(mapValues.stdout.text).toBe('{"a":2,"b":3}\n');
+    expect(mapValues.stderr.text).toBe('');
+    expect(mapValues.result.exitCode).toBe(0);
+  });
+
   it('supports multiple input JSON values and file input', async () => {
     await writeFile({
       path: 'input.json',

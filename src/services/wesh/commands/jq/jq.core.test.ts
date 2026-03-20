@@ -402,5 +402,13 @@ jq 'join(1)'`,
     });
     expect(joinType.stderr.text).toContain('jq: error: join separator must be a string');
     expect(joinType.result.exitCode).toBe(4);
+
+    const mapValuesType = await execute({
+      script: `\
+jq 'map_values(. + 1)'`,
+      stdinText: '[1,2]',
+    });
+    expect(mapValuesType.stderr.text).toContain('jq: error: map_values input must be an object');
+    expect(mapValuesType.result.exitCode).toBe(4);
   });
 });
