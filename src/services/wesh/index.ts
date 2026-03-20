@@ -2255,6 +2255,7 @@ usage: alias [name[=value] ...]
         readDir: ({ path }) => this.kernel.readDir({ path }),
         readlink: ({ path }) => this.kernel.readlink({ path }),
         resolve: ({ path }) => this.kernel.resolve({ path }),
+        tryReadBlobEfficiently: ({ path }) => this.kernel.tryReadBlobEfficiently({ path }),
         mkdir: ({ path, mode, recursive }) => this.kernel.mkdir({ path, mode, recursive }),
         symlink: ({ path, targetPath, mode }) => this.kernel.symlink({ path, targetPath, mode }),
         mknod: ({ path, type, mode }) => this.kernel.mknod({ path, type, mode }),

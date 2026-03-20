@@ -156,6 +156,8 @@ export interface WeshIVirtualFileSystem {
 
   resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
 
+  tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
+
   readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
 
   mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
@@ -176,6 +178,12 @@ export interface WeshMount {
   handle: FileSystemDirectoryHandle;
   readOnly: boolean;
 }
+
+export const WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED = Symbol('WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED');
+
+export type WeshEfficientBlobReadResult =
+  | { kind: 'blob'; blob: Blob }
+  | { kind: 'fallback-required'; reason: typeof WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED };
 
 // --- Shell / Command Execution Context ---
 
@@ -256,6 +264,7 @@ export interface WeshCommandContext {
     readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
     readlink(options: { path: string }): Promise<string>;
     resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
+    tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
     mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
     symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void>;
     mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;

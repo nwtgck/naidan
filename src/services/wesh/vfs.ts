@@ -5,9 +5,10 @@ import type {
   WeshStat,
   WeshIOResult,
   WeshWriteResult,
-  WeshOpenFlags
+  WeshOpenFlags,
+  WeshEfficientBlobReadResult,
 } from './types';
-import { WeshBrokenPipeError } from './types';
+import { WeshBrokenPipeError, WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED } from './types';
 import {
   WeshRegistryEntrySchemaDto,
   type WeshRegistryEntryDto,
@@ -601,6 +602,51 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       fullPath: resolved.fullPath,
       stat: await this.statFromResolvedNode({ resolved }),
     };
+  }
+
+  async tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult> {
+    const resolved = await this.resolveNode({
+      path: options.path,
+      finalSymlinkTreatment: 'follow',
+      depth: 0,
+    });
+
+    switch (resolved.kind) {
+    case 'handle':
+      switch (resolved.handle.kind) {
+      case 'file': {
+        const file = await (resolved.handle as FileSystemFileHandle).getFile();
+        if (file instanceof Blob) {
+          return {
+            kind: 'blob',
+            blob: file,
+          };
+        }
+
+        return {
+          kind: 'fallback-required',
+          reason: WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED,
+        };
+      }
+      case 'directory':
+        throw new Error(`Not a file: ${options.path}`);
+      default: {
+        const _ex: never = resolved.handle.kind;
+        throw new Error(`Unhandled handle kind: ${_ex}`);
+      }
+      }
+    case 'registry':
+    case 'special':
+    case 'synthetic-directory':
+      return {
+        kind: 'fallback-required',
+        reason: WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED,
+      };
+    default: {
+      const _ex: never = resolved;
+      throw new Error(`Unhandled resolved node: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
 
   async readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>> {
