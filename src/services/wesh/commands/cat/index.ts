@@ -33,6 +33,9 @@ async function writeAll({
       offset,
       length: buffer.length - offset,
     });
+    if (bytesWritten === 0) {
+      return;
+    }
     offset += bytesWritten;
   }
 }
@@ -243,7 +246,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
           }
         } catch (e: unknown) {
           const shouldForwardSignal = (() => {
-            const waitStatus = context.kernel.getProcess({ pid: context.pid })?.waitStatus;
+            const waitStatus = context.kernel.getWaitStatus({ pid: context.pid });
             if (waitStatus === undefined) return false;
 
             switch (waitStatus.kind) {
@@ -260,9 +263,6 @@ export const catCommandDefinition: WeshCommandDefinition = {
           })();
 
           if (shouldForwardSignal) {
-            // TODO(wesh-signal): Remove this temporary waitStatus forwarding once
-            // command execution interrupts on kernel waitStatus without commands
-            // needing to propagate transitional I/O exceptions through catch blocks.
             throw e;
           }
           const message = e instanceof Error ? e.message : String(e);

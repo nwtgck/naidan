@@ -58,6 +58,9 @@ export async function writeFile({
         offset: totalWritten,
         length: data.length - totalWritten,
       });
+      if (bytesWritten === 0) {
+        break;
+      }
       totalWritten += bytesWritten;
     }
   } finally {
@@ -132,6 +135,9 @@ export async function streamToHandle({
           offset: written,
           length: value.length - written,
         });
+        if (bytesWritten === 0) {
+          return;
+        }
         written += bytesWritten;
       }
     }

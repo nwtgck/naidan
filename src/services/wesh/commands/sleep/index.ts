@@ -56,8 +56,6 @@ export const sleepCommandDefinition: WeshCommandDefinition = {
       timeoutMs: seconds * 1000,
     });
     if (waitStatus !== undefined) {
-      // TODO(wesh-signal): Replace per-command waiting helpers with shared command
-      // execution interruption once signal dispatch is fully kernel-driven.
       return {
         exitCode: 0,
         waitStatus,

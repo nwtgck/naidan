@@ -174,4 +174,48 @@ echo "\${REQUIRED:?required value}"`,
     expect(stderr.text).toContain('wesh: REQUIRED: required value');
     expect(result.exitCode).toBe(1);
   });
+
+  it('supports prefix and suffix pattern removal parameter expansion', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+VALUE=src/services/wesh/index.ts
+echo "\${VALUE#src/}"
+echo "\${VALUE##*/}"
+echo "\${VALUE%/*}"
+echo "\${VALUE%%/*}"`,
+    });
+
+    expect(stdout.text).toBe(`\
+services/wesh/index.ts
+index.ts
+src/services/wesh
+src
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports common special parameters', async () => {
+    const shellParams = await execute({
+      script: `\
+echo "$$"
+echo "$#"
+echo "$0"`,
+    });
+
+    const shellLines = shellParams.stdout.text.trimEnd().split('\n');
+    expect(shellParams.result.exitCode).toBe(0);
+    expect(shellParams.stderr.text).toBe('');
+    expect(shellLines).toHaveLength(3);
+    expect(shellLines[0]).toMatch(/^[0-9]+$/);
+    expect(shellLines[1]).toBe('0');
+    expect(shellLines[2]).toBe('/bin/wesh');
+
+    const backgroundParams = await execute({
+      script: 'sleep 0 & echo "$!"',
+    });
+    expect(backgroundParams.result.exitCode).toBe(0);
+    expect(backgroundParams.stderr.text).toContain('[1] background');
+    expect(backgroundParams.stdout.text).toMatch(/^[0-9]+\n$/);
+  });
 });

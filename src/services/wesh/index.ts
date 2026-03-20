@@ -32,6 +32,8 @@ interface WeshExecutionEnvironment {
   cwd: string;
   fds: Map<number, WeshFileHandle>;
   traps: Map<string, string>;
+  positionalArgs: string[];
+  lastBackgroundPid: number | undefined;
 }
 
 type WeshExpansionMode = 'argv' | 'assignment' | 'redirection';
@@ -305,6 +307,36 @@ export class Wesh {
         continue;
       }
 
+      if (nextChar === '$') {
+        result += env.get('$$') ?? '';
+        index += 1;
+        continue;
+      }
+
+      if (nextChar === '#') {
+        result += env.get('#') ?? '0';
+        index += 1;
+        continue;
+      }
+
+      if (nextChar === '!') {
+        result += env.get('!') ?? '';
+        index += 1;
+        continue;
+      }
+
+      if (nextChar === '0') {
+        result += env.get('0') ?? '';
+        index += 1;
+        continue;
+      }
+
+      if (nextChar !== undefined && /[1-9]/.test(nextChar)) {
+        result += env.get(nextChar) ?? '';
+        index += 1;
+        continue;
+      }
+
       if (nextChar === '{') {
         const expansion = this.expandBracedParameter({
           text,
@@ -388,6 +420,24 @@ export class Wesh {
       }).length.toString();
     }
 
+    const patternOperatorMatch = expression.match(/^([A-Za-z_][A-Za-z0-9_]*)(##|#|%%|%)(.*)$/);
+    if (patternOperatorMatch !== null) {
+      const name = patternOperatorMatch[1]!;
+      const operator = patternOperatorMatch[2] as '##' | '#' | '%%' | '%';
+      const pattern = patternOperatorMatch[3] ?? '';
+      return this.applyParameterPatternOperator({
+        value: this.getParameterValue({
+          name,
+          env,
+        }),
+        operator,
+        pattern: this.expandPartVariables({
+          text: pattern,
+          env,
+        }),
+      });
+    }
+
     const operatorMatch = expression.match(/^([A-Za-z_][A-Za-z0-9_]*)(:?[-=?+])(.*)$/);
     if (operatorMatch !== null) {
       const name = operatorMatch[1]!;
@@ -450,6 +500,122 @@ export class Wesh {
       return currentValue ?? '';
     default:
       return currentValue ?? '';
+    }
+  }
+
+  private applyParameterPatternOperator({
+    value,
+    operator,
+    pattern,
+  }: {
+    value: string;
+    operator: '##' | '#' | '%%' | '%';
+    pattern: string;
+  }): string {
+    const compileParameterPattern = ({
+      pattern,
+    }: {
+      pattern: string;
+    }): RegExp => {
+      let source = '^';
+
+      for (let index = 0; index < pattern.length; index++) {
+        const char = pattern[index];
+        if (char === undefined) {
+          continue;
+        }
+
+        if (char === '\\') {
+          const nextChar = pattern[index + 1];
+          if (nextChar !== undefined) {
+            source += nextChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            index += 1;
+            continue;
+          }
+          source += '\\\\';
+          continue;
+        }
+
+        if (char === '*') {
+          source += '.*';
+          continue;
+        }
+
+        if (char === '?') {
+          source += '.';
+          continue;
+        }
+
+        if (char === '[') {
+          const endIndex = pattern.indexOf(']', index + 1);
+          if (endIndex !== -1) {
+            let classContent = pattern.slice(index + 1, endIndex);
+            if (classContent.startsWith('!')) {
+              classContent = '^' + classContent.slice(1);
+            }
+            source += `[${classContent}]`;
+            index = endIndex;
+            continue;
+          }
+        }
+
+        source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+
+      source += '$';
+      return new RegExp(source);
+    };
+
+    const matcher = compileParameterPattern({ pattern });
+    const matchesPattern = ({
+      text,
+    }: {
+      text: string;
+    }): boolean => {
+      return matcher.test(text);
+    };
+
+    switch (operator) {
+    case '#': {
+      for (let prefixLength = 0; prefixLength <= value.length; prefixLength++) {
+        const prefix = value.slice(0, prefixLength);
+        if (matchesPattern({ text: prefix })) {
+          return value.slice(prefixLength);
+        }
+      }
+      return value;
+    }
+    case '##': {
+      for (let prefixLength = value.length; prefixLength >= 0; prefixLength--) {
+        const prefix = value.slice(0, prefixLength);
+        if (matchesPattern({ text: prefix })) {
+          return value.slice(prefixLength);
+        }
+      }
+      return value;
+    }
+    case '%': {
+      for (let suffixStart = value.length; suffixStart >= 0; suffixStart--) {
+        const suffix = value.slice(suffixStart);
+        if (matchesPattern({ text: suffix })) {
+          return value.slice(0, suffixStart);
+        }
+      }
+      return value;
+    }
+    case '%%': {
+      for (let suffixStart = 0; suffixStart <= value.length; suffixStart++) {
+        const suffix = value.slice(suffixStart);
+        if (matchesPattern({ text: suffix })) {
+          return value.slice(0, suffixStart);
+        }
+      }
+      return value;
+    }
+    default: {
+      const _ex: never = operator;
+      throw new Error(`Unhandled parameter pattern operator: ${_ex}`);
+    }
     }
   }
 
@@ -1001,6 +1167,8 @@ export class Wesh {
           stderr: options.stderr,
         }),
         traps: this.traps,
+        positionalArgs: [],
+        lastBackgroundPid: undefined,
       });
 
       const result = await this.executeNode({
@@ -1076,6 +1244,10 @@ export class Wesh {
             command: cmdStr,
             pid: jobEnvironment.shellPid,
             status: 'running'
+          });
+          environment.lastBackgroundPid = jobEnvironment.shellPid;
+          this.syncSpecialParameters({
+            environment,
           });
 
           // Job notification to stderr (simulating bash)
@@ -1501,31 +1673,15 @@ export class Wesh {
 
     try {
       const result = await definition.fn({ context });
-      if (proc.waitStatus?.kind === 'signaled' || proc.waitStatus?.kind === 'stopped') {
-        const signalWaitStatus = proc.waitStatus;
-        switch (signalWaitStatus.kind) {
-        case 'signaled':
-          await this.runSignalTrapIfNeeded({
-            signal: signalWaitStatus.signal,
-            environment,
-            stdin: boundStdin,
-            stdout: boundStdout,
-            stderr: boundStderr,
-          });
-          break;
-        case 'stopped':
-          break;
-        default: {
-          const _ex: never = signalWaitStatus;
-          throw new Error(`Unhandled wait status: ${JSON.stringify(_ex)}`);
-        }
-        }
-        return {
-          exitCode: weshWaitStatusToExitCode({
-            waitStatus: signalWaitStatus,
-          }),
-          waitStatus: signalWaitStatus,
-        };
+      const signalResult = await this.buildSignalCommandResultIfAny({
+        pid,
+        environment,
+        stdin: boundStdin,
+        stdout: boundStdout,
+        stderr: boundStderr,
+      });
+      if (signalResult !== undefined) {
+        return signalResult;
       }
 
       proc.state = 'terminated';
@@ -1562,34 +1718,15 @@ export class Wesh {
         waitStatus: proc.waitStatus,
       };
     } catch (error: unknown) {
-      if (proc.waitStatus?.kind === 'signaled' || proc.waitStatus?.kind === 'stopped') {
-        // TODO(wesh-signal): Remove this temporary exception-based bridge once
-        // process-bound handles can interrupt command execution without throwing
-        // through JS catch paths and kernel waitStatus is the only signal source.
-        const signalWaitStatus = proc.waitStatus;
-        switch (signalWaitStatus.kind) {
-        case 'signaled':
-          await this.runSignalTrapIfNeeded({
-            signal: signalWaitStatus.signal,
-            environment,
-            stdin: boundStdin,
-            stdout: boundStdout,
-            stderr: boundStderr,
-          });
-          break;
-        case 'stopped':
-          break;
-        default: {
-          const _ex: never = signalWaitStatus;
-          throw new Error(`Unhandled wait status: ${JSON.stringify(_ex)}`);
-        }
-        }
-        return {
-          exitCode: weshWaitStatusToExitCode({
-            waitStatus: signalWaitStatus,
-          }),
-          waitStatus: signalWaitStatus,
-        };
+      const signalResult = await this.buildSignalCommandResultIfAny({
+        pid,
+        environment,
+        stdin: boundStdin,
+        stdout: boundStdout,
+        stderr: boundStderr,
+      });
+      if (signalResult !== undefined) {
+        return signalResult;
       }
       throw error;
     } finally {
@@ -1635,6 +1772,8 @@ export class Wesh {
     cwd,
     fds,
     traps,
+    positionalArgs,
+    lastBackgroundPid,
   }: {
     shellPid: number;
     pgid: number;
@@ -1642,15 +1781,23 @@ export class Wesh {
     cwd: string;
     fds: Map<number, WeshFileHandle>;
     traps: Map<string, string>;
+    positionalArgs: string[];
+    lastBackgroundPid: number | undefined;
   }): WeshExecutionEnvironment {
-    return {
+    const environment: WeshExecutionEnvironment = {
       shellPid,
       pgid,
       env,
       cwd,
       fds,
       traps,
+      positionalArgs,
+      lastBackgroundPid,
     };
+    this.syncSpecialParameters({
+      environment,
+    });
+    return environment;
   }
 
   private cloneExecutionEnvironment({
@@ -1669,6 +1816,8 @@ export class Wesh {
       cwd: environment.cwd,
       fds: new Map(environment.fds),
       traps: new Map(environment.traps),
+      positionalArgs: [...environment.positionalArgs],
+      lastBackgroundPid: environment.lastBackgroundPid,
     });
   }
 
@@ -1712,11 +1861,12 @@ export class Wesh {
       return options.result;
     }
 
-    // TODO(wesh-trap): Preserve shell-compatible $? during trap execution and align
-    // signal-triggered EXIT behavior with process waitStatus once trap dispatch is
-    // integrated with the kernel-level signal model.
-    await this.executeShellInState({
+    await this.runTrapScript({
       script: exitTrap,
+      trapStatus: options.result.waitStatus ?? {
+        kind: 'exited',
+        exitCode: options.result.exitCode,
+      },
       environment: options.environment,
       stdin: options.stdin,
       stdout: options.stdout,
@@ -1738,17 +1888,95 @@ export class Wesh {
         continue;
       }
 
-      // TODO(wesh-trap): Align signal-trap dispatch with kernel-level signal
-      // dispositions and real shell reentrancy semantics instead of running the
-      // trap eagerly from command exception bridging.
-      await this.executeShellInState({
+      await this.runTrapScript({
         script: trapAction,
+        trapStatus: {
+          kind: 'signaled',
+          signal: options.signal,
+        },
         environment: options.environment,
         stdin: options.stdin,
         stdout: options.stdout,
         stderr: options.stderr,
       });
       return;
+    }
+  }
+
+  private async runTrapScript(options: {
+    script: string;
+    trapStatus: import('./types').WeshWaitStatus;
+    environment: WeshExecutionEnvironment;
+    stdin: WeshFileHandle;
+    stdout: WeshFileHandle;
+    stderr: WeshFileHandle;
+  }): Promise<void> {
+    const previousQuestionMark = options.environment.env.get('?');
+    options.environment.env.set(
+      '?',
+      weshWaitStatusToExitCode({
+        waitStatus: options.trapStatus,
+      }).toString(),
+    );
+    try {
+      await this.executeShellInState({
+        script: options.script,
+        environment: options.environment,
+        stdin: options.stdin,
+        stdout: options.stdout,
+        stderr: options.stderr,
+      });
+    } finally {
+      if (previousQuestionMark === undefined) {
+        options.environment.env.delete('?');
+      } else {
+        options.environment.env.set('?', previousQuestionMark);
+      }
+    }
+  }
+
+  private async buildSignalCommandResultIfAny(options: {
+    pid: number;
+    environment: WeshExecutionEnvironment;
+    stdin: WeshFileHandle;
+    stdout: WeshFileHandle;
+    stderr: WeshFileHandle;
+  }): Promise<WeshCommandResult | undefined> {
+    const signalWaitStatus = this.kernel.getWaitStatus({ pid: options.pid });
+    if (signalWaitStatus === undefined) {
+      return undefined;
+    }
+
+    switch (signalWaitStatus.kind) {
+    case 'signaled':
+      this.kernel.consumePendingSignals({ pid: options.pid });
+      await this.runSignalTrapIfNeeded({
+        signal: signalWaitStatus.signal,
+        environment: options.environment,
+        stdin: options.stdin,
+        stdout: options.stdout,
+        stderr: options.stderr,
+      });
+      return {
+        exitCode: weshWaitStatusToExitCode({
+          waitStatus: signalWaitStatus,
+        }),
+        waitStatus: signalWaitStatus,
+      };
+    case 'stopped':
+      this.kernel.consumePendingSignals({ pid: options.pid });
+      return {
+        exitCode: weshWaitStatusToExitCode({
+          waitStatus: signalWaitStatus,
+        }),
+        waitStatus: signalWaitStatus,
+      };
+    case 'exited':
+      return undefined;
+    default: {
+      const _ex: never = signalWaitStatus;
+      throw new Error(`Unhandled wait status: ${JSON.stringify(_ex)}`);
+    }
     }
   }
 
@@ -1762,6 +1990,30 @@ export class Wesh {
       return await options.fn();
     } finally {
       this.foregroundProcessGroupId = previousForegroundProcessGroupId;
+    }
+  }
+
+  private syncSpecialParameters(options: {
+    environment: WeshExecutionEnvironment;
+  }): void {
+    const { environment } = options;
+    environment.env.set('$$', environment.shellPid.toString());
+    environment.env.set('#', environment.positionalArgs.length.toString());
+    environment.env.set('0', environment.env.get('SHELL') ?? 'wesh');
+
+    for (let index = 1; index <= 9; index++) {
+      const value = environment.positionalArgs[index - 1];
+      if (value === undefined) {
+        environment.env.delete(index.toString());
+      } else {
+        environment.env.set(index.toString(), value);
+      }
+    }
+
+    if (environment.lastBackgroundPid === undefined) {
+      environment.env.delete('!');
+    } else {
+      environment.env.set('!', environment.lastBackgroundPid.toString());
     }
   }
 

@@ -325,6 +325,27 @@ exit-trap
 `);
   });
 
+  it('preserves $? while EXIT traps run', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+trap -- 'echo $? >&2' EXIT
+false`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe(`\
+1
+`);
+  });
+
   it('runs subshell EXIT traps without overwriting the parent trap', async () => {
     const stdin = createWeshReadFileHandleFromText({ text: '' });
     const stdout = createWeshWriteCaptureHandle();
@@ -374,6 +395,48 @@ first
 `);
     expect(stderr.text).toBe(`\
 pipe-trap
+`);
+  });
+
+  it('preserves $? while signal traps run', async () => {
+    const stdin = createWeshReadFileHandleFromText({ text: '' });
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    wesh.registerCommand({
+      definition: {
+        meta: {
+          name: 'signal-pipe',
+          description: 'Send SIGPIPE to the current process',
+          usage: 'signal-pipe',
+        },
+        fn: async ({ context }) => {
+          await context.kernel.kill({
+            pid: context.pid,
+            signal: 13,
+          });
+          return { exitCode: 0 };
+        },
+      },
+    });
+
+    const result = await wesh.execute({
+      script: `\
+trap -- 'echo $? >&2' PIPE
+signal-pipe`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 13,
+    });
+    expect(result.exitCode).toBe(141);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe(`\
+141
 `);
   });
 

@@ -11,23 +11,6 @@ import type {
 } from './types';
 import { WeshBrokenPipeError, weshWaitStatusToExitCode } from './types';
 
-export class WeshProcessSignalError extends Error {
-  public readonly signal: number;
-
-  constructor({
-    signal,
-  }: {
-    signal: number;
-  }) {
-    // TODO(wesh-signal): Remove this temporary exception type once pipe/VFS I/O can
-    // interrupt command execution through kernel-managed waitStatus transitions
-    // without surfacing a JS exception object through handle.write().
-    super(`Process terminated by signal ${signal}`);
-    this.signal = signal;
-    this.name = 'WeshProcessSignalError';
-  }
-}
-
 class WeshKernelProcessFileHandle implements WeshFileHandle {
   private readonly handle: WeshFileHandle;
   private readonly kernel: WeshKernel;
@@ -66,16 +49,11 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
       return await this.handle.write(options);
     } catch (error: unknown) {
       if (error instanceof WeshBrokenPipeError) {
-        // TODO(wesh-signal): Remove this temporary BrokenPipe-to-SIGPIPE bridge once
-        // pipe/VFS write paths deliver SIGPIPE through kernel-managed process state
-        // transitions instead of surfacing a structured JS error to this wrapper.
         await this.kernel.kill({
           pid: this.pid,
           signal: 13,
         });
-        throw new WeshProcessSignalError({
-          signal: 13,
-        });
+        return { bytesWritten: 0 };
       }
       throw error;
     }
