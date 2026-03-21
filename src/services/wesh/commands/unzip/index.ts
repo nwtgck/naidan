@@ -1,13 +1,12 @@
-import JSZip from 'jszip';
+import { Unzip, UnzipInflate } from 'fflate';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { zipObjectToReadableStream } from '@/services/wesh/commands/_shared/jszip';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
   WeshCommandResult,
 } from '@/services/wesh/types';
-import { handleToStream, readFile, streamToFilePath } from '@/services/wesh/utils/fs';
+import { handleToStream, readFile } from '@/services/wesh/utils/fs';
 
 const unzipArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -155,38 +154,6 @@ function splitUnzipArgs({
   };
 }
 
-async function loadZipArchive({
-  context,
-  archivePath,
-}: {
-  context: WeshCommandContext;
-  archivePath: string;
-}): Promise<JSZip> {
-  if (archivePath === '-') {
-    const bytes = await readAllBytesFromStream({
-      stream: handleToStream({ handle: context.stdin }),
-    });
-    return JSZip.loadAsync(bytes);
-  }
-
-  const blobResult = await context.files.tryReadBlobEfficiently({ path: archivePath });
-  switch (blobResult.kind) {
-  case 'blob':
-    return JSZip.loadAsync(blobResult.blob);
-  case 'fallback-required': {
-    const bytes = await readFile({
-      files: context.files,
-      path: archivePath,
-    });
-    return JSZip.loadAsync(bytes);
-  }
-  default: {
-    const _ex: never = blobResult;
-    throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
-  }
-  }
-}
-
 async function readAllBytesFromStream({
   stream,
 }: {
@@ -244,60 +211,13 @@ async function pathExists({
   }
 }
 
-async function writeEntryToFile({
-  context,
-  entry,
-  destinationPath,
-}: {
-  context: WeshCommandContext;
-  entry: JSZip.JSZipObject;
-  destinationPath: string;
-}): Promise<void> {
-  const lastSlashIndex = destinationPath.lastIndexOf('/');
-  const parentPath = lastSlashIndex <= 0 ? '/' : destinationPath.slice(0, lastSlashIndex);
-  await ensureDirectory({
-    context,
-    path: parentPath,
-  });
-  await streamToFilePath({
-    files: context.files,
-    path: destinationPath,
-    stream: zipObjectToReadableStream({ entry }),
-    mode: 'truncate',
-  });
-}
+const PUSH_CHUNK_SIZE = 64 * 1024;
 
-async function writeStreamToHandleWithoutClosing({
-  stream,
-  handle,
-}: {
-  stream: ReadableStream<Uint8Array>;
-  handle: WeshCommandContext['stdout'];
-}): Promise<void> {
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      let offset = 0;
-      while (offset < value.length) {
-        const { bytesWritten } = await handle.write({
-          buffer: value,
-          offset,
-          length: value.length - offset,
-        });
-        if (bytesWritten === 0) {
-          return;
-        }
-        offset += bytesWritten;
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
+interface ZipEntryInfo {
+  name: string;
+  dir: boolean;
+  date: Date;
+  size: number;
 }
 
 export const unzipCommandDefinition: WeshCommandDefinition = {
@@ -361,124 +281,195 @@ export const unzipCommandDefinition: WeshCommandDefinition = {
       : context.cwd;
 
     try {
-      const zip = await loadZipArchive({
-        context,
-        archivePath,
-      });
+      // Load entire ZIP into memory
+      let buffer: Uint8Array;
+      if (archivePath === '-') {
+        buffer = await readAllBytesFromStream({
+          stream: handleToStream({ handle: context.stdin }),
+        });
+      } else {
+        const blobResult = await context.files.tryReadBlobEfficiently({ path: archivePath });
+        if (blobResult.kind === 'blob') {
+          buffer = new Uint8Array(await blobResult.blob.arrayBuffer());
+        } else {
+          buffer = await readFile({ files: context.files, path: archivePath });
+        }
+      }
+
+      // 1. Scan for entries (no decompression)
+      const allEntries: ZipEntryInfo[] = [];
+      const scanner = new Unzip();
+      scanner.onfile = (file) => {
+        allEntries.push({
+          name: file.name,
+          dir: file.name.endsWith('/'),
+          date: new Date(),
+          size: file.originalSize ?? 0,
+        });
+      };
+      for (let i = 0; i < buffer.length; i += PUSH_CHUNK_SIZE) {
+        scanner.push(buffer.subarray(i, i + PUSH_CHUNK_SIZE), i + PUSH_CHUNK_SIZE >= buffer.length);
+      }
 
       const patterns = parsed.positionals.slice(1);
       const matchers = patterns.map((pattern) => globToRegExp({ pattern }));
       const excludeMatchers = splitArgs.excludePatterns.map((pattern) => globToRegExp({ pattern }));
-      const selectedEntries = Object.values(zip.files)
+      const selectedEntries = allEntries
         .filter((entry) => {
           if (patterns.length === 0) {
             return !excludeMatchers.some((matcher) => matcher.test(entry.name));
           }
           return matchers.some((matcher) => matcher.test(entry.name))
             && !excludeMatchers.some((matcher) => matcher.test(entry.name));
-        })
-        .sort((left, right) => left.name.localeCompare(right.name));
+        });
 
       if (parsed.optionValues.list === true) {
-        const totalLength = await selectedEntries.reduce(async (pending, entry) => {
-          const currentTotal = await pending;
-          if (entry.dir) {
-            return currentTotal;
-          }
-
-          const bytes = await entry.async('uint8array');
-          return currentTotal + bytes.length;
-        }, Promise.resolve(0));
-
+        selectedEntries.sort((left, right) => left.name.localeCompare(right.name));
+        const totalLength = selectedEntries.reduce((acc, entry) => acc + (entry.dir ? 0 : entry.size), 0);
         const lines = [
           `Archive:  ${archiveOperand}`,
           '  Length      Date    Time    Name',
           '---------  ---------- -----   ----',
-          ...await Promise.all(selectedEntries.map(async (entry) => {
-            const length = entry.dir ? 0 : (await entry.async('uint8array')).length;
+          ...selectedEntries.map((entry) => {
+            const length = entry.dir ? 0 : entry.size;
             const formattedDate = formatListDate({ date: entry.date });
             return `${padLeft({ text: String(length), width: 9 })}  ${formattedDate.slice(0, 10)} ${formattedDate.slice(11)}   ${entry.name}`;
-          })),
+          }),
           '---------                     -------',
           `${padLeft({ text: String(totalLength), width: 9 })}                     ${selectedEntries.length} files`,
         ];
-        await context.text().print({
-          text: `${lines.join('\n')}\n`,
-        });
-        return { exitCode: 0 };
-      }
-
-      if (parsed.optionValues.pipeToStdout === true) {
-        for (const entry of selectedEntries) {
-          if (entry.dir) {
-            continue;
-          }
-
-          await writeStreamToHandleWithoutClosing({
-            stream: zipObjectToReadableStream({ entry }),
-            handle: context.stdout,
-          });
-        }
+        await context.text().print({ text: `${lines.join('\n')}\n` });
         return { exitCode: 0 };
       }
 
       const junkPaths = parsed.optionValues.junkPaths === true;
       const neverOverwrite = parsed.optionValues.neverOverwrite === true;
       const overwrite = parsed.optionValues.overwrite === true;
+      const pipeToStdout = parsed.optionValues.pipeToStdout === true;
       let hadError = false;
 
-      for (const entry of selectedEntries) {
-        const relativePath = junkPaths ? basename({ path: entry.name }) : entry.name;
+      // 2. Second pass: Extract selected files in a single scan
+      const unzipper = new Unzip();
+      unzipper.register(UnzipInflate);
+
+      const selectedNames = new Set(selectedEntries.map((e) => e.name));
+      const extractionPromises: Promise<void>[] = [];
+
+      unzipper.onfile = (file) => {
+        if (!selectedNames.has(file.name)) {
+          return;
+        }
+
+        const relativePath = junkPaths ? basename({ path: file.name }) : file.name;
         const destinationPath = resolvePath({
           cwd: destinationRoot,
           path: relativePath,
         });
 
-        if (entry.dir) {
-          await ensureDirectory({
-            context,
-            path: destinationPath,
-          });
-          continue;
+        if (file.name.endsWith('/')) {
+          if (!pipeToStdout) {
+            extractionPromises.push(ensureDirectory({ context, path: destinationPath }));
+          }
+          return;
         }
 
-        const exists = await pathExists({
-          context,
-          path: destinationPath,
-        });
-        if (exists) {
-          if (neverOverwrite) {
-            continue;
-          }
+        const extractionPromise = (async () => {
+          if (pipeToStdout) {
+            let writeQueue = Promise.resolve();
+            file.ondata = (err, data) => {
+              if (err) return;
+              writeQueue = writeQueue.then(async () => {
+                let written = 0;
+                while (written < data.length) {
+                  const { bytesWritten } = await context.stdout.write({
+                    buffer: data,
+                    offset: written,
+                    length: data.length - written,
+                  });
+                  if (bytesWritten === 0) break;
+                  written += bytesWritten;
+                }
+              });
+            };
+            file.start();
+            await writeQueue;
+          } else {
+            const exists = await pathExists({ context, path: destinationPath });
+            if (exists) {
+              if (neverOverwrite) return;
+              if (!overwrite) {
+                await context.text().error({ text: `unzip: ${destinationPath} already exists; use -o to overwrite or -n to skip\n` });
+                hadError = true;
+                return;
+              }
+            }
 
-          if (!overwrite) {
-            await context.text().error({
-              text: `unzip: ${destinationPath} already exists; use -o to overwrite or -n to skip\n`,
-            });
-            hadError = true;
-            continue;
-          }
-        }
+            const lastSlashIndex = destinationPath.lastIndexOf('/');
+            const parentPath = lastSlashIndex <= 0 ? '/' : destinationPath.slice(0, lastSlashIndex);
+            await ensureDirectory({ context, path: parentPath });
 
-        await writeEntryToFile({
-          context,
-          entry,
-          destinationPath,
-        });
+            const writerResult = context.files.tryCreateFileWriterEfficiently === undefined
+              ? undefined
+              : await context.files.tryCreateFileWriterEfficiently({ path: destinationPath, mode: 'truncate' });
+
+            let writeQueue = Promise.resolve();
+            if (writerResult?.kind === 'writer') {
+              const writer = writerResult.writer;
+              file.ondata = (err, data, final) => {
+                if (err) {
+                  writer.abort({ reason: err });
+                  return;
+                }
+                writeQueue = writeQueue.then(() => writer.write({ chunk: data }));
+                if (final) {
+                  writeQueue = writeQueue.then(() => writer.close());
+                }
+              };
+            } else {
+              const handle = await context.files.open({
+                path: destinationPath,
+                flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
+              });
+              let fileOffset = 0;
+              file.ondata = (err, data, final) => {
+                if (err) return;
+                writeQueue = writeQueue.then(async () => {
+                  let written = 0;
+                  while (written < data.length) {
+                    const { bytesWritten } = await handle.write({
+                      buffer: data,
+                      offset: written,
+                      length: data.length - written,
+                      position: fileOffset + written,
+                    });
+                    if (bytesWritten === 0) break;
+                    written += bytesWritten;
+                  }
+                  fileOffset += written;
+                });
+                if (final) {
+                  writeQueue = writeQueue.then(() => handle.close());
+                }
+              };
+            }
+            file.start();
+            await writeQueue;
+          }
+        })();
+        extractionPromises.push(extractionPromise);
+      };
+
+      for (let i = 0; i < buffer.length; i += PUSH_CHUNK_SIZE) {
+        unzipper.push(buffer.subarray(i, i + PUSH_CHUNK_SIZE), i + PUSH_CHUNK_SIZE >= buffer.length);
+        // We must await to avoid massive concurrency if buffer is huge and many files are small
+        await Promise.all(extractionPromises);
+        extractionPromises.length = 0;
       }
 
       return { exitCode: hadError ? 1 : 0 };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      if (message.includes('NotFoundError')) {
-        await context.text().error({
-          text: `unzip:  cannot find or open ${archiveOperand}, ${archiveOperand}.zip or ${archiveOperand}.ZIP.\n`,
-        });
-        return { exitCode: 9 };
-      }
-      await context.text().error({
-        text: `unzip: ${message}\n`,
-      });
+      await context.text().error({ text: `unzip: ${message}\n` });
       return { exitCode: 1 };
     }
   },

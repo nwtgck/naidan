@@ -21,6 +21,7 @@
     "@vueuse/core": "^14.1.0",
     "comlink": "^4.4.2",
     "dompurify": "^3.3.1",
+    "fflate": "^0.8.2",
     "file-type": "^21.3.3",
     "he": "^1.2.0",
     "highlight.js": "^11.11.1",
