@@ -1,14 +1,18 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { computedAsync } from '@vueuse/core';
 import { Calculator, Terminal } from 'lucide-vue-next';
 import { useChatTools } from '@/composables/useChatTools';
+import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 
 const { isToolEnabled, setToolEnabled, toggleTool } = useChatTools();
+const { isFeatureEnabled } = useFeatureFlags();
 const isShellToolSupported = computedAsync(
   async () => checkOPFSSupport(),
   true
 );
+const isWeshToolFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'wesh_tool' }));
 
 const handleShellToolToggle = () => {
   if (!isShellToolSupported.value) {
@@ -52,6 +56,7 @@ defineExpose({
       </div>
     </button>
     <button
+      v-if="isWeshToolFeatureEnabled"
       @click="handleShellToolToggle"
       :disabled="!isShellToolSupported"
       class="w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 text-left group"
