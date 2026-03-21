@@ -1,9 +1,9 @@
 import { ref, shallowRef } from 'vue';
-import { storageService } from '../services/storage';
-import { searchChatTree, searchLinearBranch, type ContentMatch } from '../utils/chat-search';
-import { getChatBranchIterator } from '../utils/chat-tree';
-import { UNTITLED_CHAT_TITLE } from '../models/constants';
-import type { SidebarItem, ChatSummary, ChatGroup } from '../models/types';
+import { storageService } from '@/services/storage';
+import { searchChatTree, searchLinearBranch, type ContentMatch } from '@/utils/chat-search';
+import { getChatBranchIterator } from '@/utils/chat-tree';
+import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import type { SidebarItem, ChatSummary, ChatGroup } from '@/models/types';
 
 export type { ContentMatch };
 

@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import GeneratedImageBlock from './GeneratedImageBlock.vue';
-import { storageService } from '../../services/storage';
-import { useImagePreview } from '../../composables/useImagePreview';
-import { ImageDownloadHydrator } from '../ImageDownloadHydrator';
+import { storageService } from '@/services/storage';
+import { useImagePreview } from '@/composables/useImagePreview';
+import { ImageDownloadHydrator } from '@/components/ImageDownloadHydrator';
 
 // Mock storage service
 vi.mock('../../services/storage', () => ({

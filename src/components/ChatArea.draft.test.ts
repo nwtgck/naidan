@@ -4,10 +4,10 @@ import ChatArea from './ChatArea.vue';
 import ChatInput from './ChatInput.vue';
 import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { useChatDraft } from '../composables/useChatDraft';
+import { useChatDraft } from '@/composables/useChatDraft';
 
 
-import { setupScrollToMock } from '../utils/test-utils';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 
 // Mock router
@@ -16,7 +16,7 @@ const router = createRouter({
   routes: [{ path: '/', component: {} }],
 });
 
-import type { MessageNode, Chat } from '../models/types';
+import type { MessageNode, Chat } from '@/models/types';
 
 // Mock dependencies
 const mockSendMessage = vi.fn().mockResolvedValue(true);

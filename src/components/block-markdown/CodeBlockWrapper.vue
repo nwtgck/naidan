@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { IMAGE_BLOCK_LANG } from '../../utils/image-generation';
+import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 import MermaidBlock from './MermaidBlock.vue';
 import GeneratedImageBlock from './GeneratedImageBlock.vue';
 import StandardCodeBlock from './StandardCodeBlock.vue';

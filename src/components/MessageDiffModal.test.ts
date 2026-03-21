@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageDiffModal from './MessageDiffModal.vue';
-import type { MessageNode } from '../models/types';
+import type { MessageNode } from '@/models/types';
 import { nextTick } from 'vue';
 
 describe('MessageDiffModal', () => {

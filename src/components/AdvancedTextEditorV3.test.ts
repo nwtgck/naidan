@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import AdvancedTextEditorV3 from './AdvancedTextEditorV3.vue';
 import { nextTick } from 'vue';
-import { setupScrollToMock } from '../utils/test-utils';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 // Mock scrollTo
 setupScrollToMock();

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 import { reactive, triggerRef } from 'vue';
-import type { Chat, SidebarItem } from '../models/types';
+import type { Chat, SidebarItem } from '@/models/types';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
@@ -30,6 +30,7 @@ const mockSettings = {
   endpointType: 'openai' as const,
   endpointUrl: 'http://localhost',
   storageType: 'local' as const,
+  mounts: [],
   autoTitleEnabled: true,
   defaultModelId: 'gpt-3.5-turbo',
 };

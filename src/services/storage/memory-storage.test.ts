@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStorageProvider } from './memory-storage';
-import type { Chat, ChatGroup } from '../../models/types';
+import type { Chat, ChatGroup } from '@/models/types';
 
 describe('MemoryStorageProvider', () => {
   let provider: MemoryStorageProvider;

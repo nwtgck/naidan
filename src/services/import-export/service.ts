@@ -1,4 +1,4 @@
-import { generateId } from '../../utils/id';
+import { generateId } from '@/utils/id';
 import JSZip from 'jszip';
 import type {
   ExportOptions,
@@ -25,14 +25,14 @@ import {
   type BinaryObjectDto,
   type BinaryShardIndexDto,
   BinaryShardIndexSchemaDto
-} from '../../models/dto';
+} from '@/models/dto';
 import {
   settingsToDomain,
   chatGroupToDomain,
   chatMetaToDomain
-} from '../../models/mappers';
-import { useGlobalEvents } from '../../composables/useGlobalEvents';
-import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '../../models/types';
+} from '@/models/mappers';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '@/models/types';
 
 // Helper to format date YYYY-MM-DD
 function formatDate(date: Date): string {
@@ -616,6 +616,7 @@ export class ImportExportService {
         settings: settingsDto ? settingsToDomain(settingsDto) : {
           autoTitleEnabled: true,
           providerProfiles: [],
+          mounts: [],
           storageType: 'local',
           endpointType: 'openai',
           endpointUrl: '',
@@ -822,6 +823,7 @@ export class ImportExportService {
         settings: settings || {
           autoTitleEnabled: true,
           providerProfiles: [],
+          mounts: [],
           storageType: 'local',
           endpointType: 'openai',
           endpointUrl: '',

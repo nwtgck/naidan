@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
-import type { ContentMatch, SearchResultItem } from '../composables/useChatSearch';
+import type { ContentMatch, SearchResultItem } from '@/composables/useChatSearch';
 import { GitBranch, Loader2, MessageSquare } from 'lucide-vue-next';
-import { storageService } from '../services/storage';
-import { getChatBranchIterator } from '../utils/chat-tree';
-import type { MessageNode, Chat } from '../models/types';
-import { useSettings } from '../composables/useSettings';
-import { UNTITLED_CHAT_TITLE } from '../models/constants';
+import { storageService } from '@/services/storage';
+import { getChatBranchIterator } from '@/utils/chat-tree';
+import type { MessageNode, Chat } from '@/models/types';
+import { useSettings } from '@/composables/useSettings';
+import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import MessageItem from './MessageItem.vue';
 
 const props = defineProps<{

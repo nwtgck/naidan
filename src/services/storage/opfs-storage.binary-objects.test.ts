@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
-import type { MessageNode } from '../../models/types';
+import type { MessageNode } from '@/models/types';
 
 // --- Reusable Mocks ---
 class MockFileSystemFileHandle {

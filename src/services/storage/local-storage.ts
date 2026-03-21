@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '../../models/types';
+import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/models/types';
 import {
   type ChatMetaDto,
   type ChatGroupDto,
@@ -8,7 +8,7 @@ import {
   SettingsSchemaDto,
   HierarchySchemaDto,
   ChatContentSchemaDto,
-} from '../../models/dto';
+} from '@/models/dto';
 import {
   chatToDomain,
   chatToDto,
@@ -22,9 +22,9 @@ import {
   chatContentToDto,
   chatContentToDomain,
   buildSidebarItemsFromHierarchy,
-} from '../../models/mappers';import { IStorageProvider } from './interface';
+} from '@/models/mappers';import { IStorageProvider } from './interface';
 
-import { STORAGE_KEY_PREFIX } from '../../models/constants';
+import { STORAGE_KEY_PREFIX } from '@/models/constants';
 
 const LSP_STORAGE_PREFIX = `${STORAGE_KEY_PREFIX}lsp:`;
 const KEY_HIERARCHY = `${LSP_STORAGE_PREFIX}hierarchy`;
@@ -277,6 +277,40 @@ export class LocalStorageProvider extends IStorageProvider {
     }
   }
 
+  // --- Volume Management ---
+
+  async *listVolumes(): AsyncIterable<import('@/models/types').Volume> {
+    // LocalStorage doesn't support volumes
+  }
+
+  async createVolume(_params: {
+    name: string;
+    type: import('@/models/types').VolumeType;
+    sourceHandle: FileSystemDirectoryHandle;
+  }): Promise<import('@/models/types').Volume> {
+    throw new Error('Volume management is not supported in LocalStorage provider.');
+  }
+
+  async createVolumeFromFiles(_params: {
+    name: string;
+    files: FileList;
+    onProgress?: (progress: { processed: number; total: number }) => void;
+  }): Promise<import('@/models/types').Volume> {
+    throw new Error('Volume management is not supported in LocalStorage provider.');
+  }
+
+  async getVolumeDirectoryHandle(_params: {
+    volumeId: string;
+  }): Promise<FileSystemDirectoryHandle | null> {
+    return null;
+  }
+
+  async deleteVolume(_params: {
+    volumeId: string;
+  }): Promise<void> {
+    throw new Error('Volume management is not supported in LocalStorage provider.');
+  }
+
   // --- File Storage ---
 
   /**
@@ -355,6 +389,7 @@ export class LocalStorageProvider extends IStorageProvider {
         settings: settings || {
           autoTitleEnabled: true,
           providerProfiles: [],
+          mounts: [],
           storageType: 'local',
           endpointType: 'openai',
           endpointUrl: '',

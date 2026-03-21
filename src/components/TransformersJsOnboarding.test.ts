@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import OnboardingModal from './OnboardingModal.vue';
-import { useSettings } from '../composables/useSettings';
-import { useTheme } from '../composables/useTheme';
-import { transformersJsService } from '../services/transformers-js';
+import { useSettings } from '@/composables/useSettings';
+import { useTheme } from '@/composables/useTheme';
+import { transformersJsService } from '@/services/transformers-js';
 import TransformersJsManager from './TransformersJsManager.vue';
 
 // --- Mocks ---

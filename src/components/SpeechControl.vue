@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
 import { Volume2, Pause, Square, RotateCcw } from 'lucide-vue-next';
-import { webSpeechService } from '../services/web-speech';
-import { isImageGenerationPending, isImageGenerationProcessed } from '../utils/image-generation';
+import { webSpeechService } from '@/services/web-speech';
+import { isImageGenerationPending, isImageGenerationProcessed } from '@/utils/image-generation';
 
 const props = defineProps<{
   messageId: string;

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useSettings } from './useSettings';
-import { DEFAULT_SETTINGS } from '../models/types';
-import { STORAGE_BOOTSTRAP_KEY } from '../models/constants';
+import { DEFAULT_SETTINGS } from '@/models/types';
+import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
 import { flushPromises } from '@vue/test-utils';
 
 const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64 } = vi.hoisted(() => ({

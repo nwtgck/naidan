@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { capitalize } from '../utils/string';
-import type { Settings } from '../models/types';
+import { capitalize } from '@/utils/string';
+import type { Settings } from '@/models/types';
 
 defineProps<{
   form: Settings;

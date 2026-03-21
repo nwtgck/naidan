@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
-import type { Chat, ChatGroup } from '../../models/types';
+import type { Chat, ChatGroup } from '@/models/types';
 
-import { STORAGE_KEY_PREFIX } from '../../models/constants';
+import { STORAGE_KEY_PREFIX } from '@/models/constants';
 
 const KEY_META_PREFIX = `${STORAGE_KEY_PREFIX}lsp:chat_meta:`;
 

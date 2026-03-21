@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, reactive, toRef, nextTick, computed } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
-import { useChat } from '../composables/useChat';
-import { useSettings } from '../composables/useSettings';
+import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
 
 // --- Mocks ---
 
@@ -492,6 +492,78 @@ describe('ChatSettingsPanel.vue', () => {
 
       // Assert: global settings remain original
       expect(mockSettings.value.endpointUrl).toBe('http://global:1234');
+    });
+  });
+
+  describe('Persistence & Timing', () => {
+    it('saves settings to the previous chat when chat is switched while panel is open', async () => {
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs }
+      });
+      await nextTick();
+
+      const urlInput = wrapper.find('input[data-testid="chat-setting-url-input"]');
+      await urlInput.setValue('http://new-url-for-A');
+
+      // Switch chat
+      mockCurrentChat.value = {
+        id: 'chat-B',
+        endpointType: 'openai',
+        endpointUrl: 'http://B',
+      };
+      await nextTick();
+      await flushPromises();
+
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+        endpointUrl: 'http://new-url-for-A'
+      }));
+    });
+
+    it('saves settings when the modal is closed via props even if blur hasn\'t fired yet', async () => {
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs }
+      });
+      await nextTick();
+
+      const urlInput = wrapper.find('input[data-testid="chat-setting-url-input"]');
+      await urlInput.setValue('http://closing-save');
+
+      // Simulate closing the modal via the prop
+      await wrapper.setProps({ show: false });
+      await nextTick();
+
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+        endpointUrl: 'http://closing-save'
+      }));
+    });
+
+    it('synchronizes settings from the current chat when the modal is reopened', async () => {
+      mockCurrentChat.value = {
+        id: 'chat-1',
+        endpointUrl: 'http://original',
+      };
+
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs }
+      });
+      await nextTick();
+
+      // Close modal
+      await wrapper.setProps({ show: false });
+      await nextTick();
+
+      // Update chat settings "in the background" (e.g. from storage sync)
+      mockCurrentChat.value.endpointUrl = 'http://updated-externally';
+
+      // Reopen modal
+      await wrapper.setProps({ show: true });
+      await nextTick();
+
+      const urlInput = wrapper.find('input[data-testid="chat-setting-url-input"]');
+      expect((urlInput.element as HTMLInputElement).value).toBe('http://updated-externally');
     });
   });
 

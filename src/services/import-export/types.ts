@@ -1,4 +1,4 @@
-import type { Settings } from '../../models/types';
+import type { Settings } from '@/models/types';
 
 // --- Export Options ---
 export interface ExportOptions {

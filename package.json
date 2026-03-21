@@ -1,7 +1,7 @@
 {
   "name": "naidan",
   "private": true,
-  "version": "0.25.0",
+  "version": "0.26.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:only-failed": "vitest --reporter=./src/FailedOnlyReporter.ts --run",
-    "typecheck": "vue-tsc --noEmit",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix"
   },
@@ -21,6 +21,7 @@
     "@vueuse/core": "^14.1.0",
     "comlink": "^4.4.2",
     "dompurify": "^3.3.1",
+    "file-type": "^21.3.3",
     "he": "^1.2.0",
     "highlight.js": "^11.11.1",
     "jszip": "^3.10.1",
@@ -59,6 +60,7 @@
     "@vue/typescript": "^1.8.20",
     "autoprefixer": "^10.4.23",
     "eslint": "^9.39.2",
+    "eslint-plugin-no-relative-import-paths": "^1.6.1",
     "eslint-plugin-vue": "^10.6.2",
     "globals": "^17.0.0",
     "happy-dom": "^20.1.0",

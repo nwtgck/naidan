@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue';
 import { useChat } from './useChat';
 import { useOverlay } from './useOverlay';
-import type { ChatSummary } from '../models/types';
+import type { ChatSummary } from '@/models/types';
 
 interface RecentChatEntry {
   id: string;

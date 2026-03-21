@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { reactive } from 'vue';
-import type { Chat, MessageNode } from '../models/types';
-import { storageService } from '../services/storage';
+import type { Chat, MessageNode } from '@/models/types';
+import { storageService } from '@/services/storage';
 
 vi.mock('../services/storage', () => ({
   storageService: {

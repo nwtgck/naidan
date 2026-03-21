@@ -3,11 +3,11 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { useRouter, useRoute } from 'vue-router';
 import Sidebar from './Sidebar.vue';
-import { useChat } from '../composables/useChat';
-import { useTheme } from '../composables/useTheme';
-import { useConfirm } from '../composables/useConfirm';
-import { useSettings } from '../composables/useSettings';
-import { useLayout } from '../composables/useLayout';
+import { useChat } from '@/composables/useChat';
+import { useTheme } from '@/composables/useTheme';
+import { useConfirm } from '@/composables/useConfirm';
+import { useSettings } from '@/composables/useSettings';
+import { useLayout } from '@/composables/useLayout';
 
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(),

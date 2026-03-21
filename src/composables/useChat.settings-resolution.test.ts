@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { reactive, nextTick } from 'vue';
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 
 // Mock storage
 vi.mock('../services/storage', () => ({
@@ -65,6 +65,7 @@ describe('useChat Settings Resolution Policy', () => {
       autoTitleEnabled: false,
       storageType: 'local',
       providerProfiles: [],
+      mounts: [],
     });
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'other-gpt', 'pinned-model', 'model-a', 'model-b']);

@@ -3,14 +3,14 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import OnboardingModal from './OnboardingModal.vue';
 import ThemeToggle from './ThemeToggle.vue';
-import { useSettings } from '../composables/useSettings';
-import { useTheme } from '../composables/useTheme';
-import { useToast } from '../composables/useToast';
+import { useSettings } from '@/composables/useSettings';
+import { useTheme } from '@/composables/useTheme';
+import { useToast } from '@/composables/useToast';
 import { Settings } from 'lucide-vue-next';
-import * as llm from '../services/llm';
-import { TransformersJsProvider } from '../services/transformers-js-provider';
-import { type EndpointType } from '../models/types';
-import { detectOllama } from '../utils/ollama-detection';
+import * as llm from '@/services/llm';
+import { TransformersJsProvider } from '@/services/transformers-js-provider';
+import { type EndpointType } from '@/models/types';
+import { detectOllama } from '@/utils/ollama-detection';
 
 // Mock the services.
 vi.mock('../services/llm', () => {

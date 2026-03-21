@@ -1,7 +1,7 @@
 import { generateId } from './id';
 import { toRaw } from 'vue';
-import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat } from '../models/types';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
+import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
 
 export function fileToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {

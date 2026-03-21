@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, computed, toRaw, onUnmounted } from 'vue';
-import { useChat } from '../composables/useChat';
-import { useChatDraft } from '../composables/useChatDraft';
-import { useLayout } from '../composables/useLayout';
-import { generateId } from '../utils/id';
-import { naturalSort } from '../utils/string';
+import { useChat } from '@/composables/useChat';
+import { useChatDraft } from '@/composables/useChatDraft';
+import { useLayout } from '@/composables/useLayout';
+import { generateId } from '@/utils/id';
+import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
-import { useReasoning } from '../composables/useReasoning';
+import { useReasoning } from '@/composables/useReasoning';
 
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
 
@@ -19,7 +19,7 @@ import {
   ChevronDown, ChevronUp, Edit2, FileEdit
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
-import type { Attachment, Chat, LmParameters } from '../models/types';
+import type { Attachment, Chat, LmParameters } from '@/models/types';
 
 const chatStore = useChat();
 const reasoningStore = useReasoning();
@@ -552,7 +552,7 @@ async function handleSend() {
   focusInput();
 }
 
-import { findDeepestLeaf } from '../utils/chat-tree';
+import { findDeepestLeaf } from '@/utils/chat-tree';
 
 watch(
   () => currentChat.value?.currentLeafId,

@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatSummary, SidebarItem } from '../models/types';
+import type { ChatSummary, SidebarItem } from '@/models/types';
 
 const mockChats = ref<ChatSummary[]>([]);
 const mockActiveTasks = reactive(new Set<string>());

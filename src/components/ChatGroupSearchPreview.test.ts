@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatGroupSearchPreview from './ChatGroupSearchPreview.vue';
 import { nextTick } from 'vue';
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 
 // --- Mocks ---
 

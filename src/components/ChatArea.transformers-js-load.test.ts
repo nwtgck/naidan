@@ -4,8 +4,8 @@ import { mount, VueWrapper } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { transformersJsService } from '../services/transformers-js';
-import { setupScrollToMock } from '../utils/test-utils';
+import { transformersJsService } from '@/services/transformers-js';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 // Mock router
 const router = createRouter({

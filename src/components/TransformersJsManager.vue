@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { transformersJsService } from '../services/transformers-js';
+import { transformersJsService } from '@/services/transformers-js';
 import {
   Loader2, CheckCircle2, AlertCircle, Download, FolderOpen, RefreshCcw, Trash2,
   ChevronDown, Plus, HardDriveDownload, X, BrainCircuit, PowerOff, ExternalLink, Search, FileCode, RotateCcw
 } from 'lucide-vue-next';
-import { useToast } from '../composables/useToast';
-import { useConfirm } from '../composables/useConfirm';
-import { checkOPFSSupport } from '../services/storage/opfs-detection';
+import { useToast } from '@/composables/useToast';
+import { useConfirm } from '@/composables/useConfirm';
+import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 
 const { addToast } = useToast();

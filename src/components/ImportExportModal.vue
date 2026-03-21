@@ -6,14 +6,14 @@ import {
   RefreshCw, CopyPlus, ArrowRight,
   Database, Settings2, FolderInput
 } from 'lucide-vue-next';
-import { ImportExportService } from '../services/import-export/service';
-import { storageService } from '../services/storage';
-import { useToast } from '../composables/useToast';
+import { ImportExportService } from '@/services/import-export/service';
+import { storageService } from '@/services/storage';
+import { useToast } from '@/composables/useToast';
 import type {
   ImportConfig,
   ImportPreview
-} from '../services/import-export/types';
-import { UNTITLED_CHAT_TITLE } from '../models/constants';
+} from '@/services/import-export/types';
+import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 
 const props = defineProps<{
   isOpen: boolean;

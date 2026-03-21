@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import MessageItem from './MessageItem.vue';
-import { createImageRequestMarker, SENTINEL_IMAGE_REQUEST_PREFIX } from '../utils/image-generation';
+import { createImageRequestMarker, SENTINEL_IMAGE_REQUEST_PREFIX } from '@/utils/image-generation';
 
 // Mock storage service
 vi.mock('../services/storage', () => ({

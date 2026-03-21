@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useBinaryActions } from './useBinaryActions';
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 
 vi.mock('../services/storage', () => ({
   storageService: {

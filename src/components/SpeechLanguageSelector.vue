@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { Languages, ChevronDown, Check, RefreshCw } from 'lucide-vue-next';
-import { webSpeechService, type SpeechLanguage } from '../services/web-speech';
+import { webSpeechService, type SpeechLanguage } from '@/services/web-speech';
 
 const props = defineProps<{
   messageId: string;

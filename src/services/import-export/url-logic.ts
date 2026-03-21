@@ -1,5 +1,5 @@
 import { ImportExportService } from './service';
-import { storageService } from '../storage';
+import { storageService } from '@/services/storage';
 import type { ImportConfig } from './types';
 
 export const APPEND_ONLY_CONFIG: ImportConfig = {

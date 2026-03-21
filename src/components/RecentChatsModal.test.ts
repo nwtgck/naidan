@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import RecentChatsModal from './RecentChatsModal.vue';
 import { ref, nextTick } from 'vue';
-import type { ChatSummary } from '../models/types';
-import { setupScrollToMock } from '../utils/test-utils';
+import type { ChatSummary } from '@/models/types';
+import { setupScrollToMock } from '@/utils/test-utils';
 
 // --- Mocks ---
 

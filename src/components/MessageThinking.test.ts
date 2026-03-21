@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageThinking from './MessageThinking.vue';
-import type { MessageNode } from '../models/types';
+import type { MessageNode } from '@/models/types';
 
 describe('MessageThinking Stability and Layout', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({

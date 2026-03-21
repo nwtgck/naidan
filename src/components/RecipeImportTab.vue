@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { ref, watch } from 'vue';
 import {
   ChefHat, Save, AlertTriangle
 } from 'lucide-vue-next';
-import { parseConcatenatedJson } from '../utils/json-stream-parser';
-import { matchRecipeModels } from '../utils/recipe-matcher';
-import { ChatGroupRecipeSchema } from '../models/recipe';
-import type { ChatGroupRecipe } from '../models/recipe';
+import { parseConcatenatedJson } from '@/utils/json-stream-parser';
+import { matchRecipeModels } from '@/utils/recipe-matcher';
+import { ChatGroupRecipeSchema } from '@/models/recipe';
+import type { ChatGroupRecipe } from '@/models/recipe';
 import ModelSelector from './ModelSelector.vue';
-import { naturalSort } from '../utils/string';
+import { naturalSort } from '@/utils/string';
 
 const props = defineProps<{
   availableModels: readonly string[];

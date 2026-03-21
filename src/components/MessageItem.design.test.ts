@@ -1,9 +1,9 @@
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import MessageThinking from './MessageThinking.vue';
-import type { MessageNode } from '../models/types';
+import type { MessageNode } from '@/models/types';
 import fs from 'fs';
 import path from 'path';
 

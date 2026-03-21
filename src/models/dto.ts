@@ -359,6 +359,48 @@ export const ChatSchemaDto = ChatMetaSchemaDto.extend({
 
 export type ChatDto = z.infer<typeof ChatSchemaDto>;
 
+// --- Volume Management & Mounts ---
+
+export const VolumeTypeSchemaDto = z.enum(['opfs', 'host']);
+export type VolumeTypeDto = z.infer<typeof VolumeTypeSchemaDto>;
+
+const VolumeBaseSchemaDto = z.object({
+  id: z.string(),
+  name: z.string(),
+  createdAt: z.number(),
+});
+
+export const VolumeOpfsSchemaDto = VolumeBaseSchemaDto.extend({
+  type: z.literal('opfs'),
+});
+
+export const VolumeHostSchemaDto = VolumeBaseSchemaDto.extend({
+  type: z.literal('host'),
+});
+
+export const VolumeSchemaDto = z.discriminatedUnion('type', [
+  VolumeOpfsSchemaDto,
+  VolumeHostSchemaDto,
+]);
+export type VolumeDto = z.infer<typeof VolumeSchemaDto>;
+
+export const VolumeIndexSchemaDto = z.object({
+  volumes: z.record(z.string(), VolumeSchemaDto),
+});
+export type VolumeIndexDto = z.infer<typeof VolumeIndexSchemaDto>;
+
+export const MountVolumeSchemaDto = z.object({
+  type: z.literal('volume'),
+  volumeId: z.string(),
+  mountPath: z.string(),
+  readOnly: z.boolean(),
+});
+
+export const MountSchemaDto = z.discriminatedUnion('type', [
+  MountVolumeSchemaDto,
+]);
+export type MountDto = z.infer<typeof MountSchemaDto>;
+
 // --- Provider Profiles ---
 
 export const ProviderProfileSchemaDto = z.object({
@@ -379,6 +421,7 @@ export const SettingsSchemaDto = z.object({
   autoTitleEnabled: z.boolean().default(true),
   storageType: StorageTypeSchemaDto,
   providerProfiles: z.array(ProviderProfileSchemaDto).default([]),
+  mounts: z.array(MountSchemaDto).default([]),
   heavyContentAlertDismissed: orUndefined(z.boolean()),
   systemPrompt: orUndefined(z.string()),
   lmParameters: orUndefined(LmParametersSchemaDto),

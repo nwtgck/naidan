@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import SpeechControl from './SpeechControl.vue';
-import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED } from '../utils/image-generation';
+import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED } from '@/utils/image-generation';
 
 // Mock speech service
 vi.mock('../services/web-speech', () => ({

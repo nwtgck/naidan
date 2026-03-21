@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { ref, computed, watch } from 'vue';
 import {
   X, ChefHat, Copy, Check, Plus, Trash2, Info, Globe, AlertCircle, MessageSquareQuote
 } from 'lucide-vue-next';
-import type { ChatGroupRecipe, RecipeSystemPrompt } from '../models/recipe';
-import type { LmParameters, SystemPrompt } from '../models/types';
-import { generateDefaultModelPatterns } from '../utils/recipe-matcher';
+import type { ChatGroupRecipe, RecipeSystemPrompt } from '@/models/recipe';
+import type { LmParameters, SystemPrompt } from '@/models/types';
+import { generateDefaultModelPatterns } from '@/utils/recipe-matcher';
 
 const props = defineProps<{
   isOpen: boolean;

@@ -3,16 +3,16 @@ import { onMounted, ref, watch, nextTick, computed, toRaw, onUnmounted } from 'v
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
-import { useChat } from '../composables/useChat';
-import { useSettings } from '../composables/useSettings';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // IMPORTANT: Logo is part of the initial sidebar layout and should not flicker.
 import Logo from './Logo.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
 const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted(() => import('./SidebarDebugControls.vue'));
-import type { ChatGroup, SidebarItem, ChatSidebarItem } from '../models/types';
+import type { ChatGroup, SidebarItem, ChatSidebarItem } from '@/models/types';
 import {
   Trash2, Settings as SettingsIcon,
   Pencil, Folder, FolderPlus,
@@ -22,11 +22,11 @@ import {
 } from 'lucide-vue-next';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupActions.vue'));
-import { useLayout } from '../composables/useLayout';
-import { useConfirm } from '../composables/useConfirm';
-import { useGlobalSearch } from '../composables/useGlobalSearch';
-import { naturalSort } from '../utils/string';
-import { scrollIntoViewSafe } from '../utils/dom';
+import { useLayout } from '@/composables/useLayout';
+import { useConfirm } from '@/composables/useConfirm';
+import { useGlobalSearch } from '@/composables/useGlobalSearch';
+import { naturalSort } from '@/utils/string';
+import { scrollIntoViewSafe } from '@/utils/dom';
 
 const chatStore = useChat();
 const {

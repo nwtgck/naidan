@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '../../models/types';
+import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/models/types';
 import {
   type ChatMetaDto,
   type ChatGroupDto,
@@ -9,7 +9,7 @@ import {
   SettingsSchemaDto,
   HierarchySchemaDto,
   ChatContentSchemaDto,
-} from '../../models/dto';
+} from '@/models/dto';
 import {
   chatToDomain,
   chatToDto,
@@ -22,7 +22,7 @@ import {
   chatContentToDto,
   chatContentToDomain,
   buildSidebarItemsFromHierarchy,
-} from '../../models/mappers';
+} from '@/models/mappers';
 import { IStorageProvider } from './interface';
 
 /**
@@ -236,8 +236,52 @@ export class MemoryStorageProvider extends IStorageProvider {
     return this.settings;
   }
 
+  // --- Volume Management ---
+
+  async *listVolumes(): AsyncIterable<import('@/models/types').Volume> {
+    // MemoryStorage doesn't support volumes
+  }
+
+  async createVolume(_params: {
+    name: string;
+    type: import('@/models/types').VolumeType;
+    sourceHandle: FileSystemDirectoryHandle;
+  }): Promise<import('@/models/types').Volume> {
+    throw new Error('Volume management is not supported in MemoryStorage provider.');
+  }
+
+  async createVolumeFromFiles(_params: {
+    name: string;
+    files: FileList;
+    onProgress?: (progress: { processed: number; total: number }) => void;
+  }): Promise<import('@/models/types').Volume> {
+    throw new Error('Volume management is not supported in MemoryStorage provider.');
+  }
+
+  async getVolumeDirectoryHandle(_params: {
+    volumeId: string;
+  }): Promise<FileSystemDirectoryHandle | null> {
+    return null;
+  }
+
+  async deleteVolume(_params: {
+    volumeId: string;
+  }): Promise<void> {
+    throw new Error('Volume management is not supported in MemoryStorage provider.');
+  }
+
   // --- File Storage ---
 
+  /**
+   * @deprecated Use the named arguments version instead.
+   */
+  async saveFile(blob: Blob, binaryObjectId: string, name: string, mimeType?: string, size?: number): Promise<void>;
+  async saveFile(params: {
+    blob: Blob;
+    binaryObjectId: string;
+    name: string;
+    mimeType: string | undefined;
+  }): Promise<void>;
   async saveFile(blobOrParams: Blob | { blob: Blob; binaryObjectId: string; name: string; mimeType: string | undefined }, binaryObjectId?: string, name?: string, mimeType?: string): Promise<void> {
     let blob: Blob;
     let bId: string;
@@ -332,6 +376,7 @@ export class MemoryStorageProvider extends IStorageProvider {
         settings: settings || {
           autoTitleEnabled: true,
           providerProfiles: [],
+          mounts: [],
           storageType: 'memory',
           endpointType: 'openai',
           endpointUrl: '',

@@ -1,6 +1,7 @@
 /// <reference types="vitest" />
 import VueRouter from 'unplugin-vue-router/vite'
 import { defineConfig } from 'vitest/config'
+import { build as viteBuild } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import VueDevTools from 'vite-plugin-vue-devtools'
 import fs from 'node:fs'
@@ -37,6 +38,13 @@ interface LicenseDependency {
   version: string
   license: string
   licenseText: string
+}
+
+interface EmbeddedWorkerSpec {
+  entry: string
+  globalName: string
+  scriptType: string
+  workerId: string
 }
 
 /**
@@ -90,6 +98,14 @@ export default defineConfig(({ mode }) => {
   const isHosted = mode === 'hosted'
   // Use nested directories in dist/ to keep things organized
   const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted'
+  const embeddedWorkers: EmbeddedWorkerSpec[] = [
+    {
+      entry: 'src/services/wesh.worker.ts',
+      globalName: 'NaidanFileProtocolCompatibleWeshWorker',
+      scriptType: 'text/x-naidan-worker',
+      workerId: 'file-protocol-compatible-wesh-worker',
+    }
+  ]
 
   return {
     base: './',
@@ -114,9 +130,15 @@ export default defineConfig(({ mode }) => {
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
     resolve: {
-      alias: isStandalone ? {
-        './transformers-js-loader': path.resolve(__dirname, 'src/services/transformers-js-loader-noop.ts'),
-      } : ({} as Record<string, string>),
+      alias: {
+        ...(isStandalone ? {
+          '@/services/wesh-worker-loader': path.resolve(__dirname, 'src/services/wesh-worker-loader-standalone.ts'),
+        } : {}),
+        '@': path.resolve(__dirname, 'src'),
+        ...(isStandalone ? {
+          './transformers-js-loader': path.resolve(__dirname, 'src/services/transformers-js-loader-noop.ts'),
+        } : {}),
+      },
     },
     plugins: [
       VueRouter({
@@ -170,6 +192,7 @@ export default defineConfig(({ mode }) => {
       !isStandalone && manualGzipWasmPlugin({ outDir }),
       // Standalone: Inline scripts for file:// support, then Zip the result
       isStandalone && iifeInlinePlugin({ outDir }),
+      isStandalone && standaloneEmbeddedWorkersPlugin({ outDir, workers: embeddedWorkers }),
       isStandalone && zipPackagerPlugin({
         outDir,
         zipFileName: 'naidan-standalone.zip',
@@ -351,5 +374,78 @@ const iifeInlinePlugin = ({ outDir }: { outDir: string }) => ({
 
     fs.writeFileSync(htmlPath, dom.serialize())
     console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility.`)
+  },
+})
+
+const standaloneEmbeddedWorkersPlugin = ({ outDir, workers }: {
+  outDir: string
+  workers: EmbeddedWorkerSpec[]
+}) => ({
+  name: 'standalone-embedded-workers-plugin',
+  async closeBundle() {
+    if (workers.length === 0) return
+
+    const distDir = path.resolve(__dirname, outDir)
+    const htmlPath = path.join(distDir, 'index.html')
+    if (!fs.existsSync(htmlPath)) return
+
+    const tempRootDir = path.join(distDir, '__embedded_workers__')
+    await fs.promises.rm(tempRootDir, { recursive: true, force: true })
+
+    const html = fs.readFileSync(htmlPath, 'utf8')
+    const dom = new JSDOM(html)
+    const document = dom.window.document
+
+    try {
+      for (const worker of workers) {
+        const workerOutDir = path.join(tempRootDir, worker.workerId)
+
+        await viteBuild({
+          configFile: false,
+          logLevel: 'error',
+          publicDir: false,
+          resolve: {
+            alias: {
+              '@': path.resolve(__dirname, 'src'),
+            },
+          },
+          root: __dirname,
+          build: {
+            emptyOutDir: true,
+            lib: {
+              entry: path.resolve(__dirname, worker.entry),
+              fileName: () => `${worker.workerId}.js`,
+              formats: ['iife'],
+              name: worker.globalName,
+            },
+            minify: true,
+            outDir: workerOutDir,
+            rollupOptions: {
+              output: {
+                inlineDynamicImports: true,
+              },
+            },
+            sourcemap: false,
+          },
+        })
+
+        const workerScriptPath = path.join(workerOutDir, `${worker.workerId}.js`)
+        if (!fs.existsSync(workerScriptPath)) {
+          throw new Error(`Embedded worker build output not found: ${worker.workerId}`)
+        }
+
+        const workerContent = fs.readFileSync(workerScriptPath, 'utf8')
+        const script = document.createElement('script')
+        script.setAttribute('data-worker-id', worker.workerId)
+        script.setAttribute('type', worker.scriptType)
+        script.textContent = workerContent.replace(/<\/script>/g, '<\\/script>')
+        document.body.appendChild(script)
+      }
+
+      fs.writeFileSync(htmlPath, dom.serialize())
+      console.log(`  \u2713 Embedded ${workers.length} standalone worker(s) into index.html.`)
+    } finally {
+      await fs.promises.rm(tempRootDir, { recursive: true, force: true })
+    }
   },
 })

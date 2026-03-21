@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { useSettings } from '../composables/useSettings';
-import { useLayout } from '../composables/useLayout';
-import { OpenAIProvider, OllamaProvider, type LLMProvider } from '../services/llm';
-import { TransformersJsProvider } from '../services/transformers-js-provider';
-import { type EndpointType, type Settings as SettingsType } from '../models/types';
-import { ENDPOINT_PRESETS } from '../models/constants';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { useSettings } from '@/composables/useSettings';
+import { useLayout } from '@/composables/useLayout';
+import { OpenAIProvider, OllamaProvider, type LLMProvider } from '@/services/llm';
+import { TransformersJsProvider } from '@/services/transformers-js-provider';
+import { type EndpointType, type Settings as SettingsType } from '@/models/types';
+import { ENDPOINT_PRESETS } from '@/models/constants';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // IMPORTANT: ThemeToggle is part of the core onboarding UI.
 import ThemeToggle from './ThemeToggle.vue';
@@ -18,10 +18,10 @@ import ModelSelector from './ModelSelector.vue';
 // Lazily load onboarding guides and managers, but prefetch them when idle.
 const ServerSetupGuide = defineAsyncComponentAndLoadOnMounted(() => import('./ServerSetupGuide.vue'));
 const TransformersJsManager = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsManager.vue'));
-import { transformersJsService } from '../services/transformers-js';
+import { transformersJsService } from '@/services/transformers-js';
 import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2, FlaskConical } from 'lucide-vue-next';
-import { naturalSort } from '../utils/string';
-import { detectOllama } from '../utils/ollama-detection';
+import { naturalSort } from '@/utils/string';
+import { detectOllama } from '@/utils/ollama-detection';
 
 const { settings, save, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
 const { setActiveFocusArea } = useLayout();

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue';
 import { Brain } from 'lucide-vue-next';
-import type { MessageNode } from '../models/types';
+import type { MessageNode } from '@/models/types';
 
 const props = defineProps<{
   message: MessageNode;

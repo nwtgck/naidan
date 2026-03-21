@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import type { ToolCallRecord } from '../services/tools/types';
+import type { ToolCallRecord } from '@/services/tools/types';
 
 const _enabledToolNames = ref<Set<string>>(new Set());
 const _messageToolCalls = ref<Map<string, ToolCallRecord[]>>(new Map());
@@ -9,12 +9,19 @@ export function useChatTools() {
     return _enabledToolNames.value.has(name);
   };
 
-  const toggleTool = ({ name }: { name: string }) => {
-    if (_enabledToolNames.value.has(name)) {
-      _enabledToolNames.value.delete(name);
-    } else {
+  const setToolEnabled = ({ name, enabled }: { name: string; enabled: boolean }) => {
+    if (enabled) {
       _enabledToolNames.value.add(name);
+    } else {
+      _enabledToolNames.value.delete(name);
     }
+  };
+
+  const toggleTool = ({ name }: { name: string }) => {
+    setToolEnabled({
+      name,
+      enabled: !_enabledToolNames.value.has(name),
+    });
   };
 
   const enabledToolNames = computed(() => Array.from(_enabledToolNames.value));
@@ -59,6 +66,7 @@ export function useChatTools() {
 
   return {
     isToolEnabled,
+    setToolEnabled,
     toggleTool,
     enabledToolNames,
     getToolCallsForMessage,

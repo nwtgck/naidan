@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useSettings } from '../composables/useSettings';
-import { useToast } from '../composables/useToast';
-import type { ProviderProfile } from '../models/types';
+import { useSettings } from '@/composables/useSettings';
+import { useToast } from '@/composables/useToast';
+import type { ProviderProfile } from '@/models/types';
 import {
   BookmarkPlus, Pencil, Trash, Check
 } from 'lucide-vue-next';
-import { capitalize } from '../utils/string';
+import { capitalize } from '@/utils/string';
 
 const props = defineProps<{
   profiles: ProviderProfile[];

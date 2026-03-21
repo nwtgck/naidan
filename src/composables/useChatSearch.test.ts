@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { nextTick } from 'vue';
 import { useChatSearch } from './useChatSearch';
-import { storageService } from '../services/storage';
-import * as chatSearchUtils from '../utils/chat-search';
+import { storageService } from '@/services/storage';
+import * as chatSearchUtils from '@/utils/chat-search';
 
 vi.mock('../services/storage', () => ({
   storageService: {

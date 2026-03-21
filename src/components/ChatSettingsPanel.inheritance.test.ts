@@ -3,8 +3,8 @@ import { mount } from '@vue/test-utils';
 import { ref, computed } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import ModelSelector from './ModelSelector.vue';
-import { useChat } from '../composables/useChat';
-import { useSettings } from '../composables/useSettings';
+import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
 
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(),

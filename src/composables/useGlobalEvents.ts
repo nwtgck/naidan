@@ -1,4 +1,4 @@
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { ref, computed } from 'vue';
 
 export type EventType = 'info' | 'warn' | 'error' | 'debug';

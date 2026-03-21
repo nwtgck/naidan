@@ -1,5 +1,5 @@
 import { AutoTokenizer, AutoModelForCausalLM } from '@huggingface/transformers';
-import type { ChatMessage, LmParameters } from '../models/types';
+import type { ChatMessage, LmParameters } from '@/models/types';
 
 /**
  * Shared types for Transformers.js service and worker

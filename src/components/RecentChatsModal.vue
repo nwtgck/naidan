@@ -2,13 +2,13 @@
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { X, Eye, Search } from 'lucide-vue-next';
-import { useRecentChats } from '../composables/useRecentChats';
-import { useChat } from '../composables/useChat';
-import { useSettings } from '../composables/useSettings';
-import { useLayout } from '../composables/useLayout';
-import { UNTITLED_CHAT_TITLE } from '../models/constants';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
-import { scrollIntoViewSafe } from '../utils/dom';
+import { useRecentChats } from '@/composables/useRecentChats';
+import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
+import { useLayout } from '@/composables/useLayout';
+import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
+import { scrollIntoViewSafe } from '@/utils/dom';
 import RecentChatListItem from './RecentChatListItem.vue';
 
 const SearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./SearchPreview.vue'));

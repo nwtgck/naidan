@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { Shapes, ChevronDown, ChevronUp } from 'lucide-vue-next';
-import type { ToolCallRecord } from '../services/tools/types';
+import type { ToolCallRecord } from '@/services/tools/types';
 import LmToolCall from './LmToolCall.vue';
 
 defineProps<{

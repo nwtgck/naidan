@@ -842,6 +842,22 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
     experimental: experimental ? {
       markdownRendering: experimental.markdownRendering
     } : undefined,
+    mounts: (domain.mounts || []).map(m => {
+      const type = m.type;
+      switch (type) {
+      case 'volume':
+        return {
+          type: 'volume',
+          volumeId: m.volumeId,
+          mountPath: m.mountPath,
+          readOnly: m.readOnly,
+        };
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unhandled mount type: ${_ex}`);
+      }
+      }
+    }),
   };
 };
 
@@ -860,3 +876,36 @@ export const binaryObjectToDto = (domain: BinaryObject): BinaryObjectDto => ({
   createdAt: domain.createdAt,
   name: domain.name,
 });
+
+import type { Volume } from '@/models/types';
+import type { VolumeDto } from '@/models/dto';
+
+export const volumeToDomain = (dto: VolumeDto): Volume => ({
+  id: dto.id,
+  name: dto.name,
+  type: dto.type,
+  createdAt: dto.createdAt,
+});
+
+export const volumeToDto = (domain: Volume): VolumeDto => {
+  switch (domain.type) {
+  case 'opfs':
+    return {
+      type: 'opfs',
+      id: domain.id,
+      name: domain.name,
+      createdAt: domain.createdAt,
+    };
+  case 'host':
+    return {
+      type: 'host',
+      id: domain.id,
+      name: domain.name,
+      createdAt: domain.createdAt,
+    };
+  default: {
+    const _ex: never = domain.type;
+    throw new Error(`Unhandled volume type: ${(_ex as { type: string }).type}`);
+  }
+  }
+};

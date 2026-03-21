@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
-import type { MessageNode } from '../models/types';
+import type { MessageNode } from '@/models/types';
 
 describe('MessageItem Thinking Border (New Implementation)', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({

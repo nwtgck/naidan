@@ -10,9 +10,9 @@ import {
   type PreTrainedTokenizer,
   type Tensor
 } from '@huggingface/transformers';
-import type { ChatMessage, LmParameters } from '../models/types';
+import type { ChatMessage, LmParameters } from '@/models/types';
 import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker } from './transformers-js.types';
-import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '../utils/gpt-oss-harmony';
+import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '@/utils/gpt-oss-harmony';
 import { urlToPath, writeToOpfs } from './transformers-js.utils';
 
 type ModelOutput = Record<string, unknown>;

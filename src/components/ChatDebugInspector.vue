@@ -4,10 +4,10 @@ import { Bug, X, MessageSquare, Network, FileCode, Highlighter, ZapOff, ChevronL
 import createDOMPurify from 'dompurify';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 import { useRouter } from 'vue-router';
-import { useGlobalEvents } from '../composables/useGlobalEvents';
-import type { BinaryObject, MessageNode } from '../models/types';
+import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import type { BinaryObject, MessageNode } from '@/models/types';
 
 const DOMPurify = (() => {
   const t = typeof window;

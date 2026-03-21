@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useImageGeneration } from './useImageGeneration';
 
-import { SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '../utils/image-generation';
+import { SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 // Mock storage service
 vi.mock('../services/storage', () => ({

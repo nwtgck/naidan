@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Hammer, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-vue-next';
 import { ref, watch, onMounted } from 'vue';
-import type { CombinedToolCall } from '../models/types';
-import { storageService } from '../services/storage';
+import type { CombinedToolCall } from '@/models/types';
+import { storageService } from '@/services/storage';
 
 const props = defineProps<{
   toolCall: CombinedToolCall;

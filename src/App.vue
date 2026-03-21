@@ -30,6 +30,7 @@ const PWAManager = __BUILD_MODE_IS_HOSTED__
   : undefined;
 // Lazily load components that are not visible on initial mount, but prefetch them when idle.
 const SettingsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/SettingsModal.vue'));
+const DebugWeshTerminalModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/DebugWeshTerminalModal.vue'));
 const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/GlobalSearchModal.vue'));
 const RecentChatsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/RecentChatsModal.vue'));
 const DebugPanel = defineAsyncComponentAndLoadOnMounted(() => import('./components/DebugPanel.vue'));
@@ -39,7 +40,7 @@ const OPFSExplorer = defineAsyncComponentAndLoadOnMounted(() => import('./compon
 const chatStore = useChat();
 const settingsStore = useSettings();
 const { addRecentChat, toggleRecent } = useRecentChats();
-const { isSidebarOpen, isDebugOpen } = useLayout();
+const { isSidebarOpen, isDebugOpen, isWeshTerminalOpen, toggleWeshTerminal } = useLayout();
 const { activePrintMode } = usePrint();
 const router = useRouter();
 const route = useRoute();
@@ -265,6 +266,11 @@ defineExpose({
     <SettingsModal
       :is-open="isSettingsOpen"
       @close="closeSettings"
+    />
+
+    <DebugWeshTerminalModal
+      :is-open="isWeshTerminalOpen"
+      @close="toggleWeshTerminal"
     />
 
     <Transition name="modal">

@@ -4,7 +4,7 @@ import Sidebar from './Sidebar.vue';
 import ChatGroupActions from './ChatGroupActions.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
-import type { ChatGroup, ChatSummary, SidebarItem } from '../models/types';
+import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);

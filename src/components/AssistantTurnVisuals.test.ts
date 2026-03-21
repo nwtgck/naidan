@@ -4,8 +4,8 @@ import { h } from 'vue';
 import MessageItem from './MessageItem.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import ToolCallGroupItem from './ToolCallGroupItem.vue';
-import { generateId } from '../utils/id';
-import type { MessageNode } from '../models/types';
+import { generateId } from '@/utils/id';
+import type { MessageNode } from '@/models/types';
 
 // Mock Lucide icons to simplify DOM inspection
 vi.mock('lucide-vue-next', async (importOriginal) => {

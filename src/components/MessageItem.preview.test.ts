@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import MessageItem from './MessageItem.vue';
-import { storageService } from '../services/storage';
-import type { MessageNode } from '../models/types';
+import { storageService } from '@/services/storage';
+import type { MessageNode } from '@/models/types';
 
 // --- Mocks ---
 

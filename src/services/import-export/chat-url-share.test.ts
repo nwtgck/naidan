@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { generateChatShareURL } from './chat-url-share';
-import { storageService } from '../storage';
-import { EMPTY_LM_PARAMETERS } from '../../models/types';
+import { storageService } from '@/services/storage';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
 
 // Define global constants that Vite normally provides
 (global as any).__APP_VERSION__ = '0.0.0-test';

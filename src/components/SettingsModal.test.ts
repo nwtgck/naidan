@@ -9,11 +9,11 @@ import SettingsModal from './SettingsModal.vue';
 import AboutTab from './AboutTab.vue';
 import ConnectionTab from './ConnectionTab.vue';
 import { Loader2 } from 'lucide-vue-next';
-import { useSettings } from '../composables/useSettings';
-import { useChat } from '../composables/useChat';
-import { useSampleChat } from '../composables/useSampleChat';
-import { storageService } from '../services/storage';
-import type { ProviderProfile } from '../models/types';
+import { useSettings } from '@/composables/useSettings';
+import { useChat } from '@/composables/useChat';
+import { useSampleChat } from '@/composables/useSampleChat';
+import { storageService } from '@/services/storage';
+import type { ProviderProfile } from '@/models/types';
 
 // --- Mocks ---
 
@@ -33,6 +33,7 @@ vi.mock('../services/llm', () => {
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
     settings: ref({ storageType: 'local', providerProfiles: [] }),
+    mounts: [],
     availableModels: ref(['model-a', 'model-b']),
     isFetchingModels: ref(false),
     save: vi.fn().mockImplementation(async (patch) => {
@@ -132,6 +133,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     defaultModelId: 'gpt-4',
     autoTitleEnabled: true,
     storageType: 'local',
+    mounts: [],
     providerProfiles: [] as ProviderProfile[],
   };
 

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
-import { storageService } from '../services/storage';
+import { storageService } from '@/services/storage';
 import { ref, reactive } from 'vue';
-import type { Attachment } from '../models/types';
+import type { Attachment } from '@/models/types';
 
 // Mock dependencies
 const chats = new Map<string, any>();

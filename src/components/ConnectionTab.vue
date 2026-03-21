@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { ref, watch, computed, h } from 'vue';
-import { useSettings } from '../composables/useSettings';
-import { useToast } from '../composables/useToast';
-import type { ProviderProfile, Settings } from '../models/types';
-import { capitalize, naturalSort } from '../utils/string';
+import { useSettings } from '@/composables/useSettings';
+import { useToast } from '@/composables/useToast';
+import type { ProviderProfile, Settings } from '@/models/types';
+import { capitalize, naturalSort } from '@/utils/string';
 import {
   Loader2, Trash2, Globe, Bot, Type, Save,
   CheckCircle2, BookmarkPlus,
   Check, Activity, MessageSquareQuote, Plus, Link
 } from 'lucide-vue-next';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // IMPORTANT: ModelSelector is a core part of the connection setup UI and should not flicker.
 import ModelSelector from './ModelSelector.vue';
@@ -22,9 +22,9 @@ const ProviderProfilePreview = defineAsyncComponentAndLoadOnMounted(() => import
 // Lazily load upsell UI
 const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
 
-import { useConfirm } from '../composables/useConfirm';
-import { usePrompt } from '../composables/usePrompt';
-import { ENDPOINT_PRESETS } from '../models/constants';
+import { useConfirm } from '@/composables/useConfirm';
+import { usePrompt } from '@/composables/usePrompt';
+import { ENDPOINT_PRESETS } from '@/models/constants';
 
 const props = defineProps<{
   modelValue: Settings;

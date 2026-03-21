@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { MoreHorizontal, Copy, Trash2, Search } from 'lucide-vue-next';
-import type { ChatGroup } from '../models/types';
+import type { ChatGroup } from '@/models/types';
 
 defineProps<{
   chatGroup: ChatGroup;

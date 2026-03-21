@@ -1,5 +1,5 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject } from '../../models/types';
-import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '../../models/dto';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/models/types';
+import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '@/models/dto';
 
 export type { ChatSummary };
 
@@ -15,6 +15,30 @@ export abstract class IStorageProvider {
    * LocalStorage returns false to indicate potential capacity issues.
    */
   abstract readonly canPersistBinary: boolean;
+
+  // --- Volume Management ---
+
+  abstract listVolumes(): AsyncIterable<Volume>;
+
+  abstract createVolume(params: {
+    name: string;
+    type: VolumeType;
+    sourceHandle: FileSystemDirectoryHandle;
+  }): Promise<Volume>;
+
+  abstract createVolumeFromFiles(params: {
+    name: string;
+    files: FileList;
+    onProgress?: (progress: { processed: number; total: number }) => void;
+  }): Promise<Volume>;
+
+  abstract getVolumeDirectoryHandle(params: {
+    volumeId: string;
+  }): Promise<FileSystemDirectoryHandle | null>;
+
+  abstract deleteVolume(params: {
+    volumeId: string;
+  }): Promise<void>;
 
   // --- Data Access Methods ---
   protected abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;

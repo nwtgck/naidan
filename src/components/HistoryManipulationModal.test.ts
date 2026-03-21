@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import HistoryManipulationModal from './HistoryManipulationModal.vue';
-import { useChat } from '../composables/useChat';
-import { storageService } from '../services/storage';
+import { useChat } from '@/composables/useChat';
+import { storageService } from '@/services/storage';
 import { nextTick, ref } from 'vue';
 
 // Mock vuedraggable

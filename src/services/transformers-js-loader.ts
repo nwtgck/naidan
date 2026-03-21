@@ -4,6 +4,9 @@
  * This wrapper is used to conditionally load the Transformers.js worker.
  * In Standalone mode, we want to completely exclude the worker and the
  * heavy Transformers.js library from the bundle.
+ *
+ * TODO: When the standalone worker hub is introduced, migrate this loader
+ * to the same client-facing pattern used by file-protocol-compatible workers.
  */
 
 export function createTransformersWorker(): Worker | null {

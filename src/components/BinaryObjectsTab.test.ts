@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BinaryObjectsTab from './BinaryObjectsTab.vue';
-import { storageService } from '../services/storage';
-import type { BinaryObject } from '../models/types';
+import { storageService } from '@/services/storage';
+import type { BinaryObject } from '@/models/types';
 
 // --- Mocks ---
 

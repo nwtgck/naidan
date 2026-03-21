@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { Shapes, Bird } from 'lucide-vue-next';
-import type { CombinedToolCall } from '../models/types';
-import type { FlowMetadata } from '../composables/useChatDisplayFlow';
+import type { CombinedToolCall } from '@/models/types';
+import type { FlowMetadata } from '@/composables/useChatDisplayFlow';
 import ToolCallItem from './ToolCallItem.vue';
 
 const props = withDefaults(defineProps<{

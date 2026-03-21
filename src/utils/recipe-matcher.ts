@@ -1,4 +1,4 @@
-import type { RecipeModel } from '../models/recipe';
+import type { RecipeModel } from '@/models/recipe';
 
 export interface MatchResult {
   modelId?: string;

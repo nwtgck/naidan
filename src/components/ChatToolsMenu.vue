@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, type CSSProperties } from 'vue';
 import { Settings2 } from 'lucide-vue-next';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { useElementBounding, useWindowSize } from '@vueuse/core';
-import { useChatTools } from '../composables/useChatTools';
+import { useChatTools } from '@/composables/useChatTools';
 
 // Lazily load image generation settings as it's only visible when the tools menu is opened, but prefetch it when idle.
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));

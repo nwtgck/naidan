@@ -26,6 +26,7 @@ const mockSettings = {
     endpointType: 'openai',
     endpointUrl: 'http://localhost',
     storageType: 'local',
+    mounts: [],
     autoTitleEnabled: false,
     defaultModelId: 'gpt-4',
     lmParameters: {},

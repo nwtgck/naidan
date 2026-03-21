@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, nextTick, reactive } from 'vue';
-import { useLayout } from '../composables/useLayout';
+import { useLayout } from '@/composables/useLayout';
 
 vi.mock('vuedraggable', () => ({
   default: {

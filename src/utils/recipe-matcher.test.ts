@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { matchRecipeModels, getAllMatchingModels, generateDefaultModelPatterns } from './recipe-matcher';
-import type { RecipeModel } from '../models/recipe';
+import type { RecipeModel } from '@/models/recipe';
 
 describe('recipe-matcher', () => {
   const availableModels = ['llama3:8b', 'llama3:70b', 'gpt-4o', 'gpt-3.5-turbo'];

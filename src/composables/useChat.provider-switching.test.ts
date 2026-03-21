@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { reactive } from 'vue';
-import type { Chat } from '../models/types';
+import type { Chat } from '@/models/types';
 
 // Mock storage
 vi.mock('../services/storage', () => ({
@@ -64,6 +64,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
       autoTitleEnabled: false,
       storageType: 'local',
       providerProfiles: [],
+      mounts: [],
     });
 
     mockOpenAIModels.mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']);

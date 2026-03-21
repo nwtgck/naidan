@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { GitFork, Pencil, Copy, Check, RefreshCw, Send, MoreVertical, History, MoreHorizontal } from 'lucide-vue-next';
-import type { MessageNode, LmParameters } from '../models/types';
-import { isImageGenerationPending } from '../utils/image-generation';
+import type { MessageNode, LmParameters } from '@/models/types';
+import { isImageGenerationPending } from '@/utils/image-generation';
 import SpeechControl from './SpeechControl.vue';
 import MessageActionsMenu from './MessageActionsMenu.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';

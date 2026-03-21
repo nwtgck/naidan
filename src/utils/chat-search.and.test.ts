@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { searchChatTree, searchLinearBranch } from './chat-search';
-import type { MessageBranch, MessageNode } from '../models/types';
+import type { MessageBranch, MessageNode } from '@/models/types';
 
 describe('chat-search AND logic', () => {
   const mockRoot: MessageBranch = {

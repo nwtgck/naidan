@@ -1,25 +1,25 @@
 <script setup lang="ts">
-import { generateId } from '../utils/id';
+import { generateId } from '@/utils/id';
 import { ref, watch, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useSettings } from '../composables/useSettings';
-import { useChat } from '../composables/useChat';
-import { useToast } from '../composables/useToast';
-import type { Settings } from '../models/types';
-import { EMPTY_LM_PARAMETERS } from '../models/types';
-import { ChatGroupRecipeSchema } from '../models/recipe';
-import type { ChatGroupRecipe } from '../models/recipe';
-import { parseConcatenatedJson } from '../utils/json-stream-parser';
-import { matchRecipeModels } from '../utils/recipe-matcher';
+import { useSettings } from '@/composables/useSettings';
+import { useChat } from '@/composables/useChat';
+import { useToast } from '@/composables/useToast';
+import type { Settings } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { ChatGroupRecipeSchema } from '@/models/recipe';
+import type { ChatGroupRecipe } from '@/models/recipe';
+import { parseConcatenatedJson } from '@/utils/json-stream-parser';
+import { matchRecipeModels } from '@/utils/recipe-matcher';
 import {
   X, Globe,
   Database, Settings2, BookmarkPlus,
   Cpu, Info,
   ChefHat,
   Download, BrainCircuit,
-  File
+  File, Folder
 } from 'lucide-vue-next';
-import { defineAsyncComponentAndLoadOnMounted } from '../utils/vue';
+import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Lazily load tabs that are not visible by default, but prefetch them when idle.
 const RecipeImportTab = defineAsyncComponentAndLoadOnMounted(() => import('./RecipeImportTab.vue'));
@@ -27,6 +27,7 @@ const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted(() => import('.
 const TransformersJsManager = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsManager.vue'));
 const StorageTab = defineAsyncComponentAndLoadOnMounted(() => import('./StorageTab.vue'));
 const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectsTab.vue'));
+const VolumeSettingsTab = defineAsyncComponentAndLoadOnMounted(() => import('./VolumeSettingsTab.vue'));
 const DeveloperTab = defineAsyncComponentAndLoadOnMounted(() => import('./DeveloperTab.vue'));
 const AboutTab = defineAsyncComponentAndLoadOnMounted(() => import('./AboutTab.vue'));
 
@@ -34,9 +35,10 @@ const AboutTab = defineAsyncComponentAndLoadOnMounted(() => import('./AboutTab.v
 import ConnectionTab from './ConnectionTab.vue';
 import ThemeToggle from './ThemeToggle.vue';
 
-import { useConfirm } from '../composables/useConfirm'; // Import useConfirm
-import { useLayout } from '../composables/useLayout';
-import { naturalSort } from '../utils/string';
+import { useConfirm } from '@/composables/useConfirm'; // Import useConfirm
+import { useLayout } from '@/composables/useLayout';
+import { useFeatureFlags } from '@/composables/useFeatureFlags';
+import { naturalSort } from '@/utils/string';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -53,6 +55,7 @@ const chatStore = useChat();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
+const { isFeatureEnabled } = useFeatureFlags();
 const route = useRoute();
 const router = useRouter();
 
@@ -110,7 +113,8 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
 }
 
 // Tab State
-type Tab = 'connection' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'binary_objects' | 'developer' | 'about';
+type Tab = 'connection' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'binary_objects' | 'volumes' | 'developer' | 'about';
+const isVolumesFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'volume' }));
 const activeTab = computed({
   get: () => {
     const queryTab = route.query.settings as string;
@@ -118,12 +122,14 @@ const activeTab = computed({
       if (queryTab === 'provider-profiles') return 'profiles';
       if (queryTab === 'transformers-js') return 'transformers_js';
       if (queryTab === 'binary-objects') return 'binary_objects';
+      if (queryTab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
       return (queryTab as Tab);
     }
     const tab = (route.params as { tab?: string }).tab;
     if (tab === 'provider-profiles') return 'profiles';
     if (tab === 'transformers-js') return 'transformers_js';
     if (tab === 'binary-objects') return 'binary_objects';
+    if (tab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
     return (tab as Tab) || 'connection';
   },
   set: (val) => {
@@ -325,6 +331,16 @@ defineExpose({
               Files
             </button>
             <button
+              v-if="isVolumesFeatureEnabled"
+              @click="activeTab = 'volumes'"
+              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              :class="activeTab === 'volumes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              data-testid="tab-volumes"
+            >
+              <Folder class="w-4 h-4" />
+              Volumes
+            </button>
+            <button
               @click="activeTab = 'developer'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'developer' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -411,6 +427,9 @@ defineExpose({
               <!-- Binary Objects Tab -->
               <BinaryObjectsTab v-if="activeTab === 'binary_objects'" />
 
+              <!-- Volume Settings Tab -->
+              <VolumeSettingsTab v-if="activeTab === 'volumes' && isVolumesFeatureEnabled" />
+
               <!-- Developer Tab -->
               <DeveloperTab
                 v-if="activeTab === 'developer'"
@@ -487,4 +506,3 @@ defineExpose({
   animation-name: slide-in-from-bottom;
 }
 </style>
-

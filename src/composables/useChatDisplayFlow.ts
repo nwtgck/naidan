@@ -1,7 +1,7 @@
 import { computed, type ComputedRef, toRaw } from 'vue';
-import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '../models/types';
-import { stripNaidanSentinels } from '../utils/image-generation';
-import { getChatBranchIterator } from '../utils/chat-tree';
+import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/models/types';
+import { stripNaidanSentinels } from '@/utils/image-generation';
+import { getChatBranchIterator } from '@/utils/chat-tree';
 
 /**
  * Position within a continuous sequence of AI-related items.

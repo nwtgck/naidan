@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import MessageItem from './MessageItem.vue';
-import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_RESPONSE_PREFIX } from '../utils/image-generation';
-import { useSettings } from '../composables/useSettings';
+import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_RESPONSE_PREFIX } from '@/utils/image-generation';
+import { useSettings } from '@/composables/useSettings';
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
