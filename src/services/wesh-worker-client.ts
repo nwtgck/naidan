@@ -15,11 +15,13 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   mounts,
   user,
   initialEnv,
+  initialCwd,
 }: {
   rootHandle: FileSystemDirectoryHandle
   mounts: WeshMount[]
   user: string
   initialEnv: Record<string, string>
+  initialCwd?: string | undefined
 }): Promise<WeshWorkerClient> {
   const worker = createFileProtocolCompatibleWeshWorker()
   const remote = Comlink.wrap<IWeshWorker>(worker)
@@ -29,6 +31,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     mounts: mapWeshMountsToWorkerMounts({ mounts }),
     user,
     initialEnv,
+    initialCwd,
   })
 
   await remote.init({ request: initRequest })

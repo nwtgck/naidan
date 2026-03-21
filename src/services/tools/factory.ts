@@ -52,6 +52,7 @@ export async function getEnabledTools({
         mounts: resolvedMounts,
         user: 'user',
         initialEnv: {},
+        initialCwd: undefined,
       });
 
       tools.push(createWeshTool({

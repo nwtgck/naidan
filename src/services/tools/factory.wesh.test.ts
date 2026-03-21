@@ -71,6 +71,7 @@ describe('getEnabledTools shell_execute', () => {
       }],
       user: 'user',
       initialEnv: {},
+      initialCwd: undefined,
     })
     expect(mockCreateClient).toHaveBeenNthCalledWith(2, {
       rootHandle,
@@ -81,6 +82,7 @@ describe('getEnabledTools shell_execute', () => {
       }],
       user: 'user',
       initialEnv: {},
+      initialCwd: undefined,
     })
   })
 

@@ -204,18 +204,23 @@ export class Wesh {
   constructor({
     rootHandle,
     user = 'user',
-    initialEnv = {}
+    initialEnv = {},
+    initialCwd,
   }: {
     rootHandle: FileSystemDirectoryHandle;
     user?: string;
     initialEnv?: Record<string, string>;
+    initialCwd?: string;
   }) {
     this.vfs = new WeshVFS({ rootHandle });
     this.kernel = new WeshKernel({ vfs: this.vfs });
 
+    const resolvedCwd = initialCwd ?? '/';
+    this.cwd = resolvedCwd;
+
     this.env = new Map(Object.entries({
       HOME: '/',
-      PWD: '/',
+      PWD: resolvedCwd,
       PATH: '/bin',
       USER: user,
       SHELL: '/bin/wesh',
