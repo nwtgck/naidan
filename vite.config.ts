@@ -190,11 +190,10 @@ export default defineConfig(({ mode }) => {
         },
       }),
       !isStandalone && manualGzipWasmPlugin({ outDir }),
-      // Standalone: Inline scripts for file:// support, then Zip the result
-      isStandalone && iifeInlinePlugin({ outDir }),
-      isStandalone && standaloneEmbeddedWorkersPlugin({ outDir, workers: embeddedWorkers }),
-      isStandalone && zipPackagerPlugin({
+      // Standalone: finalize HTML, embed workers, then zip the exact final output.
+      isStandalone && standaloneFinalizePlugin({
         outDir,
+        workers: embeddedWorkers,
         zipFileName: 'naidan-standalone.zip',
         folderName: `naidan-standalone-${pkg.version}`,
       }),
@@ -306,7 +305,6 @@ const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
       compressionOptions: { level: 9 }
     })
 
-    // Ensure parent dir exists (it should, but just in case)
     const zipDir = path.dirname(zipPath)
     if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true })
 
@@ -335,20 +333,20 @@ const copyZipPlugin = () => ({
   },
 })
 
-/**
- * Custom Vite plugin to inline the IIFE bundle into index.html.
- * This is crucial for supporting the 'file:///' protocol (e.g., in Firefox)
- * because:
- * 1. ES modules (type="module") are restricted by CORS/Module security on local files.
- * 2. IIFE format combined with inlining allows the app to run as a truly standalone file.
- */
-const iifeInlinePlugin = ({ outDir }: { outDir: string }) => ({
-  name: 'iife-inline-plugin',
+const standaloneFinalizePlugin = ({ outDir, workers, zipFileName, folderName }: {
+  outDir: string
+  workers: EmbeddedWorkerSpec[]
+  zipFileName: string
+  folderName: string
+}) => ({
+  name: 'standalone-finalize-plugin',
   async closeBundle() {
     const distDir = path.resolve(__dirname, outDir)
     const htmlPath = path.join(distDir, 'index.html')
-
     if (!fs.existsSync(htmlPath)) return
+
+    const tempRootDir = path.join(distDir, '__embedded_workers__')
+    await fs.promises.rm(tempRootDir, { recursive: true, force: true })
 
     const html = fs.readFileSync(htmlPath, 'utf8')
     const dom = new JSDOM(html)
@@ -367,85 +365,81 @@ const iifeInlinePlugin = ({ outDir }: { outDir: string }) => ({
           // Escape </script> to prevent early script termination
           newScript.textContent = scriptContent.replace(/<\/script>/g, '<\\/script>')
           script.parentNode?.replaceChild(newScript, script)
-          fs.unlinkSync(scriptPath) // Delete the original script file
+          fs.unlinkSync(scriptPath)
         }
       }
+    }
+
+    for (const worker of workers) {
+      const workerOutDir = path.join(distDir, '__embedded_workers__', worker.workerId)
+
+      await viteBuild({
+        configFile: false,
+        logLevel: 'error',
+        publicDir: false,
+        resolve: {
+          alias: {
+            '@': path.resolve(__dirname, 'src'),
+          },
+        },
+        root: __dirname,
+        build: {
+          emptyOutDir: true,
+          lib: {
+            entry: path.resolve(__dirname, worker.entry),
+            fileName: () => `${worker.workerId}.js`,
+            formats: ['iife'],
+            name: worker.globalName,
+          },
+          minify: true,
+          outDir: workerOutDir,
+          rollupOptions: {
+            output: {
+              inlineDynamicImports: true,
+            },
+          },
+          sourcemap: false,
+        },
+      })
+
+      const workerScriptPath = path.join(workerOutDir, `${worker.workerId}.js`)
+      if (!fs.existsSync(workerScriptPath)) {
+        throw new Error(`Embedded worker build output not found: ${worker.workerId}`)
+      }
+
+      const workerContent = fs.readFileSync(workerScriptPath, 'utf8')
+      const script = document.createElement('script')
+      script.setAttribute('data-worker-id', worker.workerId)
+      script.setAttribute('type', worker.scriptType)
+      script.textContent = workerContent.replace(/<\/script>/g, '<\\/script>')
+      document.body.appendChild(script)
     }
 
     fs.writeFileSync(htmlPath, dom.serialize())
     console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility.`)
-  },
-})
+    console.log(`  \u2713 Embedded ${workers.length} standalone worker(s) into index.html.`)
 
-const standaloneEmbeddedWorkersPlugin = ({ outDir, workers }: {
-  outDir: string
-  workers: EmbeddedWorkerSpec[]
-}) => ({
-  name: 'standalone-embedded-workers-plugin',
-  async closeBundle() {
-    if (workers.length === 0) return
-
-    const distDir = path.resolve(__dirname, outDir)
-    const htmlPath = path.join(distDir, 'index.html')
-    if (!fs.existsSync(htmlPath)) return
-
-    const tempRootDir = path.join(distDir, '__embedded_workers__')
-    await fs.promises.rm(tempRootDir, { recursive: true, force: true })
-
-    const html = fs.readFileSync(htmlPath, 'utf8')
-    const dom = new JSDOM(html)
-    const document = dom.window.document
-
-    try {
-      for (const worker of workers) {
-        const workerOutDir = path.join(tempRootDir, worker.workerId)
-
-        await viteBuild({
-          configFile: false,
-          logLevel: 'error',
-          publicDir: false,
-          resolve: {
-            alias: {
-              '@': path.resolve(__dirname, 'src'),
-            },
-          },
-          root: __dirname,
-          build: {
-            emptyOutDir: true,
-            lib: {
-              entry: path.resolve(__dirname, worker.entry),
-              fileName: () => `${worker.workerId}.js`,
-              formats: ['iife'],
-              name: worker.globalName,
-            },
-            minify: true,
-            outDir: workerOutDir,
-            rollupOptions: {
-              output: {
-                inlineDynamicImports: true,
-              },
-            },
-            sourcemap: false,
-          },
-        })
-
-        const workerScriptPath = path.join(workerOutDir, `${worker.workerId}.js`)
-        if (!fs.existsSync(workerScriptPath)) {
-          throw new Error(`Embedded worker build output not found: ${worker.workerId}`)
-        }
-
-        const workerContent = fs.readFileSync(workerScriptPath, 'utf8')
-        const script = document.createElement('script')
-        script.setAttribute('data-worker-id', worker.workerId)
-        script.setAttribute('type', worker.scriptType)
-        script.textContent = workerContent.replace(/<\/script>/g, '<\\/script>')
-        document.body.appendChild(script)
-      }
-
-      fs.writeFileSync(htmlPath, dom.serialize())
-      console.log(`  \u2713 Embedded ${workers.length} standalone worker(s) into index.html.`)
-    } finally {
-      await fs.promises.rm(tempRootDir, { recursive: true, force: true })
+    console.log(`  \u231B Creating ${zipFileName} package...`)
+    const zipPath = path.resolve(__dirname, `dist/${zipFileName}`)
+    const zip = new JSZip()
+    const folder = zip.folder(folderName)
+    if (folder) {
+      addDirectoryToZip(folder, distDir)
+      folder.file('VERSION.txt', pkg.version)
     }
+
+    const content = await zip.generateAsync({
+      type: 'nodebuffer',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 9 }
+    })
+
+    const zipDir = path.dirname(zipPath)
+    if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true })
+
+    fs.writeFileSync(zipPath, content)
+    console.log(`  \u2713 Created package: ${zipPath}`)
+
+    await fs.promises.rm(tempRootDir, { recursive: true, force: true })
   },
 })
