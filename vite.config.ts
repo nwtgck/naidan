@@ -348,98 +348,107 @@ const standaloneFinalizePlugin = ({ outDir, workers, zipFileName, folderName }: 
     const tempRootDir = path.join(distDir, '__embedded_workers__')
     await fs.promises.rm(tempRootDir, { recursive: true, force: true })
 
-    const html = fs.readFileSync(htmlPath, 'utf8')
-    const dom = new JSDOM(html)
-    const document = dom.window.document
-
-    const scripts = Array.from(document.querySelectorAll('script')) as HTMLScriptElement[]
-    for (const script of scripts) {
-      const src = script.getAttribute('src')
-      if (src && src.includes('assets/index-')) {
-        const relativePath = src.startsWith('./') ? src.slice(2) : src
-        const scriptPath = path.join(distDir, relativePath)
-
-        if (fs.existsSync(scriptPath)) {
-          const scriptContent = fs.readFileSync(scriptPath, 'utf8')
-          const newScript = document.createElement('script')
-          // Escape </script> to prevent early script termination
-          newScript.textContent = scriptContent.replace(/<\/script>/g, '<\\/script>')
-          script.parentNode?.replaceChild(newScript, script)
-          fs.unlinkSync(scriptPath)
-        }
-      }
-    }
-
     for (const worker of workers) {
-      const workerOutDir = path.join(distDir, '__embedded_workers__', worker.workerId)
+      try {
+        const html = fs.readFileSync(htmlPath, 'utf8')
+        const dom = new JSDOM(html)
+        const document = dom.window.document
 
-      await viteBuild({
-        configFile: false,
-        logLevel: 'error',
-        publicDir: false,
-        resolve: {
-          alias: {
-            '@': path.resolve(__dirname, 'src'),
-          },
-        },
-        root: __dirname,
-        build: {
-          emptyOutDir: true,
-          lib: {
-            entry: path.resolve(__dirname, worker.entry),
-            fileName: () => `${worker.workerId}.js`,
-            formats: ['iife'],
-            name: worker.globalName,
-          },
-          minify: true,
-          outDir: workerOutDir,
-          rollupOptions: {
-            output: {
-              inlineDynamicImports: true,
+        const scripts = Array.from(document.querySelectorAll('script')) as HTMLScriptElement[]
+        for (const script of scripts) {
+          const src = script.getAttribute('src')
+          if (src && src.includes('assets/index-')) {
+            const relativePath = src.startsWith('./') ? src.slice(2) : src
+            const scriptPath = path.join(distDir, relativePath)
+
+            if (fs.existsSync(scriptPath)) {
+              const scriptContent = fs.readFileSync(scriptPath, 'utf8')
+              const newScript = document.createElement('script')
+              // Escape </script> to prevent early script termination
+              newScript.textContent = scriptContent.replace(/<\/script>/g, '<\\/script>')
+              script.parentNode?.replaceChild(newScript, script)
+              fs.unlinkSync(scriptPath)
+            }
+          }
+        }
+
+        const workerOutDir = path.join(tempRootDir, worker.workerId)
+
+        await viteBuild({
+          configFile: false,
+          logLevel: 'error',
+          publicDir: false,
+          resolve: {
+            alias: {
+              '@': path.resolve(__dirname, 'src'),
             },
           },
-          sourcemap: false,
-        },
-      })
+          root: __dirname,
+          build: {
+            emptyOutDir: true,
+            lib: {
+              entry: path.resolve(__dirname, worker.entry),
+              fileName: () => `${worker.workerId}.js`,
+              formats: ['iife'],
+              name: worker.globalName,
+            },
+            minify: true,
+            outDir: workerOutDir,
+            rollupOptions: {
+              output: {
+                inlineDynamicImports: true,
+              },
+            },
+            sourcemap: false,
+          },
+        })
 
-      const workerScriptPath = path.join(workerOutDir, `${worker.workerId}.js`)
-      if (!fs.existsSync(workerScriptPath)) {
-        throw new Error(`Embedded worker build output not found: ${worker.workerId}`)
+        const workerScriptPath = path.join(workerOutDir, `${worker.workerId}.js`)
+        if (!fs.existsSync(workerScriptPath)) {
+          throw new Error(`Embedded worker build output not found: ${worker.workerId}`)
+        }
+
+        const workerContent = fs.readFileSync(workerScriptPath, 'utf8')
+        const script = document.createElement('script')
+        script.setAttribute('data-worker-id', worker.workerId)
+        script.setAttribute('type', worker.scriptType)
+        script.textContent = workerContent.replace(/<\/script>/g, '<\\/script>')
+        document.body.appendChild(script)
+      } finally {
+        await fs.promises.rm(path.join(tempRootDir, worker.workerId), { recursive: true, force: true })
+      }
+    }
+
+    try {
+      const html = fs.readFileSync(htmlPath, 'utf8')
+      const dom = new JSDOM(html)
+      const document = dom.window.document
+      fs.writeFileSync(htmlPath, dom.serialize())
+      console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility.`)
+      console.log(`  \u2713 Embedded ${workers.length} standalone worker(s) into index.html.`)
+
+      console.log(`  \u231B Creating ${zipFileName} package...`)
+      const zipPath = path.resolve(__dirname, `dist/${zipFileName}`)
+      const zip = new JSZip()
+      const folder = zip.folder(folderName)
+      if (folder) {
+        addDirectoryToZip(folder, distDir)
+        folder.file('VERSION.txt', pkg.version)
       }
 
-      const workerContent = fs.readFileSync(workerScriptPath, 'utf8')
-      const script = document.createElement('script')
-      script.setAttribute('data-worker-id', worker.workerId)
-      script.setAttribute('type', worker.scriptType)
-      script.textContent = workerContent.replace(/<\/script>/g, '<\\/script>')
-      document.body.appendChild(script)
+      const content = await zip.generateAsync({
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 9 }
+      })
+
+      const zipDir = path.dirname(zipPath)
+      if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true })
+
+      fs.writeFileSync(zipPath, content)
+      console.log(`  \u2713 Created package: ${zipPath}`)
+    } finally {
+      await fs.promises.rm(tempRootDir, { recursive: true, force: true })
     }
-
-    fs.writeFileSync(htmlPath, dom.serialize())
-    console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility.`)
-    console.log(`  \u2713 Embedded ${workers.length} standalone worker(s) into index.html.`)
-
-    console.log(`  \u231B Creating ${zipFileName} package...`)
-    const zipPath = path.resolve(__dirname, `dist/${zipFileName}`)
-    const zip = new JSZip()
-    const folder = zip.folder(folderName)
-    if (folder) {
-      addDirectoryToZip(folder, distDir)
-      folder.file('VERSION.txt', pkg.version)
-    }
-
-    const content = await zip.generateAsync({
-      type: 'nodebuffer',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 9 }
-    })
-
-    const zipDir = path.dirname(zipPath)
-    if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true })
-
-    fs.writeFileSync(zipPath, content)
-    console.log(`  \u2713 Created package: ${zipPath}`)
-
-    await fs.promises.rm(tempRootDir, { recursive: true, force: true })
   },
 })
