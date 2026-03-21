@@ -34,7 +34,6 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   await remote.init({ request: initRequest })
 
   return {
-    // TODO: Move this client surface to a standalone worker hub and migrate transformers loaders to the same pattern.
     async execute({ request }: { request: WeshWorkerExecuteRequest }) {
       const response = await remote.execute({ request })
       return weshWorkerExecuteResponseSchema.parse(response)
