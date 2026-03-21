@@ -51,6 +51,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       mounts: [],
       user: 'user',
       initialEnv: {},
+      initialCwd: undefined,
     })
 
     const response = await client.execute({

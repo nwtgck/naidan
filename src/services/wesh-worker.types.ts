@@ -12,6 +12,7 @@ export const weshWorkerInitRequestSchema = z.object({
   mounts: z.array(weshWorkerMountSchema),
   user: z.string().min(1),
   initialEnv: z.record(z.string(), z.string()),
+  initialCwd: z.union([z.string().min(1), z.undefined()]),
 })
 
 export const weshWorkerExecuteRequestSchema = z.object({

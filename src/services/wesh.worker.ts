@@ -58,6 +58,7 @@ const weshWorker: IWeshWorker = {
       rootHandle: validated.rootHandle,
       user: validated.user,
       initialEnv: validated.initialEnv,
+      initialCwd: validated.initialCwd,
     })
 
     for (const mount of validated.mounts) {
