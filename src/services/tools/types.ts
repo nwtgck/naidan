@@ -49,6 +49,7 @@ export interface Tool {
   name: string;
   description: string;
   parametersSchema: z.ZodObject<z.ZodRawShape>;
+  dispose?(): Promise<void>;
 
   /**
    * Execute the tool with the given arguments.

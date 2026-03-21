@@ -2,7 +2,7 @@ import type { Tool } from './types';
 import type { Settings } from '@/models/types';
 import { CalculatorTool } from './calculator';
 import { createWeshTool } from './wesh';
-import { WeshService } from '@/services/wesh-service';
+import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh-worker-client';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import type { WeshMount } from '@/services/wesh/types';
@@ -26,25 +26,13 @@ export async function getEnabledTools({
       break;
 
     case 'shell_execute': {
-      const weshService = await WeshService.getInstance();
-
-      // Initialize Wesh if not already done
-      if (!weshService.isInitialized()) {
-        let rootHandle: FileSystemDirectoryHandle;
-        const opfsSupported = await checkOPFSSupport();
-
-        if (opfsSupported) {
-          const root = await navigator.storage.getDirectory();
-          const weshDir = await root.getDirectoryHandle('naidan-wesh-runtime', { create: true });
-          rootHandle = weshDir;
-        } else {
-          // Fallback to in-memory mock if OPFS is not available
-          const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem');
-          rootHandle = new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle;
-        }
-
-        await weshService.init({ rootHandle });
+      const opfsSupported = await checkOPFSSupport();
+      if (!opfsSupported) {
+        break;
       }
+
+      const root = await navigator.storage.getDirectory();
+      const rootHandle = await root.getDirectoryHandle('naidan-wesh-runtime', { create: true });
 
       // Resolve mounts from settings
       const resolvedMounts: WeshMount[] = [];
@@ -59,9 +47,20 @@ export async function getEnabledTools({
         }
       }
 
-      tools.push(createWeshTool({
-        wesh: weshService.getWeshInstance(),
+      const client = await createFileProtocolCompatibleWeshWorkerClient({
+        rootHandle,
         mounts: resolvedMounts,
+        user: 'user',
+        initialEnv: {},
+      });
+
+      tools.push(createWeshTool({
+        client,
+        mounts: resolvedMounts,
+        name: 'shell_execute',
+        description: undefined,
+        defaultStdoutLimit: 4096,
+        defaultStderrLimit: 4096,
       }));
       break;
     }

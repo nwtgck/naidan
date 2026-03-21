@@ -1,8 +1,22 @@
 <script setup lang="ts">
+import { computedAsync } from '@vueuse/core';
 import { Calculator, Terminal } from 'lucide-vue-next';
 import { useChatTools } from '@/composables/useChatTools';
+import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 
-const { isToolEnabled, toggleTool } = useChatTools();
+const { isToolEnabled, setToolEnabled, toggleTool } = useChatTools();
+const isShellToolSupported = computedAsync(
+  async () => checkOPFSSupport(),
+  true
+);
+
+const handleShellToolToggle = () => {
+  if (!isShellToolSupported.value) {
+    setToolEnabled({ name: 'shell_execute', enabled: false });
+    return;
+  }
+  toggleTool({ name: 'shell_execute' });
+};
 
 
 defineExpose({
@@ -38,14 +52,20 @@ defineExpose({
       </div>
     </button>
     <button
-      @click="toggleTool({ name: 'shell_execute' })"
+      @click="handleShellToolToggle"
+      :disabled="!isShellToolSupported"
       class="w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 text-left group"
-      :class="isToolEnabled({ name: 'shell_execute' }) ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'text-gray-600 dark:text-gray-300'"
+      :class="[
+        isToolEnabled({ name: 'shell_execute' }) ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'text-gray-600 dark:text-gray-300',
+        !isShellToolSupported ? 'opacity-50 cursor-not-allowed' : '',
+      ]"
       data-testid="tool-shell-toggle"
     >
       <div class="flex items-center gap-2">
         <Terminal class="w-4 h-4" :class="isToolEnabled({ name: 'shell_execute' }) ? 'text-blue-500' : 'text-gray-400'" />
-        <span class="text-xs font-medium">Shell in browser</span>
+        <span class="text-xs font-medium">
+          Shell in browser{{ isShellToolSupported ? '' : ' (OPFS required)' }}
+        </span>
       </div>
       <div
         class="w-8 h-4 rounded-full relative transition-colors duration-200"
