@@ -123,6 +123,7 @@ const mockSettings: Settings = {
   endpointHttpHeaders: undefined,
   autoTitleEnabled: true,
   storageType: 'local',
+  mounts: [],
   providerProfiles: [],
   lmParameters: EMPTY_LM_PARAMETERS,
 };

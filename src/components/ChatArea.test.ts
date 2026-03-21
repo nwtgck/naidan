@@ -15,6 +15,7 @@ const router = createRouter({
 
 import type { MessageNode, Chat } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 
 // Mock dependencies
 const mockSendMessage = vi.fn().mockResolvedValue(true);
@@ -40,6 +41,7 @@ const mockCurrentChat = ref<Chat | null>({
   updatedAt: Date.now(),
 });
 const mockActiveMessages = ref<MessageNode[]>([]);
+const mockChatFlowOverride = ref<ChatFlowItem[] | null>(null);
 
 const mockGetLiveChat = vi.fn().mockImplementation((chat) => {
   if (mockCurrentChat.value && mockCurrentChat.value.id === (chat.id || chat)) {
@@ -135,7 +137,7 @@ vi.mock('../composables/useChat', () => ({
         mockCurrentChat.value.lmParameters = lmParameters;
       }
     }),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+    chatFlow: computed(() => mockChatFlowOverride.value ?? mockActiveMessages.value.map(m => ({
       type: 'message',
       node: m,
       mode: 'content',
@@ -201,6 +203,7 @@ function resetMocks() {
   mockStreaming.value = false;
   mockActiveGenerations.clear();
   mockActiveMessages.value = [];
+  mockChatFlowOverride.value = null;
   mockAvailableModels.value = ['model-1', 'model-2'];
   mockFetchingModels.value = false;
   mockResolvedSettings.value = {
@@ -705,8 +708,153 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
 
-    // scrollIntoViewSafe(block: 'start') should set scrollTop to 0 + (450 - 0) = 450
-    expect(scrollTopSetterSpy).toHaveBeenCalledWith(450);
+    // scrollIntoViewSafe(block: 'start', offset: 50) should set scrollTop to 0 + (450 - 0) - 50 = 400
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(400);
+  });
+
+  it('should only scroll for the first assistant in an AI block', async () => {
+    const userMessage = { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const firstAssistant = { id: 'a1', role: 'assistant', content: 'first reply', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const toolMessage = {
+      id: 't1',
+      role: 'tool',
+      content: undefined,
+      timestamp: Date.now(),
+      replies: { items: [] },
+      attachments: undefined,
+      thinking: undefined,
+      error: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+      toolCalls: undefined,
+      results: [],
+    } as MessageNode;
+    const secondAssistant = { id: 'a2', role: 'assistant', content: 'follow-up', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+
+    mockActiveMessages.value = [userMessage];
+
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    (wrapper.vm as any).isInitialLoad = false;
+    container.scrollTop = 0;
+    scrollTopSetterSpy.mockClear();
+
+    mockChatFlowOverride.value = [
+      {
+        type: 'message',
+        node: userMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: firstAssistant,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(400);
+
+    scrollTopSetterSpy.mockClear();
+    mockChatFlowOverride.value = [
+      {
+        type: 'message',
+        node: userMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: firstAssistant,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: toolMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: false
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(scrollTopSetterSpy).not.toHaveBeenCalled();
+
+    mockChatFlowOverride.value = [
+      {
+        type: 'message',
+        node: userMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: firstAssistant,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: toolMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: false
+      },
+      {
+        type: 'message',
+        node: secondAssistant,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: false
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(scrollTopSetterSpy).not.toHaveBeenCalled();
   });
 
   it('should scroll to bottom on initial load if no user messages are found', async () => {

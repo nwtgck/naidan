@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot, BinaryObject } from '@/models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/models/types';
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
@@ -312,6 +312,63 @@ export class StorageService {
       this.handleStorageError(e, 'deleteBinaryObject');
       throw e;
     }
+  }
+
+  // --- Volume Management ---
+
+  listVolumes(): AsyncIterable<Volume> {
+    return this.getProvider().listVolumes();
+  }
+
+  async createVolume(params: {
+    name: string;
+    type: VolumeType;
+    sourceHandle: FileSystemDirectoryHandle;
+  }): Promise<Volume> {
+    return this.getProvider().createVolume(params);
+  }
+
+  async createVolumeFromFiles(params: {
+    name: string;
+    files: FileList;
+    onProgress?: (progress: { processed: number; total: number }) => void;
+  }): Promise<Volume> {
+    return this.getProvider().createVolumeFromFiles(params);
+  }
+
+  async getVolumeDirectoryHandle(params: { volumeId: string }): Promise<FileSystemDirectoryHandle | null> {
+    return this.getProvider().getVolumeDirectoryHandle(params);
+  }
+
+  async deleteVolume(params: { volumeId: string }): Promise<void> {
+    return this.getProvider().deleteVolume(params);
+  }
+
+  async mountVolume({ volumeId, mountPath, readOnly }: {
+    volumeId: string;
+    mountPath: string;
+    readOnly: boolean;
+  }): Promise<void> {
+    await this.updateSettings((settings) => {
+      if (!settings) throw new Error('Settings not initialized');
+      const exists = settings.mounts.some(m => m.type === 'volume' && m.volumeId === volumeId);
+      if (exists) return settings;
+
+      return {
+        ...settings,
+        mounts: [...settings.mounts, { type: 'volume', volumeId, mountPath, readOnly }],
+      };
+    });
+  }
+
+  async unmountVolume({ volumeId }: { volumeId: string }): Promise<void> {
+    await this.updateSettings((settings) => {
+      if (!settings) return null as unknown as Settings;
+      return {
+        ...settings,
+        mounts: settings.mounts.filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
+      };
+    });
   }
 
   async switchProvider(type: 'local' | 'opfs' | 'memory') {

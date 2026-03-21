@@ -64,6 +64,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
       autoTitleEnabled: false,
       storageType: 'local',
       providerProfiles: [],
+      mounts: [],
     });
 
     mockOpenAIModels.mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']);

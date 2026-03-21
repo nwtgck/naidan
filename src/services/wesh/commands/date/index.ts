@@ -1,0 +1,192 @@
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+
+const dateArgvSpec: StandardArgvParserSpec = {
+  options: [
+    { kind: 'flag', short: 'u', long: 'utc', effects: [{ key: 'utc', value: true }], help: { summary: 'display the time in UTC' } },
+    { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
+  ],
+  allowShortFlagBundles: true,
+  stopAtDoubleDash: true,
+  treatSingleDashAsPositional: false,
+  specialTokenParsers: [],
+};
+
+function pad2({
+  value,
+}: {
+  value: number;
+}): string {
+  return value.toString().padStart(2, '0');
+}
+
+const WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+function formatTimezoneOffset({
+  date,
+  utc,
+}: {
+  date: Date;
+  utc: boolean;
+}): string {
+  if (utc) {
+    return '+0000';
+  }
+
+  const totalMinutes = -date.getTimezoneOffset();
+  const sign = totalMinutes >= 0 ? '+' : '-';
+  const absoluteMinutes = Math.abs(totalMinutes);
+  const hours = Math.floor(absoluteMinutes / 60);
+  const minutes = absoluteMinutes % 60;
+  return `${sign}${pad2({ value: hours })}${pad2({ value: minutes })}`;
+}
+
+function formatTimezoneName({
+  date,
+  utc,
+}: {
+  date: Date;
+  utc: boolean;
+}): string {
+  if (utc) {
+    return 'UTC';
+  }
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZoneName: 'short',
+  }).formatToParts(date);
+  const timeZoneName = parts.find((part) => part.type === 'timeZoneName')?.value;
+  return timeZoneName ?? 'UTC';
+}
+
+function formatDateToken({
+  token,
+  date,
+  utc,
+}: {
+  token: string;
+  date: Date;
+  utc: boolean;
+}): string {
+  const year = utc ? date.getUTCFullYear() : date.getFullYear();
+  const month = utc ? date.getUTCMonth() + 1 : date.getMonth() + 1;
+  const day = utc ? date.getUTCDate() : date.getDate();
+  const weekday = utc ? date.getUTCDay() : date.getDay();
+  const hours = utc ? date.getUTCHours() : date.getHours();
+  const minutes = utc ? date.getUTCMinutes() : date.getMinutes();
+  const seconds = utc ? date.getUTCSeconds() : date.getSeconds();
+
+  switch (token) {
+  case '%a':
+    return WEEKDAY_NAMES[weekday] ?? '';
+  case '%b':
+    return MONTH_NAMES[month - 1] ?? '';
+  case '%Y':
+    return year.toString().padStart(4, '0');
+  case '%m':
+    return pad2({ value: month });
+  case '%d':
+    return pad2({ value: day });
+  case '%e':
+    return day.toString().padStart(2, ' ');
+  case '%H':
+    return pad2({ value: hours });
+  case '%M':
+    return pad2({ value: minutes });
+  case '%S':
+    return pad2({ value: seconds });
+  case '%F':
+    return `${formatDateToken({ token: '%Y', date, utc })}-${formatDateToken({ token: '%m', date, utc })}-${formatDateToken({ token: '%d', date, utc })}`;
+  case '%T':
+    return `${formatDateToken({ token: '%H', date, utc })}:${formatDateToken({ token: '%M', date, utc })}:${formatDateToken({ token: '%S', date, utc })}`;
+  case '%s':
+    return Math.floor(date.getTime() / 1000).toString();
+  case '%z':
+    return formatTimezoneOffset({ date, utc });
+  case '%Z':
+    return formatTimezoneName({ date, utc });
+  case '%%':
+    return '%';
+  default:
+    return token;
+  }
+}
+
+function formatDate({
+  format,
+  date,
+  utc,
+}: {
+  format: string;
+  date: Date;
+  utc: boolean;
+}): string {
+  return format.replace(/%[%abdeHmMSYFTszZ]/g, (token) => formatDateToken({
+    token,
+    date,
+    utc,
+  }));
+}
+
+export const dateCommandDefinition: WeshCommandDefinition = {
+  meta: {
+    name: 'date',
+    description: 'Print the system date and time',
+    usage: 'date [-u] [--utc] [+FORMAT]',
+  },
+  fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+    const parsed = parseStandardArgv({
+      args: context.args,
+      spec: dateArgvSpec,
+    });
+
+    const diagnostic = parsed.diagnostics[0];
+    if (diagnostic !== undefined) {
+      await writeCommandUsageError({
+        context,
+        command: 'date',
+        message: `date: ${diagnostic.message}`,
+        argvSpec: dateArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    if (parsed.optionValues.help === true) {
+      await writeCommandHelp({
+        context,
+        command: 'date',
+        argvSpec: dateArgvSpec,
+      });
+      return { exitCode: 0 };
+    }
+
+    if (parsed.positionals.length > 1) {
+      await writeCommandUsageError({
+        context,
+        command: 'date',
+        message: `date: extra operand '${parsed.positionals[1] ?? ''}'`,
+        argvSpec: dateArgvSpec,
+      });
+      return { exitCode: 1 };
+    }
+
+    const now = new Date();
+    const text = context.text();
+    const utc = parsed.optionValues.utc === true;
+    const format = parsed.positionals[0];
+    const out = format?.startsWith('+')
+      ? formatDate({
+        format: format.slice(1),
+        date: now,
+        utc,
+      })
+      : utc
+        ? now.toUTCString()
+        : now.toString();
+    await text.print({ text: out + '\n' });
+
+    return { exitCode: 0 };
+  },
+};

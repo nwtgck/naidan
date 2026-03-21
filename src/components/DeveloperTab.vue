@@ -5,6 +5,7 @@ import { useSettings } from '@/composables/useSettings';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { storageService } from '@/services/storage';
 import { Cpu, FlaskConical, AlertTriangle, Trash2, Zap, RefreshCw } from 'lucide-vue-next';
+import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 
 defineProps<{
   storageType: string;
@@ -76,6 +77,7 @@ defineExpose({
       <div class="space-y-8">
         <div class="space-y-4">
           <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">Experimental Features</h3>
+          <FeatureFlagsSettings />
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <button
               @click="toggleMarkdownRendering"

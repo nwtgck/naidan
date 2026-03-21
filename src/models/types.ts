@@ -267,6 +267,31 @@ export interface BinaryObject {
   name?: string;
 }
 
+export type VolumeType = 'opfs' | 'host';
+
+export interface Volume {
+  id: string;
+  name: string;
+  type: VolumeType;
+  createdAt: number;
+}
+
+export interface MountBase {
+  mountPath: string;
+  readOnly: boolean;
+}
+
+export interface MountVolume extends MountBase {
+  type: 'volume';
+  volumeId: string;
+}
+
+/**
+ * Mount point configuration.
+ * Extensible for future types like 'tmpfs'.
+ */
+export type Mount = MountVolume;
+
 /**
  * Storage Snapshot
  * Represents a complete snapshot of the storage for migration or backup.
@@ -312,6 +337,7 @@ export interface Settings {
   autoTitleEnabled: boolean;
   storageType: StorageType;
   providerProfiles: ProviderProfile[];
+  mounts: Mount[];
   heavyContentAlertDismissed?: boolean;
   systemPrompt?: string;
   lmParameters?: LmParameters;
@@ -323,5 +349,6 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpointType'> = {
   autoTitleEnabled: true,
   providerProfiles: [],
+  mounts: [],
   heavyContentAlertDismissed: false,
 };

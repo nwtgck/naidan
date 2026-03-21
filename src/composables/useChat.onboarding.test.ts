@@ -28,6 +28,7 @@ const mockSettings = {
     endpointUrl: '',
     defaultModelId: '',
     storageType: 'local' as const,
+    mounts: [],
     autoTitleEnabled: true,
   },
 };

@@ -33,6 +33,7 @@ vi.mock('../services/llm', () => {
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(() => ({
     settings: ref({ storageType: 'local', providerProfiles: [] }),
+    mounts: [],
     availableModels: ref(['model-a', 'model-b']),
     isFetchingModels: ref(false),
     save: vi.fn().mockImplementation(async (patch) => {
@@ -132,6 +133,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     defaultModelId: 'gpt-4',
     autoTitleEnabled: true,
     storageType: 'local',
+    mounts: [],
     providerProfiles: [] as ProviderProfile[],
   };
 

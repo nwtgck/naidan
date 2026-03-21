@@ -22,7 +22,8 @@ describe('WelcomeScreen.vue', () => {
       storageType: 'memory',
       endpointType: 'openai',
       autoTitleEnabled: true,
-      providerProfiles: []
+      providerProfiles: [],
+      mounts: [],
     } as Settings);
 
     const wrapper = mount(WelcomeScreen);

@@ -19,10 +19,10 @@ export class MockFile {
   public name: string;
   public lastModified: number;
 
-  constructor(content: Uint8Array, name: string) {
+  constructor(content: Uint8Array, name: string, lastModified: number) {
     this.content = content;
     this.name = name;
-    this.lastModified = Date.now();
+    this.lastModified = lastModified;
   }
 
   get size(): number {
@@ -32,7 +32,7 @@ export class MockFile {
   slice(start?: number, end?: number): MockFile {
     const s = start ?? 0;
     const e = end ?? this.content.length;
-    return new MockFile(this.content.slice(s, e), this.name);
+    return new MockFile(this.content.slice(s, e), this.name, this.lastModified);
   }
 
   stream(): ReadableStream<Uint8Array> {
@@ -70,6 +70,7 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
     this.fileHandle = fileHandle;
     if (!options?.keepExistingData) {
       this.fileHandle.content = new Uint8Array(0);
+      this.fileHandle.lastModified = Date.now();
       this.cursor = 0;
     } else {
       this.cursor = 0;
@@ -92,6 +93,7 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
       this.fileHandle.content = newContent;
     }
     if (this.cursor > size) this.cursor = size;
+    this.fileHandle.lastModified = Date.now();
   }
 
   async write(data: unknown): Promise<void> {
@@ -109,6 +111,9 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
       else if (d instanceof Uint8Array) bytes = d;
       else if (d instanceof ArrayBuffer) bytes = new Uint8Array(d);
       else throw new Error("Unsupported write data type in mock");
+    } else if (data && typeof data === 'object' && 'arrayBuffer' in data && typeof (data as { arrayBuffer: unknown }).arrayBuffer === 'function') {
+      const arrayBuffer = await (data as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer();
+      bytes = new Uint8Array(arrayBuffer);
     } else {
       // fallback
       try {
@@ -128,19 +133,22 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
 
     this.fileHandle.content.set(bytes, this.cursor);
     this.cursor += bytes.length;
+    this.fileHandle.lastModified = Date.now();
   }
 }
 
 export class MockFileSystemFileHandle extends MockFileSystemHandle {
   public content: Uint8Array;
+  public lastModified: number;
 
   constructor(name: string, content: Uint8Array = new Uint8Array(0)) {
     super('file', name);
     this.content = content;
+    this.lastModified = Date.now();
   }
 
   getFile(): Promise<MockFile> {
-    return Promise.resolve(new MockFile(this.content, this.name));
+    return Promise.resolve(new MockFile(this.content, this.name, this.lastModified));
   }
 
   async createWritable(options?: { keepExistingData?: boolean }): Promise<MockFileSystemWritableFileStream> {

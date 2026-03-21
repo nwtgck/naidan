@@ -61,6 +61,7 @@ describe('useChat Advanced Settings Resolution', () => {
       autoTitleEnabled: false,
       storageType: 'local',
       providerProfiles: [],
+      mounts: [],
       systemPrompt: 'Global Default Prompt',
       lmParameters: {
         ...EMPTY_LM_PARAMETERS,

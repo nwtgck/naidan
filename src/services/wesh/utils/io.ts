@@ -1,5 +1,29 @@
 import type { WeshFileHandle } from '@/services/wesh/types';
 
+async function writeTextToHandle({
+  handle,
+  text,
+}: {
+  handle: WeshFileHandle;
+  text: string;
+}): Promise<void> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  let totalWritten = 0;
+
+  while (totalWritten < data.length) {
+    const { bytesWritten } = await handle.write({
+      buffer: data,
+      offset: totalWritten,
+      length: data.length - totalWritten,
+    });
+    if (bytesWritten === 0) {
+      return;
+    }
+    totalWritten += bytesWritten;
+  }
+}
+
 export function createTextHelpers({
   stdin,
   stdout,
@@ -9,8 +33,6 @@ export function createTextHelpers({
   stdout: WeshFileHandle;
   stderr: WeshFileHandle;
 }) {
-  const encoder = new TextEncoder();
-
   // Async Iterable for reading lines from stdin
   const inputIterable: AsyncIterable<string> = {
     async *[Symbol.asyncIterator]() {
@@ -45,13 +67,17 @@ export function createTextHelpers({
   return {
     input: inputIterable,
     async print({ text }: { text: string }): Promise<void> {
-      const data = encoder.encode(text);
-      await stdout.write({ buffer: data });
+      await writeTextToHandle({
+        handle: stdout,
+        text,
+      });
     },
 
     async error({ text }: { text: string }): Promise<void> {
-      const data = encoder.encode(text);
-      await stderr.write({ buffer: data });
+      await writeTextToHandle({
+        handle: stderr,
+        text,
+      });
     },
   };
 }

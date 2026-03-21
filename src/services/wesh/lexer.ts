@@ -8,8 +8,9 @@ export type TokenType =
   | 'GT' // >
   | 'GTGT' // >>
   | 'LT' // <
-  | 'LTGT' // 2>
-  | 'LTGTAMP' // 2>&1
+  | 'LTGT' // <>
+  | 'DUP_OUT' // >&
+  | 'DUP_IN' // <&
   | 'LPAREN' // (
   | 'RPAREN' // )
   | 'HEREDOC' // <<
@@ -88,6 +89,10 @@ export class Lexer {
         this.position += 2;
         return { type: 'PROC_SUB_OUT', value: '>(', position: this.position - 2 };
       }
+      if (nextChar === '&') {
+        this.position += 2;
+        return { type: 'DUP_OUT', value: '>&', position: this.position - 2 };
+      }
       if (nextChar === '>') {
         this.position += 2;
         return { type: 'GTGT', value: '>>', position: this.position - 2 };
@@ -101,6 +106,14 @@ export class Lexer {
         this.position += 2;
         return { type: 'PROC_SUB_IN', value: '<(', position: this.position - 2 };
       }
+      if (nextChar === '&') {
+        this.position += 2;
+        return { type: 'DUP_IN', value: '<&', position: this.position - 2 };
+      }
+      if (nextChar === '>') {
+        this.position += 2;
+        return { type: 'LTGT', value: '<>', position: this.position - 2 };
+      }
       if (nextChar === '<') {
         const thirdChar = this.input[this.position + 2];
         if (thirdChar === '<') {
@@ -112,20 +125,6 @@ export class Lexer {
       }
       this.position++;
       return { type: 'LT', value: '<', position: this.position - 1 };
-    }
-
-    // 2> and 2>&1
-    if (char === '2' && nextChar === '>') {
-      const thirdChar = this.input[this.position + 2];
-      const fourthChar = this.input[this.position + 3];
-
-      if (thirdChar === '&' && fourthChar === '1') {
-        this.position += 4;
-        return { type: 'LTGTAMP', value: '2>&1', position: this.position - 4 };
-      }
-
-      this.position += 2;
-      return { type: 'LTGT', value: '2>', position: this.position - 2 };
     }
 
     // Words (including keywords, variable assignments, and quoted strings)
@@ -143,15 +142,14 @@ export class Lexer {
 
   private readWord(): Token {
     const start = this.position;
-    let value = '';
     let inQuote: "'" | '"' | null = null;
     let escaped = false;
+    let extglobDepth = 0;
 
     while (this.position < this.length) {
       const char = this.input[this.position];
 
       if (escaped) {
-        value += char;
         escaped = false;
         this.position++;
         continue;
@@ -166,8 +164,6 @@ export class Lexer {
       if (inQuote) {
         if (char === inQuote) {
           inQuote = null;
-        } else {
-          value += char;
         }
         this.position++;
         continue;
@@ -175,6 +171,24 @@ export class Lexer {
 
       if (char === "'" || char === '"') {
         inQuote = char;
+        this.position++;
+        continue;
+      }
+
+      if (
+        char !== undefined &&
+        ['?', '*', '+', '@', '!'].includes(char) &&
+        this.input[this.position + 1] === '('
+      ) {
+        extglobDepth += 1;
+        this.position += 2;
+        continue;
+      }
+
+      if (extglobDepth > 0) {
+        if (char === ')') {
+          extglobDepth -= 1;
+        }
         this.position++;
         continue;
       }
@@ -191,17 +205,15 @@ export class Lexer {
         char === '>' ||
         char === '<' ||
         char === '(' ||
-        char === ')' ||
-        (char === '2' && this.input[this.position + 1] === '>') // Start of 2> or 2>&1
+        char === ')'
       ) {
         break;
       }
 
-      value += char;
       this.position++;
     }
 
-    return { type: 'WORD', value, position: start };
+    return { type: 'WORD', value: this.input.slice(start, this.position), position: start };
   }
 
   peek(): Token {

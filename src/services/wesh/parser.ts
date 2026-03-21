@@ -21,6 +21,78 @@ export function parseCommandLine({
 
 const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'fi', 'for', 'in', 'do', 'done']);
 
+function parseHereDocDelimiter({
+  raw,
+}: {
+  raw: string;
+}): {
+  delimiter: string;
+  contentExpansion: 'literal' | 'variables';
+} {
+  let delimiter = '';
+  let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
+
+  for (let index = 0; index < raw.length; index++) {
+    const char = raw[index];
+    if (char === undefined) continue;
+
+    switch (mode) {
+    case 'single':
+      if (char === "'") {
+        mode = 'unquoted';
+      } else {
+        delimiter += char;
+      }
+      continue;
+    case 'double':
+      if (char === '"') {
+        mode = 'unquoted';
+      } else if (char === '\\') {
+        const nextChar = raw[index + 1];
+        if (nextChar !== undefined) {
+          delimiter += nextChar;
+          index += 1;
+        }
+      } else {
+        delimiter += char;
+      }
+      continue;
+    case 'unquoted':
+      break;
+    default: {
+      const _ex: never = mode;
+      throw new Error(`Unhandled parser mode: ${_ex}`);
+    }
+    }
+
+    if (char === "'") {
+      mode = 'single';
+      continue;
+    }
+
+    if (char === '"') {
+      mode = 'double';
+      continue;
+    }
+
+    if (char === '\\') {
+      const nextChar = raw[index + 1];
+      if (nextChar !== undefined) {
+        delimiter += nextChar;
+        index += 1;
+      }
+      continue;
+    }
+
+    delimiter += char;
+  }
+
+  return {
+    delimiter,
+    contentExpansion: raw === delimiter ? 'variables' : 'literal',
+  };
+}
+
 class Parser {
   private currentToken: Token;
   private lexer: Lexer;
@@ -54,7 +126,8 @@ class Parser {
     case 'GTGT':
     case 'LT':
     case 'LTGT':
-    case 'LTGTAMP':
+    case 'DUP_OUT':
+    case 'DUP_IN':
     case 'LPAREN':
     case 'RPAREN':
     case 'HEREDOC':
@@ -213,7 +286,8 @@ class Parser {
       case 'GTGT':
       case 'LT':
       case 'LTGT':
-      case 'LTGTAMP':
+      case 'DUP_OUT':
+      case 'DUP_IN':
       case 'LPAREN':
       case 'HEREDOC':
       case 'HERESTRING':
@@ -252,7 +326,8 @@ class Parser {
     case 'GTGT':
     case 'LT':
     case 'LTGT':
-    case 'LTGTAMP':
+    case 'DUP_OUT':
+    case 'DUP_IN':
     case 'HEREDOC':
     case 'HERESTRING':
     case 'PROC_SUB_IN':
@@ -279,7 +354,8 @@ class Parser {
         t === 'GTGT' ||
         t === 'LT' ||
         t === 'LTGT' ||
-        t === 'LTGTAMP' ||
+        t === 'DUP_OUT' ||
+        t === 'DUP_IN' ||
         t === 'HEREDOC' ||
         t === 'HERESTRING' ||
         t === 'PROC_SUB_IN' ||
@@ -289,49 +365,8 @@ class Parser {
 
     while (canContinue()) {
       const t = this.currentToken.type;
-      if (this.isRedirection(t)) {
-        this.eat(t);
-
-        let redType: '>' | '>>' | '<' | '2>' | '2>&1' | '<<' | '<<<';
-        let target: string | undefined;
-        let content: string | undefined;
-
-        const redToken = t as 'GT' | 'GTGT' | 'LT' | 'LTGT' | 'LTGTAMP' | 'HEREDOC' | 'HERESTRING';
-        switch (redToken) {
-        case 'GT':
-          redType = '>';
-          target = this.expectWord();
-          break;
-        case 'GTGT':
-          redType = '>>';
-          target = this.expectWord();
-          break;
-        case 'LT':
-          redType = '<';
-          target = this.expectWord();
-          break;
-        case 'LTGT':
-          redType = '2>';
-          target = this.expectWord();
-          break;
-        case 'LTGTAMP':
-          redType = '2>&1';
-          target = undefined;
-          break;
-        case 'HERESTRING':
-          redType = '<<<';
-          target = this.expectWord();
-          content = target;
-          break;
-        case 'HEREDOC':
-          redType = '<<';
-          target = this.expectWord();
-          content = this.lexer.readHereDoc(target);
-          break;
-        default:
-          throw new Error(`Unhandled redirection type: ${redToken}`);
-        }
-        redirections.push({ type: redType, target, content });
+      if (this.isRedirectionStart()) {
+        redirections.push(this.parseRedirection());
 
       } else if (t === 'PROC_SUB_IN' || t === 'PROC_SUB_OUT') {
         this.eat(t);
@@ -366,7 +401,8 @@ class Parser {
         case 'GTGT':
         case 'LT':
         case 'LTGT':
-        case 'LTGTAMP':
+        case 'DUP_OUT':
+        case 'DUP_IN':
         case 'HEREDOC':
         case 'HERESTRING':
         case 'PROC_SUB_IN':
@@ -417,7 +453,8 @@ class Parser {
         case 'GTGT':
         case 'LT':
         case 'LTGT':
-        case 'LTGTAMP':
+        case 'DUP_OUT':
+        case 'DUP_IN':
         case 'HEREDOC':
         case 'HERESTRING':
           // Handled by isRedirection or ProcSub blocks
@@ -619,7 +656,8 @@ class Parser {
     case 'GTGT':
     case 'LT':
     case 'LTGT':
-    case 'LTGTAMP':
+    case 'DUP_OUT':
+    case 'DUP_IN':
     case 'HEREDOC':
     case 'HERESTRING':
     case 'PROC_SUB_IN':
@@ -633,7 +671,204 @@ class Parser {
     }
   }
 
+  private isRedirectionStart(): boolean {
+    if (this.isRedirection(this.currentToken.type)) {
+      return true;
+    }
+
+    switch (this.currentToken.type) {
+    case 'WORD':
+      break;
+    case 'PIPE':
+    case 'AND':
+    case 'OR':
+    case 'SEMI':
+    case 'AMP':
+    case 'GT':
+    case 'GTGT':
+    case 'LT':
+    case 'LTGT':
+    case 'DUP_OUT':
+    case 'DUP_IN':
+    case 'LPAREN':
+    case 'RPAREN':
+    case 'HEREDOC':
+    case 'HERESTRING':
+    case 'PROC_SUB_IN':
+    case 'PROC_SUB_OUT':
+    case 'EOF':
+      return false;
+    default: {
+      const _ex: never = this.currentToken.type;
+      throw new Error(`Unhandled token type: ${_ex}`);
+    }
+    }
+
+    if (!/^\d+$/.test(this.currentToken.value)) {
+      return false;
+    }
+
+    return this.isRedirection(this.lexer.peek().type);
+  }
+
+  private parseRedirection(): WeshRedirection {
+    let explicitFd: number | undefined;
+    if (this.currentToken.type === 'WORD' && /^\d+$/.test(this.currentToken.value)) {
+      explicitFd = parseInt(this.currentToken.value, 10);
+      this.eat('WORD');
+    }
+
+    const tokenType = this.currentToken.type;
+    this.eat(tokenType);
+    const fd = explicitFd ?? (() => {
+      switch (tokenType) {
+      case 'LT':
+      case 'LTGT':
+      case 'DUP_IN':
+      case 'HEREDOC':
+      case 'HERESTRING':
+        return 0;
+      case 'GT':
+      case 'GTGT':
+      case 'DUP_OUT':
+        return 1;
+      case 'WORD':
+      case 'PIPE':
+      case 'AND':
+      case 'OR':
+      case 'SEMI':
+      case 'AMP':
+      case 'LPAREN':
+      case 'RPAREN':
+      case 'PROC_SUB_IN':
+      case 'PROC_SUB_OUT':
+      case 'EOF':
+        throw new Error(`Unexpected redirection token: ${tokenType}`);
+      default: {
+        const _ex: never = tokenType;
+        throw new Error(`Unhandled redirection token: ${_ex}`);
+      }
+      }
+    })();
+
+    switch (tokenType) {
+    case 'GT':
+      return { fd, type: 'write', target: this.expectWord() };
+    case 'GTGT':
+      return { fd, type: 'append', target: this.expectWord() };
+    case 'LT':
+      return { fd, type: 'read', target: this.expectWord() };
+    case 'LTGT':
+      return { fd, type: 'read-write', target: this.expectWord() };
+    case 'DUP_OUT':
+    case 'DUP_IN': {
+      const target = this.expectWord();
+      const redirectionType = (() => {
+        switch (tokenType) {
+        case 'DUP_OUT':
+          return 'dup-output' as const;
+        case 'DUP_IN':
+          return 'dup-input' as const;
+        default: {
+          const _ex: never = tokenType;
+          throw new Error(`Unhandled redirection token: ${_ex}`);
+        }
+        }
+      })();
+
+      if (target === '-') {
+        return {
+          fd,
+          type: redirectionType,
+          target,
+          closeTarget: true,
+        };
+      }
+
+      if (!/^\d+$/.test(target)) {
+        const operatorText = (() => {
+          switch (tokenType) {
+          case 'DUP_OUT':
+            return '>&';
+          case 'DUP_IN':
+            return '<&';
+          default: {
+            const _ex: never = tokenType;
+            throw new Error(`Unhandled redirection token: ${_ex}`);
+          }
+          }
+        })();
+        throw new Error(`Expected file descriptor after ${operatorText}`);
+      }
+
+      return {
+        fd,
+        type: redirectionType,
+        target,
+        targetFd: parseInt(target, 10),
+      };
+    }
+    case 'HERESTRING': {
+      const target = this.expectWord();
+      return { fd, type: 'herestring', target, content: target };
+    }
+    case 'HEREDOC': {
+      const rawTarget = this.expectWord();
+      const { delimiter, contentExpansion } = parseHereDocDelimiter({ raw: rawTarget });
+      return {
+        fd,
+        type: 'heredoc',
+        target: delimiter,
+        content: this.lexer.readHereDoc(delimiter),
+        contentExpansion,
+      };
+    }
+    case 'WORD':
+    case 'PIPE':
+    case 'AND':
+    case 'OR':
+    case 'SEMI':
+    case 'AMP':
+    case 'LPAREN':
+    case 'RPAREN':
+    case 'PROC_SUB_IN':
+    case 'PROC_SUB_OUT':
+    case 'EOF':
+      throw new Error(`Unexpected redirection token: ${tokenType}`);
+    default: {
+      const _ex: never = tokenType;
+      throw new Error(`Unhandled redirection token: ${_ex}`);
+    }
+    }
+  }
+
   private isRedirection(type: TokenType): boolean {
-    return ['GT', 'GTGT', 'LT', 'LTGT', 'LTGTAMP', 'HEREDOC', 'HERESTRING'].includes(type);
+    switch (type) {
+    case 'GT':
+    case 'GTGT':
+    case 'LT':
+    case 'LTGT':
+    case 'DUP_OUT':
+    case 'DUP_IN':
+    case 'HEREDOC':
+    case 'HERESTRING':
+      return true;
+    case 'WORD':
+    case 'PIPE':
+    case 'AND':
+    case 'OR':
+    case 'SEMI':
+    case 'AMP':
+    case 'LPAREN':
+    case 'RPAREN':
+    case 'PROC_SUB_IN':
+    case 'PROC_SUB_OUT':
+    case 'EOF':
+      return false;
+    default: {
+      const _ex: never = type;
+      throw new Error(`Unhandled token type: ${_ex}`);
+    }
+    }
   }
 }

@@ -616,6 +616,7 @@ export class ImportExportService {
         settings: settingsDto ? settingsToDomain(settingsDto) : {
           autoTitleEnabled: true,
           providerProfiles: [],
+          mounts: [],
           storageType: 'local',
           endpointType: 'openai',
           endpointUrl: '',
@@ -822,6 +823,7 @@ export class ImportExportService {
         settings: settings || {
           autoTitleEnabled: true,
           providerProfiles: [],
+          mounts: [],
           storageType: 'local',
           endpointType: 'openai',
           endpointUrl: '',

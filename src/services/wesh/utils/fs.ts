@@ -1,16 +1,29 @@
-import type { WeshKernel, WeshOpenFlags, WeshFileHandle } from '@/services/wesh/types';
+import type {
+  WeshOpenFlags,
+  WeshFileHandle,
+  WeshEfficientFileWriteResult,
+} from '@/services/wesh/types';
+
+interface WeshFileCapabilities {
+  open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
+  stat(options: { path: string }): Promise<unknown>;
+  tryCreateFileWriterEfficiently?(options: {
+    path: string;
+    mode: 'truncate' | 'append';
+  }): Promise<WeshEfficientFileWriteResult>;
+}
 
 /**
  * Read the entire content of a file as a Uint8Array.
  */
-export async function readFile({ kernel, path }: { kernel: WeshKernel; path: string }): Promise<Uint8Array> {
+export async function readFile({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<Uint8Array> {
   const flags: WeshOpenFlags = {
     access: 'read',
     creation: 'never',
     truncate: 'preserve',
     append: 'preserve',
   };
-  const handle = await kernel.open({ path, flags });
+  const handle = await files.open({ path, flags });
   try {
     const stat = await handle.stat();
     const buffer = new Uint8Array(stat.size);
@@ -34,11 +47,11 @@ export async function readFile({ kernel, path }: { kernel: WeshKernel; path: str
  * Write the entire content of a Uint8Array to a file.
  */
 export async function writeFile({
-  kernel,
+  files,
   path,
   data,
 }: {
-  kernel: WeshKernel;
+  files: WeshFileCapabilities;
   path: string;
   data: Uint8Array;
 }): Promise<void> {
@@ -48,7 +61,7 @@ export async function writeFile({
     truncate: 'truncate',
     append: 'preserve',
   };
-  const handle = await kernel.open({ path, flags });
+  const handle = await files.open({ path, flags });
   try {
     let totalWritten = 0;
     while (totalWritten < data.length) {
@@ -57,6 +70,9 @@ export async function writeFile({
         offset: totalWritten,
         length: data.length - totalWritten,
       });
+      if (bytesWritten === 0) {
+        break;
+      }
       totalWritten += bytesWritten;
     }
   } finally {
@@ -67,9 +83,9 @@ export async function writeFile({
 /**
  * Check if a file or directory exists.
  */
-export async function exists({ kernel, path }: { kernel: WeshKernel; path: string }): Promise<boolean> {
+export async function exists({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<boolean> {
   try {
-    await kernel.stat({ path });
+    await files.stat({ path });
     return true;
   } catch {
     return false;
@@ -131,6 +147,9 @@ export async function streamToHandle({
           offset: written,
           length: value.length - written,
         });
+        if (bytesWritten === 0) {
+          return;
+        }
         written += bytesWritten;
       }
     }
@@ -138,4 +157,89 @@ export async function streamToHandle({
     reader.releaseLock();
     await handle.close();
   }
+}
+
+export async function streamToFilePath({
+  files,
+  path,
+  stream,
+  mode,
+}: {
+  files: WeshFileCapabilities;
+  path: string;
+  stream: ReadableStream<Uint8Array>;
+  mode: 'truncate' | 'append';
+}): Promise<void> {
+  const efficientWriterResult = files.tryCreateFileWriterEfficiently === undefined
+    ? undefined
+    : await files.tryCreateFileWriterEfficiently({
+      path,
+      mode,
+    });
+
+  switch (efficientWriterResult?.kind) {
+  case 'writer': {
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        await efficientWriterResult.writer.write({
+          chunk: value,
+        });
+      }
+      await efficientWriterResult.writer.close();
+      return;
+    } catch (error: unknown) {
+      await efficientWriterResult.writer.abort({
+        reason: error,
+      });
+      throw error;
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  case 'fallback-required':
+  case undefined:
+    break;
+  default: {
+    const _ex: never = efficientWriterResult;
+    throw new Error(`Unhandled efficient writer result: ${JSON.stringify(_ex)}`);
+  }
+  }
+
+  const fallbackFlags = (() => {
+    switch (mode) {
+    case 'truncate':
+      return {
+        access: 'write',
+        creation: 'if-needed',
+        truncate: 'truncate',
+        append: 'preserve',
+      } satisfies WeshOpenFlags;
+    case 'append':
+      return {
+        access: 'write',
+        creation: 'if-needed',
+        truncate: 'preserve',
+        append: 'append',
+      } satisfies WeshOpenFlags;
+    default: {
+      const _ex: never = mode;
+      throw new Error(`Unhandled stream-to-path mode: ${_ex}`);
+    }
+    }
+  })();
+
+  const handle = await files.open({
+    path,
+    flags: fallbackFlags,
+  });
+  await streamToHandle({
+    stream,
+    handle,
+  });
 }
