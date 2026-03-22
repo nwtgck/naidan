@@ -252,7 +252,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async createVolumeFromFiles(_params: {
     name: string;
-    files: FileList;
+    entries: Array<{ file: File; relativePath: string }>;
     onProgress?: (progress: { processed: number; total: number }) => void;
     signal?: AbortSignal;
   }): Promise<import('@/models/types').Volume> {

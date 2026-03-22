@@ -330,4 +330,59 @@ describe('VolumeSettingsTab - Copy Folder / Copy File', () => {
 
     expect(capturedSignal?.aborted).toBe(true);
   });
+
+  it('passes entries (not FileList) to createVolumeFromFiles when copying a folder', async () => {
+    let capturedEntries: Array<{ file: File; relativePath: string }> | undefined;
+    vi.mocked(storageService.createVolumeFromFiles).mockImplementation(({ entries, signal }) => {
+      capturedEntries = entries;
+      return new Promise((_, reject) => {
+        signal?.addEventListener('abort', () => reject(new DOMException('', 'AbortError')));
+      });
+    });
+
+    const wrapper = await mountTab([]);
+    const folderInput = wrapper.find<HTMLInputElement>('input[webkitdirectory]');
+
+    const file = makeFolderFile({ name: 'doc.txt', folderName: 'my-folder' });
+    Object.defineProperty(folderInput.element, 'files', { value: makeFileList([file]), configurable: true });
+    await folderInput.trigger('change');
+    await wrapper.vm.$nextTick();
+
+    expect(capturedEntries).toBeDefined();
+    expect(capturedEntries![0]).toMatchObject({ relativePath: 'doc.txt' });
+    expect(capturedEntries![0]!.file).toBe(file);
+  });
+
+  it('shows drag-over overlay on document dragenter and hides after matching dragleaves', async () => {
+    const wrapper = await mountTab([]);
+    expect(document.querySelector('[data-testid="drag-overlay"]')).toBeNull();
+
+    document.dispatchEvent(new Event('dragenter'));
+    await wrapper.vm.$nextTick();
+    expect(document.querySelector('[data-testid="drag-overlay"]')).not.toBeNull();
+
+    document.dispatchEvent(new Event('dragleave'));
+    await wrapper.vm.$nextTick();
+    expect(document.querySelector('[data-testid="drag-overlay"]')).toBeNull();
+  });
+
+  it('drag-over overlay stays visible when entering child elements (counter approach)', async () => {
+    const wrapper = await mountTab([]);
+
+    // Enter outer element, then inner child
+    document.dispatchEvent(new Event('dragenter'));
+    document.dispatchEvent(new Event('dragenter'));
+    await wrapper.vm.$nextTick();
+    expect(document.querySelector('[data-testid="drag-overlay"]')).not.toBeNull();
+
+    // Leave child (counter goes 2→1, still visible)
+    document.dispatchEvent(new Event('dragleave'));
+    await wrapper.vm.$nextTick();
+    expect(document.querySelector('[data-testid="drag-overlay"]')).not.toBeNull();
+
+    // Leave outer (counter goes 1→0, now hidden)
+    document.dispatchEvent(new Event('dragleave'));
+    await wrapper.vm.$nextTick();
+    expect(document.querySelector('[data-testid="drag-overlay"]')).toBeNull();
+  });
 });

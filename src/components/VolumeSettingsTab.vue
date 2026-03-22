@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { onClickOutside, useToggle } from '@vueuse/core';
 
 const vFocus = { mounted: (el: HTMLElement) => el.focus() };
@@ -39,6 +39,9 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const fileInputSingle = ref<HTMLInputElement | null>(null);
 const copyAbortController = ref<AbortController | null>(null);
 const copyingLabel = ref('');
+const dragCounter = ref(0);
+const isDragOver = computed(() => dragCounter.value > 0);
+const dragOverlayTarget = computed(() => document.querySelector('[data-settings-main]') ?? 'body');
 
 const hasFileSystemAccess = ref(false);
 const hasOPFS = ref(false);
@@ -118,50 +121,89 @@ function generateUniquePath({ baseName }: { baseName: string }): string {
   return path;
 }
 
-async function handleFileSelect(event: Event) {
-  const target = event.target as HTMLInputElement;
-  if (!target.files || target.files.length === 0) return;
+function fileListToEntries({ files }: { files: FileList }): Array<{ file: File; relativePath: string }> {
+  const result: Array<{ file: File; relativePath: string }> = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    const parts = file.webkitRelativePath.split('/');
+    const relativePath = parts.length > 1 ? parts.slice(1).join('/') : file.name;
+    result.push({ file, relativePath });
+  }
+  return result;
+}
 
-  const files = target.files;
-  const firstFile = files[0];
-  if (!firstFile) return;
-  const folderName = firstFile.webkitRelativePath.split('/')[0] || 'Imported Folder';
+async function readDirectoryEntries({ entry, basePath }: { entry: FileSystemDirectoryEntry; basePath: string }): Promise<Array<{ file: File; relativePath: string }>> {
+  const result: Array<{ file: File; relativePath: string }> = [];
+  const reader = entry.createReader();
 
+  await new Promise<void>((resolve, reject) => {
+    function readBatch() {
+      reader.readEntries(async (batch) => {
+        if (batch.length === 0) { resolve(); return; }
+        for (const child of batch) {
+          if (child.isFile) {
+            const file = await new Promise<File>((res, rej) => (child as FileSystemFileEntry).file(res, rej));
+            result.push({ file, relativePath: `${basePath}/${file.name}` });
+          } else if (child.isDirectory) {
+            const nested = await readDirectoryEntries({ entry: child as FileSystemDirectoryEntry, basePath: `${basePath}/${child.name}` });
+            result.push(...nested);
+          }
+        }
+        readBatch();
+      }, reject);
+    }
+    readBatch();
+  });
+
+  return result;
+}
+
+async function startCopy({ name, entries, label }: { name: string; entries: Array<{ file: File; relativePath: string }>; label: string }) {
   const controller = new AbortController();
   copyAbortController.value = controller;
-  copyingLabel.value = 'Copying folder to browser...';
+  copyingLabel.value = label;
   isCreating.value = true;
   progress.value = null;
   try {
     const vol = await storageService.createVolumeFromFiles({
-      name: folderName,
-      files: files,
+      name,
+      entries,
       signal: controller.signal,
-      onProgress: (p) => {
-        progress.value = p;
-      },
+      onProgress: (p) => { progress.value = p; },
     });
-
     await storageService.mountVolume({
       volumeId: vol.id,
-      mountPath: generateUniquePath({ baseName: folderName }),
+      mountPath: generateUniquePath({ baseName: name }),
       readOnly: true,
     });
-
     await loadData();
-    addToast({ message: `"${folderName}" added to your folders` });
-  } catch (e) {
-    if ((e as Error).name === 'AbortError') return;
-    console.error('Failed to import volume:', e);
-    addToast({ message: `Failed to copy folder: ${(e as Error).message}`});
+    return { name };
   } finally {
     isCreating.value = false;
     progress.value = null;
     copyAbortController.value = null;
-    if (fileInput.value) fileInput.value.value = '';
   }
 }
 
+async function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement;
+  if (!target.files || target.files.length === 0) return;
+
+  const folderName = target.files[0]?.webkitRelativePath.split('/')[0] || 'Imported Folder';
+  const entries = fileListToEntries({ files: target.files });
+
+  try {
+    await startCopy({ name: folderName, entries, label: 'Copying folder to browser...' });
+    addToast({ message: `"${folderName}" added to your folders` });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') return;
+    console.error('Failed to import volume:', e);
+    addToast({ message: `Failed to copy folder: ${(e as Error).message}` });
+  } finally {
+    if (fileInput.value) fileInput.value.value = '';
+  }
+}
 
 async function handleSingleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement;
@@ -169,38 +211,80 @@ async function handleSingleFileSelect(event: Event) {
   const file = target.files[0];
   if (!file) return;
 
-  const controller = new AbortController();
-  copyAbortController.value = controller;
-  copyingLabel.value = 'Copying file to browser...';
-  isCreating.value = true;
-  progress.value = null;
+  const entries = [{ file, relativePath: file.name }];
   try {
-    const vol = await storageService.createVolumeFromFiles({
-      name: file.name,
-      files: target.files,
-      signal: controller.signal,
-      onProgress: (p) => {
-        progress.value = p;
-      },
-    });
-    await storageService.mountVolume({
-      volumeId: vol.id,
-      mountPath: generateUniquePath({ baseName: file.name }),
-      readOnly: true,
-    });
-    await loadData();
+    await startCopy({ name: file.name, entries, label: 'Copying file to browser...' });
     addToast({ message: `"${file.name}" copied to your folders` });
   } catch (e) {
     if ((e as Error).name === 'AbortError') return;
     console.error('Failed to copy file:', e);
     addToast({ message: `Failed to copy file: ${(e as Error).message}` });
   } finally {
-    isCreating.value = false;
-    progress.value = null;
-    copyAbortController.value = null;
     if (fileInputSingle.value) fileInputSingle.value.value = '';
   }
 }
+
+async function handleDrop({ event }: { event: DragEvent }) {
+  if (isCreating.value) return;
+  event.preventDefault();
+
+  const items = Array.from(event.dataTransfer?.items ?? []).filter(i => i.kind === 'file');
+  if (items.length === 0) return;
+
+  const fsEntries = items.map(i => i.webkitGetAsEntry()).filter(Boolean) as FileSystemEntry[];
+  if (fsEntries.length === 0) return;
+
+  // Single directory: copy as folder
+  if (fsEntries.length === 1 && fsEntries[0]!.isDirectory) {
+    const dirEntry = fsEntries[0] as FileSystemDirectoryEntry;
+    const folderName = dirEntry.name;
+    try {
+      const entries = await readDirectoryEntries({ entry: dirEntry, basePath: '' });
+      const normalized = entries.map(e => ({ file: e.file, relativePath: e.relativePath.replace(/^\//, '') }));
+      await startCopy({ name: folderName, entries: normalized, label: 'Copying folder to browser...' });
+      addToast({ message: `"${folderName}" added to your folders` });
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+      addToast({ message: `Failed to copy folder: ${(e as Error).message}` });
+    }
+    return;
+  }
+
+  // Single file: copy as file
+  if (fsEntries.length === 1 && fsEntries[0]!.isFile) {
+    const fileEntry = fsEntries[0] as FileSystemFileEntry;
+    try {
+      const file = await new Promise<File>((res, rej) => fileEntry.file(res, rej));
+      await startCopy({ name: file.name, entries: [{ file, relativePath: file.name }], label: 'Copying file to browser...' });
+      addToast({ message: `"${file.name}" copied to your folders` });
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+      addToast({ message: `Failed to copy file: ${(e as Error).message}` });
+    }
+    return;
+  }
+
+  // Multiple items: flatten all files into one folder named after the first entry
+  const folderName = fsEntries[0]!.name;
+  try {
+    const allEntries: Array<{ file: File; relativePath: string }> = [];
+    for (const entry of fsEntries) {
+      if (entry.isFile) {
+        const file = await new Promise<File>((res, rej) => (entry as FileSystemFileEntry).file(res, rej));
+        allEntries.push({ file, relativePath: file.name });
+      } else if (entry.isDirectory) {
+        const nested = await readDirectoryEntries({ entry: entry as FileSystemDirectoryEntry, basePath: entry.name });
+        allEntries.push(...nested.map(e => ({ file: e.file, relativePath: e.relativePath.replace(/^\//, '') })));
+      }
+    }
+    await startCopy({ name: folderName, entries: allEntries, label: 'Copying folder to browser...' });
+    addToast({ message: `"${folderName}" added to your folders` });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') return;
+    addToast({ message: `Failed to copy: ${(e as Error).message}` });
+  }
+}
+
 
 async function createVolume({ type }: { type: 'opfs' | 'host' }) {
   if (isCreating.value) return;
@@ -401,11 +485,32 @@ async function saveVolumeName({ volId }: { volId: string }) {
   }
 }
 
+function onDocDragEnter() { dragCounter.value++; }
+function onDocDragLeave() { dragCounter.value = Math.max(0, dragCounter.value - 1); }
+function onDocDragOver(e: DragEvent) { e.preventDefault(); }
+function onDocDrop(e: DragEvent) {
+  e.preventDefault();
+  dragCounter.value = 0;
+  handleDrop({ event: e });
+}
+
 onMounted(async () => {
   hasFileSystemAccess.value = checkFileSystemAccessSupport();
   hasOPFS.value = await checkOPFSSupport();
   isDetecting.value = false;
   loadData();
+
+  document.addEventListener('dragenter', onDocDragEnter);
+  document.addEventListener('dragleave', onDocDragLeave);
+  document.addEventListener('dragover', onDocDragOver);
+  document.addEventListener('drop', onDocDrop);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('dragenter', onDocDragEnter);
+  document.removeEventListener('dragleave', onDocDragLeave);
+  document.removeEventListener('dragover', onDocDragOver);
+  document.removeEventListener('drop', onDocDrop);
 });
 
 
@@ -417,9 +522,26 @@ defineExpose({
 </script>
 
 <template>
-  <div class="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+  <div class="relative space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <!-- Click-outside overlay for "..." menus -->
     <div v-if="menuOpenVolumeId" class="fixed inset-0 z-40" @click="menuOpenVolumeId = null"></div>
+
+    <!-- Drag-over overlay (covers the settings content area) -->
+    <Teleport :to="dragOverlayTarget">
+      <div
+        v-if="isDragOver"
+        data-testid="drag-overlay"
+        class="pointer-events-none absolute inset-0 z-[200] bg-blue-500/10 dark:bg-blue-400/10 backdrop-blur-[2px] flex items-center justify-center"
+      >
+        <div class="flex flex-col items-center gap-4 border-2 border-dashed border-blue-400 dark:border-blue-400 rounded-3xl px-16 py-14 bg-white/80 dark:bg-gray-900/80 shadow-2xl text-blue-600 dark:text-blue-300">
+          <FolderDown class="w-14 h-14" />
+          <div class="text-center">
+            <p class="text-xl font-bold">Drop to copy to browser</p>
+            <p class="text-sm font-medium text-blue-500/80 dark:text-blue-400/70 mt-1">Folder or file</p>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <input
       type="file"

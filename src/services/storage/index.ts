@@ -330,7 +330,7 @@ export class StorageService {
 
   async createVolumeFromFiles(params: {
     name: string;
-    files: FileList;
+    entries: Array<{ file: File; relativePath: string }>;
     onProgress?: (progress: { processed: number; total: number }) => void;
     signal?: AbortSignal;
   }): Promise<Volume> {

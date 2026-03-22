@@ -382,7 +382,7 @@ defineExpose({
         </aside>
 
         <!-- Main Content Area -->
-        <main class="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-gray-900 relative">
+        <main data-settings-main class="flex-1 flex flex-col min-w-0 min-h-0 bg-white dark:bg-gray-900 relative">
           <ConnectionTab
             v-if="activeTab === 'connection'"
             ref="connectionTabRef"
