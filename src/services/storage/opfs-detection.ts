@@ -1,4 +1,13 @@
 /**
+ * Checks if the File System Access API (showDirectoryPicker) is available.
+ * Supported in Chromium-based browsers: Chrome, Edge, Opera, Brave, Vivaldi, Arc, Samsung Internet.
+ * Not supported in Firefox or Safari.
+ */
+export function checkFileSystemAccessSupport(): boolean {
+  return typeof window !== 'undefined' && typeof (window as unknown as Record<string, unknown>).showDirectoryPicker === 'function';
+}
+
+/**
  * Checks if Origin Private File System (OPFS) is supported and accessible.
  *
  * Simply checking for the existence of `navigator.storage.getDirectory` is not enough,

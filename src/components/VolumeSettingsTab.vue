@@ -1,27 +1,32 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import { onClickOutside, useToggle } from '@vueuse/core';
 
 const vFocus = { mounted: (el: HTMLElement) => el.focus() };
 import { storageService } from '@/services/storage';
-import { checkOPFSSupport } from '@/services/storage/opfs-detection';
+import { checkOPFSSupport, checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
 import type { Volume, Mount } from '@/models/types';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import {
   HardDrive,
   FolderInput,
-  Copy,
+  FolderDown,
+  FolderSymlink,
+  FolderPlus,
   Trash2,
-  FolderOpen,
   Loader2,
-  Pin,
-  PinOff,
+  Eye,
+  EyeOff,
+  MoreHorizontal,
   Settings2,
   Lock,
   Unlock,
   Check,
   Pencil,
-  X
+  X,
+  Info,
+  AlertCircle,
 } from 'lucide-vue-next';
 
 const volumes = ref<Volume[]>([]);
@@ -30,6 +35,23 @@ const isLoading = ref(false);
 const isCreating = ref(false);
 const progress = ref<{ processed: number; total: number } | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
+
+const hasFileSystemAccess = ref(false);
+const hasOPFS = ref(false);
+const isDetecting = ref(true);
+const isFullyUnsupported = computed(() => !isDetecting.value && !hasFileSystemAccess.value && !hasOPFS.value);
+
+const [isAddFolderInfoOpen, toggleAddFolderInfo] = useToggle(false);
+const addFolderInfoRef = ref<HTMLElement | null>(null);
+onClickOutside(addFolderInfoRef, () => {
+  isAddFolderInfoOpen.value = false;
+});
+
+const [isCopyFolderInfoOpen, toggleCopyFolderInfo] = useToggle(false);
+const copyFolderInfoRef = ref<HTMLElement | null>(null);
+onClickOutside(copyFolderInfoRef, () => {
+  isCopyFolderInfoOpen.value = false;
+});
 
 const { addToast } = useToast();
 const { showConfirm } = useConfirm();
@@ -42,6 +64,7 @@ const editForm = ref({
 
 const editingNameId = ref<string | null>(null);
 const editingNameValue = ref('');
+const menuOpenVolumeId = ref<string | null>(null);
 
 const mountedVolumes = computed(() => {
   return volumes.value.filter(vol => mounts.value.some(m => m.type === 'volume' && m.volumeId === vol.id));
@@ -118,7 +141,7 @@ async function handleFileSelect(event: Event) {
     });
 
     await loadData();
-    addToast({ message: `Volume "${folderName}" imported and mounted` });
+    addToast({ message: `"${folderName}" added to your folders` });
   } catch (e) {
     console.error('Failed to import volume:', e);
     addToast({ message: `Failed to import volume: ${(e as Error).message}`});
@@ -159,7 +182,7 @@ async function createVolume(type: 'opfs' | 'host') {
       });
 
       await loadData();
-      addToast({ message: `Volume "${name}" linked and mounted` });
+      addToast({ message: `"${name}" added to your folders` });
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
       addToast({ message: `Failed to link volume: ${(e as Error).message}`});
@@ -196,7 +219,7 @@ async function createVolume(type: 'opfs' | 'host') {
         });
 
         await loadData();
-        addToast({ message: `Volume "${name}" imported and mounted` });
+        addToast({ message: `"${name}" copied to your folders` });
       } catch (e) {
         if ((e as Error).name === 'AbortError') return;
         addToast({ message: `Failed to import volume: ${(e as Error).message}`});
@@ -263,14 +286,14 @@ async function toggleMount(vol: Volume) {
   try {
     if (isCurrentlyMounted) {
       await storageService.unmountVolume({ volumeId: vol.id });
-      addToast({ message: `Volume "${vol.name}" unmounted` });
+      addToast({ message: `"${vol.name}" is no longer in use` });
     } else {
       await storageService.mountVolume({
         volumeId: vol.id,
         mountPath: generateUniquePath(vol.name),
         readOnly: true,
       });
-      addToast({ message: `Volume "${vol.name}" mounted` });
+      addToast({ message: `"${vol.name}" is now in use` });
     }
     await loadData();
   } catch (e) {
@@ -281,7 +304,7 @@ async function toggleMount(vol: Volume) {
 async function deleteVolume(vol: Volume) {
   const confirmed = await showConfirm({
     title: 'Delete Volume',
-    message: `Are you sure you want to delete "${vol.name}"? This will also unmount it and delete all internal data.`,
+    message: `Are you sure you want to delete "${vol.name}"? This will stop using it and delete all internal data.`,
     confirmButtonText: 'Delete',
     confirmButtonVariant: 'danger',
   });
@@ -292,9 +315,9 @@ async function deleteVolume(vol: Volume) {
     await storageService.unmountVolume({ volumeId: vol.id });
     await storageService.deleteVolume({ volumeId: vol.id });
     await loadData();
-    addToast({ message: 'Volume deleted' });
+    addToast({ message: 'Folder deleted' });
   } catch (e) {
-    addToast({ message: 'Failed to delete volume'});
+    addToast({ message: 'Failed to delete folder'});
   }
 }
 
@@ -328,7 +351,10 @@ async function saveVolumeName(volId: string) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  hasFileSystemAccess.value = checkFileSystemAccessSupport();
+  hasOPFS.value = await checkOPFSSupport();
+  isDetecting.value = false;
   loadData();
 });
 
@@ -342,6 +368,9 @@ defineExpose({
 
 <template>
   <div class="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
+    <!-- Click-outside overlay for "..." menus -->
+    <div v-if="menuOpenVolumeId" class="fixed inset-0 z-40" @click="menuOpenVolumeId = null"></div>
+
     <input
       type="file"
       ref="fileInput"
@@ -357,7 +386,7 @@ defineExpose({
       <div class="flex items-center justify-between text-xs font-bold text-blue-700 dark:text-blue-300 mb-2">
         <span class="flex items-center gap-2">
           <Loader2 class="w-3 h-3 animate-spin" />
-          Processing Volume...
+          Copying folder...
         </span>
         <span v-if="progress">{{ progress.processed }} / {{ progress.total }}</span>
       </div>
@@ -370,28 +399,108 @@ defineExpose({
     </div>
 
     <!-- Header Actions -->
-    <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-      <div class="flex items-center gap-2">
-        <HardDrive class="w-5 h-5 text-blue-500" />
-        <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Storage Volumes</h2>
+    <div class="pb-3 border-b border-gray-100 dark:border-gray-800 space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <HardDrive class="w-5 h-5" :class="isFullyUnsupported ? 'text-gray-300 dark:text-gray-600' : 'text-blue-500'" />
+          <h2 class="text-lg font-bold tracking-tight" :class="isFullyUnsupported ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-white'">Folders</h2>
+        </div>
+        <div class="flex gap-2">
+          <!-- Add Folder: requires File System Access API (Chromium) -->
+          <div class="relative" ref="addFolderInfoRef">
+            <div class="flex items-center">
+              <button
+                @click="createVolume('host')"
+                :disabled="isCreating || !hasFileSystemAccess || isDetecting"
+                class="flex items-center gap-2 px-3 py-2 text-xs font-bold transition-all"
+                :class="[
+                  hasFileSystemAccess && !isDetecting
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 rounded-xl'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed border border-gray-200 dark:border-gray-700',
+                  !isDetecting && !hasFileSystemAccess ? 'rounded-l-xl border-r-0' : 'rounded-xl'
+                ]"
+              >
+                <FolderPlus class="w-4 h-4" />
+                Add Folder
+              </button>
+              <!-- Info icon shown only when Add Folder is unavailable -->
+              <button
+                v-if="!isDetecting && !hasFileSystemAccess"
+                @click="toggleAddFolderInfo()"
+                class="flex items-center px-2 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-r-xl text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors"
+                :class="isAddFolderInfoOpen ? 'text-blue-500 dark:text-blue-400' : ''"
+                title="Why is Add Folder disabled?"
+              >
+                <Info class="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <!-- Popover -->
+            <div
+              v-if="isAddFolderInfoOpen"
+              class="absolute right-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 rounded-xl shadow-lg p-3 space-y-1"
+            >
+              <p class="text-[11px] font-bold text-blue-600 dark:text-blue-400">Add Folder requires a Chromium-based browser</p>
+              <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                Chrome, Edge, Brave, Opera, Vivaldi, or Arc — over HTTPS.
+              </p>
+            </div>
+          </div>
+
+          <!-- Copy Folder: requires OPFS -->
+          <div class="relative" ref="copyFolderInfoRef">
+            <div class="flex items-center">
+              <button
+                @click="createVolume('opfs')"
+                :disabled="isCreating || !hasOPFS || isDetecting"
+                class="flex items-center gap-2 px-3 py-2 text-xs font-bold transition-all rounded-l-xl border-r-0"
+                :class="hasOPFS && !isDetecting
+                  ? 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 shadow-sm text-gray-700 dark:text-gray-200'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed border border-gray-200 dark:border-gray-700'"
+              >
+                <FolderDown class="w-4 h-4" />
+                Copy Folder
+              </button>
+              <button
+                @click="toggleCopyFolderInfo()"
+                class="flex items-center px-2 py-2 border rounded-r-xl transition-colors"
+                :class="[
+                  isCopyFolderInfoOpen ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 hover:text-blue-500 dark:hover:text-blue-400',
+                  hasOPFS && !isDetecting
+                    ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+                    : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+                ]"
+                title="What is Copy Folder?"
+              >
+                <Info class="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <!-- Popover -->
+            <div
+              v-if="isCopyFolderInfoOpen"
+              class="absolute right-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 rounded-xl shadow-lg p-3 space-y-1"
+            >
+              <p class="text-[11px] font-bold text-blue-600 dark:text-blue-400">Your original folder is never touched</p>
+              <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                A copy is made — your files on disk stay exactly as they are.
+              </p>
+              <p class="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed pt-1 border-t border-gray-100 dark:border-gray-700">
+                The copy is stored in your browser's origin-isolated private storage (OPFS), persists between sessions, and works offline.
+              </p>
+              <p v-if="!hasOPFS && !isDetecting" class="text-[11px] text-amber-600 dark:text-amber-400 font-medium pt-1">
+                Not supported in this browser or context.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="flex gap-2">
-        <button
-          @click="createVolume('host')"
-          :disabled="isCreating"
-          class="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold transition-all shadow-sm"
-        >
-          <FolderOpen class="w-4 h-4" />
-          Link Folder
-        </button>
-        <button
-          @click="createVolume('opfs')"
-          :disabled="isCreating"
-          class="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20"
-        >
-          <Copy class="w-4 h-4" />
-          Import Folder
-        </button>
+
+      <!-- Warning: Nothing is supported -->
+      <div v-if="isFullyUnsupported" class="flex items-start gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 rounded-xl">
+        <AlertCircle class="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
+        <p class="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
+          Folders are not supported in this browser or context.
+          Use a Chromium-based browser (Chrome, Edge, Brave, Opera, Vivaldi, Arc) over HTTPS for full support.
+        </p>
       </div>
     </div>
 
@@ -401,9 +510,17 @@ defineExpose({
 
     <div v-else-if="volumes.length === 0" class="text-center p-16 bg-gray-50/50 dark:bg-gray-800/30 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700">
       <FolderInput class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-      <p class="text-sm font-bold text-gray-500 dark:text-gray-400">No storage volumes configured</p>
+      <p class="text-sm font-bold text-gray-500 dark:text-gray-400">No folders configured</p>
       <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 max-w-[240px] mx-auto">
-        Mount external folders via File System API or import them to internal storage.
+        <template v-if="isFullyUnsupported">
+          Folders require a Chromium-based browser over HTTPS.
+        </template>
+        <template v-else-if="!hasFileSystemAccess">
+          Use <span class="font-bold">Copy Folder</span> to snapshot a folder into browser storage, or switch to Chrome, Edge, Brave, Opera, Vivaldi, or Arc to also use <span class="font-bold">Add Folder</span>.
+        </template>
+        <template v-else>
+          Add a folder to use as a volume, or copy one into browser storage.
+        </template>
       </p>
     </div>
 
@@ -412,23 +529,24 @@ defineExpose({
       <section v-if="mountedVolumes.length > 0" class="space-y-4">
         <div class="flex items-center justify-between px-1">
           <h3 class="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest flex items-center gap-2">
-            <Pin class="w-3 h-3" />
-            Active Mounts
+            <Eye class="w-3 h-3" />
+            In Use
+            <span class="text-[9px] font-bold text-blue-300 dark:text-blue-600 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 px-1.5 py-0.5 rounded-full normal-case tracking-normal">Global</span>
           </h3>
-          <span class="text-[10px] font-bold text-gray-400">{{ mountedVolumes.length }} active</span>
+          <span class="text-[10px] font-bold text-gray-400">{{ mountedVolumes.length }} global</span>
         </div>
 
         <div class="grid grid-cols-1 gap-4">
           <div
             v-for="vol in mountedVolumes"
             :key="vol.id"
-            class="group bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/30 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all"
+            class="group bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/30 rounded-2xl shadow-sm hover:shadow-md transition-all"
           >
             <div class="p-4 flex items-center justify-between gap-4">
               <div class="flex items-center gap-4 flex-1 min-w-0">
                 <div class="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 shrink-0">
-                  <FolderOpen v-if="vol.type === 'host'" class="w-5 h-5" />
-                  <HardDrive v-else class="w-5 h-5" />
+                  <FolderSymlink v-if="vol.type === 'host'" class="w-5 h-5" />
+                  <FolderDown v-else class="w-5 h-5" />
                 </div>
 
                 <div class="min-w-0 flex-1">
@@ -455,7 +573,7 @@ defineExpose({
                     <code class="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
                       {{ getVolumeMount(vol.id)?.mountPath }}
                     </code>
-                    <div v-if="getVolumeMount(vol.id)?.readOnly" class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30" title="Read Only">
+                    <div v-if="getVolumeMount(vol.id)?.readOnly" class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-900/30" title="Read Only — your original files are never modified">
                       <Lock class="w-2.5 h-2.5" />
                       <span class="text-[9px] font-bold uppercase tracking-tight">Read Only</span>
                     </div>
@@ -469,29 +587,43 @@ defineExpose({
                 <button
                   @click="startEditing(vol)"
                   class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
-                  title="Configure Mount"
+                  title="Configure"
                 >
                   <Settings2 class="w-4 h-4" />
                 </button>
                 <button
                   @click="toggleMount(vol)"
                   class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
-                  title="Unmount"
+                  title="Stop using"
                 >
-                  <PinOff class="w-4 h-4" />
+                  <EyeOff class="w-4 h-4" />
                 </button>
-                <button
-                  @click="deleteVolume(vol)"
-                  class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
-                  title="Delete Volume"
-                >
-                  <Trash2 class="w-4 h-4" />
-                </button>
+                <div class="relative">
+                  <button
+                    @click.stop="menuOpenVolumeId = menuOpenVolumeId === vol.id ? null : vol.id"
+                    class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors"
+                    title="More actions"
+                  >
+                    <MoreHorizontal class="w-4 h-4" />
+                  </button>
+                  <div
+                    v-if="menuOpenVolumeId === vol.id"
+                    class="absolute right-0 top-full mt-1 w-36 z-50 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden"
+                  >
+                    <button
+                      @click="deleteVolume(vol); menuOpenVolumeId = null"
+                      class="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                      <Trash2 class="w-3.5 h-3.5" />
+                      Delete
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
             <!-- Inline Edit Panel -->
-            <div v-if="editingMountId === vol.id" class="px-4 pb-4 pt-2 border-t border-gray-50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/10">
+            <div v-if="editingMountId === vol.id" class="px-4 pb-4 pt-2 border-t border-gray-50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/10 rounded-b-2xl overflow-hidden">
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-1.5">
                   <label class="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Mount Path</label>
@@ -544,7 +676,7 @@ defineExpose({
       <!-- Unmounted Section -->
       <section v-if="unmountedVolumes.length > 0" class="space-y-4">
         <h3 class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest px-1">
-          Available Volumes
+          Not in Use
         </h3>
         <div class="grid grid-cols-1 gap-3">
           <div
@@ -554,8 +686,8 @@ defineExpose({
           >
             <div class="flex items-center gap-4">
               <div class="p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500">
-                <FolderOpen v-if="vol.type === 'host'" class="w-5 h-5" />
-                <HardDrive v-else class="w-5 h-5" />
+                <FolderSymlink v-if="vol.type === 'host'" class="w-5 h-5" />
+                <FolderDown v-else class="w-5 h-5" />
               </div>
               <div class="min-w-0">
                 <div class="flex items-center gap-2">
@@ -590,15 +722,30 @@ defineExpose({
                 @click="toggleMount(vol)"
                 class="flex items-center gap-2 px-3 py-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all font-bold text-[10px]"
               >
-                <Pin class="w-3 h-3" />
-                Mount Volume
+                <Eye class="w-3 h-3" />
+                Use
               </button>
-              <button
-                @click="deleteVolume(vol)"
-                class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
-              >
-                <Trash2 class="w-4 h-4" />
-              </button>
+              <div class="relative">
+                <button
+                  @click.stop="menuOpenVolumeId = menuOpenVolumeId === vol.id ? null : vol.id"
+                  class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors"
+                  title="More actions"
+                >
+                  <MoreHorizontal class="w-4 h-4" />
+                </button>
+                <div
+                  v-if="menuOpenVolumeId === vol.id"
+                  class="absolute right-0 top-full mt-1 w-36 z-50 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden"
+                >
+                  <button
+                    @click="deleteVolume(vol); menuOpenVolumeId = null"
+                    class="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    <Trash2 class="w-3.5 h-3.5" />
+                    Delete
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

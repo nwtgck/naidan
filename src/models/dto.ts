@@ -360,6 +360,7 @@ export const ChatSchemaDto = ChatMetaSchemaDto.extend({
 export type ChatDto = z.infer<typeof ChatSchemaDto>;
 
 // --- Volume Management & Mounts ---
+// User-facing label: "Folder". All internal identifiers use "volume".
 
 export const VolumeTypeSchemaDto = z.enum(['opfs', 'host']);
 export type VolumeTypeDto = z.infer<typeof VolumeTypeSchemaDto>;

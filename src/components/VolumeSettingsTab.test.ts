@@ -8,6 +8,7 @@ import type { Volume, Mount } from '@/models/types';
 
 vi.mock('@/services/storage/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
+  checkFileSystemAccessSupport: vi.fn().mockReturnValue(true),
 }));
 
 vi.mock('../composables/useToast', () => ({
@@ -43,7 +44,9 @@ function makeMount(volumeId: string): Mount {
 
 function setupStorageMock(volumes: Volume[], mounts: Mount[]) {
   vi.mocked(storageService.listVolumes).mockReturnValue(
-    (async function* () { yield* volumes; })()
+    (async function* () {
+      yield* volumes;
+    })()
   );
   vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts } as any);
 }
@@ -87,8 +90,12 @@ describe('VolumeSettingsTab - Rename Volume', () => {
       // Second call is for the reload after rename
       setupStorageMock([vol], [makeMount(vol.id)]);
       vi.mocked(storageService.listVolumes)
-        .mockReturnValueOnce((async function* () { yield vol; })())
-        .mockReturnValue((async function* () { yield vol; })());
+        .mockReturnValueOnce((async function* () {
+          yield vol;
+        })())
+        .mockReturnValue((async function* () {
+          yield vol;
+        })());
 
       const wrapper = mount(VolumeSettingsTab);
       await flushPromises();
@@ -106,8 +113,12 @@ describe('VolumeSettingsTab - Rename Volume', () => {
     it('pressing Enter saves the new name', async () => {
       const vol = makeVolume({ name: 'Old Name' });
       vi.mocked(storageService.listVolumes)
-        .mockReturnValueOnce((async function* () { yield vol; })())
-        .mockReturnValue((async function* () { yield vol; })());
+        .mockReturnValueOnce((async function* () {
+          yield vol;
+        })())
+        .mockReturnValue((async function* () {
+          yield vol;
+        })());
       vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts: [makeMount(vol.id)] } as any);
 
       const wrapper = mount(VolumeSettingsTab);
@@ -181,8 +192,12 @@ describe('VolumeSettingsTab - Rename Volume', () => {
     it('save button calls renameVolume for an unmounted volume', async () => {
       const vol = makeVolume({ name: 'Snapshot' });
       vi.mocked(storageService.listVolumes)
-        .mockReturnValueOnce((async function* () { yield vol; })())
-        .mockReturnValue((async function* () { yield vol; })());
+        .mockReturnValueOnce((async function* () {
+          yield vol;
+        })())
+        .mockReturnValue((async function* () {
+          yield vol;
+        })());
       vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts: [] } as any);
 
       const wrapper = mount(VolumeSettingsTab);

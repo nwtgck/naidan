@@ -267,6 +267,12 @@ export interface BinaryObject {
   name?: string;
 }
 
+/**
+ * Volume — a storage container that can be made available to the AI as a folder.
+ *
+ * User-facing label: "Folder" (shown in the UI to avoid technical jargon).
+ * All internal identifiers, function names, and field names use "volume".
+ */
 export type VolumeType = 'opfs' | 'host';
 
 export interface Volume {
