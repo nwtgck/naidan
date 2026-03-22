@@ -366,6 +366,7 @@ export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
     moveEntries: ops.moveEntries,
     copyEntriesToDir: ops.copyEntriesToDir,
     downloadEntry: ops.downloadEntry,
+    uploadFiles: ops.uploadFiles,
     get renamingEntryName() {
       return ops.renamingEntryName.value;
     },

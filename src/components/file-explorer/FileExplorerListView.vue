@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject } from 'vue';
+import { inject, ref } from 'vue';
 import { ChevronUp, ChevronDown } from 'lucide-vue-next';
 import FileExplorerEntryItem from './FileExplorerEntryItem.vue';
 import FileExplorerEmptyState from './FileExplorerEmptyState.vue';
@@ -87,6 +87,22 @@ function onBackgroundClick(event: MouseEvent): void {
   }
 }
 
+const isExternalDragOver = ref(false);
+
+function onExternalDragOver(event: DragEvent): void {
+  if (event.dataTransfer?.types.includes('Files')) {
+    isExternalDragOver.value = true;
+  }
+}
+
+async function onExternalDrop(event: DragEvent): Promise<void> {
+  isExternalDragOver.value = false;
+  const files = event.dataTransfer?.files;
+  if (files && files.length > 0) {
+    await ctx.uploadFiles({ files });
+  }
+}
+
 
 defineExpose({
   __testOnly: {
@@ -124,9 +140,13 @@ defineExpose({
 
     <!-- Entries -->
     <div
-      class="flex-1 overflow-y-auto overscroll-contain p-1"
+      class="flex-1 overflow-y-auto overscroll-contain p-1 transition-colors"
+      :class="isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : ''"
       data-list-background="true"
       @contextmenu.self="onBackgroundContextMenu"
+      @dragover.prevent="onExternalDragOver"
+      @dragleave="isExternalDragOver = false"
+      @drop.prevent="onExternalDrop"
     >
       <FileExplorerEmptyState
         v-if="ctx.sortedFilteredEntries.length === 0 && !ctx.isLoading"

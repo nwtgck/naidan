@@ -239,6 +239,26 @@ export function useFileExplorerOperations({
     renamingEntryName.value = undefined;
   }
 
+  async function uploadFiles({ files }: { files: FileList | File[] }): Promise<void> {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+    let failed = 0;
+    for (const file of fileArray) {
+      try {
+        const fh = await currentHandle.value.getFileHandle(file.name, { create: true });
+        const writable = await (fh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
+        await writable.write(await file.arrayBuffer());
+        await writable.close();
+      } catch {
+        failed++;
+      }
+    }
+    if (failed > 0) {
+      addToast({ message: `Failed to upload ${failed} file${failed > 1 ? 's' : ''}.` });
+    }
+    await refresh();
+  }
+
   return {
     renamingEntryName,
     createFile,
@@ -248,6 +268,7 @@ export function useFileExplorerOperations({
     moveEntries,
     copyEntriesToDir,
     downloadEntry,
+    uploadFiles,
     startRename,
     cancelRename,
     __testOnly: {

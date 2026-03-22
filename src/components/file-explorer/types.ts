@@ -138,6 +138,7 @@ export interface FileExplorerContext {
   moveEntries: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: FileSystemDirectoryHandle }) => Promise<void>;
   copyEntriesToDir: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: FileSystemDirectoryHandle }) => Promise<void>;
   downloadEntry: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>;
+  uploadFiles: ({ files }: { files: FileList | File[] }) => Promise<void>;
 
   // Rename UI state
   renamingEntryName: string | undefined;

@@ -57,6 +57,7 @@ function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerCont
     moveEntries: vi.fn().mockResolvedValue(undefined),
     copyEntriesToDir: vi.fn().mockResolvedValue(undefined),
     downloadEntry: vi.fn().mockResolvedValue(undefined),
+    uploadFiles: vi.fn().mockResolvedValue(undefined),
     renamingEntryName: undefined,
     startRename: vi.fn(),
     cancelRename: vi.fn(),

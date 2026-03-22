@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject } from 'vue';
+import { inject, ref } from 'vue';
 import FileExplorerEntryItem from './FileExplorerEntryItem.vue';
 import FileExplorerEmptyState from './FileExplorerEmptyState.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
@@ -73,6 +73,22 @@ function onBackgroundContextMenu(event: MouseEvent): void {
   ctx.showContextMenu({ event, target: { kind: 'background' } });
 }
 
+const isExternalDragOver = ref(false);
+
+function onExternalDragOver(event: DragEvent): void {
+  if (event.dataTransfer?.types.includes('Files')) {
+    isExternalDragOver.value = true;
+  }
+}
+
+async function onExternalDrop(event: DragEvent): Promise<void> {
+  isExternalDragOver.value = false;
+  const files = event.dataTransfer?.files;
+  if (files && files.length > 0) {
+    await ctx.uploadFiles({ files });
+  }
+}
+
 
 defineExpose({
   __testOnly: {
@@ -83,10 +99,14 @@ defineExpose({
 
 <template>
   <div
-    class="flex-1 overflow-y-auto overscroll-contain p-3"
+    class="flex-1 overflow-y-auto overscroll-contain p-3 transition-colors"
+    :class="isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : ''"
     data-testid="icon-view"
     @contextmenu.self="onBackgroundContextMenu"
     @click.self="ctx.applySelection({ action: { type: 'clear' } })"
+    @dragover.prevent="onExternalDragOver"
+    @dragleave="isExternalDragOver = false"
+    @drop.prevent="onExternalDrop"
   >
     <FileExplorerEmptyState
       v-if="ctx.sortedFilteredEntries.length === 0 && !ctx.isLoading"
