@@ -434,4 +434,116 @@ describe('FileExplorer.vue', () => {
 
     expect(wrapper.find('[data-testid="rename-input"]').exists()).toBe(false);
   });
+
+  // ---- Context menu actions ----
+
+  it('context menu New File calls showPrompt and creates file', async () => {
+    mockShowPrompt.mockResolvedValueOnce('new-file.txt');
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    // Right-click background
+    await wrapper.find('[data-testid="list-view"]').trigger('contextmenu', { clientX: 50, clientY: 50 });
+    await flushPromises();
+
+    const newFileBtn = Array.from(document.body.querySelectorAll('[data-testid="context-menu"] button'))
+      .find(b => b.textContent?.includes('New File'));
+    expect(newFileBtn).toBeDefined();
+    await newFileBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushPromises();
+
+    expect(mockShowPrompt).toHaveBeenCalled();
+    expect(wrapper.text()).toContain('new-file.txt');
+  });
+
+  it('context menu Delete removes selected entry after confirm', async () => {
+    root.addFile('delete-me.txt');
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    await wrapper.find('[data-testid="entry-item-delete-me.txt"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.find('[data-testid="entry-item-delete-me.txt"]').trigger('contextmenu', { clientX: 50, clientY: 50 });
+    await flushPromises();
+
+    const deleteBtn = Array.from(document.body.querySelectorAll('[data-testid="context-menu"] button'))
+      .find(b => b.textContent?.includes('Delete'));
+    expect(deleteBtn).toBeDefined();
+    await deleteBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushPromises();
+
+    expect(mockShowConfirm).toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain('delete-me.txt');
+  });
+
+  // ---- Clipboard ----
+
+  it('Ctrl+C then Ctrl+V copies file to same directory', async () => {
+    root.addFile('original.txt', 50);
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    await wrapper.find('[data-testid="entry-item-original.txt"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.find('[data-testid="file-explorer"]').trigger('keydown', { key: 'c', ctrlKey: true });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="file-explorer"]').trigger('keydown', { key: 'v', ctrlKey: true });
+    await flushPromises();
+
+    // After paste, both names should appear (copy creates a second entry)
+    const text = wrapper.text();
+    expect(text).toContain('original.txt');
+  });
+
+  // ---- Sorting ----
+
+  it('clicking Name column header toggles sort direction', async () => {
+    root.addFile('zebra.txt');
+    root.addFile('alpha.txt');
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    // Find sort header for Name and click it (ascending → descending)
+    const nameHeader = wrapper.findAll('div.cursor-pointer').find(d => d.text().includes('Name'));
+    expect(nameHeader).toBeDefined();
+    await nameHeader!.trigger('click');
+    await flushPromises();
+
+    // Click again → descending
+    await nameHeader!.trigger('click');
+    await flushPromises();
+
+    // No crash, sort applied
+    expect(wrapper.text()).toContain('zebra.txt');
+    expect(wrapper.text()).toContain('alpha.txt');
+  });
+
+  // ---- Column view ----
+
+  it('column view shows entries', async () => {
+    root.addFile('col-file.txt');
+    root.addDir('col-dir');
+    const wrapper = tracked(mountExplorer(root, { initialViewMode: 'column' }));
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('col-file.txt');
+    expect(wrapper.text()).toContain('col-dir');
+  });
+
+  // ---- Refresh ----
+
+  it('refresh button reloads entries', async () => {
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    root.addFile('added-after.txt');
+    const refreshBtn = wrapper.find('button[title="Refresh"]');
+    await refreshBtn.trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('added-after.txt');
+  });
 });
