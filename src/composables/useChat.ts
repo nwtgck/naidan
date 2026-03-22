@@ -494,6 +494,15 @@ export function useChat() {
     });
   };
 
+  const addMountToChat = async ({ chatId, mount }: { chatId: string; mount: import('@/models/types').Mount }) => {
+    await storageService.addMountToChat({ chatId, mount });
+    const existing = liveChatRegistry.get(chatId);
+    if (existing) {
+      existing.mounts = [...(existing.mounts ?? []), mount];
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
+    }
+  };
+
   const createNewChat = async (options: {
     groupId: string | undefined;
     modelId: string | undefined;
@@ -538,6 +547,7 @@ export function useChat() {
   };
 
   const openChat = async (id: string, leafId?: string): Promise<Chat | null> => {
+    const { setToolEnabled } = useChatTools();
     if (liveChatRegistry.has(id)) {
       const chat = liveChatRegistry.get(id)!;
       if (leafId && leafId !== chat.currentLeafId) {
@@ -549,6 +559,9 @@ export function useChat() {
       }
       _currentChatGroup.value = null;
       _currentChat.value = chat;
+      if (chat.mounts && chat.mounts.length > 0) {
+        setToolEnabled({ name: 'shell_execute', enabled: true });
+      }
       return chat;
     }
     const loaded = await storageService.loadChat(id);
@@ -564,6 +577,9 @@ export function useChat() {
       registerLiveInstance(reactiveChat);
       _currentChatGroup.value = null;
       _currentChat.value = reactiveChat;
+      if (loaded.mounts && loaded.mounts.length > 0) {
+        setToolEnabled({ name: 'shell_execute', enabled: true });
+      }
       return reactiveChat;
     } else {
       _currentChatGroup.value = null;
@@ -1067,6 +1083,7 @@ export function useChat() {
       const enabledTools = await getEnabledTools({
         enabledNames: enabledToolNames.value,
         settings: settings.value as unknown as Settings,
+        chatMounts: mutableChat.mounts,
       });
 
       const generationState = {
@@ -2146,7 +2163,7 @@ export function useChat() {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle,
     chatFlow, isThinkingActive, isWaitingResponse,
     __testOnly: {

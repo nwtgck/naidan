@@ -15,6 +15,7 @@ import type {
   ChatContentDto,
   BinaryObjectDto,
   LmParametersDto,
+  MountDto,
 } from './dto';
 import type {
   Role,
@@ -41,7 +42,32 @@ import type {
   HierarchyChatGroupNode,
   BinaryObject,
   LmParameters,
+  Mount,
 } from './types';
+
+const mountToDomain = (dto: MountDto): Mount => {
+  const type = dto.type;
+  switch (type) {
+  case 'volume':
+    return { type: 'volume', volumeId: dto.volumeId, mountPath: dto.mountPath, readOnly: dto.readOnly };
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled mount type: ${_ex}`);
+  }
+  }
+};
+
+const mountToDto = (domain: Mount): MountDto => {
+  const type = domain.type;
+  switch (type) {
+  case 'volume':
+    return { type: 'volume', volumeId: domain.volumeId, mountPath: domain.mountPath, readOnly: domain.readOnly };
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled mount type: ${_ex}`);
+  }
+  }
+};
 
 export const roleToDomain = (dto: RoleDto): Role => {
   switch (dto) {
@@ -122,6 +148,7 @@ export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
   currentLeafId: dto.currentLeafId,
   originChatId: dto.originChatId,
   originMessageId: dto.originMessageId,
+  mounts: dto.mounts?.map(mountToDomain),
 });
 
 /**
@@ -611,6 +638,7 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     originMessageId,
     systemPrompt: systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain(lmParameters),
+    mounts: dto.mounts?.map(mountToDomain),
   };
 };
 
@@ -635,6 +663,7 @@ export const chatMetaToDto = (domain: ChatMeta): ChatMetaDto => ({
   systemPrompt: domain.systemPrompt,
   lmParameters: lmParametersToDto(domain.lmParameters),
   currentLeafId: domain.currentLeafId,
+  mounts: domain.mounts?.map(mountToDto),
 });
 
 export const chatContentToDto = (domain: ChatContent): ChatContentDto => ({
@@ -674,6 +703,7 @@ export const chatToDto = (domain: Chat): ChatDto => {
     originMessageId,
     systemPrompt,
     lmParameters: lmParametersToDto(lmParameters),
+    mounts: domain.mounts?.map(mountToDto),
     messages: undefined,
   };
 };

@@ -8,6 +8,10 @@ import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { useReasoning } from '@/composables/useReasoning';
+import { onClickOutside } from '@vueuse/core';
+import { useChatTools } from '@/composables/useChatTools';
+import { storageService } from '@/services/storage';
+import { useToast } from '@/composables/useToast';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
@@ -15,13 +19,16 @@ const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./
 
 import {
   Square, Minimize2, Maximize2, Send,
-  Paperclip, X, Image,
-  ChevronDown, ChevronUp, Edit2, FileEdit
+  X, Image,
+  ChevronDown, ChevronUp, Edit2, FileEdit,
+  Plus, Folder, Files
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import type { Attachment, Chat, LmParameters } from '@/models/types';
 
 const chatStore = useChat();
+const { setToolEnabled } = useChatTools();
+const { addToast } = useToast();
 const reasoningStore = useReasoning();
 const router = useRouter();
 const { getDraft, saveDraft, clearDraft } = useChatDraft();
@@ -44,6 +51,7 @@ const {
   updateSeed: _updateSeed,
   setImageModel,
   getSelectedImageModel,
+  addMountToChat,
 } = chatStore;
 
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
@@ -193,9 +201,17 @@ const sortedAvailableModels = computed(() => naturalSort(availableModels?.value 
 const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const folderInputRef = ref<HTMLInputElement | null>(null);
+const isAttachMenuOpen = ref(false);
+const attachMenuRef = ref<HTMLElement | null>(null);
+const isCreatingVolume = ref(false);
 const isMaximized = ref(false); // New state for maximize button
 const isOverLimit = ref(false); // New state to show maximize button only when content is long
 const isAdvancedEditorOpen = ref(false);
+
+onClickOutside(attachMenuRef, () => {
+  isAttachMenuOpen.value = false;
+});
 
 function openAdvancedEditor() {
   isAdvancedEditorOpen.value = true;
@@ -292,10 +308,6 @@ watch(attachments, (newAtts) => {
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
-function triggerFileInput() {
-  fileInputRef.value?.click();
-}
-
 async function processFiles(files: File[]) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
@@ -316,12 +328,66 @@ async function processFiles(files: File[]) {
   nextTick(adjustTextareaHeight);
 }
 
+function generateChatMountPath({ baseName }: { baseName: string }): string {
+  const existingPaths = (currentChat.value?.mounts ?? []).map(m => m.mountPath);
+  let path = `/${baseName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+  const originalPath = path;
+  let suffix = 2;
+  while (existingPaths.includes(path)) {
+    path = `${originalPath}-${suffix}`;
+    suffix++;
+  }
+  return path;
+}
+
+async function attachAsVolume({ files, name }: { files: File[]; name: string }) {
+  if (!currentChat.value) return;
+  isCreatingVolume.value = true;
+  try {
+    const entries = files.map(f => ({
+      file: f,
+      relativePath: f.webkitRelativePath || f.name,
+    }));
+    const vol = await storageService.createVolumeFromFiles({ name, entries });
+    const mountPath = generateChatMountPath({ baseName: name });
+    await addMountToChat({
+      chatId: currentChat.value.id,
+      mount: { type: 'volume', volumeId: vol.id, mountPath, readOnly: true },
+    });
+    setToolEnabled({ name: 'shell_execute', enabled: true });
+    addToast({ message: `"${name}" attached to this chat` });
+  } finally {
+    isCreatingVolume.value = false;
+  }
+}
+
 async function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement;
   if (!target.files) return;
+  const files = Array.from(target.files);
+  if (files.length === 0) {
+    target.value = ''; return;
+  }
 
-  await processFiles(Array.from(target.files));
-  target.value = ''; // Reset input
+  if (files.every(f => f.type.startsWith('image/'))) {
+    await processFiles(files);
+  } else {
+    const name = files.length === 1 ? files[0]!.name : `${files.length} files`;
+    await attachAsVolume({ files, name });
+  }
+  target.value = '';
+}
+
+async function handleFolderSelect(event: Event) {
+  const target = event.target as HTMLInputElement;
+  if (!target.files) return;
+  const files = Array.from(target.files);
+  if (files.length === 0) {
+    target.value = ''; return;
+  }
+  const folderName = files[0]!.webkitRelativePath.split('/')[0] ?? 'folder';
+  await attachAsVolume({ files, name: folderName });
+  target.value = '';
 }
 
 async function handlePaste(event: ClipboardEvent) {
@@ -769,6 +835,20 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       <!-- Hit area extension: expands the interaction zone around the card to prevent jittering during transitions -->
       <div class="absolute -inset-x-4 -top-4 -bottom-16 pointer-events-auto -z-10" data-testid="hit-area-extension"></div>
 
+      <!-- Folder/File Mounts attached to this chat -->
+      <div v-if="currentChat?.mounts && currentChat.mounts.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="chat-mounts-preview">
+        <div
+          v-for="mount in currentChat.mounts"
+          :key="mount.volumeId"
+          class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-medium"
+          data-testid="chat-mount-badge"
+        >
+          <Folder class="w-3.5 h-3.5 shrink-0" />
+          <span class="max-w-[120px] truncate">{{ mount.mountPath }}</span>
+          <span v-if="mount.readOnly" class="text-blue-400 dark:text-blue-500 text-[10px]">read-only</span>
+        </div>
+      </div>
+
       <!-- Attachment Previews -->
       <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
         <div v-for="att in attachments" :key="att.id" class="relative group/att">
@@ -865,18 +945,49 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           <input
             ref="fileInputRef"
             type="file"
-            accept="image/*"
             multiple
             class="hidden"
             @change="handleFileSelect"
           />
-          <button
-            @click="triggerFileInput"
-            class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            title="Attach images"
-          >
-            <Paperclip class="w-5 h-5" />
-          </button>
+          <input
+            ref="folderInputRef"
+            type="file"
+            webkitdirectory
+            class="hidden"
+            @change="handleFolderSelect"
+          />
+          <div class="relative" ref="attachMenuRef">
+            <button
+              @click="isAttachMenuOpen = !isAttachMenuOpen"
+              :disabled="isCreatingVolume"
+              class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              title="Attach files or folder"
+              data-testid="attach-button"
+            >
+              <Plus class="w-5 h-5" />
+            </button>
+            <div
+              v-if="isAttachMenuOpen"
+              class="absolute bottom-full mb-2 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden min-w-[140px]"
+            >
+              <button
+                @click="fileInputRef?.click(); isAttachMenuOpen = false"
+                class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                data-testid="attach-files-button"
+              >
+                <Files class="w-4 h-4 shrink-0" />
+                Files
+              </button>
+              <button
+                @click="folderInputRef?.click(); isAttachMenuOpen = false"
+                class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                data-testid="attach-folder-button"
+              >
+                <Folder class="w-4 h-4 shrink-0" />
+                Folder
+              </button>
+            </div>
+          </div>
 
           <ChatToolsMenu
             :can-generate-image="canGenerateImage && hasImageModel"

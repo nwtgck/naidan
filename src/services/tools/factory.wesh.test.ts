@@ -52,13 +52,13 @@ describe('getEnabledTools shell_execute', () => {
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       settings: {
-        mounts: [{ volumeId: 'a', mountPath: '/mnt/a' }],
+        mounts: [{ type: 'volume', volumeId: 'a', mountPath: '/mnt/a', readOnly: false }],
       } as never,
     })
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       settings: {
-        mounts: [{ volumeId: 'b', mountPath: '/mnt/b' }],
+        mounts: [{ type: 'volume', volumeId: 'b', mountPath: '/mnt/b', readOnly: true }],
       } as never,
     })
 
@@ -78,7 +78,7 @@ describe('getEnabledTools shell_execute', () => {
       mounts: [{
         path: '/mnt/b',
         handle: volumeHandleB,
-        readOnly: false,
+        readOnly: true,
       }],
       user: 'user',
       initialEnv: {},

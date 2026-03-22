@@ -179,6 +179,7 @@ export interface Chat {
 
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
+  mounts?: Mount[];
 }
 
 /**
@@ -202,6 +203,7 @@ export interface ChatMeta {
   originMessageId?: string;
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
+  mounts?: Mount[];
 }
 
 /**
