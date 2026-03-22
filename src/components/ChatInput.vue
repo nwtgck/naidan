@@ -367,7 +367,6 @@ async function finishMount({ volumeId, name }: { volumeId: string; name: string 
     mount: { type: 'volume', volumeId, mountPath, readOnly: true },
   });
   setToolEnabled({ name: 'shell_execute', enabled: true });
-  addToast({ message: `"${name}" attached to this chat` });
 }
 
 async function attachCopyAsVolume({ files, name }: { files: File[]; name: string }) {
@@ -1103,37 +1102,39 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 
             <div
               v-if="isAttachMenuOpen"
-              class="absolute bottom-full mb-2 left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden w-56"
+              class="absolute bottom-full mb-2 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden w-56"
             >
               <!-- Files -->
               <button
                 @click="fileInputRef?.click(); isAttachMenuOpen = false"
-                class="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
+                class="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
                 data-testid="attach-files-button"
               >
-                <Files class="w-4 h-4 shrink-0 text-gray-500 dark:text-gray-400" />
+                <Files class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
                 Files
               </button>
 
               <!-- Folder (link) — preferred when available -->
-              <div class="border-t border-gray-100 dark:border-gray-800">
-                <!-- Available: highlighted primary row -->
-                <button
-                  v-if="hasFileSystemAccess"
-                  @click="attachLinkAsVolume"
-                  class="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors text-left"
-                  data-testid="attach-folder-link-button"
-                >
-                  <FolderSymlink class="w-4 h-4 shrink-0" />
-                  <span class="flex-1">Folder (link)</span>
+              <div class="border-t border-gray-100 dark:border-gray-700">
+                <!-- Available: normal row -->
+                <div v-if="hasFileSystemAccess" class="flex items-stretch">
+                  <button
+                    @click="attachLinkAsVolume"
+                    class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                    data-testid="attach-folder-link-button"
+                  >
+                    <FolderSymlink class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                    Folder (link)
+                  </button>
                   <button
                     @click.stop="isFolderLinkInfoOpen = !isFolderLinkInfoOpen; isFolderCopyInfoOpen = false"
-                    class="p-0.5 rounded hover:bg-blue-500 transition-colors"
+                    class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
+                    :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'"
                     title="What is Folder (link)?"
                   >
-                    <Info class="w-3.5 h-3.5 opacity-80" />
+                    <Info class="w-3.5 h-3.5" />
                   </button>
-                </button>
+                </div>
                 <!-- Unavailable: disabled with info -->
                 <div v-else class="flex items-stretch">
                   <button
@@ -1145,9 +1146,9 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
                   </button>
                   <button
                     @click.stop="isFolderLinkInfoOpen = !isFolderLinkInfoOpen; isFolderCopyInfoOpen = false"
-                    class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-800"
+                    class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
                     :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-300 dark:text-gray-600 hover:text-blue-500'"
-                    title="Why is Folder (link) disabled?"
+                    title="Why is Folder (link) unavailable?"
                   >
                     <Info class="w-3.5 h-3.5" />
                   </button>
@@ -1160,20 +1161,20 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
               </div>
 
               <!-- Folder (copy) -->
-              <div class="border-t border-gray-100 dark:border-gray-800">
+              <div class="border-t border-gray-100 dark:border-gray-700">
                 <div class="flex items-stretch">
                   <button
                     @click="folderInputRef?.click(); isAttachMenuOpen = false"
-                    class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
+                    class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-left"
                     data-testid="attach-folder-copy-button"
                   >
-                    <FolderDown class="w-4 h-4 shrink-0 text-gray-500 dark:text-gray-400" />
+                    <FolderDown class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
                     Folder (copy)
                   </button>
                   <button
                     @click.stop="isFolderCopyInfoOpen = !isFolderCopyInfoOpen; isFolderLinkInfoOpen = false"
-                    class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-800"
-                    :class="isFolderCopyInfoOpen ? 'text-blue-500' : 'text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400'"
+                    class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
+                    :class="isFolderCopyInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'"
                     title="What is Folder (copy)?"
                   >
                     <Info class="w-3.5 h-3.5" />
@@ -1181,8 +1182,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
                 </div>
                 <!-- Info panel for copy -->
                 <div v-if="isFolderCopyInfoOpen" class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
-                  <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">Your original folder is never touched</p>
-                  <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">A copy is made — your files on disk stay exactly as they are.</p>
+                  <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">A private copy is saved in your browser</p>
+                  <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">Naidan works from the copy — your original files on disk stay safe and intact.</p>
                 </div>
               </div>
             </div>

@@ -9,13 +9,21 @@ vi.mock('lucide-vue-next', () => ({
   Minimize2: { template: '<span>Minimize2</span>' },
   Maximize2: { template: '<span>Maximize2</span>' },
   Send: { template: '<span>Send</span>' },
-  Paperclip: { template: '<span>Paperclip</span>' },
   X: { template: '<span>X</span>' },
   Image: { template: '<span>Image</span>' },
   ChevronDown: { template: '<span>ChevronDown</span>' },
   ChevronUp: { template: '<span>ChevronUp</span>' },
   Edit2: { template: '<span>Edit2</span>' },
   FileEdit: { template: '<span>FileEdit</span>' },
+  Plus: { template: '<span>Plus</span>' },
+  Folder: { template: '<span>Folder</span>' },
+  Files: { template: '<span>Files</span>' },
+  FolderSymlink: { template: '<span>FolderSymlink</span>' },
+  FolderDown: { template: '<span>FolderDown</span>' },
+  Info: { template: '<span>Info</span>' },
+  Loader2: { template: '<span>Loader2</span>' },
+  Lock: { template: '<span>Lock</span>' },
+  Unlock: { template: '<span>Unlock</span>' },
   Search: { template: '<span>Search</span>' },
   Replace: { template: '<span>Replace</span>' },
   Undo2: { template: '<span>Undo2</span>' },
@@ -38,6 +46,33 @@ vi.mock('lucide-vue-next', () => ({
 // Mock child components
 vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div></div>' } }));
 vi.mock('./ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
+
+// Mock new composables and services
+vi.mock('../composables/useChatTools', () => ({
+  useChatTools: () => ({
+    setToolEnabled: vi.fn(),
+  }),
+}));
+vi.mock('../composables/useToast', () => ({
+  useToast: () => ({
+    addToast: vi.fn(),
+  }),
+}));
+vi.mock('../composables/useConfirm', () => ({
+  useConfirm: () => ({
+    showConfirm: vi.fn().mockResolvedValue(true),
+  }),
+}));
+vi.mock('../services/storage', () => ({
+  storageService: {
+    getVolume: vi.fn(),
+    createVolumeFromFiles: vi.fn(),
+    createVolume: vi.fn(),
+  },
+}));
+vi.mock('../services/storage/opfs-detection', () => ({
+  checkFileSystemAccessSupport: vi.fn(() => false),
+}));
 
 // Mock composables
 const mockCurrentChat = ref<any>({ id: 'chat-1', modelId: 'model-1' });
@@ -151,6 +186,9 @@ const mockChatStore = {
     if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
     return c;
   }),
+  addMountToChat: vi.fn(),
+  removeMountFromChat: vi.fn(),
+  updateChatMount: vi.fn(),
 };
 
 vi.mock('../composables/useChat', () => ({
