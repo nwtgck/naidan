@@ -49,9 +49,11 @@ const isDetecting = ref(true);
 const isFullyUnsupported = computed(() => !isDetecting.value && !hasFileSystemAccess.value && !hasOPFS.value);
 
 const [isAddFolderInfoOpen, toggleAddFolderInfo] = useToggle(false);
+const [isAddFolderModeOpen, toggleAddFolderMode] = useToggle(false);
 const addFolderInfoRef = ref<HTMLElement | null>(null);
 onClickOutside(addFolderInfoRef, () => {
   isAddFolderInfoOpen.value = false;
+  toggleAddFolderMode(false);
 });
 
 const [isCopyFolderInfoOpen, toggleCopyFolderInfo] = useToggle(false);
@@ -140,7 +142,9 @@ async function readDirectoryEntries({ entry, basePath }: { entry: FileSystemDire
   await new Promise<void>((resolve, reject) => {
     function readBatch() {
       reader.readEntries(async (batch) => {
-        if (batch.length === 0) { resolve(); return; }
+        if (batch.length === 0) {
+          resolve(); return;
+        }
         for (const child of batch) {
           if (child.isFile) {
             const file = await new Promise<File>((res, rej) => (child as FileSystemFileEntry).file(res, rej));
@@ -170,7 +174,9 @@ async function startCopy({ name, entries, label }: { name: string; entries: Arra
       name,
       entries,
       signal: controller.signal,
-      onProgress: (p) => { progress.value = p; },
+      onProgress: (p) => {
+        progress.value = p;
+      },
     });
     await storageService.mountVolume({
       volumeId: vol.id,
@@ -286,6 +292,50 @@ async function handleDrop({ event }: { event: DragEvent }) {
 }
 
 
+async function pickHostFolder({ mode }: { mode: 'read' | 'readwrite' }) {
+  toggleAddFolderMode(false);
+  try {
+    // @ts-expect-error: File System Access API
+    const handle = await window.showDirectoryPicker({ mode });
+    isCreating.value = true;
+    const name = handle.name;
+
+    const vol = await storageService.createVolume({
+      name,
+      type: 'host',
+      sourceHandle: handle,
+    });
+
+    await storageService.mountVolume({
+      volumeId: vol.id,
+      mountPath: generateUniquePath({ baseName: name }),
+      readOnly: mode === 'read',
+    });
+
+    await loadData();
+    addToast({ message: `"${name}" added to your folders` });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') return;
+    addToast({ message: `Failed to add folder: ${(e as Error).message}` });
+  } finally {
+    isCreating.value = false;
+  }
+}
+
+async function ensureHostPermission({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
+  const handle = await storageService.getVolumeDirectoryHandle({ volumeId });
+  if (!handle) return;
+  const mode = readOnly ? 'read' : 'readwrite';
+  // @ts-expect-error: File System Access API
+  const current = await handle.queryPermission({ mode });
+  if (current === 'granted') return;
+  // @ts-expect-error: File System Access API
+  const result = await handle.requestPermission({ mode });
+  if (result !== 'granted') {
+    addToast({ message: 'Permission denied. The folder may not be accessible.' });
+  }
+}
+
 async function createVolume({ type }: { type: 'opfs' | 'host' }) {
   if (isCreating.value) return;
 
@@ -296,33 +346,7 @@ async function createVolume({ type }: { type: 'opfs' | 'host' }) {
       addToast({ message: 'Linking external folders is not supported in this browser.'});
       return;
     }
-
-    try {
-      // @ts-expect-error: File System Access API
-      const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-      isCreating.value = true;
-      const name = handle.name;
-
-      const vol = await storageService.createVolume({
-        name,
-        type: 'host',
-        sourceHandle: handle,
-      });
-
-      await storageService.mountVolume({
-        volumeId: vol.id,
-        mountPath: generateUniquePath({ baseName: name }),
-        readOnly: true,
-      });
-
-      await loadData();
-      addToast({ message: `"${name}" added to your folders` });
-    } catch (e) {
-      if ((e as Error).name === 'AbortError') return;
-      addToast({ message: `Failed to add folder: ${(e as Error).message}`});
-    } finally {
-      isCreating.value = false;
-    }
+    toggleAddFolderMode(true);
     break;
   }
   case 'opfs': {
@@ -409,6 +433,21 @@ async function saveMountSettings({ volId }: { volId: string }) {
     editingMountId.value = null;
     await loadData();
     addToast({ message: 'Path settings updated' });
+
+    const volume = volumes.value.find(v => v.id === volId);
+    if (volume) {
+      switch (volume.type) {
+      case 'host':
+        await ensureHostPermission({ volumeId: volId, readOnly: editForm.value.readOnly });
+        break;
+      case 'opfs':
+        break;
+      default: {
+        const _ex: never = volume.type;
+        throw new Error(`Unhandled volume type: ${_ex}`);
+      }
+      }
+    }
   } catch (e) {
     console.error('Failed to update mount settings:', e);
     addToast({ message: 'Failed to update path settings'});
@@ -436,10 +475,37 @@ async function toggleMount({ volume }: { volume: Volume }) {
 }
 
 async function deleteVolume({ volume }: { volume: Volume }) {
+  let title: string;
+  let message: string;
+  let confirmButtonText: string;
+  let successMessage: string;
+  let errorMessage: string;
+
+  switch (volume.type) {
+  case 'opfs':
+    title = 'Delete Folder';
+    message = `Are you sure you want to delete "${volume.name}"? This will permanently delete all copied data from the browser.`;
+    confirmButtonText = 'Delete';
+    successMessage = 'Folder deleted';
+    errorMessage = 'Failed to delete folder';
+    break;
+  case 'host':
+    title = 'Remove Folder';
+    message = `Are you sure you want to remove "${volume.name}"? This will stop using it. Your original files will not be affected.`;
+    confirmButtonText = 'Remove';
+    successMessage = 'Folder removed';
+    errorMessage = 'Failed to remove folder';
+    break;
+  default: {
+    const _ex: never = volume.type;
+    throw new Error(`Unhandled volume type: ${_ex}`);
+  }
+  }
+
   const confirmed = await showConfirm({
-    title: 'Delete Folder',
-    message: `Are you sure you want to delete "${volume.name}"? This will stop using it and delete all internal data.`,
-    confirmButtonText: 'Delete',
+    title,
+    message,
+    confirmButtonText,
     confirmButtonVariant: 'danger',
   });
 
@@ -449,9 +515,9 @@ async function deleteVolume({ volume }: { volume: Volume }) {
     await storageService.unmountVolume({ volumeId: volume.id });
     await storageService.deleteVolume({ volumeId: volume.id });
     await loadData();
-    addToast({ message: 'Folder deleted' });
+    addToast({ message: successMessage });
   } catch (e) {
-    addToast({ message: 'Failed to delete folder'});
+    addToast({ message: errorMessage });
   }
 }
 
@@ -485,9 +551,15 @@ async function saveVolumeName({ volId }: { volId: string }) {
   }
 }
 
-function onDocDragEnter() { dragCounter.value++; }
-function onDocDragLeave() { dragCounter.value = Math.max(0, dragCounter.value - 1); }
-function onDocDragOver(e: DragEvent) { e.preventDefault(); }
+function onDocDragEnter() {
+  dragCounter.value++;
+}
+function onDocDragLeave() {
+  dragCounter.value = Math.max(0, dragCounter.value - 1);
+}
+function onDocDragOver(e: DragEvent) {
+  e.preventDefault();
+}
 function onDocDrop(e: DragEvent) {
   e.preventDefault();
   dragCounter.value = 0;
@@ -605,11 +677,12 @@ defineExpose({
             <!-- Single button when available -->
             <button
               v-if="isDetecting || hasFileSystemAccess"
+              data-testid="add-folder-btn"
               @click="createVolume({ type: 'host' })"
               :disabled="isCreating || !hasFileSystemAccess || isDetecting"
               class="flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl transition-all"
               :class="hasFileSystemAccess && !isDetecting
-                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20'
+                ? (isAddFolderModeOpen ? 'bg-blue-700 text-white shadow-lg shadow-blue-500/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20')
                 : 'bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed border border-gray-200 dark:border-gray-700'"
             >
               <FolderPlus class="w-4 h-4" />
@@ -621,7 +694,6 @@ defineExpose({
               class="flex items-stretch rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 overflow-hidden"
             >
               <button
-                @click="createVolume({ type: 'host' })"
                 disabled
                 class="flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-300 dark:text-gray-600 cursor-not-allowed border-r border-gray-200 dark:border-gray-700"
               >
@@ -637,7 +709,38 @@ defineExpose({
                 <Info class="w-3.5 h-3.5" />
               </button>
             </div>
-            <!-- Popover -->
+            <!-- Mode selector popover (when API available) -->
+            <div
+              v-if="isAddFolderModeOpen"
+              data-testid="add-folder-mode-panel"
+              class="absolute right-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden"
+            >
+              <p class="px-3 pt-3 pb-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Choose access level</p>
+              <p class="px-3 pb-1.5 text-[10px] text-gray-400 dark:text-gray-500">You can change this later in folder settings.</p>
+              <button
+                data-testid="add-folder-read-only-btn"
+                @click="pickHostFolder({ mode: 'read' })"
+                class="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
+              >
+                <Lock class="w-4 h-4 mt-0.5 shrink-0 text-green-500" />
+                <div>
+                  <p class="text-xs font-bold text-gray-800 dark:text-gray-100">Read Only</p>
+                  <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">AI can read files, not write</p>
+                </div>
+              </button>
+              <button
+                data-testid="add-folder-readwrite-btn"
+                @click="pickHostFolder({ mode: 'readwrite' })"
+                class="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left border-t border-gray-100 dark:border-gray-800"
+              >
+                <Pencil class="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
+                <div>
+                  <p class="text-xs font-bold text-gray-800 dark:text-gray-100">Read & Write</p>
+                  <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">AI can read and modify files</p>
+                </div>
+              </button>
+            </div>
+            <!-- Info popover (when API unavailable) -->
             <div
               v-if="isAddFolderInfoOpen"
               class="absolute right-0 top-full mt-2 w-64 z-50 bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/40 rounded-xl shadow-lg p-3 space-y-1"
@@ -742,10 +845,9 @@ defineExpose({
         <div class="flex items-center justify-between px-1">
           <h3 class="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest flex items-center gap-2">
             <Eye class="w-3 h-3" />
-            In Use
-            <span class="text-[9px] font-bold text-blue-300 dark:text-blue-600 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 px-1.5 py-0.5 rounded-full normal-case tracking-normal">Global</span>
+            In Use Globally
           </h3>
-          <span class="text-[10px] font-bold text-gray-400">{{ mountedVolumes.length }} global</span>
+          <span class="text-[10px] font-bold text-gray-400">{{ mountedVolumes.length }} active</span>
         </div>
 
         <div class="grid grid-cols-1 gap-4">
@@ -797,6 +899,7 @@ defineExpose({
 
               <div class="flex items-center gap-1 shrink-0">
                 <button
+                  data-testid="volume-settings-btn"
                   @click="startEditing({ volume })"
                   class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
                   title="Configure"
@@ -873,6 +976,7 @@ defineExpose({
               <div class="flex justify-end gap-2 mt-4">
                 <button @click="editingMountId = null" class="px-3 py-1.5 text-[10px] font-bold text-gray-400 hover:text-gray-600">Cancel</button>
                 <button
+                  data-testid="mount-save-btn"
                   @click="saveMountSettings({ volId: volume.id })"
                   class="flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-bold hover:bg-blue-700 shadow-sm"
                 >
@@ -888,7 +992,7 @@ defineExpose({
       <!-- Unmounted Section -->
       <section v-if="unmountedVolumes.length > 0" class="space-y-4">
         <h3 class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest px-1">
-          Not in Use
+          Not in Use Globally
         </h3>
         <div class="grid grid-cols-1 gap-3">
           <div

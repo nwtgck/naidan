@@ -29,6 +29,7 @@ vi.mock('../services/storage', () => ({
     mountVolume: vi.fn(),
     createVolume: vi.fn(),
     createVolumeFromFiles: vi.fn(),
+    getVolumeDirectoryHandle: vi.fn(),
   },
 }));
 
@@ -384,5 +385,128 @@ describe('VolumeSettingsTab - Copy Folder / Copy File', () => {
     document.dispatchEvent(new Event('dragleave'));
     await wrapper.vm.$nextTick();
     expect(document.querySelector('[data-testid="drag-overlay"]')).toBeNull();
+  });
+});
+
+describe('VolumeSettingsTab - Add Folder mode selection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // @ts-expect-error: File System Access API mock
+    window.showDirectoryPicker = vi.fn().mockResolvedValue({ name: 'TestFolder' });
+    vi.mocked(storageService.listVolumes).mockReturnValue((async function* () {})());
+    vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts: [] } as any);
+  });
+
+  it('clicking Add Folder shows the mode selector panel', async () => {
+    const wrapper = await mountTab([]);
+    expect(wrapper.find('[data-testid="add-folder-mode-panel"]').exists()).toBe(false);
+
+    await wrapper.find('[data-testid="add-folder-btn"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="add-folder-mode-panel"]').exists()).toBe(true);
+  });
+
+  it('choosing Read Only calls showDirectoryPicker with mode read and mounts readOnly', async () => {
+    const mockPicker = vi.fn().mockResolvedValue({ name: 'Documents' });
+    // @ts-expect-error: File System Access API mock
+    window.showDirectoryPicker = mockPicker;
+
+    vi.mocked(storageService.createVolume).mockResolvedValue(makeVolume({ id: 'new-vol', type: 'host' }));
+    vi.mocked(storageService.mountVolume).mockResolvedValue(undefined as any);
+    vi.mocked(storageService.listVolumes).mockReturnValue((async function* () {})());
+    vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts: [] } as any);
+
+    const wrapper = await mountTab([]);
+    await wrapper.find('[data-testid="add-folder-btn"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="add-folder-read-only-btn"]').trigger('click');
+    await flushPromises();
+
+    expect(mockPicker).toHaveBeenCalledWith({ mode: 'read' });
+    expect(storageService.mountVolume).toHaveBeenCalledWith(expect.objectContaining({ readOnly: true }));
+  });
+
+  it('choosing Read & Write calls showDirectoryPicker with mode readwrite and mounts not readOnly', async () => {
+    const mockPicker = vi.fn().mockResolvedValue({ name: 'Projects' });
+    // @ts-expect-error: File System Access API mock
+    window.showDirectoryPicker = mockPicker;
+
+    vi.mocked(storageService.createVolume).mockResolvedValue(makeVolume({ id: 'new-vol', type: 'host' }));
+    vi.mocked(storageService.mountVolume).mockResolvedValue(undefined as any);
+    vi.mocked(storageService.listVolumes).mockReturnValue((async function* () {})());
+    vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts: [] } as any);
+
+    const wrapper = await mountTab([]);
+    await wrapper.find('[data-testid="add-folder-btn"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="add-folder-readwrite-btn"]').trigger('click');
+    await flushPromises();
+
+    expect(mockPicker).toHaveBeenCalledWith({ mode: 'readwrite' });
+    expect(storageService.mountVolume).toHaveBeenCalledWith(expect.objectContaining({ readOnly: false }));
+  });
+});
+
+describe('VolumeSettingsTab - Permission re-request on save', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(storageService.unmountVolume).mockResolvedValue(undefined as any);
+    vi.mocked(storageService.mountVolume).mockResolvedValue(undefined as any);
+  });
+
+  it('calls requestPermission for host volume when saving mount settings', async () => {
+    const vol = makeVolume({ id: 'vol-1', type: 'host' });
+    const m = makeMount(vol.id);
+
+    const queryPermission = vi.fn().mockResolvedValue('prompt');
+    const requestPermission = vi.fn().mockResolvedValue('granted');
+    const mockHandle = { queryPermission, requestPermission } as unknown as FileSystemDirectoryHandle;
+    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue(mockHandle);
+
+    vi.mocked(storageService.listVolumes)
+      .mockReturnValueOnce((async function* () {
+        yield vol;
+      })())
+      .mockReturnValue((async function* () {
+        yield vol;
+      })());
+    vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts: [m] } as any);
+
+    const wrapper = await mountTab([vol], [m]);
+
+    await wrapper.find('[data-testid="volume-settings-btn"]').trigger('click');
+    await wrapper.vm.$nextTick();
+    await wrapper.find('[data-testid="mount-save-btn"]').trigger('click');
+    await flushPromises();
+
+    expect(storageService.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: vol.id });
+    expect(queryPermission).toHaveBeenCalledWith({ mode: 'read' });
+    expect(requestPermission).toHaveBeenCalledWith({ mode: 'read' });
+  });
+
+  it('does not call requestPermission for opfs volumes', async () => {
+    const vol = makeVolume({ id: 'vol-1', type: 'opfs' });
+    const m = makeMount(vol.id);
+
+    vi.mocked(storageService.listVolumes)
+      .mockReturnValueOnce((async function* () {
+        yield vol;
+      })())
+      .mockReturnValue((async function* () {
+        yield vol;
+      })());
+    vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts: [m] } as any);
+
+    const wrapper = await mountTab([vol], [m]);
+
+    await wrapper.find('[data-testid="volume-settings-btn"]').trigger('click');
+    await wrapper.vm.$nextTick();
+    await wrapper.find('[data-testid="mount-save-btn"]').trigger('click');
+    await flushPromises();
+
+    expect(storageService.getVolumeDirectoryHandle).not.toHaveBeenCalled();
   });
 });
