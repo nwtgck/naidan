@@ -146,36 +146,17 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
     }
 
     // Arrow navigation
-    const all = ctx.sortedFilteredEntries;
-    if (all.length === 0) return;
+    if (ctx.sortedFilteredEntries.length === 0) return;
 
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
       event.preventDefault();
-      const focus = ctx.selectionState.focusName;
-      const idx = focus ? all.findIndex(e => e.name === focus) : -1;
-      const next = all[Math.min(idx + 1, all.length - 1)];
-      if (next) {
-        if (event.shiftKey) {
-          ctx.applySelection({ action: { type: 'range', name: next.name, allEntries: all } });
-        } else {
-          ctx.applySelection({ action: { type: 'single', name: next.name } });
-        }
-      }
+      ctx.moveFocus({ direction: 'next', extend: event.shiftKey });
       return;
     }
 
     if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
       event.preventDefault();
-      const focus = ctx.selectionState.focusName;
-      const idx = focus ? all.findIndex(e => e.name === focus) : all.length;
-      const prev = all[Math.max(idx - 1, 0)];
-      if (prev) {
-        if (event.shiftKey) {
-          ctx.applySelection({ action: { type: 'range', name: prev.name, allEntries: all } });
-        } else {
-          ctx.applySelection({ action: { type: 'single', name: prev.name } });
-        }
-      }
+      ctx.moveFocus({ direction: 'prev', extend: event.shiftKey });
       return;
     }
   }

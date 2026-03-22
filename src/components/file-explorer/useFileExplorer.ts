@@ -356,6 +356,8 @@ export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
       return selectedEntries.value;
     },
     applySelection,
+    moveFocus: ({ direction, extend }: { direction: 'prev' | 'next'; extend: boolean }) =>
+      sel.moveFocus({ direction, extend, allEntries: nav.sortedFilteredEntries.value }),
 
     // Operations
     createFile: ops.createFile,

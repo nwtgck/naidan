@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import type { FileExplorerEntry, SelectionState, SelectionAction } from './types';
 
 export function useFileExplorerSelection() {
@@ -133,15 +133,12 @@ export function useFileExplorerSelection() {
     };
   }
 
-  const selectedEntries = computed(() => ({} as Record<string, never>)); // placeholder — computed from allEntries in context
-
   return {
     selectionState,
     applySelection,
     getSelectedEntries,
     moveFocus,
     clearSelectionForNewDirectory,
-    selectedEntries,
     __testOnly: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
     },

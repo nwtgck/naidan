@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useFileExplorerKeyboard } from './useFileExplorerKeyboard';
-import type { FileExplorerContext, FileExplorerEntry, SelectionAction, ContextMenuTarget } from './types';
+import type { FileExplorerContext, FileExplorerEntry, ContextMenuTarget } from './types';
 
 // ---- helpers ----
 
@@ -50,6 +50,7 @@ function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerCont
     selectionState: { selectedNames: new Set(), anchorName: undefined, focusName: undefined },
     selectedEntries: [],
     applySelection: vi.fn(),
+    moveFocus: vi.fn(),
     createFile: vi.fn().mockResolvedValue(undefined),
     createFolder: vi.fn().mockResolvedValue(undefined),
     deleteEntries: vi.fn().mockResolvedValue(undefined),
@@ -253,55 +254,35 @@ describe('useFileExplorerKeyboard', () => {
 
   // ---- Arrow navigation ----
 
-  it('ArrowDown moves focus to next entry', async () => {
-    ctx = makeCtx({
-      selectionState: { selectedNames: new Set(['alpha']), anchorName: 'alpha', focusName: 'alpha' },
-    });
+  it('ArrowDown calls moveFocus(next, extend=false)', async () => {
     ({ handleKeyDown } = useFileExplorerKeyboard({ ctx }));
     await handleKeyDown({ event: makeKey('ArrowDown') });
-    expect(ctx.applySelection).toHaveBeenCalledWith({
-      action: { type: 'single', name: 'bravo' },
-    });
+    expect(ctx.moveFocus).toHaveBeenCalledWith({ direction: 'next', extend: false });
   });
 
-  it('ArrowDown at last entry stays on last entry', async () => {
-    ctx = makeCtx({
-      selectionState: { selectedNames: new Set(['charlie']), anchorName: 'charlie', focusName: 'charlie' },
-    });
-    ({ handleKeyDown } = useFileExplorerKeyboard({ ctx }));
-    await handleKeyDown({ event: makeKey('ArrowDown') });
-    expect(ctx.applySelection).toHaveBeenCalledWith({
-      action: { type: 'single', name: 'charlie' },
-    });
-  });
-
-  it('ArrowUp moves focus to previous entry', async () => {
-    ctx = makeCtx({
-      selectionState: { selectedNames: new Set(['bravo']), anchorName: 'bravo', focusName: 'bravo' },
-    });
+  it('ArrowUp calls moveFocus(prev, extend=false)', async () => {
     ({ handleKeyDown } = useFileExplorerKeyboard({ ctx }));
     await handleKeyDown({ event: makeKey('ArrowUp') });
-    expect(ctx.applySelection).toHaveBeenCalledWith({
-      action: { type: 'single', name: 'alpha' },
-    });
+    expect(ctx.moveFocus).toHaveBeenCalledWith({ direction: 'prev', extend: false });
   });
 
-  it('ArrowDown with Shift extends range selection', async () => {
-    ctx = makeCtx({
-      selectionState: { selectedNames: new Set(['alpha']), anchorName: 'alpha', focusName: 'alpha' },
-    });
+  it('ArrowDown with Shift calls moveFocus(next, extend=true)', async () => {
     ({ handleKeyDown } = useFileExplorerKeyboard({ ctx }));
     await handleKeyDown({ event: makeKey('ArrowDown', { shiftKey: true }) });
-    const call = (ctx.applySelection as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { action: SelectionAction };
-    expect(call.action.type).toBe('range');
-    expect((call.action as { type: 'range'; name: string; allEntries: FileExplorerEntry[] }).name).toBe('bravo');
+    expect(ctx.moveFocus).toHaveBeenCalledWith({ direction: 'next', extend: true });
+  });
+
+  it('ArrowLeft calls moveFocus(prev, extend=false)', async () => {
+    ({ handleKeyDown } = useFileExplorerKeyboard({ ctx }));
+    await handleKeyDown({ event: makeKey('ArrowLeft') });
+    expect(ctx.moveFocus).toHaveBeenCalledWith({ direction: 'prev', extend: false });
   });
 
   it('Arrow keys do nothing on empty entry list', async () => {
     ctx = makeCtx({ sortedFilteredEntries: [] });
     ({ handleKeyDown } = useFileExplorerKeyboard({ ctx }));
     await handleKeyDown({ event: makeKey('ArrowDown') });
-    expect(ctx.applySelection).not.toHaveBeenCalled();
+    expect(ctx.moveFocus).not.toHaveBeenCalled();
   });
 
   // ---- Space (Quick Look) ----

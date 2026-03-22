@@ -129,6 +129,7 @@ export interface FileExplorerContext {
   selectionState: SelectionState;
   selectedEntries: FileExplorerEntry[];
   applySelection: ({ action }: { action: SelectionAction }) => void;
+  moveFocus: ({ direction, extend }: { direction: 'prev' | 'next'; extend: boolean }) => void;
 
   // Operations
   createFile: ({ name }: { name: string }) => Promise<void>;
