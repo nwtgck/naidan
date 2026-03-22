@@ -739,7 +739,39 @@ export function useChat() {
     }
     await updateChatMeta(id, (curr) => {
       if (!curr) throw new Error('Chat not found');
-      return { ...curr, ...updates, updatedAt: Date.now() };
+      // WORKAROUND: Chat stores endpoint as flat fields (endpointType / endpointUrl /
+      // endpointHttpHeaders) but the storage layer reads the nested `endpoint` object from
+      // ChatMeta. Spreading either `updates` or `curr` flat fields directly would silently
+      // drop the endpoint on save, causing settings to revert on the next page reload.
+      // Convert all flat fields to a nested `endpoint` object here.
+      // Remove this block once the TODO in types.ts:169 is resolved (unify Chat to use
+      // the nested endpoint object like ChatMeta does).
+
+      // Type guard: prevent flat endpoint fields from leaking into the saved ChatMeta.
+      // This is a temporary measure until Chat and ChatMeta share the same endpoint shape.
+      type _NoFlatEndpoint = Omit<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders'> & {
+        endpointType?: never;
+        endpointUrl?: never;
+        endpointHttpHeaders?: never;
+      };
+
+      // Strip flat endpoint fields from both curr and updates, then merge them with
+      // updates taking priority, and re-express the result as a nested endpoint object.
+      const { endpointType: currEndpointType, endpointUrl: currEndpointUrl, endpointHttpHeaders: currEndpointHttpHeaders, ...currRest } = curr;
+      const { endpointType, endpointUrl, endpointHttpHeaders, ...rest } = updates;
+      const resolvedEndpointType = endpointType !== undefined ? endpointType : currEndpointType;
+
+      const metaUpdates: Partial<_NoFlatEndpoint> = {
+        ...rest,
+        ...(resolvedEndpointType !== undefined && {
+          endpoint: {
+            type: resolvedEndpointType,
+            url: endpointUrl !== undefined ? endpointUrl : currEndpointUrl,
+            httpHeaders: endpointHttpHeaders !== undefined ? endpointHttpHeaders : currEndpointHttpHeaders,
+          },
+        }),
+      };
+      return { ...currRest, ...metaUpdates, updatedAt: Date.now() };
     });
   };
 

@@ -3,6 +3,7 @@ import { reactive } from 'vue';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { storageService } from '@/services/storage';
 
 // Mock storage
 vi.mock('../services/storage', () => ({
@@ -234,5 +235,87 @@ describe('useChat Advanced Settings Resolution', () => {
       expect(currentChat.value?.lmParameters?.reasoning?.effort).toBeUndefined();
       expect(currentChat.value?.id).toBe(chatB!.id);
     });
+  });
+});
+
+// Regression test: Chat Specific Overrides endpoint settings must persist across reload.
+// Bug: updateChatSettings spread Chat flat fields (endpointType/endpointUrl/endpointHttpHeaders)
+// directly onto ChatMeta, but the storage layer only reads the nested `endpoint` object.
+// On reload, the endpoint reverted because the flat fields were never saved correctly.
+describe('Chat Specific Overrides - Endpoint Persistence', () => {
+  const { __testOnly: { __testOnlySetSettings } } = useSettings();
+  const { currentChat, createNewChat, openChat, updateChatSettings } = useChat();
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    __testOnlySetSettings({
+      endpointType: 'openai',
+      endpointUrl: 'http://global-openai',
+      defaultModelId: 'global-gpt',
+      autoTitleEnabled: false,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      systemPrompt: undefined,
+      lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } },
+    });
+    const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+    await openChat(chat!.id);
+  });
+
+  it('stores endpoint as a nested object so it survives a page reload', async () => {
+    // Capture the async updater that updateChatMeta passes to storageService.updateChatMeta.
+    // In production, storage calls this updater with the stored ChatMeta and saves the result.
+    let capturedStorageUpdater: ((curr: unknown) => Promise<unknown>) | undefined;
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce((_id, updater) => {
+      capturedStorageUpdater = updater as typeof capturedStorageUpdater;
+      return Promise.resolve(undefined as any);
+    });
+
+    // loadChat is called by the inner wrapper to reconstruct the full Chat.
+    // Return the live chat so the updater receives a valid object.
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(currentChat.value as any);
+
+    await updateChatSettings(currentChat.value!.id, {
+      endpointType: 'openai',
+      endpointUrl: 'http://chat-specific-url',
+      endpointHttpHeaders: [['Authorization', 'Bearer secret']],
+    });
+
+    expect(capturedStorageUpdater).toBeDefined();
+
+    // Simulate storage calling the updater with the existing ChatMeta row.
+    const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const saved = await capturedStorageUpdater!(existingMeta) as Record<string, unknown>;
+
+    // Endpoint must be saved as a nested object — not as flat fields.
+    // If flat fields appear here the storage mapper silently ignores them and the
+    // settings revert to the previous value on the next page load.
+    expect(saved['endpoint']).toEqual({
+      type: 'openai',
+      url: 'http://chat-specific-url',
+      httpHeaders: [['Authorization', 'Bearer secret']],
+    });
+    expect(saved['endpointType']).toBeUndefined();
+    expect(saved['endpointUrl']).toBeUndefined();
+    expect(saved['endpointHttpHeaders']).toBeUndefined();
+  });
+
+  it('clears the stored endpoint object when endpointType is unset', async () => {
+    let capturedStorageUpdater: ((curr: unknown) => Promise<unknown>) | undefined;
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce((_id, updater) => {
+      capturedStorageUpdater = updater as typeof capturedStorageUpdater;
+      return Promise.resolve(undefined as any);
+    });
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(currentChat.value as any);
+
+    // Omitting endpointType means no chat-specific endpoint override.
+    await updateChatSettings(currentChat.value!.id, { modelId: 'custom-model' });
+
+    const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const saved = await capturedStorageUpdater!(existingMeta) as Record<string, unknown>;
+
+    expect(saved['endpoint']).toBeUndefined();
+    expect(saved['modelId']).toBe('custom-model');
   });
 });
