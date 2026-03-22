@@ -503,6 +503,26 @@ export function useChat() {
     }
   };
 
+  const removeMountFromChat = async ({ chatId, volumeId }: { chatId: string; volumeId: string }) => {
+    await storageService.removeMountFromChat({ chatId, volumeId });
+    const existing = liveChatRegistry.get(chatId);
+    if (existing) {
+      existing.mounts = (existing.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId));
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
+    }
+  };
+
+  const updateChatMount = async ({ chatId, volumeId, readOnly }: { chatId: string; volumeId: string; readOnly: boolean }) => {
+    await storageService.updateChatMount({ chatId, volumeId, readOnly });
+    const existing = liveChatRegistry.get(chatId);
+    if (existing) {
+      existing.mounts = (existing.mounts ?? []).map(m =>
+        m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m
+      );
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
+    }
+  };
+
   const createNewChat = async (options: {
     groupId: string | undefined;
     modelId: string | undefined;
@@ -2163,7 +2183,7 @@ export function useChat() {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat, removeMountFromChat, updateChatMount,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle,
     chatFlow, isThinkingActive, isWaitingResponse,
     __testOnly: {

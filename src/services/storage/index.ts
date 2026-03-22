@@ -384,6 +384,28 @@ export class StorageService {
     });
   }
 
+  async removeMountFromChat({ chatId, volumeId }: { chatId: string; volumeId: string }): Promise<void> {
+    await this.updateChatMeta(chatId, (current) => {
+      if (!current) throw new Error(`Chat not found: ${chatId}`);
+      return {
+        ...current,
+        mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
+      };
+    });
+  }
+
+  async updateChatMount({ chatId, volumeId, readOnly }: { chatId: string; volumeId: string; readOnly: boolean }): Promise<void> {
+    await this.updateChatMeta(chatId, (current) => {
+      if (!current) throw new Error(`Chat not found: ${chatId}`);
+      return {
+        ...current,
+        mounts: (current.mounts ?? []).map(m =>
+          m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m
+        ),
+      };
+    });
+  }
+
   async switchProvider(type: 'local' | 'opfs' | 'memory') {
     try {
       await this.synchronizer.withLock(async () => {

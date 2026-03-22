@@ -11,7 +11,9 @@ import { useReasoning } from '@/composables/useReasoning';
 import { onClickOutside } from '@vueuse/core';
 import { useChatTools } from '@/composables/useChatTools';
 import { storageService } from '@/services/storage';
+import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
 import { useToast } from '@/composables/useToast';
+import { useConfirm } from '@/composables/useConfirm';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
@@ -21,7 +23,8 @@ import {
   Square, Minimize2, Maximize2, Send,
   X, Image,
   ChevronDown, ChevronUp, Edit2, FileEdit,
-  Plus, Folder, Files
+  Plus, Folder, Files, FolderSymlink, FolderDown,
+  Info, Loader2, Lock, Unlock,
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import type { Attachment, Chat, LmParameters } from '@/models/types';
@@ -52,7 +55,10 @@ const {
   setImageModel,
   getSelectedImageModel,
   addMountToChat,
+  removeMountFromChat,
+  updateChatMount,
 } = chatStore;
+const { showConfirm } = useConfirm();
 
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
 
@@ -204,13 +210,26 @@ const fileInputRef = ref<HTMLInputElement | null>(null);
 const folderInputRef = ref<HTMLInputElement | null>(null);
 const isAttachMenuOpen = ref(false);
 const attachMenuRef = ref<HTMLElement | null>(null);
-const isCreatingVolume = ref(false);
+const isFolderLinkInfoOpen = ref(false);
+const isFolderCopyInfoOpen = ref(false);
+const hasFileSystemAccess = ref(checkFileSystemAccessSupport());
+
+type ActiveCopy = {
+  id: string;
+  name: string;
+  progress: { processed: number; total: number } | null;
+  abort: AbortController;
+};
+const activeCopies = ref<ActiveCopy[]>([]);
+
 const isMaximized = ref(false); // New state for maximize button
 const isOverLimit = ref(false); // New state to show maximize button only when content is long
 const isAdvancedEditorOpen = ref(false);
 
 onClickOutside(attachMenuRef, () => {
   isAttachMenuOpen.value = false;
+  isFolderLinkInfoOpen.value = false;
+  isFolderCopyInfoOpen.value = false;
 });
 
 function openAdvancedEditor() {
@@ -340,24 +359,60 @@ function generateChatMountPath({ baseName }: { baseName: string }): string {
   return path;
 }
 
-async function attachAsVolume({ files, name }: { files: File[]; name: string }) {
+async function finishMount({ volumeId, name }: { volumeId: string; name: string }) {
   if (!currentChat.value) return;
-  isCreatingVolume.value = true;
+  const mountPath = generateChatMountPath({ baseName: name });
+  await addMountToChat({
+    chatId: currentChat.value.id,
+    mount: { type: 'volume', volumeId, mountPath, readOnly: true },
+  });
+  setToolEnabled({ name: 'shell_execute', enabled: true });
+  addToast({ message: `"${name}" attached to this chat` });
+}
+
+async function attachCopyAsVolume({ files, name }: { files: File[]; name: string }) {
+  if (!currentChat.value) return;
+  const copyId = generateId();
+  const abort = new AbortController();
+  const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
+  activeCopies.value = [...activeCopies.value, copy];
   try {
     const entries = files.map(f => ({
       file: f,
       relativePath: f.webkitRelativePath || f.name,
     }));
-    const vol = await storageService.createVolumeFromFiles({ name, entries });
-    const mountPath = generateChatMountPath({ baseName: name });
-    await addMountToChat({
-      chatId: currentChat.value.id,
-      mount: { type: 'volume', volumeId: vol.id, mountPath, readOnly: true },
+    const vol = await storageService.createVolumeFromFiles({
+      name,
+      entries,
+      signal: abort.signal,
+      onProgress: ({ processed, total }) => {
+        activeCopies.value = activeCopies.value.map(c =>
+          c.id === copyId ? { ...c, progress: { processed, total } } : c
+        );
+      },
     });
-    setToolEnabled({ name: 'shell_execute', enabled: true });
-    addToast({ message: `"${name}" attached to this chat` });
+    await finishMount({ volumeId: vol.id, name });
+  } catch (e) {
+    if ((e as Error).name !== 'AbortError') {
+      addToast({ message: `Failed to copy "${name}": ${(e as Error).message}` });
+    }
   } finally {
-    isCreatingVolume.value = false;
+    activeCopies.value = activeCopies.value.filter(c => c.id !== copyId);
+  }
+}
+
+async function attachLinkAsVolume() {
+  if (!currentChat.value) return;
+  isAttachMenuOpen.value = false;
+  try {
+    // @ts-expect-error: File System Access API
+    const handle = await window.showDirectoryPicker({ mode: 'read' });
+    const vol = await storageService.createVolume({ name: handle.name, type: 'host', sourceHandle: handle });
+    await finishMount({ volumeId: vol.id, name: vol.name });
+  } catch (e) {
+    if ((e as Error).name !== 'AbortError') {
+      addToast({ message: `Failed to link folder: ${(e as Error).message}` });
+    }
   }
 }
 
@@ -365,29 +420,68 @@ async function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement;
   if (!target.files) return;
   const files = Array.from(target.files);
-  if (files.length === 0) {
-    target.value = ''; return;
-  }
+  target.value = '';
+  if (files.length === 0) return;
 
   if (files.every(f => f.type.startsWith('image/'))) {
     await processFiles(files);
   } else {
     const name = files.length === 1 ? files[0]!.name : `${files.length} files`;
-    await attachAsVolume({ files, name });
+    await attachCopyAsVolume({ files, name });
   }
-  target.value = '';
 }
 
 async function handleFolderSelect(event: Event) {
   const target = event.target as HTMLInputElement;
   if (!target.files) return;
   const files = Array.from(target.files);
-  if (files.length === 0) {
-    target.value = ''; return;
-  }
-  const folderName = files[0]!.webkitRelativePath.split('/')[0] ?? 'folder';
-  await attachAsVolume({ files, name: folderName });
   target.value = '';
+  if (files.length === 0) return;
+  const folderName = files[0]!.webkitRelativePath.split('/')[0] ?? 'folder';
+  await attachCopyAsVolume({ files, name: folderName });
+}
+
+async function handleDetachMount({ volumeId }: { volumeId: string }) {
+  if (!currentChat.value) return;
+  let volumeType: 'opfs' | 'host' | undefined;
+  for await (const vol of storageService.listVolumes()) {
+    if (vol.id === volumeId) {
+      volumeType = vol.type; break;
+    }
+  }
+
+  let title: string;
+  let message: string;
+  let confirmButtonText: string;
+  switch (volumeType) {
+  case 'host':
+    title = 'Unlink Folder';
+    message = 'Stop using this folder in this chat? Your original files will not be affected.';
+    confirmButtonText = 'Unlink';
+    break;
+  case 'opfs':
+  case undefined:
+    title = 'Remove Folder';
+    message = 'Remove the copied folder from this chat? The copy stored in the browser will be deleted.';
+    confirmButtonText = 'Remove';
+    break;
+  default: {
+    const _ex: never = volumeType;
+    throw new Error(`Unhandled volume type: ${_ex}`);
+  }
+  }
+
+  const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
+  if (!confirmed) return;
+  await removeMountFromChat({ chatId: currentChat.value.id, volumeId });
+  if (volumeType === 'opfs' || volumeType === undefined) {
+    await storageService.deleteVolume({ volumeId });
+  }
+}
+
+async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
+  if (!currentChat.value) return;
+  await updateChatMount({ chatId: currentChat.value.id, volumeId, readOnly });
 }
 
 async function handlePaste(event: ClipboardEvent) {
@@ -835,17 +929,70 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       <!-- Hit area extension: expands the interaction zone around the card to prevent jittering during transitions -->
       <div class="absolute -inset-x-4 -top-4 -bottom-16 pointer-events-auto -z-10" data-testid="hit-area-extension"></div>
 
+      <!-- Active copy progress bars -->
+      <div v-if="activeCopies.length > 0" class="px-4 pt-4 space-y-2" data-testid="copy-progress-area">
+        <div
+          v-for="copy in activeCopies"
+          :key="copy.id"
+          class="rounded-xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden"
+          data-testid="copy-progress"
+        >
+          <div class="px-3 pt-3 pb-2.5">
+            <div class="flex items-center justify-between mb-2">
+              <span class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
+                <Loader2 class="w-3.5 h-3.5 animate-spin shrink-0" />
+                Copying "{{ copy.name }}"
+              </span>
+              <div class="flex items-center gap-3">
+                <span v-if="copy.progress" class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
+                  {{ copy.progress.processed }} / {{ copy.progress.total }}
+                </span>
+                <button
+                  @click="copy.abort.abort()"
+                  class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  data-testid="copy-cancel-btn"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+            <div class="h-1 w-full bg-blue-200/70 dark:bg-blue-800/50 rounded-full overflow-hidden">
+              <div
+                class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-200"
+                :style="{ width: `${copy.progress ? (copy.progress.processed / copy.progress.total) * 100 : 5}%` }"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Folder/File Mounts attached to this chat -->
       <div v-if="currentChat?.mounts && currentChat.mounts.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="chat-mounts-preview">
         <div
           v-for="mount in currentChat.mounts"
           :key="mount.volumeId"
-          class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-medium"
+          class="flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-medium"
           data-testid="chat-mount-badge"
         >
           <Folder class="w-3.5 h-3.5 shrink-0" />
-          <span class="max-w-[120px] truncate">{{ mount.mountPath }}</span>
-          <span v-if="mount.readOnly" class="text-blue-400 dark:text-blue-500 text-[10px]">read-only</span>
+          <span class="max-w-[120px] truncate mx-1">{{ mount.mountPath }}</span>
+          <button
+            @click="handleToggleMountReadOnly({ volumeId: mount.volumeId, readOnly: !mount.readOnly })"
+            :title="mount.readOnly ? 'Read-only — click to allow write' : 'Read & write — click to restrict'"
+            class="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
+            data-testid="mount-toggle-readonly"
+          >
+            <Lock v-if="mount.readOnly" class="w-3 h-3 text-green-500 dark:text-green-400" />
+            <Unlock v-else class="w-3 h-3 text-amber-500 dark:text-amber-400" />
+          </button>
+          <button
+            @click="handleDetachMount({ volumeId: mount.volumeId })"
+            title="Remove"
+            class="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors text-blue-400 hover:text-red-500 dark:hover:text-red-400"
+            data-testid="mount-remove-btn"
+          >
+            <X class="w-3 h-3" />
+          </button>
         </div>
       </div>
 
@@ -942,50 +1089,102 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             />
           </div>
 
-          <input
-            ref="fileInputRef"
-            type="file"
-            multiple
-            class="hidden"
-            @change="handleFileSelect"
-          />
-          <input
-            ref="folderInputRef"
-            type="file"
-            webkitdirectory
-            class="hidden"
-            @change="handleFolderSelect"
-          />
+          <input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFileSelect" />
+          <input ref="folderInputRef" type="file" webkitdirectory class="hidden" @change="handleFolderSelect" />
           <div class="relative" ref="attachMenuRef">
             <button
               @click="isAttachMenuOpen = !isAttachMenuOpen"
-              :disabled="isCreatingVolume"
-              class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               title="Attach files or folder"
               data-testid="attach-button"
             >
               <Plus class="w-5 h-5" />
             </button>
+
             <div
               v-if="isAttachMenuOpen"
-              class="absolute bottom-full mb-2 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden min-w-[140px]"
+              class="absolute bottom-full mb-2 left-0 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden w-56"
             >
+              <!-- Files -->
               <button
                 @click="fileInputRef?.click(); isAttachMenuOpen = false"
-                class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                class="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
                 data-testid="attach-files-button"
               >
-                <Files class="w-4 h-4 shrink-0" />
+                <Files class="w-4 h-4 shrink-0 text-gray-500 dark:text-gray-400" />
                 Files
               </button>
-              <button
-                @click="folderInputRef?.click(); isAttachMenuOpen = false"
-                class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                data-testid="attach-folder-button"
-              >
-                <Folder class="w-4 h-4 shrink-0" />
-                Folder
-              </button>
+
+              <!-- Folder (link) — preferred when available -->
+              <div class="border-t border-gray-100 dark:border-gray-800">
+                <!-- Available: highlighted primary row -->
+                <button
+                  v-if="hasFileSystemAccess"
+                  @click="attachLinkAsVolume"
+                  class="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors text-left"
+                  data-testid="attach-folder-link-button"
+                >
+                  <FolderSymlink class="w-4 h-4 shrink-0" />
+                  <span class="flex-1">Folder (link)</span>
+                  <button
+                    @click.stop="isFolderLinkInfoOpen = !isFolderLinkInfoOpen; isFolderCopyInfoOpen = false"
+                    class="p-0.5 rounded hover:bg-blue-500 transition-colors"
+                    title="What is Folder (link)?"
+                  >
+                    <Info class="w-3.5 h-3.5 opacity-80" />
+                  </button>
+                </button>
+                <!-- Unavailable: disabled with info -->
+                <div v-else class="flex items-stretch">
+                  <button
+                    disabled
+                    class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-300 dark:text-gray-600 cursor-not-allowed text-left"
+                  >
+                    <FolderSymlink class="w-4 h-4 shrink-0" />
+                    Folder (link)
+                  </button>
+                  <button
+                    @click.stop="isFolderLinkInfoOpen = !isFolderLinkInfoOpen; isFolderCopyInfoOpen = false"
+                    class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-800"
+                    :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-300 dark:text-gray-600 hover:text-blue-500'"
+                    title="Why is Folder (link) disabled?"
+                  >
+                    <Info class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <!-- Info panel for link -->
+                <div v-if="isFolderLinkInfoOpen" class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
+                  <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">Requires a Chromium-based browser</p>
+                  <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">Chrome, Edge, Brave, Opera — over HTTPS. Links your folder directly without copying.</p>
+                </div>
+              </div>
+
+              <!-- Folder (copy) -->
+              <div class="border-t border-gray-100 dark:border-gray-800">
+                <div class="flex items-stretch">
+                  <button
+                    @click="folderInputRef?.click(); isAttachMenuOpen = false"
+                    class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
+                    data-testid="attach-folder-copy-button"
+                  >
+                    <FolderDown class="w-4 h-4 shrink-0 text-gray-500 dark:text-gray-400" />
+                    Folder (copy)
+                  </button>
+                  <button
+                    @click.stop="isFolderCopyInfoOpen = !isFolderCopyInfoOpen; isFolderLinkInfoOpen = false"
+                    class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-800"
+                    :class="isFolderCopyInfoOpen ? 'text-blue-500' : 'text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400'"
+                    title="What is Folder (copy)?"
+                  >
+                    <Info class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <!-- Info panel for copy -->
+                <div v-if="isFolderCopyInfoOpen" class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
+                  <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">Your original folder is never touched</p>
+                  <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">A copy is made — your files on disk stay exactly as they are.</p>
+                </div>
+              </div>
             </div>
           </div>
 
