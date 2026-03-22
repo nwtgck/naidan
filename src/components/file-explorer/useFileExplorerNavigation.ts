@@ -3,6 +3,67 @@ import type { FileExplorerEntry, SortConfig, ColumnPaneState } from './types';
 import { getFileExtension, getMimeCategory, sortEntries, filterEntries } from './utils';
 import { METADATA_BATCH_SIZE } from './constants';
 
+async function readDirectoryEntries({
+  handle,
+}: {
+  handle: FileSystemDirectoryHandle;
+}): Promise<FileExplorerEntry[]> {
+  const raw: FileExplorerEntry[] = [];
+
+  for await (const entry of handle.values()) {
+    let extension = '';
+    switch (entry.kind) {
+    case 'file':
+      extension = getFileExtension({ name: entry.name });
+      break;
+    case 'directory':
+      break;
+    default: {
+      const _ex: never = entry.kind;
+      throw new Error(`Unhandled kind: ${_ex}`);
+    }
+    }
+    raw.push({
+      name: entry.name,
+      kind: entry.kind,
+      handle: entry,
+      size: undefined,
+      lastModified: undefined,
+      extension,
+      mimeCategory: getMimeCategory({ extension }),
+    });
+  }
+
+  const fileEntries = raw.filter(e => {
+    switch (e.kind) {
+    case 'file': return true;
+    case 'directory': return false;
+    default: {
+      const _ex: never = e.kind;
+      void _ex;
+      return false;
+    }
+    }
+  });
+
+  for (let i = 0; i < fileEntries.length; i += METADATA_BATCH_SIZE) {
+    const batch = fileEntries.slice(i, i + METADATA_BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (e) => {
+        try {
+          const file = await (e.handle as FileSystemFileHandle).getFile();
+          e.size = file.size;
+          e.lastModified = file.lastModified;
+        } catch {
+          // metadata unavailable — leave as undefined
+        }
+      }),
+    );
+  }
+
+  return raw;
+}
+
 export function useFileExplorerNavigation({
   root,
   sortConfig,
@@ -43,61 +104,7 @@ export function useFileExplorerNavigation({
     isLoading.value = true;
     loadError.value = undefined;
     try {
-      const raw: FileExplorerEntry[] = [];
-
-      // First pass: collect names and kinds
-      for await (const entry of handle.values()) {
-        let extension = '';
-        switch (entry.kind) {
-        case 'file':
-          extension = getFileExtension({ name: entry.name });
-          break;
-        case 'directory':
-          break;
-        default: {
-          const _ex: never = entry.kind;
-          throw new Error(`Unhandled kind: ${_ex}`);
-        }
-        }
-        raw.push({
-          name: entry.name,
-          kind: entry.kind,
-          handle: entry,
-          size: undefined,
-          lastModified: undefined,
-          extension,
-          mimeCategory: getMimeCategory({ extension }),
-        });
-      }
-
-      // Second pass: batch-load file metadata
-      const fileEntries = raw.filter(e => {
-        switch (e.kind) {
-        case 'file': return true;
-        case 'directory': return false;
-        default: {
-          const _ex: never = e.kind;
-          void _ex;
-          return false;
-        }
-        }
-      });
-      for (let i = 0; i < fileEntries.length; i += METADATA_BATCH_SIZE) {
-        const batch = fileEntries.slice(i, i + METADATA_BATCH_SIZE);
-        await Promise.all(
-          batch.map(async (e) => {
-            try {
-              const file = await (e.handle as FileSystemFileHandle).getFile();
-              e.size = file.size;
-              e.lastModified = file.lastModified;
-            } catch {
-              // metadata unavailable — leave as undefined
-            }
-          }),
-        );
-      }
-
-      entries.value = raw;
+      entries.value = await readDirectoryEntries({ handle });
     } catch (e) {
       loadError.value = `Failed to load directory: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
@@ -156,57 +163,9 @@ export function useFileExplorerNavigation({
     panes[paneIndex] = { ...panes[paneIndex]!, isLoading: true };
     columnPanes.value = panes;
 
-    const raw: FileExplorerEntry[] = [];
+    let raw: FileExplorerEntry[] = [];
     try {
-      for await (const entry of handle.values()) {
-        let extension = '';
-        switch (entry.kind) {
-        case 'file':
-          extension = getFileExtension({ name: entry.name });
-          break;
-        case 'directory':
-          break;
-        default: {
-          const _ex: never = entry.kind;
-          throw new Error(`Unhandled kind: ${_ex}`);
-        }
-        }
-        raw.push({
-          name: entry.name,
-          kind: entry.kind,
-          handle: entry,
-          size: undefined,
-          lastModified: undefined,
-          extension,
-          mimeCategory: getMimeCategory({ extension }),
-        });
-      }
-      // Batch metadata for files in this pane
-      const fileEntries = raw.filter(e => {
-        switch (e.kind) {
-        case 'file': return true;
-        case 'directory': return false;
-        default: {
-          const _ex: never = e.kind;
-          void _ex;
-          return false;
-        }
-        }
-      });
-      for (let i = 0; i < fileEntries.length; i += METADATA_BATCH_SIZE) {
-        const batch = fileEntries.slice(i, i + METADATA_BATCH_SIZE);
-        await Promise.all(
-          batch.map(async (e) => {
-            try {
-              const file = await (e.handle as FileSystemFileHandle).getFile();
-              e.size = file.size;
-              e.lastModified = file.lastModified;
-            } catch {
-              // ignore
-            }
-          }),
-        );
-      }
+      raw = await readDirectoryEntries({ handle });
     } catch {
       // pane shows empty on error
     }
@@ -248,18 +207,11 @@ export function useFileExplorerNavigation({
       ];
       await loadColumnPane({ paneIndex: columnPanes.value.length - 1, handle: dirHandle });
 
-      // Sync flat navigation state
-      pathStack.value = [...pathStack.value.slice(0, paneIndex), ...panes.slice(0, paneIndex + 1).map(p => p.handle)];
-      // Actually, sync currentHandle to the newly opened directory:
+      // Sync flat navigation state to match column panes
+      const lastPane = columnPanes.value[columnPanes.value.length - 1]!;
       pathStack.value = columnPanes.value.slice(0, -1).map(p => p.handle);
-      // Keep root at index 0 by offsetting from root:
-      pathStack.value = [];
-      const allHandles = columnPanes.value.map(p => p.handle);
-      for (let i = 0; i < allHandles.length - 1; i++) {
-        pathStack.value = [...pathStack.value, allHandles[i]!];
-      }
-      currentHandle.value = allHandles[allHandles.length - 1]!;
-      entries.value = columnPanes.value[columnPanes.value.length - 1]!.entries;
+      currentHandle.value = lastPane.handle;
+      entries.value = lastPane.entries;
       break;
     }
     case 'file':

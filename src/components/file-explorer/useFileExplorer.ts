@@ -7,7 +7,6 @@ import type {
   ViewMode,
   SortField,
   SelectionAction,
-  ContextMenuTarget,
   ContextMenuAction,
 } from './types';
 import { useFileExplorerNavigation } from './useFileExplorerNavigation';
