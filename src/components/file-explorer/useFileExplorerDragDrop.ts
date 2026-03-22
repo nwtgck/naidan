@@ -10,6 +10,10 @@ export function useFileExplorerDragDrop({
 }) {
   const dragState = ref<DragState>({ status: 'idle' });
 
+  // Entries being dragged — persisted through status transitions so they survive
+  // the idle→dragging→over-target→drop cycle without loss.
+  const activeDragEntries = ref<FileExplorerEntry[]>([]);
+
   function onDragStart({
     event,
     entries,
@@ -20,6 +24,7 @@ export function useFileExplorerDragDrop({
     if (!event.dataTransfer) return;
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', entries.map(e => e.name).join('\n'));
+    activeDragEntries.value = entries;
     dragState.value = {
       status: 'dragging',
       entries,
@@ -66,9 +71,10 @@ export function useFileExplorerDragDrop({
   function onDragLeaveEntry(): void {
     switch (dragState.value.status) {
     case 'over-target':
+      // Restore dragging state, re-using the preserved active entries
       dragState.value = {
         status: 'dragging',
-        entries: [],
+        entries: activeDragEntries.value,
         sourceDirectory: currentHandle.value,
       };
       break;
@@ -94,31 +100,19 @@ export function useFileExplorerDragDrop({
     }
     }
 
-    const state = dragState.value;
-    let entriesToMove: FileExplorerEntry[] = [];
-
-    switch (state.status) {
-    case 'dragging':
-      entriesToMove = state.entries;
-      break;
-    case 'over-target':
-    case 'idle':
-      break;
-    default: {
-      const _ex: never = state;
-      void _ex;
-    }
-    }
-
-    const targetDir = entry.handle as FileSystemDirectoryHandle;
+    // Use activeDragEntries which persists regardless of the current status
+    const entriesToMove = activeDragEntries.value;
+    activeDragEntries.value = [];
     dragState.value = { status: 'idle' };
 
+    const targetDir = entry.handle as FileSystemDirectoryHandle;
     if (entriesToMove.length > 0) {
       await moveEntries({ entries: entriesToMove, targetDir });
     }
   }
 
   function onDragEnd(): void {
+    activeDragEntries.value = [];
     dragState.value = { status: 'idle' };
   }
 

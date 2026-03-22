@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { inject } from 'vue';
+import { inject, computed } from 'vue';
 import FileExplorerEntryItem from './FileExplorerEntryItem.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
+import { sortEntries } from './utils';
 import type { ColumnPaneState, FileExplorerEntry } from './types';
 import { Loader2 } from 'lucide-vue-next';
 
@@ -11,6 +12,10 @@ const props = defineProps<{
 }>();
 
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
+
+const sortedEntries = computed(() =>
+  sortEntries({ entries: props.pane.entries, config: ctx.sortConfig }),
+);
 
 function isSelected({ entry }: { entry: FileExplorerEntry }): boolean {
   return props.pane.selectedEntryName === entry.name;
@@ -86,7 +91,7 @@ defineExpose({
         Empty
       </p>
       <FileExplorerEntryItem
-        v-for="entry in pane.entries"
+        v-for="entry in sortedEntries"
         :key="entry.name"
         :entry="entry"
         :is-selected="isSelected({ entry })"
