@@ -964,8 +964,9 @@ export class OPFSStorageProvider extends IStorageProvider {
     name: string;
     files: FileList;
     onProgress?: (progress: { processed: number; total: number }) => void;
+    signal?: AbortSignal;
   }): Promise<Volume> {
-    const { name, files, onProgress } = params;
+    const { name, files, onProgress, signal } = params;
     const id = generateId();
     const createdAt = Date.now();
     const shard = this.getVolumeShardPath({ id });
@@ -974,6 +975,11 @@ export class OPFSStorageProvider extends IStorageProvider {
     const volumeDir = await shardDir.getDirectoryHandle(id, { create: true });
 
     for (let i = 0; i < files.length; i++) {
+      if (signal?.aborted) {
+        await shardDir.removeEntry(id, { recursive: true }).catch(() => {});
+        throw new DOMException('Cancelled by user', 'AbortError');
+      }
+
       const file = files[i];
       if (!file) continue;
       const pathParts = file.webkitRelativePath.split('/');

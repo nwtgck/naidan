@@ -14,6 +14,7 @@ import {
   FolderDown,
   FolderSymlink,
   FolderPlus,
+  FileDown,
   Trash2,
   Loader2,
   Eye,
@@ -35,6 +36,9 @@ const isLoading = ref(false);
 const isCreating = ref(false);
 const progress = ref<{ processed: number; total: number } | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
+const fileInputSingle = ref<HTMLInputElement | null>(null);
+const copyAbortController = ref<AbortController | null>(null);
+const copyingLabel = ref('');
 
 const hasFileSystemAccess = ref(false);
 const hasOPFS = ref(false);
@@ -74,7 +78,7 @@ const unmountedVolumes = computed(() => {
   return volumes.value.filter(vol => !mounts.value.some(m => m.type === 'volume' && m.volumeId === vol.id));
 });
 
-function formatDate(timestamp: number) {
+function formatDate({ timestamp }: { timestamp: number }) {
   return new Date(timestamp).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
@@ -101,7 +105,7 @@ async function loadData() {
   }
 }
 
-function generateUniquePath(baseName: string): string {
+function generateUniquePath({ baseName }: { baseName: string }): string {
   let path = `/${baseName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
   let suffix = 2;
   const existingPaths = mounts.value.map(m => m.mountPath);
@@ -118,41 +122,87 @@ async function handleFileSelect(event: Event) {
   const target = event.target as HTMLInputElement;
   if (!target.files || target.files.length === 0) return;
 
+  const files = target.files;
+  const firstFile = files[0];
+  if (!firstFile) return;
+  const folderName = firstFile.webkitRelativePath.split('/')[0] || 'Imported Folder';
+
+  const controller = new AbortController();
+  copyAbortController.value = controller;
+  copyingLabel.value = 'Copying folder to browser...';
   isCreating.value = true;
   progress.value = null;
   try {
-    const files = target.files;
-    const firstFile = files[0];
-    if (!firstFile) return;
-    const folderName = firstFile.webkitRelativePath.split('/')[0] || 'Imported Folder';
-
     const vol = await storageService.createVolumeFromFiles({
       name: folderName,
       files: files,
+      signal: controller.signal,
       onProgress: (p) => {
         progress.value = p;
-      }
+      },
     });
 
     await storageService.mountVolume({
       volumeId: vol.id,
-      mountPath: generateUniquePath(folderName),
+      mountPath: generateUniquePath({ baseName: folderName }),
       readOnly: true,
     });
 
     await loadData();
     addToast({ message: `"${folderName}" added to your folders` });
   } catch (e) {
+    if ((e as Error).name === 'AbortError') return;
     console.error('Failed to import volume:', e);
     addToast({ message: `Failed to copy folder: ${(e as Error).message}`});
   } finally {
     isCreating.value = false;
     progress.value = null;
+    copyAbortController.value = null;
     if (fileInput.value) fileInput.value.value = '';
   }
 }
 
-async function createVolume(type: 'opfs' | 'host') {
+
+async function handleSingleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement;
+  if (!target.files || target.files.length === 0) return;
+  const file = target.files[0];
+  if (!file) return;
+
+  const controller = new AbortController();
+  copyAbortController.value = controller;
+  copyingLabel.value = 'Copying file to browser...';
+  isCreating.value = true;
+  progress.value = null;
+  try {
+    const vol = await storageService.createVolumeFromFiles({
+      name: file.name,
+      files: target.files,
+      signal: controller.signal,
+      onProgress: (p) => {
+        progress.value = p;
+      },
+    });
+    await storageService.mountVolume({
+      volumeId: vol.id,
+      mountPath: generateUniquePath({ baseName: file.name }),
+      readOnly: true,
+    });
+    await loadData();
+    addToast({ message: `"${file.name}" copied to your folders` });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') return;
+    console.error('Failed to copy file:', e);
+    addToast({ message: `Failed to copy file: ${(e as Error).message}` });
+  } finally {
+    isCreating.value = false;
+    progress.value = null;
+    copyAbortController.value = null;
+    if (fileInputSingle.value) fileInputSingle.value.value = '';
+  }
+}
+
+async function createVolume({ type }: { type: 'opfs' | 'host' }) {
   if (isCreating.value) return;
 
   switch (type) {
@@ -177,7 +227,7 @@ async function createVolume(type: 'opfs' | 'host') {
 
       await storageService.mountVolume({
         volumeId: vol.id,
-        mountPath: generateUniquePath(name),
+        mountPath: generateUniquePath({ baseName: name }),
         readOnly: true,
       });
 
@@ -214,7 +264,7 @@ async function createVolume(type: 'opfs' | 'host') {
 
         await storageService.mountVolume({
           volumeId: vol.id,
-          mountPath: generateUniquePath(name),
+          mountPath: generateUniquePath({ baseName: name }),
           readOnly: true,
         });
 
@@ -238,18 +288,18 @@ async function createVolume(type: 'opfs' | 'host') {
   }
 }
 
-function startEditing(vol: Volume) {
-  const mount = mounts.value.find(m => m.type === 'volume' && m.volumeId === vol.id);
+function startEditing({ volume }: { volume: Volume }) {
+  const mount = mounts.value.find(m => m.type === 'volume' && m.volumeId === volume.id);
   if (!mount) return;
 
-  editingMountId.value = vol.id;
+  editingMountId.value = volume.id;
   editForm.value = {
     mountPath: mount.mountPath,
     readOnly: mount.readOnly
   };
 }
 
-async function saveMountSettings(volId: string) {
+async function saveMountSettings({ volId }: { volId: string }) {
   try {
     const isCollision = mounts.value.some(m =>
       m.mountPath === editForm.value.mountPath &&
@@ -281,19 +331,19 @@ async function saveMountSettings(volId: string) {
   }
 }
 
-async function toggleMount(vol: Volume) {
-  const isCurrentlyMounted = mounts.value.some(m => m.type === 'volume' && m.volumeId === vol.id);
+async function toggleMount({ volume }: { volume: Volume }) {
+  const isCurrentlyMounted = mounts.value.some(m => m.type === 'volume' && m.volumeId === volume.id);
   try {
     if (isCurrentlyMounted) {
-      await storageService.unmountVolume({ volumeId: vol.id });
-      addToast({ message: `"${vol.name}" is no longer in use` });
+      await storageService.unmountVolume({ volumeId: volume.id });
+      addToast({ message: `"${volume.name}" is no longer in use` });
     } else {
       await storageService.mountVolume({
-        volumeId: vol.id,
-        mountPath: generateUniquePath(vol.name),
+        volumeId: volume.id,
+        mountPath: generateUniquePath({ baseName: volume.name }),
         readOnly: true,
       });
-      addToast({ message: `"${vol.name}" is now in use` });
+      addToast({ message: `"${volume.name}" is now in use` });
     }
     await loadData();
   } catch (e) {
@@ -301,10 +351,10 @@ async function toggleMount(vol: Volume) {
   }
 }
 
-async function deleteVolume(vol: Volume) {
+async function deleteVolume({ volume }: { volume: Volume }) {
   const confirmed = await showConfirm({
     title: 'Delete Folder',
-    message: `Are you sure you want to delete "${vol.name}"? This will stop using it and delete all internal data.`,
+    message: `Are you sure you want to delete "${volume.name}"? This will stop using it and delete all internal data.`,
     confirmButtonText: 'Delete',
     confirmButtonVariant: 'danger',
   });
@@ -312,8 +362,8 @@ async function deleteVolume(vol: Volume) {
   if (!confirmed) return;
 
   try {
-    await storageService.unmountVolume({ volumeId: vol.id });
-    await storageService.deleteVolume({ volumeId: vol.id });
+    await storageService.unmountVolume({ volumeId: volume.id });
+    await storageService.deleteVolume({ volumeId: volume.id });
     await loadData();
     addToast({ message: 'Folder deleted' });
   } catch (e) {
@@ -321,13 +371,13 @@ async function deleteVolume(vol: Volume) {
   }
 }
 
-function getVolumeMount(volId: string) {
+function getVolumeMount({ volId }: { volId: string }) {
   return mounts.value.find(m => m.type === 'volume' && m.volumeId === volId);
 }
 
-function startEditingName(vol: Volume) {
-  editingNameId.value = vol.id;
-  editingNameValue.value = vol.name;
+function startEditingName({ volume }: { volume: Volume }) {
+  editingNameId.value = volume.id;
+  editingNameValue.value = volume.name;
 }
 
 function cancelEditingName() {
@@ -335,7 +385,7 @@ function cancelEditingName() {
   editingNameValue.value = '';
 }
 
-async function saveVolumeName(volId: string) {
+async function saveVolumeName({ volId }: { volId: string }) {
   const trimmed = editingNameValue.value.trim();
   if (!trimmed) {
     addToast({ message: 'Name cannot be empty' });
@@ -380,21 +430,40 @@ defineExpose({
       class="hidden"
       @change="handleFileSelect"
     />
+    <input
+      type="file"
+      ref="fileInputSingle"
+      class="hidden"
+      @change="handleSingleFileSelect"
+    />
 
     <!-- Upload Progress -->
-    <div v-if="isCreating" class="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-900/30">
-      <div class="flex items-center justify-between text-xs font-bold text-blue-700 dark:text-blue-300 mb-2">
-        <span class="flex items-center gap-2">
-          <Loader2 class="w-3 h-3 animate-spin" />
-          Copying folder...
-        </span>
-        <span v-if="progress">{{ progress.processed }} / {{ progress.total }}</span>
-      </div>
-      <div class="h-1.5 w-full bg-blue-200 dark:bg-blue-800 rounded-full overflow-hidden">
-        <div
-          class="h-full bg-blue-600 transition-all duration-300"
-          :style="{ width: `${progress ? (progress.processed / progress.total) * 100 : 0}%` }"
-        ></div>
+    <div v-if="isCreating" data-testid="copy-progress" class="rounded-2xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden">
+      <div class="px-4 pt-4 pb-3">
+        <div class="flex items-center justify-between mb-3">
+          <span class="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-300">
+            <Loader2 class="w-3.5 h-3.5 animate-spin shrink-0" />
+            {{ copyingLabel }}
+          </span>
+          <div class="flex items-center gap-3">
+            <span v-if="progress" class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
+              {{ progress.processed }} / {{ progress.total }} files
+            </span>
+            <button
+              data-testid="copy-cancel-btn"
+              @click="copyAbortController?.abort()"
+              class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+        <div class="h-1 w-full bg-blue-200/70 dark:bg-blue-800/50 rounded-full overflow-hidden">
+          <div
+            class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-200"
+            :style="{ width: `${progress ? (progress.processed / progress.total) * 100 : 5}%` }"
+          ></div>
+        </div>
       </div>
     </div>
 
@@ -403,7 +472,10 @@ defineExpose({
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <Folder class="w-5 h-5" :class="isFullyUnsupported ? 'text-gray-300 dark:text-gray-600' : 'text-blue-500'" />
-          <h2 class="text-lg font-bold tracking-tight" :class="isFullyUnsupported ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-white'">Folders</h2>
+          <div>
+            <h2 class="text-lg font-bold tracking-tight" :class="isFullyUnsupported ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-white'">Folders</h2>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 font-medium leading-tight">Give the AI access to files in your folders</p>
+          </div>
         </div>
         <div class="flex gap-2">
           <!-- Add Folder: requires File System Access API (Chromium) -->
@@ -411,7 +483,7 @@ defineExpose({
             <!-- Single button when available -->
             <button
               v-if="isDetecting || hasFileSystemAccess"
-              @click="createVolume('host')"
+              @click="createVolume({ type: 'host' })"
               :disabled="isCreating || !hasFileSystemAccess || isDetecting"
               class="flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl transition-all"
               :class="hasFileSystemAccess && !isDetecting
@@ -427,7 +499,7 @@ defineExpose({
               class="flex items-stretch rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 overflow-hidden"
             >
               <button
-                @click="createVolume('host')"
+                @click="createVolume({ type: 'host' })"
                 disabled
                 class="flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-300 dark:text-gray-600 cursor-not-allowed border-r border-gray-200 dark:border-gray-700"
               >
@@ -464,7 +536,7 @@ defineExpose({
                 : 'bg-gray-100 dark:bg-gray-800'"
             >
               <button
-                @click="createVolume('opfs')"
+                @click="createVolume({ type: 'opfs' })"
                 :disabled="isCreating || !hasOPFS || isDetecting"
                 class="flex items-center gap-2 px-3 py-2 text-xs font-bold transition-all border-r border-gray-200 dark:border-gray-700"
                 :class="hasOPFS && !isDetecting
@@ -495,6 +567,15 @@ defineExpose({
               <p class="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed pt-1 border-t border-gray-100 dark:border-gray-700">
                 The copy is stored in your browser's origin-isolated private storage (OPFS), persists between sessions, and works offline.
               </p>
+              <div v-if="hasOPFS && !isDetecting" class="pt-1 border-t border-gray-100 dark:border-gray-700">
+                <button
+                  @click="fileInputSingle?.click(); toggleCopyFolderInfo(false)"
+                  class="flex items-center gap-1.5 text-[11px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
+                >
+                  <FileDown class="w-3 h-3" />
+                  Copy a single file instead
+                </button>
+              </div>
               <p v-if="!hasOPFS && !isDetecting" class="text-[11px] text-amber-600 dark:text-amber-400 font-medium pt-1">
                 Not supported in this browser or context.
               </p>
@@ -547,61 +628,61 @@ defineExpose({
 
         <div class="grid grid-cols-1 gap-4">
           <div
-            v-for="vol in mountedVolumes"
-            :key="vol.id"
+            v-for="volume in mountedVolumes"
+            :key="volume.id"
             class="group bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/30 rounded-2xl shadow-sm hover:shadow-md transition-all"
           >
             <div class="p-4 flex items-center justify-between gap-4">
               <div class="flex items-center gap-4 flex-1 min-w-0">
                 <div class="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 shrink-0">
-                  <FolderSymlink v-if="vol.type === 'host'" class="w-5 h-5" />
+                  <FolderSymlink v-if="volume.type === 'host'" class="w-5 h-5" />
                   <FolderDown v-else class="w-5 h-5" />
                 </div>
 
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
-                    <template v-if="editingNameId === vol.id">
+                    <template v-if="editingNameId === volume.id">
                       <input
                         data-testid="volume-name-input"
                         v-model="editingNameValue"
                         type="text"
                         class="bg-white dark:bg-gray-700 border border-blue-400 rounded px-2 py-0.5 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none min-w-0 flex-1"
-                        @keydown.enter="saveVolumeName(vol.id)"
+                        @keydown.enter="saveVolumeName({ volId: volume.id })"
                         @keydown.escape="cancelEditingName()"
                         v-focus
                       />
-                      <button data-testid="volume-name-save" @click="saveVolumeName(vol.id)" class="p-1 text-blue-500 hover:text-blue-700 shrink-0" title="Save"><Check class="w-3.5 h-3.5" /></button>
+                      <button data-testid="volume-name-save" @click="saveVolumeName({ volId: volume.id })" class="p-1 text-blue-500 hover:text-blue-700 shrink-0" title="Save"><Check class="w-3.5 h-3.5" /></button>
                       <button data-testid="volume-name-cancel" @click="cancelEditingName()" class="p-1 text-gray-400 hover:text-gray-600 shrink-0" title="Cancel"><X class="w-3.5 h-3.5" /></button>
                     </template>
                     <template v-else>
-                      <h3 class="font-bold text-gray-800 dark:text-white text-sm truncate">{{ vol.name }}</h3>
-                      <button data-testid="volume-rename-btn" @click="startEditingName(vol)" class="p-1 text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="Rename"><Pencil class="w-3 h-3" /></button>
+                      <h3 class="font-bold text-gray-800 dark:text-white text-sm truncate">{{ volume.name }}</h3>
+                      <button data-testid="volume-rename-btn" @click="startEditingName({ volume })" class="p-1 text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="Rename"><Pencil class="w-3 h-3" /></button>
                     </template>
                   </div>
                   <div class="flex flex-wrap items-center gap-y-1 gap-x-2 mt-0.5">
                     <code class="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
-                      {{ getVolumeMount(vol.id)?.mountPath }}
+                      {{ getVolumeMount({ volId: volume.id })?.mountPath }}
                     </code>
-                    <div v-if="getVolumeMount(vol.id)?.readOnly" class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-900/30" title="Read Only — your original files are never modified">
+                    <div v-if="getVolumeMount({ volId: volume.id })?.readOnly" class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-900/30" title="Read Only — your original files are never modified">
                       <Lock class="w-2.5 h-2.5" />
                       <span class="text-[9px] font-bold uppercase tracking-tight">Read Only</span>
                     </div>
                     <span class="text-[10px] text-gray-400 font-medium hidden sm:inline">·</span>
-                    <span class="text-[10px] text-gray-400 font-medium">{{ vol.type === 'host' ? 'Linked' : 'Copied' }}</span>
+                    <span class="text-[10px] text-gray-400 font-medium">{{ volume.type === 'host' ? 'Linked' : 'Copied' }}</span>
                   </div>
                 </div>
               </div>
 
               <div class="flex items-center gap-1 shrink-0">
                 <button
-                  @click="startEditing(vol)"
+                  @click="startEditing({ volume })"
                   class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
                   title="Configure"
                 >
                   <Settings2 class="w-4 h-4" />
                 </button>
                 <button
-                  @click="toggleMount(vol)"
+                  @click="toggleMount({ volume })"
                   class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
                   title="Stop using"
                 >
@@ -609,18 +690,18 @@ defineExpose({
                 </button>
                 <div class="relative">
                   <button
-                    @click.stop="menuOpenVolumeId = menuOpenVolumeId === vol.id ? null : vol.id"
+                    @click.stop="menuOpenVolumeId = menuOpenVolumeId === volume.id ? null : volume.id"
                     class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors"
                     title="More actions"
                   >
                     <MoreHorizontal class="w-4 h-4" />
                   </button>
                   <div
-                    v-if="menuOpenVolumeId === vol.id"
+                    v-if="menuOpenVolumeId === volume.id"
                     class="absolute right-0 top-full mt-1 w-36 z-50 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden"
                   >
                     <button
-                      @click="deleteVolume(vol); menuOpenVolumeId = null"
+                      @click="deleteVolume({ volume }); menuOpenVolumeId = null"
                       class="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                     >
                       <Trash2 class="w-3.5 h-3.5" />
@@ -632,7 +713,7 @@ defineExpose({
             </div>
 
             <!-- Inline Edit Panel -->
-            <div v-if="editingMountId === vol.id" class="px-4 pb-4 pt-2 border-t border-gray-50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/10 rounded-b-2xl overflow-hidden">
+            <div v-if="editingMountId === volume.id" class="px-4 pb-4 pt-2 border-t border-gray-50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/10 rounded-b-2xl overflow-hidden">
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div class="space-y-1.5">
                   <label class="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">Path</label>
@@ -670,7 +751,7 @@ defineExpose({
               <div class="flex justify-end gap-2 mt-4">
                 <button @click="editingMountId = null" class="px-3 py-1.5 text-[10px] font-bold text-gray-400 hover:text-gray-600">Cancel</button>
                 <button
-                  @click="saveMountSettings(vol.id)"
+                  @click="saveMountSettings({ volId: volume.id })"
                   class="flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-bold hover:bg-blue-700 shadow-sm"
                 >
                   <Check class="w-3 h-3" />
@@ -689,46 +770,46 @@ defineExpose({
         </h3>
         <div class="grid grid-cols-1 gap-3">
           <div
-            v-for="vol in unmountedVolumes"
-            :key="vol.id"
+            v-for="volume in unmountedVolumes"
+            :key="volume.id"
             class="group flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl hover:border-gray-200 dark:hover:border-gray-600 transition-all"
           >
             <div class="flex items-center gap-4">
               <div class="p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500">
-                <FolderSymlink v-if="vol.type === 'host'" class="w-5 h-5" />
+                <FolderSymlink v-if="volume.type === 'host'" class="w-5 h-5" />
                 <FolderDown v-else class="w-5 h-5" />
               </div>
               <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                  <template v-if="editingNameId === vol.id">
+                  <template v-if="editingNameId === volume.id">
                     <input
                       data-testid="volume-name-input"
                       v-model="editingNameValue"
                       type="text"
                       class="bg-white dark:bg-gray-700 border border-blue-400 rounded px-2 py-0.5 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none min-w-0 flex-1"
-                      @keydown.enter="saveVolumeName(vol.id)"
+                      @keydown.enter="saveVolumeName({ volId: volume.id })"
                       @keydown.escape="cancelEditingName()"
                       v-focus
                     />
-                    <button data-testid="volume-name-save" @click="saveVolumeName(vol.id)" class="p-1 text-blue-500 hover:text-blue-700 shrink-0" title="Save"><Check class="w-3.5 h-3.5" /></button>
+                    <button data-testid="volume-name-save" @click="saveVolumeName({ volId: volume.id })" class="p-1 text-blue-500 hover:text-blue-700 shrink-0" title="Save"><Check class="w-3.5 h-3.5" /></button>
                     <button data-testid="volume-name-cancel" @click="cancelEditingName()" class="p-1 text-gray-400 hover:text-gray-600 shrink-0" title="Cancel"><X class="w-3.5 h-3.5" /></button>
                   </template>
                   <template v-else>
-                    <h3 class="font-bold text-gray-600 dark:text-gray-400 text-sm truncate">{{ vol.name }}</h3>
-                    <button data-testid="volume-rename-btn" @click="startEditingName(vol)" class="p-1 text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="Rename"><Pencil class="w-3 h-3" /></button>
+                    <h3 class="font-bold text-gray-600 dark:text-gray-400 text-sm truncate">{{ volume.name }}</h3>
+                    <button data-testid="volume-rename-btn" @click="startEditingName({ volume })" class="p-1 text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="Rename"><Pencil class="w-3 h-3" /></button>
                   </template>
                 </div>
                 <div class="flex items-center gap-2 mt-0.5">
-                  <span class="text-[10px] text-gray-400 font-medium">{{ vol.type === 'host' ? 'Linked Folder' : 'Copied Folder' }}</span>
+                  <span class="text-[10px] text-gray-400 font-medium">{{ volume.type === 'host' ? 'Linked Folder' : 'Copied Folder' }}</span>
                   <span class="text-[10px] text-gray-400 font-medium">·</span>
-                  <span class="text-[10px] text-gray-400 font-medium">{{ formatDate(vol.createdAt) }}</span>
+                  <span class="text-[10px] text-gray-400 font-medium">{{ formatDate({ timestamp: volume.createdAt }) }}</span>
                 </div>
               </div>
             </div>
 
             <div class="flex items-center gap-1 shrink-0">
               <button
-                @click="toggleMount(vol)"
+                @click="toggleMount({ volume })"
                 class="flex items-center gap-2 px-3 py-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all font-bold text-[10px]"
               >
                 <Eye class="w-3 h-3" />
@@ -736,18 +817,18 @@ defineExpose({
               </button>
               <div class="relative">
                 <button
-                  @click.stop="menuOpenVolumeId = menuOpenVolumeId === vol.id ? null : vol.id"
+                  @click.stop="menuOpenVolumeId = menuOpenVolumeId === volume.id ? null : volume.id"
                   class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors"
                   title="More actions"
                 >
                   <MoreHorizontal class="w-4 h-4" />
                 </button>
                 <div
-                  v-if="menuOpenVolumeId === vol.id"
+                  v-if="menuOpenVolumeId === volume.id"
                   class="absolute right-0 top-full mt-1 w-36 z-50 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden"
                 >
                   <button
-                    @click="deleteVolume(vol); menuOpenVolumeId = null"
+                    @click="deleteVolume({ volume }); menuOpenVolumeId = null"
                     class="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
                     <Trash2 class="w-3.5 h-3.5" />

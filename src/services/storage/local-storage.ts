@@ -295,6 +295,7 @@ export class LocalStorageProvider extends IStorageProvider {
     name: string;
     files: FileList;
     onProgress?: (progress: { processed: number; total: number }) => void;
+    signal?: AbortSignal;
   }): Promise<import('@/models/types').Volume> {
     throw new Error('Volume management is not supported in LocalStorage provider.');
   }

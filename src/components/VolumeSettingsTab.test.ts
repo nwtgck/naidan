@@ -214,3 +214,120 @@ describe('VolumeSettingsTab - Rename Volume', () => {
     });
   });
 });
+
+// --- Helpers for file input tests ---
+
+function makeFileList(files: File[]): FileList {
+  const fileList = Object.assign(
+    { length: files.length, item: (i: number) => files[i] ?? null },
+    files,
+  );
+  return fileList as unknown as FileList;
+}
+
+function makeFolderFile({ name, folderName }: { name: string; folderName: string }): File {
+  const file = new File(['content'], name, { type: 'text/plain' });
+  Object.defineProperty(file, 'webkitRelativePath', { value: `${folderName}/${name}` });
+  return file;
+}
+
+describe('VolumeSettingsTab - Copy Folder / Copy File', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(storageService.mountVolume).mockResolvedValue(undefined as any);
+    vi.mocked(storageService.listVolumes).mockReturnValue((async function* () {})());
+    vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts: [] } as any);
+  });
+
+  it('folder input has webkitdirectory, single-file input does not', async () => {
+    const wrapper = await mountTab([]);
+    const folderInput = wrapper.find<HTMLInputElement>('input[webkitdirectory]');
+    const singleInput = wrapper.find<HTMLInputElement>('input:not([webkitdirectory])[type="file"]');
+    expect(folderInput.exists()).toBe(true);
+    expect(singleInput.exists()).toBe(true);
+  });
+
+  it('shows "Copying folder to browser..." label when copying a folder', async () => {
+    let signalToUse: AbortSignal | undefined;
+    vi.mocked(storageService.createVolumeFromFiles).mockImplementation(({ signal }) => {
+      signalToUse = signal;
+      return new Promise(() => {}); // never resolves
+    });
+
+    const wrapper = await mountTab([]);
+    const folderInput = wrapper.find<HTMLInputElement>('input[webkitdirectory]');
+
+    const file = makeFolderFile({ name: 'readme.md', folderName: 'my-docs' });
+    Object.defineProperty(folderInput.element, 'files', { value: makeFileList([file]), configurable: true });
+    await folderInput.trigger('change');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="copy-progress"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="copy-progress"]').text()).toContain('Copying folder to browser...');
+    expect(signalToUse).toBeDefined();
+  });
+
+  it('shows "Copying file to browser..." label when copying a single file', async () => {
+    vi.mocked(storageService.createVolumeFromFiles).mockImplementation(() => new Promise(() => {}));
+
+    const wrapper = await mountTab([]);
+    const singleInput = wrapper.find<HTMLInputElement>('input:not([webkitdirectory])[type="file"]');
+
+    const file = new File(['content'], 'photo.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(singleInput.element, 'files', { value: makeFileList([file]), configurable: true });
+    await singleInput.trigger('change');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="copy-progress"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="copy-progress"]').text()).toContain('Copying file to browser...');
+  });
+
+  it('cancel button aborts the copy and hides the progress UI', async () => {
+    vi.mocked(storageService.createVolumeFromFiles).mockImplementation(({ signal }) => {
+      return new Promise((_, reject) => {
+        signal?.addEventListener('abort', () => {
+          reject(new DOMException('Cancelled by user', 'AbortError'));
+        });
+      });
+    });
+
+    const wrapper = await mountTab([]);
+    const folderInput = wrapper.find<HTMLInputElement>('input[webkitdirectory]');
+
+    const file = makeFolderFile({ name: 'readme.md', folderName: 'my-docs' });
+    Object.defineProperty(folderInput.element, 'files', { value: makeFileList([file]), configurable: true });
+    await folderInput.trigger('change');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="copy-progress"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="copy-cancel-btn"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="copy-progress"]').exists()).toBe(false);
+    expect(storageService.mountVolume).not.toHaveBeenCalled();
+  });
+
+  it('passes the abort signal to createVolumeFromFiles', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    vi.mocked(storageService.createVolumeFromFiles).mockImplementation(({ signal }) => {
+      capturedSignal = signal;
+      return new Promise(() => {});
+    });
+
+    const wrapper = await mountTab([]);
+    const folderInput = wrapper.find<HTMLInputElement>('input[webkitdirectory]');
+
+    const file = makeFolderFile({ name: 'note.txt', folderName: 'notes' });
+    Object.defineProperty(folderInput.element, 'files', { value: makeFileList([file]), configurable: true });
+    await folderInput.trigger('change');
+    await wrapper.vm.$nextTick();
+
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    expect(capturedSignal?.aborted).toBe(false);
+
+    await wrapper.find('[data-testid="copy-cancel-btn"]').trigger('click');
+
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+});

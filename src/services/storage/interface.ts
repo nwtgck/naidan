@@ -30,6 +30,7 @@ export abstract class IStorageProvider {
     name: string;
     files: FileList;
     onProgress?: (progress: { processed: number; total: number }) => void;
+    signal?: AbortSignal;
   }): Promise<Volume>;
 
   abstract getVolumeDirectoryHandle(params: {

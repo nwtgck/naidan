@@ -332,6 +332,7 @@ export class StorageService {
     name: string;
     files: FileList;
     onProgress?: (progress: { processed: number; total: number }) => void;
+    signal?: AbortSignal;
   }): Promise<Volume> {
     return this.getProvider().createVolumeFromFiles(params);
   }
