@@ -270,6 +270,13 @@ export class MemoryStorageProvider extends IStorageProvider {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
+  async renameVolume(_params: {
+    volumeId: string;
+    name: string;
+  }): Promise<void> {
+    throw new Error('Volume management is not supported in MemoryStorage provider.');
+  }
+
   // --- File Storage ---
 
   /**

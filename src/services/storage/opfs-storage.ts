@@ -1037,6 +1037,16 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
+  async renameVolume(params: { volumeId: string; name: string }): Promise<void> {
+    const { volumeId, name } = params;
+    const shard = this.getVolumeShardPath({ id: volumeId });
+    const index = await this.loadVolumeShardIndex({ shard });
+    const volume = index.volumes[volumeId];
+    if (!volume) throw new Error(`Volume not found: ${volumeId}`);
+    index.volumes[volumeId] = { ...volume, name };
+    await this.saveVolumeShardIndex({ shard, index });
+  }
+
   async deleteVolume(params: { volumeId: string }): Promise<void> {
     const { volumeId } = params;
     const shard = this.getVolumeShardPath({ id: volumeId });

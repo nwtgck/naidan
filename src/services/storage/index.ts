@@ -344,6 +344,10 @@ export class StorageService {
     return this.getProvider().deleteVolume(params);
   }
 
+  async renameVolume(params: { volumeId: string; name: string }): Promise<void> {
+    return this.getProvider().renameVolume(params);
+  }
+
   async mountVolume({ volumeId, mountPath, readOnly }: {
     volumeId: string;
     mountPath: string;

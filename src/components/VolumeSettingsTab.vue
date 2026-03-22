@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+
+const vFocus = { mounted: (el: HTMLElement) => el.focus() };
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import type { Volume, Mount } from '@/models/types';
@@ -17,7 +19,9 @@ import {
   Settings2,
   Lock,
   Unlock,
-  Check
+  Check,
+  Pencil,
+  X
 } from 'lucide-vue-next';
 
 const volumes = ref<Volume[]>([]);
@@ -35,6 +39,9 @@ const editForm = ref({
   mountPath: '',
   readOnly: true
 });
+
+const editingNameId = ref<string | null>(null);
+const editingNameValue = ref('');
 
 const mountedVolumes = computed(() => {
   return volumes.value.filter(vol => mounts.value.some(m => m.type === 'volume' && m.volumeId === vol.id));
@@ -295,6 +302,32 @@ function getVolumeMount(volId: string) {
   return mounts.value.find(m => m.type === 'volume' && m.volumeId === volId);
 }
 
+function startEditingName(vol: Volume) {
+  editingNameId.value = vol.id;
+  editingNameValue.value = vol.name;
+}
+
+function cancelEditingName() {
+  editingNameId.value = null;
+  editingNameValue.value = '';
+}
+
+async function saveVolumeName(volId: string) {
+  const trimmed = editingNameValue.value.trim();
+  if (!trimmed) {
+    addToast({ message: 'Name cannot be empty' });
+    return;
+  }
+  try {
+    await storageService.renameVolume({ volumeId: volId, name: trimmed });
+    editingNameId.value = null;
+    await loadData();
+  } catch (e) {
+    console.error('Failed to rename volume:', e);
+    addToast({ message: 'Failed to rename volume' });
+  }
+}
+
 onMounted(() => {
   loadData();
 });
@@ -400,7 +433,23 @@ defineExpose({
 
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
-                    <h3 class="font-bold text-gray-800 dark:text-white text-sm truncate">{{ vol.name }}</h3>
+                    <template v-if="editingNameId === vol.id">
+                      <input
+                        data-testid="volume-name-input"
+                        v-model="editingNameValue"
+                        type="text"
+                        class="bg-white dark:bg-gray-700 border border-blue-400 rounded px-2 py-0.5 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none min-w-0 flex-1"
+                        @keydown.enter="saveVolumeName(vol.id)"
+                        @keydown.escape="cancelEditingName()"
+                        v-focus
+                      />
+                      <button data-testid="volume-name-save" @click="saveVolumeName(vol.id)" class="p-1 text-blue-500 hover:text-blue-700 shrink-0" title="Save"><Check class="w-3.5 h-3.5" /></button>
+                      <button data-testid="volume-name-cancel" @click="cancelEditingName()" class="p-1 text-gray-400 hover:text-gray-600 shrink-0" title="Cancel"><X class="w-3.5 h-3.5" /></button>
+                    </template>
+                    <template v-else>
+                      <h3 class="font-bold text-gray-800 dark:text-white text-sm truncate">{{ vol.name }}</h3>
+                      <button data-testid="volume-rename-btn" @click="startEditingName(vol)" class="p-1 text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="Rename"><Pencil class="w-3 h-3" /></button>
+                    </template>
                   </div>
                   <div class="flex flex-wrap items-center gap-y-1 gap-x-2 mt-0.5">
                     <code class="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
@@ -508,8 +557,26 @@ defineExpose({
                 <FolderOpen v-if="vol.type === 'host'" class="w-5 h-5" />
                 <HardDrive v-else class="w-5 h-5" />
               </div>
-              <div>
-                <h3 class="font-bold text-gray-600 dark:text-gray-400 text-sm">{{ vol.name }}</h3>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <template v-if="editingNameId === vol.id">
+                    <input
+                      data-testid="volume-name-input"
+                      v-model="editingNameValue"
+                      type="text"
+                      class="bg-white dark:bg-gray-700 border border-blue-400 rounded px-2 py-0.5 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none min-w-0 flex-1"
+                      @keydown.enter="saveVolumeName(vol.id)"
+                      @keydown.escape="cancelEditingName()"
+                      v-focus
+                    />
+                    <button data-testid="volume-name-save" @click="saveVolumeName(vol.id)" class="p-1 text-blue-500 hover:text-blue-700 shrink-0" title="Save"><Check class="w-3.5 h-3.5" /></button>
+                    <button data-testid="volume-name-cancel" @click="cancelEditingName()" class="p-1 text-gray-400 hover:text-gray-600 shrink-0" title="Cancel"><X class="w-3.5 h-3.5" /></button>
+                  </template>
+                  <template v-else>
+                    <h3 class="font-bold text-gray-600 dark:text-gray-400 text-sm truncate">{{ vol.name }}</h3>
+                    <button data-testid="volume-rename-btn" @click="startEditingName(vol)" class="p-1 text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="Rename"><Pencil class="w-3 h-3" /></button>
+                  </template>
+                </div>
                 <div class="flex items-center gap-2 mt-0.5">
                   <span class="text-[10px] text-gray-400 font-medium">{{ vol.type === 'host' ? 'Linked Folder' : 'OPFS Snapshot' }}</span>
                   <span class="text-[10px] text-gray-400 font-medium">·</span>

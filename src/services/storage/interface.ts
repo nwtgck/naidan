@@ -40,6 +40,11 @@ export abstract class IStorageProvider {
     volumeId: string;
   }): Promise<void>;
 
+  abstract renameVolume(params: {
+    volumeId: string;
+    name: string;
+  }): Promise<void>;
+
   // --- Data Access Methods ---
   protected abstract listChatMetasRaw(): Promise<ChatMetaDto[]>;
   protected abstract listChatGroupsRaw(): Promise<ChatGroupDto[]>;

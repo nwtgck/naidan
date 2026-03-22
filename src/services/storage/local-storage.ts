@@ -311,6 +311,13 @@ export class LocalStorageProvider extends IStorageProvider {
     throw new Error('Volume management is not supported in LocalStorage provider.');
   }
 
+  async renameVolume(_params: {
+    volumeId: string;
+    name: string;
+  }): Promise<void> {
+    throw new Error('Volume management is not supported in LocalStorage provider.');
+  }
+
   // --- File Storage ---
 
   /**
