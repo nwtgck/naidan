@@ -3,8 +3,9 @@ import { ref } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useOPFSExplorer } from '@/composables/useOPFSExplorer';
+import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import { useRecentChats } from '@/composables/useRecentChats';
-import { Terminal, HardDrive, MoreVertical, History, Box } from 'lucide-vue-next';
+import { Terminal, HardDrive, MoreVertical, History, Box, FolderSearch } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';
 
 defineProps<{
@@ -14,6 +15,7 @@ defineProps<{
 const { isDebugOpen, toggleDebug, toggleWeshTerminal } = useLayout();
 const { errorCount } = useGlobalEvents();
 const { openOPFS } = useOPFSExplorer();
+const { openFileExplorer } = useFileExplorerModal();
 const { openRecent } = useRecentChats();
 
 const showOpfsMenu = ref(false);
@@ -97,6 +99,14 @@ defineExpose({
           >
             <HardDrive class="w-4 h-4" />
             <span>OPFS Explorer</span>
+          </button>
+          <button
+            @click="openFileExplorer(); showOpfsMenu = false"
+            class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
+            data-testid="sidebar-file-explorer-button"
+          >
+            <FolderSearch class="w-4 h-4" />
+            <span>File Explorer (New)</span>
           </button>
           <button
             @click="toggleWeshTerminal(); showOpfsMenu = false"

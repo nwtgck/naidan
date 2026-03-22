@@ -7,6 +7,7 @@ import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
 import { useOPFSExplorer } from './composables/useOPFSExplorer';
+import { useFileExplorerModal } from './composables/useFileExplorerModal';
 import { useTheme } from './composables/useTheme';
 import { usePrint } from './composables/usePrint';
 import Sidebar from './components/Sidebar.vue';
@@ -36,6 +37,7 @@ const RecentChatsModal = defineAsyncComponentAndLoadOnMounted(() => import('./co
 const DebugPanel = defineAsyncComponentAndLoadOnMounted(() => import('./components/DebugPanel.vue'));
 const CustomDialog = defineAsyncComponentAndLoadOnMounted(() => import('./components/CustomDialog.vue'));
 const OPFSExplorer = defineAsyncComponentAndLoadOnMounted(() => import('./components/OPFSExplorer.vue'));
+const FileExplorerModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/FileExplorerModal.vue'));
 
 const chatStore = useChat();
 const settingsStore = useSettings();
@@ -72,6 +74,7 @@ const closeSettings = () => {
 };
 
 const { isOPFSOpen } = useOPFSExplorer();
+const { isFileExplorerOpen } = useFileExplorerModal();
 
 // Initialize theme application logic
 useTheme();
@@ -312,6 +315,7 @@ defineExpose({
     />
 
     <OPFSExplorer v-model="isOPFSOpen" />
+    <FileExplorerModal v-if="isFileExplorerOpen" />
   </div>
 
   <!-- Print-only Layer: Conditionally rendered only when activePrintMode is set. -->
