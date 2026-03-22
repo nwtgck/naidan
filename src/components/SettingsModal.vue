@@ -338,7 +338,7 @@ defineExpose({
               data-testid="tab-volumes"
             >
               <Folder class="w-4 h-4" />
-              Volumes
+              Folders
             </button>
             <button
               @click="activeTab = 'developer'"

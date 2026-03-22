@@ -52,8 +52,8 @@ defineExpose({
               <Folder class="w-4 h-4" :class="isFeatureEnabled({ feature: 'volume' }) ? 'text-red-500' : 'text-gray-400'" />
             </div>
             <div class="flex flex-col min-w-0">
-              <span class="text-sm font-bold text-gray-900 dark:text-gray-100">Volumes</span>
-              <span class="text-[10px] font-medium text-gray-500">Shows the Volumes tab in Settings.</span>
+              <span class="text-sm font-bold text-gray-900 dark:text-gray-100">Folders</span>
+              <span class="text-[10px] font-medium text-gray-500">Shows the Folders tab in Settings.</span>
             </div>
           </div>
           <div
