@@ -455,7 +455,7 @@ async function handleDetachMount({ volumeId }: { volumeId: string }) {
   switch (volumeType) {
   case 'host':
     title = 'Unlink Folder';
-    message = 'Stop using this folder in this chat? Your original files will not be affected.';
+    message = 'Stop using this folder in this chat? Your original files on disk stay safe and intact.';
     confirmButtonText = 'Unlink';
     break;
   case 'opfs':
@@ -480,6 +480,51 @@ async function handleDetachMount({ volumeId }: { volumeId: string }) {
 
 async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
   if (!currentChat.value) return;
+
+  let volumeType: 'opfs' | 'host' | undefined;
+  for await (const vol of storageService.listVolumes()) {
+    if (vol.id === volumeId) {
+      volumeType = vol.type; break;
+    }
+  }
+
+  switch (volumeType) {
+  case 'host': {
+    const handle = await storageService.getVolumeDirectoryHandle({ volumeId });
+    if (handle && !readOnly) {
+      // Enabling writes: request write permission from the browser.
+      // The handle was obtained with mode:'read', so writes will fail unless explicitly upgraded.
+      type FSHandleWithPermission = FileSystemDirectoryHandle & {
+        requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
+      };
+      const result = await (handle as FSHandleWithPermission).requestPermission({ mode: 'readwrite' });
+      // Note: downgrading back to read-only cannot be enforced at the browser level.
+      // requestPermission({ mode: 'read' }) on a readwrite handle just returns 'granted' immediately —
+      // the browser has no API to revoke a previously granted write permission.
+      // The readOnly flag is therefore enforced by Wesh only when reducing from write to read.
+      switch (result) {
+      case 'granted':
+        break;
+      case 'denied':
+      case 'prompt':
+        return;
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled permission state: ${_ex}`);
+      }
+      }
+    }
+    break;
+  }
+  case 'opfs':
+  case undefined:
+    break;
+  default: {
+    const _ex: never = volumeType;
+    throw new Error(`Unhandled volume type: ${_ex}`);
+  }
+  }
+
   await updateChatMount({ chatId: currentChat.value.id, volumeId, readOnly });
 }
 
