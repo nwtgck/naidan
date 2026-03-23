@@ -7,8 +7,8 @@ import { generateId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
+import ChatAttachMenu from './ChatAttachMenu.vue';
 import { useReasoning } from '@/composables/useReasoning';
-import { onClickOutside } from '@vueuse/core';
 import { useChatTools } from '@/composables/useChatTools';
 import { storageService } from '@/services/storage';
 import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
@@ -23,8 +23,7 @@ import {
   Square, Minimize2, Maximize2, Send,
   X, Image,
   ChevronDown, ChevronUp, Edit2, FileEdit,
-  Plus, Folder, Files, FolderSymlink, FolderDown,
-  Info, Loader2, Lock, Unlock,
+  Folder, Loader2, Lock, Unlock,
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import type { Attachment, Chat, LmParameters } from '@/models/types';
@@ -206,13 +205,7 @@ const sortedAvailableModels = computed(() => naturalSort(availableModels?.value 
 
 const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
-const fileInputRef = ref<HTMLInputElement | null>(null);
-const folderInputRef = ref<HTMLInputElement | null>(null);
-const isAttachMenuOpen = ref(false);
-const attachMenuRef = ref<HTMLElement | null>(null);
-const isFolderLinkInfoOpen = ref(false);
-const isFolderCopyInfoOpen = ref(false);
-const hasFileSystemAccess = ref(checkFileSystemAccessSupport());
+const hasFileSystemAccess = checkFileSystemAccessSupport();
 
 type ActiveCopy = {
   id: string;
@@ -225,12 +218,6 @@ const activeCopies = ref<ActiveCopy[]>([]);
 const isMaximized = ref(false); // New state for maximize button
 const isOverLimit = ref(false); // New state to show maximize button only when content is long
 const isAdvancedEditorOpen = ref(false);
-
-onClickOutside(attachMenuRef, () => {
-  isAttachMenuOpen.value = false;
-  isFolderLinkInfoOpen.value = false;
-  isFolderCopyInfoOpen.value = false;
-});
 
 function openAdvancedEditor() {
   isAdvancedEditorOpen.value = true;
@@ -370,17 +357,16 @@ async function finishMount({ volumeId, name }: { volumeId: string; name: string 
   setToolEnabled({ name: 'shell_execute', enabled: true });
 }
 
-async function attachCopyAsVolume({ files, name }: { files: File[]; name: string }) {
+async function attachCopyAsVolume({ entries, name }: {
+  entries: Array<{ file: File; relativePath: string }>;
+  name: string;
+}) {
   if (!currentChat.value) return;
   const copyId = generateId();
   const abort = new AbortController();
   const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
   activeCopies.value = [...activeCopies.value, copy];
   try {
-    const entries = files.map(f => ({
-      file: f,
-      relativePath: f.webkitRelativePath || f.name,
-    }));
     const vol = await storageService.createVolumeFromFiles({
       name,
       entries,
@@ -403,7 +389,6 @@ async function attachCopyAsVolume({ files, name }: { files: File[]; name: string
 
 async function attachLinkAsVolume() {
   if (!currentChat.value) return;
-  isAttachMenuOpen.value = false;
   try {
     // @ts-expect-error: File System Access API
     const handle = await window.showDirectoryPicker({ mode: 'read' });
@@ -416,29 +401,137 @@ async function attachLinkAsVolume() {
   }
 }
 
-async function handleFileSelect(event: Event) {
-  const target = event.target as HTMLInputElement;
-  if (!target.files) return;
-  const files = Array.from(target.files);
-  target.value = '';
+// Handlers for ChatAttachMenu emits
+async function onAttachFilesSelected(files: File[]) {
   if (files.length === 0) return;
-
   if (files.every(f => f.type.startsWith('image/'))) {
     await processFiles(files);
   } else {
     const name = files.length === 1 ? files[0]!.name : `${files.length} files`;
-    await attachCopyAsVolume({ files, name });
+    const entries = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
+    await attachCopyAsVolume({ entries, name });
   }
 }
 
-async function handleFolderSelect(event: Event) {
-  const target = event.target as HTMLInputElement;
-  if (!target.files) return;
-  const files = Array.from(target.files);
-  target.value = '';
-  if (files.length === 0) return;
-  const folderName = files[0]!.webkitRelativePath.split('/')[0] ?? 'folder';
-  await attachCopyAsVolume({ files, name: folderName });
+async function onAttachFolderCopy(folderName: string, files: File[]) {
+  const entries = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
+  await attachCopyAsVolume({ entries, name: folderName });
+}
+
+// Collects all files from a FileSystemDirectoryEntry recursively.
+// relativePath is relative to the dropped directory root (does not include the root name).
+async function collectFilesFromDirectoryEntry(
+  dirEntry: FileSystemDirectoryEntry,
+  prefix = '',
+): Promise<Array<{ file: File; relativePath: string }>> {
+  const reader = dirEntry.createReader();
+  const allEntries: FileSystemEntry[] = [];
+  // readEntries returns at most 100 items per call — must loop until empty batch
+  for (;;) {
+    const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+      reader.readEntries(resolve, reject)
+    );
+    if (batch.length === 0) break;
+    allEntries.push(...batch);
+  }
+  const results: Array<{ file: File; relativePath: string }> = [];
+  for (const entry of allEntries) {
+    const entryPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve, reject) =>
+        (entry as FileSystemFileEntry).file(resolve, reject)
+      );
+      results.push({ file, relativePath: entryPath });
+    } else {
+      const sub = await collectFilesFromDirectoryEntry(entry as FileSystemDirectoryEntry, entryPath);
+      results.push(...sub);
+    }
+  }
+  return results;
+}
+
+// Called by ChatArea when files/directories are dropped onto the chat area.
+// Phase 1 (synchronous): collect handles/entries while DataTransfer is still valid.
+// Phase 2 (async): process them — directories become host volumes (link) or OPFS copies.
+async function processDropItems(items: DataTransferItem[]) {
+  if (!currentChat.value) return;
+
+  type DropCollected =
+    | { kind: 'fsa-handle'; promise: Promise<FileSystemHandle> }
+    | { kind: 'entry'; entry: FileSystemEntry }
+    | { kind: 'raw-file'; item: DataTransferItem };
+
+  // Phase 1: collect synchronously (DataTransfer items expire after event handler returns)
+  const collected: DropCollected[] = [];
+  for (const item of items) {
+    if (item.kind !== 'file') continue;
+    if ('getAsFileSystemHandle' in item) {
+      // File System Access API (Chromium) — lets us get a real FileSystemDirectoryHandle from the drop
+      collected.push({
+        kind: 'fsa-handle',
+        promise: (item as DataTransferItem & {
+          getAsFileSystemHandle(): Promise<FileSystemHandle>;
+        }).getAsFileSystemHandle(),
+      });
+    } else {
+      const entry = item.webkitGetAsEntry();
+      collected.push(entry ? { kind: 'entry', entry } : { kind: 'raw-file', item });
+    }
+  }
+
+  // Phase 2: process (can be async now)
+  const plainFiles: File[] = [];
+  for (const c of collected) {
+    switch (c.kind) {
+    case 'fsa-handle': {
+      const handle = await c.promise;
+      switch (handle.kind) {
+      case 'directory': {
+        // Attach as host volume — read permission is already granted by the browser drop gesture
+        const dirHandle = handle as FileSystemDirectoryHandle;
+        const vol = await storageService.createVolume({ name: dirHandle.name, type: 'host', sourceHandle: dirHandle });
+        await finishMount({ volumeId: vol.id, name: vol.name });
+        break;
+      }
+      case 'file':
+        plainFiles.push(await (handle as FileSystemFileHandle).getFile());
+        break;
+      default: {
+        const _ex: never = handle.kind;
+        throw new Error(`Unhandled handle kind: ${_ex}`);
+      }
+      }
+      break;
+    }
+    case 'entry': {
+      const { entry } = c;
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve, reject) =>
+          (entry as FileSystemFileEntry).file(resolve, reject)
+        );
+        plainFiles.push(file);
+      } else if (entry.isDirectory) {
+        // Non-Chromium fallback: collect files and copy to OPFS
+        const entries = await collectFilesFromDirectoryEntry(entry as FileSystemDirectoryEntry);
+        await attachCopyAsVolume({ entries, name: entry.name });
+      }
+      break;
+    }
+    case 'raw-file': {
+      const file = c.item.getAsFile();
+      if (file) plainFiles.push(file);
+      break;
+    }
+    default: {
+      const _ex: never = c;
+      throw new Error(`Unhandled drop kind: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  if (plainFiles.length > 0) {
+    await onAttachFilesSelected(plainFiles);
+  }
 }
 
 async function handleDetachMount({ volumeId }: { volumeId: string }) {
@@ -941,7 +1034,7 @@ function focusInput() {
   }
 }
 
-defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, formatLabel,
+defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, processDropItems, formatLabel,
   __testOnly: {
     attachments,
     editingAttachmentId,
@@ -1134,106 +1227,12 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             />
           </div>
 
-          <input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFileSelect" />
-          <input ref="folderInputRef" type="file" webkitdirectory class="hidden" @change="handleFolderSelect" />
-          <div class="relative" ref="attachMenuRef">
-            <button
-              @click="isAttachMenuOpen = !isAttachMenuOpen"
-              class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              title="Attach files or folder"
-              data-testid="attach-button"
-            >
-              <Plus class="w-5 h-5" />
-            </button>
-
-            <div
-              v-if="isAttachMenuOpen"
-              class="absolute bottom-full mb-2 left-0 z-50 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl overflow-hidden w-56"
-            >
-              <!-- Files -->
-              <button
-                @click="fileInputRef?.click(); isAttachMenuOpen = false"
-                class="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
-                data-testid="attach-files-button"
-              >
-                <Files class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
-                Files
-              </button>
-
-              <!-- Folder (link) — preferred when available -->
-              <div class="border-t border-gray-100 dark:border-gray-700">
-                <!-- Available: normal row -->
-                <div v-if="hasFileSystemAccess" class="flex items-stretch">
-                  <button
-                    @click="attachLinkAsVolume"
-                    class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
-                    data-testid="attach-folder-link-button"
-                  >
-                    <FolderSymlink class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
-                    Folder (link)
-                  </button>
-                  <button
-                    @click.stop="isFolderLinkInfoOpen = !isFolderLinkInfoOpen; isFolderCopyInfoOpen = false"
-                    class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
-                    :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'"
-                    title="What is Folder (link)?"
-                  >
-                    <Info class="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <!-- Unavailable: disabled with info -->
-                <div v-else class="flex items-stretch">
-                  <button
-                    disabled
-                    class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-300 dark:text-gray-600 cursor-not-allowed text-left"
-                  >
-                    <FolderSymlink class="w-4 h-4 shrink-0" />
-                    Folder (link)
-                  </button>
-                  <button
-                    @click.stop="isFolderLinkInfoOpen = !isFolderLinkInfoOpen; isFolderCopyInfoOpen = false"
-                    class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
-                    :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-300 dark:text-gray-600 hover:text-blue-500'"
-                    title="Why is Folder (link) unavailable?"
-                  >
-                    <Info class="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <!-- Info panel for link -->
-                <div v-if="isFolderLinkInfoOpen" class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
-                  <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">Requires a Chromium-based browser</p>
-                  <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">Chrome, Edge, Brave, Opera — over HTTPS. Links your folder directly without copying.</p>
-                </div>
-              </div>
-
-              <!-- Folder (copy) -->
-              <div class="border-t border-gray-100 dark:border-gray-700">
-                <div class="flex items-stretch">
-                  <button
-                    @click="folderInputRef?.click(); isAttachMenuOpen = false"
-                    class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-left"
-                    data-testid="attach-folder-copy-button"
-                  >
-                    <FolderDown class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
-                    Folder (copy)
-                  </button>
-                  <button
-                    @click.stop="isFolderCopyInfoOpen = !isFolderCopyInfoOpen; isFolderLinkInfoOpen = false"
-                    class="flex items-center px-2.5 transition-colors border-l border-gray-100 dark:border-gray-700"
-                    :class="isFolderCopyInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'"
-                    title="What is Folder (copy)?"
-                  >
-                    <Info class="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <!-- Info panel for copy -->
-                <div v-if="isFolderCopyInfoOpen" class="px-3 py-2.5 bg-blue-50 dark:bg-blue-950/30 border-t border-blue-100 dark:border-blue-900/40 space-y-1">
-                  <p class="text-[11px] font-bold text-blue-700 dark:text-blue-400">A private copy is saved in your browser</p>
-                  <p class="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">Naidan works from the copy — your original files on disk stay safe and intact.</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ChatAttachMenu
+            :has-file-system-access="hasFileSystemAccess"
+            @files-selected="onAttachFilesSelected"
+            @folder-copy="onAttachFolderCopy"
+            @folder-link="attachLinkAsVolume"
+          />
 
           <ChatToolsMenu
             :can-generate-image="canGenerateImage && hasImageModel"

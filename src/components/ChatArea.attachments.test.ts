@@ -268,8 +268,18 @@ describe('ChatArea - Attachment UI', () => {
     const dropEvent = {
       preventDefault: vi.fn(),
       dataTransfer: {
-        files: [testFile]
-      }
+        items: [
+          {
+            kind: 'file',
+            webkitGetAsEntry: () => ({
+              isFile: true,
+              isDirectory: false,
+              name: 'hello.png',
+              file: (cb: (f: File) => void) => cb(testFile),
+            }),
+          },
+        ],
+      },
     };
 
     await wrapper.trigger('drop', dropEvent);
