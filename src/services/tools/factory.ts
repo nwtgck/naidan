@@ -6,6 +6,7 @@ import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh-wo
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { generateId } from '@/utils/id';
+import { OPFS_TMP_DIR } from '@/models/constants';
 import type { WeshMount } from '@/services/wesh/types';
 
 /**
@@ -41,7 +42,7 @@ export async function getEnabledTools({
       // The root `/` uses a virtual read-only handle — no real OPFS dir needed.
       // TODO: clean up naidan-tmp/<chatId>-* dirs on session dispose
       const opfsRoot = await navigator.storage.getDirectory();
-      const tmpBase = await opfsRoot.getDirectoryHandle('naidan-tmp', { create: true });
+      const tmpBase = await opfsRoot.getDirectoryHandle(OPFS_TMP_DIR, { create: true });
       const tmpHandle = await tmpBase.getDirectoryHandle(`${chatId}-${generateId()}`, { create: true });
 
       // Resolve mounts from settings (global) + chatMounts (per-chat)

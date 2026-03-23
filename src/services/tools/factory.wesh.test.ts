@@ -60,14 +60,14 @@ describe('getEnabledTools shell_execute', () => {
 
     const { getEnabledTools } = await import('./factory')
 
-    await getEnabledTools({
+    const [toolA] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       chatId: 'chat-1',
       settings: {
         mounts: [{ type: 'volume', volumeId: 'a', mountPath: '/mnt/a', readOnly: false }],
       } as never,
     })
-    await getEnabledTools({
+    const [toolB] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       chatId: 'chat-1',
       settings: {
@@ -95,6 +95,20 @@ describe('getEnabledTools shell_execute', () => {
       initialEnv: {},
       initialCwd: undefined,
     })
+
+    // /tmp (read-write) appears in the description because it is in resolvedMounts
+    expect(toolA?.description).toEqual(`\
+Execute shell scripts to perform file operations, system exploration, and data processing. You can use standard Unix-like commands (ls, cat, grep, etc.). Use the "help" command to see available utilities. This is useful for reading multiple files at once or performing complex file manipulations.
+
+Mounted directories:
+- /tmp (read-write)
+- /mnt/a (read-write)`)
+    expect(toolB?.description).toEqual(`\
+Execute shell scripts to perform file operations, system exploration, and data processing. You can use standard Unix-like commands (ls, cat, grep, etc.). Use the "help" command to see available utilities. This is useful for reading multiple files at once or performing complex file manipulations.
+
+Mounted directories:
+- /tmp (read-write)
+- /mnt/b (read-only)`)
   })
 
   it('does not create the shell tool when OPFS is unavailable', async () => {

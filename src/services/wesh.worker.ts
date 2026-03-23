@@ -1,6 +1,6 @@
 import * as Comlink from 'comlink'
 import { Wesh } from '@/services/wesh'
-import { VirtualReadonlyRoot } from '@/services/wesh/virtual-root'
+import { ReadonlyDirectoryHandle } from '@/services/wesh/readonly-directory-handle'
 import { createWeshReadFileHandleFromText } from '@/services/wesh/utils/test-stream'
 import { createWeshWriteFileHandle } from '@/services/wesh/utils/stream'
 import {
@@ -56,7 +56,7 @@ const weshWorker: IWeshWorker = {
     const validated = weshWorkerInitRequestSchema.parse(request)
 
     const rootHandle = validated.rootHandle === 'readonly'
-      ? new VirtualReadonlyRoot()
+      ? new ReadonlyDirectoryHandle()
       : validated.rootHandle;
 
     wesh = new Wesh({

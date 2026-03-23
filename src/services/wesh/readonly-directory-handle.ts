@@ -1,17 +1,17 @@
 /**
- * A virtual read-only root directory for the wesh filesystem.
+ * A virtual read-only directory handle for the wesh filesystem.
  *
- * Used in place of a real OPFS directory handle when the root `/` should be
- * empty and read-only. All reads return empty results; all write operations
- * throw. The VFS still shows mounted sub-directories (like /tmp) via its mount
- * table — those come from the mounts array, not from this handle.
+ * Can be used anywhere a FileSystemDirectoryHandle is expected but the
+ * directory should be empty and immutable. All reads return empty results;
+ * all write operations throw. Useful as the wesh root `/` so that only
+ * explicitly mounted paths are accessible.
  *
  * This class duck-types FileSystemDirectoryHandle so the VFS can use it
  * without modification; cast to FileSystemDirectoryHandle where needed.
  */
-export class VirtualReadonlyRoot {
+export class ReadonlyDirectoryHandle {
   readonly kind = 'directory' as const;
-  readonly name = 'root';
+  readonly name = 'readonly';
 
   isSameEntry(_other: FileSystemHandle): Promise<boolean> {
     return Promise.resolve(false);

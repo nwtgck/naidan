@@ -1,4 +1,4 @@
-import { VirtualReadonlyRoot } from './virtual-root';
+import { ReadonlyDirectoryHandle } from './readonly-directory-handle';
 import type {
   WeshIVirtualFileSystem,
   WeshFileHandle,
@@ -382,8 +382,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   private specialFiles: Map<string, () => WeshFileHandle> = new Map();
   private openFifos: Map<string, FifoHandle> = new Map();
 
-  constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle | VirtualReadonlyRoot }) {
-    const rootReadOnly = rootHandle instanceof VirtualReadonlyRoot;
+  constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle }) {
+    const rootReadOnly = rootHandle instanceof ReadonlyDirectoryHandle;
     this.mount({ path: '/', handle: rootHandle as FileSystemDirectoryHandle, readOnly: rootReadOnly });
 
     this.registerSpecialFile({ path: '/dev/null', handler: () => new DevNullHandle() });
