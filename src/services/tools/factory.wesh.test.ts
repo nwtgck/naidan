@@ -111,6 +111,32 @@ Mounted directories:
 - /mnt/b (read-only)`)
   })
 
+  it('sets initialCwd to /home/user when a mount lives under /home/user/', async () => {
+    const tmpHandle = { kind: 'directory', name: 'chat-1-id-x' } as FileSystemDirectoryHandle
+    const volumeHandle = { kind: 'directory', name: 'vol-x' } as FileSystemDirectoryHandle
+
+    mockCheckOPFSSupport.mockResolvedValue(true)
+    mockGenerateId.mockReturnValueOnce('id-x')
+    const mockTmpBase = { getDirectoryHandle: vi.fn().mockResolvedValue(tmpHandle) }
+    mockGetDirectory.mockResolvedValueOnce({ getDirectoryHandle: vi.fn().mockResolvedValue(mockTmpBase) })
+    mockGetVolumeDirectoryHandle.mockResolvedValueOnce(volumeHandle)
+    mockCreateClient.mockResolvedValue({ execute: vi.fn(), interrupt: vi.fn(), dispose: vi.fn() })
+
+    const { getEnabledTools } = await import('./factory')
+
+    await getEnabledTools({
+      enabledNames: ['shell_execute'],
+      chatId: 'chat-1',
+      settings: {
+        mounts: [{ type: 'volume', volumeId: 'x', mountPath: '/home/user/myproject', readOnly: false }],
+      } as never,
+    })
+
+    expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      initialCwd: '/home/user',
+    }))
+  })
+
   it('does not create the shell tool when OPFS is unavailable', async () => {
     mockCheckOPFSSupport.mockResolvedValue(false)
 

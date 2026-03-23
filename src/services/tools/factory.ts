@@ -61,12 +61,14 @@ export async function getEnabledTools({
         }
       }
 
+      // Start in /home/user only when at least one mount lives there.
+      const hasHomeUserMount = resolvedMounts.some(m => m.path.startsWith('/home/user/'));
       const client = await createFileProtocolCompatibleWeshWorkerClient({
         rootHandle: 'readonly',
         mounts: resolvedMounts,
         user: 'user',
         initialEnv: {},
-        initialCwd: undefined,
+        initialCwd: hasHomeUserMount ? '/home/user' : undefined,
       });
 
       tools.push(createWeshTool({

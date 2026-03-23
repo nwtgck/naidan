@@ -349,11 +349,12 @@ async function processFiles(files: File[]) {
 
 function generateChatMountPath({ baseName }: { baseName: string }): string {
   const existingPaths = (currentChat.value?.mounts ?? []).map(m => m.mountPath);
-  let path = `/${baseName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-  const originalPath = path;
+  const sanitized = baseName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  let path = `/home/user/${sanitized}`;
+  const basePath = path;
   let suffix = 2;
   while (existingPaths.includes(path)) {
-    path = `${originalPath}-${suffix}`;
+    path = `${basePath}-${suffix}`;
     suffix++;
   }
   return path;
@@ -1019,7 +1020,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           data-testid="chat-mount-badge"
         >
           <Folder class="w-3.5 h-3.5 shrink-0" />
-          <span class="max-w-[120px] truncate mx-1">{{ mount.mountPath }}</span>
+          <span class="max-w-[120px] truncate mx-1">{{ mount.mountPath.replace(/^\/home\/user\//, '') }}</span>
           <button
             @click="handleToggleMountReadOnly({ volumeId: mount.volumeId, readOnly: !mount.readOnly })"
             :title="mount.readOnly ? 'Read-only — click to allow write' : 'Read & write — click to restrict'"
