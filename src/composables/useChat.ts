@@ -1104,6 +1104,7 @@ export function useChat() {
         enabledNames: enabledToolNames.value,
         settings: settings.value as unknown as Settings,
         chatMounts: mutableChat.mounts,
+        chatId: mutableChat.id,
       });
 
       const generationState = {

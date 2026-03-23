@@ -8,7 +8,7 @@ export const weshWorkerMountSchema = z.object({
 })
 
 export const weshWorkerInitRequestSchema = z.object({
-  rootHandle: z.custom<FileSystemDirectoryHandle>(),
+  rootHandle: z.custom<FileSystemDirectoryHandle | 'readonly'>(),
   mounts: z.array(weshWorkerMountSchema),
   user: z.string().min(1),
   initialEnv: z.record(z.string(), z.string()),

@@ -4,6 +4,7 @@ const mockCreateClient = vi.fn()
 const mockCheckOPFSSupport = vi.fn()
 const mockGetDirectory = vi.fn()
 const mockGetVolumeDirectoryHandle = vi.fn()
+const mockGenerateId = vi.fn()
 
 vi.mock('@/services/wesh-worker-client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mockCreateClient,
@@ -19,6 +20,10 @@ vi.mock('@/services/storage', () => ({
   },
 }))
 
+vi.mock('@/utils/id', () => ({
+  generateId: mockGenerateId,
+}))
+
 describe('getEnabledTools shell_execute', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -29,15 +34,21 @@ describe('getEnabledTools shell_execute', () => {
     })
   })
 
-  it('creates a fresh Wesh worker client with resolved mounts', async () => {
-    const rootHandle = { kind: 'directory', name: 'root' } as FileSystemDirectoryHandle
+  it('creates a fresh Wesh worker client with resolved mounts and a per-session /tmp', async () => {
+    const tmpHandleA = { kind: 'directory', name: 'chat-1-id-a' } as FileSystemDirectoryHandle
+    const tmpHandleB = { kind: 'directory', name: 'chat-1-id-b' } as FileSystemDirectoryHandle
     const volumeHandleA = { kind: 'directory', name: 'vol-a' } as FileSystemDirectoryHandle
     const volumeHandleB = { kind: 'directory', name: 'vol-b' } as FileSystemDirectoryHandle
 
     mockCheckOPFSSupport.mockResolvedValue(true)
-    mockGetDirectory.mockResolvedValue({
-      getDirectoryHandle: vi.fn().mockResolvedValue(rootHandle),
-    })
+    mockGenerateId
+      .mockReturnValueOnce('id-a')
+      .mockReturnValueOnce('id-b')
+    const mockTmpBaseA = { getDirectoryHandle: vi.fn().mockResolvedValue(tmpHandleA) }
+    const mockTmpBaseB = { getDirectoryHandle: vi.fn().mockResolvedValue(tmpHandleB) }
+    mockGetDirectory
+      .mockResolvedValueOnce({ getDirectoryHandle: vi.fn().mockResolvedValue(mockTmpBaseA) })
+      .mockResolvedValueOnce({ getDirectoryHandle: vi.fn().mockResolvedValue(mockTmpBaseB) })
     mockGetVolumeDirectoryHandle
       .mockResolvedValueOnce(volumeHandleA)
       .mockResolvedValueOnce(volumeHandleB)
@@ -51,35 +62,35 @@ describe('getEnabledTools shell_execute', () => {
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
+      chatId: 'chat-1',
       settings: {
         mounts: [{ type: 'volume', volumeId: 'a', mountPath: '/mnt/a', readOnly: false }],
       } as never,
     })
     await getEnabledTools({
       enabledNames: ['shell_execute'],
+      chatId: 'chat-1',
       settings: {
         mounts: [{ type: 'volume', volumeId: 'b', mountPath: '/mnt/b', readOnly: true }],
       } as never,
     })
 
     expect(mockCreateClient).toHaveBeenNthCalledWith(1, {
-      rootHandle,
-      mounts: [{
-        path: '/mnt/a',
-        handle: volumeHandleA,
-        readOnly: false,
-      }],
+      rootHandle: 'readonly',
+      mounts: [
+        { path: '/tmp', handle: tmpHandleA, readOnly: false },
+        { path: '/mnt/a', handle: volumeHandleA, readOnly: false },
+      ],
       user: 'user',
       initialEnv: {},
       initialCwd: undefined,
     })
     expect(mockCreateClient).toHaveBeenNthCalledWith(2, {
-      rootHandle,
-      mounts: [{
-        path: '/mnt/b',
-        handle: volumeHandleB,
-        readOnly: true,
-      }],
+      rootHandle: 'readonly',
+      mounts: [
+        { path: '/tmp', handle: tmpHandleB, readOnly: false },
+        { path: '/mnt/b', handle: volumeHandleB, readOnly: true },
+      ],
       user: 'user',
       initialEnv: {},
       initialCwd: undefined,
@@ -92,6 +103,7 @@ describe('getEnabledTools shell_execute', () => {
     const { getEnabledTools } = await import('./factory')
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute'],
+      chatId: 'chat-1',
       settings: {
         mounts: [],
       } as never,

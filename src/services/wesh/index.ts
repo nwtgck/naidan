@@ -1,3 +1,4 @@
+import { VirtualReadonlyRoot } from './virtual-root';
 import type {
   WeshCommandDefinition,
   WeshCommandResult,
@@ -207,7 +208,7 @@ export class Wesh {
     initialEnv = {},
     initialCwd,
   }: {
-    rootHandle: FileSystemDirectoryHandle;
+    rootHandle: FileSystemDirectoryHandle | VirtualReadonlyRoot;
     user?: string;
     initialEnv?: Record<string, string>;
     initialCwd?: string;
