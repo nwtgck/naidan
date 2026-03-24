@@ -741,9 +741,13 @@ async function evaluateExpression({
   case 'empty':
     switch (entry.type) {
     case 'directory': {
-      const entries = await context.files.readDir({ path: entry.fullPath });
+      let isEmpty = true;
+      for await (const _ of context.files.readDir({ path: entry.fullPath })) {
+        isEmpty = false;
+        break;
+      }
       return {
-        matched: entries.length === 0,
+        matched: isEmpty,
         actionInvoked: false,
         shouldPrune: false,
         shouldQuit: false,
@@ -1137,8 +1141,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
           && (traversal.maxDepth === undefined || depth < traversal.maxDepth);
 
         if (canDescend) {
-          const entries = await context.files.readDir({ path: entry.readPath });
-          for (const child of entries) {
+          for await (const child of context.files.readDir({ path: entry.readPath })) {
             const childFullPath = entry.readPath === '/' ? `/${child.name}` : `${entry.readPath}/${child.name}`;
             const childDisplayPath = displayPath === '/' ? `/${child.name}` : `${displayPath}/${child.name}`;
             await walk({

@@ -1947,8 +1947,7 @@ usage: alias [name[=value] ...]
       });
 
       for (const base of bases) {
-        const entries = await this.kernel.readDir({ path: base });
-        for (const entry of entries) {
+        for await (const entry of this.kernel.readDir({ path: base })) {
           switch (entry.type) {
           case 'directory':
             break;
@@ -2006,8 +2005,7 @@ usage: alias [name[=value] ...]
         continue;
       }
 
-      const entries = await this.kernel.readDir({ path: base });
-      for (const entry of entries) {
+      for await (const entry of this.kernel.readDir({ path: base })) {
         if (!includeHiddenEntries && entry.name.startsWith('.')) {
           continue;
         }

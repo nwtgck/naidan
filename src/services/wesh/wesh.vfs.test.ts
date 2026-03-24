@@ -283,7 +283,8 @@ describe('wesh vfs mounts', () => {
       targetPath: '/real',
     });
 
-    const entries = await wesh.vfs.readDir({ path: '/real.link' });
+    const entries = [];
+    for await (const entry of wesh.vfs.readDir({ path: '/real.link' })) entries.push(entry);
     expect(entries).toEqual([{ name: 'child.txt', type: 'file' }]);
 
     const changed = await execute({ script: 'cd /real.link; pwd' });
@@ -309,7 +310,8 @@ describe('wesh vfs mounts', () => {
     await wesh.vfs.unlink({ path: '/dir.link' });
 
     await expect(wesh.vfs.lstat({ path: '/dir.link' })).rejects.toThrow();
-    const entries = await wesh.vfs.readDir({ path: '/dir' });
+    const entries = [];
+    for await (const entry of wesh.vfs.readDir({ path: '/dir' })) entries.push(entry);
     expect(entries).toEqual([{ name: 'keep.txt', type: 'file' }]);
   });
 
@@ -368,6 +370,8 @@ describe('wesh vfs mounts', () => {
     expect(removed.result.exitCode).toBe(0);
 
     await expect(wesh.vfs.lstat({ path: '/tree.link' })).rejects.toThrow();
-    expect((await wesh.vfs.readDir({ path: '/tree' })).map(entry => entry.name)).toEqual(['leaf.txt']);
+    const treeEntries = [];
+    for await (const entry of wesh.vfs.readDir({ path: '/tree' })) treeEntries.push(entry);
+    expect(treeEntries.map(entry => entry.name)).toEqual(['leaf.txt']);
   });
 });

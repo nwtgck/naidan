@@ -168,7 +168,7 @@ export interface WeshIVirtualFileSystem {
     mode: 'truncate' | 'append';
   }): Promise<WeshEfficientFileWriteResult>;
 
-  readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
+  readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }>;
 
   mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
 
@@ -281,7 +281,7 @@ export interface WeshCommandContext {
     }): Promise<WeshFileHandle>;
     stat(options: { path: string }): Promise<WeshStat>;
     lstat(options: { path: string }): Promise<WeshStat>;
-    readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
+    readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }>;
     readlink(options: { path: string }): Promise<string>;
     resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
     tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult>;

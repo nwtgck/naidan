@@ -230,7 +230,10 @@ async function listZipEntriesForOperand({
         continue;
       }
 
-      const entries = await context.files.readDir({ path: currentPath });
+      const entries: Array<{ name: string; type: WeshFileType }> = [];
+      for await (const entry of context.files.readDir({ path: currentPath })) {
+        entries.push(entry);
+      }
       entries.sort((left, right) => left.name.localeCompare(right.name));
 
       for (const entry of entries) {

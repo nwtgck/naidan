@@ -424,7 +424,7 @@ export class WeshKernel {
     });
   }
 
-  async readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>> {
+  readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }> {
     return this.vfs.readDir({ path: options.path });
   }
 

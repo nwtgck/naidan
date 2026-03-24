@@ -259,8 +259,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         }
         await context.files.mkdir({ path: destPath, recursive: true });
         const readPath = (await context.files.resolve({ path: srcPath })).fullPath;
-        const entries = await context.files.readDir({ path: readPath });
-        for (const entry of entries) {
+        for await (const entry of context.files.readDir({ path: readPath })) {
           await copyOne({
             srcPath: `${readPath}/${entry.name}`,
             destPath: `${destPath}/${entry.name}`,

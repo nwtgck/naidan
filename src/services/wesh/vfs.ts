@@ -761,13 +761,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
   }
 
-  async readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>> {
+  async *readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }> {
     const resolved = await this.resolveNode({
       path: options.path,
       finalSymlinkTreatment: 'follow',
       depth: 0,
     });
-    const entries = new Map<string, WeshFileType>();
+    const seen = new Set<string>();
 
     switch (resolved.kind) {
     case 'synthetic-directory':
@@ -815,7 +815,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
             type = regEntry.type;
           }
         }
-        entries.set(name, type);
+        seen.add(name);
+        yield { name, type };
       }
       break;
     }
@@ -826,17 +827,17 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
 
     for (const name of this.getDirectMountChildren({ path: resolved.fullPath })) {
-      if (!entries.has(name)) {
-        entries.set(name, 'directory');
+      if (!seen.has(name)) {
+        seen.add(name);
+        yield { name, type: 'directory' };
       }
     }
     for (const name of this.getDirectSpecialChildren({ path: resolved.fullPath })) {
-      if (!entries.has(name)) {
-        entries.set(name, 'directory');
+      if (!seen.has(name)) {
+        seen.add(name);
+        yield { name, type: 'directory' };
       }
     }
-
-    return Array.from(entries.entries()).map(([name, type]) => ({ name, type }));
   }
 
   async mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void> {
@@ -1012,8 +1013,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       throw new Error(`Read-only filesystem: ${normalized}`);
     }
 
-    const entries = await this.readDir({ path: normalized });
-    if (entries.length > 0) {
+    for await (const _ of this.readDir({ path: normalized })) {
       throw new Error(`Directory not empty: ${normalized}`);
     }
 

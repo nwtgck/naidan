@@ -496,8 +496,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
           fullPath: string;
           displayPath: string;
         }) => {
-          const entries = await context.files.readDir({ path: currentFullPath });
-          for (const entry of entries) {
+          for await (const entry of context.files.readDir({ path: currentFullPath })) {
             const childFullPath = currentFullPath === '/' ? `/${entry.name}` : `${currentFullPath}/${entry.name}`;
             const childDisplayPath = displayPath === '/' ? `/${entry.name}` : `${displayPath}/${entry.name}`;
 
