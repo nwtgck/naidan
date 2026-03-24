@@ -564,9 +564,12 @@ usage: alias [name[=value] ...]
       if (bytesRead === 0) {
         break;
       }
-      const chunk = new Uint8Array(buffer.subarray(0, bytesRead));
-      chunks.push(chunk);
-      totalLength += chunk.length;
+      chunks.push(buffer.subarray(0, bytesRead));
+      totalLength += bytesRead;
+    }
+
+    if (chunks.length === 1) {
+      return new Uint8Array(chunks[0]!);
     }
 
     const result = new Uint8Array(totalLength);
