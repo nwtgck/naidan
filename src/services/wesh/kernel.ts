@@ -93,12 +93,13 @@ class PipeHandle implements WeshFileHandle {
   private state: {
     buffer: Uint8Array[];
     bufferSize: number;
+    headOffset: number;
     waiters: Array<() => void>;
     closed: boolean;
   };
   private mode: 'r' | 'w';
 
-  constructor(state: { buffer: Uint8Array[]; bufferSize: number; waiters: Array<() => void>; closed: boolean }, mode: 'r' | 'w') {
+  constructor(state: { buffer: Uint8Array[]; bufferSize: number; headOffset: number; waiters: Array<() => void>; closed: boolean }, mode: 'r' | 'w') {
     this.state = state;
     this.mode = mode;
   }
@@ -120,15 +121,19 @@ class PipeHandle implements WeshFileHandle {
       await new Promise<void>(resolve => this.state.waiters.push(resolve));
     }
 
-    const chunk = this.state.buffer.shift()!;
+    const chunk = this.state.buffer[0]!;
     const bufferOffset = options.offset ?? 0;
     const maxLen = options.length ?? (options.buffer.length - bufferOffset);
-    const copyLen = Math.min(chunk.length, maxLen);
+    const available = chunk.length - this.state.headOffset;
+    const copyLen = Math.min(available, maxLen);
 
-    options.buffer.set(chunk.subarray(0, copyLen), bufferOffset);
+    options.buffer.set(chunk.subarray(this.state.headOffset, this.state.headOffset + copyLen), bufferOffset);
 
-    if (chunk.length > copyLen) {
-      this.state.buffer.unshift(chunk.subarray(copyLen));
+    if (copyLen === available) {
+      this.state.buffer.shift();
+      this.state.headOffset = 0;
+    } else {
+      this.state.headOffset += copyLen;
     }
     this.state.bufferSize -= copyLen;
 
@@ -386,7 +391,7 @@ export class WeshKernel {
   }
 
   async pipe(): Promise<{ read: WeshFileHandle; write: WeshFileHandle }> {
-    const state = { buffer: [], bufferSize: 0, waiters: [], closed: false };
+    const state = { buffer: [], bufferSize: 0, headOffset: 0, waiters: [], closed: false };
     return {
       read: new PipeHandle(state, 'r'),
       write: new PipeHandle(state, 'w')

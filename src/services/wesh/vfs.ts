@@ -233,6 +233,7 @@ class StandardFileHandle implements WeshFileHandle {
 class FifoHandle implements WeshFileHandle {
   private buffer: Uint8Array[] = [];
   private bufferSize = 0;
+  private headOffset = 0;
   private waiters: Array<(val: void) => void> = [];
   private closed = false;
 
@@ -244,15 +245,19 @@ class FifoHandle implements WeshFileHandle {
       await new Promise<void>(resolve => this.waiters.push(resolve));
     }
 
-    const chunk = this.buffer.shift()!;
+    const chunk = this.buffer[0]!;
     const bufferOffset = options.offset ?? 0;
     const maxLen = options.length ?? (options.buffer.length - bufferOffset);
-    const copyLen = Math.min(chunk.length, maxLen);
+    const available = chunk.length - this.headOffset;
+    const copyLen = Math.min(available, maxLen);
 
-    options.buffer.set(chunk.subarray(0, copyLen), bufferOffset);
+    options.buffer.set(chunk.subarray(this.headOffset, this.headOffset + copyLen), bufferOffset);
 
-    if (chunk.length > copyLen) {
-      this.buffer.unshift(chunk.subarray(copyLen));
+    if (copyLen === available) {
+      this.buffer.shift();
+      this.headOffset = 0;
+    } else {
+      this.headOffset += copyLen;
     }
     this.bufferSize -= copyLen;
 
