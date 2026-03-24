@@ -2,11 +2,13 @@ import type {
   WeshOpenFlags,
   WeshFileHandle,
   WeshEfficientFileWriteResult,
+  WeshEfficientBlobReadResult,
 } from '@/services/wesh/types';
 
 interface WeshFileCapabilities {
   open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
   stat(options: { path: string }): Promise<unknown>;
+  tryReadBlobEfficiently?(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
   tryCreateFileWriterEfficiently?(options: {
     path: string;
     mode: 'truncate' | 'append';
@@ -17,6 +19,20 @@ interface WeshFileCapabilities {
  * Read the entire content of a file as a Uint8Array.
  */
 export async function readFile({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<Uint8Array> {
+  if (files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return new Uint8Array(await blobResult.blob.arrayBuffer());
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
   const flags: WeshOpenFlags = {
     access: 'read',
     creation: 'never',
@@ -41,6 +57,26 @@ export async function readFile({ files, path }: { files: WeshFileCapabilities; p
   } finally {
     await handle.close();
   }
+}
+
+/**
+ * Read the entire content of a file as a UTF-8 string.
+ */
+export async function readFileAsText({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<string> {
+  if (files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return blobResult.blob.text();
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+  return new TextDecoder().decode(await readFile({ files, path }));
 }
 
 /**

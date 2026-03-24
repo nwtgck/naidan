@@ -5,7 +5,7 @@ import { parseAwkProgram } from '@/services/wesh/commands/awk/parser';
 import { createAwkRuntime, executeAwkProgram } from '@/services/wesh/commands/awk/runtime';
 import type { AwkValue } from '@/services/wesh/commands/awk/types';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { handleToStream, readFile } from '@/services/wesh/utils/fs';
+import { handleToStream, readFile, readFileAsText } from '@/services/wesh/utils/fs';
 
 const awkArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -224,14 +224,7 @@ export const awkCommandDefinition: WeshCommandDefinition = {
       try {
         const content = input === '-'
           ? stdinText ??= await readTextStream({ stream: handleToStream({ handle: context.stdin }) })
-          : await readTextStream({
-            stream: handleToStream({
-              handle: await context.files.open({
-                path: resolvePath({ cwd: context.cwd, path: input }),
-                flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
-              }),
-            }),
-          });
+          : await readFileAsText({ files: context.files, path: resolvePath({ cwd: context.cwd, path: input }) });
         contents.push(content);
       } catch (error: unknown) {
         exitCode = 1;

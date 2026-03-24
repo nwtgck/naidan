@@ -3,7 +3,7 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { ArgvOptionOccurrence } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, readFile } from '@/services/wesh/utils/fs';
+import { readFile, readFileAsText } from '@/services/wesh/utils/fs';
 
 interface GrepFileReport {
   matched: boolean;
@@ -360,40 +360,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       return true;
     };
 
-    const processStream = async ({
-      stream,
-      name,
-    }: {
-      stream: ReadableStream<Uint8Array>;
-      name?: string;
-    }): Promise<GrepFileReport> => {
-      const decoder = new TextDecoder();
-      let buffer = '';
-      const reader = stream.getReader();
-      const allLines: string[] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        if (parsed.optionValues.binaryWithoutMatch === true) {
-          const isBinary = value.some(byte => byte === 0);
-          if (isBinary) {
-            return {
-              matched: false,
-              selectedLineCount: 0,
-              outputLines: [],
-            };
-          }
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        allLines.push(...lines);
-      }
-      if (buffer) allLines.push(buffer);
-
+    const processAllLines = ({ allLines, name }: { allLines: string[]; name?: string }): GrepFileReport => {
       const matches = new Array(allLines.length).fill(false);
       for (let i = 0; i < allLines.length; i++) {
         regex.lastIndex = 0;
@@ -506,11 +473,51 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       }
       }
 
-      return {
-        matched,
-        selectedLineCount,
-        outputLines,
-      };
+      return { matched, selectedLineCount, outputLines };
+    };
+
+    const processStream = async ({
+      stream,
+      name,
+    }: {
+      stream: ReadableStream<Uint8Array>;
+      name?: string;
+    }): Promise<GrepFileReport> => {
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const reader = stream.getReader();
+      const allLines: string[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        if (parsed.optionValues.binaryWithoutMatch === true) {
+          const isBinary = value.some(byte => byte === 0);
+          if (isBinary) {
+            return { matched: false, selectedLineCount: 0, outputLines: [] };
+          }
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        allLines.push(...lines);
+      }
+      if (buffer) allLines.push(buffer);
+
+      return processAllLines({ allLines, name });
+    };
+
+    const processText = ({ text, name }: { text: string; name?: string }): GrepFileReport => {
+      if (parsed.optionValues.binaryWithoutMatch === true && text.includes('\0')) {
+        return { matched: false, selectedLineCount: 0, outputLines: [] };
+      }
+      const allLines = text.split('\n');
+      if (allLines.length > 0 && allLines[allLines.length - 1] === '') {
+        allLines.pop();
+      }
+      return processAllLines({ allLines, name });
     };
 
     const inputFiles = files.length === 0 ? ['-'] : files;
@@ -606,8 +613,9 @@ export const grepCommandDefinition: WeshCommandDefinition = {
 
     for (const { file, displayName } of expandedInputs) {
       try {
-        const stream = file === '-'
-          ? new ReadableStream<Uint8Array>({
+        let report: GrepFileReport;
+        if (file === '-') {
+          const stream = new ReadableStream<Uint8Array>({
             async pull(controller) {
               const buf = new Uint8Array(4096);
               const { bytesRead } = await context.stdin.read({ buffer: buf });
@@ -617,20 +625,13 @@ export const grepCommandDefinition: WeshCommandDefinition = {
               }
               controller.enqueue(buf.subarray(0, bytesRead));
             }
-          })
-          : await (async () => {
-            const fullPath = resolvePath({ cwd: context.cwd, path: file });
-            const handle = await context.files.open({
-              path: fullPath,
-              flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-            });
-            return handleToStream({ handle });
-          })();
-
-        const report = await processStream({
-          stream,
-          name: displayName,
-        });
+          });
+          report = await processStream({ stream, name: displayName });
+        } else {
+          const fullPath = resolvePath({ cwd: context.cwd, path: file });
+          const text = await readFileAsText({ files: context.files, path: fullPath });
+          report = processText({ text, name: displayName });
+        }
 
         if (report.matched) {
           sawMatch = true;

@@ -2,7 +2,7 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { handleToStream, readFile, writeFile } from '@/services/wesh/utils/fs';
+import { readFile, readFileAsText, writeFile } from '@/services/wesh/utils/fs';
 
 type SedAddress =
   | { kind: 'line'; lineNumber: number }
@@ -882,11 +882,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
 
       try {
         const fullPath = file.startsWith('/') ? file : `${context.cwd}/${file}`;
-        const handle = await context.files.open({
-          path: fullPath,
-          flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-        });
-        const input = await readStreamText({ stream: handleToStream({ handle }) });
+        const input = await readFileAsText({ files: context.files, path: fullPath });
         const output = processText({ input });
 
         if (inPlace) {

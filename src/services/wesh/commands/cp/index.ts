@@ -1,7 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, streamToHandle } from '@/services/wesh/utils/fs';
+import { handleToStream, streamToFilePath } from '@/services/wesh/utils/fs';
 
 type CpSymlinkMode = 'physical' | 'logical' | 'command-line';
 
@@ -167,19 +167,27 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       srcPath: string;
       destPath: string;
     }) => {
-      const srcH = await context.files.open({
-        path: srcPath,
-        flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-      });
-      const destH = await context.files.open({
-        path: destPath,
-        flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' }
-      });
+      const blobResult = await context.files.tryReadBlobEfficiently({ path: srcPath });
+      let stream: ReadableStream<Uint8Array>;
+      switch (blobResult.kind) {
+      case 'blob':
+        stream = blobResult.blob.stream();
+        break;
+      case 'fallback-required': {
+        const handle = await context.files.open({
+          path: srcPath,
+          flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+        });
+        stream = handleToStream({ handle });
+        break;
+      }
+      default: {
+        const _ex: never = blobResult;
+        throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
+      }
+      }
 
-      await streamToHandle({
-        stream: handleToStream({ handle: srcH }),
-        handle: destH
-      });
+      await streamToFilePath({ files: context.files, path: destPath, stream, mode: 'truncate' });
     };
 
     const removeExistingTargetIfNeeded = async ({
