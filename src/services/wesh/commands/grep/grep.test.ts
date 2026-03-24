@@ -482,4 +482,38 @@ notes.txt-3-two
     expect(stdout.text).toBe('');
     expect(result.exitCode).toBe(1);
   });
+
+  it('reports "Permission denied" when getDirectoryHandle throws NotAllowedError', async () => {
+    class RestrictedDirectoryHandle extends MockFileSystemDirectoryHandle {
+      override async getDirectoryHandle(
+        name: string,
+        options?: FileSystemGetDirectoryOptions,
+      ): Promise<MockFileSystemDirectoryHandle> {
+        if (name === 'restricted') {
+          throw new DOMException(
+            "Failed to execute 'getDirectoryHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.",
+            'NotAllowedError',
+          );
+        }
+        return super.getDirectoryHandle(name, options);
+      }
+    }
+
+    const restrictedRoot = new RestrictedDirectoryHandle('root');
+    const restrictedWesh = new Wesh({ rootHandle: restrictedRoot as unknown as FileSystemDirectoryHandle });
+    await restrictedWesh.init();
+
+    const stdout = createWeshWriteCaptureHandle();
+    const stderr = createWeshWriteCaptureHandle();
+
+    const result = await restrictedWesh.execute({
+      script: 'grep alpha restricted/notes.txt',
+      stdin: createWeshReadFileHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stderr.text).toContain('Permission denied');
+    expect(result.exitCode).toBe(2);
+  });
 });

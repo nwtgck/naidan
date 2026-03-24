@@ -1336,6 +1336,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       throw new Error(`Path not found: ${path}`);
     }
 
+    if (error instanceof DOMException && error.name === 'NotAllowedError') {
+      throw new Error(`Permission denied: ${path}: ${error.message}`);
+    }
+
     throw error;
   }
 
