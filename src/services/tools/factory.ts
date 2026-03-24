@@ -1,21 +1,28 @@
 import type { Tool } from './types';
-import type { Settings } from '@/models/types';
+import type { Settings, Mount } from '@/models/types';
 import { CalculatorTool } from './calculator';
 import { createWeshTool } from './wesh';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh-worker-client';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
+import { generateId } from '@/utils/id';
+import { OPFS_TMP_DIR } from '@/models/constants';
 import type { WeshMount } from '@/services/wesh/types';
 
 /**
  * Dynamically creates and returns a list of enabled tools based on settings.
+ * chatMounts are per-chat mounts that are merged with global settings.mounts.
  */
 export async function getEnabledTools({
   enabledNames,
   settings,
+  chatMounts,
+  chatId,
 }: {
   enabledNames: string[];
   settings: Settings;
+  chatMounts?: Mount[];
+  chatId: string;
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
 
@@ -31,28 +38,37 @@ export async function getEnabledTools({
         break;
       }
 
-      const root = await navigator.storage.getDirectory();
-      const rootHandle = await root.getDirectoryHandle('naidan-wesh-runtime', { create: true });
+      // Create a unique writable /tmp directory for this session.
+      // The root `/` uses a virtual read-only handle — no real OPFS dir needed.
+      // TODO: clean up naidan-tmp/<chatId>-* dirs on session dispose
+      const opfsRoot = await navigator.storage.getDirectory();
+      const tmpBase = await opfsRoot.getDirectoryHandle(OPFS_TMP_DIR, { create: true });
+      const tmpHandle = await tmpBase.getDirectoryHandle(`${chatId}-${generateId()}`, { create: true });
 
-      // Resolve mounts from settings
-      const resolvedMounts: WeshMount[] = [];
-      for (const m of settings.mounts) {
+      // Resolve mounts from settings (global) + chatMounts (per-chat)
+      const allMounts = [...settings.mounts, ...(chatMounts ?? [])];
+      const resolvedMounts: WeshMount[] = [
+        { path: '/tmp', handle: tmpHandle, readOnly: false },
+      ];
+      for (const m of allMounts) {
         const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
         if (handle) {
           resolvedMounts.push({
             path: m.mountPath,
             handle,
-            readOnly: false, // Default to read-write for now as per MountVolume structure
+            readOnly: m.readOnly,
           });
         }
       }
 
+      // Start in /home/user only when at least one mount lives there.
+      const hasHomeUserMount = resolvedMounts.some(m => m.path.startsWith('/home/user/'));
       const client = await createFileProtocolCompatibleWeshWorkerClient({
-        rootHandle,
+        rootHandle: 'readonly',
         mounts: resolvedMounts,
         user: 'user',
         initialEnv: {},
-        initialCwd: undefined,
+        initialCwd: hasHomeUserMount ? '/home/user' : undefined,
       });
 
       tools.push(createWeshTool({

@@ -34,7 +34,7 @@ const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted(() => import('./
 // Lazily load the media shelf, prefetch on mounted.
 const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./ChatMediaShelf.vue'));
 import {
-  Paperclip, X, GitFork, RefreshCw,
+  X, GitFork, RefreshCw,
   ArrowUp, Settings2, Download, MoreVertical, Bug,
   Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap,
   Printer, Link
@@ -116,8 +116,11 @@ async function handleDrop(event: DragEvent) {
   event.preventDefault();
   isDragging.value = false;
 
-  if (event.dataTransfer?.files) {
-    await chatInputRef.value?.processFiles(Array.from(event.dataTransfer.files));
+  if (event.dataTransfer?.items) {
+    // Pass DataTransferItem[] to processDropItems which handles files AND directories.
+    // Items must be collected here (synchronously) before any await, as the DataTransfer
+    // object is cleared when control returns to the browser event loop.
+    await chatInputRef.value?.processDropItems(Array.from(event.dataTransfer.items));
   }
 }
 
@@ -580,8 +583,8 @@ watch(
       data-testid="drag-overlay"
     >
       <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-xl flex items-center gap-3 animate-in zoom-in duration-200">
-        <Paperclip class="w-6 h-6 text-blue-500" />
-        <span class="text-lg font-bold text-gray-800 dark:text-gray-100">Drop images to attach</span>
+        <FolderInput class="w-6 h-6 text-blue-500" />
+        <span class="text-lg font-bold text-gray-800 dark:text-gray-100">Drop files or folders to attach</span>
       </div>
     </div>
 

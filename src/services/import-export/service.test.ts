@@ -96,6 +96,7 @@ describe('ImportExportService', () => {
     originMessageId: undefined,
     systemPrompt: undefined,
     lmParameters: undefined,
+    mounts: undefined,
     ...overrides,
   });
 

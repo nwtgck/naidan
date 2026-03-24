@@ -17,7 +17,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   initialEnv,
   initialCwd,
 }: {
-  rootHandle: FileSystemDirectoryHandle
+  rootHandle: FileSystemDirectoryHandle | 'readonly'
   mounts: WeshMount[]
   user: string
   initialEnv: Record<string, string>

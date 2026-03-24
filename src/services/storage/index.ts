@@ -1,4 +1,4 @@
-import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/models/types';
+import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Hierarchy, MessageNode, StorageSnapshot, BinaryObject, Volume, VolumeType, Mount } from '@/models/types';
 import type { IStorageProvider } from './interface';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
@@ -372,6 +372,36 @@ export class StorageService {
       return {
         ...settings,
         mounts: settings.mounts.filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
+      };
+    });
+  }
+
+  async addMountToChat({ chatId, mount }: { chatId: string; mount: Mount }): Promise<void> {
+    await this.updateChatMeta(chatId, (current) => {
+      if (!current) throw new Error(`Chat not found: ${chatId}`);
+      const existing = current.mounts ?? [];
+      return { ...current, mounts: [...existing, mount] };
+    });
+  }
+
+  async removeMountFromChat({ chatId, volumeId }: { chatId: string; volumeId: string }): Promise<void> {
+    await this.updateChatMeta(chatId, (current) => {
+      if (!current) throw new Error(`Chat not found: ${chatId}`);
+      return {
+        ...current,
+        mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
+      };
+    });
+  }
+
+  async updateChatMount({ chatId, volumeId, readOnly }: { chatId: string; volumeId: string; readOnly: boolean }): Promise<void> {
+    await this.updateChatMeta(chatId, (current) => {
+      if (!current) throw new Error(`Chat not found: ${chatId}`);
+      return {
+        ...current,
+        mounts: (current.mounts ?? []).map(m =>
+          m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m
+        ),
       };
     });
   }

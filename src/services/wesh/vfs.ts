@@ -1,3 +1,4 @@
+import { ReadonlyDirectoryHandle } from './readonly-directory-handle';
 import type {
   WeshIVirtualFileSystem,
   WeshFileHandle,
@@ -381,8 +382,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   private specialFiles: Map<string, () => WeshFileHandle> = new Map();
   private openFifos: Map<string, FifoHandle> = new Map();
 
-  constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle }) {
-    this.mount({ path: '/', handle: rootHandle, readOnly: false });
+  constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle }) {
+    const rootReadOnly = rootHandle instanceof ReadonlyDirectoryHandle;
+    this.mount({ path: '/', handle: rootHandle as FileSystemDirectoryHandle, readOnly: rootReadOnly });
 
     this.registerSpecialFile({ path: '/dev/null', handler: () => new DevNullHandle() });
     this.registerSpecialFile({ path: '/dev/zero', handler: () => new DevZeroHandle() });

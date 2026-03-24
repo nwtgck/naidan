@@ -299,66 +299,6 @@ export type MessageNodeDto =
       results: z.infer<typeof ToolExecutionResultSchemaDto>[];
     });
 
-/**
- * Chat Metadata
- * Contains all attributes except the heavy message tree.
- */
-export const ChatMetaSchemaDto = z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  currentLeafId: orUndefined(z.string()),
-  updatedAt: z.number(),
-  createdAt: z.number(),
-  debugEnabled: z.boolean().optional().default(false),
-
-  endpoint: orUndefined(EndpointSchemaDto),
-  modelId: orUndefined(z.string()),
-  autoTitleEnabled: orUndefined(z.boolean()),
-  titleModelId: orUndefined(z.string()),
-  originChatId: orUndefined(z.string()),
-  originMessageId: orUndefined(z.string()),
-
-  systemPrompt: orUndefined(SystemPromptSchemaDto),
-  lmParameters: orUndefined(LmParametersSchemaDto),
-});
-
-export type ChatMetaDto = z.infer<typeof ChatMetaSchemaDto>;
-
-/**
- * Chat Meta Index (Legacy/Bulk operations)
- */
-export const ChatMetaIndexSchemaDto = z.object({
-  entries: z.array(ChatMetaSchemaDto),
-});
-
-export type ChatMetaIndexDto = z.infer<typeof ChatMetaIndexSchemaDto>;
-
-/**
- * Chat Content
- * Contains the heavy message tree structure.
- * Stored in individual files to scale.
- */
-export const ChatContentSchemaDto = z.object({
-  root: MessageBranchSchemaDto,
-  currentLeafId: orUndefined(z.string()),
-});
-
-export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
-
-/**
- * Combined Chat DTO
- * Used for memory handling and migration (full data export).
- */
-export const ChatSchemaDto = ChatMetaSchemaDto.extend({
-  root: orUndefined(MessageBranchSchemaDto),
-  currentLeafId: orUndefined(z.string()),
-
-  // Legacy support field
-  messages: orUndefined(z.array(z.unknown())),
-});
-
-export type ChatDto = z.infer<typeof ChatSchemaDto>;
-
 // --- Volume Management & Mounts ---
 // User-facing label: "Folder". All internal identifiers use "volume".
 
@@ -401,6 +341,67 @@ export const MountSchemaDto = z.discriminatedUnion('type', [
   MountVolumeSchemaDto,
 ]);
 export type MountDto = z.infer<typeof MountSchemaDto>;
+
+/**
+ * Chat Metadata
+ * Contains all attributes except the heavy message tree.
+ */
+export const ChatMetaSchemaDto = z.object({
+  id: z.string(),
+  title: z.string().nullable(),
+  currentLeafId: orUndefined(z.string()),
+  updatedAt: z.number(),
+  createdAt: z.number(),
+  debugEnabled: z.boolean().optional().default(false),
+
+  endpoint: orUndefined(EndpointSchemaDto),
+  modelId: orUndefined(z.string()),
+  autoTitleEnabled: orUndefined(z.boolean()),
+  titleModelId: orUndefined(z.string()),
+  originChatId: orUndefined(z.string()),
+  originMessageId: orUndefined(z.string()),
+
+  systemPrompt: orUndefined(SystemPromptSchemaDto),
+  lmParameters: orUndefined(LmParametersSchemaDto),
+  mounts: orUndefined(z.array(MountSchemaDto)),
+});
+
+export type ChatMetaDto = z.infer<typeof ChatMetaSchemaDto>;
+
+/**
+ * Chat Meta Index (Legacy/Bulk operations)
+ */
+export const ChatMetaIndexSchemaDto = z.object({
+  entries: z.array(ChatMetaSchemaDto),
+});
+
+export type ChatMetaIndexDto = z.infer<typeof ChatMetaIndexSchemaDto>;
+
+/**
+ * Chat Content
+ * Contains the heavy message tree structure.
+ * Stored in individual files to scale.
+ */
+export const ChatContentSchemaDto = z.object({
+  root: MessageBranchSchemaDto,
+  currentLeafId: orUndefined(z.string()),
+});
+
+export type ChatContentDto = z.infer<typeof ChatContentSchemaDto>;
+
+/**
+ * Combined Chat DTO
+ * Used for memory handling and migration (full data export).
+ */
+export const ChatSchemaDto = ChatMetaSchemaDto.extend({
+  root: orUndefined(MessageBranchSchemaDto),
+  currentLeafId: orUndefined(z.string()),
+
+  // Legacy support field
+  messages: orUndefined(z.array(z.unknown())),
+});
+
+export type ChatDto = z.infer<typeof ChatSchemaDto>;
 
 // --- Provider Profiles ---
 

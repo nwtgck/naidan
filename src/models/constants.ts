@@ -22,3 +22,6 @@ export const LOCK_METADATA = `${STORAGE_KEY_PREFIX}sync:lock:metadata`;
 export const LOCK_CHAT_CONTENT_PREFIX = `${STORAGE_KEY_PREFIX}sync:lock:chat_content:`;
 
 export const UNTITLED_CHAT_TITLE = 'New Chat';
+
+/** OPFS directory used for per-session shell /tmp scratch space. */
+export const OPFS_TMP_DIR = 'naidan-tmp';

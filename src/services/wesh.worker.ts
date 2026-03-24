@@ -1,5 +1,6 @@
 import * as Comlink from 'comlink'
 import { Wesh } from '@/services/wesh'
+import { ReadonlyDirectoryHandle } from '@/services/wesh/readonly-directory-handle'
 import { createWeshReadFileHandleFromText } from '@/services/wesh/utils/test-stream'
 import { createWeshWriteFileHandle } from '@/services/wesh/utils/stream'
 import {
@@ -54,8 +55,12 @@ const weshWorker: IWeshWorker = {
   async init({ request }) {
     const validated = weshWorkerInitRequestSchema.parse(request)
 
+    const rootHandle = validated.rootHandle === 'readonly'
+      ? new ReadonlyDirectoryHandle()
+      : validated.rootHandle;
+
     wesh = new Wesh({
-      rootHandle: validated.rootHandle,
+      rootHandle,
       user: validated.user,
       initialEnv: validated.initialEnv,
       initialCwd: validated.initialCwd,

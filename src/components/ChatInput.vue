@@ -7,7 +7,13 @@ import { generateId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
+import ChatAttachMenu from './ChatAttachMenu.vue';
 import { useReasoning } from '@/composables/useReasoning';
+import { useChatTools } from '@/composables/useChatTools';
+import { storageService } from '@/services/storage';
+import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
+import { useToast } from '@/composables/useToast';
+import { useConfirm } from '@/composables/useConfirm';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
@@ -15,13 +21,16 @@ const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./
 
 import {
   Square, Minimize2, Maximize2, Send,
-  Paperclip, X, Image,
-  ChevronDown, ChevronUp, Edit2, FileEdit
+  X, Image,
+  ChevronDown, ChevronUp, Edit2, FileEdit,
+  Folder, Loader2, Lock, Unlock,
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import type { Attachment, Chat, LmParameters } from '@/models/types';
 
 const chatStore = useChat();
+const { setToolEnabled } = useChatTools();
+const { addToast } = useToast();
 const reasoningStore = useReasoning();
 const router = useRouter();
 const { getDraft, saveDraft, clearDraft } = useChatDraft();
@@ -44,7 +53,11 @@ const {
   updateSeed: _updateSeed,
   setImageModel,
   getSelectedImageModel,
+  addMountToChat,
+  removeMountFromChat,
+  updateChatMount,
 } = chatStore;
+const { showConfirm } = useConfirm();
 
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
 
@@ -192,7 +205,16 @@ const sortedAvailableModels = computed(() => naturalSort(availableModels?.value 
 
 const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
-const fileInputRef = ref<HTMLInputElement | null>(null);
+const hasFileSystemAccess = checkFileSystemAccessSupport();
+
+type ActiveCopy = {
+  id: string;
+  name: string;
+  progress: { processed: number; total: number } | null;
+  abort: AbortController;
+};
+const activeCopies = ref<ActiveCopy[]>([]);
+
 const isMaximized = ref(false); // New state for maximize button
 const isOverLimit = ref(false); // New state to show maximize button only when content is long
 const isAdvancedEditorOpen = ref(false);
@@ -292,10 +314,6 @@ watch(attachments, (newAtts) => {
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
-function triggerFileInput() {
-  fileInputRef.value?.click();
-}
-
 async function processFiles(files: File[]) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
@@ -316,12 +334,292 @@ async function processFiles(files: File[]) {
   nextTick(adjustTextareaHeight);
 }
 
-async function handleFileSelect(event: Event) {
-  const target = event.target as HTMLInputElement;
-  if (!target.files) return;
+function generateChatMountPath({ baseName }: { baseName: string }): string {
+  const existingPaths = (currentChat.value?.mounts ?? []).map(m => m.mountPath);
+  const sanitized = baseName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  let path = `/home/user/${sanitized}`;
+  const basePath = path;
+  let suffix = 2;
+  while (existingPaths.includes(path)) {
+    path = `${basePath}-${suffix}`;
+    suffix++;
+  }
+  return path;
+}
 
-  await processFiles(Array.from(target.files));
-  target.value = ''; // Reset input
+async function finishMount({ volumeId, name }: { volumeId: string; name: string }) {
+  if (!currentChat.value) return;
+  const mountPath = generateChatMountPath({ baseName: name });
+  await addMountToChat({
+    chatId: currentChat.value.id,
+    mount: { type: 'volume', volumeId, mountPath, readOnly: true },
+  });
+  setToolEnabled({ name: 'shell_execute', enabled: true });
+}
+
+async function attachCopyAsVolume({ entries, name }: {
+  entries: Array<{ file: File; relativePath: string }>;
+  name: string;
+}) {
+  if (!currentChat.value) return;
+  const copyId = generateId();
+  const abort = new AbortController();
+  const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
+  activeCopies.value = [...activeCopies.value, copy];
+  try {
+    const vol = await storageService.createVolumeFromFiles({
+      name,
+      entries,
+      signal: abort.signal,
+      onProgress: ({ processed, total }) => {
+        activeCopies.value = activeCopies.value.map(c =>
+          c.id === copyId ? { ...c, progress: { processed, total } } : c
+        );
+      },
+    });
+    await finishMount({ volumeId: vol.id, name });
+  } catch (e) {
+    if ((e as Error).name !== 'AbortError') {
+      addToast({ message: `Failed to copy "${name}": ${(e as Error).message}` });
+    }
+  } finally {
+    activeCopies.value = activeCopies.value.filter(c => c.id !== copyId);
+  }
+}
+
+async function attachLinkAsVolume() {
+  if (!currentChat.value) return;
+  try {
+    // @ts-expect-error: File System Access API
+    const handle = await window.showDirectoryPicker({ mode: 'read' });
+    const vol = await storageService.createVolume({ name: handle.name, type: 'host', sourceHandle: handle });
+    await finishMount({ volumeId: vol.id, name: vol.name });
+  } catch (e) {
+    if ((e as Error).name !== 'AbortError') {
+      addToast({ message: `Failed to link folder: ${(e as Error).message}` });
+    }
+  }
+}
+
+// Handlers for ChatAttachMenu emits
+async function onAttachFilesSelected(files: File[]) {
+  if (files.length === 0) return;
+  if (files.every(f => f.type.startsWith('image/'))) {
+    await processFiles(files);
+  } else {
+    const name = files.length === 1 ? files[0]!.name : `${files.length} files`;
+    const entries = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
+    await attachCopyAsVolume({ entries, name });
+  }
+}
+
+async function onAttachFolderCopy(folderName: string, files: File[]) {
+  const entries = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
+  await attachCopyAsVolume({ entries, name: folderName });
+}
+
+// Collects all files from a FileSystemDirectoryEntry recursively.
+// relativePath is relative to the dropped directory root (does not include the root name).
+async function collectFilesFromDirectoryEntry(
+  dirEntry: FileSystemDirectoryEntry,
+  prefix = '',
+): Promise<Array<{ file: File; relativePath: string }>> {
+  const reader = dirEntry.createReader();
+  const allEntries: FileSystemEntry[] = [];
+  // readEntries returns at most 100 items per call — must loop until empty batch
+  for (;;) {
+    const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+      reader.readEntries(resolve, reject)
+    );
+    if (batch.length === 0) break;
+    allEntries.push(...batch);
+  }
+  const results: Array<{ file: File; relativePath: string }> = [];
+  for (const entry of allEntries) {
+    const entryPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve, reject) =>
+        (entry as FileSystemFileEntry).file(resolve, reject)
+      );
+      results.push({ file, relativePath: entryPath });
+    } else {
+      const sub = await collectFilesFromDirectoryEntry(entry as FileSystemDirectoryEntry, entryPath);
+      results.push(...sub);
+    }
+  }
+  return results;
+}
+
+// Called by ChatArea when files/directories are dropped onto the chat area.
+// Phase 1 (synchronous): collect handles/entries while DataTransfer is still valid.
+// Phase 2 (async): process them — directories become host volumes (link) or OPFS copies.
+async function processDropItems(items: DataTransferItem[]) {
+  if (!currentChat.value) return;
+
+  type DropCollected =
+    | { kind: 'fsa-handle'; promise: Promise<FileSystemHandle> }
+    | { kind: 'entry'; entry: FileSystemEntry }
+    | { kind: 'raw-file'; item: DataTransferItem };
+
+  // Phase 1: collect synchronously (DataTransfer items expire after event handler returns)
+  const collected: DropCollected[] = [];
+  for (const item of items) {
+    if (item.kind !== 'file') continue;
+    if ('getAsFileSystemHandle' in item) {
+      // File System Access API (Chromium) — lets us get a real FileSystemDirectoryHandle from the drop
+      collected.push({
+        kind: 'fsa-handle',
+        promise: (item as DataTransferItem & {
+          getAsFileSystemHandle(): Promise<FileSystemHandle>;
+        }).getAsFileSystemHandle(),
+      });
+    } else {
+      const entry = item.webkitGetAsEntry();
+      collected.push(entry ? { kind: 'entry', entry } : { kind: 'raw-file', item });
+    }
+  }
+
+  // Phase 2: process (can be async now)
+  const plainFiles: File[] = [];
+  for (const c of collected) {
+    switch (c.kind) {
+    case 'fsa-handle': {
+      const handle = await c.promise;
+      switch (handle.kind) {
+      case 'directory': {
+        // Attach as host volume — read permission is already granted by the browser drop gesture
+        const dirHandle = handle as FileSystemDirectoryHandle;
+        const vol = await storageService.createVolume({ name: dirHandle.name, type: 'host', sourceHandle: dirHandle });
+        await finishMount({ volumeId: vol.id, name: vol.name });
+        break;
+      }
+      case 'file':
+        plainFiles.push(await (handle as FileSystemFileHandle).getFile());
+        break;
+      default: {
+        const _ex: never = handle.kind;
+        throw new Error(`Unhandled handle kind: ${_ex}`);
+      }
+      }
+      break;
+    }
+    case 'entry': {
+      const { entry } = c;
+      if (entry.isFile) {
+        const file = await new Promise<File>((resolve, reject) =>
+          (entry as FileSystemFileEntry).file(resolve, reject)
+        );
+        plainFiles.push(file);
+      } else if (entry.isDirectory) {
+        // Non-Chromium fallback: collect files and copy to OPFS
+        const entries = await collectFilesFromDirectoryEntry(entry as FileSystemDirectoryEntry);
+        await attachCopyAsVolume({ entries, name: entry.name });
+      }
+      break;
+    }
+    case 'raw-file': {
+      const file = c.item.getAsFile();
+      if (file) plainFiles.push(file);
+      break;
+    }
+    default: {
+      const _ex: never = c;
+      throw new Error(`Unhandled drop kind: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  if (plainFiles.length > 0) {
+    await onAttachFilesSelected(plainFiles);
+  }
+}
+
+async function handleDetachMount({ volumeId }: { volumeId: string }) {
+  if (!currentChat.value) return;
+  let volumeType: 'opfs' | 'host' | undefined;
+  for await (const vol of storageService.listVolumes()) {
+    if (vol.id === volumeId) {
+      volumeType = vol.type; break;
+    }
+  }
+
+  let title: string;
+  let message: string;
+  let confirmButtonText: string;
+  switch (volumeType) {
+  case 'host':
+    title = 'Unlink Folder';
+    message = 'Stop using this folder in this chat? Your original files on disk stay safe and intact.';
+    confirmButtonText = 'Unlink';
+    break;
+  case 'opfs':
+  case undefined:
+    title = 'Remove Folder';
+    message = 'Remove the copied folder from this chat? The copy stored in the browser will be deleted.';
+    confirmButtonText = 'Remove';
+    break;
+  default: {
+    const _ex: never = volumeType;
+    throw new Error(`Unhandled volume type: ${_ex}`);
+  }
+  }
+
+  const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
+  if (!confirmed) return;
+  await removeMountFromChat({ chatId: currentChat.value.id, volumeId });
+  if (volumeType === 'opfs' || volumeType === undefined) {
+    await storageService.deleteVolume({ volumeId });
+  }
+}
+
+async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
+  if (!currentChat.value) return;
+
+  let volumeType: 'opfs' | 'host' | undefined;
+  for await (const vol of storageService.listVolumes()) {
+    if (vol.id === volumeId) {
+      volumeType = vol.type; break;
+    }
+  }
+
+  switch (volumeType) {
+  case 'host': {
+    const handle = await storageService.getVolumeDirectoryHandle({ volumeId });
+    if (handle && !readOnly) {
+      // Enabling writes: request write permission from the browser.
+      // The handle was obtained with mode:'read', so writes will fail unless explicitly upgraded.
+      type FSHandleWithPermission = FileSystemDirectoryHandle & {
+        requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
+      };
+      const result = await (handle as FSHandleWithPermission).requestPermission({ mode: 'readwrite' });
+      // Note: downgrading back to read-only cannot be enforced at the browser level.
+      // requestPermission({ mode: 'read' }) on a readwrite handle just returns 'granted' immediately —
+      // the browser has no API to revoke a previously granted write permission.
+      // The readOnly flag is therefore enforced by Wesh only when reducing from write to read.
+      switch (result) {
+      case 'granted':
+        break;
+      case 'denied':
+      case 'prompt':
+        return;
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled permission state: ${_ex}`);
+      }
+      }
+    }
+    break;
+  }
+  case 'opfs':
+  case undefined:
+    break;
+  default: {
+    const _ex: never = volumeType;
+    throw new Error(`Unhandled volume type: ${_ex}`);
+  }
+  }
+
+  await updateChatMount({ chatId: currentChat.value.id, volumeId, readOnly });
 }
 
 async function handlePaste(event: ClipboardEvent) {
@@ -736,7 +1034,7 @@ function focusInput() {
   }
 }
 
-defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, formatLabel,
+defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, processDropItems, formatLabel,
   __testOnly: {
     attachments,
     editingAttachmentId,
@@ -768,6 +1066,73 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
     >
       <!-- Hit area extension: expands the interaction zone around the card to prevent jittering during transitions -->
       <div class="absolute -inset-x-4 -top-4 -bottom-16 pointer-events-auto -z-10" data-testid="hit-area-extension"></div>
+
+      <!-- Active copy progress bars -->
+      <div v-if="activeCopies.length > 0" class="px-4 pt-4 space-y-2" data-testid="copy-progress-area">
+        <div
+          v-for="copy in activeCopies"
+          :key="copy.id"
+          class="rounded-xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden"
+          data-testid="copy-progress"
+        >
+          <div class="px-3 pt-3 pb-2.5">
+            <div class="flex items-center justify-between mb-2">
+              <span class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
+                <Loader2 class="w-3.5 h-3.5 animate-spin shrink-0" />
+                Copying "{{ copy.name }}"
+              </span>
+              <div class="flex items-center gap-3">
+                <span v-if="copy.progress" class="text-[11px] font-semibold text-blue-500 dark:text-blue-400 tabular-nums">
+                  {{ copy.progress.processed }} / {{ copy.progress.total }}
+                </span>
+                <button
+                  @click="copy.abort.abort()"
+                  class="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  data-testid="copy-cancel-btn"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+            <div class="h-1 w-full bg-blue-200/70 dark:bg-blue-800/50 rounded-full overflow-hidden">
+              <div
+                class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-200"
+                :style="{ width: `${copy.progress ? (copy.progress.processed / copy.progress.total) * 100 : 5}%` }"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Folder/File Mounts attached to this chat -->
+      <div v-if="currentChat?.mounts && currentChat.mounts.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="chat-mounts-preview">
+        <div
+          v-for="mount in currentChat.mounts"
+          :key="mount.volumeId"
+          class="flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-medium"
+          data-testid="chat-mount-badge"
+        >
+          <Folder class="w-3.5 h-3.5 shrink-0" />
+          <span class="max-w-[120px] truncate mx-1">{{ mount.mountPath.replace(/^\/home\/user\//, '') }}</span>
+          <button
+            @click="handleToggleMountReadOnly({ volumeId: mount.volumeId, readOnly: !mount.readOnly })"
+            :title="mount.readOnly ? 'Read-only — click to allow write' : 'Read & write — click to restrict'"
+            class="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
+            data-testid="mount-toggle-readonly"
+          >
+            <Lock v-if="mount.readOnly" class="w-3 h-3 text-green-500 dark:text-green-400" />
+            <Unlock v-else class="w-3 h-3 text-amber-500 dark:text-amber-400" />
+          </button>
+          <button
+            @click="handleDetachMount({ volumeId: mount.volumeId })"
+            title="Remove"
+            class="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors text-blue-400 hover:text-red-500 dark:hover:text-red-400"
+            data-testid="mount-remove-btn"
+          >
+            <X class="w-3 h-3" />
+          </button>
+        </div>
+      </div>
 
       <!-- Attachment Previews -->
       <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
@@ -862,21 +1227,12 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             />
           </div>
 
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept="image/*"
-            multiple
-            class="hidden"
-            @change="handleFileSelect"
+          <ChatAttachMenu
+            :has-file-system-access="hasFileSystemAccess"
+            @files-selected="onAttachFilesSelected"
+            @folder-copy="onAttachFolderCopy"
+            @folder-link="attachLinkAsVolume"
           />
-          <button
-            @click="triggerFileInput"
-            class="p-2 rounded-xl text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            title="Attach images"
-          >
-            <Paperclip class="w-5 h-5" />
-          </button>
 
           <ChatToolsMenu
             :can-generate-image="canGenerateImage && hasImageModel"
