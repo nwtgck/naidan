@@ -72,9 +72,52 @@ function globToRegExp({ pattern }: { pattern: string }): RegExp {
   return new RegExp(source);
 }
 
+function convertBREPattern({ pattern }: { pattern: string }): string {
+  let result = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const char = pattern[i]!;
+    if (char === '[') {
+      // Pass through character classes unchanged
+      result += char;
+      i++;
+      // Handle negation and leading ] inside class
+      if (i < pattern.length && pattern[i] === '^') {
+        result += pattern[i++]!;
+      }
+      if (i < pattern.length && pattern[i] === ']') {
+        result += pattern[i++]!;
+      }
+      while (i < pattern.length && pattern[i] !== ']') {
+        result += pattern[i++]!;
+      }
+      if (i < pattern.length) {
+        result += pattern[i++]!;
+      } // closing ]
+    } else if (char === '\\' && i + 1 < pattern.length) {
+      const next = pattern[i + 1]!;
+      switch (next) {
+      case '|': result += '|'; i += 2; break;
+      case '(': result += '('; i += 2; break;
+      case ')': result += ')'; i += 2; break;
+      case '{': result += '{'; i += 2; break;
+      case '}': result += '}'; i += 2; break;
+      case '+': result += '+'; i += 2; break;
+      case '?': result += '?'; i += 2; break;
+      default:  result += char + next; i += 2; break;
+      }
+    } else {
+      result += char;
+      i++;
+    }
+  }
+  return result;
+}
+
 function buildGrepRegex({
   patterns,
   fixedStrings,
+  extendedRegexp,
   wordRegexp,
   ignoreCase,
   exactLine,
@@ -82,13 +125,14 @@ function buildGrepRegex({
 }: {
   patterns: string[];
   fixedStrings: boolean;
+  extendedRegexp: boolean;
   wordRegexp: boolean;
   ignoreCase: boolean;
   exactLine: boolean;
   global: boolean;
 }): RegExp {
   const source = patterns
-    .map((pattern) => (fixedStrings ? escapeRegExp({ value: pattern }) : pattern))
+    .map((pattern) => (fixedStrings ? escapeRegExp({ value: pattern }) : (!extendedRegexp ? convertBREPattern({ pattern }) : pattern)))
     .map((pattern) => (wordRegexp ? `\\b(?:${pattern})\\b` : `(?:${pattern})`))
     .map((pattern) => (exactLine ? `^(?:${pattern})$` : pattern))
     .join('|');
@@ -228,6 +272,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
     const ignoreCase = parsed.optionValues.ignoreCase === true;
     const fixedStrings = parsed.optionValues.fixedStrings === true;
     const wordRegexp = parsed.optionValues.wordRegexp === true;
+    const extendedRegexp = parsed.optionValues.extendedRegexp === true;
 
     let regex: RegExp;
     let globalRegex: RegExp;
@@ -235,6 +280,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       regex = buildGrepRegex({
         patterns,
         fixedStrings,
+        extendedRegexp,
         wordRegexp,
         ignoreCase,
         exactLine,
@@ -243,6 +289,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       globalRegex = buildGrepRegex({
         patterns,
         fixedStrings,
+        extendedRegexp,
         wordRegexp,
         ignoreCase,
         exactLine,

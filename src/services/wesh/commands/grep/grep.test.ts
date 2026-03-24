@@ -431,4 +431,55 @@ notes.txt-3-two
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('supports BRE \\| alternation in default mode', async () => {
+    await writeFile({ path: 'notes.txt', data: 'alpha\nbeta\ngamma\n' });
+
+    const { result, stdout, stderr } = await execute({ script: String.raw`grep 'alpha\|gamma' notes.txt` });
+
+    expect(stdout.text).toBe('alpha\ngamma\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports BRE \\( \\) grouping with \\| alternation', async () => {
+    await writeFile({ path: 'notes.txt', data: 'foobar\nfoobaz\nfoo\n' });
+
+    const { result, stdout, stderr } = await execute({ script: String.raw`grep 'foo\(bar\|baz\)' notes.txt` });
+
+    expect(stdout.text).toBe('foobar\nfoobaz\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports BRE \\+ and \\? GNU extensions', async () => {
+    await writeFile({ path: 'notes.txt', data: 'color\ncolour\ncolouur\n' });
+
+    const { result, stdout, stderr } = await execute({ script: String.raw`grep 'colou\?r' notes.txt` });
+
+    expect(stdout.text).toBe('color\ncolour\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('does not convert \\| inside character classes', async () => {
+    await writeFile({ path: 'notes.txt', data: 'a|b\nab\na\n' });
+
+    const { result, stdout, stderr } = await execute({ script: String.raw`grep '[a\|b]' notes.txt` });
+
+    expect(stdout.text).toBe('a|b\nab\na\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('does not apply BRE conversion in -E (ERE) mode', async () => {
+    await writeFile({ path: 'notes.txt', data: 'alpha\nbeta\n' });
+
+    // In ERE mode, \| is an escaped | (literal pipe), not alternation
+    const { result, stdout } = await execute({ script: String.raw`grep -E 'alpha\|beta' notes.txt` });
+
+    // Should match neither since \| in ERE means literal |
+    expect(stdout.text).toBe('');
+    expect(result.exitCode).toBe(1);
+  });
 });
