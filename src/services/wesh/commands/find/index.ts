@@ -51,6 +51,9 @@ interface FindEvaluationResult {
   exitCode: number;
 }
 
+const EVAL_MATCHED: FindEvaluationResult = { matched: true, actionInvoked: false, shouldPrune: false, shouldQuit: false, exitCode: 0 };
+const EVAL_NOT_MATCHED: FindEvaluationResult = { matched: false, actionInvoked: false, shouldPrune: false, shouldQuit: false, exitCode: 0 };
+
 interface PendingExecBatch {
   id: number;
   command: string;
@@ -707,136 +710,71 @@ async function evaluateExpression({
     };
   }
   case 'name':
-    return {
-      matched: expr.compiledPattern.test(entry.name),
-      actionInvoked: false,
-      shouldPrune: false,
-      shouldQuit: false,
-      exitCode: 0,
-    };
+    return expr.compiledPattern.test(entry.name) ? EVAL_MATCHED : EVAL_NOT_MATCHED;
   case 'path':
-    return {
-      matched: expr.compiledPattern.test(entry.displayPath),
-      actionInvoked: false,
-      shouldPrune: false,
-      shouldQuit: false,
-      exitCode: 0,
-    };
+    return expr.compiledPattern.test(entry.displayPath) ? EVAL_MATCHED : EVAL_NOT_MATCHED;
   case 'regex':
-    return {
-      matched: expr.pattern.test(entry.displayPath),
-      actionInvoked: false,
-      shouldPrune: false,
-      shouldQuit: false,
-      exitCode: 0,
-    };
+    return expr.pattern.test(entry.displayPath) ? EVAL_MATCHED : EVAL_NOT_MATCHED;
   case 'type':
-    return {
-      matched: entry.type === expr.expected,
-      actionInvoked: false,
-      shouldPrune: false,
-      shouldQuit: false,
-      exitCode: 0,
-    };
+    return entry.type === expr.expected ? EVAL_MATCHED : EVAL_NOT_MATCHED;
   case 'empty':
     switch (entry.type) {
     case 'directory': {
-      let isEmpty = true;
       for await (const _ of context.files.readDir({ path: entry.fullPath })) {
-        isEmpty = false;
-        break;
+        return EVAL_NOT_MATCHED;
       }
-      return {
-        matched: isEmpty,
-        actionInvoked: false,
-        shouldPrune: false,
-        shouldQuit: false,
-        exitCode: 0,
-      };
+      return EVAL_MATCHED;
     }
     case 'file':
     case 'fifo':
     case 'chardev':
     case 'symlink':
-      return {
-        matched: entry.size === 0,
-        actionInvoked: false,
-        shouldPrune: false,
-        shouldQuit: false,
-        exitCode: 0,
-      };
+      return entry.size === 0 ? EVAL_MATCHED : EVAL_NOT_MATCHED;
     default: {
       const _ex: never = entry.type;
       throw new Error(`Unhandled file type: ${_ex}`);
     }
     }
-  case 'size':
-    return {
-      matched: (() => {
-        switch (expr.comparison) {
-        case 'eq':
-          return entry.size === expr.sizeInBytes;
-        case 'lt':
-          return entry.size < expr.sizeInBytes;
-        case 'gt':
-          return entry.size > expr.sizeInBytes;
-        default: {
-          const _ex: never = expr.comparison;
-          throw new Error(`Unhandled size comparison: ${_ex}`);
-        }
-        }
-      })(),
-      actionInvoked: false,
-      shouldPrune: false,
-      shouldQuit: false,
-      exitCode: 0,
-    };
-  case 'perm':
-    return {
-      matched: (() => {
-        const permissionBits = (() => {
-          switch (entry.type) {
-          case 'directory':
-            return 0o755;
-          case 'symlink':
-            return 0o777;
-          case 'chardev':
-            return 0o666;
-          case 'fifo':
-          case 'file':
-            return 0o644;
-          default: {
-            const _ex: never = entry.type;
-            throw new Error(`Unhandled file type: ${_ex}`);
-          }
-          }
-        })();
-        switch (expr.matchMode) {
-        case 'exact':
-          return permissionBits === expr.mode;
-        case 'all':
-          return (permissionBits & expr.mode) === expr.mode;
-        case 'any':
-          return (permissionBits & expr.mode) !== 0;
-        default: {
-          const _ex: never = expr.matchMode;
-          throw new Error(`Unhandled permission match mode: ${_ex}`);
-        }
-        }
-      })(),
-      actionInvoked: false,
-      shouldPrune: false,
-      shouldQuit: false,
-      exitCode: 0,
-    };
+  case 'size': {
+    let matched: boolean;
+    switch (expr.comparison) {
+    case 'eq': matched = entry.size === expr.sizeInBytes; break;
+    case 'lt': matched = entry.size < expr.sizeInBytes; break;
+    case 'gt': matched = entry.size > expr.sizeInBytes; break;
+    default: {
+      const _ex: never = expr.comparison;
+      throw new Error(`Unhandled size comparison: ${_ex}`);
+    }
+    }
+    return matched ? EVAL_MATCHED : EVAL_NOT_MATCHED;
+  }
+  case 'perm': {
+    let permissionBits: number;
+    switch (entry.type) {
+    case 'directory': permissionBits = 0o755; break;
+    case 'symlink': permissionBits = 0o777; break;
+    case 'chardev': permissionBits = 0o666; break;
+    case 'fifo':
+    case 'file': permissionBits = 0o644; break;
+    default: {
+      const _ex: never = entry.type;
+      throw new Error(`Unhandled file type: ${_ex}`);
+    }
+    }
+    let matched: boolean;
+    switch (expr.matchMode) {
+    case 'exact': matched = permissionBits === expr.mode; break;
+    case 'all': matched = (permissionBits & expr.mode) === expr.mode; break;
+    case 'any': matched = (permissionBits & expr.mode) !== 0; break;
+    default: {
+      const _ex: never = expr.matchMode;
+      throw new Error(`Unhandled permission match mode: ${_ex}`);
+    }
+    }
+    return matched ? EVAL_MATCHED : EVAL_NOT_MATCHED;
+  }
   case 'newer':
-    return {
-      matched: entry.mtime > expr.referenceMtime,
-      actionInvoked: false,
-      shouldPrune: false,
-      shouldQuit: false,
-      exitCode: 0,
-    };
+    return entry.mtime > expr.referenceMtime ? EVAL_MATCHED : EVAL_NOT_MATCHED;
   case 'print':
     await context.text().print({ text: `${entry.displayPath}\n` });
     return { matched: true, actionInvoked: true, shouldPrune: false, shouldQuit: false, exitCode: 0 };
@@ -865,9 +803,9 @@ async function evaluateExpression({
   case 'quit':
     return { matched: true, actionInvoked: true, shouldPrune: false, shouldQuit: true, exitCode: 0 };
   case 'true':
-    return { matched: true, actionInvoked: false, shouldPrune: false, shouldQuit: false, exitCode: 0 };
+    return EVAL_MATCHED;
   case 'false':
-    return { matched: false, actionInvoked: false, shouldPrune: false, shouldQuit: false, exitCode: 0 };
+    return EVAL_NOT_MATCHED;
   case 'exec': {
     const execMode: 'single' | 'batch' = expr.mode;
     switch (execMode) {
@@ -1143,9 +1081,11 @@ export const findCommandDefinition: WeshCommandDefinition = {
           && (traversal.maxDepth === undefined || depth < traversal.maxDepth);
 
         if (canDescend) {
+          const readPathPrefix = entry.readPath === '/' ? '' : entry.readPath;
+          const displayPathPrefix = displayPath === '/' ? '' : displayPath;
           for await (const child of context.files.readDir({ path: entry.readPath })) {
-            const childFullPath = entry.readPath === '/' ? `/${child.name}` : `${entry.readPath}/${child.name}`;
-            const childDisplayPath = displayPath === '/' ? `/${child.name}` : `${displayPath}/${child.name}`;
+            const childFullPath = `${readPathPrefix}/${child.name}`;
+            const childDisplayPath = `${displayPathPrefix}/${child.name}`;
             await walk({
               fullPath: childFullPath,
               displayPath: childDisplayPath,
