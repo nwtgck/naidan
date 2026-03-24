@@ -92,12 +92,13 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
 class PipeHandle implements WeshFileHandle {
   private state: {
     buffer: Uint8Array[];
+    bufferSize: number;
     waiters: Array<() => void>;
     closed: boolean;
   };
   private mode: 'r' | 'w';
 
-  constructor(state: { buffer: Uint8Array[]; waiters: Array<() => void>; closed: boolean }, mode: 'r' | 'w') {
+  constructor(state: { buffer: Uint8Array[]; bufferSize: number; waiters: Array<() => void>; closed: boolean }, mode: 'r' | 'w') {
     this.state = state;
     this.mode = mode;
   }
@@ -129,6 +130,7 @@ class PipeHandle implements WeshFileHandle {
     if (chunk.length > copyLen) {
       this.state.buffer.unshift(chunk.subarray(copyLen));
     }
+    this.state.bufferSize -= copyLen;
 
     return { bytesRead: copyLen };
   }
@@ -152,6 +154,7 @@ class PipeHandle implements WeshFileHandle {
     const data = new Uint8Array(options.buffer.subarray(bufferOffset, bufferOffset + length));
 
     this.state.buffer.push(data);
+    this.state.bufferSize += length;
 
     // Wake up readers
     const waiters = this.state.waiters;
@@ -170,7 +173,7 @@ class PipeHandle implements WeshFileHandle {
 
   async stat(): Promise<WeshStat> {
     return {
-      size: this.state.buffer.reduce((acc, b) => acc + b.length, 0),
+      size: this.state.bufferSize,
       mode: 0o600,
       type: 'fifo',
       mtime: Date.now(),
@@ -383,7 +386,7 @@ export class WeshKernel {
   }
 
   async pipe(): Promise<{ read: WeshFileHandle; write: WeshFileHandle }> {
-    const state = { buffer: [], waiters: [], closed: false };
+    const state = { buffer: [], bufferSize: 0, waiters: [], closed: false };
     return {
       read: new PipeHandle(state, 'r'),
       write: new PipeHandle(state, 'w')

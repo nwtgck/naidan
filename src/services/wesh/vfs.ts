@@ -232,6 +232,7 @@ class StandardFileHandle implements WeshFileHandle {
 
 class FifoHandle implements WeshFileHandle {
   private buffer: Uint8Array[] = [];
+  private bufferSize = 0;
   private waiters: Array<(val: void) => void> = [];
   private closed = false;
 
@@ -253,6 +254,7 @@ class FifoHandle implements WeshFileHandle {
     if (chunk.length > copyLen) {
       this.buffer.unshift(chunk.subarray(copyLen));
     }
+    this.bufferSize -= copyLen;
 
     return { bytesRead: copyLen };
   }
@@ -265,6 +267,7 @@ class FifoHandle implements WeshFileHandle {
     const data = new Uint8Array(options.buffer.subarray(bufferOffset, bufferOffset + length));
 
     this.buffer.push(data);
+    this.bufferSize += length;
 
     const waiters = this.waiters;
     this.waiters = [];
@@ -282,7 +285,7 @@ class FifoHandle implements WeshFileHandle {
 
   async stat(): Promise<WeshStat> {
     return {
-      size: this.buffer.reduce((acc, b) => acc + b.length, 0),
+      size: this.bufferSize,
       mode: 0o600,
       type: 'fifo',
       mtime: Date.now(),
