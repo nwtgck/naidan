@@ -337,4 +337,74 @@ describe('wesh find', () => {
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
+  it('supports -name with * wildcard', async () => {
+    await writeFile({ path: 'src/app.ts', data: '' });
+    await writeFile({ path: 'src/main.ts', data: '' });
+    await writeFile({ path: 'src/readme.md', data: '' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -name "*.ts"',
+    });
+
+    expect(stdout.text).toBe('src/app.ts\nsrc/main.ts\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -name with ? wildcard matching exactly one character', async () => {
+    await writeFile({ path: 'src/a.ts', data: '' });
+    await writeFile({ path: 'src/ab.ts', data: '' });
+    await writeFile({ path: 'src/abc.ts', data: '' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -name "?.ts"',
+    });
+
+    expect(stdout.text).toBe('src/a.ts\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -name with [...] character class', async () => {
+    await writeFile({ path: 'src/file1.txt', data: '' });
+    await writeFile({ path: 'src/file2.txt', data: '' });
+    await writeFile({ path: 'src/file3.txt', data: '' });
+    await writeFile({ path: 'src/file9.txt', data: '' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -name "file[123].txt"',
+    });
+
+    expect(stdout.text).toBe('src/file1.txt\nsrc/file2.txt\nsrc/file3.txt\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -iname for case-insensitive name matching', async () => {
+    await writeFile({ path: 'src/README.md', data: '' });
+    await writeFile({ path: 'src/app.ts', data: '' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -iname "readme.md"',
+    });
+
+    expect(stdout.text).toBe('src/README.md\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -path matching against the full displayed path', async () => {
+    await writeFile({ path: 'src/components/Button.ts', data: '' });
+    await writeFile({ path: 'src/utils/helpers.ts', data: '' });
+    await writeFile({ path: 'src/index.ts', data: '' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -path "*/components/*"',
+    });
+
+    expect(stdout.text).toBe('src/components/Button.ts\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
 });
