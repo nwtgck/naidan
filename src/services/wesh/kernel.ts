@@ -164,7 +164,7 @@ class PipeHandle implements WeshFileHandle {
     // Wake up readers
     const waiters = this.state.waiters;
     this.state.waiters = [];
-    waiters.forEach(w => w());
+    for (const w of waiters) w();
 
     return { bytesWritten: length };
   }
@@ -173,7 +173,7 @@ class PipeHandle implements WeshFileHandle {
     this.state.closed = true;
     const waiters = this.state.waiters;
     this.state.waiters = [];
-    waiters.forEach(w => w());
+    for (const w of waiters) w();
   }
 
   async stat(): Promise<WeshStat> {

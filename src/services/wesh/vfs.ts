@@ -276,7 +276,7 @@ class FifoHandle implements WeshFileHandle {
 
     const waiters = this.waiters;
     this.waiters = [];
-    waiters.forEach(w => w());
+    for (const w of waiters) w();
 
     return { bytesWritten: length };
   }
@@ -285,7 +285,7 @@ class FifoHandle implements WeshFileHandle {
     this.closed = true;
     const waiters = this.waiters;
     this.waiters = [];
-    waiters.forEach(w => w());
+    for (const w of waiters) w();
   }
 
   async stat(): Promise<WeshStat> {
@@ -1264,56 +1264,30 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   private getDirectMountChildren({ path }: { path: string }): Iterable<string> {
-    const normalized = this.normalizePath({ path });
+    const prefix = path === '/' ? '/' : `${path}/`;
     const childNames = new Set<string>();
 
     for (const mount of this.mounts) {
-      if (mount.path === normalized) {
-        continue;
-      }
-
-      const prefix = normalized === '/' ? '/' : `${normalized}/`;
-      if (!mount.path.startsWith(prefix)) {
-        continue;
-      }
-
+      if (!mount.path.startsWith(prefix)) continue;
       const remainder = mount.path.slice(prefix.length);
-      if (remainder.length === 0) {
-        continue;
-      }
-
-      const childName = remainder.split('/')[0];
-      if (childName !== undefined && childName.length > 0) {
-        childNames.add(childName);
-      }
+      if (remainder.length === 0) continue;
+      const sep = remainder.indexOf('/');
+      childNames.add(sep === -1 ? remainder : remainder.slice(0, sep));
     }
 
     return childNames;
   }
 
   private getDirectSpecialChildren({ path }: { path: string }): Iterable<string> {
-    const normalized = this.normalizePath({ path });
+    const prefix = path === '/' ? '/' : `${path}/`;
     const childNames = new Set<string>();
 
     for (const specialPath of this.specialFiles.keys()) {
-      if (specialPath === normalized) {
-        continue;
-      }
-
-      const prefix = normalized === '/' ? '/' : `${normalized}/`;
-      if (!specialPath.startsWith(prefix)) {
-        continue;
-      }
-
+      if (!specialPath.startsWith(prefix)) continue;
       const remainder = specialPath.slice(prefix.length);
-      if (remainder.length === 0) {
-        continue;
-      }
-
-      const childName = remainder.split('/')[0];
-      if (childName !== undefined && childName.length > 0) {
-        childNames.add(childName);
-      }
+      if (remainder.length === 0) continue;
+      const sep = remainder.indexOf('/');
+      childNames.add(sep === -1 ? remainder : remainder.slice(0, sep));
     }
 
     return childNames;

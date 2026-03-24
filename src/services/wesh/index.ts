@@ -1985,7 +1985,9 @@ usage: alias [name[=value] ...]
         shellOptions,
       });
 
-      return Array.from(new Set([...zeroDepthMatches, ...deepMatches]));
+      const deduplicated = new Set(zeroDepthMatches);
+      for (const m of deepMatches) deduplicated.add(m);
+      return Array.from(deduplicated);
     }
 
     const nextBases: string[] = [];
