@@ -1263,7 +1263,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     return path.substring(prefix.length);
   }
 
-  private getDirectMountChildren({ path }: { path: string }): string[] {
+  private getDirectMountChildren({ path }: { path: string }): Iterable<string> {
     const normalized = this.normalizePath({ path });
     const childNames = new Set<string>();
 
@@ -1288,10 +1288,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       }
     }
 
-    return Array.from(childNames).sort();
+    return childNames;
   }
 
-  private getDirectSpecialChildren({ path }: { path: string }): string[] {
+  private getDirectSpecialChildren({ path }: { path: string }): Iterable<string> {
     const normalized = this.normalizePath({ path });
     const childNames = new Set<string>();
 
@@ -1316,7 +1316,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       }
     }
 
-    return Array.from(childNames).sort();
+    return childNames;
   }
 
   private hasSyntheticDirectory({ path }: { path: string }): boolean {
