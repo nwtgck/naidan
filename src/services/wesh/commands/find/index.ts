@@ -16,8 +16,8 @@ type FindExpression =
   | { kind: 'and'; left: FindExpression; right: FindExpression }
   | { kind: 'or'; left: FindExpression; right: FindExpression }
   | { kind: 'not'; expr: FindExpression }
-  | { kind: 'name'; pattern: string; caseInsensitive: boolean }
-  | { kind: 'path'; pattern: string }
+  | { kind: 'name'; pattern: string; caseInsensitive: boolean; compiledPattern: RegExp }
+  | { kind: 'path'; pattern: string; compiledPattern: RegExp }
   | { kind: 'regex'; pattern: RegExp }
   | { kind: 'type'; expected: WeshFileType }
   | { kind: 'empty' }
@@ -455,17 +455,17 @@ function tokenizeFindExpression({
     case '-name': {
       const pattern = next();
       if (pattern === undefined) return "missing argument to '-name'";
-      return { kind: 'name', pattern, caseInsensitive: false };
+      return { kind: 'name', pattern, caseInsensitive: false, compiledPattern: globToRegExp({ pattern, caseInsensitive: false }) };
     }
     case '-iname': {
       const pattern = next();
       if (pattern === undefined) return "missing argument to '-iname'";
-      return { kind: 'name', pattern, caseInsensitive: true };
+      return { kind: 'name', pattern, caseInsensitive: true, compiledPattern: globToRegExp({ pattern, caseInsensitive: true }) };
     }
     case '-path': {
       const pattern = next();
       if (pattern === undefined) return "missing argument to '-path'";
-      return { kind: 'path', pattern };
+      return { kind: 'path', pattern, compiledPattern: globToRegExp({ pattern, caseInsensitive: false }) };
     }
     case '-regex': {
       const pattern = next();
@@ -708,7 +708,7 @@ async function evaluateExpression({
   }
   case 'name':
     return {
-      matched: globToRegExp({ pattern: expr.pattern, caseInsensitive: expr.caseInsensitive }).test(entry.name),
+      matched: expr.compiledPattern.test(entry.name),
       actionInvoked: false,
       shouldPrune: false,
       shouldQuit: false,
@@ -716,7 +716,7 @@ async function evaluateExpression({
     };
   case 'path':
     return {
-      matched: globToRegExp({ pattern: expr.pattern, caseInsensitive: false }).test(entry.displayPath),
+      matched: expr.compiledPattern.test(entry.displayPath),
       actionInvoked: false,
       shouldPrune: false,
       shouldQuit: false,
@@ -1089,11 +1089,13 @@ export const findCommandDefinition: WeshCommandDefinition = {
     const walk = async ({
       fullPath,
       displayPath,
+      name,
       depth,
       isCommandLineArgument,
     }: {
       fullPath: string;
       displayPath: string;
+      name: string;
       depth: number;
       isCommandLineArgument: boolean;
     }) => {
@@ -1105,7 +1107,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
           fullPath,
           displayPath,
           type: stat.type,
-          name: basename({ path: displayPath }),
+          name,
           size: stat.size,
           mtime: stat.mtime,
           readPath: await getReadPath({ path: fullPath, type: stat.type }),
@@ -1147,6 +1149,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
             await walk({
               fullPath: childFullPath,
               displayPath: childDisplayPath,
+              name: child.name,
               depth: depth + 1,
               isCommandLineArgument: false,
             });
@@ -1184,6 +1187,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
       await walk({
         fullPath,
         displayPath: path,
+        name: basename({ path }),
         depth: 0,
         isCommandLineArgument: true,
       });
