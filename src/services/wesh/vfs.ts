@@ -1312,7 +1312,22 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   private hasSyntheticDirectory({ path }: { path: string }): boolean {
-    return this.getDirectMountChildren({ path }).length > 0 || this.getDirectSpecialChildren({ path }).length > 0;
+    const normalized = this.normalizePath({ path });
+    const prefix = normalized === '/' ? '/' : `${normalized}/`;
+
+    for (const mount of this.mounts) {
+      if (mount.path !== normalized && mount.path.startsWith(prefix) && mount.path.length > prefix.length) {
+        return true;
+      }
+    }
+
+    for (const specialPath of this.specialFiles.keys()) {
+      if (specialPath !== normalized && specialPath.startsWith(prefix) && specialPath.length > prefix.length) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private isMountPoint({ path }: { path: string }): boolean {
