@@ -52,14 +52,30 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
     for (const f of inputs) {
       if (f === undefined) continue;
       try {
-        const stream = f === '-'
-          ? handleToStream({ handle: context.stdin })
-          : handleToStream({
-            handle: await context.files.open({
-              path: f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`),
-              flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-            }),
-          });
+        let stream: ReadableStream<Uint8Array>;
+        if (f === '-') {
+          stream = handleToStream({ handle: context.stdin });
+        } else {
+          const fullPath = f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`);
+          const blobResult = await context.files.tryReadBlobEfficiently({ path: fullPath });
+          switch (blobResult.kind) {
+          case 'blob':
+            stream = blobResult.blob.stream();
+            break;
+          case 'fallback-required':
+            stream = handleToStream({
+              handle: await context.files.open({
+                path: fullPath,
+                flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+              })
+            });
+            break;
+          default: {
+            const _ex: never = blobResult;
+            throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
+          }
+          }
+        }
         const decompressor = new DecompressionStream('gzip');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const decompressedStream = stream.pipeThrough(decompressor as any) as ReadableStream<Uint8Array>;
