@@ -116,6 +116,7 @@ defineExpose({
           {{ isExpanded ? 'Less' : 'Show' }}
         </div>
       </div>
+      <slot v-if="!isExpanded && isProcessing && !stats.isCurrentlyThinking && !stats.isWaiting" name="cursor" />
     </div>
 
     <!-- Peek Slot (During processing) -->
@@ -126,6 +127,7 @@ defineExpose({
       <div class="bg-white/40 dark:bg-gray-800/40 rounded-lg border border-blue-100/30 dark:border-blue-900/20 p-0.5">
         <slot name="peek" />
       </div>
+      <slot name="cursor" />
     </div>
 
     <!-- Expanded Content -->
@@ -136,6 +138,9 @@ defineExpose({
       <div class="min-h-0 overflow-hidden">
         <div class="pb-3 pt-1 animate-in fade-in duration-500">
           <slot :is-expanded="isExpanded" />
+          <div v-if="isExpanded && isProcessing" class="px-5 mt-1">
+            <slot name="cursor" />
+          </div>
         </div>
       </div>
     </div>

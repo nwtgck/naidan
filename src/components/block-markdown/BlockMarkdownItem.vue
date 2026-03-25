@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import type { Component } from 'vue';
 import type { Token, Tokens } from 'marked';
 import { marked, sanitizeHtml } from './useMarkdown'; // Added sanitizeHtml
 import CodeBlockWrapper from './CodeBlockWrapper.vue';
@@ -13,6 +14,7 @@ import BlockMarkdownItem from './BlockMarkdownItem.vue';
 
 const props = defineProps<{
   token: Token;
+  trailingInline?: Component;
 }>();
 
 const isTaskList = computed(() => {
@@ -48,11 +50,13 @@ defineExpose({
     }"
   >
     <MarkdownInline :text="(token as Tokens.Heading).text" mode="markdown" />
+    <component :is="trailingInline" v-if="trailingInline" />
   </component>
 
   <!-- Paragraph -->
   <p v-else-if="token.type === 'paragraph'" class="mb-4 last:mb-0 leading-relaxed text-gray-800 dark:text-gray-300">
     <MarkdownInline :text="(token as Tokens.Paragraph).text" mode="markdown" />
+    <component :is="trailingInline" v-if="trailingInline" />
   </p>
 
   <!-- Blockquote -->
@@ -198,11 +202,11 @@ defineExpose({
   <span v-else-if="token.type === 'katex' || token.type === 'inlineKatex'" v-html="sanitizeHtml({ html: marked.parseInline(token.raw) as string })"></span>
 
   <!-- Text / Inline elements (for tight lists or other inline contexts handled as blocks) -->
-  <MarkdownInline
-    v-else-if="token.type === 'text'"
-    :text="(token as any).text"
-    mode="markdown"
-  />
+  <!-- Use template (no wrapper element) so MarkdownInline's own <span> is not double-wrapped -->
+  <template v-else-if="token.type === 'text'">
+    <MarkdownInline :text="(token as any).text" mode="markdown" />
+    <component :is="trailingInline" v-if="trailingInline" />
+  </template>
   <MarkdownInline
     v-else-if="token.type === 'codespan' || token.type === 'del' || token.type === 'em' || token.type === 'strong' || token.type === 'link' || token.type === 'image' || token.type === 'escape'"
     :text="token.raw"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick, inject } from 'vue';
+import type { Component } from 'vue';
 import { Brain } from 'lucide-vue-next';
 import type { MessageNode } from '@/models/types';
 
@@ -7,6 +8,7 @@ const props = defineProps<{
   message: MessageNode;
   noMargin?: boolean;
   partContent?: string;
+  trailingInline?: Component;
 }>();
 
 type ThinkingMode = 'expanded' | 'collapsed-active' | 'collapsed-finished';
@@ -178,10 +180,12 @@ defineExpose({
         </div>
 
         <div class="flex flex-col min-h-full">
-          {{ displayThinking }}
+          <span>{{ displayThinking.trimEnd() }}<component :is="trailingInline" v-if="trailingInline" /></span>
         </div>
       </div>
     </div>
+    <!-- Indicator shown after collapsed-finished pill while still generating -->
+    <component :is="trailingInline" v-if="trailingInline && mode === 'collapsed-finished'" class="ml-1" />
   </div>
 </template>
 

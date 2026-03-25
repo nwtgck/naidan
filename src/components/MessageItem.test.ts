@@ -1054,3 +1054,103 @@ describe('MessageItem Actions Menu', () => {
     wrapper.unmount();
   });
 });
+
+describe('MessageItem showGeneratingIndicator', () => {
+  const createAssistantMessage = (content: string, thinking?: string): MessageNode => ({
+    id: generateId(),
+    role: 'assistant',
+    content,
+    thinking,
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Use block_markdown so BlockMarkdownRenderer is rendered and trailingInline is injected.
+    (useSettings as any).mockReturnValue({
+      settings: ref({ experimental: { markdownRendering: 'block_markdown' } }),
+    });
+  });
+
+  describe('content mode', () => {
+    it('shows generating indicator when showGeneratingIndicator=true and content is present', () => {
+      const message = createAssistantMessage('Hello world');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'content', showGeneratingIndicator: true },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(true);
+    });
+
+    it('does not show generating indicator when showGeneratingIndicator=false', () => {
+      const message = createAssistantMessage('Hello world');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'content', showGeneratingIndicator: false },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
+    });
+
+    it('does not show generating indicator when content is empty even if showGeneratingIndicator=true', () => {
+      // Empty content → BlockMarkdownRenderer not rendered, so no indicator
+      const message = createAssistantMessage('');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'content', showGeneratingIndicator: true },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
+    });
+  });
+
+  describe('thinking mode', () => {
+    it('shows generating indicator in thinking mode (active thinking) when showGeneratingIndicator=true', () => {
+      // Unclosed think tag → collapsed-active → indicator renders inline
+      const message = createAssistantMessage('<think>Streaming...');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'thinking', showGeneratingIndicator: true },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(true);
+    });
+
+    it('shows generating indicator after thinking pill (collapsed-finished) when showGeneratingIndicator=true', () => {
+      const message = createAssistantMessage('Response', 'Completed thought');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'thinking', showGeneratingIndicator: true },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(true);
+    });
+
+    it('does not show generating indicator in thinking mode when showGeneratingIndicator=false', () => {
+      const message = createAssistantMessage('<think>Streaming...');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'thinking', showGeneratingIndicator: false },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
+    });
+  });
+
+  describe('waiting mode', () => {
+    it('does NOT show generating indicator in waiting mode even when showGeneratingIndicator=true', () => {
+      // waiting mode intentionally never shows the indicator
+      const message = createAssistantMessage('');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'waiting', showGeneratingIndicator: true },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
+    });
+  });
+
+  describe('default prop value', () => {
+    it('defaults showGeneratingIndicator to false', () => {
+      const message = createAssistantMessage('Hello');
+      const wrapper = mount(MessageItem, { props: { message } });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
+    });
+  });
+});

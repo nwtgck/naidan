@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick, watch, onUnmounted, provide } from 'vue';
 import BlockMarkdownRenderer from './block-markdown/BlockMarkdownRenderer.vue';
+import GeneratingIndicator from './GeneratingIndicator.vue';
+import { markRaw } from 'vue';
 import { Marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import createDOMPurify from 'dompurify';
@@ -84,13 +86,15 @@ const props = withDefaults(defineProps<{
   isFirstInNode?: boolean;
   isLastInNode?: boolean;
   isFirstInTurn?: boolean;
+  showGeneratingIndicator?: boolean;
 }>(), {
   flow: () => ({ position: 'standalone', nesting: 'none' }),
   isGenerating: false,
   mode: 'content',
   isFirstInNode: true,
   isLastInNode: true,
-  isFirstInTurn: false
+  isFirstInTurn: false,
+  showGeneratingIndicator: false
 });
 
 const emit = defineEmits<{
@@ -1124,6 +1128,7 @@ defineExpose({
         :message="message"
         :part-content="partContent"
         :no-margin="isNested"
+        :trailing-inline="showGeneratingIndicator ? markRaw(GeneratingIndicator) : undefined"
       />
 
       <!-- Content -->
@@ -1218,6 +1223,7 @@ defineExpose({
           <BlockMarkdownRenderer
             v-if="!settings.experimental || settings.experimental.markdownRendering === 'block_markdown'"
             :content="displayContent"
+            :trailing-inline="showGeneratingIndicator && !!displayContent ? markRaw(GeneratingIndicator) : undefined"
           />
           <div
             v-else
@@ -1260,6 +1266,7 @@ defineExpose({
             <span>Retry</span>
           </button>
         </div>
+
 
         <div v-if="isLastInNode" class="flex items-center justify-between min-h-[28px]" :class="isNested ? 'mt-1' : 'mt-3'" data-testid="message-actions-wrapper">
           <!-- Version Paging -->

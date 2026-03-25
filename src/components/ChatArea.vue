@@ -13,6 +13,7 @@ import ToolCallGroupItem from './ToolCallGroupItem.vue';
 import MessageThinking from './MessageThinking.vue';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
+import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
@@ -139,6 +140,13 @@ const emit = defineEmits<{
 
 const isCurrentChatStreaming = computed(() => {
   return currentChat.value ? isProcessing(currentChat.value.id) : false;
+});
+
+// The index of the single flow item that should display the GeneratingIndicator.
+// Only the very last item during streaming gets the indicator — never more than one.
+const generatingIndicatorIndex = computed(() => {
+  if (!isCurrentChatStreaming.value) return -1;
+  return chatFlow.value.length - 1;
 });
 
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
@@ -855,7 +863,7 @@ watch(
         </div>
         <template v-else>
           <div v-if="activeMessages.length > 0" class="relative p-2">
-            <template v-for="flowItem in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? `${flowItem.node.id}-${flowItem.mode}` : flowItem.id)">
+            <template v-for="(flowItem, flowIdx) in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? `${flowItem.node.id}-${flowItem.mode}` : flowItem.id)">
               <!-- AI Process Sequence (Collapsible Group) -->
               <AssistantProcessSequence
                 v-if="flowItem.type === 'process_sequence'"
@@ -866,6 +874,9 @@ watch(
                 :stats="flowItem.stats"
                 :is-first-in-turn="flowItem.isFirstInTurn"
               >
+                <template #cursor>
+                  <GeneratingIndicator v-if="flowIdx === generatingIndicatorIndex" class="ml-1" />
+                </template>
                 <template #peek>
                   <template v-if="flowItem.type === 'process_sequence' && flowItem.items.length > 0">
                     <template v-for="lastItem in ([flowItem.items[flowItem.items.length - 1]] as ChatFlowItem[])" :key="lastItem.type === 'message' ? lastItem.node.id : lastItem.id">
@@ -937,6 +948,7 @@ watch(
                 :is-first-in-node="flowItem.isFirstInNode"
                 :is-last-in-node="flowItem.isLastInNode"
                 :is-first-in-turn="flowItem.isFirstInTurn"
+                :show-generating-indicator="flowIdx === generatingIndicatorIndex"
                 @fork="handleFork"
                 @edit="(id, content, params) => handleEdit(id, content, params)"
                 @switch-version="handleSwitchVersion"
