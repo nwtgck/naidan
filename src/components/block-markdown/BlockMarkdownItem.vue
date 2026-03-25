@@ -22,6 +22,26 @@ const isTaskList = computed(() => {
   return (props.token as Tokens.List).items.some(item => item.task);
 });
 
+// Token types that produce no visible output — used to find the last *renderable* child.
+const SILENT_TYPES = new Set(['space', 'def', 'checkbox']);
+
+function lastRenderableIdx({ tokens }: { tokens: Array<{ type: string }> | undefined }): number {
+  if (!tokens || tokens.length === 0) return -1;
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    if (!SILENT_TYPES.has(tokens[i]!.type)) return i;
+  }
+  return -1;
+}
+
+// For tables: find the last cell index in a row that has non-empty text content.
+// During streaming, trailing cells may be empty placeholders not yet filled.
+function lastNonEmptyCellIdx({ row }: { row: Tokens.TableCell[] }): number {
+  for (let i = row.length - 1; i >= 0; i--) {
+    if (row[i]!.text.trim() !== '') return i;
+  }
+  return -1;
+}
+
 
 defineExpose({
   __testOnly: {
@@ -65,6 +85,7 @@ defineExpose({
       v-for="(childToken, idx) in (token as Tokens.Blockquote).tokens"
       :key="idx"
       :token="childToken"
+      :trailing-inline="idx === lastRenderableIdx({ tokens: (token as Tokens.Blockquote).tokens }) ? trailingInline : undefined"
     />
   </blockquote>
 
@@ -91,13 +112,17 @@ defineExpose({
           <input type="checkbox" :checked="item.checked" disabled class="mt-1 flex-shrink-0" />
           <div class="flex-1 min-w-0">
             <template v-if="item.tokens.length === 1">
-              <BlockMarkdownItem :token="(item.tokens[0] as Token)" />
+              <BlockMarkdownItem
+                :token="(item.tokens[0] as Token)"
+                :trailing-inline="idx === (token as Tokens.List).items.length - 1 ? trailingInline : undefined"
+              />
             </template>
             <template v-else>
               <BlockMarkdownItem
                 v-for="(childToken, cIdx) in item.tokens"
                 :key="cIdx"
                 :token="childToken"
+                :trailing-inline="idx === (token as Tokens.List).items.length - 1 && cIdx === lastRenderableIdx({ tokens: item.tokens }) ? trailingInline : undefined"
               />
             </template>
           </div>
@@ -106,7 +131,10 @@ defineExpose({
       <template v-else>
         <!-- For normal lists, avoid any wrapper div to prevent line breaks after the bullet -->
         <template v-if="item.tokens.length === 1">
-          <BlockMarkdownItem :token="(item.tokens[0] as Token)" />
+          <BlockMarkdownItem
+            :token="(item.tokens[0] as Token)"
+            :trailing-inline="idx === (token as Tokens.List).items.length - 1 ? trailingInline : undefined"
+          />
         </template>
         <template v-else>
           <div class="inline-block w-full align-top">
@@ -114,6 +142,7 @@ defineExpose({
               v-for="(childToken, cIdx) in item.tokens"
               :key="cIdx"
               :token="childToken"
+              :trailing-inline="idx === (token as Tokens.List).items.length - 1 && cIdx === lastRenderableIdx({ tokens: item.tokens }) ? trailingInline : undefined"
             />
           </div>
         </template>
@@ -149,6 +178,10 @@ defineExpose({
             :style="{ textAlign: (token as Tokens.Table).align[cIdx] || 'left' }"
           >
             <MarkdownInline :text="cell.text" mode="markdown" />
+            <component
+              :is="trailingInline"
+              v-if="trailingInline && rIdx === (token as Tokens.Table).rows.length - 1 && cIdx === lastNonEmptyCellIdx({ row })"
+            />
           </td>
         </tr>
       </tbody>
@@ -164,6 +197,7 @@ defineExpose({
         v-for="(childToken, idx) in (token as any).tokens"
         :key="idx"
         :token="childToken"
+        :trailing-inline="idx === lastRenderableIdx({ tokens: (token as any).tokens }) ? trailingInline : undefined"
       />
     </div>
   </details>
@@ -194,6 +228,7 @@ defineExpose({
       v-for="(childToken, idx) in (token as Tokens.ListItem).tokens"
       :key="idx"
       :token="childToken"
+      :trailing-inline="idx === lastRenderableIdx({ tokens: (token as Tokens.ListItem).tokens }) ? trailingInline : undefined"
     />
   </template>
 
