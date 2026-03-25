@@ -130,10 +130,10 @@ defineExpose({
 
     <!-- Expanded Content -->
     <div
-      class="grid transition-[grid-template-rows] duration-500 ease-in-out overflow-hidden"
+      class="grid transition-[grid-template-rows] duration-500 ease-in-out"
       :class="isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
     >
-      <div class="min-h-0">
+      <div class="min-h-0 overflow-hidden">
         <div class="pb-3 pt-1 animate-in fade-in duration-500">
           <slot :is-expanded="isExpanded" />
         </div>
