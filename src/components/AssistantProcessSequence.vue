@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, provide } from 'vue';
+import { ref, computed, provide, nextTick } from 'vue';
 import { Loader2, Eye, EyeOff, Bird } from 'lucide-vue-next';
 import type { ChatFlowItem, FlowMetadata, SequenceStats } from '@/composables/useChatDisplayFlow';
 
@@ -25,11 +25,19 @@ const props = withDefaults(defineProps<{
 });
 
 const isExpanded = ref(false);
+const toggleRef = ref<HTMLElement | null>(null);
 
 provide('inSequence', true);
 
-function toggle() {
-  isExpanded.value = !isExpanded.value;
+async function toggle() {
+  const wasExpanded = isExpanded.value;
+  isExpanded.value = !wasExpanded;
+  // When collapsing, scroll the toggle back into view so the user
+  // doesn't end up at the bottom of the now-hidden content.
+  if (wasExpanded) {
+    await nextTick();
+    toggleRef.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 }
 
 const displaySummary = computed(() => {
@@ -81,7 +89,7 @@ defineExpose({
     </div>
 
     <!-- Compact Show/Less Toggle -->
-    <div class="px-5 py-1">
+    <div ref="toggleRef" class="px-5 py-1" :class="isExpanded ? 'sticky top-0 z-10 bg-gray-50/80 dark:bg-gray-800/80 backdrop-blur-sm' : ''">
       <div
         @click="toggle"
         class="inline-flex items-center gap-2 px-2.5 py-1 transition-all duration-200 group/seq cursor-pointer rounded-lg border shadow-sm select-none"

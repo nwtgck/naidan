@@ -155,6 +155,22 @@ describe('Assistant Turn Visual Logic', () => {
       expect(wrapper.find('[data-testid="icon-eye"]').exists()).toBe(false);
     });
 
+    it('toggle wrapper is sticky with backdrop when expanded', async () => {
+      const wrapper = mount(AssistantProcessSequence, {
+        props: { items: [], isProcessing: false }
+      });
+
+      const toggleWrapper = wrapper.find('[data-testid="assistant-process-toggle"]').element.parentElement!;
+
+      // Collapsed: no sticky
+      expect(toggleWrapper.classList.contains('sticky')).toBe(false);
+
+      // Expanded: sticky
+      await wrapper.find('[data-testid="assistant-process-toggle"]').trigger('click');
+      expect(toggleWrapper.classList.contains('sticky')).toBe(true);
+      expect(toggleWrapper.classList.contains('backdrop-blur-sm')).toBe(true);
+    });
+
     it('renders the Peek slot when collapsed and processing', () => {
       const wrapper = mount(AssistantProcessSequence, {
         props: {

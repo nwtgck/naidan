@@ -22,9 +22,10 @@ vi.mock('@/services/storage', () => ({
 }));
 
 const makeToolCall = (): CombinedToolCall => ({
+  id: 'tc-1',
   nodeId: 'node-1',
   call: { id: 'call-1', type: 'function', function: { name: 'shell_execute', arguments: '{}' } },
-  result: { status: 'success', content: { type: 'text', text: 'done' } },
+  result: { toolCallId: 'call-1', status: 'success', content: { type: 'text', text: 'done' } },
 });
 
 describe('ToolCallItem in-sequence height limit', () => {
