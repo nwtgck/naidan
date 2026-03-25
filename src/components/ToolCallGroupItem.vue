@@ -101,7 +101,7 @@ defineExpose({
         leave-from-class="opacity-100 translate-y-0"
         leave-to-class="opacity-0 translate-y-[-10px]"
       >
-        <div v-if="isExpanded" class="mt-1 animate-in fade-in slide-in-from-top-1 duration-200">
+        <div v-if="isExpanded" class="mt-1 animate-in fade-in slide-in-from-top-1 duration-200" @click.stop>
           <div class="flex flex-col gap-3">
             <ToolCallItem
               v-for="tc in toolCalls"
