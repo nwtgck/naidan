@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Hammer, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-vue-next';
-import { ref, watch, onMounted, nextTick, inject, computed } from 'vue';
+import { ref, watch, onMounted, nextTick, inject, computed, markRaw } from 'vue';
 import type { CombinedToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
+import ShellExecuteToolCall from './ShellExecuteToolCall.vue';
 
 const props = defineProps<{
   toolCall: CombinedToolCall;
@@ -90,6 +91,14 @@ function handleHeaderClick() {
   }
   }
 }
+
+// Returns a specialized display component for known tool names, or null to use generic rendering.
+const specializedContent = computed(() => {
+  switch (props.toolCall.call.function.name) {
+  case 'shell_execute': return markRaw(ShellExecuteToolCall);
+  default: return null;
+  }
+});
 
 // Content area click in preview: expand fully.
 function handlePreviewClick() {
@@ -186,31 +195,39 @@ defineExpose({
           @click="handlePreviewClick"
         >
           <div class="p-3 flex flex-col gap-3">
-            <!-- Arguments -->
-            <div>
-              <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Arguments</div>
-              <pre class="text-[10px] font-mono p-2 bg-black/5 dark:bg-black/20 rounded-lg overflow-x-auto custom-scrollbar">{{ formatArgs({ args: toolCall.call.function.arguments }) }}</pre>
-            </div>
-
-            <!-- Result -->
-            <div v-if="toolCall.result.status !== 'executing'">
-              <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
-                {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
+            <component
+              v-if="specializedContent"
+              :is="specializedContent"
+              :args="toolCall.call.function.arguments"
+              :result="toolCall.result"
+            />
+            <template v-else>
+              <!-- Arguments -->
+              <div>
+                <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Arguments</div>
+                <pre class="text-[10px] font-mono p-2 bg-black/5 dark:bg-black/20 rounded-lg overflow-x-auto custom-scrollbar">{{ formatArgs({ args: toolCall.call.function.arguments }) }}</pre>
               </div>
-              <template v-if="toolCall.result.status === 'success'">
-                <div v-if="toolCall.result.content.type === 'text'"
-                     class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap"
-                >{{ toolCall.result.content.text }}</div>
-                <div v-else class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ binaryContent }}</div>
-              </template>
-              <template v-else-if="toolCall.result.status === 'error'">
-                <div class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
-                  <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ toolCall.result.error.code }}</div>
-                  <div v-if="toolCall.result.error.message.type === 'text'" class="whitespace-pre-wrap">{{ toolCall.result.error.message.text }}</div>
-                  <div v-else class="whitespace-pre-wrap">{{ binaryContent }}</div>
+
+              <!-- Result -->
+              <div v-if="toolCall.result.status !== 'executing'">
+                <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
+                  {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
                 </div>
-              </template>
-            </div>
+                <template v-if="toolCall.result.status === 'success'">
+                  <div v-if="toolCall.result.content.type === 'text'"
+                       class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap"
+                  >{{ toolCall.result.content.text }}</div>
+                  <div v-else class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ binaryContent }}</div>
+                </template>
+                <template v-else-if="toolCall.result.status === 'error'">
+                  <div class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
+                    <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ toolCall.result.error.code }}</div>
+                    <div v-if="toolCall.result.error.message.type === 'text'" class="whitespace-pre-wrap">{{ toolCall.result.error.message.text }}</div>
+                    <div v-else class="whitespace-pre-wrap">{{ binaryContent }}</div>
+                  </div>
+                </template>
+              </div>
+            </template>
           </div>
 
           <!-- Bottom fade hint when content overflows -->
@@ -223,42 +240,50 @@ defineExpose({
 
         <!-- Expanded: full content, no height limit -->
         <div v-else class="p-3 flex flex-col gap-3">
-          <!-- Arguments -->
-          <div>
-            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Arguments</div>
-            <pre class="text-[10px] font-mono p-2 bg-black/5 dark:bg-black/20 rounded-lg overflow-x-auto custom-scrollbar">{{ formatArgs({ args: toolCall.call.function.arguments }) }}</pre>
-          </div>
-
-          <!-- Result -->
-          <div v-if="toolCall.result.status !== 'executing'">
-            <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
-              {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
+          <component
+            v-if="specializedContent"
+            :is="specializedContent"
+            :args="toolCall.call.function.arguments"
+            :result="toolCall.result"
+          />
+          <template v-else>
+            <!-- Arguments -->
+            <div>
+              <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Arguments</div>
+              <pre class="text-[10px] font-mono p-2 bg-black/5 dark:bg-black/20 rounded-lg overflow-x-auto custom-scrollbar">{{ formatArgs({ args: toolCall.call.function.arguments }) }}</pre>
             </div>
 
-            <div v-if="isLoadingBinary" class="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-gray-400">
-              <Loader2 class="w-3.5 h-3.5 animate-spin" />
-              <span class="text-[10px] font-medium">Loading large result...</span>
+            <!-- Result -->
+            <div v-if="toolCall.result.status !== 'executing'">
+              <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
+                {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
+              </div>
+
+              <div v-if="isLoadingBinary" class="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-gray-400">
+                <Loader2 class="w-3.5 h-3.5 animate-spin" />
+                <span class="text-[10px] font-medium">Loading large result...</span>
+              </div>
+
+              <template v-else-if="toolCall.result.status === 'success'">
+                <div v-if="toolCall.result.content.type === 'text'"
+                     class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap"
+                >
+                  {{ toolCall.result.content.text }}
+                </div>
+                <div v-else class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                  {{ binaryContent }}
+                </div>
+              </template>
+
+              <template v-else-if="toolCall.result.status === 'error'">
+                <div class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
+                  <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ toolCall.result.error.code }}</div>
+                  <div v-if="toolCall.result.error.message.type === 'text'" class="whitespace-pre-wrap">{{ toolCall.result.error.message.text }}</div>
+                  <div v-else class="whitespace-pre-wrap">{{ binaryContent }}</div>
+                </div>
+              </template>
             </div>
-
-            <template v-else-if="toolCall.result.status === 'success'">
-              <div v-if="toolCall.result.content.type === 'text'"
-                   class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap"
-              >
-                {{ toolCall.result.content.text }}
-              </div>
-              <div v-else class="text-[10px] font-mono p-2 rounded-lg break-words bg-green-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                {{ binaryContent }}
-              </div>
-            </template>
-
-            <template v-else-if="toolCall.result.status === 'error'">
-              <div class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
-                <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ toolCall.result.error.code }}</div>
-                <div v-if="toolCall.result.error.message.type === 'text'" class="whitespace-pre-wrap">{{ toolCall.result.error.message.text }}</div>
-                <div v-else class="whitespace-pre-wrap">{{ binaryContent }}</div>
-              </div>
-            </template>
-          </div>
+          </template>
         </div>
       </div>
     </Transition>
