@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Hammer, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-vue-next';
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, onMounted, nextTick, inject } from 'vue';
 import type { CombinedToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
 
@@ -8,7 +8,12 @@ const props = defineProps<{
   toolCall: CombinedToolCall;
 }>();
 
+const inSequence = inject<boolean>('inSequence', false);
+
 const isExpanded = ref(true);
+const isDetailPreview = ref(true);
+const detailsRef = ref<HTMLElement | null>(null);
+const isDetailPreviewOverflowing = ref(false);
 const binaryContent = ref<string | null>(null);
 const isLoadingBinary = ref(false);
 
@@ -38,8 +43,24 @@ const resolveBinary = async () => {
   }
 };
 
+function checkDetailOverflow() {
+  if (!detailsRef.value || !inSequence || !isDetailPreview.value) {
+    isDetailPreviewOverflowing.value = false;
+    return;
+  }
+  isDetailPreviewOverflowing.value = detailsRef.value.scrollHeight > detailsRef.value.clientHeight;
+}
+
 watch(() => props.toolCall.result, resolveBinary, { immediate: true });
-onMounted(resolveBinary);
+watch([binaryContent, isLoadingBinary], async () => {
+  await nextTick();
+  checkDetailOverflow();
+});
+onMounted(async () => {
+  await resolveBinary();
+  await nextTick();
+  checkDetailOverflow();
+});
 
 const toggleExpand = () => {
   isExpanded.value = !isExpanded.value;
@@ -122,7 +143,11 @@ defineExpose({
       leave-to-class="max-h-0 opacity-0"
     >
       <div v-if="isExpanded" class="border-t border-inherit overflow-hidden">
-        <div class="p-3 flex flex-col gap-3">
+        <div
+          ref="detailsRef"
+          class="p-3 flex flex-col gap-3 relative"
+          :class="inSequence && isDetailPreview ? 'max-h-40 overflow-hidden' : ''"
+        >
           <!-- Arguments -->
           <div>
             <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Arguments</div>
@@ -159,6 +184,14 @@ defineExpose({
               </div>
             </template>
           </div>
+
+          <!-- Overflow fade: visible in preview mode when content is taller than max-h -->
+          <div
+            v-if="inSequence && isDetailPreview && isDetailPreviewOverflowing"
+            class="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white dark:from-gray-800 to-transparent cursor-pointer"
+            data-testid="tool-detail-overflow-trigger"
+            @click.stop="isDetailPreview = false"
+          />
         </div>
       </div>
     </Transition>

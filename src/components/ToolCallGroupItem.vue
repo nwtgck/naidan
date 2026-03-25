@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, inject } from 'vue';
 import { Shapes, Bird } from 'lucide-vue-next';
 import type { CombinedToolCall } from '@/models/types';
 import type { FlowMetadata } from '@/composables/useChatDisplayFlow';
@@ -14,7 +14,10 @@ const props = withDefaults(defineProps<{
   isFirstInTurn: false
 });
 
-const isExpanded = ref(false); // Default collapsed for tool execution blocks
+const inSequence = inject<boolean>('inSequence', false);
+
+// Auto-expand inside a sequence so tool details are visible (height-limited by ToolCallItem)
+const isExpanded = ref(inSequence);
 
 const toggleExpand = () => {
   isExpanded.value = !isExpanded.value;

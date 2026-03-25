@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, provide } from 'vue';
 import { Loader2, Eye, EyeOff, Bird } from 'lucide-vue-next';
 import type { ChatFlowItem, FlowMetadata, SequenceStats } from '@/composables/useChatDisplayFlow';
 
@@ -25,6 +25,8 @@ const props = withDefaults(defineProps<{
 });
 
 const isExpanded = ref(false);
+
+provide('inSequence', true);
 
 function toggle() {
   isExpanded.value = !isExpanded.value;
