@@ -93,6 +93,36 @@ describe('MessageItem Design (Dynamic Thinking Border)', () => {
     expect(content.classes()).toContain('pt-2');
   });
 
+  it('uses mt-1 on controls and no-margin on thinking when nested (inside sequence)', () => {
+    const message = createMessage('<think>thought</think>');
+    const nestedFlow = { position: 'standalone' as const, nesting: 'inside-group' as const };
+    const wrapper = mount(MessageItem, {
+      props: { message, mode: 'thinking', flow: nestedFlow, isLastInNode: true },
+    });
+
+    // MessageThinking should have no bottom margin (no mb-3)
+    const thinkingBlock = wrapper.find('[data-testid="thinking-block"]');
+    expect(thinkingBlock.classes()).not.toContain('mb-3');
+
+    // Controls wrapper should use mt-1 instead of mt-3
+    const controls = wrapper.find('[data-testid="message-actions-wrapper"]');
+    expect(controls.exists()).toBe(true);
+    expect(controls.classes()).toContain('mt-1');
+    expect(controls.classes()).not.toContain('mt-3');
+  });
+
+  it('uses mt-3 on controls when not nested (normal case)', () => {
+    const message = createMessage('<think>thought</think>');
+    const wrapper = mount(MessageItem, {
+      props: { message, mode: 'thinking', isLastInNode: true },
+    });
+
+    const controls = wrapper.find('[data-testid="message-actions-wrapper"]');
+    expect(controls.exists()).toBe(true);
+    expect(controls.classes()).toContain('mt-3');
+    expect(controls.classes()).not.toContain('mt-1');
+  });
+
   it('maintains the thinking border during expansion if thinking is active', async () => {
     const message = createMessage('<think>Ongoing thought...');
     const wrapper = mount(MessageItem, { props: { message, mode: 'thinking' } });

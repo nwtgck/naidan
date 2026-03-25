@@ -1123,6 +1123,7 @@ defineExpose({
         v-if="mode === 'thinking'"
         :message="message"
         :part-content="partContent"
+        :no-margin="isNested"
       />
 
       <!-- Content -->
@@ -1260,7 +1261,7 @@ defineExpose({
           </button>
         </div>
 
-        <div v-if="isLastInNode" class="mt-3 flex items-center justify-between min-h-[28px]">
+        <div v-if="isLastInNode" class="flex items-center justify-between min-h-[28px]" :class="isNested ? 'mt-1' : 'mt-3'" data-testid="message-actions-wrapper">
           <!-- Version Paging -->
           <div v-if="versionInfo" class="message-version-paging flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-gray-100 dark:border-gray-700" data-testid="version-paging">
             <button
