@@ -244,7 +244,7 @@ describe('useChat Advanced Settings Resolution', () => {
 // On reload, the endpoint reverted because the flat fields were never saved correctly.
 describe('Chat Specific Overrides - Endpoint Persistence', () => {
   const { __testOnly: { __testOnlySetSettings } } = useSettings();
-  const { currentChat, createNewChat, openChat, updateChatSettings } = useChat();
+  const { currentChat, createNewChat, openChat, updateChatSettings, renameChat } = useChat();
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -299,6 +299,54 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     expect(saved['endpointType']).toBeUndefined();
     expect(saved['endpointUrl']).toBeUndefined();
     expect(saved['endpointHttpHeaders']).toBeUndefined();
+  });
+
+  // Regression test for the bug where non-settings updateChatMeta calls (title rename,
+  // streaming completion, auto-title, etc.) silently dropped the endpoint override from
+  // storage. The composable loaded a Chat (flat fields) via loadChat, spread it, then
+  // returned it cast as ChatMeta — but chatMetaToDto only reads domain.endpoint (nested),
+  // so the endpoint was written as undefined on every chat activity.
+  it('preserves endpoint override when updateChatMeta is called via a non-settings path (e.g. renameChat)', async () => {
+    // First updateChatMeta is from updateChatSettings — just let it resolve.
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce((_id, _updater) => Promise.resolve(undefined as any));
+
+    await updateChatSettings(currentChat.value!.id, {
+      endpointType: 'openai',
+      endpointUrl: 'http://chat-specific-url',
+      endpointHttpHeaders: [['Authorization', 'Bearer secret']],
+    });
+
+    // In-memory chat now has the flat endpoint fields set.
+    expect(currentChat.value?.endpointType).toBe('openai');
+    expect(currentChat.value?.endpointUrl).toBe('http://chat-specific-url');
+
+    // Second updateChatMeta is from renameChat — capture its storage updater.
+    let capturedStorageUpdater: ((curr: unknown) => Promise<unknown>) | undefined;
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce((_id, updater) => {
+      capturedStorageUpdater = updater as typeof capturedStorageUpdater;
+      return Promise.resolve(undefined as any);
+    });
+    // loadChat is called by the inner wrapper; return the in-memory chat which
+    // carries the endpoint as flat fields (endpointType / endpointUrl / etc.).
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(currentChat.value as any);
+
+    await renameChat(currentChat.value!.id, 'New Title');
+
+    expect(capturedStorageUpdater).toBeDefined();
+
+    const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const saved = await capturedStorageUpdater!(existingMeta) as Record<string, unknown>;
+
+    // Endpoint must survive the title-update path as a nested object.
+    expect(saved['endpoint']).toEqual({
+      type: 'openai',
+      url: 'http://chat-specific-url',
+      httpHeaders: [['Authorization', 'Bearer secret']],
+    });
+    expect(saved['endpointType']).toBeUndefined();
+    expect(saved['endpointUrl']).toBeUndefined();
+    expect(saved['endpointHttpHeaders']).toBeUndefined();
+    expect(saved['title']).toBe('New Title');
   });
 
   it('clears the stored endpoint object when endpointType is unset', async () => {

@@ -489,8 +489,17 @@ export function useChat() {
       const fullChat = curr ? await storageService.loadChat(id) : null;
       const updatedFull = await updater(fullChat);
       if (!updatedFull) return curr!;
-      const { root: _r, ...meta } = updatedFull;
-      return meta as ChatMeta;
+      const { root: _r, endpointType, endpointUrl, endpointHttpHeaders, ...meta } = updatedFull;
+      return {
+        ...meta,
+        ...(endpointType !== undefined && {
+          endpoint: {
+            type: endpointType,
+            url: endpointUrl,
+            httpHeaders: endpointHttpHeaders,
+          },
+        }),
+      } as ChatMeta;
     });
   };
 
