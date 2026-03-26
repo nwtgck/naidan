@@ -558,6 +558,8 @@ export function useChat() {
         return curr;
       });
 
+      const { setCurrentChatId } = useChatTools();
+      setCurrentChatId({ chatId: chatId });
       _currentChat.value = chatObj;
       await loadData();
       return chatObj;
@@ -567,7 +569,8 @@ export function useChat() {
   };
 
   const openChat = async (id: string, leafId?: string): Promise<Chat | null> => {
-    const { setToolEnabled } = useChatTools();
+    const { setToolEnabled, setCurrentChatId } = useChatTools();
+    setCurrentChatId({ chatId: id });
     if (liveChatRegistry.has(id)) {
       const chat = liveChatRegistry.get(id)!;
       if (leafId && leafId !== chat.currentLeafId) {
@@ -602,6 +605,7 @@ export function useChat() {
       }
       return reactiveChat;
     } else {
+      setCurrentChatId({ chatId: null });
       _currentChatGroup.value = null;
       _currentChat.value = null;
       return null;
