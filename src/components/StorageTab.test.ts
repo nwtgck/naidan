@@ -492,7 +492,7 @@ describe('StorageTab.vue Tests', () => {
         isOnboardingDismissed: { value: true } as any,
         onboardingDraft: { value: null } as any,
         availableModels: { value: [] } as any,
-        isFetchingModels: { value: false } as any,
+        isFetchingModels: ref(false),
         searchPreviewMode: { value: 'always' } as any,
         searchContextSize: { value: 2 } as any,
         init: vi.fn(),

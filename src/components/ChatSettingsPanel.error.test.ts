@@ -46,6 +46,7 @@ describe('ChatSettingsPanel Error Handling', () => {
         stubs: {
           ModelSelector: true,
           LmParametersEditor: true,
+          'router-link': true,
         },
       },
     });

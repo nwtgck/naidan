@@ -140,6 +140,7 @@ describe('App Navigation & Regression Tests', () => {
           'DebugPanel': true,
           'CustomDialog': true,
           'OPFSExplorer': true,
+          'DebugWeshTerminalModal': true,
           'OnboardingModal': true,
           'ToastContainer': true,
           'Sidebar': true

@@ -12,6 +12,14 @@ vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
 
+vi.mock('../services/storage', () => ({
+  storageService: {
+    getFile: vi.fn().mockResolvedValue(null),
+    getBinaryObject: vi.fn().mockResolvedValue(null),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+  },
+}));
+
 describe('MessageItem Rendering', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): MessageNode => ({
     id: generateId(),

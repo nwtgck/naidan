@@ -1,7 +1,7 @@
 import { ref, reactive } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { useRouter, useRoute } from 'vue-router';
+import { useRouter, useRoute, createRouter, createMemoryHistory } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useChat } from '@/composables/useChat';
@@ -10,10 +10,14 @@ import { useConfirm } from '@/composables/useConfirm';
 import { usePrompt } from '@/composables/usePrompt';
 import { useSampleChat } from '@/composables/useSampleChat';
 
-vi.mock('vue-router', () => ({
-  useRouter: vi.fn(),
-  useRoute: vi.fn(),
-}));
+vi.mock('vue-router', async (importActual) => {
+  const actual = await importActual<typeof import('vue-router')>();
+  return {
+    ...actual,
+    useRouter: vi.fn(),
+    useRoute: vi.fn(),
+  };
+});
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
@@ -35,6 +39,11 @@ vi.mock('../composables/useSampleChat', () => ({
 }));
 
 describe('SettingsModal Design Specifications', () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', component: { template: '<div />' } }],
+  });
+
   const currentRoute = reactive({ path: '/', params: {} as any, query: {} as any });
 
   beforeEach(() => {
@@ -83,7 +92,7 @@ describe('SettingsModal Design Specifications', () => {
   });
 
   it('uses a layered sidebar with bg-gray-50/50 for contrast', async () => {
-    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
     await flushPromises();
     await vi.dynamicImportSettled();
     const aside = wrapper.find('aside');
@@ -92,7 +101,7 @@ describe('SettingsModal Design Specifications', () => {
   });
 
   it('uses rounded-3xl for the main modal container to give a modern feel', async () => {
-    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
     await flushPromises();
     await vi.dynamicImportSettled();
     const modalContainer = wrapper.find('.rounded-3xl');
@@ -111,7 +120,7 @@ describe('SettingsModal Design Specifications', () => {
       fetchModels: vi.fn().mockResolvedValue([]),
     });
 
-    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
     await flushPromises();
     await vi.dynamicImportSettled();
 
@@ -129,7 +138,7 @@ describe('SettingsModal Design Specifications', () => {
   });
 
   it('uses blue-600 shadow for the save button to indicate primary action', async () => {
-    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
     await flushPromises();
     await vi.dynamicImportSettled();
     const saveBtn = wrapper.find('[data-testid="setting-save-button"]');
@@ -138,7 +147,7 @@ describe('SettingsModal Design Specifications', () => {
   });
 
   it('displays the critical "only for localhost" notice in the Connection tab', async () => {
-    const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+    const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
     await flushPromises();
     await vi.dynamicImportSettled();
     // By default, it opens on the Connection tab.
@@ -147,7 +156,7 @@ describe('SettingsModal Design Specifications', () => {
 
   describe('Tab Switching Visual Stability (Flash Prevention)', () => {
     it('uses transition-colors on tab buttons to prevent shadow/border interpolation flash', async () => {
-      const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
       await flushPromises();
       await vi.dynamicImportSettled();
       const tabButtons = wrapper.findAll('nav button');
@@ -159,7 +168,7 @@ describe('SettingsModal Design Specifications', () => {
     });
 
     it('maintains a constant border class to prevent layout shift or border-flicker', async () => {
-      const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
       await flushPromises();
       await vi.dynamicImportSettled();
       const tabButtons = wrapper.findAll('nav button');
@@ -170,7 +179,7 @@ describe('SettingsModal Design Specifications', () => {
     });
 
     it('uses border-transparent for inactive tabs to ensure smooth activation', async () => {
-      const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
       await flushPromises();
       await vi.dynamicImportSettled();
       // Initially, 'connection' is active. Check other tabs.
@@ -188,7 +197,7 @@ describe('SettingsModal Design Specifications', () => {
 
   describe('Responsive and Scrolling (Regression)', () => {
     it('applies min-h-0 to flex children to ensure scrolling works on small screens', async () => {
-      const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
       await flushPromises();
       await vi.dynamicImportSettled();
 
@@ -210,7 +219,7 @@ describe('SettingsModal Design Specifications', () => {
     });
 
     it('uses shrink-0 for the settings header to prevent height collapse', async () => {
-      const wrapper = mount(SettingsModal, { props: { isOpen: true } });
+      const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { plugins: [router] } });
       await flushPromises();
       await vi.dynamicImportSettled();
       // Use a more resilient selector that doesn't depend on the specific padding class

@@ -269,6 +269,7 @@ describe('ChatArea UI States', () => {
   it('should display the shortcut text with correct casing (not all uppercase)', () => {
     wrapper = mount(ChatArea, {
       global: {
+        plugins: [router],
         stubs: {
           'router-link': true,
           'Logo': true,

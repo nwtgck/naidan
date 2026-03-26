@@ -16,7 +16,6 @@ describe('ImageGenerationSettings', () => {
     selectedPersistAs: 'original' as const,
     availableImageModels: ['model-1'],
     selectedImageModel: 'model-1',
-    showHeader: true
   };
 
   it('renders all resolution presets with labels', () => {

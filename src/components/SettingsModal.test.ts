@@ -333,6 +333,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('uses distinct labels for model fallbacks to clarify different behaviors', async () => {
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
+        global: { stubs: globalStubs },
       });
 
       // Clear values first to see placeholders/None

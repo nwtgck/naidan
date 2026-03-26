@@ -179,7 +179,8 @@ describe('App', () => {
           `
         },
         OPFSExplorer: true,
-        ChatGroupSettingsPanel: true
+        ChatGroupSettingsPanel: true,
+        DebugWeshTerminalModal: true
       },
     },
   });

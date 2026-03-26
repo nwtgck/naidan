@@ -60,6 +60,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
       Github: true, ExternalLink: true, Plus: true, Info: true,
       FileArchive: true, HardDrive: true, MessageSquareQuote: true,
       TransformersJsManager: true,
+      'router-link': true,
       // Do not stub tabs that are tested
       RecipeImportTab: true, DeveloperTab: true, AboutTab: true,
     },

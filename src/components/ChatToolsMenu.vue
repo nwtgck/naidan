@@ -189,7 +189,17 @@ defineExpose({
           />
           <LmToolsSettings />
           <ImageGenerationSettings
-            v-bind="props"
+            :can-generate-image="canGenerateImage"
+            :is-processing="isProcessing"
+            :is-image-mode="isImageMode"
+            :selected-width="selectedWidth"
+            :selected-height="selectedHeight"
+            :selected-count="selectedCount"
+            :selected-steps="selectedSteps"
+            :selected-seed="selectedSeed"
+            :selected-persist-as="selectedPersistAs"
+            :available-image-models="availableImageModels"
+            :selected-image-model="selectedImageModel"
             @toggle-image-mode="emit('toggle-image-mode')"
             @update:resolution="(w, h) => emit('update:resolution', w, h)"
             @update:count="c => emit('update:count', c)"

@@ -76,6 +76,14 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
+vi.mock('../services/storage', () => ({
+  storageService: {
+    loadChat: vi.fn().mockResolvedValue(null),
+    listChats: vi.fn().mockResolvedValue([]),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+  },
+}));
+
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
   Search: { render: () => null },
