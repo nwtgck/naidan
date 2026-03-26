@@ -766,7 +766,7 @@ export const buildSidebarItemsFromHierarchy = (
 };
 
 export const settingsToDomain = (dto: SettingsDto): Settings => {
-  const { endpoint, providerProfiles, storageType, experimental, ...rest } = dto;
+  const { endpoint, providerProfiles, storageType, experimental: _experimental, ...rest } = dto;
 
   const endpointInfo = (() => {
     switch (endpoint.type) {
@@ -824,16 +824,13 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
       };
     }) ?? [],
     lmParameters: lmParametersToDomain(rest.lmParameters),
-    experimental: experimental ? {
-      markdownRendering: experimental.markdownRendering ?? 'block_markdown'
-    } : undefined,
   };
 };
 
 export const settingsToDto = (domain: Settings): SettingsDto => {
   const {
     endpointType, endpointUrl, endpointHttpHeaders,
-    storageType, providerProfiles, experimental, ...rest
+    storageType, providerProfiles, ...rest
   } = domain;
 
   return {
@@ -869,9 +866,7 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
     heavyContentAlertDismissed: rest.heavyContentAlertDismissed,
     systemPrompt: rest.systemPrompt,
     lmParameters: lmParametersToDto(rest.lmParameters),
-    experimental: experimental ? {
-      markdownRendering: experimental.markdownRendering
-    } : undefined,
+    experimental: undefined,
     mounts: (domain.mounts || []).map(m => {
       const type = m.type;
       switch (type) {

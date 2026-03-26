@@ -3,17 +3,12 @@ import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import DeveloperTab from './DeveloperTab.vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
-import { useSettings } from '@/composables/useSettings';
 import { useConfirm } from '@/composables/useConfirm';
 import { useSampleChat } from '@/composables/useSampleChat';
 
 // Mock composables
 vi.mock('../composables/usePWAUpdate', () => ({
   usePWAUpdate: vi.fn(),
-}));
-
-vi.mock('../composables/useSettings', () => ({
-  useSettings: vi.fn(),
 }));
 
 vi.mock('../composables/useConfirm', () => ({
@@ -27,7 +22,6 @@ vi.mock('../composables/useSampleChat', () => ({
 describe('DeveloperTab', () => {
   const needRefresh = ref(false);
   const setNeedRefresh = vi.fn();
-  const toggleMarkdownRendering = vi.fn();
   const createSampleChat = vi.fn();
   const showConfirm = vi.fn();
 
@@ -38,11 +32,6 @@ describe('DeveloperTab', () => {
     (usePWAUpdate as any).mockReturnValue({
       needRefresh,
       setNeedRefresh,
-    });
-
-    (useSettings as any).mockReturnValue({
-      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
-      toggleMarkdownRendering,
     });
 
     (useConfirm as any).mockReturnValue({

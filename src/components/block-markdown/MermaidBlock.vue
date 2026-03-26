@@ -31,7 +31,9 @@ async function render() {
     });
   } catch (e) {
     console.error('Mermaid render error:', e);
-    renderRef.value.innerHTML = `<div class="text-red-500 text-xs p-2">Failed to render mermaid diagram</div>`;
+    if (renderRef.value) {
+      renderRef.value.innerHTML = `<div class="text-red-500 text-xs p-2">Failed to render mermaid diagram</div>`;
+    }
   }
 }
 

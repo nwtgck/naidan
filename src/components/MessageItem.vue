@@ -3,44 +3,16 @@ import { computed, ref, onMounted, nextTick, watch, onUnmounted, provide } from 
 import BlockMarkdownRenderer from './block-markdown/BlockMarkdownRenderer.vue';
 import GeneratingIndicator from './GeneratingIndicator.vue';
 import { markRaw } from 'vue';
-import { Marked } from 'marked';
-import markedKatex from 'marked-katex-extension';
-import createDOMPurify from 'dompurify';
-import hljs from 'highlight.js';
-import mermaid from 'mermaid';
-
-const DOMPurify = (() => {
-  const t = typeof window;
-  switch (t) {
-  case 'undefined': return createDOMPurify();
-  case 'object':
-  case 'boolean':
-  case 'string':
-  case 'number':
-  case 'function':
-  case 'symbol':
-  case 'bigint':
-    return createDOMPurify(window);
-  default: {
-    const _ex: never = t;
-    return _ex;
-  }
-  }
-})();
-import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '@/models/types';
 import type { FlowMetadata, MessageMode } from '@/composables/useChatDisplayFlow';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
 import { storageService } from '@/services/storage';
-import { useGlobalEvents } from '@/composables/useGlobalEvents';
-import { sanitizeFilename } from '@/utils/string';
 // IMPORTANT: SpeechControl is used in every message and should be immediately available.
 import SpeechControl from './SpeechControl.vue';
 // IMPORTANT: ImageConjuringLoader is essential for showing image generation progress immediately.
 import ImageConjuringLoader from './ImageConjuringLoader.vue';
-import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageIndexBadge from './ImageIndexBadge.vue';
 import MessageThinking from './MessageThinking.vue';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
@@ -62,13 +34,9 @@ import {
   isImageGenerationProcessed,
   getImageGenerationProgress,
   stripNaidanSentinels,
-  IMAGE_BLOCK_LANG,
-  GeneratedImageBlockSchema,
   isImageRequest,
   parseImageRequest,
   createImageRequestMarker,
-  getDisplayDimensions,
-  getImageStats
 } from '@/utils/image-generation';
 
 const props = withDefaults(defineProps<{
@@ -130,13 +98,6 @@ const editImageParams = ref({
 });
 
 const attachmentUrls = ref<Record<string, string>>({});
-const generatedImageUrls = ref<Record<string, string>>({});
-const hydrationCleanups: (() => void)[] = [];
-let hydrationLock = false;
-let pendingHydration = false;
-
-// Cache for metadata support to avoid redundant file reads
-const metadataSupportCache = new Map<string, boolean>();
 
 const { openPreview } = useImagePreview();
 const { imageProgressMap, currentChat } = useChat();
@@ -221,159 +182,6 @@ async function loadAttachments() {
     }
   }
 }
-
-async function loadGeneratedImages() {
-  if (hydrationLock) {
-    pendingHydration = true;
-    return;
-  }
-  hydrationLock = true;
-  pendingHydration = false;
-
-  try {
-    await nextTick();
-    const root = contentRef.value || messageRef.value;
-    if (!root) return;
-
-    // Cleanup previous hydrations before starting new ones
-    while (hydrationCleanups.length > 0) {
-      const cleanup = hydrationCleanups.pop();
-      if (cleanup) cleanup();
-    }
-
-    const placeholders = Array.from(root.querySelectorAll('.naidan-generated-image'));
-
-    // Parallelize hydration to improve performance, especially with multiple images
-    await Promise.all(placeholders.map(async (el, idx) => {
-      const htmlEl = el as HTMLElement;
-
-      try {
-        const id = htmlEl.dataset.id;
-        if (!id) return;
-
-        // Use cached support status if available to avoid redundant file reads
-        let isSupported = metadataSupportCache.get(id);
-
-        const displayWidth = htmlEl.dataset.displayWidth;
-        const displayHeight = htmlEl.dataset.displayHeight;
-        const width = htmlEl.dataset.width;
-        const height = htmlEl.dataset.height;
-        const prompt = htmlEl.dataset.prompt || '';
-        const steps = htmlEl.dataset.steps ? parseInt(htmlEl.dataset.steps) : undefined;
-        const seed = htmlEl.dataset.seed ? parseInt(htmlEl.dataset.seed) : undefined;
-
-        let urlObj = generatedImageUrls.value[id];
-        let blob: Blob | undefined;
-
-        if (!urlObj) {
-          const fetchedBlob = await storageService.getFile(id);
-          if (fetchedBlob) {
-            blob = fetchedBlob;
-            urlObj = URL.createObjectURL(blob);
-            generatedImageUrls.value[id] = urlObj;
-          } else {
-            throw new Error(`Image not found in storage: ${id}`);
-          }
-        }
-
-        // If support status not cached, we need to prepare context once
-        if (isSupported === undefined) {
-          const ctx = await ImageDownloadHydrator.prepareContext(htmlEl, storageService, blob);
-          if (ctx) {
-            isSupported = ctx.isSupported;
-            metadataSupportCache.set(id, isSupported);
-          }
-        }
-
-        if (urlObj) {
-          // Create the hydrated image element via the hydrator
-          const imgEl = ImageDownloadHydrator.createImageElement({
-            url: urlObj,
-            width: displayWidth,
-            height: displayHeight,
-            onPreview: () => handlePreviewImage({ id })
-          });
-
-          const skeleton = htmlEl.querySelector('.naidan-image-skeleton');
-          if (skeleton) {
-            skeleton.replaceWith(imgEl);
-          } else {
-            const existingImg = htmlEl.querySelector('img.naidan-clickable-img');
-            if (existingImg instanceof HTMLImageElement) {
-              existingImg.src = urlObj;
-            } else {
-              htmlEl.prepend(imgEl);
-            }
-          }
-
-          // Hydrate the download button portal
-          const dlPortal = htmlEl.querySelector('.naidan-download-portal');
-          const widthVal = displayWidth ? parseInt(displayWidth) : 0;
-          if (dlPortal instanceof HTMLElement) {
-            const unmount = ImageDownloadHydrator.mount({
-              portal: dlPortal,
-              isSupported: isSupported ?? false,
-              align: widthVal < 300 ? 'left' : 'right',
-              onDownload: ({ withMetadata }) => ImageDownloadHydrator.download({
-                id, prompt, steps, seed,
-                model: props.message.modelId || undefined,
-                withMetadata,
-                storageService,
-                onError: (err) => addErrorEvent({
-                  source: 'MessageItem:Download',
-                  message: 'Failed to embed metadata in image.',
-                  details: err instanceof Error ? err.message : String(err),
-                })
-              })
-            });
-            hydrationCleanups.push(unmount);
-          }
-
-          // Hydrate the info display portal
-          const infoPortal = htmlEl.querySelector('.naidan-info-portal');
-          if (infoPortal instanceof HTMLElement) {
-            const unmountInfo = ImageDownloadHydrator.mountInfo({
-              portal: infoPortal,
-              prompt,
-              steps,
-              seed,
-              width,
-              height,
-              align: 'left' // Info is on the left, so always grow right
-            });
-            hydrationCleanups.push(unmountInfo);
-          }
-
-          // Hydrate the badge portal
-          const badgePortal = htmlEl.querySelector('.naidan-badge-portal');
-          const hasMultipleImages = (imageStats.value.totalCount !== undefined && imageStats.value.totalCount > 1) ||
-                                   (imageStats.value.totalCount === undefined && imageStats.value.generatedCount > 1);
-
-          if (badgePortal instanceof HTMLElement && hasMultipleImages) {
-            const unmountBadge = ImageDownloadHydrator.mountBadge({
-              portal: badgePortal,
-              index: idx + 1,
-              total: imageStats.value.totalCount
-            });
-            hydrationCleanups.push(unmountBadge);
-          }
-        }
-      } catch (e) {
-        console.error('Failed to load generated image:', e);
-        htmlEl.innerHTML = `<div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs">Failed to load generated image</div>`;
-      }
-    }));
-  } finally {
-    hydrationLock = false;
-    if (pendingHydration) {
-      loadGeneratedImages();
-    }
-  }
-  await nextTick();
-}
-
-type MermaidMode = 'preview' | 'code' | 'both';
-const mermaidMode = ref<MermaidMode>('preview');
 
 const isMac = (() => {
   const t = typeof window;
@@ -490,219 +298,6 @@ function handleClearContent() {
   });
 }
 
-const actionIcons = {
-  copy: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
-  check: `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check"><path d="M20 6 9 17l-5-5"/></svg>`,
-  preview: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-presentation"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>`,
-  code: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-code"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m10 13-2 2 2 2"/><path d="m14 17 2-2-2-2"/></svg>`,
-  both: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-columns-2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/></svg>`,
-};
-
-function setMermaidMode(mode: MermaidMode) {
-  mermaidMode.value = mode;
-  switch (mode) {
-  case 'preview':
-  case 'both':
-    renderMermaid();
-    break;
-  case 'code':
-    break;
-  default: {
-    const _ex: never = mode;
-    throw new Error(`Unhandled mermaid mode: ${_ex}`);
-  }
-  }
-}
-
-// Initialize Mermaid
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'dark',
-});
-
-const { addErrorEvent } = useGlobalEvents();
-
-const marked = new Marked();
-
-marked.use(markedKatex({
-  throwOnError: false,
-  output: 'html',
-}));
-
-marked.use({
-  renderer: {
-    code(token) {
-      const code = token.text;
-      const lang = token.lang || '';
-
-      // 1. Generated Image Block
-      if (lang === IMAGE_BLOCK_LANG) {
-        try {
-          const result = GeneratedImageBlockSchema.safeParse(JSON.parse(code));
-          if (result.success) {
-            const { binaryObjectId: id, prompt: p, steps: s, seed: sd } = result.data;
-            const { width: dw, height: dh } = getDisplayDimensions({
-              width: result.data.width,
-              height: result.data.height,
-              displayWidth: result.data.displayWidth,
-              displayHeight: result.data.displayHeight
-            });
-
-            const div = document.createElement('div');
-            div.className = 'naidan-generated-image my-4 relative group/gen-img w-fit rounded-xl overflow-visible';
-            div.dataset.id = id;
-            div.dataset.displayWidth = String(dw);
-            div.dataset.displayHeight = String(dh);
-            if (result.data.width !== undefined) div.dataset.width = String(result.data.width);
-            if (result.data.height !== undefined) div.dataset.height = String(result.data.height);
-            div.dataset.prompt = p || '';
-            if (s !== undefined) div.dataset.steps = String(s);
-            if (sd !== undefined) div.dataset.seed = String(sd);
-
-            // Skeleton placeholder
-            const skeleton = document.createElement('div');
-            skeleton.className = 'naidan-image-skeleton flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse !m-0 rounded-xl';
-            skeleton.style.width = `${dw}px`;
-            skeleton.style.maxWidth = '100%';
-            skeleton.style.aspectRatio = `${dw} / ${dh}`;
-            skeleton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image text-gray-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
-            div.appendChild(skeleton);
-
-            // Portals for Vue components (will be hydrated in loadGeneratedImages)
-            const dlPortal = document.createElement('div');
-            dlPortal.className = 'naidan-download-portal absolute top-2 right-2 z-30 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all overflow-visible';
-            dlPortal.innerHTML = '<!-- hydratable -->';
-            div.appendChild(dlPortal);
-
-            const infoPortal = document.createElement('div');
-            infoPortal.className = 'naidan-info-portal absolute top-2 left-2 z-30 opacity-0 touch-visible group-hover/gen-img:opacity-100 transition-all overflow-visible';
-            infoPortal.innerHTML = '<!-- hydratable -->';
-            div.appendChild(infoPortal);
-
-            const badgePortal = document.createElement('div');
-            badgePortal.className = 'naidan-badge-portal absolute bottom-2 left-2 z-10';
-            badgePortal.innerHTML = '<!-- hydratable -->';
-            div.appendChild(badgePortal);
-
-            return div.outerHTML;
-          } else {
-            console.error('Failed to validate generated image block', result.error);
-            addErrorEvent({
-              source: 'MessageItem:MarkdownRenderer',
-              message: 'Failed to validate generated image metadata.',
-              details: result.error.message,
-            });
-          }
-        } catch (e) {
-          console.error('Failed to parse generated image block JSON', e);
-          addErrorEvent({
-            source: 'MessageItem:MarkdownRenderer',
-            message: 'Failed to parse generated image metadata.',
-            details: e instanceof Error ? e.message : String(e),
-          });
-        }
-        return `<pre class="hljs"><code>${hljs.highlight(code, { language: 'json' }).value}</code></pre>`;
-      }
-
-      // 2. Mermaid Block
-      if (lang === 'mermaid') {
-        const mode = mermaidMode.value;
-        const encodedCode = btoa(unescape(encodeURIComponent(code))); // Base64 to safely store in attribute
-
-        return `<div class="mermaid-block relative group/mermaid" data-mermaid-mode="${mode}" data-raw="${encodedCode}">
-                  <div class="mermaid-ui-overlay flex items-center gap-2">
-                    <div class="mermaid-tabs">
-                      <button class="mermaid-tab ${(() => {
-    switch (mode) {
-    case 'preview': return 'active';
-    case 'code':
-    case 'both': return '';
-    default: { const _ex: never = mode; return _ex; }
-    }
-  })()}" data-mode="preview" title="Preview Only">
-                        ${actionIcons.preview}
-                        <span>Preview</span>
-                      </button>
-                      <button class="mermaid-tab ${(() => {
-    switch (mode) {
-    case 'code': return 'active';
-    case 'preview':
-    case 'both': return '';
-    default: { const _ex: never = mode; return _ex; }
-    }
-  })()}" data-mode="code" title="Code Only">
-                        ${actionIcons.code}
-                        <span>Code</span>
-                      </button>
-                      <button class="mermaid-tab ${(() => {
-    switch (mode) {
-    case 'both': return 'active';
-    case 'preview':
-    case 'code': return '';
-    default: { const _ex: never = mode; return _ex; }
-    }
-  })()}" data-mode="both" title="Show Both">
-                        ${actionIcons.both}
-                        <span>Both</span>
-                      </button>
-                    </div>
-                    <button class="mermaid-copy-btn flex items-center gap-1.5 px-2 py-1 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-md shadow-sm text-[10px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-all cursor-pointer opacity-0 group-hover/mermaid:opacity-100" title="Copy Mermaid code">
-                      ${actionIcons.copy}
-                      <span>Copy</span>
-                    </button>
-                  </div>
-                  <pre class="mermaid" style="display: ${(() => {
-    switch (mode) {
-    case 'code': return 'none';
-    case 'preview':
-    case 'both': return 'block';
-    default: { const _ex: never = mode; return _ex; }
-    }
-  })()}">${code}</pre>
-                  <pre class="mermaid-raw hljs language-mermaid" style="display: ${(() => {
-    switch (mode) {
-    case 'preview': return 'none';
-    case 'code':
-    case 'both': return 'block';
-    default: { const _ex: never = mode; return _ex; }
-    }
-  })()}"><code>${hljs.highlight(code, { language: 'plaintext' }).value}</code></pre>
-                </div>`;
-      }
-
-      // 3. Standard Code Block
-      const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-      const highlighted = hljs.highlight(code, { language }).value;
-
-      return `<div class="code-block-wrapper my-4 rounded-lg overflow-hidden border border-gray-700/50 bg-[#0d1117] group/code">` +
-               `<div class="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700/50 text-xs text-gray-400">` +
-                 `<span class="font-mono">${language}</span>` +
-                 `<button class="code-copy-btn flex items-center gap-1.5 hover:text-white transition-colors cursor-pointer" title="Copy code">` +
-                   actionIcons.copy +
-                   `<span>Copy</span>` +
-                 `</button>` +
-               `</div>` +
-               `<pre class="!m-0 !p-4 !bg-transparent !rounded-b-lg overflow-x-auto"><code class="!bg-transparent !p-0 !border-none text-sm font-mono leading-relaxed text-gray-200 hljs language-${language}">${highlighted}</code></pre>` +
-             `</div>`;
-    }
-  }
-});
-
-const renderMermaid = async () => {
-  await nextTick();
-  try {
-    if (!messageRef.value) return;
-    const nodes = messageRef.value.querySelectorAll('.mermaid');
-    if (nodes.length > 0) {
-      await mermaid.run({
-        nodes: Array.from(nodes) as HTMLElement[],
-      });
-    }
-  } catch (e) {
-    console.error('Mermaid render error', e);
-  }
-};
-
 onMounted(() => {
   loadAttachments();
 
@@ -710,147 +305,15 @@ onMounted(() => {
     transformersStatus.value = s;
   });
 
-  // Handle clicks via event delegation
-  messageRef.value?.addEventListener('click', async (e) => {
-    const target = e.target as HTMLElement;
-
-    // Mermaid tabs
-    const tab = target.closest('.mermaid-tab') as HTMLElement;
-    if (tab) {
-      const mode = tab.dataset.mode as MermaidMode;
-      if (mode) setMermaidMode(mode);
-      return;
-    }
-
-    // Generated image click (preview)
-    const genImg = target.closest('.naidan-clickable-img') as HTMLImageElement;
-    if (genImg) {
-      const block = genImg.closest('.naidan-generated-image') as HTMLElement;
-      const id = block?.dataset.id;
-      if (id) handlePreviewImage({ id });
-      return;
-    }
-
-    // Mermaid copy button
-    const mCopyBtn = target.closest('.mermaid-copy-btn') as HTMLButtonElement;
-    if (mCopyBtn && !mCopyBtn.dataset.copied) {
-      const block = mCopyBtn.closest('.mermaid-block') as HTMLElement;
-      const rawData = block?.dataset.raw;
-      if (rawData) {
-        try {
-          const originalCode = decodeURIComponent(escape(atob(rawData)));
-          await navigator.clipboard.writeText(originalCode);
-          mCopyBtn.innerHTML = actionIcons.check + '<span>Copied</span>';
-          mCopyBtn.dataset.copied = 'true';
-          setTimeout(() => {
-            mCopyBtn.innerHTML = actionIcons.copy + '<span>Copy</span>';
-            delete mCopyBtn.dataset.copied;
-          }, 2000);
-        } catch (err) {
-          console.error('Failed to copy mermaid code:', err);
-        }
-      }
-      return;
-    }
-
-    // Generated image download button
-    const gDownloadBtn = target.closest('.naidan-download-gen-image') as HTMLButtonElement;
-    if (gDownloadBtn) {
-      const block = gDownloadBtn.closest('.naidan-generated-image') as HTMLElement;
-      const id = block?.dataset.id;
-      const prompt = block?.dataset.prompt || '';
-      const url = id ? generatedImageUrls.value[id] : null;
-
-      if (url && id) {
-        try {
-          const obj = await storageService.getBinaryObject({ binaryObjectId: id });
-          let suffix = '.png';
-          if (obj?.name) {
-            const lastDot = obj.name.lastIndexOf('.');
-            if (lastDot !== -1) {
-              suffix = obj.name.slice(lastDot);
-            }
-          }
-
-          const filename = sanitizeFilename({
-            base: prompt,
-            suffix,
-            fallback: 'generated-image',
-          });
-
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = filename;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } catch (err) {
-          console.error('Failed to get binary object info for download:', err);
-        }
-      }
-      return;
-    }
-
-    // Code copy button
-    const copyBtn = target.closest('.code-copy-btn') as HTMLButtonElement;
-    if (copyBtn && !copyBtn.dataset.copied) {
-      const wrapper = copyBtn.closest('.code-block-wrapper');
-      const codeEl = wrapper?.querySelector('code');
-
-      if (codeEl) {
-        try {
-          await navigator.clipboard.writeText(codeEl.textContent || '');
-
-          // Visual feedback
-          copyBtn.innerHTML = actionIcons.check + '<span>Copied</span>';
-          copyBtn.classList.add('!opacity-100');
-          copyBtn.dataset.copied = 'true';
-
-          setTimeout(() => {
-            copyBtn.innerHTML = actionIcons.copy + '<span>Copy</span>';
-            copyBtn.classList.remove('!opacity-100');
-            delete copyBtn.dataset.copied;
-          }, 2000);
-        } catch (err) {
-          console.error('Failed to copy code:', err);
-        }
-      }
-    }
-  });
 });
 
 onUnmounted(() => {
-  // Revoke all created URLs
   Object.values(attachmentUrls.value).forEach(url => URL.revokeObjectURL(url));
-  Object.values(generatedImageUrls.value).forEach(url => URL.revokeObjectURL(url));
 
   if (transformersUnsubscribe) transformersUnsubscribe();
-
-  // Cleanup all hydrated components
-  while (hydrationCleanups.length > 0) {
-    const cleanup = hydrationCleanups.pop();
-    if (cleanup) cleanup();
-  }
 });
 
 const messageRef = ref<HTMLElement | null>(null);
-const contentRef = ref<HTMLElement | null>(null);
-
-watch(mermaidMode, async () => {
-  switch (mermaidMode.value) {
-  case 'preview':
-  case 'both':
-    await nextTick(); // Wait for parsedContent to update DOM
-    renderMermaid();
-    break;
-  case 'code':
-    break;
-  default: {
-    const _ex: never = mermaidMode.value;
-    throw new Error(`Unhandled mermaid mode: ${_ex}`);
-  }
-  }
-});
 
 const displayContent = computed(() => {
   const mode = props.mode;
@@ -876,7 +339,6 @@ const displayContent = computed(() => {
 
 const isImageResponse = computed(() => isImageGenerationProcessed(props.message.content || ''));
 
-const imageStats = computed(() => getImageStats(props.message.content || ''));
 
 const speechText = computed(() => {
   const mode = props.mode;
@@ -897,25 +359,6 @@ const speechText = computed(() => {
   }
   }
 });
-
-const parsedContent = computed(() => {
-  // Add mermaidMode as a dependency to trigger re-parse when it changes
-  // This ensures the HTML is always in sync with the current mode
-  void mermaidMode.value;
-  const html = marked.parse(displayContent.value) as string;
-  return DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true, svg: true },
-    FORBID_ATTR: ['onerror', 'onclick', 'onload'], // Explicitly forbid dangerous attributes
-    ADD_ATTR: ['data-id', 'data-width', 'data-height', 'data-prompt', 'data-steps', 'data-seed', 'data-testid'], // Allow hydration and test data
-    // Allow blob: and data: protocols for experimental image generation
-    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|blob|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
-  });
-});
-
-watch(parsedContent, () => {
-  renderMermaid();
-  loadGeneratedImages();
-}, { immediate: true });
 
 const isUser = computed((): boolean => {
   const node = props.message;
@@ -1219,20 +662,12 @@ defineExpose({
       </div>
       <div v-else>
         <!-- Content Display (Always shown if present) -->
-        <template v-if="displayContent">
+        <div v-if="displayContent" data-testid="message-content">
           <BlockMarkdownRenderer
-            v-if="!settings.experimental || settings.experimental.markdownRendering === 'block_markdown'"
             :content="displayContent"
             :trailing-inline="showGeneratingIndicator && !!displayContent ? markRaw(GeneratingIndicator) : undefined"
           />
-          <div
-            v-else
-            ref="contentRef"
-            class="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 overflow-x-auto leading-relaxed"
-            v-html="parsedContent"
-            data-testid="message-content"
-          ></div>
-        </template>
+        </div>
 
         <!-- AI Image Synthesis Loader (Componentized) -->
         <!-- Only shown in content mode or first part if pending -->

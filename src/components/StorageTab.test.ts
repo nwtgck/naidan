@@ -506,7 +506,6 @@ describe('StorageTab.vue Tests', () => {
         setHeavyContentAlertDismissed: vi.fn(),
         setSearchPreviewMode: vi.fn(),
         setSearchContextSize: vi.fn(),
-        toggleMarkdownRendering: vi.fn(),
         __testOnly: {
           __testOnlyReset: vi.fn(),
           __testOnlySetSettings: vi.fn(),

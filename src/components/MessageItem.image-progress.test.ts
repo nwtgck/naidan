@@ -21,7 +21,7 @@ describe('MessageItem Image Generation Progress', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (useSettings as any).mockReturnValue({
-      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
+      settings: ref({}),
     });
   });
 

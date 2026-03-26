@@ -71,7 +71,6 @@ describe('ImportExportService', () => {
     storageType: 'local',
     autoTitleEnabled: true,
     providerProfiles: [],
-    experimental: undefined,
     defaultModelId: undefined,
     titleModelId: undefined,
     heavyContentAlertDismissed: undefined,
@@ -886,16 +885,15 @@ describe('ImportExportService', () => {
       });
     });
 
-    it('imports experimental settings and UI flags', async () => {
+    it('imports UI flags', async () => {
       const zip = new JSZip();
       zip.file('export-manifest.json', '{}');
       zip.file('settings.json', JSON.stringify(createValidSettingsDto({
-        experimental: { markdownRendering: 'block_markdown' },
         heavyContentAlertDismissed: true,
         endpoint: { type: 'openai', url: 'http://imported', httpHeaders: [['X-Test', 'imported']] }
       })));
 
-      mockStorage.loadSettings.mockResolvedValue(createValidSettings({ experimental: undefined }));
+      mockStorage.loadSettings.mockResolvedValue(createValidSettings());
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const config: ImportConfig = {
@@ -908,7 +906,6 @@ describe('ImportExportService', () => {
       expect(mockStorage.updateSettings).toHaveBeenCalled();
       const updater = mockStorage.updateSettings.mock.calls[0]![0];
       const result = await updater(await mockStorage.loadSettings());
-      expect(result.experimental?.markdownRendering).toBe('block_markdown');
       expect(result.heavyContentAlertDismissed).toBe(true);
       expect(result.endpointUrl).toBe('http://imported');
       expect(result.endpointHttpHeaders).toEqual([['X-Test', 'imported']]);

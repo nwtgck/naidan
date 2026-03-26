@@ -32,7 +32,7 @@ describe('MessageItem Rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (useSettings as any).mockReturnValue({
-      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
+      settings: ref({}),
     });
   });
 
@@ -50,9 +50,9 @@ describe('MessageItem Rendering', () => {
     const wrapper = mount(MessageItem, { props: { message } });
 
     const html = wrapper.html();
-    // highlight.js should wrap the code in spans with hljs classes
-    expect(html).toContain('language-python');
+    // BlockMarkdownRenderer uses hljs for highlighting and shows the language label
     expect(html).toContain('hljs');
+    expect(html).toContain('python');
   });
 
   it('sanitizes dangerous HTML', () => {
@@ -198,29 +198,21 @@ describe('MessageItem Rendering', () => {
   it('toggles mermaid display modes', async () => {
     const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
     const wrapper = mount(MessageItem, { props: { message } });
-
-    // Mode should be preview by default
-    expect(wrapper.find('.mermaid-raw').attributes('style')).toContain('display: none');
-    expect(wrapper.find('.mermaid').attributes('style')).not.toContain('display: none');
-
-    // Manually set mode to 'code' via VM
-    (wrapper.vm as unknown as { mermaidMode: string }).mermaidMode = 'code';
-    await nextTick();
     await nextTick();
 
-    expect(wrapper.find('.mermaid-raw').attributes('style')).not.toContain('display: none');
-    expect(wrapper.find('.mermaid').attributes('style')).toContain('display: none');
+    // Default mode: preview area exists
+    expect(wrapper.find('.mermaid').exists()).toBe(true);
+    expect(wrapper.find('button[title="Code"]').exists()).toBe(true);
 
-    // Manually set mode to 'both'
-    (wrapper.vm as unknown as { mermaidMode: string }).mermaidMode = 'both';
+    // Switch to Code mode — code text should be visible
+    await wrapper.find('button[title="Code"]').trigger('click');
     await nextTick();
+    expect(wrapper.text()).toContain('graph TD; A-->B;');
+
+    // Switch to Split View — still shows code text
+    await wrapper.find('button[title="Split View"]').trigger('click');
     await nextTick();
-
-    const finalRaw = wrapper.find('.mermaid-raw').attributes('style') || '';
-    const finalDiagram = wrapper.find('.mermaid').attributes('style') || '';
-
-    expect(finalRaw).not.toContain('display: none');
-    expect(finalDiagram).not.toContain('display: none');
+    expect(wrapper.text()).toContain('graph TD; A-->B;');
   });
 
   describe('Mermaid UI Design Consistency', () => {
@@ -231,22 +223,19 @@ describe('MessageItem Rendering', () => {
       await nextTick();
 
       const html = wrapper.html();
-      expect(html).toContain('mermaid-block relative group/mermaid');
-      expect(html).toContain('mermaid-ui-overlay');
-      expect(html).toContain('mermaid-tabs');
+      expect(html).toContain('mermaid-block');
+      expect(html).toContain('group/mermaid');
     });
 
-    it('contains Mermaid tabs with correct labels', async () => {
+    it('contains Mermaid mode buttons', async () => {
       const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
       const wrapper = mount(MessageItem, { props: { message } });
       await nextTick();
       await nextTick();
 
-      const tabs = wrapper.findAll('.mermaid-tab');
-      expect(tabs.length).toBe(3);
-      expect(tabs[0]!.text()).toContain('Preview');
-      expect(tabs[1]!.text()).toContain('Code');
-      expect(tabs[2]!.text()).toContain('Both');
+      expect(wrapper.find('button[title="Preview"]').exists()).toBe(true);
+      expect(wrapper.find('button[title="Code"]').exists()).toBe(true);
+      expect(wrapper.find('button[title="Split View"]').exists()).toBe(true);
     });
 
     it('handles Mermaid copy button click', async () => {
@@ -265,19 +254,19 @@ describe('MessageItem Rendering', () => {
         configurable: true,
       });
 
-      const copyBtn = wrapper.find('.mermaid-copy-btn');
+      const copyBtn = wrapper.find('.mermaid-block button[title="Copy Source"]');
       expect(copyBtn.exists()).toBe(true);
 
       await copyBtn.trigger('click');
       await nextTick();
 
       expect(writeText).toHaveBeenCalledWith('graph TD; A-->B;');
-      expect(copyBtn.text()).toContain('Copied');
+      expect(wrapper.find('.mermaid-block button[title="Copied"]').exists()).toBe(true);
 
       // Check revert
       vi.advanceTimersByTime(2100);
       await nextTick();
-      expect(copyBtn.text()).toContain('Copy');
+      expect(wrapper.find('.mermaid-block button[title="Copy Source"]').exists()).toBe(true);
 
       vi.useRealTimers();
       wrapper.unmount();
@@ -289,18 +278,9 @@ describe('MessageItem Rendering', () => {
       await nextTick();
       await nextTick();
 
-      const copyBtn = wrapper.find('.mermaid-copy-btn');
+      const copyBtn = wrapper.find('.mermaid-block button[title="Copy Source"]');
       expect(copyBtn.exists()).toBe(true);
-
-      const cls = copyBtn.classes();
-      expect(cls).toContain('bg-white/90');
-      expect(cls).toContain('dark:bg-gray-800/90');
-      expect(cls).toContain('backdrop-blur-sm');
-      expect(cls).toContain('rounded-md');
-      expect(cls).toContain('shadow-sm');
-      expect(cls).toContain('opacity-0'); // Hidden by default
-      expect(cls).toContain('group-hover/mermaid:opacity-100'); // Show on hover
-      expect(copyBtn.attributes('title')).toBe('Copy Mermaid code');
+      expect(copyBtn.classes()).toContain('rounded-md');
     });
   });
   describe('Code Block Toolbar', () => {
@@ -314,9 +294,8 @@ describe('MessageItem Rendering', () => {
       expect(html).toContain('group/code');
 
       // Check for header toolbar
-      expect(html).toContain('code-copy-btn');
       expect(html).toContain('javascript'); // Language label
-      expect(html).toContain('Copy'); // Button text
+      expect(wrapper.find('button[title="Copy code"]').exists()).toBe(true);
     });
 
     it('ensures correct styling classes are applied to avoid white frame', () => {
@@ -334,7 +313,6 @@ describe('MessageItem Rendering', () => {
     });
 
     it('handles copy button click and visual feedback', async () => {
-      // Use fake timers BEFORE the action
       vi.useFakeTimers();
 
       const message = createMessage('```typescript\nconst x: number = 42;\n```');
@@ -350,25 +328,21 @@ describe('MessageItem Rendering', () => {
         configurable: true,
       });
 
-      const copyBtn = wrapper.find('.code-copy-btn');
-      const btnEl = copyBtn.element;
+      const copyBtn = wrapper.find('button[title="Copy code"]');
+      expect(copyBtn.exists()).toBe(true);
 
-      // Trigger click
       await copyBtn.trigger('click');
-
-      // The click handler is async, so we need to wait for the promise to resolve
-      // but since it's an event listener, we just need a tick.
       await nextTick();
 
-      // Verify clipboard call
+      // After click, button title changes to 'Copied'
       expect(writeText).toHaveBeenCalledWith('const x: number = 42;');
-      expect(btnEl.innerHTML).toContain('Copied');
+      expect(wrapper.find('button[title="Copied"]').exists()).toBe(true);
 
       // Advance timers and wait for Vue to update the DOM
       vi.advanceTimersByTime(2100);
       await nextTick();
 
-      expect(btnEl.innerHTML).toContain('Copy');
+      expect(wrapper.find('button[title="Copy code"]').exists()).toBe(true);
 
       vi.useRealTimers();
       wrapper.unmount();
@@ -377,14 +351,13 @@ describe('MessageItem Rendering', () => {
     it('has the correct design classes for standard code block copy button', () => {
       const message = createMessage('```js\nconsole.log(1);\n```');
       const wrapper = mount(MessageItem, { props: { message } });
-      const copyBtn = wrapper.find('.code-copy-btn');
+      const copyBtn = wrapper.find('button[title="Copy code"]');
 
+      expect(copyBtn.exists()).toBe(true);
       expect(copyBtn.classes()).toContain('flex');
       expect(copyBtn.classes()).toContain('items-center');
-      expect(copyBtn.classes()).toContain('gap-1.5');
       expect(copyBtn.classes()).toContain('hover:text-white');
       expect(copyBtn.classes()).toContain('transition-colors');
-      expect(copyBtn.attributes('title')).toBe('Copy code');
     });
   });
 });
@@ -1075,9 +1048,8 @@ describe('MessageItem showGeneratingIndicator', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Use block_markdown so BlockMarkdownRenderer is rendered and trailingInline is injected.
     (useSettings as any).mockReturnValue({
-      settings: ref({ experimental: { markdownRendering: 'block_markdown' } }),
+      settings: ref({}),
     });
   });
 
