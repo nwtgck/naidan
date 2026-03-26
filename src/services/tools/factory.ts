@@ -8,6 +8,8 @@ import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { generateId } from '@/utils/id';
 import { OPFS_TMP_DIR } from '@/models/constants';
 import type { WeshMount } from '@/services/wesh/types';
+import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './volume-extension-cache';
+import { buildShellDescription } from './shell-description';
 
 /**
  * Dynamically creates and returns a list of enabled tools based on settings.
@@ -50,6 +52,7 @@ export async function getEnabledTools({
       const resolvedMounts: WeshMount[] = [
         { path: '/tmp', handle: tmpHandle, readOnly: false },
       ];
+      const volumeHandles = new Map<string, FileSystemDirectoryHandle>();
       for (const m of allMounts) {
         const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
         if (handle) {
@@ -58,6 +61,7 @@ export async function getEnabledTools({
             handle,
             readOnly: m.readOnly,
           });
+          volumeHandles.set(m.volumeId, handle);
         }
       }
 
@@ -71,11 +75,28 @@ export async function getEnabledTools({
         initialCwd: hasHomeUserMount ? '/home/user' : undefined,
       });
 
+      // Abort in-progress scans and read whatever has been collected so far.
+      abortOngoingScans();
+      const detectedExtensions = new Set<string>();
+      for (const m of allMounts) {
+        for (const ext of getVolumeExtensions({ volumeId: m.volumeId })) {
+          detectedExtensions.add(ext);
+        }
+      }
+
+      // Start background scans for volumes not yet scanned (e.g. after browser reload).
+      // Results will be available on the next send.
+      for (const [volumeId, handle] of volumeHandles) {
+        if (!isVolumeScanned({ volumeId })) {
+          startVolumeExtensionScan({ volumeId, handle });
+        }
+      }
+
       tools.push(createWeshTool({
         client,
         mounts: resolvedMounts,
         name: 'shell_execute',
-        description: undefined,
+        description: buildShellDescription({ mounts: resolvedMounts, detectedExtensions }),
         defaultStdoutLimit: 4096,
         defaultStderrLimit: 4096,
       }));

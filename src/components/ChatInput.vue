@@ -11,6 +11,7 @@ import ChatAttachMenu from './ChatAttachMenu.vue';
 import { useReasoning } from '@/composables/useReasoning';
 import { useChatTools } from '@/composables/useChatTools';
 import { storageService } from '@/services/storage';
+import { startVolumeExtensionScan } from '@/services/tools/volume-extension-cache';
 import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
@@ -355,6 +356,9 @@ async function finishMount({ volumeId, name }: { volumeId: string; name: string 
     mount: { type: 'volume', volumeId, mountPath, readOnly: true },
   });
   setToolEnabled({ name: 'shell_execute', enabled: true });
+  void storageService.getVolumeDirectoryHandle({ volumeId }).then(handle => {
+    if (handle) startVolumeExtensionScan({ volumeId, handle });
+  });
 }
 
 async function attachCopyAsVolume({ entries, name }: {
