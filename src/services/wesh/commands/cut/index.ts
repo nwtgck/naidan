@@ -1,7 +1,7 @@
 import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
+import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
 import { handleToStream } from '@/services/wesh/utils/fs';
 
 type CutMode = 'bytes' | 'characters' | 'fields';
@@ -11,9 +11,24 @@ interface CutRange {
   end: number | undefined;
 }
 
-interface CutLine {
+interface CutTextLine {
   text: string;
   hadNewline: boolean;
+}
+
+interface CutByteLine {
+  bytes: Uint8Array;
+  hadNewline: boolean;
+}
+
+interface CutInterval {
+  start: number;
+  end: number | undefined;
+}
+
+interface CutSegment {
+  start: number;
+  end: number;
 }
 
 function parsePositiveInteger({
@@ -111,60 +126,48 @@ function parseCutList({
   return { ok: true, value: ranges };
 }
 
-function normalizeCutRanges({
+function normalizeCutIntervals({
   ranges,
-  length,
 }: {
   ranges: CutRange[];
-  length: number;
-}): Set<number> {
-  const selected = new Set<number>();
-
-  for (const range of ranges) {
-    const start = range.start ?? 1;
-    const end = range.end ?? length;
-    for (let index = start; index <= end; index++) {
-      if (index <= length) {
-        selected.add(index);
+}): CutInterval[] {
+  const sorted = ranges
+    .map((range) => ({
+      start: range.start ?? 1,
+      end: range.end,
+    }))
+    .sort((left, right) => {
+      if (left.start !== right.start) {
+        return left.start - right.start;
       }
+
+      const leftEnd = left.end ?? Number.POSITIVE_INFINITY;
+      const rightEnd = right.end ?? Number.POSITIVE_INFINITY;
+      return leftEnd - rightEnd;
+    });
+
+  const normalized: CutInterval[] = [];
+  for (const interval of sorted) {
+    const last = normalized[normalized.length - 1];
+    if (last === undefined) {
+      normalized.push(interval);
+      continue;
     }
+
+    const lastEnd = last.end ?? Number.POSITIVE_INFINITY;
+    const currentEnd = interval.end ?? Number.POSITIVE_INFINITY;
+    if (interval.start <= lastEnd + 1) {
+      last.end = Math.max(lastEnd, currentEnd);
+      if (!Number.isFinite(last.end)) {
+        last.end = undefined;
+      }
+      continue;
+    }
+
+    normalized.push(interval);
   }
 
-  return selected;
-}
-
-function splitLines({
-  text,
-}: {
-  text: string;
-}): CutLine[] {
-  const lines: CutLine[] = [];
-  let start = 0;
-
-  while (start < text.length) {
-    const newlineIndex = text.indexOf('\n', start);
-    if (newlineIndex === -1) break;
-
-    const lineEnd = newlineIndex > start && text[newlineIndex - 1] === '\r'
-      ? newlineIndex - 1
-      : newlineIndex;
-
-    lines.push({
-      text: text.slice(start, lineEnd),
-      hadNewline: true,
-    });
-    start = newlineIndex + 1;
-  }
-
-  if (start < text.length) {
-    const last = text.slice(start);
-    lines.push({
-      text: last.endsWith('\r') ? last.slice(0, -1) : last,
-      hadNewline: false,
-    });
-  }
-
-  return lines;
+  return normalized;
 }
 
 function resolvePath({
@@ -177,68 +180,150 @@ function resolvePath({
   return path.startsWith('/') ? path : `${cwd}/${path}`;
 }
 
-function selectBytes({
-  line,
-  ranges,
+function buildSelectedSegments({
+  intervals,
+  length,
   complement,
 }: {
-  line: string;
-  ranges: CutRange[];
+  intervals: CutInterval[];
+  length: number;
   complement: boolean;
-}): string {
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-  const bytes = encoder.encode(line);
-  const selected = normalizeCutRanges({ ranges, length: bytes.length });
-  const result: number[] = [];
+}): CutSegment[] {
+  const selected: CutSegment[] = [];
 
-  for (let index = 0; index < bytes.length; index++) {
-    const position = index + 1;
-    const isSelected = selected.has(position);
-    if (complement ? !isSelected : isSelected) {
-      result.push(bytes[index]!);
+  for (const interval of intervals) {
+    if (interval.start > length) {
+      break;
+    }
+
+    const end = interval.end ?? length;
+    const clippedEnd = Math.min(length, end);
+    if (interval.start <= clippedEnd) {
+      selected.push({
+        start: interval.start - 1,
+        end: clippedEnd,
+      });
     }
   }
 
-  return decoder.decode(new Uint8Array(result));
+  if (!complement) {
+    return selected;
+  }
+
+  const complementSegments: CutSegment[] = [];
+  let cursor = 0;
+  for (const segment of selected) {
+    if (cursor < segment.start) {
+      complementSegments.push({
+        start: cursor,
+        end: segment.start,
+      });
+    }
+    cursor = segment.end;
+  }
+  if (cursor < length) {
+    complementSegments.push({
+      start: cursor,
+      end: length,
+    });
+  }
+  return complementSegments;
+}
+
+function createCutRangeTracker({
+  intervals,
+  complement,
+}: {
+  intervals: CutInterval[];
+  complement: boolean;
+}) {
+  let intervalIndex = 0;
+
+  return {
+    isSelected({ position }: { position: number }): boolean {
+      while (intervalIndex < intervals.length) {
+        const interval = intervals[intervalIndex]!;
+        const end = interval.end ?? Number.POSITIVE_INFINITY;
+
+        if (position < interval.start) {
+          return complement;
+        }
+
+        if (position <= end) {
+          return !complement;
+        }
+
+        intervalIndex++;
+      }
+
+      return complement;
+    }
+  };
+}
+
+function selectBytes({
+  line,
+  intervals,
+  complement,
+}: {
+  line: Uint8Array;
+  intervals: CutInterval[];
+  complement: boolean;
+}): Uint8Array {
+  const segments = buildSelectedSegments({
+    intervals,
+    length: line.length,
+    complement,
+  });
+  const totalLength = segments.reduce((sum, segment) => sum + (segment.end - segment.start), 0);
+  const output = new Uint8Array(totalLength);
+  let offset = 0;
+
+  for (const segment of segments) {
+    const chunk = line.subarray(segment.start, segment.end);
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return output;
 }
 
 function selectCharacters({
   line,
-  ranges,
+  intervals,
   complement,
 }: {
   line: string;
-  ranges: CutRange[];
+  intervals: CutInterval[];
   complement: boolean;
 }): string {
   const characters = Array.from(line);
-  const selected = normalizeCutRanges({ ranges, length: characters.length });
-  const result: string[] = [];
+  const segments = buildSelectedSegments({
+    intervals,
+    length: characters.length,
+    complement,
+  });
+  const selected: string[] = [];
 
-  for (let index = 0; index < characters.length; index++) {
-    const position = index + 1;
-    const isSelected = selected.has(position);
-    if (complement ? !isSelected : isSelected) {
-      result.push(characters[index]!);
-    }
+  for (const segment of segments) {
+    selected.push(characters.slice(segment.start, segment.end).join(''));
   }
 
-  return result.join('');
+  return selected.join('');
 }
 
 function selectFields({
   line,
   delimiter,
   outputDelimiter,
-  ranges,
+  intervals,
   complement,
   suppressNoDelimiterLines,
 }: {
   line: string;
   delimiter: string;
   outputDelimiter: string;
-  ranges: CutRange[];
+  intervals: CutInterval[];
   complement: boolean;
   suppressNoDelimiterLines: boolean;
 }): string | undefined {
@@ -246,16 +331,25 @@ function selectFields({
     return suppressNoDelimiterLines ? undefined : line;
   }
 
-  const fields = line.split(delimiter);
-  const selected = normalizeCutRanges({ ranges, length: fields.length });
   const result: string[] = [];
+  const tracker = createCutRangeTracker({
+    intervals,
+    complement,
+  });
+  let fieldStart = 0;
+  let fieldNumber = 1;
 
-  for (let index = 0; index < fields.length; index++) {
-    const position = index + 1;
-    const isSelected = selected.has(position);
-    if (complement ? !isSelected : isSelected) {
-      result.push(fields[index]!);
+  for (let index = 0; index <= line.length; index++) {
+    if (index < line.length && line[index] !== delimiter) {
+      continue;
     }
+
+    if (tracker.isSelected({ position: fieldNumber })) {
+      result.push(line.slice(fieldStart, index));
+    }
+
+    fieldStart = index + 1;
+    fieldNumber++;
   }
 
   return result.join(outputDelimiter);
@@ -264,7 +358,7 @@ function selectFields({
 function selectLine({
   line,
   mode,
-  ranges,
+  intervals,
   fieldDelimiter,
   outputDelimiter,
   complement,
@@ -272,7 +366,7 @@ function selectLine({
 }: {
   line: string;
   mode: CutMode;
-  ranges: CutRange[];
+  intervals: CutInterval[];
   fieldDelimiter: string | undefined;
   outputDelimiter: string | undefined;
   complement: boolean;
@@ -280,15 +374,15 @@ function selectLine({
 }): string | undefined {
   switch (mode) {
   case 'bytes':
-    return selectBytes({ line, ranges, complement });
+    throw new Error('Byte mode must use the byte-oriented selection path');
   case 'characters':
-    return selectCharacters({ line, ranges, complement });
+    return selectCharacters({ line, intervals, complement });
   case 'fields':
     return selectFields({
       line,
       delimiter: fieldDelimiter ?? '\t',
       outputDelimiter: outputDelimiter ?? fieldDelimiter ?? '\t',
-      ranges,
+      intervals,
       complement,
       suppressNoDelimiterLines,
     });
@@ -299,15 +393,15 @@ function selectLine({
   }
 }
 
-function createInputStream({
-  context,
+function createStdinStream({
+  handle,
 }: {
-  context: WeshCommandContext;
+  handle: WeshFileHandle;
 }): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async pull(controller) {
       const buffer = new Uint8Array(4096);
-      const { bytesRead } = await context.stdin.read({ buffer });
+      const { bytesRead } = await handle.read({ buffer });
       if (bytesRead === 0) {
         controller.close();
         return;
@@ -317,27 +411,176 @@ function createInputStream({
   });
 }
 
-async function readTextStream({
+async function writeAll({
+  handle,
+  buffer,
+}: {
+  handle: WeshFileHandle;
+  buffer: Uint8Array;
+}): Promise<void> {
+  let offset = 0;
+  while (offset < buffer.length) {
+    const { bytesWritten } = await handle.write({
+      buffer,
+      offset,
+      length: buffer.length - offset,
+    });
+    if (bytesWritten === 0) {
+      throw new Error('short write');
+    }
+    offset += bytesWritten;
+  }
+}
+
+async function openCutInputStream({
+  context,
+  file,
+}: {
+  context: WeshCommandContext;
+  file: string;
+}): Promise<ReadableStream<Uint8Array>> {
+  if (file === '-') {
+    return createStdinStream({
+      handle: context.stdin,
+    });
+  }
+
+  const path = resolvePath({
+    cwd: context.cwd,
+    path: file,
+  });
+  if (context.files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await context.files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob read result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  const handle = await context.files.open({
+    path,
+    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+  });
+  return handleToStream({ handle });
+}
+
+async function *readTextLines({
   stream,
 }: {
   stream: ReadableStream<Uint8Array>;
-}): Promise<string> {
+}): AsyncGenerator<CutTextLine> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  let text = '';
+  let buffer = '';
 
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      text += decoder.decode(value, { stream: true });
+      if (done) {
+        buffer += decoder.decode();
+        break;
+      }
+      if (value === undefined) {
+        continue;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      while (true) {
+        const newlineIndex = buffer.indexOf('\n');
+        if (newlineIndex === -1) {
+          break;
+        }
+
+        const lineEnd = newlineIndex > 0 && buffer[newlineIndex - 1] === '\r'
+          ? newlineIndex - 1
+          : newlineIndex;
+        yield {
+          text: buffer.slice(0, lineEnd),
+          hadNewline: true,
+        };
+        buffer = buffer.slice(newlineIndex + 1);
+      }
     }
-    text += decoder.decode();
+
+    if (buffer.length > 0) {
+      yield {
+        text: buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer,
+        hadNewline: false,
+      };
+    }
   } finally {
     reader.releaseLock();
   }
+}
 
-  return text;
+async function *readByteLines({
+  stream,
+}: {
+  stream: ReadableStream<Uint8Array>;
+}): AsyncGenerator<CutByteLine> {
+  const reader = stream.getReader();
+  let lineChunks: Uint8Array[] = [];
+  let lineLength = 0;
+
+  const flushLine = ({ hadNewline }: { hadNewline: boolean }): CutByteLine => {
+    const line = new Uint8Array(lineLength);
+    let offset = 0;
+    for (const chunk of lineChunks) {
+      line.set(chunk, offset);
+      offset += chunk.length;
+    }
+    lineChunks = [];
+    lineLength = 0;
+    return {
+      bytes: line,
+      hadNewline,
+    };
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (value === undefined) {
+        continue;
+      }
+
+      let start = 0;
+      for (let index = 0; index < value.length; index++) {
+        if (value[index] !== 0x0a) {
+          continue;
+        }
+
+        if (index > start) {
+          const chunk = value.subarray(start, index);
+          lineChunks.push(chunk);
+          lineLength += chunk.length;
+        }
+        yield flushLine({ hadNewline: true });
+        start = index + 1;
+      }
+
+      if (start < value.length) {
+        const chunk = value.subarray(start);
+        lineChunks.push(chunk);
+        lineLength += chunk.length;
+      }
+    }
+
+    if (lineLength > 0) {
+      yield flushLine({ hadNewline: false });
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export const cutCommandDefinition: WeshCommandDefinition = {
@@ -513,6 +756,9 @@ export const cutCommandDefinition: WeshCommandDefinition = {
       });
       return { exitCode: 1 };
     }
+    const intervals = normalizeCutIntervals({
+      ranges: parsedList.value,
+    });
 
     const delimiterValue = typeof parsed.optionValues.delimiter === 'string'
       ? parsed.optionValues.delimiter
@@ -533,56 +779,69 @@ export const cutCommandDefinition: WeshCommandDefinition = {
       : undefined;
     const complement = parsed.optionValues.complement === true;
     const suppress = parsed.optionValues.suppress === true;
-    const processText = async ({
-      text,
-    }: {
-      text: string;
-    }): Promise<string> => {
-      const lines = splitLines({ text });
-      const output: string[] = [];
-
-      for (const line of lines) {
-        const selected = selectLine({
-          line: line.text,
-          mode,
-          ranges: parsedList.value,
-          fieldDelimiter,
-          outputDelimiter,
-          complement,
-          suppressNoDelimiterLines: suppress && mode === 'fields',
-        });
-
-        if (selected === undefined) {
-          continue;
-        }
-
-        output.push(line.hadNewline ? `${selected}\n` : selected);
-      }
-
-      return output.join('');
-    };
 
     const text = context.text();
     let exitCode = 0;
 
     const inputFiles = parsed.positionals.length === 0 ? ['-'] : parsed.positionals;
-    let stdinText: string | undefined;
 
     for (const file of inputFiles) {
       if (file === undefined) continue;
 
       try {
-        const content = file === '-'
-          ? stdinText ??= await readTextStream({ stream: createInputStream({ context }) })
-          : await (async () => {
-            const fullPath = resolvePath({ cwd: context.cwd, path: file });
-            const handle = await context.files.open({
-              path: fullPath,
-              flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+        const stream = await openCutInputStream({
+          context,
+          file,
+        });
+
+        switch (mode) {
+        case 'bytes':
+          for await (const line of readByteLines({ stream })) {
+            const selected = selectBytes({
+              line: line.bytes,
+              intervals,
+              complement,
             });
-            return readTextStream({ stream: handleToStream({ handle }) });
-          })();
-        await text.print({ text: await processText({ text: content }) });
+            if (selected.length > 0) {
+              await writeAll({
+                handle: context.stdout,
+                buffer: selected,
+              });
+            }
+            if (line.hadNewline) {
+              await writeAll({
+                handle: context.stdout,
+                buffer: new Uint8Array([0x0a]),
+              });
+            }
+          }
+          break;
+        case 'characters':
+        case 'fields':
+          for await (const line of readTextLines({ stream })) {
+            const selected = selectLine({
+              line: line.text,
+              mode,
+              intervals,
+              fieldDelimiter,
+              outputDelimiter,
+              complement,
+              suppressNoDelimiterLines: suppress && mode === 'fields',
+            });
+            if (selected === undefined) {
+              continue;
+            }
+
+            await text.print({
+              text: line.hadNewline ? `${selected}\n` : selected,
+            });
+          }
+          break;
+        default: {
+          const _ex: never = mode;
+          throw new Error(`Unhandled cut mode: ${_ex}`);
+        }
+        }
       } catch (error: unknown) {
         exitCode = 1;
         const message = error instanceof Error ? error.message : String(error);
