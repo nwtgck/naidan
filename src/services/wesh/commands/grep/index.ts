@@ -3,7 +3,7 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { ArgvOptionOccurrence } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { readFile, readFileAsText } from '@/services/wesh/utils/fs';
+import { handleToStream, readFile } from '@/services/wesh/utils/fs';
 
 interface GrepFileReport {
   matched: boolean;
@@ -208,6 +208,49 @@ async function readPatternFile({
   const bytes = await readFile({ files: context.files, path: fullPath });
   const content = new TextDecoder().decode(bytes);
   return content.split(/\r?\n/).filter((line, index, lines) => line.length > 0 || index < lines.length - 1);
+}
+
+async function openGrepInputStream({
+  context,
+  file,
+}: {
+  context: WeshCommandContext;
+  file: string;
+}): Promise<ReadableStream<Uint8Array>> {
+  if (file === '-') {
+    return new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const buf = new Uint8Array(4096);
+        const { bytesRead } = await context.stdin.read({ buffer: buf });
+        if (bytesRead === 0) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(buf.subarray(0, bytesRead));
+      }
+    });
+  }
+
+  const path = resolvePath({ cwd: context.cwd, path: file });
+  if (context.files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await context.files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob read result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  const handle = await context.files.open({
+    path,
+    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+  });
+  return handleToStream({ handle });
 }
 
 export const grepCommandDefinition: WeshCommandDefinition = {
@@ -565,17 +608,6 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       return processAllLines({ allLines, name });
     };
 
-    const processText = ({ text, name }: { text: string; name?: string }): GrepFileReport => {
-      if (parsed.optionValues.binaryWithoutMatch === true && text.includes('\0')) {
-        return { matched: false, selectedLineCount: 0, outputLines: [] };
-      }
-      const allLines = text.split('\n');
-      if (allLines.length > 0 && allLines[allLines.length - 1] === '') {
-        allLines.pop();
-      }
-      return processAllLines({ allLines, name });
-    };
-
     const inputFiles = files.length === 0 ? ['-'] : files;
 
     const expandedInputs: Array<{ file: string; displayName: string }> = [];
@@ -669,25 +701,11 @@ export const grepCommandDefinition: WeshCommandDefinition = {
 
     for (const { file, displayName } of expandedInputs) {
       try {
-        let report: GrepFileReport;
-        if (file === '-') {
-          const stream = new ReadableStream<Uint8Array>({
-            async pull(controller) {
-              const buf = new Uint8Array(4096);
-              const { bytesRead } = await context.stdin.read({ buffer: buf });
-              if (bytesRead === 0) {
-                controller.close();
-                return;
-              }
-              controller.enqueue(buf.subarray(0, bytesRead));
-            }
-          });
-          report = await processStream({ stream, name: displayName });
-        } else {
-          const fullPath = resolvePath({ cwd: context.cwd, path: file });
-          const text = await readFileAsText({ files: context.files, path: fullPath });
-          report = processText({ text, name: displayName });
-        }
+        const stream = await openGrepInputStream({
+          context,
+          file,
+        });
+        const report = await processStream({ stream, name: displayName });
 
         if (report.matched) {
           sawMatch = true;

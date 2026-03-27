@@ -1,8 +1,14 @@
 import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
-import { readFile, writeFile } from '@/services/wesh/utils/fs';
+import type {
+  WeshCommandContext,
+  WeshCommandDefinition,
+  WeshCommandResult,
+  WeshEfficientFileWriter,
+  WeshFileHandle,
+} from '@/services/wesh/types';
+import { handleToStream } from '@/services/wesh/utils/fs';
 
 type UniqMode = 'all' | 'duplicates' | 'unique';
 type UniqDelimiter = '\n' | '\0';
@@ -96,53 +102,6 @@ function normalizeForComparison({
   return comparable;
 }
 
-function splitRecords({
-  text,
-  delimiter,
-}: {
-  text: string;
-  delimiter: UniqDelimiter;
-}): UniqRecord[] {
-  const records: UniqRecord[] = [];
-  let start = 0;
-
-  for (let index = 0; index < text.length; index++) {
-    if (text[index] !== delimiter) continue;
-
-    records.push({
-      text: text.slice(start, index),
-      endedWithDelimiter: true,
-    });
-    start = index + 1;
-  }
-
-  if (start < text.length) {
-    records.push({
-      text: text.slice(start),
-      endedWithDelimiter: false,
-    });
-  }
-
-  return records;
-}
-
-async function readHandleText({
-  handle,
-}: {
-  handle: WeshFileHandle;
-}): Promise<string> {
-  const decoder = new TextDecoder();
-  const buffer = new Uint8Array(4096);
-  let text = '';
-  while (true) {
-    const { bytesRead } = await handle.read({ buffer });
-    if (bytesRead === 0) break;
-    text += decoder.decode(buffer.subarray(0, bytesRead), { stream: true });
-  }
-  text += decoder.decode();
-  return text;
-}
-
 function formatRecord({
   record,
   count,
@@ -196,105 +155,223 @@ function buildComparisonKey({
   return normalizeForComparison({ line, options });
 }
 
-function processRecords({
-  records,
-  mode,
-  comparisonOptions,
-  showCount,
-  delimiter,
+async function writeAll({
+  handle,
+  buffer,
 }: {
-  records: UniqRecord[];
-  mode: UniqMode;
-  comparisonOptions: UniqComparisonOptions;
-  showCount: boolean;
-  delimiter: UniqDelimiter;
-}): string {
-  if (records.length === 0) {
-    return '';
-  }
-
-  const output: string[] = [];
-  let groupRecord = records[0]!;
-  let groupCount = 1;
-  let groupKey = buildComparisonKey({
-    line: groupRecord.text,
-    options: comparisonOptions,
-  });
-
-  const flush = () => {
-    if (!shouldEmitGroup({ mode, count: groupCount })) return;
-    output.push(formatRecord({
-      record: groupRecord,
-      count: groupCount,
-      showCount,
-      delimiter,
-    }));
-  };
-
-  for (let index = 1; index < records.length; index++) {
-    const record = records[index];
-    if (record === undefined) continue;
-
-    const key = buildComparisonKey({
-      line: record.text,
-      options: comparisonOptions,
-    });
-
-    if (key === groupKey) {
-      groupCount++;
-      continue;
-    }
-
-    flush();
-    groupRecord = record;
-    groupCount = 1;
-    groupKey = key;
-  }
-
-  flush();
-  return output.join('');
-}
-
-async function writeOutput({
-  context,
-  outputPath,
-  data,
-}: {
-  context: WeshCommandContext;
-  outputPath: string | undefined;
-  data: string;
+  handle: WeshFileHandle;
+  buffer: Uint8Array;
 }): Promise<void> {
-  if (outputPath === undefined || outputPath === '-') {
-    await context.text().print({ text: data });
-    return;
+  let offset = 0;
+  while (offset < buffer.length) {
+    const { bytesWritten } = await handle.write({
+      buffer,
+      offset,
+      length: buffer.length - offset,
+    });
+    if (bytesWritten === 0) {
+      throw new Error('short write');
+    }
+    offset += bytesWritten;
   }
-
-  await writeFile({
-    files: context.files,
-    path: resolveInputPath({ cwd: context.cwd, path: outputPath }),
-    data: new TextEncoder().encode(data),
-  });
 }
 
-async function readInputText({
+async function openUniqInputStream({
   context,
   inputPath,
 }: {
   context: WeshCommandContext;
   inputPath: string | undefined;
-}): Promise<{ ok: true; value: string } | { ok: false; message: string }> {
+}): Promise<ReadableStream<Uint8Array>> {
   if (inputPath === undefined || inputPath === '-') {
-    return { ok: true, value: await readHandleText({ handle: context.stdin }) };
+    return handleToStream({ handle: context.stdin });
   }
 
-  try {
-    const fullPath = resolveInputPath({ cwd: context.cwd, path: inputPath });
-    const bytes = await readFile({ files: context.files, path: fullPath });
-    return { ok: true, value: new TextDecoder().decode(bytes) };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, message: `uniq: ${inputPath}: ${message}` };
+  const fullPath = resolveInputPath({ cwd: context.cwd, path: inputPath });
+  if (context.files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await context.files.tryReadBlobEfficiently({ path: fullPath });
+    switch (blobResult.kind) {
+    case 'blob':
+      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob read result: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
+
+  const handle = await context.files.open({
+    path: fullPath,
+    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+  });
+  return handleToStream({ handle });
+}
+
+async function *readUniqRecords({
+  stream,
+  delimiter,
+}: {
+  stream: ReadableStream<Uint8Array>;
+  delimiter: UniqDelimiter;
+}): AsyncGenerator<UniqRecord> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        text += decoder.decode();
+        break;
+      }
+      if (value === undefined) continue;
+
+      text += decoder.decode(value, { stream: true });
+      let delimiterIndex = text.indexOf(delimiter);
+      while (delimiterIndex !== -1) {
+        yield {
+          text: text.slice(0, delimiterIndex),
+          endedWithDelimiter: true,
+        };
+        text = text.slice(delimiterIndex + 1);
+        delimiterIndex = text.indexOf(delimiter);
+      }
+    }
+
+    if (text.length > 0) {
+      yield {
+        text,
+        endedWithDelimiter: false,
+      };
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+type UniqOutputTarget =
+  | { kind: 'stdout'; handle: WeshFileHandle }
+  | { kind: 'writer'; writer: WeshEfficientFileWriter }
+  | { kind: 'handle'; handle: WeshFileHandle };
+
+async function openUniqOutputTarget({
+  context,
+  outputPath,
+}: {
+  context: WeshCommandContext;
+  outputPath: string | undefined;
+}): Promise<UniqOutputTarget> {
+  if (outputPath === undefined || outputPath === '-') {
+    return {
+      kind: 'stdout',
+      handle: context.stdout,
+    };
+  }
+
+  const path = resolveInputPath({ cwd: context.cwd, path: outputPath });
+  if (context.files.tryCreateFileWriterEfficiently !== undefined) {
+    const writerResult = await context.files.tryCreateFileWriterEfficiently({
+      path,
+      mode: 'truncate',
+    });
+    switch (writerResult.kind) {
+    case 'writer':
+      return {
+        kind: 'writer',
+        writer: writerResult.writer,
+      };
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = writerResult;
+      throw new Error(`Unhandled efficient writer result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  return {
+    kind: 'handle',
+    handle: await context.files.open({
+      path,
+      flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
+    }),
+  };
+}
+
+async function writeUniqOutput({
+  target,
+  buffer,
+}: {
+  target: UniqOutputTarget;
+  buffer: Uint8Array;
+}): Promise<void> {
+  switch (target.kind) {
+  case 'stdout':
+  case 'handle':
+    await writeAll({
+      handle: target.handle,
+      buffer,
+    });
+    return;
+  case 'writer':
+    await target.writer.write({
+      chunk: buffer,
+    });
+    return;
+  default: {
+    const _ex: never = target;
+    throw new Error(`Unhandled uniq output target: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
+async function closeUniqOutputTarget({
+  target,
+}: {
+  target: UniqOutputTarget;
+}): Promise<void> {
+  switch (target.kind) {
+  case 'stdout':
+    return;
+  case 'writer':
+    await target.writer.close();
+    return;
+  case 'handle':
+    await target.handle.close();
+    return;
+  default: {
+    const _ex: never = target;
+    throw new Error(`Unhandled uniq output target: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
+async function emitUniqRecord({
+  target,
+  record,
+  count,
+  showCount,
+  delimiter,
+}: {
+  target: UniqOutputTarget;
+  record: UniqRecord;
+  count: number;
+  showCount: boolean;
+  delimiter: UniqDelimiter;
+}): Promise<void> {
+  const data = formatRecord({
+    record,
+    count,
+    showCount,
+    delimiter,
+  });
+  await writeUniqOutput({
+    target,
+    buffer: new TextEncoder().encode(data),
+  });
 }
 
 export const uniqCommandDefinition: WeshCommandDefinition = {
@@ -410,49 +487,70 @@ export const uniqCommandDefinition: WeshCommandDefinition = {
       checkChars: typeof parsed.optionValues.checkChars === 'number' ? parsed.optionValues.checkChars : undefined,
     };
 
-    const input = await readInputText({
-      context,
-      inputPath,
-    });
-    if (!input.ok) {
-      await context.text().error({ text: `${input.message}\n` });
+    try {
+      const inputStream = await openUniqInputStream({
+        context,
+        inputPath,
+      });
+      const outputTarget = await openUniqOutputTarget({
+        context,
+        outputPath,
+      });
+
+      try {
+        let groupRecord: UniqRecord | undefined;
+        let groupCount = 0;
+        let groupKey: string | undefined;
+
+        const flush = async () => {
+          if (groupRecord === undefined || !shouldEmitGroup({ mode, count: groupCount })) {
+            return;
+          }
+          await emitUniqRecord({
+            target: outputTarget,
+            record: groupRecord,
+            count: groupCount,
+            showCount: parsed.optionValues.count === true,
+            delimiter,
+          });
+        };
+
+        for await (const record of readUniqRecords({ stream: inputStream, delimiter })) {
+          const key = buildComparisonKey({
+            line: record.text,
+            options: comparisonOptions,
+          });
+
+          if (groupRecord === undefined) {
+            groupRecord = record;
+            groupCount = 1;
+            groupKey = key;
+            continue;
+          }
+
+          if (key === groupKey) {
+            groupCount += 1;
+            continue;
+          }
+
+          await flush();
+          groupRecord = record;
+          groupCount = 1;
+          groupKey = key;
+        }
+
+        await flush();
+      } finally {
+        await closeUniqOutputTarget({
+          target: outputTarget,
+        });
+      }
+      return { exitCode: 0 };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const target = inputPath === undefined ? '-' : inputPath;
+      await context.text().error({ text: `uniq: ${target}: ${message}\n` });
       return { exitCode: 1 };
     }
-    const inputText = input.value;
-
-    const records = splitRecords({
-      text: inputText,
-      delimiter,
-    });
-
-    const output = processRecords({
-      records,
-      mode,
-      comparisonOptions,
-      showCount: parsed.optionValues.count === true,
-      delimiter,
-    });
-
-    if (outputPath === undefined) {
-      await writeOutput({
-        context,
-        outputPath: undefined,
-        data: output,
-      });
-      return { exitCode: 0 };
-    }
-
-    const resolvedOutputPath = outputPath === undefined || outputPath === '-'
-      ? outputPath
-      : outputPath.startsWith('/')
-        ? outputPath
-        : `${context.cwd}/${outputPath}`;
-    await writeOutput({
-      context,
-      outputPath: resolvedOutputPath,
-      data: output,
-    });
-
-    return { exitCode: 0 };
   },
 };

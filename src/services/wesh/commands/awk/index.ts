@@ -2,10 +2,10 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { ArgvOptionOccurrence, StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { parseAwkProgram } from '@/services/wesh/commands/awk/parser';
-import { createAwkRuntime, executeAwkProgram } from '@/services/wesh/commands/awk/runtime';
+import { createAwkRuntime, executeAwkBegin, executeAwkEnd, executeAwkRecord } from '@/services/wesh/commands/awk/runtime';
 import type { AwkValue } from '@/services/wesh/commands/awk/types';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { handleToStream, readFile, readFileAsText } from '@/services/wesh/utils/fs';
+import { handleToStream, readFile } from '@/services/wesh/utils/fs';
 
 const awkArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -70,24 +70,81 @@ function resolvePath({
   return path.startsWith('/') ? path : `${cwd}/${path}`;
 }
 
-async function readTextStream({
+async function openAwkInputStream({
+  context,
+  input,
+}: {
+  context: WeshCommandContext;
+  input: string;
+}): Promise<ReadableStream<Uint8Array>> {
+  if (input === '-') {
+    return handleToStream({ handle: context.stdin });
+  }
+
+  const path = resolvePath({ cwd: context.cwd, path: input });
+  if (context.files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await context.files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob read result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  const handle = await context.files.open({
+    path,
+    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+  });
+  return handleToStream({ handle });
+}
+
+async function *readAwkRecords({
   stream,
 }: {
   stream: ReadableStream<Uint8Array>;
-}): Promise<string> {
+}): AsyncGenerator<{ text: string; fields: string[]; hadNewline: boolean }> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  let text = '';
+  let buffer = '';
 
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        buffer += decoder.decode();
+        break;
+      }
       if (value === undefined) continue;
-      text += decoder.decode(value, { stream: true });
+
+      buffer += decoder.decode(value, { stream: true });
+      while (true) {
+        const newlineIndex = buffer.indexOf('\n');
+        if (newlineIndex === -1) break;
+
+        const lineEnd = newlineIndex > 0 && buffer[newlineIndex - 1] === '\r'
+          ? newlineIndex - 1
+          : newlineIndex;
+        yield {
+          text: buffer.slice(0, lineEnd),
+          fields: [],
+          hadNewline: true,
+        };
+        buffer = buffer.slice(newlineIndex + 1);
+      }
     }
-    text += decoder.decode();
-    return text;
+
+    if (buffer.length > 0) {
+      yield {
+        text: buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer,
+        fields: [],
+        hadNewline: false,
+      };
+    }
   } finally {
     reader.releaseLock();
   }
@@ -216,38 +273,64 @@ export const awkCommandDefinition: WeshCommandDefinition = {
     }
 
     const inputs = positionals.length === 0 ? ['-'] : positionals;
-    const contents: string[] = [];
-    let stdinText: string | undefined;
     let exitCode = 0;
-
-    for (const input of inputs) {
-      try {
-        const content = input === '-'
-          ? stdinText ??= await readTextStream({ stream: handleToStream({ handle: context.stdin }) })
-          : await readFileAsText({ files: context.files, path: resolvePath({ cwd: context.cwd, path: input }) });
-        contents.push(content);
-      } catch (error: unknown) {
-        exitCode = 1;
-        const message = error instanceof Error ? error.message : String(error);
-        await text.error({ text: `awk: ${input}: ${message}\n` });
-      }
-    }
-
-    if (contents.length === 0 && exitCode !== 0) {
-      return { exitCode };
-    }
 
     const runtime = createAwkRuntime({
       variables: runtimeVariables,
     });
     try {
-      await text.print({
-        text: executeAwkProgram({
-          program: parsedProgram.program,
-          runtime,
-          inputs: contents,
-        }),
+      const output: string[] = [];
+      executeAwkBegin({
+        program: parsedProgram.program,
+        runtime,
+        output,
       });
+
+      for (const fragment of output) {
+        await text.print({ text: fragment });
+      }
+
+      for (const input of inputs) {
+        try {
+          runtime.fnr = 0;
+          const stream = await openAwkInputStream({
+            context,
+            input,
+          });
+
+          for await (const record of readAwkRecords({ stream })) {
+            const recordOutput: string[] = [];
+            executeAwkRecord({
+              program: parsedProgram.program,
+              runtime,
+              record,
+              output: recordOutput,
+            });
+
+            for (const fragment of recordOutput) {
+              await text.print({ text: fragment });
+            }
+          }
+        } catch (error: unknown) {
+          exitCode = 1;
+          const message = error instanceof Error ? error.message : String(error);
+          await text.error({ text: `awk: ${input}: ${message}\n` });
+        }
+      }
+
+      if (exitCode !== 0 && runtime.nr === 0) {
+        return { exitCode };
+      }
+
+      const endOutput: string[] = [];
+      executeAwkEnd({
+        program: parsedProgram.program,
+        runtime,
+        output: endOutput,
+      });
+      for (const fragment of endOutput) {
+        await text.print({ text: fragment });
+      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       await text.error({ text: `${message}\n` });

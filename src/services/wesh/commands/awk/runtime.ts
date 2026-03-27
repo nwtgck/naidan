@@ -1201,6 +1201,125 @@ export function createAwkRuntime({
   return state;
 }
 
+function executeAwkStatements({
+  program,
+  runtime,
+  patternKind,
+  output,
+}: {
+  program: AwkProgram;
+  runtime: AwkRuntimeState;
+  patternKind: 'begin' | 'end';
+  output: string[];
+}): void {
+  for (const rule of program.rules) {
+    if (rule.pattern.kind !== patternKind) {
+      continue;
+    }
+
+    for (const statement of rule.statements) {
+      const control = executeStatement({ statement, state: runtime, output });
+      switch (control) {
+      case 'normal':
+        break;
+      case 'next':
+        throw new Error(`awk: 'next' is not allowed in ${patternKind.toUpperCase()}`);
+      case 'break':
+        throw new Error("awk: 'break' is not allowed outside loops");
+      case 'continue_loop':
+        throw new Error("awk: 'continue' is not allowed outside loops");
+      default: {
+        const _ex: never = control;
+        throw new Error(`Unhandled awk control flow: ${_ex}`);
+      }
+      }
+    }
+  }
+}
+
+export function executeAwkBegin({
+  program,
+  runtime,
+  output,
+}: {
+  program: AwkProgram;
+  runtime: AwkRuntimeState;
+  output: string[];
+}): void {
+  executeAwkStatements({
+    program,
+    runtime,
+    patternKind: 'begin',
+    output,
+  });
+}
+
+export function executeAwkRecord({
+  program,
+  runtime,
+  record,
+  output,
+}: {
+  program: AwkProgram;
+  runtime: AwkRuntimeState;
+  record: AwkRecord;
+  output: string[];
+}): void {
+  runtime.nr += 1;
+  runtime.fnr += 1;
+  const fieldSeparator = coerceToString({ value: getVariable({ state: runtime, name: 'FS' }) });
+  runtime.currentRecord = {
+    ...record,
+    fields: splitFields({
+      line: record.text,
+      fieldSeparator,
+    }),
+  };
+
+  for (const rule of program.rules) {
+    if (!matchesPattern({ pattern: rule.pattern, state: runtime })) continue;
+    let nextRecord = false;
+    for (const statement of rule.statements) {
+      const control = executeStatement({ statement, state: runtime, output });
+      switch (control) {
+      case 'normal':
+        break;
+      case 'next':
+        nextRecord = true;
+        break;
+      case 'break':
+        throw new Error("awk: 'break' is not allowed outside loops");
+      case 'continue_loop':
+        throw new Error("awk: 'continue' is not allowed outside loops");
+      default: {
+        const _ex: never = control;
+        throw new Error(`Unhandled awk control flow: ${_ex}`);
+      }
+      }
+      if (nextRecord) break;
+    }
+    if (nextRecord) break;
+  }
+}
+
+export function executeAwkEnd({
+  program,
+  runtime,
+  output,
+}: {
+  program: AwkProgram;
+  runtime: AwkRuntimeState;
+  output: string[];
+}): void {
+  runtime.currentRecord = undefined;
+  executeAwkStatements({
+    program,
+    runtime,
+    patternKind: 'end',
+    output,
+  });
+}
+
 export function executeAwkProgram({
   program,
   runtime,
@@ -1211,113 +1330,29 @@ export function executeAwkProgram({
   inputs: string[];
 }): string {
   const output: string[] = [];
-
-  for (const rule of program.rules) {
-    switch (rule.pattern.kind) {
-    case 'begin':
-      for (const statement of rule.statements) {
-        const control = executeStatement({ statement, state: runtime, output });
-        switch (control) {
-        case 'normal':
-          break;
-        case 'next':
-          throw new Error("awk: 'next' is not allowed in BEGIN");
-        case 'break':
-          throw new Error("awk: 'break' is not allowed outside loops");
-        case 'continue_loop':
-          throw new Error("awk: 'continue' is not allowed outside loops");
-        default: {
-          const _ex: never = control;
-          throw new Error(`Unhandled awk control flow: ${_ex}`);
-        }
-        }
-      }
-      break;
-    case 'end':
-    case 'always':
-    case 'expression':
-      break;
-    default: {
-      const _ex: never = rule.pattern;
-      throw new Error(`Unhandled awk rule pattern: ${JSON.stringify(_ex)}`);
-    }
-    }
-  }
+  executeAwkBegin({
+    program,
+    runtime,
+    output,
+  });
 
   for (const input of inputs) {
     runtime.fnr = 0;
     const records = splitRecords({ text: input });
     for (const record of records) {
-      runtime.nr += 1;
-      runtime.fnr += 1;
-      const fieldSeparator = coerceToString({ value: getVariable({ state: runtime, name: 'FS' }) });
-      runtime.currentRecord = {
-        ...record,
-        fields: splitFields({
-          line: record.text,
-          fieldSeparator,
-        }),
-      };
-
-      for (const rule of program.rules) {
-        if (!matchesPattern({ pattern: rule.pattern, state: runtime })) continue;
-        let nextRecord = false;
-        for (const statement of rule.statements) {
-          const control = executeStatement({ statement, state: runtime, output });
-          switch (control) {
-          case 'normal':
-            break;
-          case 'next':
-            nextRecord = true;
-            break;
-          case 'break':
-            throw new Error("awk: 'break' is not allowed outside loops");
-          case 'continue_loop':
-            throw new Error("awk: 'continue' is not allowed outside loops");
-          default: {
-            const _ex: never = control;
-            throw new Error(`Unhandled awk control flow: ${_ex}`);
-          }
-          }
-          if (nextRecord) break;
-        }
-        if (nextRecord) break;
-      }
+      executeAwkRecord({
+        program,
+        runtime,
+        record,
+        output,
+      });
     }
   }
 
-  runtime.currentRecord = undefined;
-  for (const rule of program.rules) {
-    switch (rule.pattern.kind) {
-    case 'end':
-      for (const statement of rule.statements) {
-        const control = executeStatement({ statement, state: runtime, output });
-        switch (control) {
-        case 'normal':
-          break;
-        case 'next':
-          throw new Error("awk: 'next' is not allowed in END");
-        case 'break':
-          throw new Error("awk: 'break' is not allowed outside loops");
-        case 'continue_loop':
-          throw new Error("awk: 'continue' is not allowed outside loops");
-        default: {
-          const _ex: never = control;
-          throw new Error(`Unhandled awk control flow: ${_ex}`);
-        }
-        }
-      }
-      break;
-    case 'begin':
-    case 'always':
-    case 'expression':
-      break;
-    default: {
-      const _ex: never = rule.pattern;
-      throw new Error(`Unhandled awk rule pattern: ${JSON.stringify(_ex)}`);
-    }
-    }
-  }
-
+  executeAwkEnd({
+    program,
+    runtime,
+    output,
+  });
   return output.join('');
 }
