@@ -6,7 +6,7 @@ import { formatJsonOutput, parseJsonSequence } from '@/services/wesh/commands/jq
 import { parseJqProgram } from '@/services/wesh/commands/jq/parser';
 import { evaluateJqFilter } from '@/services/wesh/commands/jq/runtime';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import { handleToStream, readFileAsText } from '@/services/wesh/utils/fs';
 
 const jqArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -74,13 +74,12 @@ async function readInputText({
       return { ok: true, text: nextStdinText, stdinText: nextStdinText };
     }
 
-    const handle = await context.files.open({
-      path: resolvePath({ cwd: context.cwd, path }),
-      flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
-    });
     return {
       ok: true,
-      text: await readTextStream({ stream: handleToStream({ handle }) }),
+      text: await readFileAsText({
+        files: context.files,
+        path: resolvePath({ cwd: context.cwd, path }),
+      }),
       stdinText,
     };
   } catch (error: unknown) {

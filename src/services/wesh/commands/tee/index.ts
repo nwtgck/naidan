@@ -1,4 +1,10 @@
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
+import type {
+  WeshCommandContext,
+  WeshCommandDefinition,
+  WeshCommandResult,
+  WeshEfficientFileWriter,
+  WeshFileHandle,
+} from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { handleToStream } from '@/services/wesh/utils/fs';
@@ -48,6 +54,48 @@ async function closeHandle({
   }
 }
 
+async function closeWriter({
+  writer,
+}: {
+  writer: WeshEfficientFileWriter;
+}): Promise<void> {
+  try {
+    await writer.close();
+  } catch {
+    // Ignore close failures for tee outputs.
+  }
+}
+
+type TeeOutput =
+  | { kind: 'handle'; path: string; handle: WeshFileHandle }
+  | { kind: 'writer'; path: string; writer: WeshEfficientFileWriter };
+
+async function writeTeeOutput({
+  output,
+  buffer,
+}: {
+  output: TeeOutput;
+  buffer: Uint8Array;
+}): Promise<void> {
+  switch (output.kind) {
+  case 'handle':
+    await writeAll({
+      handle: output.handle,
+      buffer,
+    });
+    return;
+  case 'writer':
+    await output.writer.write({
+      chunk: buffer,
+    });
+    return;
+  default: {
+    const _ex: never = output;
+    throw new Error(`Unhandled tee output target: ${JSON.stringify(_ex)}`);
+  }
+  }
+}
+
 export const teeCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'tee',
@@ -81,7 +129,7 @@ export const teeCommandDefinition: WeshCommandDefinition = {
     }
 
     const append = parsed.optionValues.append === true;
-    const outputs: Array<{ path: string; handle: WeshFileHandle }> = [];
+    const outputs: TeeOutput[] = [];
     let exitCode = 0;
 
     for (const file of parsed.positionals) {
@@ -95,16 +143,45 @@ export const teeCommandDefinition: WeshCommandDefinition = {
       });
 
       try {
-        const handle = await context.files.open({
-          path: fullPath,
-          flags: {
-            access: 'write',
-            creation: 'if-needed',
-            truncate: append ? 'preserve' : 'truncate',
-            append: append ? 'append' : 'preserve',
-          },
-        });
-        outputs.push({ path: file, handle });
+        if (context.files.tryCreateFileWriterEfficiently !== undefined) {
+          const writerResult = await context.files.tryCreateFileWriterEfficiently({
+            path: fullPath,
+            mode: append ? 'append' : 'truncate',
+          });
+          switch (writerResult.kind) {
+          case 'writer':
+            outputs.push({ kind: 'writer', path: file, writer: writerResult.writer });
+            break;
+          case 'fallback-required': {
+            const handle = await context.files.open({
+              path: fullPath,
+              flags: {
+                access: 'write',
+                creation: 'if-needed',
+                truncate: append ? 'preserve' : 'truncate',
+                append: append ? 'append' : 'preserve',
+              },
+            });
+            outputs.push({ kind: 'handle', path: file, handle });
+            break;
+          }
+          default: {
+            const _ex: never = writerResult;
+            throw new Error(`Unhandled efficient writer result: ${JSON.stringify(_ex)}`);
+          }
+          }
+        } else {
+          const handle = await context.files.open({
+            path: fullPath,
+            flags: {
+              access: 'write',
+              creation: 'if-needed',
+              truncate: append ? 'preserve' : 'truncate',
+              append: append ? 'append' : 'preserve',
+            },
+          });
+          outputs.push({ kind: 'handle', path: file, handle });
+        }
       } catch (error: unknown) {
         exitCode = 1;
         const message = error instanceof Error ? error.message : String(error);
@@ -129,7 +206,7 @@ export const teeCommandDefinition: WeshCommandDefinition = {
 
         for (const output of outputs) {
           try {
-            await writeAll({ handle: output.handle, buffer: value });
+            await writeTeeOutput({ output, buffer: value });
           } catch (error: unknown) {
             exitCode = 1;
             const message = error instanceof Error ? error.message : String(error);
@@ -141,7 +218,20 @@ export const teeCommandDefinition: WeshCommandDefinition = {
       }
     } finally {
       reader.releaseLock();
-      await Promise.all(outputs.map(async ({ handle }) => closeHandle({ handle })));
+      await Promise.all(outputs.map(async (output) => {
+        switch (output.kind) {
+        case 'handle':
+          await closeHandle({ handle: output.handle });
+          return;
+        case 'writer':
+          await closeWriter({ writer: output.writer });
+          return;
+        default: {
+          const _ex: never = output;
+          throw new Error(`Unhandled tee output target: ${JSON.stringify(_ex)}`);
+        }
+        }
+      }));
     }
 
     return { exitCode };
