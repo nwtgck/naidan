@@ -4182,6 +4182,7 @@ usage: alias [name[=value] ...]
         ppid: process.ppid,
         pgid: process.pgid,
         state: process.state,
+        user: process.env.get('USER') ?? 'unknown',
         argv0: process.env.get('0') ?? 'wesh',
         args: [...process.args],
         cwd: process.cwd,

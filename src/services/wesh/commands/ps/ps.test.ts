@@ -44,6 +44,7 @@ describe('wesh ps', () => {
     expect(help.stdout.text).toContain('usage: ps [-eA] [-p PIDLIST] [-o FORMAT]');
     expect(help.stdout.text).toContain('-p');
     expect(help.stdout.text).toContain('-o');
+    expect(help.stdout.text).toContain('-f');
     expect(help.stderr.text).toBe('');
     expect(help.result.exitCode).toBe(0);
 
@@ -90,6 +91,20 @@ describe('wesh ps', () => {
     expect(lines.some(line => line.includes('wesh') && line.includes('ps -e -o pid,ppid,pgid,stat,args'))).toBe(true);
   });
 
+  it('supports the common -ef fuller listing form', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: 'ps -ef',
+    });
+
+    const lines = stdout.text.trimEnd().split('\n');
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(lines[0]).toContain('USER');
+    expect(lines[0]).toContain('PID');
+    expect(lines[0]).toContain('ARGS');
+    expect(lines.some(line => line.includes('wesh') && line.includes('ps -ef'))).toBe(true);
+  });
+
   it('supports selecting specific process IDs with -p', async () => {
     const shellPid = (wesh as unknown as { shellPid: number }).shellPid;
 
@@ -102,6 +117,35 @@ describe('wesh ps', () => {
     expect(stdout.text).toContain('PID ARGS');
     expect(stdout.text).toContain(`${shellPid}`);
     expect(stdout.text).toContain('wesh');
+  });
+
+  it('supports combining -f with -p for a fuller targeted listing', async () => {
+    const shellPid = (wesh as unknown as { shellPid: number }).shellPid;
+
+    const { result, stdout, stderr } = await execute({
+      script: `ps -fp ${shellPid}`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain('USER PID PPID PGID STAT ARGS');
+    expect(stdout.text).toContain(`${shellPid}`);
+    expect(stdout.text).toContain('wesh');
+  });
+
+  it('falls back to unknown when the process user is unavailable', async () => {
+    const { result, stdout, stderr } = await execute({
+      script: `\
+unset USER
+sleep 0.2 &
+ps -ef`,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toContain('[1] background');
+    expect(stdout.text).toContain('USER');
+    expect(stdout.text).toContain('unknown');
+    expect(stdout.text).toContain('wesh sleep 0.2');
   });
 
   it('can show background processes with -e', async () => {

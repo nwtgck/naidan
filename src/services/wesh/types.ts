@@ -113,6 +113,7 @@ export interface WeshProcessSnapshot {
   ppid: number;
   pgid: number;
   state: WeshProcess['state'];
+  user: string;
   argv0: string;
   args: string[];
   cwd: string;

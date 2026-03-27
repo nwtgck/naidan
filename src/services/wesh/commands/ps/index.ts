@@ -7,7 +7,7 @@ import type {
   WeshProcessSnapshot,
 } from '@/services/wesh/types';
 
-type PsColumnKey = 'pid' | 'ppid' | 'pgid' | 'stat' | 'args' | 'cwd';
+type PsColumnKey = 'user' | 'pid' | 'ppid' | 'pgid' | 'stat' | 'args' | 'cwd';
 
 interface PsColumnDefinition {
   key: PsColumnKey;
@@ -53,6 +53,13 @@ const psArgvSpec: StandardArgvParserSpec = {
     },
     {
       kind: 'flag',
+      short: 'f',
+      long: 'full',
+      effects: [{ key: 'full', value: true }],
+      help: { summary: 'use a fuller default output format', category: 'common' },
+    },
+    {
+      kind: 'flag',
       short: undefined,
       long: 'help',
       effects: [{ key: 'help', value: true }],
@@ -66,6 +73,11 @@ const psArgvSpec: StandardArgvParserSpec = {
 };
 
 const psColumns: Record<PsColumnKey, PsColumnDefinition> = {
+  user: {
+    key: 'user',
+    header: 'USER',
+    getValue: ({ process }) => process.user,
+  },
   pid: {
     key: 'pid',
     header: 'PID',
@@ -164,6 +176,7 @@ function parseFormatList({
   for (const token of tokens) {
     const normalized = token.toLowerCase();
     switch (normalized) {
+    case 'user':
     case 'pid':
     case 'ppid':
     case 'pgid':
@@ -191,6 +204,7 @@ function parseFormatList({
     case 'stat':
     case 'args':
     case 'cwd':
+    case 'user':
       columns.push(psColumns[normalized]);
       break;
     default: {
@@ -211,6 +225,17 @@ function defaultColumns(): PsColumnDefinition[] {
     psColumns.pid,
     psColumns.pgid,
     psColumns.ppid,
+    psColumns.stat,
+    psColumns.args,
+  ];
+}
+
+function fullColumns(): PsColumnDefinition[] {
+  return [
+    psColumns.user,
+    psColumns.pid,
+    psColumns.ppid,
+    psColumns.pgid,
     psColumns.stat,
     psColumns.args,
   ];
@@ -337,7 +362,9 @@ export const psCommandDefinition: WeshCommandDefinition = {
       if (formatOccurrence === undefined) {
         return {
           kind: 'ok' as const,
-          columns: defaultColumns(),
+          columns: parsed.optionValues.full === true
+            ? fullColumns()
+            : defaultColumns(),
         };
       }
       return parseFormatList({
