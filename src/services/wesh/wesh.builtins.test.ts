@@ -154,4 +154,42 @@ beta
     expect(executed.stderr.text).toBe('');
     expect(executed.result.exitCode).toBe(0);
   });
+
+  it('keeps exec-opened file descriptors available through shell functions', async () => {
+    const executed = await execute({
+      script: `\
+exec 3> function-fd.txt
+write_line() {
+  echo "$1" >&3
+}
+write_line alpha
+write_line beta`,
+    });
+
+    const handle = await rootHandle.getFileHandle('function-fd.txt');
+    const file = await handle.getFile();
+
+    expect(await file.text()).toBe(`\
+alpha
+beta
+`);
+    expect(executed.stderr.text).toBe('');
+    expect(executed.result.exitCode).toBe(0);
+  });
+
+  it('keeps parent file descriptors open after subshell-local closes', async () => {
+    const executed = await execute({
+      script: `\
+exec 3> parent-fd.txt
+(exec 3>&-)
+echo after >&3`,
+    });
+
+    const handle = await rootHandle.getFileHandle('parent-fd.txt');
+    const file = await handle.getFile();
+
+    expect(await file.text()).toBe('after\n');
+    expect(executed.stderr.text).toBe('');
+    expect(executed.result.exitCode).toBe(0);
+  });
 });

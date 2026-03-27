@@ -1483,8 +1483,15 @@ usage: alias [name[=value] ...]
     if (stdin === undefined || stderr === undefined) {
       throw new Error('Missing standard file descriptors for command substitution');
     }
-    const result = await this.executeShellInState({
+    const rawResult = await this.executeShellInState({
       script: parsed.content,
+      environment: childEnvironment,
+      stdin,
+      stdout: captureHandle,
+      stderr,
+    });
+    const result = await this.runExitTrapIfNeeded({
+      result: rawResult,
       environment: childEnvironment,
       stdin,
       stdout: captureHandle,

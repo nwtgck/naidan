@@ -715,6 +715,29 @@ parent
     expect(result.exitCode).toBe(1);
   });
 
+  it('keeps trap changes in command substitution isolated from the parent shell', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+value=$(trap -- 'echo child-exit' EXIT; echo body)
+echo "$value"
+trap -p`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+body
+child-exit
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports [[ ]] conditionals', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
