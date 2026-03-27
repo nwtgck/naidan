@@ -1,7 +1,14 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
+
+function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+  if (path.startsWith('/')) {
+    return path;
+  }
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
 
 function parseCount({
   value,
@@ -205,11 +212,9 @@ export const headCommandDefinition: WeshCommandDefinition = {
 
           const stream = f === '-'
             ? handleToStream({ handle: context.stdin })
-            : handleToStream({
-              handle: await context.files.open({
-                path: f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`),
-                flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-              })
+            : await openFileAsStream({
+              files: context.files,
+              path: resolvePath({ cwd: context.cwd, path: f }),
             });
           await processStream({
             stream,

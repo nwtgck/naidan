@@ -80,6 +80,40 @@ export async function readFileAsText({ files, path }: { files: WeshFileCapabilit
 }
 
 /**
+ * Open a file as a ReadableStream<Uint8Array>, using blob-backed streaming when available.
+ */
+export async function openFileAsStream({
+  files,
+  path,
+}: {
+  files: WeshFileCapabilities;
+  path: string;
+}): Promise<ReadableStream<Uint8Array>> {
+  if (files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  const flags: WeshOpenFlags = {
+    access: 'read',
+    creation: 'never',
+    truncate: 'preserve',
+    append: 'preserve',
+  };
+  const handle = await files.open({ path, flags });
+  return handleToStream({ handle });
+}
+
+/**
  * Write the entire content of a Uint8Array to a file.
  */
 export async function writeFile({

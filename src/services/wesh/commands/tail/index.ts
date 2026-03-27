@@ -1,7 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
 
 function parseSignedCount({
   value,
@@ -21,7 +21,7 @@ async function writeBytes({
   data,
 }: {
   handle: WeshCommandContext['stdout'];
-  data: Uint8Array;
+  data: Uint8Array<ArrayBufferLike>;
 }): Promise<void> {
   let offset = 0;
   while (offset < data.length) {
@@ -34,6 +34,57 @@ async function writeBytes({
       break;
     }
     offset += bytesWritten;
+  }
+}
+
+function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+  if (path.startsWith('/')) {
+    return path;
+  }
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
+
+function appendTailBytes({
+  tailBytes,
+  chunk,
+  maxBytes,
+}: {
+  tailBytes: Uint8Array<ArrayBufferLike>;
+  chunk: Uint8Array<ArrayBufferLike>;
+  maxBytes: number;
+}): Uint8Array<ArrayBufferLike> {
+  if (maxBytes === 0) {
+    return new Uint8Array(0);
+  }
+
+  if (chunk.length >= maxBytes) {
+    return Uint8Array.from(chunk.subarray(chunk.length - maxBytes));
+  }
+
+  const keepFromExisting = Math.max(maxBytes - chunk.length, 0);
+  const existingStart = Math.max(tailBytes.length - keepFromExisting, 0);
+  const retainedExisting = tailBytes.subarray(existingStart);
+  const next = new Uint8Array(retainedExisting.length + chunk.length);
+  next.set(retainedExisting);
+  next.set(chunk, retainedExisting.length);
+  return next;
+}
+
+function pushTailLine({
+  lines,
+  line,
+  maxLines,
+}: {
+  lines: string[];
+  line: string;
+  maxLines: number;
+}): void {
+  if (maxLines === 0) {
+    return;
+  }
+  lines.push(line);
+  if (lines.length > maxLines) {
+    lines.shift();
   }
 }
 
@@ -149,60 +200,132 @@ export const tailCommandDefinition: WeshCommandDefinition = {
         : 'auto';
     let hadError = false;
 
-    const processStream = async (stream: ReadableStream<Uint8Array>) => {
+    const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       const reader = stream.getReader();
-      const chunks: Uint8Array[] = [];
-      let totalLength = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        totalLength += value.length;
-      }
-      const contentBytes = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const chunk of chunks) {
-        contentBytes.set(chunk, offset);
-        offset += chunk.length;
-      }
+      try {
+        if (byteCount !== undefined) {
+          if (byteCountFromStart) {
+            let bytesToSkip = Math.max(byteCount - 1, 0);
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) {
+                break;
+              }
 
-      if (byteCount !== undefined) {
-        const selectedBytes = byteCountFromStart
-          ? contentBytes.subarray(Math.max(byteCount - 1, 0))
-          : contentBytes.subarray(Math.max(contentBytes.length - Math.abs(byteCount), 0));
-        await writeBytes({
-          handle: context.stdout,
-          data: selectedBytes,
-        });
-        return;
-      }
+              if (bytesToSkip >= value.length) {
+                bytesToSkip -= value.length;
+                continue;
+              }
 
-      const content = new TextDecoder().decode(contentBytes);
-      const lines = content.split('\n');
-      if (lines[lines.length - 1] === '') lines.pop();
+              const output = bytesToSkip === 0 ? value : value.subarray(bytesToSkip);
+              bytesToSkip = 0;
+              await writeBytes({
+                handle: context.stdout,
+                data: output,
+              });
+            }
+            return;
+          }
 
-      const selectedLines = countFromStart
-        ? lines.slice(Math.max(lineCount - 1, 0))
-        : lines.slice(-Math.abs(lineCount));
+          const maxBytes = Math.max(Math.abs(byteCount), 0);
+          let tailBytes: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              break;
+            }
+            tailBytes = appendTailBytes({
+              tailBytes,
+              chunk: value,
+              maxBytes,
+            });
+          }
 
-      for (const line of selectedLines) {
-        await text.print({ text: line + '\n' });
+          await writeBytes({
+            handle: context.stdout,
+            data: tailBytes,
+          });
+          return;
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        if (countFromStart) {
+          let currentLineNumber = 1;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              break;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            while (true) {
+              const newlineIndex = buffer.indexOf('\n');
+              if (newlineIndex === -1) {
+                break;
+              }
+              const line = buffer.slice(0, newlineIndex + 1);
+              buffer = buffer.slice(newlineIndex + 1);
+              if (currentLineNumber >= lineCount) {
+                await text.print({ text: line });
+              }
+              currentLineNumber += 1;
+            }
+          }
+
+          buffer += decoder.decode();
+          if (buffer.length > 0 && currentLineNumber >= lineCount) {
+            await text.print({ text: buffer });
+          }
+          return;
+        }
+
+        const maxLines = Math.max(Math.abs(lineCount), 0);
+        const tailLines: string[] = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          while (true) {
+            const newlineIndex = buffer.indexOf('\n');
+            if (newlineIndex === -1) {
+              break;
+            }
+            const line = buffer.slice(0, newlineIndex + 1);
+            buffer = buffer.slice(newlineIndex + 1);
+            pushTailLine({
+              lines: tailLines,
+              line,
+              maxLines,
+            });
+          }
+        }
+
+        buffer += decoder.decode();
+        if (buffer.length > 0) {
+          pushTailLine({
+            lines: tailLines,
+            line: buffer,
+            maxLines,
+          });
+        }
+
+        for (const line of tailLines) {
+          await text.print({ text: line });
+        }
+      } finally {
+        reader.releaseLock();
       }
     };
 
     if (parsed.positionals.length === 0) {
-      const input = new ReadableStream({
-        async pull(controller) {
-          const buf = new Uint8Array(4096);
-          const { bytesRead } = await context.stdin.read({ buffer: buf });
-          if (bytesRead === 0) {
-            controller.close();
-            return;
-          }
-          controller.enqueue(buf.subarray(0, bytesRead));
-        }
+      await processStream({
+        stream: handleToStream({ handle: context.stdin }),
       });
-      await processStream(input);
     } else {
       for (const [index, f] of parsed.positionals.entries()) {
         try {
@@ -215,27 +338,18 @@ export const tailCommandDefinition: WeshCommandDefinition = {
           }
 
           if (f === '-') {
-            const input = new ReadableStream({
-              async pull(controller) {
-                const buf = new Uint8Array(4096);
-                const { bytesRead } = await context.stdin.read({ buffer: buf });
-                if (bytesRead === 0) {
-                  controller.close();
-                  return;
-                }
-                controller.enqueue(buf.subarray(0, bytesRead));
-              }
+            await processStream({
+              stream: handleToStream({ handle: context.stdin }),
             });
-            await processStream(input);
             continue;
           }
 
-          const fullPath = f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`);
-          const handle = await context.files.open({
-            path: fullPath,
-            flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+          await processStream({
+            stream: await openFileAsStream({
+              files: context.files,
+              path: resolvePath({ cwd: context.cwd, path: f }),
+            }),
           });
-          await processStream(handleToStream({ handle }));
         } catch (e: unknown) {
           hadError = true;
           const message = e instanceof Error ? e.message : String(e);
