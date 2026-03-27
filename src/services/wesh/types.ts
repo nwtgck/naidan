@@ -338,7 +338,7 @@ export interface WeshCommandDefinition {
 export interface WeshRedirection {
   fd: number;
   type: 'write' | 'append' | 'read' | 'read-write' | 'dup-output' | 'dup-input' | 'heredoc' | 'herestring';
-  target: string | undefined;
+  target: string | WeshProcessSubstitutionNode | undefined;
   targetFd?: number;
   closeTarget?: boolean;
   content?: string; // For here-docs

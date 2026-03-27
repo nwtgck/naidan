@@ -107,6 +107,21 @@ greet world`,
     expect(executed.result.exitCode).toBe(0);
   });
 
+  it('resolves aliases before shell functions for the invoked command name', async () => {
+    const executed = await execute({
+      script: `\
+greet() {
+  echo function "$@"
+}
+alias greet='echo alias'
+greet world`,
+    });
+
+    expect(executed.stdout.text).toBe('alias world\n');
+    expect(executed.stderr.text).toBe('');
+    expect(executed.result.exitCode).toBe(0);
+  });
+
   it('supports output fd duplication with >&n redirection', async () => {
     const executed = await execute({
       script: 'echo duplicated >&2',
@@ -114,6 +129,29 @@ greet world`,
 
     expect(executed.stdout.text).toBe('');
     expect(executed.stderr.text).toBe('duplicated\n');
+    expect(executed.result.exitCode).toBe(0);
+  });
+
+  it('keeps exec-opened file descriptors available through compound commands', async () => {
+    const executed = await execute({
+      script: `\
+exec 3> compound.txt
+while read line; do
+  echo "$line" >&3
+done <<EOF
+alpha
+beta
+EOF`,
+    });
+
+    const handle = await rootHandle.getFileHandle('compound.txt');
+    const file = await handle.getFile();
+
+    expect(await file.text()).toBe(`\
+alpha
+beta
+`);
+    expect(executed.stderr.text).toBe('');
     expect(executed.result.exitCode).toBe(0);
   });
 });

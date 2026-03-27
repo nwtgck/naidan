@@ -117,6 +117,66 @@ class Parser {
     }
   }
 
+  private parseProcessSubstitution({
+    tokenType,
+  }: {
+    tokenType: 'PROC_SUB_IN' | 'PROC_SUB_OUT';
+  }): WeshProcessSubstitutionNode {
+    this.eat(tokenType);
+
+    const kind: 'input' | 'output' = (() => {
+      switch (tokenType) {
+      case 'PROC_SUB_IN':
+        return 'input';
+      case 'PROC_SUB_OUT':
+        return 'output';
+      default: {
+        const _ex: never = tokenType;
+        throw new Error(`Unhandled process substitution: ${_ex}`);
+      }
+      }
+    })();
+
+    const list = this.parseList(['RPAREN']);
+
+    const endType = this.currentToken.type;
+    switch (endType) {
+    case 'RPAREN':
+      this.eat('RPAREN');
+      break;
+    case 'WORD':
+    case 'LPAREN':
+    case 'PIPE':
+    case 'AND':
+    case 'OR':
+    case 'SEMI':
+    case 'AMP':
+    case 'DLPAREN':
+    case 'GT':
+    case 'GTGT':
+    case 'LT':
+    case 'LTGT':
+    case 'DUP_OUT':
+    case 'DUP_IN':
+    case 'HEREDOC':
+    case 'HERESTRING':
+    case 'PROC_SUB_IN':
+    case 'PROC_SUB_OUT':
+    case 'EOF':
+      throw new Error(`Expected ')' after process substitution, got: ${this.currentToken.value}`);
+    default: {
+      const _ex: never = endType;
+      throw new Error(`Unhandled token type: ${_ex}`);
+    }
+    }
+
+    return {
+      kind: 'processSubstitution',
+      type: kind,
+      list,
+    };
+  }
+
   parse(): WeshASTNode {
     const node = this.parseList();
     const type = this.currentToken.type;
@@ -412,58 +472,9 @@ class Parser {
         redirections.push(this.parseRedirection());
 
       } else if (t === 'PROC_SUB_IN' || t === 'PROC_SUB_OUT') {
-        this.eat(t);
-
-        const procSubToken = t as 'PROC_SUB_IN' | 'PROC_SUB_OUT';
-        const kind: 'input' | 'output' = (() => {
-          switch (procSubToken) {
-          case 'PROC_SUB_IN': return 'input';
-          case 'PROC_SUB_OUT': return 'output';
-          default: {
-            const _ex: never = procSubToken;
-            throw new Error(`Unhandled process substitution: ${_ex}`);
-          }
-          }
-        })();
-
-        const list = this.parseList(['RPAREN']);
-
-        const endType = this.currentToken.type;
-        switch (endType) {
-        case 'RPAREN':
-          this.eat('RPAREN');
-          break;
-        case 'WORD':
-        case 'LPAREN':
-        case 'PIPE':
-        case 'AND':
-        case 'OR':
-        case 'SEMI':
-        case 'AMP':
-        case 'DLPAREN':
-        case 'GT':
-        case 'GTGT':
-        case 'LT':
-        case 'LTGT':
-        case 'DUP_OUT':
-        case 'DUP_IN':
-        case 'HEREDOC':
-        case 'HERESTRING':
-        case 'PROC_SUB_IN':
-        case 'PROC_SUB_OUT':
-        case 'EOF':
-          throw new Error(`Expected ')' after process substitution, got: ${this.currentToken.value}`);
-        default: {
-          const _ex: never = endType;
-          throw new Error(`Unhandled token type: ${_ex}`);
-        }
-        }
-
-        args.push({
-          kind: 'processSubstitution',
-          type: kind,
-          list
-        });
+        args.push(this.parseProcessSubstitution({
+          tokenType: t as 'PROC_SUB_IN' | 'PROC_SUB_OUT',
+        }));
 
       } else {
         switch (t) {
@@ -1320,10 +1331,22 @@ class Parser {
       return { fd, type: 'write', target: this.expectWord() };
     case 'GTGT':
       return { fd, type: 'append', target: this.expectWord() };
-    case 'LT':
-      return { fd, type: 'read', target: this.expectWord() };
-    case 'LTGT':
-      return { fd, type: 'read-write', target: this.expectWord() };
+    case 'LT': {
+      const target = this.currentToken.type === 'PROC_SUB_IN' || this.currentToken.type === 'PROC_SUB_OUT'
+        ? this.parseProcessSubstitution({
+          tokenType: this.currentToken.type as 'PROC_SUB_IN' | 'PROC_SUB_OUT',
+        })
+        : this.expectWord();
+      return { fd, type: 'read', target };
+    }
+    case 'LTGT': {
+      const target = this.currentToken.type === 'PROC_SUB_IN' || this.currentToken.type === 'PROC_SUB_OUT'
+        ? this.parseProcessSubstitution({
+          tokenType: this.currentToken.type as 'PROC_SUB_IN' | 'PROC_SUB_OUT',
+        })
+        : this.expectWord();
+      return { fd, type: 'read-write', target };
+    }
     case 'DUP_OUT':
     case 'DUP_IN': {
       const target = this.expectWord();

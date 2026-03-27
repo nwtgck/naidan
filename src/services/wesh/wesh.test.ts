@@ -589,6 +589,31 @@ echo "$(printf '%s' "$(printf inner)")"`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('keeps command substitution shell state isolated from the parent shell', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+VAR=parent
+value=$(VAR=child; helper() { echo nested; }; echo "$VAR")
+echo "$value"
+echo "$VAR"
+helper`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+child
+parent
+`);
+    expect(stderr.text).toContain('Command not found');
+    expect(result.exitCode).toBe(1);
+  });
+
   it('supports [[ ]] conditionals', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
@@ -781,6 +806,27 @@ $value
     expect(catResult.exitCode).toBe(0);
   });
 
+  it('supports process substitution as redirected while-loop input in the parent shell', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+while read line; do
+  seen=$line
+done < <(printf 'alpha\nbeta\n')
+echo "$seen"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('beta\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports case inside shell functions', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
@@ -802,6 +848,56 @@ describe_value beta`,
     });
 
     expect(stdout.text).toBe('second\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps trap changes made in shell functions in the current shell', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+install_trap() {
+  trap -- 'echo from-function' EXIT
+}
+install_trap
+trap -p`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toContain(`trap -- 'echo from-function' EXIT`);
+    expect(stdout.text).toContain('from-function');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports combined stdin and stdout redirection on compound while commands', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+while read line; do
+  echo "item:$line"
+done > loop.txt <<EOF
+alpha
+beta
+EOF
+cat loop.txt`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+item:alpha
+item:beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

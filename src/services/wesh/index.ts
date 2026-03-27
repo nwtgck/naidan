@@ -3054,15 +3054,6 @@ usage: alias [name[=value] ...]
     redirection: WeshCommandNode['redirections'][number];
     environment: WeshExecutionEnvironment;
   }): Promise<WeshFileHandle | undefined> {
-    const rawTarget = redirection.target ? await this.expandSingleWord({
-      raw: redirection.target,
-      env: environment.env,
-      cwd: environment.cwd,
-      mode: 'redirection',
-      shellOptions: environment.shellOptions,
-      environment,
-    }) : undefined;
-
     if (redirection.type === 'heredoc' || redirection.type === 'herestring') {
       if (redirection.content === undefined) {
         return undefined;
@@ -3098,6 +3089,55 @@ usage: alias [name[=value] ...]
 
       return duplicated;
     }
+
+    if (redirection.target !== undefined && typeof redirection.target !== 'string') {
+      const redirectedStdin = environment.fds.get(0);
+      const redirectedStdout = environment.fds.get(1);
+      const redirectedStderr = environment.fds.get(2);
+      if (redirectedStdin === undefined || redirectedStdout === undefined || redirectedStderr === undefined) {
+        throw new Error('Missing standard file descriptor after redirection');
+      }
+
+      const { read, write } = await this.kernel.pipe();
+      const subEnvironment = await this.spawnChildExecutionEnvironment({
+        parentEnvironment: environment,
+        pgid: environment.pgid,
+      });
+
+      switch (redirection.target.type) {
+      case 'input':
+        this.executeNode({
+          node: redirection.target.list,
+          environment: subEnvironment,
+          stdin: redirectedStdin,
+          stdout: write,
+          stderr: redirectedStderr,
+        }).then(() => write.close());
+        return read;
+      case 'output':
+        this.executeNode({
+          node: redirection.target.list,
+          environment: subEnvironment,
+          stdin: read,
+          stdout: redirectedStdout,
+          stderr: redirectedStderr,
+        }).then(() => read.close());
+        return write;
+      default: {
+        const _ex: never = redirection.target.type;
+        throw new Error(`Unhandled redirection process substitution type: ${_ex}`);
+      }
+      }
+    }
+
+    const rawTarget = redirection.target ? await this.expandSingleWord({
+      raw: redirection.target,
+      env: environment.env,
+      cwd: environment.cwd,
+      mode: 'redirection',
+      shellOptions: environment.shellOptions,
+      environment,
+    }) : undefined;
 
     if (rawTarget === undefined) {
       return undefined;
