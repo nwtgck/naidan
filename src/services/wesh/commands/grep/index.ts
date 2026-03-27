@@ -3,7 +3,7 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { ArgvOptionOccurrence } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, readFile } from '@/services/wesh/utils/fs';
+import { openFileAsStream, readFile } from '@/services/wesh/utils/fs';
 
 interface GrepFileReport {
   matched: boolean;
@@ -231,26 +231,10 @@ async function openGrepInputStream({
     });
   }
 
-  const path = resolvePath({ cwd: context.cwd, path: file });
-  if (context.files.tryReadBlobEfficiently !== undefined) {
-    const blobResult = await context.files.tryReadBlobEfficiently({ path });
-    switch (blobResult.kind) {
-    case 'blob':
-      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
-    case 'fallback-required':
-      break;
-    default: {
-      const _ex: never = blobResult;
-      throw new Error(`Unhandled blob read result: ${JSON.stringify(_ex)}`);
-    }
-    }
-  }
-
-  const handle = await context.files.open({
-    path,
-    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+  return await openFileAsStream({
+    files: context.files,
+    path: resolvePath({ cwd: context.cwd, path: file }),
   });
-  return handleToStream({ handle });
 }
 
 export const grepCommandDefinition: WeshCommandDefinition = {

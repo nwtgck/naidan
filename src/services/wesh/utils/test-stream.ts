@@ -21,6 +21,25 @@ export function createWeshReadFileHandleFromText({
 }
 
 /**
+ * Creates a Wesh file handle that provides the given binary data as input.
+ */
+export function createWeshReadFileHandleFromBytes({
+  bytes,
+}: {
+  bytes: Uint8Array;
+}): WeshFileHandle {
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (bytes.length > 0) {
+        controller.enqueue(new Uint8Array(bytes));
+      }
+      controller.close();
+    },
+  });
+  return createWeshReadFileHandle({ source });
+}
+
+/**
  * Creates a capture object that stores all data written to its handle.
  */
 export function createWeshWriteCaptureHandle() {

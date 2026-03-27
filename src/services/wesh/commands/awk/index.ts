@@ -5,7 +5,7 @@ import { parseAwkProgram } from '@/services/wesh/commands/awk/parser';
 import { createAwkRuntime, executeAwkBegin, executeAwkEnd, executeAwkRecord } from '@/services/wesh/commands/awk/runtime';
 import type { AwkValue } from '@/services/wesh/commands/awk/types';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { handleToStream, readFile } from '@/services/wesh/utils/fs';
+import { handleToStream, openFileAsStream, readFile } from '@/services/wesh/utils/fs';
 
 const awkArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -81,26 +81,10 @@ async function openAwkInputStream({
     return handleToStream({ handle: context.stdin });
   }
 
-  const path = resolvePath({ cwd: context.cwd, path: input });
-  if (context.files.tryReadBlobEfficiently !== undefined) {
-    const blobResult = await context.files.tryReadBlobEfficiently({ path });
-    switch (blobResult.kind) {
-    case 'blob':
-      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
-    case 'fallback-required':
-      break;
-    default: {
-      const _ex: never = blobResult;
-      throw new Error(`Unhandled blob read result: ${JSON.stringify(_ex)}`);
-    }
-    }
-  }
-
-  const handle = await context.files.open({
-    path,
-    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+  return await openFileAsStream({
+    files: context.files,
+    path: resolvePath({ cwd: context.cwd, path: input }),
   });
-  return handleToStream({ handle });
 }
 
 async function *readAwkRecords({

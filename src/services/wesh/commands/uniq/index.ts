@@ -8,7 +8,7 @@ import type {
   WeshEfficientFileWriter,
   WeshFileHandle,
 } from '@/services/wesh/types';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
 
 type UniqMode = 'all' | 'duplicates' | 'unique';
 type UniqDelimiter = '\n' | '\0';
@@ -187,26 +187,10 @@ async function openUniqInputStream({
     return handleToStream({ handle: context.stdin });
   }
 
-  const fullPath = resolveInputPath({ cwd: context.cwd, path: inputPath });
-  if (context.files.tryReadBlobEfficiently !== undefined) {
-    const blobResult = await context.files.tryReadBlobEfficiently({ path: fullPath });
-    switch (blobResult.kind) {
-    case 'blob':
-      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
-    case 'fallback-required':
-      break;
-    default: {
-      const _ex: never = blobResult;
-      throw new Error(`Unhandled blob read result: ${JSON.stringify(_ex)}`);
-    }
-    }
-  }
-
-  const handle = await context.files.open({
-    path: fullPath,
-    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+  return await openFileAsStream({
+    files: context.files,
+    path: resolveInputPath({ cwd: context.cwd, path: inputPath }),
   });
-  return handleToStream({ handle });
 }
 
 async function *readUniqRecords({

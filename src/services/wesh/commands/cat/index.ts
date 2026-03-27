@@ -2,7 +2,7 @@ import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, Wesh
 import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
 
 function renderVisibleAscii(char: string): string {
   if (char === '\t') return char;
@@ -211,8 +211,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
       }
     };
 
-    const processInputHandle = async ({ handle }: { handle: WeshFileHandle }) => {
-      const stream = handleToStream({ handle });
+    const processInputStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       if (hasTransform) {
         await processStream(stream);
         return;
@@ -221,29 +220,21 @@ export const catCommandDefinition: WeshCommandDefinition = {
     };
 
     if (files.length === 0) {
-      await processInputHandle({ handle: context.stdin });
+      await processInputStream({ stream: handleToStream({ handle: context.stdin }) });
     } else {
       for (const f of files) {
         if (f === '-') {
-          await processInputHandle({ handle: context.stdin });
+          await processInputStream({ stream: handleToStream({ handle: context.stdin }) });
           continue;
         }
 
         try {
-          const fullPath = resolvePath({ cwd: context.cwd, path: f });
-          const handle = await context.files.open({
-            path: fullPath,
-            flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+          await processInputStream({
+            stream: await openFileAsStream({
+              files: context.files,
+              path: resolvePath({ cwd: context.cwd, path: f }),
+            }),
           });
-          try {
-            await processInputHandle({ handle });
-          } finally {
-            try {
-              await handle.close();
-            } catch {
-              // handleToStream may already have closed the file handle
-            }
-          }
         } catch (e: unknown) {
           const shouldForwardSignal = (() => {
             const waitStatus = context.process.getWaitStatus();

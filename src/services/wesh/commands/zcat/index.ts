@@ -1,7 +1,14 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
+
+function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+  if (path.startsWith('/')) {
+    return path;
+  }
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
 
 const zcatArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -56,25 +63,10 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
         if (f === '-') {
           stream = handleToStream({ handle: context.stdin });
         } else {
-          const fullPath = f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`);
-          const blobResult = await context.files.tryReadBlobEfficiently({ path: fullPath });
-          switch (blobResult.kind) {
-          case 'blob':
-            stream = blobResult.blob.stream();
-            break;
-          case 'fallback-required':
-            stream = handleToStream({
-              handle: await context.files.open({
-                path: fullPath,
-                flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-              })
-            });
-            break;
-          default: {
-            const _ex: never = blobResult;
-            throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
-          }
-          }
+          stream = await openFileAsStream({
+            files: context.files,
+            path: resolvePath({ cwd: context.cwd, path: f }),
+          });
         }
         const decompressor = new DecompressionStream('gzip');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

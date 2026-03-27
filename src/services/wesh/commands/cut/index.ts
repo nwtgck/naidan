@@ -2,7 +2,7 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import { openFileAsStream } from '@/services/wesh/utils/fs';
 
 type CutMode = 'bytes' | 'characters' | 'fields';
 
@@ -449,25 +449,10 @@ async function openCutInputStream({
     cwd: context.cwd,
     path: file,
   });
-  if (context.files.tryReadBlobEfficiently !== undefined) {
-    const blobResult = await context.files.tryReadBlobEfficiently({ path });
-    switch (blobResult.kind) {
-    case 'blob':
-      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
-    case 'fallback-required':
-      break;
-    default: {
-      const _ex: never = blobResult;
-      throw new Error(`Unhandled blob read result: ${JSON.stringify(_ex)}`);
-    }
-    }
-  }
-
-  const handle = await context.files.open({
+  return await openFileAsStream({
+    files: context.files,
     path,
-    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
   });
-  return handleToStream({ handle });
 }
 
 async function *readTextLines({
