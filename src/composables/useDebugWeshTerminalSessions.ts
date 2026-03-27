@@ -138,7 +138,7 @@ async function runCommand({ script }: { script: string }) {
 async function closeSession({ sessionId }: { sessionId: string }) {
   const session = sessions.value.find(item => item.id === sessionId);
   if (!session) return;
-  await session.client?.dispose();
+  await session.client?.dispose({});
   sessions.value = sessions.value.filter(item => item.id !== sessionId);
   if (activeSessionId.value === sessionId) {
     activeSessionId.value = sessions.value[0]?.id;

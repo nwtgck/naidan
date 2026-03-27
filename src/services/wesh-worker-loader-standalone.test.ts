@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-describe('wesh-worker-loader-standalone', () => {
+describe('worker-hub-standalone-loader', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
     vi.restoreAllMocks()
@@ -8,20 +8,20 @@ describe('wesh-worker-loader-standalone', () => {
 
   it('creates a blob-backed worker from the embedded script', async () => {
     document.body.innerHTML = `\
-<script type="text/x-naidan-worker" data-worker-id="file-protocol-compatible-wesh-worker">self.onmessage=function(){}</script>`
+<script id="file-protocol-compatible-standalone-worker-hub" type="text/x-naidan-worker">self.onmessage=function(){}</script>`
 
     const WorkerMock = vi.fn()
-    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:wesh-worker')
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:standalone-worker-hub')
     const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     vi.stubGlobal('Worker', WorkerMock)
 
-    const { createFileProtocolCompatibleWeshWorker } = await import('./wesh-worker-loader-standalone')
-    createFileProtocolCompatibleWeshWorker()
+    const { createFileProtocolCompatibleStandaloneWorkerHub } = await import('./worker-hub-standalone-loader')
+    createFileProtocolCompatibleStandaloneWorkerHub({})
 
     expect(createObjectURL).toHaveBeenCalledTimes(1)
-    expect(WorkerMock).toHaveBeenCalledWith('blob:wesh-worker', {
-      name: 'file-protocol-compatible-wesh-worker',
+    expect(WorkerMock).toHaveBeenCalledWith('blob:standalone-worker-hub', {
+      name: 'file-protocol-compatible-standalone-worker-hub',
     })
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:wesh-worker')
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:standalone-worker-hub')
   })
 })

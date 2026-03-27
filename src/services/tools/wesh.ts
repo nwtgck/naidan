@@ -48,7 +48,7 @@ export function createWeshTool({
     description: toolDescription,
     parametersSchema: WeshArgsSchema,
     async dispose() {
-      await client.dispose();
+      await client.dispose({});
     },
 
     async execute({ args, signal }: { args: unknown; signal?: AbortSignal }) {
@@ -58,7 +58,7 @@ export function createWeshTool({
         const validated = WeshArgsSchema.parse(args);
         if (signal) {
           abortHandler = () => {
-            void client.interrupt();
+            void client.interrupt({});
           };
           signal.addEventListener('abort', abortHandler, { once: true });
         }

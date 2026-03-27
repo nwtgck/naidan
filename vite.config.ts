@@ -100,10 +100,10 @@ export default defineConfig(({ mode }) => {
   const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted'
   const embeddedWorkers: EmbeddedWorkerSpec[] = [
     {
-      entry: 'src/services/wesh.worker.ts',
-      globalName: 'NaidanFileProtocolCompatibleWeshWorker',
+      entry: 'src/services/worker-hub-standalone.worker.ts',
+      globalName: 'NaidanFileProtocolCompatibleStandaloneWorkerHub',
       scriptType: 'text/x-naidan-worker',
-      workerId: 'file-protocol-compatible-wesh-worker',
+      workerId: 'file-protocol-compatible-standalone-worker-hub',
     }
   ]
 
@@ -132,7 +132,8 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         ...(isStandalone ? {
-          '@/services/wesh-worker-loader': path.resolve(__dirname, 'src/services/wesh-worker-loader-standalone.ts'),
+          '@/services/wesh-worker-client': path.resolve(__dirname, 'src/services/wesh-worker-client-standalone.ts'),
+          '@/services/global-search-worker-client': path.resolve(__dirname, 'src/services/global-search-worker-client-standalone.ts'),
         } : {}),
         '@': path.resolve(__dirname, 'src'),
         ...(isStandalone ? {
@@ -417,6 +418,12 @@ async function embedStandaloneWorkers({ outDir, workers }: {
 
       await viteBuild({
         configFile: false,
+        define: {
+          __BUILD_MODE_IS_STANDALONE__: JSON.stringify(true),
+          __BUILD_MODE_IS_HOSTED__: JSON.stringify(false),
+          __APP_VERSION__: JSON.stringify(pkg.version),
+          'process.env.NODE_ENV': JSON.stringify('production'),
+        },
         logLevel: 'error',
         publicDir: false,
         resolve: {
@@ -451,7 +458,7 @@ async function embedStandaloneWorkers({ outDir, workers }: {
 
       const workerContent = fs.readFileSync(workerScriptPath, 'utf8')
       const script = document.createElement('script')
-      script.setAttribute('data-worker-id', worker.workerId)
+      script.setAttribute('id', worker.workerId)
       script.setAttribute('type', worker.scriptType)
       script.textContent = workerContent.replace(/<\/script>/g, '<\\/script>')
       document.body.appendChild(script)

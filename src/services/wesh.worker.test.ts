@@ -104,7 +104,7 @@ describe('wesh.worker', () => {
     })
 
     await new Promise(resolve => setTimeout(resolve, 20))
-    const interrupted = await workerApi.interrupt()
+    const interrupted = await workerApi.interrupt({})
     const response = await execution
 
     expect(interrupted).toBe(true)

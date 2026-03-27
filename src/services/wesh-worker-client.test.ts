@@ -61,8 +61,8 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
         stderrLimit: 10,
       },
     })
-    const interrupted = await client.interrupt()
-    await client.dispose()
+    const interrupted = await client.interrupt({})
+    await client.dispose({})
 
     expect(init).toHaveBeenCalledTimes(1)
     expect(response.stdout).toBe('ok\n')

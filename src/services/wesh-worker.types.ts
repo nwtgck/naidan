@@ -35,14 +35,14 @@ export type WeshWorkerMount = z.infer<typeof weshWorkerMountSchema>
 export interface IWeshWorker {
   init({ request }: { request: WeshWorkerInitRequest }): Promise<void>
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecuteResponse>
-  interrupt(): Promise<boolean>
-  dispose(): Promise<void>
+  interrupt(_args: { noop?: never }): Promise<boolean>
+  dispose(_args: { noop?: never }): Promise<void>
 }
 
 export interface WeshWorkerClient {
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecuteResponse>
-  interrupt(): Promise<boolean>
-  dispose(): Promise<void>
+  interrupt(_args: { noop?: never }): Promise<boolean>
+  dispose(_args: { noop?: never }): Promise<void>
 }
 
 export function mapWeshMountsToWorkerMounts({ mounts }: {

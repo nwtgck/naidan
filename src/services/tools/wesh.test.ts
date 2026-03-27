@@ -71,6 +71,6 @@ describe('createWeshTool', () => {
       signal: controller.signal,
     })
 
-    expect(client.interrupt).toHaveBeenCalledTimes(1)
+    expect(client.interrupt).toHaveBeenCalledWith({})
   })
 })

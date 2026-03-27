@@ -1,6 +1,6 @@
 import {
-  FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_ID,
-  FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME,
+  FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
+  FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_NAME,
 } from '@/models/constants'
 
 function getEmbeddedWorkerSource({ workerId }: {
@@ -20,23 +20,14 @@ function getEmbeddedWorkerSource({ workerId }: {
   return source
 }
 
-function createEmbeddedClassicWorker({ source, name }: {
-  source: string
-  name: string
-}): Worker {
+export function createFileProtocolCompatibleStandaloneWorkerHub(_args: { noop?: never }): Worker {
+  const source = getEmbeddedWorkerSource({ workerId: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID })
   const blob = new Blob([source], { type: 'text/javascript' })
   const objectUrl = URL.createObjectURL(blob)
 
   try {
-    return new Worker(objectUrl, { name })
+    return new Worker(objectUrl, { name: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_NAME })
   } finally {
     URL.revokeObjectURL(objectUrl)
   }
-}
-
-export function createFileProtocolCompatibleWeshWorker(): Worker {
-  return createEmbeddedClassicWorker({
-    source: getEmbeddedWorkerSource({ workerId: FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_ID }),
-    name: FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME,
-  })
 }

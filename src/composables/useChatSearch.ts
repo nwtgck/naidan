@@ -1,52 +1,121 @@
 import { ref, shallowRef } from 'vue';
-import { storageService } from '@/services/storage';
-import { searchChatTree, searchLinearBranch, type ContentMatch } from '@/utils/chat-search';
-import { getChatBranchIterator } from '@/utils/chat-tree';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
-import type { SidebarItem, ChatSummary, ChatGroup } from '@/models/types';
+import { storageService } from '@/services/storage';
+import { createGlobalSearchWorkerClient } from '@/services/global-search-worker-client';
+import type {
+  ContentMatch,
+  FlatSearchResultItem,
+  SearchChatGroup,
+  SearchChatSource,
+  SearchResultItem,
+  SearchScope,
+  SearchSource,
+} from '@/services/global-search.types';
+import type { SidebarItem } from '@/models/types';
 
-export type { ContentMatch };
+export type { ContentMatch, FlatSearchResultItem, SearchResultItem, SearchScope };
 
-export type SearchResultItem =
-  | {
-      type: 'chat';
-      chatId: string;
-      title: string | null;
-      groupId?: string | null;
-      groupName?: string;
-      updatedAt: number;
-      matchType: 'title' | 'content' | 'both';
-      titleMatch?: boolean;
-      contentMatches: ContentMatch[];
+function flattenSidebarForSearch({ sidebarItems }: {
+  sidebarItems: SidebarItem[]
+}): SearchSource {
+  const chatGroups: SearchChatGroup[] = []
+  const chats: SearchChatSource[] = []
+
+  const flattenItems = (items: SidebarItem[]) => {
+    for (const item of items) {
+      switch (item.type) {
+      case 'chat_group':
+        chatGroups.push({
+          id: item.chatGroup.id,
+          name: item.chatGroup.name,
+          updatedAt: item.chatGroup.updatedAt,
+          chatCount: item.chatGroup.items.length,
+        })
+        for (const chatItem of item.chatGroup.items) {
+          switch (chatItem.type) {
+          case 'chat':
+            chats.push({
+              chat: {
+                id: chatItem.chat.id,
+                title: chatItem.chat.title,
+                updatedAt: chatItem.chat.updatedAt,
+                groupId: chatItem.chat.groupId,
+              },
+              groupName: item.chatGroup.name,
+            })
+            break
+          default: {
+            const _exhaustiveCheck: never = chatItem.type
+            throw new Error(`Unhandled chat group item type: ${_exhaustiveCheck}`)
+          }
+          }
+        }
+        break
+      case 'chat':
+        chats.push({
+          chat: {
+            id: item.chat.id,
+            title: item.chat.title,
+            updatedAt: item.chat.updatedAt,
+            groupId: item.chat.groupId,
+          },
+          groupName: undefined,
+        })
+        break
+      default: {
+        const _exhaustiveCheck: never = item
+        throw new Error(`Unhandled sidebar item type: ${_exhaustiveCheck}`)
+      }
+      }
     }
-  | {
-      type: 'chat_group';
-      groupId: string;
-      name: string;
-      updatedAt: number;
-      chatCount: number;
-      matchType: 'title';
-    };
+  }
 
-export type FlatSearchResultItem =
-  | { type: 'chat'; item: Extract<SearchResultItem, { type: 'chat' }> }
-  | { type: 'chat_group'; item: Extract<SearchResultItem, { type: 'chat_group' }> }
-  | { type: 'message'; item: ContentMatch; parentChat: Extract<SearchResultItem, { type: 'chat' }> };
+  flattenItems(sidebarItems)
 
-export type SearchScope = 'all' | 'title_only' | 'current_thread';
+  return { chatGroups, chats }
+}
 
 export function useChatSearch() {
   const query = ref('');
   const isSearching = ref(false);
   const isScanningContent = ref(false); // New flag for heavy content scanning
   const results = shallowRef<FlatSearchResultItem[]>([]);
-  let lastSearchedTrimmedQuery: string | null = null;
+  let lastSearchKey: string | null = null;
+  let searchSourceCache: SearchSource | null = null;
+  let searchClient: Awaited<ReturnType<typeof createGlobalSearchWorkerClient>> | undefined
+  let searchSessionId: string | undefined
 
-  // Cache for the search source data, valid for the duration of the search session
-  let searchSourceCache: {
-    chatGroups: ChatGroup[];
-    chats: { chat: ChatSummary; groupName?: string }[];
-  } | null = null;
+  function createSearchKey({ trimmedQuery, options }: {
+    trimmedQuery: string
+    options: { scope: SearchScope, chatGroupIds?: string[], chatId?: string }
+  }): string {
+    return JSON.stringify({
+      trimmedQuery,
+      scope: options.scope,
+      chatId: options.chatId,
+      chatGroupIds: options.chatGroupIds ? [...options.chatGroupIds] : undefined,
+    })
+  }
+
+  async function disposeSearchClient(_args: { noop?: never }) {
+    const client = searchClient
+    const sessionId = searchSessionId
+    searchClient = undefined
+    searchSessionId = undefined
+    searchSourceCache = null
+
+    if (!client) {
+      return
+    }
+
+    try {
+      if (sessionId) {
+        await client.disposeSession({ request: { sessionId } })
+      }
+    } finally {
+      await client.dispose({})
+    }
+  }
 
   /**
    * Performs the search.
@@ -62,15 +131,19 @@ export function useChatSearch() {
       results.value = [];
       isSearching.value = false;
       isScanningContent.value = false;
-      lastSearchedTrimmedQuery = null;
+      lastSearchKey = null;
       return;
     }
 
-    // Skip if query hasn't changed after trimming
-    if (trimmedQuery === lastSearchedTrimmedQuery) {
+    const searchKey = createSearchKey({
+      trimmedQuery,
+      options,
+    })
+
+    if (searchKey === lastSearchKey) {
       return;
     }
-    lastSearchedTrimmedQuery = trimmedQuery;
+    lastSearchKey = searchKey;
 
     isSearching.value = true;
     isScanningContent.value = false;
@@ -87,98 +160,65 @@ export function useChatSearch() {
         return;
       }
 
-      // Fetch and cache sidebar structure if not already cached
-      if (!searchSourceCache) {
-        const sidebar = await storageService.getSidebarStructure();
-        const chatGroups: ChatGroup[] = [];
-        const chats: { chat: ChatSummary; groupName?: string }[] = [];
-
-        const flattenSidebar = (items: SidebarItem[]) => {
-          for (const item of items) {
-            const type = item.type;
-            switch (type) {
-            case 'chat_group': {
-              const chatGroup = item.chatGroup;
-              chatGroups.push(chatGroup);
-              for (const chatItem of chatGroup.items) {
-                const cType = chatItem.type;
-                switch (cType) {
-                case 'chat':
-                  chats.push({ chat: chatItem.chat, groupName: chatGroup.name });
-                  break;
-                default: {
-                  const _ex: never = cType;
-                  throw new Error(`Unhandled sidebar item type: ${_ex}`);
-                }
-                }
-              }
-              break;
-            }
-            case 'chat':
-              chats.push({ chat: item.chat });
-              break;
-            default: {
-              const _ex: never = type;
-              throw new Error(`Unhandled sidebar item type: ${_ex}`);
-            }
-            }
-          }
-        };
-        flattenSidebar(sidebar);
-        searchSourceCache = { chatGroups, chats };
+      if (!searchClient) {
+        searchClient = await createGlobalSearchWorkerClient({})
       }
 
-      const { chatGroups: allChatGroups, chats: allChatsSource } = searchSourceCache;
+      if (!searchSourceCache) {
+        if (searchSessionId && searchClient) {
+          await searchClient.disposeSession({ request: { sessionId: searchSessionId } })
+          searchSessionId = undefined
+        }
+        const sidebar = await storageService.getSidebarStructure();
+        searchSourceCache = flattenSidebarForSearch({ sidebarItems: sidebar });
+        const sessionResponse = await searchClient.prepareSession({
+          request: {
+            source: searchSourceCache,
+          },
+        })
+        searchSessionId = sessionResponse.sessionId
+      }
+
+      if (!searchSessionId || !searchClient) {
+        throw new Error('Search worker session is not initialized')
+      }
+
+      const { chats: allChatsSource } = searchSourceCache;
 
       // Filter by options (Groups/ChatId)
       const chatGroupIds = options.chatGroupIds;
       const targetChatId = options.chatId;
       const hasGroupFilter = !!(chatGroupIds && chatGroupIds.length > 0);
 
-      const filteredChatGroups = targetChatId
-        ? []
-        : (hasGroupFilter ? allChatGroups.filter(cg => chatGroupIds!.includes(cg.id)) : allChatGroups);
-
       const filteredChats = targetChatId
         ? allChatsSource.filter(({ chat }) => chat.id === targetChatId)
         : (hasGroupFilter ? allChatsSource.filter(({ chat }) => chat.groupId && chatGroupIds!.includes(chat.groupId)) : allChatsSource);
 
-      const flatResults: FlatSearchResultItem[] = [];
-      const chatHeaderMap = new Map<string, Extract<SearchResultItem, { type: 'chat' }>>();
-
-      // 1. Search Group Titles
-      for (const chatGroup of filteredChatGroups) {
-        const lowerName = chatGroup.name.toLowerCase();
-        if (keywords.every(k => lowerName.includes(k))) {
-          const item: SearchResultItem = {
-            type: 'chat_group',
-            groupId: chatGroup.id,
-            name: chatGroup.name,
-            updatedAt: chatGroup.updatedAt,
-            chatCount: chatGroup.items.length,
-            matchType: 'title',
-          };
-          flatResults.push({ type: 'chat_group', item });
+      const titlesResponse = await searchClient.searchTitles({
+        request: {
+          sessionId: searchSessionId,
+          searchQuery: trimmedQuery,
+          options: {
+            scope: options.scope,
+            chatGroupIds: options.chatGroupIds ? [...options.chatGroupIds] : undefined,
+            chatId: options.chatId,
+          },
+        },
+      })
+      const flatResults: FlatSearchResultItem[] = [...titlesResponse.flatResults]
+      const chatHeaderMap = new Map<string, Extract<SearchResultItem, { type: 'chat' }>>()
+      for (const entry of flatResults) {
+        switch (entry.type) {
+        case 'chat':
+          chatHeaderMap.set(entry.item.chatId, entry.item)
+          break
+        case 'chat_group':
+        case 'message':
+          break
+        default: {
+          const _exhaustiveCheck: never = entry
+          throw new Error(`Unhandled search result type: ${_exhaustiveCheck}`)
         }
-      }
-
-      // 2. Search Chat Titles
-      for (const { chat, groupName } of filteredChats) {
-        const title = chat.title || UNTITLED_CHAT_TITLE;
-        const lowerTitle = title.toLowerCase();
-        if (keywords.every(k => lowerTitle.includes(k))) {
-          const item: Extract<SearchResultItem, { type: 'chat' }> = {
-            type: 'chat',
-            chatId: chat.id,
-            title: title,
-            groupName,
-            updatedAt: chat.updatedAt,
-            matchType: 'title',
-            titleMatch: true,
-            contentMatches: [],
-          };
-          chatHeaderMap.set(chat.id, item);
-          flatResults.push({ type: 'chat', item });
         }
       }
 
@@ -219,37 +259,17 @@ export function useChatSearch() {
         try {
           const content = await storageService.loadChatContent(chat.id);
           if (content) {
-            let matches: ContentMatch[] = [];
-
-            switch (scope) {
-            case 'current_thread': {
-              const fullChat = { ...chat, ...content } as unknown as import('../models/types').Chat;
-              const branch = Array.from(getChatBranchIterator({ chat: fullChat }));
-              matches = searchLinearBranch({
-                branch,
-                query: trimmedQuery,
-                chatId: chat.id,
-                targetLeafId: content.currentLeafId
-              });
-              break;
-            }
-            case 'all': {
-              const fullChat = { ...chat, ...content } as unknown as import('../models/types').Chat;
-              const activeNodes = Array.from(getChatBranchIterator({ chat: fullChat }));
-              const activeBranchIds = new Set(activeNodes.map(n => n.id));
-              matches = searchChatTree({
-                root: content.root,
-                query: trimmedQuery,
-                chatId: chat.id,
-                activeBranchIds
-              });
-              break;
-            }
-            default: {
-              const _ex: never = scope;
-              throw new Error(`Unhandled scope: ${_ex}`);
-            }
-            }
+            const response = await searchClient.searchChatContent({
+              request: {
+                sessionId: searchSessionId,
+                searchQuery: trimmedQuery,
+                scope,
+                chat,
+                groupName,
+                content,
+              },
+            })
+            const matches: ContentMatch[] = response.matches
 
             if (matches.length > 0) {
               const header = chatHeaderMap.get(chat.id);
@@ -303,8 +323,8 @@ export function useChatSearch() {
     results.value = [];
     isSearching.value = false;
     isScanningContent.value = false;
-    lastSearchedTrimmedQuery = null;
-    searchSourceCache = null;
+    lastSearchKey = null;
+    void disposeSearchClient({});
   };
 
   /**
@@ -314,8 +334,8 @@ export function useChatSearch() {
   const stopSearch = () => {
     isSearching.value = false;
     isScanningContent.value = false;
-    lastSearchedTrimmedQuery = null;
-    searchSourceCache = null;
+    lastSearchKey = null;
+    void disposeSearchClient({});
   };
 
   return {

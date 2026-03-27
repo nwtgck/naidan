@@ -5,8 +5,8 @@
  * In Standalone mode, we want to completely exclude the worker and the
  * heavy Transformers.js library from the bundle.
  *
- * TODO: When the standalone worker hub is introduced, migrate this loader
- * to the same client-facing pattern used by file-protocol-compatible workers.
+ * TODO: Migrate this loader to the standalone worker hub client-facing pattern
+ * used by Wesh and global search once a lightweight hosted/hub hybrid is needed.
  */
 
 export function createTransformersWorker(): Worker | null {
