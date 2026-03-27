@@ -1,5 +1,6 @@
 export type TokenType =
   | 'WORD'
+  | 'DLPAREN' // ((
   | 'PIPE' // |
   | 'AND' // &&
   | 'OR' // ||
@@ -46,6 +47,10 @@ export class Lexer {
     const nextChar = this.input[this.position + 1];
 
     // Parentheses
+    if (char === '(' && nextChar === '(') {
+      this.position += 2;
+      return { type: 'DLPAREN', value: '((', position: this.position - 2 };
+    }
     if (char === '(') {
       this.position++;
       return { type: 'LPAREN', value: '(', position: this.position - 1 };
@@ -161,6 +166,16 @@ export class Lexer {
         continue;
       }
 
+      if (char === '$' && this.input[this.position + 1] === '(') {
+        const nextNextChar = this.input[this.position + 2];
+        if (nextNextChar === '(') {
+          this.consumeArithmeticExpansion();
+        } else {
+          this.consumeCommandSubstitution();
+        }
+        continue;
+      }
+
       if (inQuote) {
         if (char === inQuote) {
           inQuote = null;
@@ -214,6 +229,130 @@ export class Lexer {
     }
 
     return { type: 'WORD', value: this.input.slice(start, this.position), position: start };
+  }
+
+  private consumeCommandSubstitution(): void {
+    let depth = 0;
+    let inQuote: "'" | '"' | null = null;
+    let escaped = false;
+
+    while (this.position < this.length) {
+      const char = this.input[this.position];
+      if (char === undefined) {
+        break;
+      }
+
+      if (escaped) {
+        escaped = false;
+        this.position += 1;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        this.position += 1;
+        continue;
+      }
+
+      if (inQuote !== null) {
+        if (char === inQuote) {
+          inQuote = null;
+        }
+        this.position += 1;
+        continue;
+      }
+
+      if (char === "'" || char === '"') {
+        inQuote = char;
+        this.position += 1;
+        continue;
+      }
+
+      if (char === '$' && this.input[this.position + 1] === '(') {
+        depth += 1;
+        this.position += this.input[this.position + 2] === '(' ? 3 : 2;
+        continue;
+      }
+
+      if (char === '(') {
+        depth += 1;
+        this.position += 1;
+        continue;
+      }
+
+      if (char === ')') {
+        if (depth === 0) {
+          this.position += 1;
+          return;
+        }
+        depth -= 1;
+        this.position += 1;
+        if (depth === 0) {
+          return;
+        }
+        continue;
+      }
+
+      this.position += 1;
+    }
+  }
+
+  private consumeArithmeticExpansion(): void {
+    let depth = 1;
+    let inQuote: "'" | '"' | null = null;
+    let escaped = false;
+    this.position += 3;
+
+    while (this.position < this.length) {
+      const char = this.input[this.position];
+      const nextChar = this.input[this.position + 1];
+      if (char === undefined) {
+        break;
+      }
+
+      if (escaped) {
+        escaped = false;
+        this.position += 1;
+        continue;
+      }
+
+      if (char === '\\') {
+        escaped = true;
+        this.position += 1;
+        continue;
+      }
+
+      if (inQuote !== null) {
+        if (char === inQuote) {
+          inQuote = null;
+        }
+        this.position += 1;
+        continue;
+      }
+
+      if (char === "'" || char === '"') {
+        inQuote = char;
+        this.position += 1;
+        continue;
+      }
+
+      if (char === '(') {
+        depth += 1;
+        this.position += 1;
+        continue;
+      }
+
+      if (char === ')' && nextChar === ')') {
+        depth -= 1;
+        this.position += 2;
+        if (depth === 0) {
+          return;
+        }
+        continue;
+      }
+
+      this.position += 1;
+    }
   }
 
   peek(): Token {

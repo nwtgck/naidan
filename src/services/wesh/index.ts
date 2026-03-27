@@ -19,6 +19,7 @@ import { WeshKernel } from './kernel';
 import { parseCommandLine } from './parser';
 import { createTextIoHelpers } from './utils/io';
 import { normalizePath, resolvePath } from './path';
+import { createWriteHandleFromStream } from './utils/stream';
 
 import { builtinCommands } from './commands';
 import { helpCommandDefinition } from './commands/help';
@@ -35,6 +36,7 @@ interface WeshExecutionEnvironment {
   pgid: number;
   env: Map<string, string>;
   aliases: Map<string, string>;
+  functions: Map<string, WeshASTNode>;
   cwd: string;
   fds: Map<number, WeshFileHandle>;
   traps: Map<string, WeshTrapDisposition>;
@@ -369,6 +371,7 @@ usage: ${name} [-c command] [file [argument...]]
               pgid: context.process.getGroupId(),
               env: new Map(context.env),
               aliases: new Map(context.getAliases().map(({ name: aliasName, value }) => [aliasName, value])),
+              functions: new Map(),
               cwd: context.cwd,
               fds: new Map(),
               traps: new Map(),
@@ -688,6 +691,12 @@ usage: alias [name[=value] ...]
     case 'if':
     case 'list':
     case 'pipeline':
+    case 'while':
+    case 'until':
+    case 'case':
+    case 'functionDefinition':
+    case 'arithmeticCommand':
+    case 'redirected':
     case 'subshell':
       return node;
     default: {
@@ -1204,13 +1213,15 @@ usage: alias [name[=value] ...]
     return expanded;
   }
 
-  private expandPartVariables({
+  private async expandPartVariables({
     text,
     env,
+    environment,
   }: {
     text: string;
     env: Map<string, string>;
-  }): string {
+    environment: WeshExecutionEnvironment;
+  }): Promise<string> {
     let result = '';
 
     for (let index = 0; index < text.length; index++) {
@@ -1258,10 +1269,33 @@ usage: alias [name[=value] ...]
       }
 
       if (nextChar === '{') {
-        const expansion = this.expandBracedParameter({
+        const expansion = await this.expandBracedParameter({
           text,
           startIndex: index,
           env,
+          environment,
+        });
+        result += expansion.value;
+        index = expansion.endIndex;
+        continue;
+      }
+
+      if (nextChar === '(') {
+        const thirdChar = text[index + 2];
+        if (thirdChar === '(') {
+          const expansion = this.expandArithmeticExpansion({
+            text,
+            startIndex: index,
+            env,
+          });
+          result += expansion.value;
+          index = expansion.endIndex;
+          continue;
+        }
+        const expansion = await this.expandCommandSubstitution({
+          text,
+          startIndex: index,
+          environment,
         });
         result += expansion.value;
         index = expansion.endIndex;
@@ -1290,7 +1324,194 @@ usage: alias [name[=value] ...]
     return result;
   }
 
-  private expandBracedParameter({
+  private async expandInlineSubstitutions({
+    text,
+    environment,
+  }: {
+    text: string;
+    environment: WeshExecutionEnvironment;
+  }): Promise<string> {
+    let result = '';
+    let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
+
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === undefined) {
+        continue;
+      }
+
+      switch (mode) {
+      case 'single':
+        result += char;
+        if (char === "'") {
+          mode = 'unquoted';
+        }
+        continue;
+      case 'double':
+        if (char === '"') {
+          mode = 'unquoted';
+          result += char;
+          continue;
+        }
+        break;
+      case 'unquoted':
+        if (char === "'") {
+          mode = 'single';
+          result += char;
+          continue;
+        }
+        if (char === '"') {
+          mode = 'double';
+          result += char;
+          continue;
+        }
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled mode: ${_ex}`);
+      }
+      }
+
+      if (char === '\\') {
+        result += char;
+        const nextChar = text[index + 1];
+        if (nextChar !== undefined) {
+          result += nextChar;
+          index += 1;
+        }
+        continue;
+      }
+
+      if (char === '$' && text[index + 1] === '(') {
+        if (text[index + 2] === '(') {
+          const expansion = this.expandArithmeticExpansion({
+            text,
+            startIndex: index,
+            env: environment.env,
+          });
+          result += expansion.value;
+          index = expansion.endIndex;
+          continue;
+        }
+        const expansion = await this.expandCommandSubstitution({
+          text,
+          startIndex: index,
+          environment,
+        });
+        result += expansion.value;
+        index = expansion.endIndex;
+        continue;
+      }
+
+      result += char;
+    }
+
+    return result;
+  }
+
+  private async expandBracedParameter({
+    text,
+    startIndex,
+    env,
+    environment,
+  }: {
+    text: string;
+    startIndex: number;
+    env: Map<string, string>;
+    environment: WeshExecutionEnvironment;
+  }): Promise<{
+    value: string;
+    endIndex: number;
+  }> {
+    const endIndex = text.indexOf('}', startIndex + 2);
+    if (endIndex === -1) {
+      return {
+        value: '$',
+        endIndex: startIndex,
+      };
+    }
+
+    const expression = text.slice(startIndex + 2, endIndex);
+    const expansionValue = await this.evaluateParameterExpansion({
+      expression,
+      env,
+      environment,
+    });
+    return {
+      value: expansionValue,
+      endIndex,
+    };
+  }
+
+  private async expandCommandSubstitution({
+    text,
+    startIndex,
+    environment,
+  }: {
+    text: string;
+    startIndex: number;
+    environment: WeshExecutionEnvironment;
+  }): Promise<{
+    value: string;
+    endIndex: number;
+  }> {
+    const parsed = this.findBalancedParenthesizedExpression({
+      text,
+      startIndex: startIndex + 1,
+    });
+    if (parsed === undefined) {
+      return {
+        value: '$',
+        endIndex: startIndex,
+      };
+    }
+
+    const chunks: Uint8Array[] = [];
+    const captureHandle = createWriteHandleFromStream({
+      target: new WritableStream<Uint8Array>({
+        write: async (chunk) => {
+          chunks.push(new Uint8Array(chunk));
+        },
+      }),
+    });
+    const childEnvironment = await this.spawnChildExecutionEnvironment({
+      parentEnvironment: environment,
+      pgid: environment.pgid,
+    });
+    const stdin = environment.fds.get(0);
+    const stderr = environment.fds.get(2);
+    if (stdin === undefined || stderr === undefined) {
+      throw new Error('Missing standard file descriptors for command substitution');
+    }
+    const result = await this.executeShellInState({
+      script: parsed.content,
+      environment: childEnvironment,
+      stdin,
+      stdout: captureHandle,
+      stderr,
+    });
+    if (result.exitCode !== 0) {
+      environment.env.set('?', result.exitCode.toString());
+    }
+
+    let totalLength = 0;
+    for (const chunk of chunks) {
+      totalLength += chunk.length;
+    }
+    const bytes = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+    const value = new TextDecoder().decode(bytes).replace(/\n+$/u, '');
+    return {
+      value,
+      endIndex: parsed.endIndex,
+    };
+  }
+
+  private expandArithmeticExpansion({
     text,
     startIndex,
     env,
@@ -1302,32 +1523,179 @@ usage: alias [name[=value] ...]
     value: string;
     endIndex: number;
   } {
-    const endIndex = text.indexOf('}', startIndex + 2);
-    if (endIndex === -1) {
+    const parsed = this.findBalancedArithmeticExpression({
+      text,
+      startIndex,
+    });
+    if (parsed === undefined) {
       return {
         value: '$',
         endIndex: startIndex,
       };
     }
-
-    const expression = text.slice(startIndex + 2, endIndex);
-    const expansionValue = this.evaluateParameterExpansion({
-      expression,
+    const value = this.evaluateArithmeticExpression({
+      expression: parsed.content,
       env,
     });
     return {
-      value: expansionValue,
-      endIndex,
+      value: value.toString(),
+      endIndex: parsed.endIndex,
     };
   }
 
-  private evaluateParameterExpansion({
+  private findBalancedParenthesizedExpression({
+    text,
+    startIndex,
+  }: {
+    text: string;
+    startIndex: number;
+  }): {
+    content: string;
+    endIndex: number;
+  } | undefined {
+    if (text[startIndex] !== '(') {
+      return undefined;
+    }
+    let depth = 0;
+    let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
+    for (let index = startIndex; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === undefined) {
+        continue;
+      }
+      switch (mode) {
+      case 'single':
+        if (char === "'") {
+          mode = 'unquoted';
+        }
+        continue;
+      case 'double':
+        if (char === '"') {
+          mode = 'unquoted';
+          continue;
+        }
+        if (char === '\\') {
+          index += 1;
+        }
+        continue;
+      case 'unquoted':
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled mode: ${_ex}`);
+      }
+      }
+      if (char === "'") {
+        mode = 'single';
+        continue;
+      }
+      if (char === '"') {
+        mode = 'double';
+        continue;
+      }
+      if (char === '\\') {
+        index += 1;
+        continue;
+      }
+      if (char === '(') {
+        depth += 1;
+        continue;
+      }
+      if (char === ')') {
+        depth -= 1;
+        if (depth === 0) {
+          return {
+            content: text.slice(startIndex + 1, index),
+            endIndex: index,
+          };
+        }
+      }
+    }
+    return undefined;
+  }
+
+  private findBalancedArithmeticExpression({
+    text,
+    startIndex,
+  }: {
+    text: string;
+    startIndex: number;
+  }): {
+    content: string;
+    endIndex: number;
+  } | undefined {
+    if (text.slice(startIndex, startIndex + 3) !== '$((') {
+      return undefined;
+    }
+    let depth = 1;
+    let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
+    for (let index = startIndex + 3; index < text.length; index += 1) {
+      const char = text[index];
+      const nextChar = text[index + 1];
+      if (char === undefined) {
+        continue;
+      }
+      switch (mode) {
+      case 'single':
+        if (char === "'") {
+          mode = 'unquoted';
+        }
+        continue;
+      case 'double':
+        if (char === '"') {
+          mode = 'unquoted';
+          continue;
+        }
+        if (char === '\\') {
+          index += 1;
+        }
+        continue;
+      case 'unquoted':
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled mode: ${_ex}`);
+      }
+      }
+      if (char === "'") {
+        mode = 'single';
+        continue;
+      }
+      if (char === '"') {
+        mode = 'double';
+        continue;
+      }
+      if (char === '\\') {
+        index += 1;
+        continue;
+      }
+      if (char === '(') {
+        depth += 1;
+        continue;
+      }
+      if (char === ')' && nextChar === ')') {
+        depth -= 1;
+        if (depth === 0) {
+          return {
+            content: text.slice(startIndex + 3, index),
+            endIndex: index + 1,
+          };
+        }
+        index += 1;
+      }
+    }
+    return undefined;
+  }
+
+  private async evaluateParameterExpansion({
     expression,
     env,
+    environment,
   }: {
     expression: string;
     env: Map<string, string>;
-  }): string {
+    environment: WeshExecutionEnvironment;
+  }): Promise<string> {
     if (expression.length === 0) {
       return '';
     }
@@ -1351,9 +1719,10 @@ usage: alias [name[=value] ...]
           env,
         }),
         operator,
-        pattern: this.expandPartVariables({
+        pattern: await this.expandPartVariables({
           text: pattern,
           env,
+          environment,
         }),
       });
     }
@@ -1368,6 +1737,7 @@ usage: alias [name[=value] ...]
         operator,
         operand,
         env,
+        environment,
       });
     }
 
@@ -1377,25 +1747,424 @@ usage: alias [name[=value] ...]
     });
   }
 
-  private evaluateParameterOperator({
+  private evaluateArithmeticExpression({
+    expression,
+    env,
+  }: {
+    expression: string;
+    env: Map<string, string>;
+  }): number {
+    type ArithmeticToken =
+      | { kind: 'number'; value: number }
+      | { kind: 'identifier'; value: string }
+      | { kind: 'operator'; value: string };
+    type ArithmeticValue = {
+      value: number;
+      targetName: string | undefined;
+    };
+
+    const tokens: ArithmeticToken[] = [];
+    for (let index = 0; index < expression.length;) {
+      const char = expression[index];
+      if (char === undefined) {
+        break;
+      }
+      if (/\s/u.test(char)) {
+        index += 1;
+        continue;
+      }
+      const multiCharacterOperator = [
+        '++', '--', '+=', '-=', '*=', '/=', '%=',
+        '==', '!=', '<=', '>=', '&&', '||',
+      ].find((candidate) => expression.startsWith(candidate, index));
+      if (multiCharacterOperator !== undefined) {
+        tokens.push({ kind: 'operator', value: multiCharacterOperator });
+        index += multiCharacterOperator.length;
+        continue;
+      }
+      if ('()+-*/%!<=>'.includes(char)) {
+        tokens.push({ kind: 'operator', value: char });
+        index += 1;
+        continue;
+      }
+      if (/\d/u.test(char)) {
+        let endIndex = index + 1;
+        while (endIndex < expression.length && /\d/u.test(expression[endIndex] ?? '')) {
+          endIndex += 1;
+        }
+        tokens.push({
+          kind: 'number',
+          value: Number.parseInt(expression.slice(index, endIndex), 10),
+        });
+        index = endIndex;
+        continue;
+      }
+      if (/[A-Za-z_]/u.test(char)) {
+        let endIndex = index + 1;
+        while (endIndex < expression.length && /[A-Za-z0-9_]/u.test(expression[endIndex] ?? '')) {
+          endIndex += 1;
+        }
+        tokens.push({
+          kind: 'identifier',
+          value: expression.slice(index, endIndex),
+        });
+        index = endIndex;
+        continue;
+      }
+      throw new Error(`Unsupported arithmetic token: ${char}`);
+    }
+
+    let position = 0;
+    const peek = (): ArithmeticToken | undefined => tokens[position];
+    const consume = (): ArithmeticToken => {
+      const token = tokens[position];
+      if (token === undefined) {
+        throw new Error('Unexpected end of arithmetic expression');
+      }
+      position += 1;
+      return token;
+    };
+    const readVariable = ({
+      name,
+    }: {
+      name: string;
+    }): number => {
+      const raw = env.get(name);
+      if (raw === undefined || raw.length === 0) {
+        return 0;
+      }
+      const parsed = Number.parseInt(raw, 10);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+    const writeVariable = ({
+      name,
+      value,
+    }: {
+      name: string;
+      value: number;
+    }): number => {
+      env.set(name, value.toString());
+      return value;
+    };
+    const requireTarget = ({
+      value,
+    }: {
+      value: ArithmeticValue;
+    }): string => {
+      if (value.targetName === undefined) {
+        throw new Error('Arithmetic assignment requires a variable');
+      }
+      return value.targetName;
+    };
+    const toPlain = ({
+      value,
+    }: {
+      value: number;
+    }): ArithmeticValue => ({
+      value,
+      targetName: undefined,
+    });
+
+    const parsePrimary = (): ArithmeticValue => {
+      const token = consume();
+      switch (token.kind) {
+      case 'number':
+        return {
+          value: token.value,
+          targetName: undefined,
+        };
+      case 'identifier':
+        return {
+          value: readVariable({ name: token.value }),
+          targetName: token.value,
+        };
+      case 'operator':
+        if (token.value === '(') {
+          const value = parseAssignment();
+          const endToken = consume();
+          if (endToken.kind !== 'operator' || endToken.value !== ')') {
+            throw new Error("Expected ')' in arithmetic expression");
+          }
+          return {
+            value: value.value,
+            targetName: undefined,
+          };
+        }
+        throw new Error(`Unexpected arithmetic operator: ${token.value}`);
+      default: {
+        const _ex: never = token;
+        throw new Error(`Unhandled arithmetic token: ${JSON.stringify(_ex)}`);
+      }
+      }
+    };
+
+    const parsePostfix = (): ArithmeticValue => {
+      const value = parsePrimary();
+      const token = peek();
+      switch (token?.kind) {
+      case 'operator':
+        switch (token.value) {
+        case '++':
+        case '--': {
+          consume();
+          const targetName = requireTarget({ value });
+          const previous = readVariable({ name: targetName });
+          const nextValue = (() => {
+            switch (token.value) {
+            case '++':
+              return previous + 1;
+            case '--':
+              return previous - 1;
+            default: {
+              const _ex: never = token.value;
+              throw new Error(`Unhandled arithmetic postfix operator: ${_ex}`);
+            }
+            }
+          })();
+          writeVariable({ name: targetName, value: nextValue });
+          return toPlain({ value: previous });
+        }
+        case '+':
+        case '-':
+        case '*':
+        case '/':
+        case '%':
+        case '==':
+        case '!=':
+        case '<':
+        case '<=':
+        case '>':
+        case '>=':
+        case '&&':
+        case '||':
+        case '=':
+        case '+=':
+        case '-=':
+        case '*=':
+        case '/=':
+        case '%=':
+        case '!':
+        case '(':
+        case ')':
+          break;
+        default: {
+          throw new Error(`Unhandled arithmetic operator: ${token.value}`);
+        }
+        }
+        break;
+      case 'number':
+      case 'identifier':
+      case undefined:
+        break;
+      default: {
+        const _ex: never = token;
+        throw new Error(`Unhandled arithmetic token: ${JSON.stringify(_ex)}`);
+      }
+      }
+      return value;
+    };
+
+    const parseUnary = (): ArithmeticValue => {
+      const token = peek();
+      if (token?.kind === 'operator' && ['+', '-', '!', '++', '--'].includes(token.value)) {
+        consume();
+        const operand = parseUnary();
+        switch (token.value) {
+        case '+':
+          return toPlain({ value: operand.value });
+        case '-':
+          return toPlain({ value: -operand.value });
+        case '!':
+          return toPlain({ value: operand.value === 0 ? 1 : 0 });
+        case '++': {
+          const targetName = requireTarget({ value: operand });
+          const nextValue = readVariable({ name: targetName }) + 1;
+          return toPlain({ value: writeVariable({ name: targetName, value: nextValue }) });
+        }
+        case '--': {
+          const targetName = requireTarget({ value: operand });
+          const nextValue = readVariable({ name: targetName }) - 1;
+          return toPlain({ value: writeVariable({ name: targetName, value: nextValue }) });
+        }
+        default: {
+          throw new Error(`Unhandled arithmetic unary operator: ${token.value}`);
+        }
+        }
+      }
+      return parsePostfix();
+    };
+
+    const parseMultiplicative = (): ArithmeticValue => {
+      let left = parseUnary();
+      while (true) {
+        const token = peek();
+        if (token?.kind !== 'operator' || !['*', '/', '%'].includes(token.value)) {
+          return left;
+        }
+        consume();
+        const right = parseUnary();
+        switch (token.value) {
+        case '*':
+          left = toPlain({ value: left.value * right.value });
+          break;
+        case '/':
+          left = toPlain({ value: right.value === 0 ? 0 : Math.trunc(left.value / right.value) });
+          break;
+        case '%':
+          left = toPlain({ value: right.value === 0 ? 0 : left.value % right.value });
+          break;
+        default: {
+          throw new Error(`Unhandled arithmetic operator: ${token.value}`);
+        }
+        }
+      }
+    };
+
+    const parseAdditive = (): ArithmeticValue => {
+      let left = parseMultiplicative();
+      while (true) {
+        const token = peek();
+        if (token?.kind !== 'operator' || !['+', '-'].includes(token.value)) {
+          return left;
+        }
+        consume();
+        const right = parseMultiplicative();
+        left = toPlain({
+          value: token.value === '+'
+            ? left.value + right.value
+            : left.value - right.value,
+        });
+      }
+    };
+
+    const parseComparison = (): ArithmeticValue => {
+      let left = parseAdditive();
+      while (true) {
+        const token = peek();
+        if (token?.kind !== 'operator' || !['<', '<=', '>', '>='].includes(token.value)) {
+          return left;
+        }
+        consume();
+        const right = parseAdditive();
+        switch (token.value) {
+        case '<':
+          left = toPlain({ value: left.value < right.value ? 1 : 0 });
+          break;
+        case '<=':
+          left = toPlain({ value: left.value <= right.value ? 1 : 0 });
+          break;
+        case '>':
+          left = toPlain({ value: left.value > right.value ? 1 : 0 });
+          break;
+        case '>=':
+          left = toPlain({ value: left.value >= right.value ? 1 : 0 });
+          break;
+        default: {
+          throw new Error(`Unhandled arithmetic comparison operator: ${token.value}`);
+        }
+        }
+      }
+    };
+
+    const parseEquality = (): ArithmeticValue => {
+      let left = parseComparison();
+      while (true) {
+        const token = peek();
+        if (token?.kind !== 'operator' || !['==', '!='].includes(token.value)) {
+          return left;
+        }
+        consume();
+        const right = parseComparison();
+        left = toPlain({
+          value: token.value === '=='
+            ? (left.value === right.value ? 1 : 0)
+            : (left.value !== right.value ? 1 : 0),
+        });
+      }
+    };
+
+    const parseLogicalAnd = (): ArithmeticValue => {
+      let left = parseEquality();
+      while (peek()?.kind === 'operator' && peek()?.value === '&&') {
+        consume();
+        const right = parseEquality();
+        left = toPlain({
+          value: left.value !== 0 && right.value !== 0 ? 1 : 0,
+        });
+      }
+      return left;
+    };
+
+    const parseLogicalOr = (): ArithmeticValue => {
+      let left = parseLogicalAnd();
+      while (peek()?.kind === 'operator' && peek()?.value === '||') {
+        consume();
+        const right = parseLogicalAnd();
+        left = toPlain({
+          value: left.value !== 0 || right.value !== 0 ? 1 : 0,
+        });
+      }
+      return left;
+    };
+
+    const parseAssignment = (): ArithmeticValue => {
+      const left = parseLogicalOr();
+      const token = peek();
+      if (token?.kind !== 'operator' || !['=', '+=', '-=', '*=', '/=', '%='].includes(token.value)) {
+        return left;
+      }
+      consume();
+      const right = parseAssignment();
+      const targetName = requireTarget({ value: left });
+      const current = readVariable({ name: targetName });
+      switch (token.value) {
+      case '=':
+        return toPlain({ value: writeVariable({ name: targetName, value: right.value }) });
+      case '+=':
+        return toPlain({ value: writeVariable({ name: targetName, value: current + right.value }) });
+      case '-=':
+        return toPlain({ value: writeVariable({ name: targetName, value: current - right.value }) });
+      case '*=':
+        return toPlain({ value: writeVariable({ name: targetName, value: current * right.value }) });
+      case '/=':
+        return toPlain({ value: writeVariable({ name: targetName, value: right.value === 0 ? 0 : Math.trunc(current / right.value) }) });
+      case '%=':
+        return toPlain({ value: writeVariable({ name: targetName, value: right.value === 0 ? 0 : current % right.value }) });
+      default: {
+        throw new Error(`Unhandled arithmetic assignment operator: ${token.value}`);
+      }
+      }
+    };
+
+    const result = parseAssignment();
+    if (position !== tokens.length) {
+      throw new Error('Unexpected trailing arithmetic tokens');
+    }
+    return result.value;
+  }
+
+  private async evaluateParameterOperator({
     name,
     operator,
     operand,
     env,
+    environment,
   }: {
     name: string;
     operator: string;
     operand: string;
     env: Map<string, string>;
-  }): string {
+    environment: WeshExecutionEnvironment;
+  }): Promise<string> {
     const currentValue = env.get(name);
     const isSet = currentValue !== undefined;
     const isNull = currentValue === '';
     const requireNonNull = operator.startsWith(':');
     const shouldUseOperand = requireNonNull ? !isSet || isNull : !isSet;
-    const expandedOperand = this.expandPartVariables({
+    const expandedOperand = await this.expandPartVariables({
       text: operand,
       env,
+      environment,
     });
 
     switch (operator) {
@@ -2146,17 +2915,23 @@ usage: alias [name[=value] ...]
     cwd,
     mode,
     shellOptions,
+    environment,
   }: {
     raw: string;
     env: Map<string, string>;
     cwd: string;
     mode: WeshExpansionMode;
     shellOptions: Map<WeshShellOption, boolean>;
+    environment: WeshExecutionEnvironment;
   }): Promise<string[]> {
     const expandedFields: string[] = [];
 
     for (const braceExpandedRaw of this.expandBraceExpressions({ raw })) {
-      const parsedParts = this.parseWordParts({ raw: braceExpandedRaw });
+      const substitutionExpandedRaw = await this.expandInlineSubstitutions({
+        text: braceExpandedRaw,
+        environment,
+      });
+      const parsedParts = this.parseWordParts({ raw: substitutionExpandedRaw });
       const homeDirectory = env.get('HOME') ?? '/home';
       const tildeExpandedParts = parsedParts.map((part, index) => {
         if (
@@ -2174,10 +2949,19 @@ usage: alias [name[=value] ...]
 
         return part;
       });
-      const expandedParts = tildeExpandedParts.map((part) => ({
-        text: part.expandVariables ? this.expandPartVariables({ text: part.text, env }) : part.text,
-        quoted: part.quoted,
-      }));
+      const expandedParts: Array<{ text: string; quoted: boolean }> = [];
+      for (const part of tildeExpandedParts) {
+        expandedParts.push({
+          text: part.expandVariables
+            ? await this.expandPartVariables({
+              text: part.text,
+              env,
+              environment,
+            })
+            : part.text,
+          quoted: part.quoted,
+        });
+      }
 
       const fields = this.splitExpandedFields({ parts: expandedParts, mode });
       for (const field of fields) {
@@ -2195,12 +2979,14 @@ usage: alias [name[=value] ...]
     cwd,
     mode,
     shellOptions,
+    environment,
   }: {
     raw: string;
     env: Map<string, string>;
     cwd: string;
     mode: Exclude<WeshExpansionMode, 'argv'>;
     shellOptions: Map<WeshShellOption, boolean>;
+    environment: WeshExecutionEnvironment;
   }): Promise<string> {
     const expanded = await this.expandWord({
       raw,
@@ -2208,6 +2994,7 @@ usage: alias [name[=value] ...]
       cwd,
       mode,
       shellOptions,
+      environment,
     });
     return expanded[0] ?? '';
   }
@@ -2273,6 +3060,7 @@ usage: alias [name[=value] ...]
       cwd: environment.cwd,
       mode: 'redirection',
       shellOptions: environment.shellOptions,
+      environment,
     }) : undefined;
 
     if (redirection.type === 'heredoc' || redirection.type === 'herestring') {
@@ -2283,7 +3071,11 @@ usage: alias [name[=value] ...]
       const { read, write } = await this.kernel.pipe();
       const encoder = new TextEncoder();
       const content = redirection.type === 'heredoc' && redirection.contentExpansion === 'variables'
-        ? this.expandPartVariables({ text: redirection.content, env: environment.env })
+        ? await this.expandPartVariables({
+          text: redirection.content,
+          env: environment.env,
+          environment,
+        })
         : redirection.content;
       await write.write({ buffer: encoder.encode(content + '\n') });
       await write.close();
@@ -2408,6 +3200,7 @@ usage: alias [name[=value] ...]
         pgid: this.shellPid,
         env: this.env,
         aliases: this.aliases,
+        functions: new Map(),
         cwd: this.cwd,
         fds: this.createShellFdTable({
           stdin: options.stdin,
@@ -2451,9 +3244,19 @@ usage: alias [name[=value] ...]
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
-    stderr: WeshFileHandle
+    stderr: WeshFileHandle,
+    loopDepth?: number,
+    functionDepth?: number,
   }): Promise<WeshCommandResult> {
-    const { node, environment, stdin, stdout, stderr } = options;
+    const {
+      node,
+      environment,
+      stdin,
+      stdout,
+      stderr,
+      loopDepth = 0,
+      functionDepth = 0,
+    } = options;
     let result: WeshCommandResult;
 
     switch (node.kind) {
@@ -2483,7 +3286,9 @@ usage: alias [name[=value] ...]
           this.executeNode({
             node: part.node,
             environment: jobEnvironment,
-            stdin, stdout, stderr
+            stdin, stdout, stderr,
+            loopDepth,
+            functionDepth,
           }).then(res => {
             const job = this.jobs.get(jobId);
             if (job) job.status = 'done';
@@ -2515,8 +3320,15 @@ usage: alias [name[=value] ...]
           lastResult = await this.executeNode({
             node: part.node,
             environment,
-            stdin, stdout, stderr
+            stdin, stdout, stderr,
+            loopDepth,
+            functionDepth,
           });
+          if (lastResult.controlFlow !== undefined) {
+            result = lastResult;
+            environment.env.set('?', result.exitCode.toString());
+            return result;
+          }
           previousOperator = part.operator;
           break;
         }
@@ -2539,7 +3351,12 @@ usage: alias [name[=value] ...]
     case 'command': {
       result = await this.runWithForegroundProcessGroup({
         pgid: environment.pgid,
-        fn: async () => this.executeCommand({ ...options, node: node as WeshCommandNode }),
+        fn: async () => this.executeCommand({
+          ...options,
+          node: node as WeshCommandNode,
+          loopDepth,
+          functionDepth,
+        }),
       });
       break;
     }
@@ -2552,7 +3369,9 @@ usage: alias [name[=value] ...]
       result = await this.executeNode({
         node: node.list,
         environment: subshellEnvironment,
-        stdin, stdout, stderr
+        stdin, stdout, stderr,
+        loopDepth,
+        functionDepth,
       });
       result = await this.runExitTrapIfNeeded({
         result,
@@ -2567,17 +3386,23 @@ usage: alias [name[=value] ...]
     case 'if': {
       const conditionResult = await this.executeNode({
         node: node.condition,
-        environment, stdin, stdout, stderr
+        environment, stdin, stdout, stderr,
+        loopDepth,
+        functionDepth,
       });
       if (conditionResult.exitCode === 0) {
         result = await this.executeNode({
           node: node.thenBody,
-          environment, stdin, stdout, stderr
+          environment, stdin, stdout, stderr,
+          loopDepth,
+          functionDepth,
         });
       } else if (node.elseBody) {
         result = await this.executeNode({
           node: node.elseBody,
-          environment, stdin, stdout, stderr
+          environment, stdin, stdout, stderr,
+          loopDepth,
+          functionDepth,
         });
       } else {
         result = { exitCode: 0 };
@@ -2595,6 +3420,7 @@ usage: alias [name[=value] ...]
           cwd: environment.cwd,
           mode: 'argv',
           shellOptions: environment.shellOptions,
+          environment,
         });
         expandedItems.push(...itemFields);
       }
@@ -2603,10 +3429,222 @@ usage: alias [name[=value] ...]
         environment.env.set(node.variable, item);
         lastForRes = await this.executeNode({
           node: node.body,
-          environment, stdin, stdout, stderr
+          environment, stdin, stdout, stderr,
+          loopDepth: loopDepth + 1,
+          functionDepth,
         });
+        const controlFlow = lastForRes.controlFlow;
+        if (controlFlow !== undefined) {
+          switch (controlFlow.kind) {
+          case 'continue':
+            if (controlFlow.levels > 1) {
+              result = {
+                exitCode: lastForRes.exitCode,
+                controlFlow: {
+                  kind: 'continue',
+                  levels: controlFlow.levels - 1,
+                },
+              };
+              environment.env.set('?', result.exitCode.toString());
+              return result;
+            }
+            continue;
+          case 'break':
+            if (controlFlow.levels > 1) {
+              result = {
+                exitCode: lastForRes.exitCode,
+                controlFlow: {
+                  kind: 'break',
+                  levels: controlFlow.levels - 1,
+                },
+              };
+              environment.env.set('?', result.exitCode.toString());
+              return result;
+            }
+            result = { exitCode: lastForRes.exitCode };
+            environment.env.set('?', result.exitCode.toString());
+            return result;
+          case 'return':
+            environment.env.set('?', lastForRes.exitCode.toString());
+            return lastForRes;
+          default: {
+            const _ex: never = controlFlow;
+            throw new Error(`Unhandled control flow: ${JSON.stringify(_ex)}`);
+          }
+          }
+        }
       }
       result = lastForRes;
+      break;
+    }
+
+    case 'while':
+    case 'until': {
+      const loopKind = node.kind;
+      let lastLoopResult: WeshCommandResult = { exitCode: 0 };
+      while (true) {
+        const conditionResult = await this.executeNode({
+          node: node.condition,
+          environment,
+          stdin,
+          stdout,
+          stderr,
+          loopDepth,
+          functionDepth,
+        });
+        if (conditionResult.controlFlow !== undefined) {
+          result = conditionResult;
+          break;
+        }
+        const shouldRun = (() => {
+          switch (loopKind) {
+          case 'while':
+            return conditionResult.exitCode === 0;
+          case 'until':
+            return conditionResult.exitCode !== 0;
+          default: {
+            const _ex: never = loopKind;
+            throw new Error(`Unhandled loop kind: ${_ex}`);
+          }
+          }
+        })();
+        if (!shouldRun) {
+          result = lastLoopResult;
+          break;
+        }
+        lastLoopResult = await this.executeNode({
+          node: node.body,
+          environment,
+          stdin,
+          stdout,
+          stderr,
+          loopDepth: loopDepth + 1,
+          functionDepth,
+        });
+        const controlFlow = lastLoopResult.controlFlow;
+        if (controlFlow !== undefined) {
+          switch (controlFlow.kind) {
+          case 'continue':
+            if (controlFlow.levels > 1) {
+              result = {
+                exitCode: lastLoopResult.exitCode,
+                controlFlow: {
+                  kind: 'continue',
+                  levels: controlFlow.levels - 1,
+                },
+              };
+              break;
+            }
+            continue;
+          case 'break':
+            if (controlFlow.levels > 1) {
+              result = {
+                exitCode: lastLoopResult.exitCode,
+                controlFlow: {
+                  kind: 'break',
+                  levels: controlFlow.levels - 1,
+                },
+              };
+              break;
+            }
+            result = { exitCode: lastLoopResult.exitCode };
+            break;
+          case 'return':
+            result = lastLoopResult;
+            break;
+          default: {
+            const _ex: never = controlFlow;
+            throw new Error(`Unhandled control flow: ${JSON.stringify(_ex)}`);
+          }
+          }
+          if (result !== undefined) {
+            break;
+          }
+        }
+      }
+      break;
+    }
+
+    case 'case': {
+      const expandedWord = await this.expandSingleWord({
+        raw: node.word,
+        env: environment.env,
+        cwd: environment.cwd,
+        mode: 'assignment',
+        shellOptions: environment.shellOptions,
+        environment,
+      });
+      let caseResult: WeshCommandResult = { exitCode: 0 };
+      let matched = false;
+      for (const clause of node.clauses) {
+        const clauseMatched = await this.caseClauseMatches({
+          patterns: clause.patterns,
+          value: expandedWord,
+          environment,
+        });
+        if (!clauseMatched) {
+          continue;
+        }
+        matched = true;
+        caseResult = await this.executeNode({
+          node: clause.body,
+          environment,
+          stdin,
+          stdout,
+          stderr,
+          loopDepth,
+          functionDepth,
+        });
+        break;
+      }
+      result = matched ? caseResult : { exitCode: 0 };
+      break;
+    }
+
+    case 'functionDefinition':
+      environment.functions.set(node.name, node.body);
+      result = { exitCode: 0 };
+      break;
+
+    case 'arithmeticCommand':
+      result = this.executeArithmeticCommand({
+        expression: node.expression,
+        environment,
+      });
+      break;
+
+    case 'redirected': {
+      const redirectedFds = new Map(environment.fds);
+      const openHandles: WeshFileHandle[] = [];
+      await this.applyRedirectionsToFdTable({
+        redirections: node.redirections,
+        environment,
+        fdTable: redirectedFds,
+        trackOpenedHandle: ({ handle }) => {
+          openHandles.push(handle);
+        },
+      });
+      const redirectedStdin = redirectedFds.get(0);
+      const redirectedStdout = redirectedFds.get(1);
+      const redirectedStderr = redirectedFds.get(2);
+      if (redirectedStdin === undefined || redirectedStdout === undefined || redirectedStderr === undefined) {
+        throw new Error('Missing standard file descriptor after redirection');
+      }
+      try {
+        result = await this.executeNode({
+          node: node.node,
+          environment,
+          stdin: redirectedStdin,
+          stdout: redirectedStdout,
+          stderr: redirectedStderr,
+          loopDepth,
+          functionDepth,
+        });
+      } finally {
+        for (const handle of openHandles) {
+          await handle.close();
+        }
+      }
       break;
     }
 
@@ -2618,6 +3656,7 @@ usage: alias [name[=value] ...]
           cwd: environment.cwd,
           mode: 'assignment',
           shellOptions: environment.shellOptions,
+          environment,
         }));
       }
       result = { exitCode: 0 };
@@ -2637,9 +3676,19 @@ usage: alias [name[=value] ...]
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
-    stderr: WeshFileHandle
+    stderr: WeshFileHandle,
+    loopDepth?: number,
+    functionDepth?: number,
   }): Promise<WeshCommandResult> {
-    const { node, environment, stdin, stdout, stderr } = options;
+    const {
+      node,
+      environment,
+      stdin,
+      stdout,
+      stderr,
+      loopDepth = 0,
+      functionDepth = 0,
+    } = options;
     const commands = node.commands;
     if (commands.length === 0) return { exitCode: 0 };
 
@@ -2668,7 +3717,9 @@ usage: alias [name[=value] ...]
           environment: pipelineEnvironment,
           stdin: myStdin,
           stdout: myStdout,
-          stderr: stderr
+          stderr: stderr,
+          loopDepth,
+          functionDepth,
         }).then(async res => {
           if (i < commands.length - 1) {
             await pipes[i]!.write.close();
@@ -2695,6 +3746,8 @@ usage: alias [name[=value] ...]
     stdout: WeshFileHandle,
     stderr: WeshFileHandle;
     ignoreAliases?: boolean;
+    loopDepth?: number;
+    functionDepth?: number;
   }): Promise<WeshCommandResult> {
     const {
       node,
@@ -2703,6 +3756,8 @@ usage: alias [name[=value] ...]
       stdout,
       stderr,
       ignoreAliases,
+      loopDepth = 0,
+      functionDepth = 0,
     } = options;
     const aliasExpandedNode = ignoreAliases === true
       ? node
@@ -2725,6 +3780,7 @@ usage: alias [name[=value] ...]
           cwd: environment.cwd,
           mode: 'argv',
           shellOptions: environment.shellOptions,
+          environment,
         });
         expandedArgs.push(...fields);
       } else if (arg.kind === 'processSubstitution') {
@@ -2785,7 +3841,53 @@ usage: alias [name[=value] ...]
       cwd: environment.cwd,
       mode: 'assignment',
       shellOptions: environment.shellOptions,
+      environment,
     });
+
+    const controlFlowResult = await this.tryExecuteShellControlCommand({
+      commandName: cmdName,
+      args: expandedArgs,
+      stderr,
+      loopDepth,
+      functionDepth,
+      environment,
+    });
+    if (controlFlowResult !== undefined) {
+      return controlFlowResult;
+    }
+
+    if (cmdName === '[[') {
+      return this.executeExtendedTestCommand({
+        args: expandedArgs,
+      });
+    }
+
+    const currentEnv = new Map(environment.env);
+    for (const assign of aliasExpandedNode.assignments) {
+      currentEnv.set(assign.key, await this.expandSingleWord({
+        raw: assign.value,
+        env: environment.env,
+        cwd: environment.cwd,
+        mode: 'assignment',
+        shellOptions: environment.shellOptions,
+        environment,
+      }));
+    }
+
+    const shellFunctionBody = environment.functions.get(cmdName);
+    if (shellFunctionBody !== undefined) {
+      return this.executeShellFunction({
+        name: cmdName,
+        body: shellFunctionBody,
+        args: expandedArgs,
+        environment,
+        stdin,
+        stdout,
+        stderr,
+        functionDepth,
+      });
+    }
+
     const resolvedCommand = this.resolveBuiltinCommand({
       name: cmdName,
       cwd: environment.cwd,
@@ -2815,17 +3917,6 @@ usage: alias [name[=value] ...]
       throw new Error(`Command not found: ${cmdName}`);
     }
     const definition = resolvedCommand.definition;
-
-    const currentEnv = new Map(environment.env);
-    for (const assign of aliasExpandedNode.assignments) {
-      currentEnv.set(assign.key, await this.expandSingleWord({
-        raw: assign.value,
-        env: environment.env,
-        cwd: environment.cwd,
-        mode: 'assignment',
-        shellOptions: environment.shellOptions,
-      }));
-    }
 
     cmdFds.set(0, stdin);
     cmdFds.set(1, stdout);
@@ -3090,6 +4181,431 @@ usage: alias [name[=value] ...]
     }
   }
 
+  private async writeErrorText({
+    stderr,
+    text,
+  }: {
+    stderr: WeshFileHandle;
+    text: string;
+  }): Promise<void> {
+    await stderr.write({
+      buffer: new TextEncoder().encode(text),
+    });
+  }
+
+  private async tryExecuteShellControlCommand({
+    commandName,
+    args,
+    stderr,
+    loopDepth,
+    functionDepth,
+    environment,
+  }: {
+    commandName: string;
+    args: string[];
+    stderr: WeshFileHandle;
+    loopDepth: number;
+    functionDepth: number;
+    environment: WeshExecutionEnvironment;
+  }): Promise<WeshCommandResult | undefined> {
+    switch (commandName) {
+    case 'break':
+      return this.buildLoopControlCommandResult({
+        commandName,
+        args,
+        stderr,
+        loopDepth,
+      });
+    case 'continue':
+      return this.buildLoopControlCommandResult({
+        commandName,
+        args,
+        stderr,
+        loopDepth,
+      });
+    case 'return': {
+      if (functionDepth <= 0) {
+        await this.writeErrorText({
+          stderr,
+          text: 'wesh: return: can only `return\' from a function or sourced script\n',
+        });
+        return { exitCode: 1 };
+      }
+      const parsedExitCode = await this.parseNumericExitStatus({
+        commandName,
+        args,
+        stderr,
+      });
+      switch (parsedExitCode.kind) {
+      case 'error':
+        return { exitCode: 2 };
+      case 'ok':
+        break;
+      default: {
+        const _ex: never = parsedExitCode;
+        throw new Error(`Unhandled parsed exit code: ${JSON.stringify(_ex)}`);
+      }
+      }
+      const exitCode = parsedExitCode.value ?? Number.parseInt(environment.env.get('?') ?? '0', 10);
+      return {
+        exitCode,
+        controlFlow: {
+          kind: 'return',
+          exitCode,
+        },
+      };
+    }
+    default:
+      return undefined;
+    }
+  }
+
+  private async buildLoopControlCommandResult({
+    commandName,
+    args,
+    stderr,
+    loopDepth,
+  }: {
+    commandName: 'break' | 'continue';
+    args: string[];
+    stderr: WeshFileHandle;
+    loopDepth: number;
+  }): Promise<WeshCommandResult> {
+    if (loopDepth <= 0) {
+      await this.writeErrorText({
+        stderr,
+        text: `wesh: ${commandName}: only meaningful in a \`for', \`while', or \`until' loop\n`,
+      });
+      return { exitCode: 1 };
+    }
+
+    const levels = await this.parseNumericExitStatus({
+      commandName,
+      args,
+      stderr,
+    });
+    switch (levels.kind) {
+    case 'error':
+      return { exitCode: 2 };
+    case 'ok':
+      break;
+    default: {
+      const _ex: never = levels;
+      throw new Error(`Unhandled numeric exit status: ${JSON.stringify(_ex)}`);
+    }
+    }
+    const normalizedLevels = levels.value ?? 1;
+    return {
+      exitCode: 0,
+      controlFlow: {
+        kind: commandName,
+        levels: normalizedLevels,
+      },
+    };
+  }
+
+  private async parseNumericExitStatus({
+    commandName,
+    args,
+    stderr,
+  }: {
+    commandName: 'break' | 'continue' | 'return';
+    args: string[];
+    stderr: WeshFileHandle;
+  }): Promise<{
+    kind: 'ok';
+    value: number | undefined;
+  } | {
+    kind: 'error';
+  }> {
+    if (args.length === 0) {
+      return {
+        kind: 'ok',
+        value: undefined,
+      };
+    }
+    const raw = args[0];
+    if (raw === undefined) {
+      return {
+        kind: 'ok',
+        value: undefined,
+      };
+    }
+    if (!/^\d+$/u.test(raw)) {
+      await this.writeErrorText({
+        stderr,
+        text: `wesh: ${commandName}: ${raw}: numeric argument required\n`,
+      });
+      return {
+        kind: 'error',
+      };
+    }
+    return {
+      kind: 'ok',
+      value: Number.parseInt(raw, 10),
+    };
+  }
+
+  private async executeShellFunction({
+    name,
+    body,
+    args,
+    environment,
+    stdin,
+    stdout,
+    stderr,
+    functionDepth,
+  }: {
+    name: string;
+    body: WeshASTNode;
+    args: string[];
+    environment: WeshExecutionEnvironment;
+    stdin: WeshFileHandle;
+    stdout: WeshFileHandle;
+    stderr: WeshFileHandle;
+    functionDepth: number;
+  }): Promise<WeshCommandResult> {
+    const previousArgs = [...environment.positionalArgs];
+    const previousZero = environment.env.get('0');
+    environment.positionalArgs = [...args];
+    environment.env.set('0', name);
+    this.syncSpecialParameters({ environment });
+    try {
+      const result = await this.executeNode({
+        node: body,
+        environment,
+        stdin,
+        stdout,
+        stderr,
+        functionDepth: functionDepth + 1,
+      });
+      if (result.controlFlow !== undefined) {
+        switch (result.controlFlow.kind) {
+        case 'return':
+          return { exitCode: result.controlFlow.exitCode };
+        case 'break':
+        case 'continue':
+          return result;
+        default: {
+          const _ex: never = result.controlFlow;
+          throw new Error(`Unhandled control flow: ${JSON.stringify(_ex)}`);
+        }
+        }
+      }
+      return result;
+    } finally {
+      environment.positionalArgs = previousArgs;
+      if (previousZero === undefined) {
+        environment.env.delete('0');
+      } else {
+        environment.env.set('0', previousZero);
+      }
+      this.syncSpecialParameters({ environment });
+    }
+  }
+
+  private compileStringPattern({
+    pattern,
+  }: {
+    pattern: string;
+  }): RegExp {
+    let source = '^';
+    for (let index = 0; index < pattern.length; index += 1) {
+      const char = pattern[index];
+      if (char === undefined) {
+        continue;
+      }
+      if (char === '\\') {
+        const nextChar = pattern[index + 1];
+        if (nextChar !== undefined) {
+          source += nextChar.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          index += 1;
+          continue;
+        }
+        source += '\\\\';
+        continue;
+      }
+      if (char === '*') {
+        source += '.*';
+        continue;
+      }
+      if (char === '?') {
+        source += '.';
+        continue;
+      }
+      if (char === '[') {
+        const endIndex = pattern.indexOf(']', index + 1);
+        if (endIndex !== -1) {
+          let classContent = pattern.slice(index + 1, endIndex);
+          if (classContent.startsWith('!')) {
+            classContent = '^' + classContent.slice(1);
+          }
+          source += `[${classContent}]`;
+          index = endIndex;
+          continue;
+        }
+      }
+      source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    source += '$';
+    return new RegExp(source);
+  }
+
+  private async caseClauseMatches({
+    patterns,
+    value,
+    environment,
+  }: {
+    patterns: string[];
+    value: string;
+    environment: WeshExecutionEnvironment;
+  }): Promise<boolean> {
+    for (const rawPattern of patterns) {
+      const expandedPattern = await this.expandPatternWord({
+        raw: rawPattern,
+        environment,
+      });
+      if (this.compileStringPattern({ pattern: expandedPattern }).test(value)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async expandPatternWord({
+    raw,
+    environment,
+  }: {
+    raw: string;
+    environment: WeshExecutionEnvironment;
+  }): Promise<string> {
+    const substitutionExpandedRaw = await this.expandInlineSubstitutions({
+      text: raw,
+      environment,
+    });
+    const parsedParts = this.parseWordParts({ raw: substitutionExpandedRaw });
+    let text = '';
+    for (const part of parsedParts) {
+      text += part.expandVariables
+        ? await this.expandPartVariables({
+          text: part.text,
+          env: environment.env,
+          environment,
+        })
+        : part.text;
+    }
+    return text;
+  }
+
+  private executeArithmeticCommand({
+    expression,
+    environment,
+  }: {
+    expression: string;
+    environment: WeshExecutionEnvironment;
+  }): WeshCommandResult {
+    const value = this.evaluateArithmeticExpression({
+      expression,
+      env: environment.env,
+    });
+    return {
+      exitCode: value === 0 ? 1 : 0,
+    };
+  }
+
+  private executeExtendedTestCommand({
+    args,
+  }: {
+    args: string[];
+  }): WeshCommandResult {
+    const tokens = args[args.length - 1] === ']]'
+      ? args.slice(0, -1)
+      : [...args];
+    let position = 0;
+    const peek = (): string | undefined => tokens[position];
+    const consume = (): string => {
+      const token = tokens[position];
+      if (token === undefined) {
+        throw new Error('Unexpected end of [[ expression');
+      }
+      position += 1;
+      return token;
+    };
+    const parsePrimary = (): boolean => {
+      const token = peek();
+      if (token === undefined) {
+        return false;
+      }
+      if (token === '!') {
+        consume();
+        return !parsePrimary();
+      }
+      if (token === '(') {
+        consume();
+        const value = parseOr();
+        if (consume() !== ')') {
+          throw new Error("Expected ')' in [[ expression");
+        }
+        return value;
+      }
+      if (token === '-n') {
+        consume();
+        return (consume() ?? '').length > 0;
+      }
+      if (token === '-z') {
+        consume();
+        return (consume() ?? '').length === 0;
+      }
+
+      const left = consume();
+      const operator = peek();
+      if (operator === undefined || ['&&', '||', ')'].includes(operator)) {
+        return left.length > 0;
+      }
+      if (operator === '==' || operator === '=') {
+        consume();
+        const right = consume();
+        return this.compileStringPattern({ pattern: right }).test(left);
+      }
+      if (operator === '!=') {
+        consume();
+        const right = consume();
+        return !this.compileStringPattern({ pattern: right }).test(left);
+      }
+      if (operator === '<') {
+        consume();
+        return left < consume();
+      }
+      if (operator === '>') {
+        consume();
+        return left > consume();
+      }
+      return left.length > 0;
+    };
+    const parseAnd = (): boolean => {
+      let value = parsePrimary();
+      while (peek() === '&&') {
+        consume();
+        const right = parsePrimary();
+        value = value && right;
+      }
+      return value;
+    };
+    const parseOr = (): boolean => {
+      let value = parseAnd();
+      while (peek() === '||') {
+        consume();
+        const right = parseAnd();
+        value = value || right;
+      }
+      return value;
+    };
+    const result = parseOr();
+    return {
+      exitCode: result ? 0 : 1,
+    };
+  }
+
   private async executeArgv(options: {
     command: string;
     args: string[];
@@ -3125,6 +4641,7 @@ usage: alias [name[=value] ...]
     pgid,
     env,
     aliases,
+    functions,
     cwd,
     fds,
     traps,
@@ -3136,6 +4653,7 @@ usage: alias [name[=value] ...]
     pgid: number;
     env: Map<string, string>;
     aliases: Map<string, string>;
+    functions: Map<string, WeshASTNode>;
     cwd: string;
     fds: Map<number, WeshFileHandle>;
     traps: Map<string, WeshTrapDisposition>;
@@ -3148,6 +4666,7 @@ usage: alias [name[=value] ...]
       pgid,
       env,
       aliases,
+      functions,
       cwd,
       fds,
       traps,
@@ -3175,6 +4694,7 @@ usage: alias [name[=value] ...]
       pgid: pgid ?? environment.pgid,
       env: new Map(environment.env),
       aliases: new Map(environment.aliases),
+      functions: new Map(environment.functions),
       cwd: environment.cwd,
       fds: new Map(environment.fds),
       traps: new Map(environment.traps),

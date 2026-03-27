@@ -205,6 +205,10 @@ export type WeshEfficientFileWriteResult =
 export interface WeshCommandResult {
   exitCode: number;
   waitStatus?: WeshWaitStatus;
+  controlFlow?:
+    | { kind: 'break'; levels: number }
+    | { kind: 'continue'; levels: number }
+    | { kind: 'return'; exitCode: number };
 }
 
 export type WeshTrapDisposition =
@@ -347,6 +351,12 @@ export type WeshASTNode =
   | WeshListNode
   | WeshIfNode
   | WeshForNode
+  | WeshWhileNode
+  | WeshUntilNode
+  | WeshCaseNode
+  | WeshFunctionDefinitionNode
+  | WeshArithmeticCommandNode
+  | WeshRedirectedNode
   | WeshAssignmentNode
   | WeshSubshellNode;
 
@@ -389,6 +399,46 @@ export interface WeshForNode {
   variable: string;
   items: string[];
   body: WeshASTNode;
+}
+
+export interface WeshWhileNode {
+  kind: 'while';
+  condition: WeshASTNode;
+  body: WeshASTNode;
+}
+
+export interface WeshUntilNode {
+  kind: 'until';
+  condition: WeshASTNode;
+  body: WeshASTNode;
+}
+
+export interface WeshCaseClause {
+  patterns: string[];
+  body: WeshASTNode;
+}
+
+export interface WeshCaseNode {
+  kind: 'case';
+  word: string;
+  clauses: WeshCaseClause[];
+}
+
+export interface WeshFunctionDefinitionNode {
+  kind: 'functionDefinition';
+  name: string;
+  body: WeshASTNode;
+}
+
+export interface WeshArithmeticCommandNode {
+  kind: 'arithmeticCommand';
+  expression: string;
+}
+
+export interface WeshRedirectedNode {
+  kind: 'redirected';
+  node: WeshASTNode;
+  redirections: WeshRedirection[];
 }
 
 export interface WeshAssignmentNode {
