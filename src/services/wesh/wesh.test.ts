@@ -407,6 +407,27 @@ echo "$VALUE"`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports function keyword with parentheses syntax', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+function greet() {
+  echo "hello $1"
+}
+greet world`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('hello world\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('keeps function state changes isolated inside pipeline stages', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
@@ -465,6 +486,86 @@ echo $?`,
     });
 
     expect(stdout.text).toBe('1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('stops executing the rest of a function body after return', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+early() {
+  echo before
+  return 4
+  echo after
+}
+early
+echo $?`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+before
+4
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('propagates break from shell functions to surrounding loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+stop_loop() {
+  break
+}
+for item in one two; do
+  echo "start:$item"
+  stop_loop
+  echo "after:$item"
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('start:one\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('propagates continue from shell functions to surrounding loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+skip_rest() {
+  continue
+}
+for item in one two; do
+  echo "start:$item"
+  skip_rest
+  echo "after:$item"
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+start:one
+start:two
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -823,6 +924,34 @@ echo "$seen"`,
     });
 
     expect(stdout.text).toBe('beta\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports output process substitution in redirections', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+cat > >(cat > captured.txt) <<EOF
+alpha
+beta
+EOF`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    const handle = await rootHandle.getFileHandle('captured.txt');
+    const file = await handle.getFile();
+
+    expect(await file.text()).toBe(`\
+alpha
+beta
+`);
+    expect(stdout.text).toBe('');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

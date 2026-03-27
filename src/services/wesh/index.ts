@@ -3050,9 +3050,11 @@ usage: alias [name[=value] ...]
   private async openRedirectionTarget({
     redirection,
     environment,
+    trackBackgroundTask,
   }: {
     redirection: WeshCommandNode['redirections'][number];
     environment: WeshExecutionEnvironment;
+    trackBackgroundTask: ({ task }: { task: Promise<unknown> }) => void;
   }): Promise<WeshFileHandle | undefined> {
     if (redirection.type === 'heredoc' || redirection.type === 'herestring') {
       if (redirection.content === undefined) {
@@ -3106,22 +3108,26 @@ usage: alias [name[=value] ...]
 
       switch (redirection.target.type) {
       case 'input':
-        this.executeNode({
-          node: redirection.target.list,
-          environment: subEnvironment,
-          stdin: redirectedStdin,
-          stdout: write,
-          stderr: redirectedStderr,
-        }).then(() => write.close());
+        trackBackgroundTask({
+          task: this.executeNode({
+            node: redirection.target.list,
+            environment: subEnvironment,
+            stdin: redirectedStdin,
+            stdout: write,
+            stderr: redirectedStderr,
+          }).finally(() => write.close()),
+        });
         return read;
       case 'output':
-        this.executeNode({
-          node: redirection.target.list,
-          environment: subEnvironment,
-          stdin: read,
-          stdout: redirectedStdout,
-          stderr: redirectedStderr,
-        }).then(() => read.close());
+        trackBackgroundTask({
+          task: this.executeNode({
+            node: redirection.target.list,
+            environment: subEnvironment,
+            stdin: read,
+            stdout: redirectedStdout,
+            stderr: redirectedStderr,
+          }).finally(() => read.close()),
+        });
         return write;
       default: {
         const _ex: never = redirection.target.type;
@@ -3182,11 +3188,13 @@ usage: alias [name[=value] ...]
     environment,
     fdTable,
     trackOpenedHandle,
+    trackBackgroundTask,
   }: {
     redirections: WeshCommandNode['redirections'];
     environment: WeshExecutionEnvironment;
     fdTable: Map<number, WeshFileHandle>;
     trackOpenedHandle: ({ handle }: { handle: WeshFileHandle }) => void;
+    trackBackgroundTask: ({ task }: { task: Promise<unknown> }) => void;
   }): Promise<void> {
     for (const redirection of redirections) {
       if (redirection.closeTarget) {
@@ -3198,7 +3206,11 @@ usage: alias [name[=value] ...]
         continue;
       }
 
-      const handle = await this.openRedirectionTarget({ redirection, environment });
+      const handle = await this.openRedirectionTarget({
+        redirection,
+        environment,
+        trackBackgroundTask,
+      });
       if (handle === undefined) {
         continue;
       }
@@ -3656,12 +3668,16 @@ usage: alias [name[=value] ...]
     case 'redirected': {
       const redirectedFds = new Map(environment.fds);
       const openHandles: WeshFileHandle[] = [];
+      const backgroundTasks: Promise<unknown>[] = [];
       await this.applyRedirectionsToFdTable({
         redirections: node.redirections,
         environment,
         fdTable: redirectedFds,
         trackOpenedHandle: ({ handle }) => {
           openHandles.push(handle);
+        },
+        trackBackgroundTask: ({ task }) => {
+          backgroundTasks.push(task);
         },
       });
       const redirectedStdin = redirectedFds.get(0);
@@ -3684,6 +3700,7 @@ usage: alias [name[=value] ...]
         for (const handle of openHandles) {
           await handle.close();
         }
+        await Promise.allSettled(backgroundTasks);
       }
       break;
     }
@@ -3809,6 +3826,7 @@ usage: alias [name[=value] ...]
 
     const expandedArgs: string[] = [];
     const procSubCleanups: Array<() => void> = [];
+    const procSubTasks: Promise<unknown>[] = [];
     const openHandles: WeshFileHandle[] = [];
     const cmdFds = new Map(environment.fds);
 
@@ -3924,6 +3942,7 @@ usage: alias [name[=value] ...]
         stdin,
         stdout,
         stderr,
+        loopDepth,
         functionDepth,
       });
     }
@@ -3968,6 +3987,9 @@ usage: alias [name[=value] ...]
       fdTable: cmdFds,
       trackOpenedHandle: ({ handle }) => {
         openHandles.push(handle);
+      },
+      trackBackgroundTask: ({ task }) => {
+        procSubTasks.push(task);
       },
     });
 
@@ -4217,6 +4239,7 @@ usage: alias [name[=value] ...]
       for (const h of openHandles) {
         await h.close();
       }
+      await Promise.allSettled(procSubTasks);
       for (const c of procSubCleanups) c();
     }
   }
@@ -4394,6 +4417,7 @@ usage: alias [name[=value] ...]
     stdin,
     stdout,
     stderr,
+    loopDepth,
     functionDepth,
   }: {
     name: string;
@@ -4403,6 +4427,7 @@ usage: alias [name[=value] ...]
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
+    loopDepth: number;
     functionDepth: number;
   }): Promise<WeshCommandResult> {
     const previousArgs = [...environment.positionalArgs];
@@ -4417,6 +4442,7 @@ usage: alias [name[=value] ...]
         stdin,
         stdout,
         stderr,
+        loopDepth,
         functionDepth: functionDepth + 1,
       });
       if (result.controlFlow !== undefined) {

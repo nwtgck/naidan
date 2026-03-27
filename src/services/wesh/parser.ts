@@ -1327,10 +1327,22 @@ class Parser {
     })();
 
     switch (tokenType) {
-    case 'GT':
-      return { fd, type: 'write', target: this.expectWord() };
-    case 'GTGT':
-      return { fd, type: 'append', target: this.expectWord() };
+    case 'GT': {
+      const target = this.currentToken.type === 'PROC_SUB_IN' || this.currentToken.type === 'PROC_SUB_OUT'
+        ? this.parseProcessSubstitution({
+          tokenType: this.currentToken.type as 'PROC_SUB_IN' | 'PROC_SUB_OUT',
+        })
+        : this.expectWord();
+      return { fd, type: 'write', target };
+    }
+    case 'GTGT': {
+      const target = this.currentToken.type === 'PROC_SUB_IN' || this.currentToken.type === 'PROC_SUB_OUT'
+        ? this.parseProcessSubstitution({
+          tokenType: this.currentToken.type as 'PROC_SUB_IN' | 'PROC_SUB_OUT',
+        })
+        : this.expectWord();
+      return { fd, type: 'append', target };
+    }
     case 'LT': {
       const target = this.currentToken.type === 'PROC_SUB_IN' || this.currentToken.type === 'PROC_SUB_OUT'
         ? this.parseProcessSubstitution({
