@@ -1,7 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/services/wesh/types';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
 
 type WcField = 'lines' | 'words' | 'bytes' | 'chars' | 'maxLineLength';
 
@@ -167,11 +167,19 @@ function formatCountsLine({
 
 async function readCountsFromStream({
   stream,
+  fields,
 }: {
   stream: ReadableStream<Uint8Array>;
+  fields: WcField[];
 }): Promise<WcCounts> {
   const reader = stream.getReader();
-  const decoder = new TextDecoder();
+  const needsDecodedText = fields.includes('words') || fields.includes('chars') || fields.includes('maxLineLength');
+  const needsLineCount = fields.includes('lines') || fields.includes('maxLineLength');
+  const needsWordCount = fields.includes('words');
+  const needsByteCount = fields.includes('bytes');
+  const needsCharCount = fields.includes('chars');
+  const needsMaxLineLength = fields.includes('maxLineLength');
+  const decoder = needsDecodedText ? new TextDecoder() : undefined;
   let lines = 0;
   let words = 0;
   let bytes = 0;
@@ -186,35 +194,72 @@ async function readCountsFromStream({
     chunk: string;
   }): void => {
     for (const char of chunk) {
-      chars += 1;
-      currentLineLength += 1;
-
-      if (char === '\n') {
-        lines += 1;
-        maxLineLength = Math.max(maxLineLength, currentLineLength - 1);
-        currentLineLength = 0;
+      if (needsCharCount) {
+        chars += 1;
+      }
+      if (needsMaxLineLength) {
+        currentLineLength += 1;
       }
 
-      if (isWhitespace({ char })) {
-        inWord = false;
-      } else if (!inWord) {
-        inWord = true;
-        words += 1;
+      if (char === '\n') {
+        if (needsLineCount) {
+          lines += 1;
+        }
+        if (needsMaxLineLength) {
+          maxLineLength = Math.max(maxLineLength, currentLineLength - 1);
+          currentLineLength = 0;
+        }
+      }
+
+      if (needsWordCount) {
+        if (isWhitespace({ char })) {
+          inWord = false;
+        } else if (!inWord) {
+          inWord = true;
+          words += 1;
+        }
       }
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    bytes += value.length;
-    consumeChunk({ chunk: decoder.decode(value, { stream: true }) });
+      if (needsByteCount) {
+        bytes += value.length;
+      }
+      if (needsDecodedText) {
+        const activeDecoder = decoder;
+        if (activeDecoder === undefined) {
+          throw new Error('wc decoder unavailable for decoded text path');
+        }
+        consumeChunk({ chunk: activeDecoder.decode(value, { stream: true }) });
+        continue;
+      }
+      if (needsLineCount) {
+        for (const byte of value) {
+          if (byte === 0x0a) {
+            lines += 1;
+          }
+        }
+      }
+    }
+
+    if (needsDecodedText) {
+      const activeDecoder = decoder;
+      if (activeDecoder === undefined) {
+        throw new Error('wc decoder unavailable for decoded text flush');
+      }
+      consumeChunk({ chunk: activeDecoder.decode() });
+      if (needsMaxLineLength) {
+        maxLineLength = Math.max(maxLineLength, currentLineLength);
+      }
+    }
+  } finally {
+    reader.releaseLock();
   }
-
-  consumeChunk({ chunk: decoder.decode() });
-  maxLineLength = Math.max(maxLineLength, currentLineLength);
-  reader.releaseLock();
 
   return {
     lines,
@@ -223,14 +268,6 @@ async function readCountsFromStream({
     chars,
     maxLineLength,
   };
-}
-
-async function readInputCounts({
-  handle,
-}: {
-  handle: WeshFileHandle;
-}): Promise<WcCounts> {
-  return await readCountsFromStream({ stream: handleToStream({ handle }) });
 }
 
 export const wcCommandDefinition: WeshCommandDefinition = {
@@ -273,7 +310,10 @@ export const wcCommandDefinition: WeshCommandDefinition = {
 
     for (const inputName of inputNames) {
       if (inputName === undefined || inputName === '-') {
-        const counts = await readCountsFromStream({ stream: handleToStream({ handle: context.stdin }) });
+        const counts = await readCountsFromStream({
+          stream: handleToStream({ handle: context.stdin }),
+          fields: selectedFields,
+        });
         entries.push({
           name: inputName,
           counts,
@@ -283,11 +323,13 @@ export const wcCommandDefinition: WeshCommandDefinition = {
 
       try {
         const fullPath = resolveInputPath({ cwd: context.cwd, path: inputName });
-        const handle = await context.files.open({
-          path: fullPath,
-          flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+        const counts = await readCountsFromStream({
+          stream: await openFileAsStream({
+            files: context.files,
+            path: fullPath,
+          }),
+          fields: selectedFields,
         });
-        const counts = await readInputCounts({ handle });
         entries.push({
           name: inputName,
           counts,
