@@ -12,6 +12,7 @@ interface GrepFileReport {
 }
 
 type GrepOutputMode = 'lines' | 'count' | 'files-with-matches' | 'files-without-match' | 'only-matching';
+type GrepPatternSyntax = 'basic' | 'extended' | 'perl' | 'fixed';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   if (path.startsWith('/')) {
@@ -114,25 +115,80 @@ function convertBREPattern({ pattern }: { pattern: string }): string {
   return result;
 }
 
+function resolveGrepPatternSyntax({
+  occurrences,
+}: {
+  occurrences: ArgvOptionOccurrence[];
+}): GrepPatternSyntax {
+  let syntax: GrepPatternSyntax = 'basic';
+
+  for (const occurrence of occurrences) {
+    switch (occurrence.kind) {
+    case 'flag':
+      break;
+    case 'value':
+    case 'special':
+      continue;
+    default: {
+      const _ex: never = occurrence;
+      throw new Error(`Unhandled occurrence kind: ${_ex}`);
+    }
+    }
+
+    for (const effect of occurrence.effects) {
+      switch (effect.key) {
+      case 'extendedRegexp':
+        syntax = 'extended';
+        break;
+      case 'basicRegexp':
+        syntax = 'basic';
+        break;
+      case 'perlRegexp':
+        syntax = 'perl';
+        break;
+      case 'fixedStrings':
+        syntax = 'fixed';
+        break;
+      default:
+        break;
+      }
+    }
+  }
+
+  return syntax;
+}
+
 function buildGrepRegex({
   patterns,
-  fixedStrings,
-  extendedRegexp,
+  syntax,
   wordRegexp,
   ignoreCase,
   exactLine,
   global,
 }: {
   patterns: string[];
-  fixedStrings: boolean;
-  extendedRegexp: boolean;
+  syntax: GrepPatternSyntax;
   wordRegexp: boolean;
   ignoreCase: boolean;
   exactLine: boolean;
   global: boolean;
 }): RegExp {
   const source = patterns
-    .map((pattern) => (fixedStrings ? escapeRegExp({ value: pattern }) : (!extendedRegexp ? convertBREPattern({ pattern }) : pattern)))
+    .map((pattern) => {
+      switch (syntax) {
+      case 'fixed':
+        return escapeRegExp({ value: pattern });
+      case 'basic':
+        return convertBREPattern({ pattern });
+      case 'extended':
+      case 'perl':
+        return pattern;
+      default: {
+        const _ex: never = syntax;
+        throw new Error(`Unhandled grep pattern syntax: ${_ex}`);
+      }
+      }
+    })
     .map((pattern) => (wordRegexp ? `\\b(?:${pattern})\\b` : `(?:${pattern})`))
     .map((pattern) => (exactLine ? `^(?:${pattern})$` : pattern))
     .join('|');
@@ -165,6 +221,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       options: [
         { kind: 'flag', short: 'E', long: 'extended-regexp', effects: [{ key: 'extendedRegexp', value: true }], help: { summary: 'use extended regular expressions', category: 'common' } },
         { kind: 'flag', short: 'G', long: 'basic-regexp', effects: [{ key: 'basicRegexp', value: true }], help: { summary: 'use basic regular expressions', category: 'advanced' } },
+        { kind: 'flag', short: 'P', long: 'perl-regexp', effects: [{ key: 'perlRegexp', value: true }], help: { summary: 'use Perl-compatible regular expressions', category: 'advanced' } },
         { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
         { kind: 'flag', short: 'i', long: 'ignore-case', effects: [{ key: 'ignoreCase', value: true }], help: { summary: 'ignore case distinctions', category: 'common' } },
         { kind: 'flag', short: 'v', long: 'invert-match', effects: [{ key: 'invertMatch', value: true }], help: { summary: 'select non-matching lines', category: 'common' } },
@@ -270,17 +327,17 @@ export const grepCommandDefinition: WeshCommandDefinition = {
 
     const exactLine = parsed.optionValues.exactLine === true;
     const ignoreCase = parsed.optionValues.ignoreCase === true;
-    const fixedStrings = parsed.optionValues.fixedStrings === true;
     const wordRegexp = parsed.optionValues.wordRegexp === true;
-    const extendedRegexp = parsed.optionValues.extendedRegexp === true;
+    const syntax = resolveGrepPatternSyntax({
+      occurrences: parsed.occurrences,
+    });
 
     let regex: RegExp;
     let globalRegex: RegExp;
     try {
       regex = buildGrepRegex({
         patterns,
-        fixedStrings,
-        extendedRegexp,
+        syntax,
         wordRegexp,
         ignoreCase,
         exactLine,
@@ -288,8 +345,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       });
       globalRegex = buildGrepRegex({
         patterns,
-        fixedStrings,
-        extendedRegexp,
+        syntax,
         wordRegexp,
         ignoreCase,
         exactLine,

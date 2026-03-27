@@ -62,6 +62,9 @@ import { xmlCommandDefinition } from './xml/index.ts';
 import { zipCommandDefinition } from './zip/index.ts';
 import { unzipCommandDefinition } from './unzip/index.ts';
 import { timeCommandDefinition } from './time/index.ts';
+import { xxdCommandDefinition } from './xxd/index.ts';
+import { stringsCommandDefinition } from './strings/index.ts';
+import { mktempCommandDefinition } from './mktemp/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -126,6 +129,9 @@ export const builtinCommands: WeshCommandDefinition[] = [
   jqCommandDefinition,
   fileCommandDefinition,
   trapCommandDefinition,
+  xxdCommandDefinition,
+  stringsCommandDefinition,
+  mktempCommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
 ];

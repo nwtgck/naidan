@@ -106,6 +106,18 @@ describe('wesh grep', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('accepts -P for Perl-compatible regular expressions', async () => {
+    await writeFile({ path: 'notes.txt', data: 'alpha1\nbeta\ngamma2\n' });
+
+    const { result, stdout, stderr } = await execute({
+      script: String.raw`grep -P '\w+\d' notes.txt`,
+    });
+
+    expect(stdout.text).toBe('alpha1\ngamma2\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports -f pattern files', async () => {
     await writeFile({ path: 'patterns.txt', data: 'alpha\ngamma\n' });
     await writeFile({ path: 'notes.txt', data: 'alpha\nbeta\ngamma\n' });
@@ -381,6 +393,7 @@ notes.txt-3-two
     expect(stdout.text).toContain('options:');
     expect(stdout.text).toContain('--help');
     expect(stdout.text).toContain('--extended-regexp');
+    expect(stdout.text).toContain('--perl-regexp');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
