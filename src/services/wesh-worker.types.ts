@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { EmptyArgs } from '@/models/types'
 import type { WeshMount } from '@/services/wesh/types'
 
 export const weshWorkerMountSchema = z.object({
@@ -35,14 +36,14 @@ export type WeshWorkerMount = z.infer<typeof weshWorkerMountSchema>
 export interface IWeshWorker {
   init({ request }: { request: WeshWorkerInitRequest }): Promise<void>
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecuteResponse>
-  interrupt(_args: { noop?: never }): Promise<boolean>
-  dispose(_args: { noop?: never }): Promise<void>
+  interrupt(_args: EmptyArgs): Promise<boolean>
+  dispose(_args: EmptyArgs): Promise<void>
 }
 
 export interface WeshWorkerClient {
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecuteResponse>
-  interrupt(_args: { noop?: never }): Promise<boolean>
-  dispose(_args: { noop?: never }): Promise<void>
+  interrupt(_args: EmptyArgs): Promise<boolean>
+  dispose(_args: EmptyArgs): Promise<void>
 }
 
 export function mapWeshMountsToWorkerMounts({ mounts }: {

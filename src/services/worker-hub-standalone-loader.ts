@@ -1,3 +1,4 @@
+import type { EmptyArgs } from '@/models/types'
 import {
   FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
   FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_NAME,
@@ -20,7 +21,7 @@ function getEmbeddedWorkerSource({ workerId }: {
   return source
 }
 
-export function createFileProtocolCompatibleStandaloneWorkerHub(_args: { noop?: never }): Worker {
+export function createFileProtocolCompatibleStandaloneWorkerHub(_args: EmptyArgs): Worker {
   const source = getEmbeddedWorkerSource({ workerId: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID })
   const blob = new Blob([source], { type: 'text/javascript' })
   const objectUrl = URL.createObjectURL(blob)

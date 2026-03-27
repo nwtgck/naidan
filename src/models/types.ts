@@ -13,6 +13,7 @@ import type { ToolExecutionResult } from '@/services/tools/types';
 export type Role = 'user' | 'assistant' | 'system' | 'tool';
 export type StorageType = 'local' | 'opfs' | 'memory';
 export type EndpointType = 'openai' | 'ollama' | 'transformers_js';
+export type EmptyArgs = Record<never, never>;
 
 export type Reasoning = {
   effort: 'none' | 'low' | 'medium' | 'high' | undefined;

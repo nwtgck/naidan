@@ -1,4 +1,5 @@
 import * as Comlink from 'comlink'
+import type { EmptyArgs } from '@/models/types'
 import { createFileProtocolCompatibleStandaloneWorkerHub } from './worker-hub-standalone-loader'
 import type { IWorkerHub } from './worker-hub.types'
 import {
@@ -8,7 +9,7 @@ import {
   type GlobalSearchWorkerClient,
 } from './global-search.worker.types'
 
-export async function createGlobalSearchWorkerClient(_args: { noop?: never }): Promise<GlobalSearchWorkerClient> {
+export async function createGlobalSearchWorkerClient(_args: EmptyArgs): Promise<GlobalSearchWorkerClient> {
   const worker = createFileProtocolCompatibleStandaloneWorkerHub({})
   const remote = Comlink.wrap<IWorkerHub>(worker)
   const globalSearch = await remote.globalSearch
@@ -29,8 +30,8 @@ export async function createGlobalSearchWorkerClient(_args: { noop?: never }): P
     async disposeSession({ request }) {
       await globalSearch.disposeSession({ request })
     },
-    async dispose(_args: { noop?: never }) {
-      remote[Comlink.releaseProxy]()
+    async dispose(_args: EmptyArgs) {
+      await remote[Comlink.releaseProxy]()
       worker.terminate()
     },
   }

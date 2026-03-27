@@ -1,5 +1,6 @@
 import { ref, shallowRef } from 'vue';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import type { EmptyArgs, SidebarItem } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { createGlobalSearchWorkerClient } from '@/services/global-search-worker-client';
 import type {
@@ -11,7 +12,6 @@ import type {
   SearchScope,
   SearchSource,
 } from '@/services/global-search.types';
-import type { SidebarItem } from '@/models/types';
 
 export type { ContentMatch, FlatSearchResultItem, SearchResultItem, SearchScope };
 
@@ -97,7 +97,7 @@ export function useChatSearch() {
     })
   }
 
-  async function disposeSearchClient(_args: { noop?: never }) {
+  async function disposeSearchClient(_args: EmptyArgs) {
     const client = searchClient
     const sessionId = searchSessionId
     searchClient = undefined

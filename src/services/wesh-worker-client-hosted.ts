@@ -1,4 +1,5 @@
 import * as Comlink from 'comlink'
+import type { EmptyArgs } from '@/models/types'
 import { createFileProtocolCompatibleWeshWorker } from '@/services/wesh-worker-loader'
 import {
   mapWeshMountsToWorkerMounts,
@@ -41,14 +42,14 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       const response = await remote.execute({ request })
       return weshWorkerExecuteResponseSchema.parse(response)
     },
-    async interrupt(_args: { noop?: never }) {
+    async interrupt(_args: EmptyArgs) {
       return remote.interrupt({})
     },
-    async dispose(_args: { noop?: never }) {
+    async dispose(_args: EmptyArgs) {
       try {
         await remote.dispose({})
       } finally {
-        remote[Comlink.releaseProxy]()
+        await remote[Comlink.releaseProxy]()
         worker.terminate()
       }
     },

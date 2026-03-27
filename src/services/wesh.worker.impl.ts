@@ -1,3 +1,4 @@
+import type { EmptyArgs } from '@/models/types'
 import { Wesh } from '@/services/wesh'
 import { ReadonlyDirectoryHandle } from '@/services/wesh/readonly-directory-handle'
 import { createWeshReadFileHandleFromText } from '@/services/wesh/utils/test-stream'
@@ -48,7 +49,7 @@ function createCaptureHandle({ limit }: {
   }
 }
 
-export function createWeshWorker(_args: { noop?: never }): IWeshWorker {
+export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
   let wesh: Wesh | undefined
 
   return {
@@ -106,14 +107,14 @@ export function createWeshWorker(_args: { noop?: never }): IWeshWorker {
       }
     },
 
-    async interrupt(_args: { noop?: never }) {
+    async interrupt(_args: EmptyArgs) {
       if (!wesh) {
         return false
       }
       return wesh.signalForegroundProcessGroup({ signal: 2 })
     },
 
-    async dispose(_args: { noop?: never }) {
+    async dispose(_args: EmptyArgs) {
       wesh = undefined
     },
   }
