@@ -146,6 +146,76 @@ class StaticTextFileHandle implements WeshFileHandle {
   }
 }
 
+class SharedFileHandle implements WeshFileHandle {
+  private readonly state: {
+    handle: WeshFileHandle;
+    refCount: number;
+    closed: boolean;
+  };
+  private closed = false;
+
+  constructor({
+    state,
+  }: {
+    state: {
+      handle: WeshFileHandle;
+      refCount: number;
+      closed: boolean;
+    };
+  }) {
+    this.state = state;
+  }
+
+  cloneReference(): SharedFileHandle {
+    this.state.refCount += 1;
+    return new SharedFileHandle({
+      state: this.state,
+    });
+  }
+
+  async read(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<{ bytesRead: number }> {
+    return this.state.handle.read(options);
+  }
+
+  async write(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<{ bytesWritten: number }> {
+    return this.state.handle.write(options);
+  }
+
+  async close(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.state.refCount -= 1;
+    if (this.state.refCount <= 0 && !this.state.closed) {
+      this.state.closed = true;
+      await this.state.handle.close();
+    }
+  }
+
+  async stat() {
+    return this.state.handle.stat();
+  }
+
+  async truncate(options: { size: number }): Promise<void> {
+    await this.state.handle.truncate(options);
+  }
+
+  async ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }> {
+    return this.state.handle.ioctl(options);
+  }
+}
+
 function weshSignalConditionNames({
   signal,
 }: {
@@ -3016,16 +3086,42 @@ usage: alias [name[=value] ...]
     stderr: WeshFileHandle;
   }): Map<number, WeshFileHandle> {
     const fds = new Map<number, WeshFileHandle>([
-      [0, stdin],
-      [1, stdout],
-      [2, stderr],
+      [0, this.createSharedFileHandle({ handle: stdin })],
+      [1, this.createSharedFileHandle({ handle: stdout })],
+      [2, this.createSharedFileHandle({ handle: stderr })],
     ]);
 
     for (const [fd, handle] of this.shellFds.entries()) {
-      fds.set(fd, handle);
+      fds.set(fd, this.duplicateSharedFileHandle({ handle }));
     }
 
     return fds;
+  }
+
+  private createSharedFileHandle({
+    handle,
+  }: {
+    handle: WeshFileHandle;
+  }): SharedFileHandle {
+    if (handle instanceof SharedFileHandle) {
+      return handle;
+    }
+    return new SharedFileHandle({
+      state: {
+        handle,
+        refCount: 1,
+        closed: false,
+      },
+    });
+  }
+
+  private duplicateSharedFileHandle({
+    handle,
+  }: {
+    handle: WeshFileHandle;
+  }): SharedFileHandle {
+    const sharedHandle = this.createSharedFileHandle({ handle });
+    return sharedHandle.cloneReference();
   }
 
   private async setPersistentFd({
@@ -3096,7 +3192,7 @@ usage: alias [name[=value] ...]
         throw new Error(`${redirection.targetFd}: bad file descriptor`);
       }
 
-      return duplicated;
+      return this.duplicateSharedFileHandle({ handle: duplicated });
     }
 
     if (redirection.target !== undefined && typeof redirection.target !== 'string') {
@@ -3124,7 +3220,7 @@ usage: alias [name[=value] ...]
             stderr: redirectedStderr,
           }).finally(() => write.close()),
         });
-        return read;
+        return this.createSharedFileHandle({ handle: read });
       case 'output':
         trackBackgroundTask({
           task: this.executeNode({
@@ -3135,7 +3231,7 @@ usage: alias [name[=value] ...]
             stderr: redirectedStderr,
           }).finally(() => read.close()),
         });
-        return write;
+        return this.createSharedFileHandle({ handle: write });
       default: {
         const _ex: never = redirection.target.type;
         throw new Error(`Unhandled redirection process substitution type: ${_ex}`);
@@ -3160,29 +3256,29 @@ usage: alias [name[=value] ...]
 
     switch (redirection.type) {
     case 'read':
-      return this.kernel.open({
+      return this.createSharedFileHandle({ handle: await this.kernel.open({
         path: fullTarget,
         flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
         mode: 0o644,
-      });
+      }) });
     case 'write':
-      return this.kernel.open({
+      return this.createSharedFileHandle({ handle: await this.kernel.open({
         path: fullTarget,
         flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
         mode: 0o644,
-      });
+      }) });
     case 'append':
-      return this.kernel.open({
+      return this.createSharedFileHandle({ handle: await this.kernel.open({
         path: fullTarget,
         flags: { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' },
         mode: 0o644,
-      });
+      }) });
     case 'read-write':
-      return this.kernel.open({
+      return this.createSharedFileHandle({ handle: await this.kernel.open({
         path: fullTarget,
         flags: { access: 'read-write', creation: 'if-needed', truncate: 'preserve', append: 'preserve' },
         mode: 0o644,
-      });
+      }) });
     default: {
       const _ex: never = redirection.type;
       throw new Error(`Unhandled redirection type: ${_ex}`);

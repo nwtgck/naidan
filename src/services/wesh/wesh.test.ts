@@ -1027,6 +1027,48 @@ trap -p`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('runs signal traps installed from shell functions', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    wesh.registerCommand({
+      definition: {
+        meta: {
+          name: 'signal-int',
+          description: 'Send SIGINT to the current process group',
+          usage: 'signal-int',
+        },
+        fn: async ({ context }) => {
+          await context.process.signalGroup({
+            signal: 2,
+          });
+          throw new Error('foreground process group interrupted');
+        },
+      },
+    });
+
+    const result = await wesh.execute({
+      script: `\
+install_int_trap() {
+  trap -- 'echo function-int >&2' INT
+}
+install_int_trap
+signal-int`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('function-int\n');
+  });
+
   it('supports combined stdin and stdout redirection on compound while commands', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();

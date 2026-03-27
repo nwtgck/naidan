@@ -15,7 +15,10 @@ import type {
 import { WeshBrokenPipeError, weshWaitStatusToExitCode } from './types';
 
 class WeshKernelProcessFileHandle implements WeshFileHandle {
-  private readonly handle: WeshFileHandle;
+  private readonly state: {
+    handle: WeshFileHandle;
+    refCount: number;
+  };
   private readonly kernel: WeshKernel;
   private readonly pid: number;
   private closed = false;
@@ -29,7 +32,15 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
     kernel: WeshKernel;
     pid: number;
   }) {
-    this.handle = handle;
+    this.state = handle instanceof WeshKernelProcessFileHandle
+      ? handle.state
+      : {
+        handle,
+        refCount: 1,
+      };
+    if (handle instanceof WeshKernelProcessFileHandle) {
+      this.state.refCount += 1;
+    }
     this.kernel = kernel;
     this.pid = pid;
   }
@@ -40,7 +51,7 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
     length?: number;
     position?: number;
   }): Promise<WeshIOResult> {
-    return this.handle.read(options);
+    return this.state.handle.read(options);
   }
 
   async write(options: {
@@ -50,7 +61,7 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
     position?: number;
   }): Promise<WeshWriteResult> {
     try {
-      return await this.handle.write(options);
+      return await this.state.handle.write(options);
     } catch (error: unknown) {
       if (error instanceof WeshBrokenPipeError) {
         await this.kernel.kill({
@@ -72,19 +83,22 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
       pid: this.pid,
       handle: this,
     });
-    await this.handle.close();
+    this.state.refCount -= 1;
+    if (this.state.refCount <= 0) {
+      await this.state.handle.close();
+    }
   }
 
   async stat(): Promise<WeshStat> {
-    return this.handle.stat();
+    return this.state.handle.stat();
   }
 
   async truncate(options: { size: number }): Promise<void> {
-    await this.handle.truncate(options);
+    await this.state.handle.truncate(options);
   }
 
   async ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }> {
-    return this.handle.ioctl(options);
+    return this.state.handle.ioctl(options);
   }
 }
 
