@@ -1,8 +1,8 @@
 import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { readFile, readFileAsText, writeFile } from '@/services/wesh/utils/fs';
+import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
+import { readFile, streamToFilePath, writeFile } from '@/services/wesh/utils/fs';
 
 type SedAddress =
   | { kind: 'line'; lineNumber: number }
@@ -21,6 +21,31 @@ type SedCommand =
 interface SedRuntimeCommand {
   command: SedCommand;
   inRange: boolean;
+}
+
+type SedRuntimeExecutableCommand =
+  | { kind: 'substitute'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; regex: RegExp; replacement: string; print: boolean }
+  | { kind: 'translate'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; lookup: Map<string, string> }
+  | { kind: 'append'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
+  | { kind: 'insert'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
+  | { kind: 'change'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
+  | { kind: 'print'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined }
+  | { kind: 'delete'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined }
+  | { kind: 'quit'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined };
+
+interface SedExecutableRuntimeCommand {
+  command: SedRuntimeExecutableCommand;
+  inRange: boolean;
+}
+
+interface SedTextLine {
+  line: string;
+  hadNewline: boolean;
+}
+
+interface SedLineResult {
+  outputs: string[];
+  shouldQuit: boolean;
 }
 
 function parseLineNumberAddress({
@@ -486,7 +511,7 @@ function commandApplies({
   lineNumber,
   line,
 }: {
-  runtimeCommand: SedRuntimeCommand;
+  runtimeCommand: SedRuntimeCommand | SedExecutableRuntimeCommand;
   lineNumber: number;
   line: string;
 }): boolean {
@@ -512,14 +537,14 @@ function commandApplies({
 }
 
 function createInputStream({
-  context,
+  handle,
 }: {
-  context: WeshCommandContext;
+  handle: WeshFileHandle;
 }): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async pull(controller) {
       const buf = new Uint8Array(4096);
-      const { bytesRead } = await context.stdin.read({ buffer: buf });
+      const { bytesRead } = await handle.read({ buffer: buf });
       if (bytesRead === 0) {
         controller.close();
         return;
@@ -529,160 +554,234 @@ function createInputStream({
   });
 }
 
-async function readStreamText({
+async function openSedInputStream({
+  context,
+  file,
+}: {
+  context: WeshCommandContext;
+  file: string;
+}): Promise<ReadableStream<Uint8Array>> {
+  if (file === '-') {
+    return createInputStream({
+      handle: context.stdin,
+    });
+  }
+
+  const path = file.startsWith('/') ? file : `${context.cwd}/${file}`;
+  if (context.files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await context.files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob read result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  const handle = await context.files.open({
+    path,
+    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+  });
+  return createInputStream({ handle });
+}
+
+async function *readTextLines({
   stream,
 }: {
   stream: ReadableStream<Uint8Array>;
-}): Promise<string> {
+}): AsyncGenerator<SedTextLine> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  let result = '';
+  let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    result += decoder.decode(value, { stream: true });
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        buffer += decoder.decode();
+        break;
+      }
+      if (value === undefined) continue;
+
+      buffer += decoder.decode(value, { stream: true });
+      while (true) {
+        const newlineIndex = buffer.indexOf('\n');
+        if (newlineIndex === -1) break;
+
+        const lineEnd = newlineIndex > 0 && buffer[newlineIndex - 1] === '\r'
+          ? newlineIndex - 1
+          : newlineIndex;
+        yield {
+          line: buffer.slice(0, lineEnd),
+          hadNewline: true,
+        };
+        buffer = buffer.slice(newlineIndex + 1);
+      }
+    }
+
+    if (buffer.length > 0) {
+      yield {
+        line: buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer,
+        hadNewline: false,
+      };
+    }
+  } finally {
+    reader.releaseLock();
   }
-  result += decoder.decode();
-  reader.releaseLock();
-  return result;
 }
 
-function splitLines({
-  text,
-}: {
-  text: string;
-}): Array<{ line: string; hadNewline: boolean }> {
-  if (text.length === 0) return [];
-
-  const parts = text.split('\n');
-  return parts.map((part, index) => ({
-    line: part,
-    hadNewline: index < parts.length - 1,
-  }));
-}
-
-function buildSedOutput({
-  input,
+function createSedRuntimeCommands({
   commands,
+}: {
+  commands: SedCommand[];
+}): SedExecutableRuntimeCommand[] {
+  return commands.map((command) => {
+    switch (command.kind) {
+    case 'substitute':
+      return {
+        command: {
+          kind: 'substitute',
+          address: command.address,
+          rangeEnd: command.rangeEnd,
+          regex: command.regex,
+          replacement: command.replacement,
+          print: command.print,
+        },
+        inRange: false,
+      };
+    case 'translate':
+      return {
+        command: {
+          kind: 'translate',
+          address: command.address,
+          rangeEnd: command.rangeEnd,
+          lookup: new Map(Array.from(command.source, (char, index) => [char, command.target[index] ?? char])),
+        },
+        inRange: false,
+      };
+    case 'append':
+    case 'insert':
+    case 'change':
+    case 'print':
+    case 'delete':
+    case 'quit':
+      return {
+        command,
+        inRange: false,
+      };
+    default: {
+      const _ex: never = command;
+      throw new Error(`Unhandled sed runtime command kind: ${_ex}`);
+    }
+    }
+  });
+}
+
+function executeSedLine({
+  runtimeCommands,
+  lineNumber,
+  current,
   quiet,
 }: {
-  input: string;
-  commands: SedCommand[];
+  runtimeCommands: SedExecutableRuntimeCommand[];
+  lineNumber: number;
+  current: SedTextLine;
   quiet: boolean;
-}): string {
-  const runtimeCommands = commands.map((command) => ({
-    command,
-    inRange: false,
-  }));
-  const outputParts: string[] = [];
-  const lines = splitLines({ text: input });
-  let shouldQuit = false;
+}): SedLineResult {
+  let patternSpace = current.line;
+  let deleted = false;
+  let quitAfterLine = false;
+  const explicitPrints: string[] = [];
+  const prependedPrints: string[] = [];
+  const appendedPrints: string[] = [];
+  let changedReplacement: string | undefined;
 
-  for (let index = 0; index < lines.length; index++) {
-    const current = lines[index];
-    if (current === undefined) continue;
+  for (const runtimeCommand of runtimeCommands) {
+    const wasInRange = runtimeCommand.inRange;
+    if (!commandApplies({
+      runtimeCommand,
+      lineNumber,
+      line: patternSpace,
+    })) {
+      continue;
+    }
 
-    let patternSpace = current.line;
-    let deleted = false;
-    let quitAfterLine = false;
-    const explicitPrints: string[] = [];
-    const prependedPrints: string[] = [];
-    const appendedPrints: string[] = [];
-    let changedReplacement: string | undefined;
-
-    for (const runtimeCommand of runtimeCommands) {
-      const wasInRange = runtimeCommand.inRange;
-      if (!commandApplies({
-        runtimeCommand,
-        lineNumber: index + 1,
-        line: patternSpace,
-      })) {
-        continue;
-      }
-
-      switch (runtimeCommand.command.kind) {
-      case 'substitute': {
-        const next = patternSpace.replace(
-          runtimeCommand.command.regex,
-          runtimeCommand.command.replacement,
-        );
-        const changed = next !== patternSpace;
-        patternSpace = next;
-        if (changed && runtimeCommand.command.print) {
-          explicitPrints.push(patternSpace);
-        }
-        break;
-      }
-      case 'translate': {
-        const command = runtimeCommand.command;
-        const translated = patternSpace
-          .split('')
-          .map((char) => {
-            const sourceIndex = command.source.indexOf(char);
-            return sourceIndex >= 0 ? command.target[sourceIndex] ?? char : char;
-          })
-          .join('');
-        patternSpace = translated;
-        break;
-      }
-      case 'append':
-        appendedPrints.push(runtimeCommand.command.text);
-        break;
-      case 'insert':
-        prependedPrints.push(runtimeCommand.command.text);
-        break;
-      case 'change':
-        if (runtimeCommand.command.rangeEnd === undefined || !wasInRange) {
-          changedReplacement = runtimeCommand.command.text;
-        }
-        deleted = true;
-        break;
-      case 'print':
+    switch (runtimeCommand.command.kind) {
+    case 'substitute': {
+      const next = patternSpace.replace(
+        runtimeCommand.command.regex,
+        runtimeCommand.command.replacement,
+      );
+      const changed = next !== patternSpace;
+      patternSpace = next;
+      if (changed && runtimeCommand.command.print) {
         explicitPrints.push(patternSpace);
-        break;
-      case 'delete':
-        deleted = true;
-        break;
-      case 'quit':
-        quitAfterLine = true;
-        break;
-      default: {
-        const _ex: never = runtimeCommand.command;
-        throw new Error(`Unhandled sed command kind: ${_ex}`);
       }
-      }
-
-      if (deleted) break;
-    }
-
-    for (const printed of prependedPrints) {
-      outputParts.push(current.hadNewline ? `${printed}\n` : printed);
-    }
-
-    for (const printed of explicitPrints) {
-      outputParts.push(current.hadNewline ? `${printed}\n` : printed);
-    }
-
-    if (changedReplacement !== undefined) {
-      outputParts.push(current.hadNewline ? `${changedReplacement}\n` : changedReplacement);
-    } else if (!deleted && !quiet) {
-      outputParts.push(current.hadNewline ? `${patternSpace}\n` : patternSpace);
-    }
-
-    for (const printed of appendedPrints) {
-      outputParts.push(current.hadNewline ? `${printed}\n` : printed);
-    }
-
-    if (quitAfterLine) {
-      shouldQuit = true;
-    }
-    if (shouldQuit) {
       break;
     }
+    case 'translate': {
+      const command = runtimeCommand.command;
+      const translated = patternSpace
+        .split('')
+        .map((char) => command.lookup.get(char) ?? char)
+        .join('');
+      patternSpace = translated;
+      break;
+    }
+    case 'append':
+      appendedPrints.push(runtimeCommand.command.text);
+      break;
+    case 'insert':
+      prependedPrints.push(runtimeCommand.command.text);
+      break;
+    case 'change':
+      if (runtimeCommand.command.rangeEnd === undefined || !wasInRange) {
+        changedReplacement = runtimeCommand.command.text;
+      }
+      deleted = true;
+      break;
+    case 'print':
+      explicitPrints.push(patternSpace);
+      break;
+    case 'delete':
+      deleted = true;
+      break;
+    case 'quit':
+      quitAfterLine = true;
+      break;
+    default: {
+      const _ex: never = runtimeCommand.command;
+      throw new Error(`Unhandled sed command kind: ${_ex}`);
+    }
+    }
+
+    if (deleted) break;
   }
 
-  return outputParts.join('');
+  const outputs: string[] = [];
+  for (const printed of prependedPrints) {
+    outputs.push(current.hadNewline ? `${printed}\n` : printed);
+  }
+  for (const printed of explicitPrints) {
+    outputs.push(current.hadNewline ? `${printed}\n` : printed);
+  }
+  if (changedReplacement !== undefined) {
+    outputs.push(current.hadNewline ? `${changedReplacement}\n` : changedReplacement);
+  } else if (!deleted && !quiet) {
+    outputs.push(current.hadNewline ? `${patternSpace}\n` : patternSpace);
+  }
+  for (const printed of appendedPrints) {
+    outputs.push(current.hadNewline ? `${printed}\n` : printed);
+  }
+
+  return {
+    outputs,
+    shouldQuit: quitAfterLine,
+  };
 }
 
 export const sedCommandDefinition: WeshCommandDefinition = {
@@ -847,16 +946,36 @@ export const sedCommandDefinition: WeshCommandDefinition = {
     const inPlace = parsed.optionValues.inPlaceSuffix !== undefined;
     const inPlaceSuffix = typeof parsed.optionValues.inPlaceSuffix === 'string' ? parsed.optionValues.inPlaceSuffix : '';
     const encoder = new TextEncoder();
-
     const processText = ({
       input,
     }: {
       input: string;
-    }): string => buildSedOutput({
-      input,
-      commands: allCommands,
-      quiet,
-    });
+    }): string => {
+      const runtimeCommands = createSedRuntimeCommands({
+        commands: allCommands,
+      });
+      const outputParts: string[] = [];
+      let lineNumber = 0;
+      const parts = input.length === 0 ? [] : input.split('\n');
+      for (let index = 0; index < parts.length; index++) {
+        lineNumber += 1;
+        const current: SedTextLine = {
+          line: parts[index] ?? '',
+          hadNewline: index < parts.length - 1,
+        };
+        const result = executeSedLine({
+          runtimeCommands,
+          lineNumber,
+          current,
+          quiet,
+        });
+        outputParts.push(...result.outputs);
+        if (result.shouldQuit) {
+          break;
+        }
+      }
+      return outputParts.join('');
+    };
 
     if (files.length === 0) {
       if (inPlace) {
@@ -869,10 +988,28 @@ export const sedCommandDefinition: WeshCommandDefinition = {
         return { exitCode: 1 };
       }
 
-      const output = processText({
-        input: await readStreamText({ stream: createInputStream({ context }) }),
+      const runtimeCommands = createSedRuntimeCommands({
+        commands: allCommands,
       });
-      await context.text().print({ text: output });
+      let lineNumber = 0;
+      const stream = createInputStream({
+        handle: context.stdin,
+      });
+      for await (const current of readTextLines({ stream })) {
+        lineNumber += 1;
+        const result = executeSedLine({
+          runtimeCommands,
+          lineNumber,
+          current,
+          quiet,
+        });
+        for (const output of result.outputs) {
+          await context.text().print({ text: output });
+        }
+        if (result.shouldQuit) {
+          break;
+        }
+      }
       return { exitCode: 0 };
     }
 
@@ -882,24 +1019,53 @@ export const sedCommandDefinition: WeshCommandDefinition = {
 
       try {
         const fullPath = file.startsWith('/') ? file : `${context.cwd}/${file}`;
-        const input = await readFileAsText({ files: context.files, path: fullPath });
-        const output = processText({ input });
 
         if (inPlace) {
+          const inputBytes = await readFile({ files: context.files, path: fullPath });
+          const input = new TextDecoder().decode(inputBytes);
+          const output = processText({ input });
           if (inPlaceSuffix.length > 0) {
             await writeFile({
               files: context.files,
               path: `${fullPath}${inPlaceSuffix}`,
-              data: new TextEncoder().encode(input),
+              data: inputBytes,
             });
           }
-          await writeFile({
+          await streamToFilePath({
             files: context.files,
             path: fullPath,
-            data: encoder.encode(output),
+            mode: 'truncate',
+            stream: new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(encoder.encode(output));
+                controller.close();
+              },
+            }),
           });
         } else {
-          await context.text().print({ text: output });
+          const runtimeCommands = createSedRuntimeCommands({
+            commands: allCommands,
+          });
+          let lineNumber = 0;
+          const stream = await openSedInputStream({
+            context,
+            file,
+          });
+          for await (const current of readTextLines({ stream })) {
+            lineNumber += 1;
+            const result = executeSedLine({
+              runtimeCommands,
+              lineNumber,
+              current,
+              quiet,
+            });
+            for (const output of result.outputs) {
+              await context.text().print({ text: output });
+            }
+            if (result.shouldQuit) {
+              break;
+            }
+          }
         }
       } catch (error: unknown) {
         exitCode = 1;
