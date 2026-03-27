@@ -5,6 +5,10 @@ import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from './utils/test-stream';
+import {
+  createReadHandleFromStream,
+  createWriteHandleFromStream,
+} from './utils/stream';
 
 describe('Wesh Shell', () => {
   let wesh: Wesh;
@@ -211,6 +215,34 @@ done`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports continue levels across nested loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+for outer in 1 2; do
+  for inner in keep skip done; do
+    if [[ $inner == skip ]]; then
+      continue 2
+    fi
+    echo "$outer:$inner"
+  done
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+1:keep
+2:keep
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('reports break outside loops as an error', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
@@ -268,6 +300,61 @@ echo "$seen"`,
     });
 
     expect(stdout.text).toBe('alpha\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('streams while loop output before stdin closes', async () => {
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined = undefined;
+    let resolveFirstWrite: (() => void) | undefined = undefined;
+    const firstWrite = new Promise<void>((resolve) => {
+      resolveFirstWrite = resolve;
+    });
+    const outputChunks: string[] = [];
+
+    const stdin = createReadHandleFromStream({
+      source: new ReadableStream<Uint8Array>({
+        start(nextController) {
+          controller = nextController;
+          nextController.enqueue(encoder.encode('alpha\n'));
+        },
+      }),
+    });
+    const stdout = createWriteHandleFromStream({
+      target: new WritableStream<Uint8Array>({
+        write(chunk) {
+          outputChunks.push(decoder.decode(chunk, { stream: true }));
+          resolveFirstWrite?.();
+          resolveFirstWrite = undefined;
+        },
+        close() {
+          outputChunks.push(decoder.decode());
+        },
+      }),
+    });
+    const stderr = createTestWriteCaptureHandle();
+
+    const resultPromise = wesh.execute({
+      script: `\
+while read line; do
+  echo "<$line>"
+done`,
+      stdin,
+      stdout,
+      stderr: stderr.handle,
+    });
+
+    await firstWrite;
+    expect(outputChunks.join('')).toContain('<alpha>');
+
+    expect(controller).toBeDefined();
+    controller!.enqueue(encoder.encode('beta\n'));
+    controller!.close();
+
+    const result = await resultPromise;
+    expect(outputChunks.join('')).toBe('<alpha>\n<beta>\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -357,6 +444,29 @@ echo "$VALUE"`,
     expect(stdout.text).toBe('');
     expect(stderr.text).toContain('return');
     expect(result.exitCode).toBe(1);
+  });
+
+  it('uses the last command status for return without an explicit code', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+propagate() {
+  false
+  return
+}
+propagate
+echo $?`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
   });
 
   it('handles case statements', async () => {
@@ -692,6 +802,79 @@ describe_value beta`,
     });
 
     expect(stdout.text).toBe('second\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('combines redirected while loops with case, arithmetic, and command substitution', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+total=0
+while read line; do
+  case "$line" in
+    add:*)
+      value=\${line#add:}
+      ((total += value))
+      ;;
+    emit)
+      echo "$(printf 'sum=%s' "$total")"
+      ;;
+  esac
+done <<EOF
+add:2
+add:3
+emit
+EOF
+echo "$total"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+sum=5
+5
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('combines shell functions with while, case, and pipeline isolation', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+summarize() {
+  total=0
+  while read line; do
+    case "$line" in
+      add:*)
+        value=\${line#add:}
+        ((total += value))
+        ;;
+      emit)
+        echo "$(printf 'sum=%s' "$total")"
+        ;;
+    esac
+  done
+}
+printf 'add:2\nadd:3\nemit\n' | summarize
+echo "$total"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+sum=5
+
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
