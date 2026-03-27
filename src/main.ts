@@ -5,6 +5,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { routes } from 'vue-router/auto-routes'
 import { useSettings } from './composables/useSettings'
 import { useChat } from './composables/useChat'
+import { warmStandaloneWorkerCacheAtIdle } from './services/standalone-worker-cache'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -73,4 +74,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   await chatStore.loadChats()
 
   app.mount('#app')
+
+  if (__BUILD_MODE_IS_STANDALONE__) {
+    warmStandaloneWorkerCacheAtIdle({})
+  }
 })

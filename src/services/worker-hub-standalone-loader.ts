@@ -3,6 +3,7 @@ import {
   FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
   FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_NAME,
 } from '@/models/constants'
+import { getCachedStandaloneWorkerFile } from './standalone-worker-cache'
 
 function getEmbeddedWorkerSource({ workerId }: {
   workerId: string
@@ -21,9 +22,14 @@ function getEmbeddedWorkerSource({ workerId }: {
   return source
 }
 
-export function createFileProtocolCompatibleStandaloneWorkerHub(_args: EmptyArgs): Worker {
-  const source = getEmbeddedWorkerSource({ workerId: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID })
-  const blob = new Blob([source], { type: 'text/javascript' })
+export async function createFileProtocolCompatibleStandaloneWorkerHub(_args: EmptyArgs): Promise<Worker> {
+  const cachedFile = await getCachedStandaloneWorkerFile({
+    workerId: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
+  })
+  const blob = cachedFile ?? new Blob(
+    [getEmbeddedWorkerSource({ workerId: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID })],
+    { type: 'text/javascript' },
+  )
   const objectUrl = URL.createObjectURL(blob)
 
   try {

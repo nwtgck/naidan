@@ -10,7 +10,7 @@ import {
 } from './global-search.worker.types'
 
 export async function createGlobalSearchWorkerClient(_args: EmptyArgs): Promise<GlobalSearchWorkerClient> {
-  const worker = createFileProtocolCompatibleStandaloneWorkerHub({})
+  const worker = await createFileProtocolCompatibleStandaloneWorkerHub({})
   const remote = Comlink.wrap<IWorkerHub>(worker)
   const globalSearch = await remote.globalSearch
 

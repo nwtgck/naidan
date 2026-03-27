@@ -24,7 +24,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   initialEnv: Record<string, string>
   initialCwd?: string | undefined
 }): Promise<WeshWorkerClient> {
-  const worker = createFileProtocolCompatibleStandaloneWorkerHub({})
+  const worker = await createFileProtocolCompatibleStandaloneWorkerHub({})
   const remote = Comlink.wrap<IWorkerHub>(worker)
   const wesh = await remote.wesh
 

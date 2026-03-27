@@ -24,6 +24,9 @@ export const LOCK_CHAT_CONTENT_PREFIX = `${STORAGE_KEY_PREFIX}sync:lock:chat_con
 export const UNTITLED_CHAT_TITLE = 'New Chat';
 /** OPFS directory used for per-session shell /tmp scratch space. */
 export const OPFS_TMP_DIR = 'naidan-tmp';
+export const NAIDAN_CACHE_DIRECTORY_NAME = 'naidan-cache';
+export const STANDALONE_WORKER_CACHE_DIRECTORY_NAME = 'standalone-workers';
+export const STANDALONE_WORKER_MANIFEST_SCRIPT_ID = 'naidan-standalone-worker-manifest';
 export const FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME = 'file-protocol-compatible-wesh-worker';
 export const FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_ID = FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME;
 

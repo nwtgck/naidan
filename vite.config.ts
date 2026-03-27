@@ -9,9 +9,14 @@ import path from 'node:path'
 import { createGzip } from 'node:zlib'
 import { pipeline } from 'node:stream'
 import { promisify } from 'node:util'
+import { createHash } from 'node:crypto'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
+import {
+  FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
+  STANDALONE_WORKER_MANIFEST_SCRIPT_ID,
+} from './src/models/constants'
 import license from 'rollup-plugin-license'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -45,6 +50,11 @@ interface EmbeddedWorkerSpec {
   globalName: string
   scriptType: string
   workerId: string
+}
+
+interface EmbeddedWorkerManifestEntry {
+  hash: string
+  size: number
 }
 
 /**
@@ -103,7 +113,7 @@ export default defineConfig(({ mode }) => {
       entry: 'src/services/worker-hub-standalone.worker.ts',
       globalName: 'NaidanFileProtocolCompatibleStandaloneWorkerHub',
       scriptType: 'text/x-naidan-worker',
-      workerId: 'file-protocol-compatible-standalone-worker-hub',
+      workerId: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
     }
   ]
 
@@ -410,6 +420,7 @@ async function embedStandaloneWorkers({ outDir, workers }: {
   const html = fs.readFileSync(htmlPath, 'utf8')
   const dom = new JSDOM(html)
   const document = dom.window.document
+  const manifest: Record<string, EmbeddedWorkerManifestEntry> = {}
 
   try {
     for (const worker of workers) {
@@ -456,11 +467,32 @@ async function embedStandaloneWorkers({ outDir, workers }: {
       }
 
       const workerContent = fs.readFileSync(workerScriptPath, 'utf8')
+      manifest[worker.workerId] = {
+        hash: createHash('sha256').update(workerContent).digest('hex'),
+        size: Buffer.byteLength(workerContent, 'utf8'),
+      }
       const script = document.createElement('script')
       script.setAttribute('id', worker.workerId)
       script.setAttribute('type', worker.scriptType)
       script.textContent = workerContent.replace(/<\/script>/g, '<\\/script>')
       document.body.appendChild(script)
+    }
+
+    const manifestScript = document.createElement('script')
+    manifestScript.setAttribute('id', STANDALONE_WORKER_MANIFEST_SCRIPT_ID)
+    manifestScript.setAttribute('type', 'application/json')
+    manifestScript.textContent = JSON.stringify(manifest)
+
+    const lastStructuredDataScript = Array.from(
+      document.querySelectorAll('head script[type="application/ld+json"]'),
+    ).at(-1)
+
+    if (lastStructuredDataScript?.parentNode) {
+      lastStructuredDataScript.parentNode.insertBefore(manifestScript, lastStructuredDataScript.nextSibling)
+    } else if (document.head) {
+      document.head.appendChild(manifestScript)
+    } else {
+      document.body.appendChild(manifestScript)
     }
 
     fs.writeFileSync(htmlPath, dom.serialize())
