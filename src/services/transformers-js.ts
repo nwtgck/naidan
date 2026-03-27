@@ -29,6 +29,22 @@ let isCached: boolean = false;
 let isLoadingFromCache: boolean = false;
 let currentDevice: string = 'wasm';
 
+const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
+
+function debugLog({ event, details }: { event: string; details: Record<string, unknown> }): void {
+  const timestamp = (() => {
+    const dateCtor = globalThis.Date;
+    if (typeof dateCtor === 'function') {
+      return new dateCtor().toISOString();
+    }
+    return '0';
+  })();
+  console.log(`${QWEN_DEBUG_PREFIX} ${event}`, {
+    at: timestamp,
+    ...details,
+  });
+}
+
 function cloneLmParameters({ params }: { params: LmParameters | undefined }): LmParameters | undefined {
   if (!params) return undefined;
 
@@ -251,6 +267,7 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
   remote: TransformersJsWorkerClient,
   progress_callback: (info: ProgressInfo) => void
 }) {
+  const startedAt = performance.now();
   const scannerClient = createTransformersJsScannerWorkerClient({});
 
   try {
@@ -266,14 +283,40 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
       { type: 'tokenizer', modelId: cleanModelId, options: {} },
       { type: 'causal-lm', modelId: cleanModelId, options: { dtype: 'q4f16', device: 'wasm' } }
     ];
-    console.log(`[transformersJsService] Scanning model for URLs: ${modelId}`);
+    debugLog({
+      event: 'preDownload scan start',
+      details: { modelId, elapsedMs: Math.round(performance.now() - startedAt) },
+    });
     const { files } = await scannerClient.scanModel({ tasks });
+    debugLog({
+      event: 'preDownload scan complete',
+      details: {
+        modelId,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        fileCount: files.length,
+      },
+    });
 
     // 2. Prefetch URLs via main worker (which has OPFS access and streaming)
     if (files.length > 0) {
       const urls = files.map(f => f.url);
-      console.log(`[transformersJsService] Scanned URLs:`, urls);
+      debugLog({
+        event: 'preDownload prefetch start',
+        details: {
+          modelId,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          fileCount: urls.length,
+        },
+      });
       await remote.prefetchUrls({ urls, progressCallback: progress_callback });
+      debugLog({
+        event: 'preDownload prefetch complete',
+        details: {
+          modelId,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          fileCount: urls.length,
+        },
+      });
     }
   } catch (err) {
     console.warn(`[transformersJsService] Pre-download scan/prefetch failed:`, err);
@@ -591,6 +634,7 @@ export const transformersJsService = {
     }
 
     try {
+      const loadStartedAt = performance.now();
       if (!client) throw new Error('Worker not initialized');
       // 1. Check cache FIRST before changing status to avoid UI flicker
       const cached = await this.listCachedModels();
@@ -615,6 +659,17 @@ export const transformersJsService = {
           isCached = true;
         }
 
+        if (info.status !== 'progress') {
+          debugLog({
+            event: 'load progress event',
+            details: {
+              modelId,
+              elapsedMs: Math.round(performance.now() - loadStartedAt),
+              info,
+            },
+          });
+        }
+
         const now = Date.now();
         // Throttle 'progress' updates to 150ms, but allow others (done, cached, etc.) immediately
         if (info.status !== 'progress' || now - lastProgressNotify > 150) {
@@ -624,9 +679,40 @@ export const transformersJsService = {
       };
 
       // 3. Pre-download using scanner/prefetcher to avoid OOM in transformers.js
-      await preDownloadModel({ modelId, remote: client, progress_callback });
+      // Only do this when the model is not already fully cached. For complete cached
+      // models, scanning/prefetching provides no benefit and only delays loadModel().
+      debugLog({
+        event: 'load start',
+        details: { modelId, isLoadingFromCache },
+      });
+      if (!isLoadingFromCache) {
+        await preDownloadModel({ modelId, remote: client, progress_callback });
+      } else {
+        debugLog({
+          event: 'preDownload skipped',
+          details: {
+            modelId,
+            reason: 'model already fully cached',
+          },
+        });
+      }
+      debugLog({
+        event: 'worker loadModel start',
+        details: {
+          modelId,
+          elapsedMs: Math.round(performance.now() - loadStartedAt),
+        },
+      });
 
       const result = await client.loadModel({ modelId, progressCallback: progress_callback });
+      debugLog({
+        event: 'worker loadModel complete',
+        details: {
+          modelId,
+          elapsedMs: Math.round(performance.now() - loadStartedAt),
+          device: result.device,
+        },
+      });
       currentDevice = result.device;
 
       activeModelId = modelId;

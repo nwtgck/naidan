@@ -1,7 +1,9 @@
+/* eslint-disable no-restricted-imports -- Service test verifies transformers.js model registry support directly. */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import * as Comlink from 'comlink';
 import { isProxy, reactive } from 'vue';
+import { AutoModelForCausalLM } from '@huggingface/transformers';
 
 // Mock Worker class
 class MockWorker {
@@ -76,6 +78,10 @@ function createMockFile(size: number, lastModified: number) {
 }
 
 describe('transformersJsService', () => {
+  it('should support qwen3_5 causal LM models', () => {
+    expect((AutoModelForCausalLM as any).supports('qwen3_5')).toBe(true);
+  });
+
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
@@ -201,6 +207,49 @@ describe('transformersJsService', () => {
     expect(transformersJsService.getState().device).toBe('webgpu');
     expect(statuses).toContain('loading');
     expect(statuses).toContain('ready');
+  });
+
+  it('should skip scanner/prefetch when loading a fully cached model', async () => {
+    const mockHuggingFaceDir = createMockDir({
+      'some-org': createMockDir({
+        'some-model': createMockDir({
+          'model.onnx': createMockFile(1000, 123456789),
+          '.model.onnx.complete': createMockFile(0, 123456789),
+        }),
+      }),
+    });
+
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockResolvedValue(createMockDir({
+          'models': createMockDir({
+            'huggingface.co': mockHuggingFaceDir,
+          }),
+        })),
+      },
+    });
+
+    const mockRemote = {
+      loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
+      prefetchUrls: vi.fn().mockResolvedValue(undefined),
+    };
+    const scanModel = vi.fn().mockResolvedValue({
+      files: [{ url: 'https://hf.co/m/model.onnx' }],
+    });
+
+    (Comlink.wrap as any).mockImplementation((_worker: any) => {
+      return Object.assign(mockRemote, {
+        [Comlink.releaseProxy]: vi.fn(),
+        scanModel,
+      });
+    });
+
+    const { transformersJsService } = await import('./transformers-js');
+    await transformersJsService.loadModel('hf.co/some-org/some-model');
+
+    expect(mockRemote.loadModel).toHaveBeenCalledWith('hf.co/some-org/some-model', expect.any(Function));
+    expect(scanModel).not.toHaveBeenCalled();
+    expect(mockRemote.prefetchUrls).not.toHaveBeenCalled();
   });
 
   it('should prevent concurrent loading', async () => {

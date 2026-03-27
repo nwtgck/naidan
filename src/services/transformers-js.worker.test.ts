@@ -7,6 +7,9 @@ const mockResetFn = vi.hoisted(() => vi.fn());
 
 // Mock @huggingface/transformers
 vi.mock('@huggingface/transformers', () => ({
+  AutoProcessor: {
+    from_pretrained: vi.fn(),
+  },
   AutoTokenizer: {
     from_pretrained: vi.fn(),
   },
@@ -258,7 +261,6 @@ describe('transformers-js.worker', () => {
     await import('./transformers-js.worker');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
-    (AutoModelForCausalLM.from_pretrained as any).mockResolvedValue({ dispose: vi.fn() });
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
 
     const testCases = [
@@ -272,6 +274,39 @@ describe('transformers-js.worker', () => {
       await workerObj.downloadModel(input, () => { });
       expect(AutoTokenizer.from_pretrained).toHaveBeenCalledWith(expected, expect.anything());
     }
+    expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+  });
+
+  it('downloadModel should disable local model lookup for remote models', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await import('./transformers-js.worker');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    (AutoTokenizer.from_pretrained as any).mockImplementation(async () => {
+      expect(env.allowLocalModels).toBe(false);
+      return {};
+    });
+
+    await workerObj.downloadModel('mlx-community/Qwen3.5-2B-4bit', () => { });
+    expect(env.allowLocalModels).toBe(true);
+    expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
+  });
+
+  it('downloadModel should keep local model lookup enabled for user models', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await import('./transformers-js.worker');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    (AutoTokenizer.from_pretrained as any).mockImplementation(async () => {
+      expect(env.allowLocalModels).toBe(true);
+      return {};
+    });
+
+    await workerObj.downloadModel('user/my-local-model', () => { });
+    expect(env.allowLocalModels).toBe(true);
+    expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
   });
 
   it('prefetchUrls should stream files to OPFS and report progress', async () => {
@@ -496,6 +531,301 @@ describe('transformers-js.worker', () => {
     });
   });
 
+  describe('generateText — Qwen3.5 model tool calls', () => {
+    let workerObj: any;
+    let capturedCallback: ((output: string) => void) | undefined;
+    let tokensToEmit: string[];
+    let mockApplyTemplate: ReturnType<typeof vi.fn>;
+    let mockCallableTokenizer: ReturnType<typeof vi.fn>;
+    let mockModel: {
+      generate: ReturnType<typeof vi.fn>;
+      dispose: ReturnType<typeof vi.fn>;
+      device: string;
+      config: {
+        model_type: string;
+      };
+    };
+
+    beforeEach(async () => {
+      capturedCallback = undefined;
+      tokensToEmit = [];
+
+      const tfMock = await import('@huggingface/transformers');
+
+      (tfMock.TextStreamer as any).mockImplementation(
+        function(this: unknown, _tok: unknown, opts: { callback_function: (output: string) => void }) {
+          capturedCallback = opts.callback_function;
+        }
+      );
+
+      mockModel = {
+        generate: vi.fn().mockImplementation(async () => {
+          for (const token of tokensToEmit) capturedCallback?.(token);
+          return { past_key_values: {} };
+        }),
+        dispose: vi.fn(),
+        device: 'webgpu',
+        config: {
+          model_type: 'qwen3_5',
+        },
+      };
+
+      (tfMock.AutoModelForCausalLM.from_pretrained as any).mockResolvedValue(mockModel);
+      mockApplyTemplate = vi.fn().mockReturnValue({
+        input_ids: [1, 2, 3],
+        attention_mask: [1, 1, 1],
+        image_grid_thw: 'grid-state',
+      });
+      mockCallableTokenizer = Object.assign(
+        vi.fn().mockReturnValue({ input_ids: [9, 9, 9] }),
+        { apply_chat_template: mockApplyTemplate }
+      );
+      (tfMock.AutoProcessor.from_pretrained as any).mockResolvedValue(Object.assign(
+        vi.fn().mockResolvedValue({
+          input_ids: [7, 8, 9],
+          attention_mask: [1, 1, 1],
+        }),
+        {
+          tokenizer: mockCallableTokenizer,
+          batch_decode: vi.fn().mockReturnValue(['prompt-history']),
+        },
+      ));
+
+      await import('./transformers-js.worker');
+      const comlink = await import('comlink');
+      workerObj = (comlink.expose as any).mock.calls[0][0];
+      await workerObj.loadModel('onnx-community/Qwen3.5-2B-ONNX', vi.fn());
+    });
+
+    it('parses Qwen3.5 XML-like tool calls', async () => {
+      tokensToEmit = [
+        '<tool_call>\n',
+        '<function=shell_execute>\n',
+        '<parameter=shell_script>\n',
+        'ls -la /home/user/codex-main\n',
+        '</parameter>\n',
+        '<parameter=stdout_limit>\n',
+        '20\n',
+        '</parameter>\n',
+        '<parameter=stderr_limit>\n',
+        '20\n',
+        '</parameter>\n',
+        '</function>\n',
+        '</tool_call>',
+      ];
+
+      const onToolCalls = vi.fn();
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
+      ];
+
+      await workerObj.generateText([], vi.fn(), onToolCalls, undefined, tools);
+
+      expect(onToolCalls).toHaveBeenCalledOnce();
+      const [calls] = onToolCalls.mock.calls[0]!;
+      expect(calls).toHaveLength(1);
+      expect(calls[0].function.name).toBe('shell_execute');
+      expect(JSON.parse(calls[0].function.arguments)).toEqual({
+        shell_script: 'ls -la /home/user/codex-main',
+        stdout_limit: 20,
+        stderr_limit: 20,
+      });
+    });
+
+    it('injects Qwen3.5 tool instructions via system prompt instead of template tools', async () => {
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
+      ];
+
+      await workerObj.generateText(
+        [{ role: 'user', content: 'list files' }],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        tools
+      );
+
+      const processorMock = (await import('@huggingface/transformers')).AutoProcessor.from_pretrained as any;
+      const processor = await processorMock.mock.results[0]?.value;
+      expect(processor).toHaveBeenCalledOnce();
+      expect(processor.mock.calls[0]?.[0]).toContain('# Tools');
+      expect(processor.mock.calls[0]?.[0]).toContain('"name":"shell_execute"');
+      expect(mockApplyTemplate).not.toHaveBeenCalled();
+    });
+
+    it('serializes Qwen3.5 assistant tool call arguments as JSON objects in prompts', async () => {
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
+      ];
+
+      await workerObj.generateText(
+        [
+          { role: 'user', content: 'list files' },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{
+              id: 'call_1',
+              type: 'function',
+              function: {
+                name: 'shell_execute',
+                arguments: '{"shell_script":"ls -la","stdout_limit":100}',
+              },
+            }],
+          },
+          { role: 'tool', tool_call_id: 'call_1', content: 'Exit Code: 0\n' },
+        ],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        tools
+      );
+
+      const processorMock = (await import('@huggingface/transformers')).AutoProcessor.from_pretrained as any;
+      const processor = await processorMock.mock.results[0]?.value;
+      expect(processor.mock.calls[0]?.[0]).toContain('"arguments":{"shell_script":"ls -la","stdout_limit":100}');
+    });
+
+    it('uses full prompts without Qwen3.5 tool continuation past_key_values reuse', async () => {
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
+      ];
+
+      await workerObj.generateText(
+        [{ role: 'user', content: 'list files' }],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        tools
+      );
+
+      mockApplyTemplate.mockClear();
+      mockModel.generate.mockClear();
+
+      await workerObj.generateText(
+        [
+          { role: 'user', content: 'list files' },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{
+              id: 'call_1',
+              type: 'function',
+              function: {
+                name: 'shell_execute',
+                arguments: '{"shell_script":"ls -la /tmp","stdout_limit":100}',
+              },
+            }],
+          },
+          {
+            role: 'tool',
+            tool_call_id: 'call_1',
+            content: 'Exit Code: 0\nSTDOUT:\nfile-a\n',
+          },
+        ],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        tools
+      );
+
+      expect(mockModel.generate).toHaveBeenCalledOnce();
+      expect(mockModel.generate).toHaveBeenCalledWith(expect.objectContaining({
+        input_ids: [7, 8, 9],
+        attention_mask: [1, 1, 1],
+        past_key_values: null,
+      }));
+      expect(mockModel.generate.mock.calls[0]?.[0]).not.toHaveProperty('pixel_values');
+      expect(mockApplyTemplate).not.toHaveBeenCalled();
+    });
+
+    it('clears Qwen3.5 no-tool continuation state when resetCache is called', async () => {
+      mockModel.generate
+        .mockResolvedValueOnce({ past_key_values: { kv: 1 }, sequences: ['first'] })
+        .mockResolvedValueOnce({ past_key_values: { kv: 2 }, sequences: ['second'] });
+
+      await workerObj.generateText(
+        [{ role: 'user', content: 'hello' }],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        undefined
+      );
+
+      await workerObj.resetCache();
+
+      mockModel.generate.mockClear();
+
+      await workerObj.generateText(
+        [
+          { role: 'user', content: 'hello' },
+          { role: 'assistant', content: 'hi' },
+          { role: 'user', content: 'again' },
+        ],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        undefined
+      );
+
+      expect(mockModel.generate).toHaveBeenCalledWith(expect.objectContaining({
+        past_key_values: null,
+      }));
+    });
+
+    it('does not reuse past_key_values when Qwen3.5 no-tool continuation shape does not match', async () => {
+      mockModel.generate
+        .mockResolvedValueOnce({ past_key_values: { kv: 1 }, sequences: ['first'] })
+        .mockResolvedValueOnce({ past_key_values: { kv: 2 }, sequences: ['second'] });
+
+      await workerObj.generateText(
+        [{ role: 'user', content: 'hello' }],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        undefined
+      );
+
+      mockModel.generate.mockClear();
+
+      await workerObj.generateText(
+        [
+          { role: 'user', content: 'hello' },
+          { role: 'assistant', content: 'hi' },
+          { role: 'user', content: 'again' },
+        ],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        undefined
+      );
+
+      expect(mockModel.generate).toHaveBeenCalledWith(expect.objectContaining({
+        past_key_values: null,
+      }));
+    });
+
+    it('sanitizes visible Qwen3.5 control tokens from streamed output', async () => {
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
+      ];
+
+      tokensToEmit = ['hello', '<|im_end|>', '\nworld'];
+      const onChunk = vi.fn();
+
+      await workerObj.generateText(
+        [{ role: 'user', content: 'list files' }],
+        onChunk,
+        vi.fn(),
+        undefined,
+        tools
+      );
+
+      const emitted = (onChunk.mock.calls as [string][]).map(([chunk]) => chunk).join('');
+      expect(emitted).toBe('helloworld');
+    });
+  });
+
   describe('generateText — GPT-OSS model tool calls', () => {
     let workerObj: any;
     let capturedCallback: ((output: string) => void) | undefined;
@@ -639,6 +969,17 @@ describe('transformers-js.worker', () => {
 
     it('skips apply_chat_template and calls tokenizer directly for GPT-OSS continuation', async () => {
       tokensToEmit = [];
+
+      await workerObj.generateText(
+        [{ role: 'user', content: 'run it' }],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        [SIMPLE_TOOL]
+      );
+
+      mockApplyTemplate.mockClear();
+      mockCallableTokenizer.mockClear();
 
       const messages = [
         { role: 'user', content: 'run it' },

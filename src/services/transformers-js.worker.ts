@@ -1,44 +1,41 @@
 import * as Comlink from 'comlink';
 import {
+  AutoProcessor,
   AutoTokenizer,
   AutoModelForCausalLM,
-  TextStreamer,
   InterruptableStoppingCriteria,
-  StoppingCriteriaList,
   env,
   type PreTrainedModel,
   type PreTrainedTokenizer,
-  type Tensor
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker, WorkerToolDefinition } from './transformers-js.types';
-import { ToolCallStreamParser } from './transformers-js-tool-call-parser';
-import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '@/utils/gpt-oss-harmony';
+import {
+  isQwen3_5Model,
+} from './transformers-js-qwen3_5';
+import {
+  selectGenerationStrategy,
+  type WorkerGenerationRuntimeState,
+} from './transformers-js-generation-strategies';
 import { urlToPath, writeToOpfs } from './transformers-js.utils';
-
-type ModelOutput = Record<string, unknown>;
 
 /**
  * Internal interface for properties found on Transformers.js model instances
  */
 interface ModelInternals {
   device?: string;
+  config?: {
+    model_type?: string;
+  };
 }
 
-/**
- * Interface for the result of a generation call
- */
-interface GenerationResult {
-  past_key_values: unknown;
-  sequences?: unknown;
+interface Qwen3_5ProcessorLike {
+  (text: string): Promise<Record<string, unknown>>;
+  tokenizer: PreTrainedTokenizer;
+  batch_decode(sequences: unknown, options: { skip_special_tokens: boolean }): string[];
 }
 
-/**
- * Interface for models that support text generation
- */
-interface TextGenerationModel extends PreTrainedModel {
-  generate(inputs: Record<string, unknown>): Promise<GenerationResult & (ModelOutput | Tensor)>;
-}
+const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
 // Intercept fetch to handle SPA 404 fallback and enforce local-only constraints
 const originalFetch = self.fetch;
@@ -220,123 +217,42 @@ if (env.backends.onnx.wasm) {
 // Singleton state
 let model: PreTrainedModel | null = null;
 let tokenizer: PreTrainedTokenizer | null = null;
-let pastKeyValues: unknown = null;
+let qwen3_5Processor: Qwen3_5ProcessorLike | null = null;
 let activeModelId: string | null = null;
+const generationRuntimeState: WorkerGenerationRuntimeState = {
+  activeModelId: null,
+  qwen3_5Processor: null,
+  gptOssPastKeyValues: null,
+  qwen3_5PastKeyValues: null,
+  qwen3_5ConversationState: undefined,
+};
 const stoppingCriteria = new InterruptableStoppingCriteria();
 
-// ---------------------------------------------------------------------------
-// GPT-OSS tool call helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Converts a JSON Schema type descriptor to a TypeScript inline type string.
- * Used to format GPT-OSS tool definitions in the TypeScript namespace syntax.
- */
-function jsonSchemaToTsType({ schema }: { schema: Record<string, unknown> }): string {
-  const type = schema['type'];
-  if (type === 'object') {
-    const properties = schema['properties'] as Record<string, Record<string, unknown>> | undefined;
-    const required = schema['required'] as string[] | undefined;
-    if (!properties || Object.keys(properties).length === 0) return '{}';
-    const fields = Object.entries(properties).map(([key, prop]) => {
-      const isRequired = required?.includes(key) ?? false;
-      return `  ${key}${isRequired ? '' : '?'}: ${jsonSchemaToTsType({ schema: prop })},`;
-    });
-    return `{\n${fields.join('\n')}\n}`;
-  }
-  if (type === 'string') {
-    const enumValues = schema['enum'] as string[] | undefined;
-    if (enumValues) return enumValues.map(v => `"${v}"`).join(' | ');
-    return 'string';
-  }
-  if (type === 'number' || type === 'integer') return 'number';
-  if (type === 'boolean') return 'boolean';
-  if (type === 'array') {
-    const items = schema['items'] as Record<string, unknown> | undefined;
-    if (items) return `${jsonSchemaToTsType({ schema: items })}[]`;
-    return 'unknown[]';
-  }
-  return 'unknown';
-}
-
-/**
- * Formats WorkerToolDefinition[] as a TypeScript namespace block for GPT-OSS.
- * This is injected as a developer message before the conversation.
- *
- * Example output:
- *   namespace functions {
- *   // Get current weather
- *   type get_weather = (_: { location: string, unit?: string, }) => any;
- *   }
- */
-function formatGptOssToolDefinitions({ tools }: { tools: WorkerToolDefinition[] }): string {
-  const fns = tools.map(t => {
-    const paramType = jsonSchemaToTsType({ schema: t.function.parameters });
-    return `// ${t.function.description}\ntype ${t.function.name} = (_: ${paramType}) => any;`;
-  }).join('\n\n');
-  return `namespace functions {\n${fns}\n\n} // namespace functions`;
-}
-
-/**
- * Encodes GPT-OSS tool result messages as Harmony token input for the continuation generation.
- * Each tool result is formatted as:
- *   <|start|>{fnName} to=assistant<|channel|>commentary<|message|>{content}<|end|>
- *
- * Returns the tokenizer output (input_ids + attention_mask) ready for model.generate().
- */
-function buildGptOssToolResultTokens({
-  messages,
-  tokenizer: tok,
+async function withModelAccessMode<T>({
+  isLocal,
+  run,
 }: {
-  messages: ChatMessage[];
-  tokenizer: PreTrainedTokenizer;
-}): Record<string, unknown> {
-  const idToName = new Map<string, string>();
-  for (const m of messages) {
-    if (m.tool_calls) {
-      for (const tc of m.tool_calls) {
-        idToName.set(tc.id, tc.function.name);
-      }
-    }
+  isLocal: boolean;
+  run: () => Promise<T>;
+}): Promise<T> {
+  const previousAllowLocalModels = env.allowLocalModels;
+  env.allowLocalModels = isLocal;
+  try {
+    return await run();
+  } finally {
+    env.allowLocalModels = previousAllowLocalModels;
   }
-
-  const harmonyText = messages
-    .filter(m => m.tool_call_id)
-    .map(m => {
-      const fnName = idToName.get(m.tool_call_id!) ?? 'tool';
-      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-      return `<|start|>${fnName} to=assistant<|channel|>commentary<|message|>${content}<|end|>`;
-    })
-    .join('');
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (tok as any)(harmonyText, { add_special_tokens: false });
 }
 
-function isGptOssToolContinuationRequest(messages: ChatMessage[]): boolean {
-  if (messages.length < 2) return false;
+function debugLog({ event, details }: { event: string; details: Record<string, unknown> }): void {
+  console.log(`${QWEN_DEBUG_PREFIX} ${event}`, {
+    at: new Date().toISOString(),
+    ...details,
+  });
+}
 
-  let assistantIndex = messages.length - 1;
-  while (assistantIndex >= 0 && messages[assistantIndex]?.tool_call_id) {
-    assistantIndex--;
-  }
-
-  if (assistantIndex === messages.length - 1) return false;
-
-  const assistantMessage = messages[assistantIndex];
-  if (!assistantMessage || assistantMessage.role !== 'assistant' || !assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
-    return false;
-  }
-
-  const knownToolCallIds = new Set(assistantMessage.tool_calls.map(tc => tc.id));
-  for (let i = assistantIndex + 1; i < messages.length; i++) {
-    const toolMessage = messages[i];
-    if (!toolMessage?.tool_call_id || !knownToolCallIds.has(toolMessage.tool_call_id)) {
-      return false;
-    }
-  }
-
-  return true;
+function clearQwen3_5ContinuationState(): void {
+  generationRuntimeState.qwen3_5ConversationState = undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -350,22 +266,18 @@ const transformersJsWorker: ITransformersJsWorker = {
 
     const isLocal = cleanModelId.startsWith('user/');
 
-    // 1. Download Tokenizer
-    await AutoTokenizer.from_pretrained(cleanModelId, {
-      progress_callback: progressCallback,
-      local_files_only: isLocal
+    await withModelAccessMode({
+      isLocal,
+      run: async () => {
+        // Downloading should only warm the cache. Session creation during download
+        // can poison the active runtime if ORT rejects a model/operator combination.
+        await AutoTokenizer.from_pretrained(cleanModelId, {
+          progress_callback: progressCallback,
+          local_files_only: isLocal
+        });
+      }
     });
-
-    // 2. Download Model weights (using same dtype to ensure correct files are cached)
-    // We use device: 'wasm' here to purely fetch files without triggering WebGPU issues.
-    const tempModel = await AutoModelForCausalLM.from_pretrained(cleanModelId, {
-      dtype: 'q4f16' as const,
-      device: 'wasm' as const,
-      progress_callback: progressCallback,
-      local_files_only: isLocal,
-    });
-    await tempModel.dispose();
-    console.log('[transformersJsWorker] Download complete and model disposed.');
+    console.log('[transformersJsWorker] Download complete.');
   },
 
   /**
@@ -444,64 +356,114 @@ const transformersJsWorker: ITransformersJsWorker = {
 
     await this.unloadModel();
     activeModelId = modelId;
+    generationRuntimeState.activeModelId = modelId;
 
     let cleanModelId = modelId;
     if (cleanModelId.startsWith('hf.co/')) cleanModelId = cleanModelId.substring(6);
     else if (cleanModelId.startsWith('https://huggingface.co/')) cleanModelId = cleanModelId.substring(23);
 
     const isLocal = cleanModelId.startsWith('user/');
+    let loadedDevice: 'webgpu' | 'wasm' = 'wasm';
 
     try {
-      // 1. Load Model
-      // We try several combinations of device and dtype to find what works on this hardware/model
-      const tryLoad = async (device: 'webgpu' | 'wasm', dtype: 'q4f16' | 'q4' | undefined) => {
-        console.log(`[transformersJsWorker] Attempting load: device=${device}, dtype=${dtype || 'default'}`);
-        try {
-          return await AutoModelForCausalLM.from_pretrained(cleanModelId, {
-            dtype,
-            device,
-            progress_callback: progressCallback,
-            local_files_only: isLocal,
-          });
-        } catch (err) {
-          // Wrap numeric errors so they can be handled by the retry logic
-          if (typeof err === 'number') {
-            throw new Error(`Numeric error ${err}`);
-          }
-          throw err;
-        }
-      };
+      await withModelAccessMode({
+        isLocal,
+        run: async () => {
+          // 1. Load Model
+          // We try several combinations of device and dtype to find what works on this hardware/model
+          const tryLoad = async (device: 'webgpu' | 'wasm', dtype: 'q4f16' | 'q4' | undefined) => {
+            const startedAt = performance.now();
+            debugLog({
+              event: 'worker tryLoad start',
+              details: {
+                activeModelId: cleanModelId,
+                device,
+                dtype: dtype || 'default',
+              },
+            });
+            try {
+              const loadedModel = await AutoModelForCausalLM.from_pretrained(cleanModelId, {
+                dtype,
+                device,
+                progress_callback: progressCallback,
+                local_files_only: isLocal,
+              });
+              loadedDevice = device;
+              debugLog({
+                event: 'worker tryLoad success',
+                details: {
+                  activeModelId: cleanModelId,
+                  device,
+                  dtype: dtype || 'default',
+                  elapsedMs: Math.round(performance.now() - startedAt),
+                },
+              });
+              return loadedModel;
+            } catch (err) {
+              debugLog({
+                event: 'worker tryLoad failure',
+                details: {
+                  activeModelId: cleanModelId,
+                  device,
+                  dtype: dtype || 'default',
+                  elapsedMs: Math.round(performance.now() - startedAt),
+                  error: err instanceof Error ? err.message : String(err),
+                },
+              });
+              // Wrap numeric errors so they can be handled by the retry logic
+              if (typeof err === 'number') {
+                throw new Error(`Numeric error ${err}`);
+              }
+              throw err;
+            }
+          };
 
-      try {
-        model = await tryLoad('webgpu', 'q4f16');
-      } catch (err) {
-        console.warn('[transformersJsWorker] webgpu/q4f16 failed:', err);
-        try {
-          model = await tryLoad('webgpu', 'q4');
-        } catch (err2) {
-          console.warn('[transformersJsWorker] webgpu/q4 failed:', err2);
           try {
-            // Try without forced dtype (let library decide, e.g. use original fp32/fp16)
-            model = await tryLoad('webgpu', undefined);
-          } catch (err3) {
-            console.warn('[transformersJsWorker] webgpu/default failed, falling back to wasm:', err3);
-            // Last resort: standard CPU execution
-            model = await tryLoad('wasm', undefined);
+            model = await tryLoad('webgpu', 'q4f16');
+          } catch (err) {
+            console.warn('[transformersJsWorker] webgpu/q4f16 failed:', err);
+            try {
+              model = await tryLoad('webgpu', 'q4');
+            } catch (err2) {
+              console.warn('[transformersJsWorker] webgpu/q4 failed:', err2);
+              try {
+                // Try without forced dtype (let library decide, e.g. use original fp32/fp16)
+                model = await tryLoad('webgpu', undefined);
+              } catch (err3) {
+                console.warn('[transformersJsWorker] webgpu/default failed, falling back to wasm:', err3);
+                // Last resort: standard CPU execution
+                model = await tryLoad('wasm', undefined);
+              }
+            }
+          }
+          console.log('[transformersJsWorker] Model loaded successfully.');
+
+          // 2. Load Tokenizer
+          if (isQwen3_5Model({
+            modelType: (model as ModelInternals | null)?.config?.model_type,
+            activeModelId: cleanModelId,
+          })) {
+            console.log('[transformersJsWorker] Loading Qwen3.5 processor...');
+            qwen3_5Processor = await AutoProcessor.from_pretrained(cleanModelId, {
+              progress_callback: progressCallback,
+              local_files_only: isLocal,
+            }) as unknown as Qwen3_5ProcessorLike;
+            generationRuntimeState.qwen3_5Processor = qwen3_5Processor;
+            tokenizer = qwen3_5Processor.tokenizer;
+            console.log('[transformersJsWorker] Qwen3.5 processor loaded.');
+          } else {
+            console.log('[transformersJsWorker] Loading tokenizer...');
+            tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, {
+              progress_callback: progressCallback,
+              local_files_only: isLocal
+            });
+            console.log('[transformersJsWorker] Tokenizer loaded.');
           }
         }
-      }
-      console.log('[transformersJsWorker] Model loaded successfully.');
-
-      // 2. Load Tokenizer
-      console.log('[transformersJsWorker] Loading tokenizer...');
-      tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, {
-        progress_callback: progressCallback,
-        local_files_only: isLocal
       });
-      console.log('[transformersJsWorker] Tokenizer loaded.');
 
       return {
-        device: (model as unknown as ModelInternals)?.device || 'wasm'
+        device: loadedDevice,
       };
     } catch (err) {
       const errorMsg = typeof err === 'number'
@@ -518,9 +480,14 @@ const transformersJsWorker: ITransformersJsWorker = {
       await model.dispose();
       model = null;
     }
+    qwen3_5Processor = null;
+    generationRuntimeState.qwen3_5Processor = null;
     tokenizer = null;
-    pastKeyValues = null;
+    generationRuntimeState.gptOssPastKeyValues = null;
+    generationRuntimeState.qwen3_5PastKeyValues = null;
+    clearQwen3_5ContinuationState();
     activeModelId = null;
+    generationRuntimeState.activeModelId = null;
     stoppingCriteria.reset();
   },
 
@@ -529,7 +496,9 @@ const transformersJsWorker: ITransformersJsWorker = {
   },
 
   async resetCache() {
-    pastKeyValues = null;
+    generationRuntimeState.gptOssPastKeyValues = null;
+    generationRuntimeState.qwen3_5PastKeyValues = null;
+    clearQwen3_5ContinuationState();
     stoppingCriteria.reset();
   },
 
@@ -543,192 +512,62 @@ const transformersJsWorker: ITransformersJsWorker = {
     if (!model || !tokenizer) throw new Error('Model not loaded');
 
     stoppingCriteria.reset();
-
-    const isGptOss = activeModelId?.toLowerCase().includes('gpt-oss') ?? false;
-    const hasTools = tools && tools.length > 0;
-    const isGptOssWithTools = isGptOss && !!hasTools;
-    // Continuation: tool results are present → encode only the new Harmony tokens,
-    // reusing pastKeyValues from the preceding tool-call generation.
-    const isGptOssToolContinuation = isGptOssWithTools && isGptOssToolContinuationRequest(messages);
-
-    console.log(`[transformersJsWorker] generateText: activeModelId='${activeModelId}', isGptOss=${isGptOss}, hasTools=${hasTools}, isGptOssToolContinuation=${isGptOssToolContinuation}`);
-
-    // Build model inputs -------------------------------------------------------
-    let inputs: Record<string, unknown>;
-
-    if (isGptOssToolContinuation) {
-      // Skip apply_chat_template — encode only the new tool result tokens in Harmony format.
-      // The existing pastKeyValues KV cache provides all prior context.
-      inputs = buildGptOssToolResultTokens({ messages, tokenizer });
-    } else {
-      pastKeyValues = null;
-      const formattedMessages = messages.map(m => {
-        const msg: Record<string, unknown> = {
-          role: m.role,
-          content: typeof m.content === 'string' ? m.content : '',
-        };
-        if (m.tool_calls) msg['tool_calls'] = m.tool_calls;
-        if (m.tool_call_id) msg['tool_call_id'] = m.tool_call_id;
-        return msg;
-      });
-
-      if (isGptOssWithTools) {
-        // Prepend tool definitions as a developer message in TypeScript namespace format
-        formattedMessages.unshift({
-          role: 'developer',
-          content: formatGptOssToolDefinitions({ tools }),
-        });
-      }
-
-      const templateOptions: Record<string, unknown> = {
-        add_generation_prompt: true,
-        return_dict: true,
-      };
-      if (!isGptOss && hasTools) {
-        templateOptions['tools'] = tools;
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      inputs = tokenizer.apply_chat_template(formattedMessages as any, templateOptions) as Record<string, unknown>;
-    }
-
-    // Parser setup -------------------------------------------------------------
-    let gptOssParser: GptOssHarmonyStreamParser | null = null;
-    let currentChannel = '';
-    const gptOssPendingToolCalls: ToolCall[] = [];
-
-    if (isGptOss) {
-      gptOssParser = new GptOssHarmonyStreamParser();
-    }
-
-    const toolCallParser = (!isGptOss && hasTools)
-      ? new ToolCallStreamParser({ onText: onChunk })
-      : null;
-
-    // Streamer -----------------------------------------------------------------
-    const streamer = new TextStreamer(tokenizer, {
-      skip_prompt: true,
-      skip_special_tokens: !isGptOss, // Only skip if NOT using parser, so we catch <|channel|> etc.
-      callback_function: (output: string) => {
-        console.debug('[transformersJsWorker] raw token:', JSON.stringify(output));
-        if (isGptOss && gptOssParser) {
-          const delta = gptOssParser.push(output);
-          if (!delta) return;
-
-          switch (delta.type) {
-          case 'content': {
-            const msg = gptOssParser.messages[delta.messageIndex];
-            const channel = msg?.channel || '';
-            if (channel !== currentChannel) {
-              if (currentChannel === 'analysis') {
-                onChunk('</think>');
-              }
-              if (channel === 'analysis') {
-                onChunk('<think>');
-              }
-              currentChannel = channel;
-            }
-            // commentary channel is used for tool call args — suppress from output
-            if (channel !== 'commentary' || !isGptOssWithTools) {
-              onChunk(delta.textDelta);
-            }
-            break;
-          }
-          case 'done': {
-            if (currentChannel === 'analysis') {
-              onChunk('</think>');
-            }
-            currentChannel = '';
-
-            switch (delta.endReason) {
-            case 'call': {
-              // <|call|> is a decode-time stop signal — interrupt generation immediately
-              // to prevent the model from continuing past this point.
-              stoppingCriteria.interrupt();
-
-              if (isGptOssWithTools) {
-                const msg = gptOssParser.messages[delta.messageIndex];
-                if (msg?.recipient?.startsWith('functions.')) {
-                  const fnName = msg.recipient.slice('functions.'.length);
-                  try {
-                    const parsedArgs = JSON.parse(msg.content) as Record<string, unknown>;
-                    gptOssPendingToolCalls.push({
-                      id: `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
-                      type: 'function',
-                      function: {
-                        name: fnName,
-                        arguments: JSON.stringify(parsedArgs),
-                      },
-                    });
-                  } catch (e) {
-                    console.warn('[transformersJsWorker] Failed to parse GPT-OSS tool call JSON:', e);
-                  }
-                }
-              }
-              break;
-            }
-            case 'end':
-            case 'return':
-              break;
-            default: {
-              const _ex: never = delta.endReason;
-              throw new Error(`Unhandled endReason: ${_ex}`);
-            }
-            }
-            break;
-          }
-          case 'new_message':
-            break;
-          default: {
-            const _ex: never = delta;
-            throw new Error(`Unhandled Harmony delta type: ${_ex}`);
-          }
-          }
-        } else if (toolCallParser) {
-          toolCallParser.feed({ output });
-        } else {
-          onChunk(output);
-        }
+    const generationStart = performance.now();
+    const strategy = selectGenerationStrategy({
+      modelType: (model as ModelInternals | null)?.config?.model_type,
+      activeModelId,
+      hasTools: !!tools?.length,
+    });
+    debugLog({
+      event: 'tool routing',
+      details: {
+        activeModelId,
+        strategy: strategy.kind,
+        hasTools: !!tools?.length,
+        messageRoles: messages.map(message => ({
+          role: message.role,
+          hasToolCalls: !!message.tool_calls?.length,
+          hasToolCallId: !!message.tool_call_id,
+        })),
       },
     });
 
-    // Generation ---------------------------------------------------------------
-    const maxNewTokens = params?.maxCompletionTokens || 1024;
-    const temperature = params?.temperature ?? 0.6;
-    const topP = params?.topP ?? 0.9;
-
-    const stopping_criteria = new StoppingCriteriaList();
-    stopping_criteria.push(stoppingCriteria);
-
     try {
-      const result = await (model as unknown as TextGenerationModel).generate({
-        ...inputs,
-        past_key_values: pastKeyValues,
-        max_new_tokens: maxNewTokens,
-        temperature: temperature,
-        top_p: topP,
-        do_sample: temperature > 0,
-        streamer,
-        stopping_criteria,
-        return_dict_in_generate: true,
+      debugLog({
+        event: 'calling model.generate',
+        details: {
+          activeModelId,
+          strategy: strategy.kind,
+          elapsedMs: Math.round(performance.now() - generationStart),
+        },
       });
-
-      if (currentChannel === 'analysis') {
-        onChunk('</think>');
-      }
-
-      // Deliver tool calls
-      if (toolCallParser) {
-        toolCallParser.flush();
-        const parsedToolCalls = toolCallParser.drainToolCalls();
-        if (parsedToolCalls.length > 0) onToolCalls(parsedToolCalls);
-      }
-      if (gptOssPendingToolCalls.length > 0) {
-        onToolCalls(gptOssPendingToolCalls);
-      }
-
-      pastKeyValues = (result as GenerationResult).past_key_values;
+      await strategy.generate({
+        model,
+        tokenizer,
+        messages,
+        onChunk: (chunk) => {
+          console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
+          onChunk(chunk);
+        },
+        onToolCalls,
+        params,
+        tools,
+        runtimeState: generationRuntimeState,
+        stoppingCriteria,
+        debugLog,
+      });
+      debugLog({
+        event: 'generation complete',
+        details: {
+          activeModelId,
+          strategy: strategy.kind,
+          elapsedMs: Math.round(performance.now() - generationStart),
+        },
+      });
     } catch (err) {
+      clearQwen3_5ContinuationState();
+      generationRuntimeState.gptOssPastKeyValues = null;
+      generationRuntimeState.qwen3_5PastKeyValues = null;
       console.error('[transformersJsWorker] Generation error:', err);
       throw err;
     }
