@@ -1,7 +1,7 @@
 import * as Comlink from 'comlink';
-import type { ChatMessage, LmParameters } from '@/models/types';
+import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import { createTransformersWorker, createTransformersScannerWorker } from './transformers-js-loader';
-import type { ITransformersJsWorker, ITransformersJsScannerWorker, ProgressInfo, ScanTask } from './transformers-js.types';
+import type { ITransformersJsWorker, ITransformersJsScannerWorker, ProgressInfo, ScanTask, WorkerToolDefinition } from './transformers-js.types';
 
 /**
  * Interface for FileSystemFileHandle with createWritable() method.
@@ -707,7 +707,9 @@ export const transformersJsService = {
   async generateText(
     messages: ChatMessage[],
     onChunk: (chunk: string) => void,
+    onToolCalls: (toolCalls: ToolCall[]) => void,
     params?: LmParameters,
+    tools?: WorkerToolDefinition[],
     signal?: AbortSignal
   ) {
     switch (loadingStatus) {
@@ -735,7 +737,9 @@ export const transformersJsService = {
       await remote.generateText(
         messages,
         Comlink.proxy(onChunk),
-        params
+        Comlink.proxy(onToolCalls),
+        params,
+        tools
       );
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);

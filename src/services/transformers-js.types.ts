@@ -1,5 +1,5 @@
 import { AutoTokenizer, AutoModelForCausalLM } from '@huggingface/transformers';
-import type { ChatMessage, LmParameters } from '@/models/types';
+import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 
 /**
  * Shared types for Transformers.js service and worker
@@ -34,6 +34,15 @@ export interface ITransformersJsScannerWorker {
   scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }>;
 }
 
+export interface WorkerToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
 // We define the interface here so that the service can use it
 // without importing the entire worker file.
 export interface ITransformersJsWorker {
@@ -46,6 +55,8 @@ export interface ITransformersJsWorker {
   generateText(
     messages: ChatMessage[],
     onChunk: (chunk: string) => void,
-    params?: LmParameters
+    onToolCalls: (toolCalls: ToolCall[]) => void,
+    params?: LmParameters,
+    tools?: WorkerToolDefinition[]
   ): Promise<void>;
 }

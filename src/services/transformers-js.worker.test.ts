@@ -1,4 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { WorkerToolDefinition } from './transformers-js.types';
+
+// Hoisted spies for the module-level InterruptableStoppingCriteria singleton
+const mockInterruptFn = vi.hoisted(() => vi.fn());
+const mockResetFn = vi.hoisted(() => vi.fn());
 
 // Mock @huggingface/transformers
 vi.mock('@huggingface/transformers', () => ({
@@ -10,8 +15,8 @@ vi.mock('@huggingface/transformers', () => ({
   },
   TextStreamer: vi.fn(),
   InterruptableStoppingCriteria: class {
-    reset = vi.fn();
-    interrupt = vi.fn();
+    reset = mockResetFn;
+    interrupt = mockInterruptFn;
   },
   StoppingCriteriaList: class extends Array { },
   env: {
@@ -385,6 +390,249 @@ describe('transformers-js.worker', () => {
 
       expect(res).toBe(mockRes);
       expect(res.status).toBe(200);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // generateText with tools
+  // ---------------------------------------------------------------------------
+
+  describe('generateText — standard model tool calls', () => {
+    let workerObj: ReturnType<typeof vi.fn> extends never ? never : any;
+    let capturedCallback: ((output: string) => void) | undefined;
+    let tokensToEmit: string[];
+    let mockApplyTemplate: ReturnType<typeof vi.fn>;
+
+    beforeEach(async () => {
+      // Outer beforeEach already ran vi.resetModules() + vi.clearAllMocks()
+      capturedCallback = undefined;
+      tokensToEmit = [];
+
+      const tfMock = await import('@huggingface/transformers');
+
+      (tfMock.TextStreamer as any).mockImplementation(
+        function(this: unknown, _tok: unknown, opts: { callback_function: (output: string) => void }) {
+          capturedCallback = opts.callback_function;
+        }
+      );
+
+      mockApplyTemplate = vi.fn().mockReturnValue({ input_ids: [1, 2, 3] });
+      const mockModel = {
+        generate: vi.fn().mockImplementation(async () => {
+          for (const token of tokensToEmit) capturedCallback?.(token);
+          return { past_key_values: {} };
+        }),
+        dispose: vi.fn(),
+        device: 'webgpu',
+      };
+
+      (tfMock.AutoModelForCausalLM.from_pretrained as any).mockResolvedValue(mockModel);
+      (tfMock.AutoTokenizer.from_pretrained as any).mockResolvedValue({
+        apply_chat_template: mockApplyTemplate,
+      });
+
+      await import('./transformers-js.worker');
+      const comlink = await import('comlink');
+      workerObj = (comlink.expose as any).mock.calls[0][0];
+      await workerObj.loadModel('standard-model', vi.fn());
+    });
+
+    it('emits tool calls when <tool_call> tags appear in output', async () => {
+      const payload = JSON.stringify({ name: 'search', arguments: { query: 'hello' } });
+      tokensToEmit = [`<tool_call>${payload}</tool_call>`];
+
+      const onChunk = vi.fn();
+      const onToolCalls = vi.fn();
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'search', description: 'Search', parameters: {} } },
+      ];
+
+      await workerObj.generateText([], onChunk, onToolCalls, undefined, tools);
+
+      expect(onToolCalls).toHaveBeenCalledOnce();
+      const [calls] = onToolCalls.mock.calls[0]!;
+      expect(calls).toHaveLength(1);
+      expect(calls[0].function.name).toBe('search');
+      expect(JSON.parse(calls[0].function.arguments)).toEqual({ query: 'hello' });
+    });
+
+    it('streams non-tool text through onChunk', async () => {
+      const payload = JSON.stringify({ name: 'fn', arguments: {} });
+      tokensToEmit = ['before ', `<tool_call>${payload}</tool_call>`, ' after'];
+
+      const onChunk = vi.fn();
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'fn', description: 'Fn', parameters: {} } },
+      ];
+
+      await workerObj.generateText([], onChunk, vi.fn(), undefined, tools);
+
+      const emitted = (onChunk.mock.calls as [string][]).map(([t]) => t).join('');
+      expect(emitted).toContain('before ');
+      expect(emitted).toContain(' after');
+      expect(emitted).not.toContain('<tool_call>');
+    });
+
+    it('streams all output via onChunk when no tools are provided', async () => {
+      tokensToEmit = ['hello ', 'world'];
+
+      const onChunk = vi.fn();
+      await workerObj.generateText([], onChunk, vi.fn(), undefined, undefined);
+
+      expect(onChunk).toHaveBeenCalledWith('hello ');
+      expect(onChunk).toHaveBeenCalledWith('world');
+    });
+
+    it('passes tools to apply_chat_template for standard models', async () => {
+      tokensToEmit = [];
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'fn', description: 'Fn', parameters: {} } },
+      ];
+
+      await workerObj.generateText([], vi.fn(), vi.fn(), undefined, tools);
+
+      const [, templateOptions] = mockApplyTemplate.mock.calls[0]!;
+      expect(templateOptions).toMatchObject({ tools });
+    });
+  });
+
+  describe('generateText — GPT-OSS model tool calls', () => {
+    let workerObj: any;
+    let capturedCallback: ((output: string) => void) | undefined;
+    let tokensToEmit: string[];
+    let mockApplyTemplate: ReturnType<typeof vi.fn>;
+    let mockCallableTokenizer: ReturnType<typeof vi.fn>;
+
+    beforeEach(async () => {
+      capturedCallback = undefined;
+      tokensToEmit = [];
+
+      const tfMock = await import('@huggingface/transformers');
+
+      (tfMock.TextStreamer as any).mockImplementation(
+        function(this: unknown, _tok: unknown, opts: { callback_function: (output: string) => void }) {
+          capturedCallback = opts.callback_function;
+        }
+      );
+
+      mockApplyTemplate = vi.fn().mockReturnValue({ input_ids: [1, 2, 3] });
+      // GPT-OSS tokenizer must be callable for buildGptOssToolResultTokens
+      mockCallableTokenizer = Object.assign(
+        vi.fn().mockReturnValue({ input_ids: [1] }),
+        { apply_chat_template: mockApplyTemplate }
+      );
+
+      const mockModel = {
+        generate: vi.fn().mockImplementation(async () => {
+          for (const token of tokensToEmit) capturedCallback?.(token);
+          return { past_key_values: {} };
+        }),
+        dispose: vi.fn(),
+        device: 'webgpu',
+      };
+
+      (tfMock.AutoModelForCausalLM.from_pretrained as any).mockResolvedValue(mockModel);
+      (tfMock.AutoTokenizer.from_pretrained as any).mockResolvedValue(mockCallableTokenizer);
+
+      await import('./transformers-js.worker');
+      const comlink = await import('comlink');
+      workerObj = (comlink.expose as any).mock.calls[0][0];
+      await workerObj.loadModel('my-gpt-oss-model', vi.fn());
+    });
+
+    const GPT_OSS_TOOL_CALL_TOKENS = [
+      '<|start|>',
+      'assistant to=functions.my_tool',
+      '<|channel|>',
+      'commentary',
+      '<|message|>',
+      '{"query":"test"}',
+      '<|call|>',
+    ];
+
+    const SIMPLE_TOOL: WorkerToolDefinition = {
+      type: 'function',
+      function: {
+        name: 'my_tool',
+        description: 'Search the web',
+        parameters: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+        },
+      },
+    };
+
+    it('emits tool calls on Harmony <|call|> token', async () => {
+      tokensToEmit = GPT_OSS_TOOL_CALL_TOKENS;
+
+      const onToolCalls = vi.fn();
+      await workerObj.generateText([], vi.fn(), onToolCalls, undefined, [SIMPLE_TOOL]);
+
+      expect(onToolCalls).toHaveBeenCalledOnce();
+      const [calls] = onToolCalls.mock.calls[0]!;
+      expect(calls).toHaveLength(1);
+      expect(calls[0].function.name).toBe('my_tool');
+      expect(JSON.parse(calls[0].function.arguments)).toEqual({ query: 'test' });
+    });
+
+    it('calls stoppingCriteria.interrupt() on <|call|>', async () => {
+      tokensToEmit = GPT_OSS_TOOL_CALL_TOKENS;
+
+      await workerObj.generateText([], vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL]);
+
+      expect(mockInterruptFn).toHaveBeenCalled();
+    });
+
+    it('does NOT call stoppingCriteria.interrupt() when no tool call is made', async () => {
+      tokensToEmit = ['<|start|>', 'assistant', '<|channel|>', 'final', '<|message|>', 'Hello!', '<|end|>'];
+
+      await workerObj.generateText([], vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL]);
+
+      expect(mockInterruptFn).not.toHaveBeenCalled();
+    });
+
+    it('prepends a developer message with TypeScript namespace tool definitions', async () => {
+      tokensToEmit = [];
+
+      await workerObj.generateText(
+        [{ role: 'user', content: 'hi' }],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        [SIMPLE_TOOL]
+      );
+
+      const [formattedMessages] = mockApplyTemplate.mock.calls[0]!;
+      expect(formattedMessages[0]).toMatchObject({
+        role: 'developer',
+        content: expect.stringContaining('namespace functions {'),
+      });
+      expect(formattedMessages[0].content).toContain('type my_tool');
+      expect(formattedMessages[0].content).toContain('query: string');
+    });
+
+    it('skips apply_chat_template and calls tokenizer directly for GPT-OSS continuation', async () => {
+      tokensToEmit = [];
+
+      const messages = [
+        { role: 'user', content: 'run it' },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: 'call_1', type: 'function' as const, function: { name: 'my_tool', arguments: '{}' } }],
+        },
+        { role: 'tool', content: 'done', tool_call_id: 'call_1' },
+      ];
+
+      await workerObj.generateText(messages, vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL]);
+
+      expect(mockApplyTemplate).not.toHaveBeenCalled();
+      // The callable tokenizer should have been invoked with the Harmony-formatted text
+      expect(mockCallableTokenizer).toHaveBeenCalledWith(
+        expect.stringContaining('<|start|>my_tool to=assistant'),
+        expect.objectContaining({ add_special_tokens: false })
+      );
     });
   });
 });

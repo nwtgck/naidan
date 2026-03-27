@@ -10,8 +10,9 @@ import {
   type PreTrainedTokenizer,
   type Tensor
 } from '@huggingface/transformers';
-import type { ChatMessage, LmParameters } from '@/models/types';
-import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker } from './transformers-js.types';
+import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
+import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker, WorkerToolDefinition } from './transformers-js.types';
+import { ToolCallStreamParser } from './transformers-js-tool-call-parser';
 import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '@/utils/gpt-oss-harmony';
 import { urlToPath, writeToOpfs } from './transformers-js.utils';
 
@@ -223,6 +224,97 @@ let pastKeyValues: unknown = null;
 let activeModelId: string | null = null;
 const stoppingCriteria = new InterruptableStoppingCriteria();
 
+// ---------------------------------------------------------------------------
+// GPT-OSS tool call helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Converts a JSON Schema type descriptor to a TypeScript inline type string.
+ * Used to format GPT-OSS tool definitions in the TypeScript namespace syntax.
+ */
+function jsonSchemaToTsType({ schema }: { schema: Record<string, unknown> }): string {
+  const type = schema['type'];
+  if (type === 'object') {
+    const properties = schema['properties'] as Record<string, Record<string, unknown>> | undefined;
+    const required = schema['required'] as string[] | undefined;
+    if (!properties || Object.keys(properties).length === 0) return '{}';
+    const fields = Object.entries(properties).map(([key, prop]) => {
+      const isRequired = required?.includes(key) ?? false;
+      return `  ${key}${isRequired ? '' : '?'}: ${jsonSchemaToTsType({ schema: prop })},`;
+    });
+    return `{\n${fields.join('\n')}\n}`;
+  }
+  if (type === 'string') {
+    const enumValues = schema['enum'] as string[] | undefined;
+    if (enumValues) return enumValues.map(v => `"${v}"`).join(' | ');
+    return 'string';
+  }
+  if (type === 'number' || type === 'integer') return 'number';
+  if (type === 'boolean') return 'boolean';
+  if (type === 'array') {
+    const items = schema['items'] as Record<string, unknown> | undefined;
+    if (items) return `${jsonSchemaToTsType({ schema: items })}[]`;
+    return 'unknown[]';
+  }
+  return 'unknown';
+}
+
+/**
+ * Formats WorkerToolDefinition[] as a TypeScript namespace block for GPT-OSS.
+ * This is injected as a developer message before the conversation.
+ *
+ * Example output:
+ *   namespace functions {
+ *   // Get current weather
+ *   type get_weather = (_: { location: string, unit?: string, }) => any;
+ *   }
+ */
+function formatGptOssToolDefinitions({ tools }: { tools: WorkerToolDefinition[] }): string {
+  const fns = tools.map(t => {
+    const paramType = jsonSchemaToTsType({ schema: t.function.parameters });
+    return `// ${t.function.description}\ntype ${t.function.name} = (_: ${paramType}) => any;`;
+  }).join('\n\n');
+  return `namespace functions {\n${fns}\n}`;
+}
+
+/**
+ * Encodes GPT-OSS tool result messages as Harmony token input for the continuation generation.
+ * Each tool result is formatted as:
+ *   <|start|>{fnName} to=assistant<|channel|>commentary<|message|>{content}<|end|>
+ *
+ * Returns the tokenizer output (input_ids + attention_mask) ready for model.generate().
+ */
+function buildGptOssToolResultTokens({
+  messages,
+  tokenizer: tok,
+}: {
+  messages: ChatMessage[];
+  tokenizer: PreTrainedTokenizer;
+}): Record<string, unknown> {
+  const idToName = new Map<string, string>();
+  for (const m of messages) {
+    if (m.tool_calls) {
+      for (const tc of m.tool_calls) {
+        idToName.set(tc.id, tc.function.name);
+      }
+    }
+  }
+
+  const harmonyText = messages
+    .filter(m => m.tool_call_id)
+    .map(m => {
+      const fnName = idToName.get(m.tool_call_id!) ?? 'tool';
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      return `<|start|>${fnName} to=assistant<|channel|>commentary<|message|>${content}<|end|>`;
+    })
+    .join('');
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (tok as any)(harmonyText, { add_special_tokens: false });
+}
+
+// ---------------------------------------------------------------------------
+
 const transformersJsWorker: ITransformersJsWorker = {
   async downloadModel(modelId: string, progressCallback: (x: ProgressInfo) => void) {
     console.log('[transformersJsWorker] Starting downloadModel:', modelId);
@@ -418,48 +510,88 @@ const transformersJsWorker: ITransformersJsWorker = {
   async generateText(
     messages: ChatMessage[],
     onChunk: (chunk: string) => void,
-    params?: LmParameters
+    onToolCalls: (toolCalls: ToolCall[]) => void,
+    params?: LmParameters,
+    tools?: WorkerToolDefinition[]
   ): Promise<void> {
     if (!model || !tokenizer) throw new Error('Model not loaded');
 
     stoppingCriteria.reset();
 
-    const formattedMessages = messages.map(m => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : ''
-    }));
-
-    const inputs = tokenizer.apply_chat_template(formattedMessages, {
-      add_generation_prompt: true,
-      return_dict: true,
-    }) as Record<string, unknown>;
-
     const isGptOss = activeModelId?.toLowerCase().includes('gpt-oss') ?? false;
-    console.log(`[transformersJsWorker] generateText: activeModelId='${activeModelId}', isGptOss=${isGptOss}`);
+    const hasTools = tools && tools.length > 0;
+    const isGptOssWithTools = isGptOss && !!hasTools;
+    // Continuation: tool results are present → encode only the new Harmony tokens,
+    // reusing pastKeyValues from the preceding tool-call generation.
+    const isGptOssToolContinuation = isGptOssWithTools && messages.some(m => m.tool_call_id);
 
-    let parser: GptOssHarmonyStreamParser | null = null;
-    let currentChannel = '';
+    console.log(`[transformersJsWorker] generateText: activeModelId='${activeModelId}', isGptOss=${isGptOss}, hasTools=${hasTools}, isGptOssToolContinuation=${isGptOssToolContinuation}`);
 
-    if (isGptOss) {
-      parser = new GptOssHarmonyStreamParser();
+    // Build model inputs -------------------------------------------------------
+    let inputs: Record<string, unknown>;
+
+    if (isGptOssToolContinuation) {
+      // Skip apply_chat_template — encode only the new tool result tokens in Harmony format.
+      // The existing pastKeyValues KV cache provides all prior context.
+      inputs = buildGptOssToolResultTokens({ messages, tokenizer });
+    } else {
+      const formattedMessages = messages.map(m => {
+        const msg: Record<string, unknown> = {
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : '',
+        };
+        if (m.tool_calls) msg['tool_calls'] = m.tool_calls;
+        if (m.tool_call_id) msg['tool_call_id'] = m.tool_call_id;
+        return msg;
+      });
+
+      if (isGptOssWithTools) {
+        // Prepend tool definitions as a developer message in TypeScript namespace format
+        formattedMessages.unshift({
+          role: 'developer',
+          content: formatGptOssToolDefinitions({ tools }),
+        });
+      }
+
+      const templateOptions: Record<string, unknown> = {
+        add_generation_prompt: true,
+        return_dict: true,
+      };
+      if (!isGptOss && hasTools) {
+        templateOptions['tools'] = tools;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      inputs = tokenizer.apply_chat_template(formattedMessages as any, templateOptions) as Record<string, unknown>;
     }
 
+    // Parser setup -------------------------------------------------------------
+    let gptOssParser: GptOssHarmonyStreamParser | null = null;
+    let currentChannel = '';
+    const gptOssPendingToolCalls: ToolCall[] = [];
+
+    if (isGptOss) {
+      gptOssParser = new GptOssHarmonyStreamParser();
+    }
+
+    const toolCallParser = (!isGptOss && hasTools)
+      ? new ToolCallStreamParser({ onText: onChunk })
+      : null;
+
+    // Streamer -----------------------------------------------------------------
     const streamer = new TextStreamer(tokenizer, {
       skip_prompt: true,
       skip_special_tokens: !isGptOss, // Only skip if NOT using parser, so we catch <|channel|> etc.
       callback_function: (output: string) => {
-        if (isGptOss && parser) {
-          // Simple heuristic: if we see raw tokens that look like Harmony protocol, try parsing
-          // Otherwise pass through. But since we need stateful parsing, we always push to parser.
-          const delta = parser.push(output);
-
+        console.debug('[transformersJsWorker] raw token:', JSON.stringify(output));
+        if (isGptOss && gptOssParser) {
+          const delta = gptOssParser.push(output);
           if (!delta) return;
 
           switch (delta.type) {
           case 'content': {
-            const msg = parser.messages[delta.messageIndex];
+            const msg = gptOssParser.messages[delta.messageIndex];
             const channel = msg?.channel || '';
-            // Handle channel switching
             if (channel !== currentChannel) {
               if (currentChannel === 'analysis') {
                 onChunk('</think>');
@@ -469,30 +601,71 @@ const transformersJsWorker: ITransformersJsWorker = {
               }
               currentChannel = channel;
             }
-            onChunk(delta.textDelta);
-            break;
-          }
-          case 'done':
-            if (currentChannel === 'analysis') {
-              onChunk('</think>');
-              currentChannel = '';
+            // commentary channel is used for tool call args — suppress from output
+            if (channel !== 'commentary' || !isGptOssWithTools) {
+              onChunk(delta.textDelta);
             }
             break;
+          }
+          case 'done': {
+            if (currentChannel === 'analysis') {
+              onChunk('</think>');
+            }
+            currentChannel = '';
 
+            switch (delta.endReason) {
+            case 'call': {
+              // <|call|> is a decode-time stop signal — interrupt generation immediately
+              // to prevent the model from continuing past this point.
+              stoppingCriteria.interrupt();
+
+              if (isGptOssWithTools) {
+                const msg = gptOssParser.messages[delta.messageIndex];
+                if (msg?.recipient?.startsWith('functions.')) {
+                  const fnName = msg.recipient.slice('functions.'.length);
+                  try {
+                    const parsedArgs = JSON.parse(msg.content) as Record<string, unknown>;
+                    gptOssPendingToolCalls.push({
+                      id: `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+                      type: 'function',
+                      function: {
+                        name: fnName,
+                        arguments: JSON.stringify(parsedArgs),
+                      },
+                    });
+                  } catch (e) {
+                    console.warn('[transformersJsWorker] Failed to parse GPT-OSS tool call JSON:', e);
+                  }
+                }
+              }
+              break;
+            }
+            case 'end':
+            case 'return':
+              break;
+            default: {
+              const _ex: never = delta.endReason;
+              throw new Error(`Unhandled endReason: ${_ex}`);
+            }
+            }
+            break;
+          }
           case 'new_message':
             break;
           default: {
             const _ex: never = delta;
-            throw new Error(`Unhandled path part: ${_ex}`);
+            throw new Error(`Unhandled Harmony delta type: ${_ex}`);
           }
           }
+        } else if (toolCallParser) {
+          toolCallParser.feed({ output });
         } else {
-          // Standard passthrough
           onChunk(output);
         }
       },
     });
 
+    // Generation ---------------------------------------------------------------
     const maxNewTokens = params?.maxCompletionTokens || 1024;
     const temperature = params?.temperature ?? 0.6;
     const topP = params?.topP ?? 0.9;
@@ -513,9 +686,19 @@ const transformersJsWorker: ITransformersJsWorker = {
         return_dict_in_generate: true,
       });
 
-      // Ensure we close any open tags at the end
+      // Close any open analysis tag
       if (currentChannel === 'analysis') {
         onChunk('</think>');
+      }
+
+      // Deliver tool calls
+      if (toolCallParser) {
+        toolCallParser.flush();
+        const parsedToolCalls = toolCallParser.drainToolCalls();
+        if (parsedToolCalls.length > 0) onToolCalls(parsedToolCalls);
+      }
+      if (gptOssPendingToolCalls.length > 0) {
+        onToolCalls(gptOssPendingToolCalls);
       }
 
       pastKeyValues = (result as GenerationResult).past_key_values;

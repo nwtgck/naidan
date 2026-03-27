@@ -242,7 +242,7 @@ describe('transformersJsService', () => {
     await transformersJsService.loadModel('some-model');
 
     const controller = new AbortController();
-    const genPromise = transformersJsService.generateText([], () => {}, EMPTY_LM_PARAMETERS, controller.signal);
+    const genPromise = transformersJsService.generateText([], () => {}, () => {}, EMPTY_LM_PARAMETERS, undefined, controller.signal);
 
     controller.abort();
     await genPromise;
