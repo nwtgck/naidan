@@ -5,7 +5,7 @@ import { parseAwkProgram } from '@/services/wesh/commands/awk/parser';
 import { createAwkRuntime, executeAwkBegin, executeAwkEnd, executeAwkRecord } from '@/services/wesh/commands/awk/runtime';
 import type { AwkValue } from '@/services/wesh/commands/awk/types';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { handleToStream, openFileAsStream, readFile } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, openFileReadStream, readAllFileBytes } from '@/services/wesh/utils/fs';
 
 const awkArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -78,10 +78,10 @@ async function openAwkInputStream({
   input: string;
 }): Promise<ReadableStream<Uint8Array>> {
   if (input === '-') {
-    return handleToStream({ handle: context.stdin });
+    return openHandleReadStream({ handle: context.stdin });
   }
 
-  return await openFileAsStream({
+  return await openFileReadStream({
     files: context.files,
     path: resolvePath({ cwd: context.cwd, path: input }),
   });
@@ -224,7 +224,7 @@ export const awkCommandDefinition: WeshCommandDefinition = {
       const fragments: string[] = [];
       for (const programFile of programFiles) {
         try {
-          const bytes = await readFile({
+          const bytes = await readAllFileBytes({
             files: context.files,
             path: resolvePath({ cwd: context.cwd, path: programFile }),
           });

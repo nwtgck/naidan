@@ -1,6 +1,6 @@
 import type { WeshFileHandle } from '@/services/wesh/types';
 
-async function writeTextToHandle({
+async function writeAllTextToHandle({
   handle,
   text,
 }: {
@@ -24,7 +24,7 @@ async function writeTextToHandle({
   }
 }
 
-export function createTextHelpers({
+export function createTextIoHelpers({
   stdin,
   stdout,
   stderr,
@@ -67,14 +67,14 @@ export function createTextHelpers({
   return {
     input: inputIterable,
     async print({ text }: { text: string }): Promise<void> {
-      await writeTextToHandle({
+      await writeAllTextToHandle({
         handle: stdout,
         text,
       });
     },
 
     async error({ text }: { text: string }): Promise<void> {
-      await writeTextToHandle({
+      await writeAllTextToHandle({
         handle: stderr,
         text,
       });

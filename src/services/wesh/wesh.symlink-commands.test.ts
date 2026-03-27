@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from './index';
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from './utils/test-stream';
 
 describe('wesh symlink commands', () => {
@@ -34,12 +34,12 @@ describe('wesh symlink commands', () => {
   }: {
     script: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: '' }),
+      stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });

@@ -1,7 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   if (path.startsWith('/')) {
@@ -61,9 +61,9 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
       try {
         let stream: ReadableStream<Uint8Array>;
         if (f === '-') {
-          stream = handleToStream({ handle: context.stdin });
+          stream = openHandleReadStream({ handle: context.stdin });
         } else {
-          stream = await openFileAsStream({
+          stream = await openFileReadStream({
             files: context.files,
             path: resolvePath({ cwd: context.cwd, path: f }),
           });

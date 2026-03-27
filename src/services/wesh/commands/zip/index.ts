@@ -9,7 +9,7 @@ import type {
   WeshFileType,
   WeshOpenFlags,
 } from '@/services/wesh/types';
-import { handleToStream, readFile, streamToHandle } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, readAllFileBytes, writeAllStreamToHandle } from '@/services/wesh/utils/fs';
 
 const zipArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -337,7 +337,7 @@ async function addRegularEntryToZip({
 
   if (entry.sourcePath === '-') {
     const stdinBytes = await readAllBytesFromStream({
-      stream: handleToStream({ handle: context.stdin }),
+      stream: openHandleReadStream({ handle: context.stdin }),
     });
     zip.file(entry.archivePath, stdinBytes, {
       compression,
@@ -357,7 +357,7 @@ async function addRegularEntryToZip({
     });
     return;
   case 'fallback-required': {
-    const bytes = await readFile({
+    const bytes = await readAllFileBytes({
       files: context.files,
       path: entry.sourcePath,
     });
@@ -394,7 +394,7 @@ async function writeZipToDestination({
     path: archivePath,
     flags,
   });
-  await streamToHandle({
+  await writeAllStreamToHandle({
     stream: generateZipReadableStream({ zip }),
     handle,
   });

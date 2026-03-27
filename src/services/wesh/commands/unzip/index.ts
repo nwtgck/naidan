@@ -7,7 +7,7 @@ import type {
   WeshCommandDefinition,
   WeshCommandResult,
 } from '@/services/wesh/types';
-import { handleToStream, readFile, streamToFilePath } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, readAllFileBytes, writeAllStreamToFile } from '@/services/wesh/utils/fs';
 
 const unzipArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -164,7 +164,7 @@ async function loadZipArchive({
 }): Promise<JSZip> {
   if (archivePath === '-') {
     const bytes = await readAllBytesFromStream({
-      stream: handleToStream({ handle: context.stdin }),
+      stream: openHandleReadStream({ handle: context.stdin }),
     });
     return JSZip.loadAsync(bytes);
   }
@@ -174,7 +174,7 @@ async function loadZipArchive({
   case 'blob':
     return JSZip.loadAsync(blobResult.blob);
   case 'fallback-required': {
-    const bytes = await readFile({
+    const bytes = await readAllFileBytes({
       files: context.files,
       path: archivePath,
     });
@@ -259,7 +259,7 @@ async function writeEntryToFile({
     context,
     path: parentPath,
   });
-  await streamToFilePath({
+  await writeAllStreamToFile({
     files: context.files,
     path: destinationPath,
     stream: zipObjectToReadableStream({ entry }),

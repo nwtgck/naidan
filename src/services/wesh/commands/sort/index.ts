@@ -1,7 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { readFile, streamToFilePath } from '@/services/wesh/utils/fs';
+import { readAllFileBytes, writeAllStreamToFile } from '@/services/wesh/utils/fs';
 
 type SortMode = 'lexical' | 'numeric' | 'general-numeric' | 'human-numeric' | 'month' | 'version';
 type SortOrder = 'forward' | 'reverse';
@@ -981,7 +981,7 @@ async function readInputItems({
 
   try {
     const fullPath = resolveInputPath({ cwd: context.cwd, path: file });
-    const bytes = await readFile({ files: context.files, path: fullPath });
+    const bytes = await readAllFileBytes({ files: context.files, path: fullPath });
     const text = new TextDecoder().decode(bytes);
     return {
       ok: true,
@@ -1187,7 +1187,7 @@ export const sortCommandDefinition: WeshCommandDefinition = {
       break;
     default: {
       const fullPath = resolveInputPath({ cwd: context.cwd, path: options.outputPath });
-      await streamToFilePath({
+      await writeAllStreamToFile({
         files: context.files,
         path: fullPath,
         mode: 'truncate',

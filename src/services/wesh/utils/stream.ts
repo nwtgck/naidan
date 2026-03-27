@@ -9,7 +9,7 @@ import type {
  * Creates a Wesh file handle that reads from a ReadableStream.
  * Typically used to provide data to Wesh's 'stdin' or any input source.
  */
-export function createWeshReadFileHandle({
+export function createReadHandleFromStream({
   source,
 }: {
   source: ReadableStream<Uint8Array>;
@@ -99,7 +99,7 @@ export function createWeshReadFileHandle({
  * Creates a Wesh file handle that writes to a WritableStream.
  * Typically used to capture output from Wesh's 'stdout', 'stderr', or any output sink.
  */
-export function createWeshWriteFileHandle({
+export function createWriteHandleFromStream({
   target,
 }: {
   target: WritableStream<Uint8Array>;

@@ -17,7 +17,7 @@ import { weshWaitStatusToExitCode } from './types';
 import { WeshVFS } from './vfs';
 import { WeshKernel } from './kernel';
 import { parseCommandLine } from './parser';
-import { createTextHelpers } from './utils/io';
+import { createTextIoHelpers } from './utils/io';
 import { normalizePath, resolvePath } from './path';
 
 import { builtinCommands } from './commands';
@@ -3021,7 +3021,7 @@ usage: alias [name[=value] ...]
         return Array.from(environment.traps.entries())
           .sort(([leftCondition], [rightCondition]) => leftCondition.localeCompare(rightCondition));
       },
-      text: () => createTextHelpers({ stdin: boundStdin, stdout: boundStdout, stderr: boundStderr }),
+      text: () => createTextIoHelpers({ stdin: boundStdin, stdout: boundStdout, stderr: boundStderr }),
     };
 
     try {

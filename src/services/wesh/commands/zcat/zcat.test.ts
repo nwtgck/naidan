@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/services/wesh/index';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromBytes,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromBytes,
+  createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 
 async function gzipBytes({
@@ -66,12 +66,12 @@ describe('wesh zcat', () => {
     script: string;
     stdinBytes: Uint8Array | undefined;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromBytes({
+      stdin: createTestReadHandleFromBytes({
         bytes: stdinBytes ?? new Uint8Array(0),
       }),
       stdout: stdout.handle,

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 import { trCommandDefinition } from './index';
 
@@ -29,12 +29,12 @@ describe('wesh tr', () => {
     script: string;
     stdinText: string | undefined;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: stdinText ?? '' }),
+      stdin: createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });

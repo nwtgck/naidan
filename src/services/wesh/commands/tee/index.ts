@@ -7,7 +7,7 @@ import type {
 } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import { openHandleReadStream } from '@/services/wesh/utils/fs';
 import { resolvePath } from '@/services/wesh/path';
 
 const teeArgvSpec: StandardArgvParserSpec = {
@@ -191,7 +191,7 @@ export const teeCommandDefinition: WeshCommandDefinition = {
       }
     }
 
-    const stdinStream = handleToStream({ handle: context.stdin });
+    const stdinStream = openHandleReadStream({ handle: context.stdin });
     const reader = stdinStream.getReader();
     try {
       while (true) {

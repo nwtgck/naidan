@@ -3,7 +3,7 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { ArgvOptionOccurrence } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { openFileAsStream, readFile } from '@/services/wesh/utils/fs';
+import { openFileReadStream, readAllFileBytes } from '@/services/wesh/utils/fs';
 
 interface GrepFileReport {
   matched: boolean;
@@ -205,7 +205,7 @@ async function readPatternFile({
   path: string;
 }): Promise<string[]> {
   const fullPath = resolvePath({ cwd: context.cwd, path });
-  const bytes = await readFile({ files: context.files, path: fullPath });
+  const bytes = await readAllFileBytes({ files: context.files, path: fullPath });
   const content = new TextDecoder().decode(bytes);
   return content.split(/\r?\n/).filter((line, index, lines) => line.length > 0 || index < lines.length - 1);
 }
@@ -231,7 +231,7 @@ async function openGrepInputStream({
     });
   }
 
-  return await openFileAsStream({
+  return await openFileReadStream({
     files: context.files,
     path: resolvePath({ cwd: context.cwd, path: file }),
   });

@@ -1,5 +1,5 @@
 import type { WeshCommandContext, WeshFileHandle } from '@/services/wesh/types';
-import { handleToStream, readFileAsText } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, readAllFileText } from '@/services/wesh/utils/fs';
 
 async function readStreamText({
   stream,
@@ -30,7 +30,7 @@ export async function readTextFromHandle({
   handle: WeshFileHandle;
 }): Promise<string> {
   return await readStreamText({
-    stream: handleToStream({ handle }),
+    stream: openHandleReadStream({ handle }),
   });
 }
 
@@ -41,7 +41,7 @@ export async function readTextFromFile({
   files: WeshCommandContext['files'];
   path: string;
 }): Promise<string> {
-  return readFileAsText({ files, path });
+  return readAllFileText({ files, path });
 }
 
 export function splitTextLines({

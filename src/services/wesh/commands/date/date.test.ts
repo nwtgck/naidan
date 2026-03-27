@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/services/wesh/index';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 
 describe('wesh date', () => {
@@ -27,12 +27,12 @@ describe('wesh date', () => {
   }: {
     script: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: '' }),
+      stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });

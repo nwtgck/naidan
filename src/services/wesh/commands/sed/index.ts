@@ -2,7 +2,7 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
-import { readFile, streamToFilePath, writeFile } from '@/services/wesh/utils/fs';
+import { readAllFileBytes, writeAllStreamToFile, writeAllFileBytes } from '@/services/wesh/utils/fs';
 
 type SedAddress =
   | { kind: 'line'; lineNumber: number }
@@ -903,7 +903,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
     for (const scriptFile of scriptFiles) {
       try {
         const fullPath = scriptFile.startsWith('/') ? scriptFile : `${context.cwd}/${scriptFile}`;
-        const bytes = await readFile({ files: context.files, path: fullPath });
+        const bytes = await readAllFileBytes({ files: context.files, path: fullPath });
         scripts.push(new TextDecoder().decode(bytes));
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -1021,17 +1021,17 @@ export const sedCommandDefinition: WeshCommandDefinition = {
         const fullPath = file.startsWith('/') ? file : `${context.cwd}/${file}`;
 
         if (inPlace) {
-          const inputBytes = await readFile({ files: context.files, path: fullPath });
+          const inputBytes = await readAllFileBytes({ files: context.files, path: fullPath });
           const input = new TextDecoder().decode(inputBytes);
           const output = processText({ input });
           if (inPlaceSuffix.length > 0) {
-            await writeFile({
+            await writeAllFileBytes({
               files: context.files,
               path: `${fullPath}${inPlaceSuffix}`,
               data: inputBytes,
             });
           }
-          await streamToFilePath({
+          await writeAllStreamToFile({
             files: context.files,
             path: fullPath,
             mode: 'truncate',

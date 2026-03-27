@@ -1,7 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
-import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
 
 type WcField = 'lines' | 'words' | 'bytes' | 'chars' | 'maxLineLength';
 
@@ -311,7 +311,7 @@ export const wcCommandDefinition: WeshCommandDefinition = {
     for (const inputName of inputNames) {
       if (inputName === undefined || inputName === '-') {
         const counts = await readCountsFromStream({
-          stream: handleToStream({ handle: context.stdin }),
+          stream: openHandleReadStream({ handle: context.stdin }),
           fields: selectedFields,
         });
         entries.push({
@@ -324,7 +324,7 @@ export const wcCommandDefinition: WeshCommandDefinition = {
       try {
         const fullPath = resolveInputPath({ cwd: context.cwd, path: inputName });
         const counts = await readCountsFromStream({
-          stream: await openFileAsStream({
+          stream: await openFileReadStream({
             files: context.files,
             path: fullPath,
           }),

@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from './index';
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from './utils/test-stream';
-import { readFile } from './utils/fs';
+import { readAllFileBytes } from './utils/fs';
 
 describe('wesh vfs mounts', () => {
   let wesh: Wesh;
@@ -22,12 +22,12 @@ describe('wesh vfs mounts', () => {
   }: {
     script: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: '' }),
+      stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -119,7 +119,7 @@ describe('wesh vfs mounts', () => {
     await append.write({ buffer: new TextEncoder().encode('second\n') });
     await append.close();
 
-    const data = await readFile({ files: wesh.kernel, path: '/append.txt' });
+    const data = await readAllFileBytes({ files: wesh.kernel, path: '/append.txt' });
     expect(new TextDecoder().decode(data)).toBe('first\nsecond\n');
   });
 

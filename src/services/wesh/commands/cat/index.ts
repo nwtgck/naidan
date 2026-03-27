@@ -2,7 +2,7 @@ import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, Wesh
 import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
 
 function renderVisibleAscii(char: string): string {
   if (char === '\t') return char;
@@ -220,17 +220,17 @@ export const catCommandDefinition: WeshCommandDefinition = {
     };
 
     if (files.length === 0) {
-      await processInputStream({ stream: handleToStream({ handle: context.stdin }) });
+      await processInputStream({ stream: openHandleReadStream({ handle: context.stdin }) });
     } else {
       for (const f of files) {
         if (f === '-') {
-          await processInputStream({ stream: handleToStream({ handle: context.stdin }) });
+          await processInputStream({ stream: openHandleReadStream({ handle: context.stdin }) });
           continue;
         }
 
         try {
           await processInputStream({
-            stream: await openFileAsStream({
+            stream: await openFileReadStream({
               files: context.files,
               path: resolvePath({ cwd: context.cwd, path: f }),
             }),

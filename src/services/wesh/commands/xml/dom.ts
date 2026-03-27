@@ -1,5 +1,5 @@
 import type { WeshCommandContext } from '@/services/wesh/types';
-import { handleToStream, readFile } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, readAllFileBytes } from '@/services/wesh/utils/fs';
 
 function resolvePath({
   cwd,
@@ -53,7 +53,7 @@ export async function readXmlInputs({
     if (input === '-') {
       if (stdinText === undefined) {
         stdinText = await readTextStream({
-          stream: handleToStream({ handle: context.stdin }),
+          stream: openHandleReadStream({ handle: context.stdin }),
         });
       }
       results.push({
@@ -67,7 +67,7 @@ export async function readXmlInputs({
       cwd: context.cwd,
       path: input,
     });
-    const bytes = await readFile({
+    const bytes = await readAllFileBytes({
       files: context.files,
       path,
     });

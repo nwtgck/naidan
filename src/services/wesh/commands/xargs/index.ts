@@ -9,7 +9,7 @@ import {
   parseXargsStandardInput,
 } from '@/services/wesh/commands/xargs/parse-input';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
-import { readFile } from '@/services/wesh/utils/fs';
+import { readAllFileBytes } from '@/services/wesh/utils/fs';
 
 const DEFAULT_MAX_CHARS = 131072;
 const XARGS_VERSION = 'xargs (wesh) 0.25.1-dev';
@@ -743,7 +743,7 @@ Maximum parallelism (--max-procs must be no greater): unlimited
       }
 
       const path = argFile.startsWith('/') ? argFile : `${context.cwd}/${argFile}`;
-      return readFile({
+      return readAllFileBytes({
         files: context.files,
         path,
       }).then((bytes) => new TextDecoder().decode(bytes));

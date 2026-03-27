@@ -1,7 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, streamToFilePath } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, writeAllStreamToFile } from '@/services/wesh/utils/fs';
 
 type CpSymlinkMode = 'physical' | 'logical' | 'command-line';
 
@@ -178,7 +178,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
           path: srcPath,
           flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
         });
-        stream = handleToStream({ handle });
+        stream = openHandleReadStream({ handle });
         break;
       }
       default: {
@@ -187,7 +187,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       }
       }
 
-      await streamToFilePath({ files: context.files, path: destPath, stream, mode: 'truncate' });
+      await writeAllStreamToFile({ files: context.files, path: destPath, stream, mode: 'truncate' });
     };
 
     const removeExistingTargetIfNeeded = async ({

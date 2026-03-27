@@ -8,7 +8,7 @@ import type {
   WeshEfficientFileWriter,
   WeshFileHandle,
 } from '@/services/wesh/types';
-import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
 
 type UniqMode = 'all' | 'duplicates' | 'unique';
 type UniqDelimiter = '\n' | '\0';
@@ -184,10 +184,10 @@ async function openUniqInputStream({
   inputPath: string | undefined;
 }): Promise<ReadableStream<Uint8Array>> {
   if (inputPath === undefined || inputPath === '-') {
-    return handleToStream({ handle: context.stdin });
+    return openHandleReadStream({ handle: context.stdin });
   }
 
-  return await openFileAsStream({
+  return await openFileReadStream({
     files: context.files,
     path: resolveInputPath({ cwd: context.cwd, path: inputPath }),
   });

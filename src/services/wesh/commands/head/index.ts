@@ -1,7 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   if (path.startsWith('/')) {
@@ -197,7 +197,7 @@ export const headCommandDefinition: WeshCommandDefinition = {
 
     if (positional.length === 0) {
       await processStream({
-        stream: handleToStream({ handle: context.stdin }),
+        stream: openHandleReadStream({ handle: context.stdin }),
       });
     } else {
       for (const [index, f] of positional.entries()) {
@@ -211,8 +211,8 @@ export const headCommandDefinition: WeshCommandDefinition = {
           }
 
           const stream = f === '-'
-            ? handleToStream({ handle: context.stdin })
-            : await openFileAsStream({
+            ? openHandleReadStream({ handle: context.stdin })
+            : await openFileReadStream({
               files: context.files,
               path: resolvePath({ cwd: context.cwd, path: f }),
             });

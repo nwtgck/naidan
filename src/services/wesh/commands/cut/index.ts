@@ -2,7 +2,7 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
-import { openFileAsStream } from '@/services/wesh/utils/fs';
+import { openFileReadStream } from '@/services/wesh/utils/fs';
 
 type CutMode = 'bytes' | 'characters' | 'fields';
 
@@ -449,7 +449,7 @@ async function openCutInputStream({
     cwd: context.cwd,
     path: file,
   });
-  return await openFileAsStream({
+  return await openFileReadStream({
     files: context.files,
     path,
   });

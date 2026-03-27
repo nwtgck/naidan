@@ -1,8 +1,8 @@
 import type { EmptyArgs } from '@/models/types'
 import { Wesh } from '@/services/wesh'
 import { ReadonlyDirectoryHandle } from '@/services/wesh/readonly-directory-handle'
-import { createWeshReadFileHandleFromText } from '@/services/wesh/utils/test-stream'
-import { createWeshWriteFileHandle } from '@/services/wesh/utils/stream'
+import { createTestReadHandleFromText } from '@/services/wesh/utils/test-stream'
+import { createWriteHandleFromStream } from '@/services/wesh/utils/stream'
 import {
   weshWorkerExecuteRequestSchema,
   weshWorkerExecuteResponseSchema,
@@ -17,7 +17,7 @@ function createCaptureHandle({ limit }: {
   const chunks: Uint8Array[] = []
   let truncated = false
 
-  const handle = createWeshWriteFileHandle({
+  const handle = createWriteHandleFromStream({
     target: new WritableStream({
       write(chunk) {
         if (truncated) return
@@ -83,7 +83,7 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       const validated = weshWorkerExecuteRequestSchema.parse(request)
       const stdoutCapture = createCaptureHandle({ limit: validated.stdoutLimit })
       const stderrCapture = createCaptureHandle({ limit: validated.stderrLimit })
-      const stdin = createWeshReadFileHandleFromText({ text: '' })
+      const stdin = createTestReadHandleFromText({ text: '' })
 
       try {
         const result = await wesh.execute({

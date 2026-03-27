@@ -18,7 +18,7 @@ interface WeshFileCapabilities {
 /**
  * Read the entire content of a file as a Uint8Array.
  */
-export async function readFile({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<Uint8Array> {
+export async function readAllFileBytes({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<Uint8Array> {
   if (files.tryReadBlobEfficiently !== undefined) {
     const blobResult = await files.tryReadBlobEfficiently({ path });
     switch (blobResult.kind) {
@@ -62,7 +62,7 @@ export async function readFile({ files, path }: { files: WeshFileCapabilities; p
 /**
  * Read the entire content of a file as a UTF-8 string.
  */
-export async function readFileAsText({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<string> {
+export async function readAllFileText({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<string> {
   if (files.tryReadBlobEfficiently !== undefined) {
     const blobResult = await files.tryReadBlobEfficiently({ path });
     switch (blobResult.kind) {
@@ -76,13 +76,13 @@ export async function readFileAsText({ files, path }: { files: WeshFileCapabilit
     }
     }
   }
-  return new TextDecoder().decode(await readFile({ files, path }));
+  return new TextDecoder().decode(await readAllFileBytes({ files, path }));
 }
 
 /**
  * Open a file as a ReadableStream<Uint8Array>, using blob-backed streaming when available.
  */
-export async function openFileAsStream({
+export async function openFileReadStream({
   files,
   path,
 }: {
@@ -110,13 +110,13 @@ export async function openFileAsStream({
     append: 'preserve',
   };
   const handle = await files.open({ path, flags });
-  return handleToStream({ handle });
+  return openHandleReadStream({ handle });
 }
 
 /**
  * Write the entire content of a Uint8Array to a file.
  */
-export async function writeFile({
+export async function writeAllFileBytes({
   files,
   path,
   data,
@@ -153,7 +153,7 @@ export async function writeFile({
 /**
  * Check if a file or directory exists.
  */
-export async function exists({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<boolean> {
+export async function checkFileExists({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<boolean> {
   try {
     await files.stat({ path });
     return true;
@@ -165,7 +165,7 @@ export async function exists({ files, path }: { files: WeshFileCapabilities; pat
 /**
  * Convert a WeshFileHandle to a ReadableStream<Uint8Array>.
  */
-export function handleToStream({
+export function openHandleReadStream({
   handle,
   chunkSize = 64 * 1024,
 }: {
@@ -197,7 +197,7 @@ export function handleToStream({
 /**
  * Write a ReadableStream<Uint8Array> to a WeshFileHandle.
  */
-export async function streamToHandle({
+export async function writeAllStreamToHandle({
   stream,
   handle,
 }: {
@@ -229,7 +229,7 @@ export async function streamToHandle({
   }
 }
 
-export async function streamToFilePath({
+export async function writeAllStreamToFile({
   files,
   path,
   stream,
@@ -308,7 +308,7 @@ export async function streamToFilePath({
     path,
     flags: fallbackFlags,
   });
-  await streamToHandle({
+  await writeAllStreamToHandle({
     stream,
     handle,
   });

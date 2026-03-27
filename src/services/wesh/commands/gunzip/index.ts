@@ -1,7 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, readFile, writeFile } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, readAllFileBytes, writeAllFileBytes } from '@/services/wesh/utils/fs';
 
 const gunzipArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -104,7 +104,7 @@ export const gunzipCommandDefinition: WeshCommandDefinition = {
             continue;
           }
 
-          const input = await readFile({ files: context.files, path: fullPath });
+          const input = await readAllFileBytes({ files: context.files, path: fullPath });
           const decompressor = new DecompressionStream('gzip');
           const inputProvider = new ReadableStream({
             start(controller) {
@@ -124,14 +124,14 @@ export const gunzipCommandDefinition: WeshCommandDefinition = {
           }
 
           const originalPath = fullPath.slice(0, -3);
-          await writeFile({ files: context.files, path: originalPath, data: result });
+          await writeAllFileBytes({ files: context.files, path: originalPath, data: result });
           if (!keepInput) {
             await context.files.unlink({ path: fullPath });
           }
           continue;
         }
 
-        const input = await readStreamBytes({ stream: handleToStream({ handle: context.stdin }) });
+        const input = await readStreamBytes({ stream: openHandleReadStream({ handle: context.stdin }) });
         const decompressor = new DecompressionStream('gzip');
         const inputProvider = new ReadableStream({
           start(controller) {

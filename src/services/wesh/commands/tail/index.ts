@@ -1,7 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, openFileAsStream } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
 
 function parseSignedCount({
   value,
@@ -324,7 +324,7 @@ export const tailCommandDefinition: WeshCommandDefinition = {
 
     if (parsed.positionals.length === 0) {
       await processStream({
-        stream: handleToStream({ handle: context.stdin }),
+        stream: openHandleReadStream({ handle: context.stdin }),
       });
     } else {
       for (const [index, f] of parsed.positionals.entries()) {
@@ -339,13 +339,13 @@ export const tailCommandDefinition: WeshCommandDefinition = {
 
           if (f === '-') {
             await processStream({
-              stream: handleToStream({ handle: context.stdin }),
+              stream: openHandleReadStream({ handle: context.stdin }),
             });
             continue;
           }
 
           await processStream({
-            stream: await openFileAsStream({
+            stream: await openFileReadStream({
               files: context.files,
               path: resolvePath({ cwd: context.cwd, path: f }),
             }),
