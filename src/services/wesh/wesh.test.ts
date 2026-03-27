@@ -461,6 +461,24 @@ show_args "$(printf 'one two')"`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports nested command substitution', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+echo "$(printf '%s' "$(printf inner)")"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('inner\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports [[ ]] conditionals', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
@@ -528,6 +546,113 @@ echo $?`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('supports arithmetic conditions in while loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+i=0
+while ((i < 3)); do
+  echo "$i"
+  ((i += 1))
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+0
+1
+2
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports parameter default, assignment, alternate, and pattern removal expansions', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+unset MISSING
+value=alphabet-suffix
+echo "\${MISSING:-fallback}"
+echo "\${MISSING:=assigned}"
+echo "$MISSING"
+echo "\${value:+alt}"
+echo "\${value#alpha}"
+echo "\${value%suffix}"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+fallback
+assigned
+assigned
+alt
+bet-suffix
+alphabet-
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports brace expansion while leaving quoted braces literal', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+echo pre{a,b}post
+echo "{a,b}"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+preapost prebpost
+{a,b}
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('treats quoted here-doc delimiters as literal content', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+value=expanded
+cat <<EOF
+$value
+EOF
+cat <<'EOF'
+$value
+EOF`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+expanded
+$value
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports file redirection and reading (Mock OPFS)', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
@@ -546,6 +671,31 @@ echo $?`,
     expect(catResult.exitCode).toBe(0);
   });
 
+  it('supports case inside shell functions', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+describe_value() {
+  case "$1" in
+    alpha) echo first ;;
+    beta) echo second ;;
+    *) echo other ;;
+  esac
+}
+describe_value beta`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('second\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('handles subshells ( isolation )', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();
@@ -562,6 +712,25 @@ echo $?`,
     const stdout3 = createTestWriteCaptureHandle();
     await wesh.execute({ script: 'echo $VAR', stdin, stdout: stdout3.handle, stderr: stderr.handle });
     expect(stdout3.text).toBe('parent\n');
+  });
+
+  it('keeps function definitions created in subshells isolated from the parent shell', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+(tempfn() { echo child; })
+tempfn`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('Command not found');
+    expect(result.exitCode).toBe(1);
   });
 
   it('handles here-documents (<<EOF)', async () => {

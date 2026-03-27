@@ -94,4 +94,26 @@ cat <&3`,
     expect(executed.stderr.text).toBe('');
     expect(executed.result.exitCode).toBe(0);
   });
+
+  it('expands aliases before appending invocation arguments', async () => {
+    const executed = await execute({
+      script: `\
+alias greet='echo hello'
+greet world`,
+    });
+
+    expect(executed.stdout.text).toBe('hello world\n');
+    expect(executed.stderr.text).toBe('');
+    expect(executed.result.exitCode).toBe(0);
+  });
+
+  it('supports output fd duplication with >&n redirection', async () => {
+    const executed = await execute({
+      script: 'echo duplicated >&2',
+    });
+
+    expect(executed.stdout.text).toBe('');
+    expect(executed.stderr.text).toBe('duplicated\n');
+    expect(executed.result.exitCode).toBe(0);
+  });
 });
