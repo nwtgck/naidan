@@ -592,6 +592,31 @@ describe('transformers-js.worker', () => {
       expect(mockInterruptFn).not.toHaveBeenCalled();
     });
 
+    it('streams analysis channel content as think tags', async () => {
+      tokensToEmit = [
+        '<|start|>',
+        'assistant',
+        '<|channel|>',
+        'analysis',
+        '<|message|>',
+        'private reasoning',
+        '<|end|>',
+        '<|start|>',
+        'assistant',
+        '<|channel|>',
+        'final',
+        '<|message|>',
+        'Visible answer',
+        '<|return|>',
+      ];
+
+      const onChunk = vi.fn();
+      await workerObj.generateText([], onChunk, vi.fn(), undefined, [SIMPLE_TOOL]);
+
+      const emitted = (onChunk.mock.calls as [string][]).map(([t]) => t).join('');
+      expect(emitted).toBe('<think>private reasoning</think>Visible answer');
+    });
+
     it('prepends a developer message with TypeScript namespace tool definitions', async () => {
       tokensToEmit = [];
 
@@ -633,6 +658,25 @@ describe('transformers-js.worker', () => {
         expect.stringContaining('<|start|>my_tool to=assistant'),
         expect.objectContaining({ add_special_tokens: false })
       );
+    });
+
+    it('does not treat stale historical tool results as a continuation', async () => {
+      tokensToEmit = [];
+
+      const messages = [
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: 'call_1', type: 'function' as const, function: { name: 'my_tool', arguments: '{}' } }],
+        },
+        { role: 'tool', content: 'done', tool_call_id: 'call_1' },
+        { role: 'user', content: 'thanks' },
+      ];
+
+      await workerObj.generateText(messages, vi.fn(), vi.fn(), undefined, [SIMPLE_TOOL]);
+
+      expect(mockApplyTemplate).toHaveBeenCalledOnce();
+      expect(mockCallableTokenizer).not.toHaveBeenCalled();
     });
   });
 });

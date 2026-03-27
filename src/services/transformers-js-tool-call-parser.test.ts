@@ -61,12 +61,12 @@ describe('ToolCallStreamParser', () => {
     expect(calls[1]!.function.name).toBe('fn2');
   });
 
-  it('silently skips malformed tool call JSON', () => {
+  it('preserves malformed tool call JSON as plain text', () => {
     parser.feed({ output: '<tool_call>not valid json</tool_call>' });
 
     const calls = parser.drainToolCalls();
     expect(calls).toHaveLength(0);
-    expect(onText).not.toHaveBeenCalled();
+    expect(onText).toHaveBeenCalledWith('<tool_call>not valid json</tool_call>');
   });
 
   it('drainToolCalls clears the internal list', () => {
@@ -85,11 +85,11 @@ describe('ToolCallStreamParser', () => {
     expect(onText).toHaveBeenCalledWith('<tool_ca');
   });
 
-  it('flush discards an unclosed tool call block', () => {
+  it('flush preserves an unclosed tool call block as plain text', () => {
     parser.feed({ output: '<tool_call>{"name":"fn","arguments":{}}' }); // no closing tag
     parser.flush();
 
-    expect(onText).not.toHaveBeenCalled();
+    expect(onText).toHaveBeenCalledWith('<tool_call>{"name":"fn","arguments":{}}');
     expect(parser.drainToolCalls()).toHaveLength(0);
   });
 

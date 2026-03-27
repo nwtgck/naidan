@@ -9,6 +9,12 @@ import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { findRestorationIndex } from '@/utils/chat-tree';
 
+const { mocks } = vi.hoisted(() => ({
+  mocks: {
+    capturedListener: null as ((event: any) => void | Promise<void>) | null,
+  }
+}));
+
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
 let mockHierarchy: Hierarchy = { items: [] };
@@ -28,7 +34,10 @@ vi.mock('../services/storage', () => ({
     listChatGroups: vi.fn().mockResolvedValue([]),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
     deleteChatGroup: vi.fn(),
-    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+    subscribeToChanges: vi.fn().mockImplementation((listener) => {
+      mocks.capturedListener = listener;
+      return () => {};
+    }),
     notify: vi.fn(),
   },
 }));
@@ -115,6 +124,12 @@ describe('useChat Composable Logic', () => {
   afterEach(() => {
     expect(errorCount.value).toBe(0);
   });
+
+  const simulateExternalEvent = async (event: any) => {
+    if (!mocks.capturedListener) return;
+    await mocks.capturedListener(event);
+    await Promise.resolve();
+  };
 
   it('should update activeMessages in real-time during streaming', async () => {
     __testOnlySetCurrentChat(reactive({
@@ -701,6 +716,57 @@ describe('useChat Composable Logic', () => {
         reasoning: { effort: 'low' }
       })
     }));
+  });
+
+  it('should keep the assistant error on the failed message after generation fails', async () => {
+    __testOnlySetCurrentChat(reactive({
+      id: 'chat-error', title: 'Test', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any);
+
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockLlmChat.mockImplementationOnce(async () => {
+      throw new Error('Could not be cloned');
+    });
+
+    const result = await sendMessage({ content: 'Ping' });
+    expect(result).toBe(true);
+
+    await vi.waitUntil(() => !chatStore.streaming.value);
+    triggerRef(currentChat);
+
+    const assistantMessage = activeMessages.value.find(message => message.role === 'assistant') as AssistantMessageNode | undefined;
+    expect(assistantMessage?.error).toBe('Could not be cloned');
+    consoleError.mockRestore();
+  });
+
+  it('should reapply volatile assistant errors after chat content reloads from storage', async () => {
+    __testOnlySetCurrentChat(reactive({
+      id: 'chat-error-reload', title: 'Test', root: { items: [] },
+      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
+    }) as any);
+
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockLlmChat.mockImplementationOnce(async () => {
+      throw new Error('Could not be cloned');
+    });
+
+    const result = await sendMessage({ content: 'Ping' });
+    expect(result).toBe(true);
+    await vi.waitUntil(() => !chatStore.streaming.value);
+
+    const fresh = JSON.parse(JSON.stringify(toRaw(currentChat.value!))) as Chat;
+    const userNode = fresh.root.items[0] as UserMessageNode;
+    const assistantNode = userNode.replies.items[0] as AssistantMessageNode;
+    assistantNode.error = undefined;
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(fresh);
+
+    await simulateExternalEvent({ type: 'chat_content', id: fresh.id });
+    triggerRef(currentChat);
+
+    const reloadedAssistantMessage = activeMessages.value.find(message => message.role === 'assistant') as AssistantMessageNode | undefined;
+    expect(reloadedAssistantMessage?.error).toBe('Could not be cloned');
+    consoleError.mockRestore();
   });
 
   it('should insert a new chat before the first individual chat', async () => {

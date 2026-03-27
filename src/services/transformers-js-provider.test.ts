@@ -196,6 +196,7 @@ describe('TransformersJsProvider', () => {
       setupGenerateTextMock([toolCall]);
 
       const tool = makeTool('my_tool');
+      const onToolCall = vi.fn();
       const onToolResult = vi.fn();
 
       const { TransformersJsProvider } = await import('./transformers-js-provider');
@@ -206,6 +207,7 @@ describe('TransformersJsProvider', () => {
         messages: [{ role: 'user', content: 'test' }],
         onChunk: vi.fn(),
         tools: [tool],
+        onToolCall,
         onToolResult,
       });
 
@@ -215,6 +217,7 @@ describe('TransformersJsProvider', () => {
           result: expect.objectContaining({ status: 'error', code: 'invalid_arguments' }),
         })
       );
+      expect(onToolCall).not.toHaveBeenCalled();
       expect(tool.execute).not.toHaveBeenCalled();
     });
 

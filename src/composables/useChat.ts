@@ -37,6 +37,7 @@ const activeGenerations = reactive(new Map<string, { controller: AbortController
 const activeTitleGenerations = reactive(new Map<string, AbortController>());
 const externalGenerations = reactive(new Set<string>());
 const activeTaskCounts = reactive(new Map<string, number>());
+const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
 
 const streaming = computed(() => activeGenerations.size > 0 || externalGenerations.size > 0);
 const isGeneratingTitle = ({ chatId }: { chatId: string }) => (activeTaskCounts.get('title:' + chatId) || 0) > 0;
@@ -119,6 +120,44 @@ function registerLiveInstance(chat: Chat) {
     if (existing !== chat) {
       Object.assign(existing, raw);
     }
+  }
+}
+
+function setVolatileAssistantError({ chatId, messageId, error }: {
+  chatId: string;
+  messageId: string;
+  error: string;
+}) {
+  const existing = volatileAssistantErrors.get(chatId);
+  if (existing) {
+    existing.set(messageId, error);
+    return;
+  }
+
+  volatileAssistantErrors.set(chatId, new Map([[messageId, error]]));
+}
+
+function clearVolatileAssistantError({ chatId, messageId }: {
+  chatId: string;
+  messageId: string;
+}) {
+  const existing = volatileAssistantErrors.get(chatId);
+  if (!existing) return;
+
+  existing.delete(messageId);
+  if (existing.size === 0) {
+    volatileAssistantErrors.delete(chatId);
+  }
+}
+
+function applyVolatileAssistantErrorsToChat({ chat }: { chat: Chat }) {
+  const errors = volatileAssistantErrors.get(chat.id);
+  if (!errors || errors.size === 0) return;
+
+  for (const [messageId, error] of errors.entries()) {
+    const node = findNodeInBranch(chat.root.items, messageId);
+    if (!node || node.role !== 'assistant') continue;
+    node.error = error;
   }
 }
 
@@ -212,6 +251,7 @@ storageService.subscribeToChanges(async (event) => {
     if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
       const fresh = await storageService.loadChat(event.id);
       if (fresh && _currentChat.value) {
+        applyVolatileAssistantErrorsToChat({ chat: fresh });
         Object.assign(_currentChat.value, fresh);
         triggerRef(_currentChat);
       } else if (!activeGenerations.has(event.id)) {
@@ -254,6 +294,7 @@ storageService.subscribeToChanges(async (event) => {
       if (!activeGenerations.has(event.id)) {
         const fresh = await storageService.loadChat(event.id);
         if (fresh && _currentChat.value) {
+          applyVolatileAssistantErrorsToChat({ chat: fresh });
           _currentChat.value.root = fresh.root;
           _currentChat.value.currentLeafId = fresh.currentLeafId;
           triggerRef(_currentChat);
@@ -271,6 +312,7 @@ storageService.subscribeToChanges(async (event) => {
     rootItems.value = await storageService.getSidebarStructure();
     if (_currentChat.value) {
       const fresh = await storageService.loadChat(toRaw(_currentChat.value).id);
+      if (fresh) applyVolatileAssistantErrorsToChat({ chat: fresh });
       _currentChat.value = fresh ? reactive(fresh) : null;
     }
     if (_currentChatGroup.value) {
@@ -605,6 +647,7 @@ export function useChat() {
           storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
         }
       }
+      applyVolatileAssistantErrorsToChat({ chat: loaded });
       const reactiveChat = reactive(loaded);
       registerLiveInstance(reactiveChat);
       _currentChatGroup.value = null;
@@ -916,6 +959,7 @@ export function useChat() {
     }
     }
     assistantNode.error = undefined;
+    clearVolatileAssistantError({ chatId: mutableChat.id, messageId: assistantNode.id });
     if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
 
     const controller = new AbortController();
@@ -1309,9 +1353,21 @@ export function useChat() {
 
       if ((e as Error).name === 'AbortError') {
         assistantNode.content += '\n\n[Generation Aborted]';
+        if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
       } else {
         assistantNode.error = (e as Error).message;
+        setVolatileAssistantError({
+          chatId: mutableChat.id,
+          messageId: assistantNode.id,
+          error: assistantNode.error,
+        });
+        console.error('[useChat] Generation failed:', {
+          chatId: mutableChat.id,
+          assistantId: assistantNode.id,
+          error: assistantNode.error,
+        });
+        if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
         if (_currentChat.value && toRaw(_currentChat.value).id !== mutableChat.id) {
           try {

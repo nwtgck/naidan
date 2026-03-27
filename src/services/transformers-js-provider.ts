@@ -93,6 +93,20 @@ export class TransformersJsProvider implements LLMProvider {
 
         const tool = tools?.find(t => t.name === tc.function.name);
         let result: string;
+        let parsedArgs: unknown;
+
+        try {
+          parsedArgs = JSON.parse(tc.function.arguments);
+        } catch (e) {
+          const errorResult: { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string } = {
+            status: 'error',
+            code: 'invalid_arguments',
+            message: `Error: Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
+          };
+          onToolResult?.({ id: tc.id, result: errorResult });
+          currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: errorResult.message });
+          continue;
+        }
 
         if (!tool) {
           const errorResult: { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string } = {
@@ -103,20 +117,6 @@ export class TransformersJsProvider implements LLMProvider {
           onToolResult?.({ id: tc.id, result: errorResult });
           result = errorResult.message;
         } else {
-          let parsedArgs: unknown;
-          try {
-            parsedArgs = JSON.parse(tc.function.arguments);
-          } catch (e) {
-            const errorResult: { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string } = {
-              status: 'error',
-              code: 'invalid_arguments',
-              message: `Error: Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
-            };
-            onToolResult?.({ id: tc.id, result: errorResult });
-            currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: errorResult.message });
-            continue;
-          }
-
           try {
             const validatedArgs = tool.parametersSchema.strict().parse(parsedArgs);
             onToolCall?.({ id: tc.id, toolName: tool.name, args: validatedArgs });

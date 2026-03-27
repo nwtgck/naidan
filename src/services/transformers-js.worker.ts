@@ -274,7 +274,7 @@ function formatGptOssToolDefinitions({ tools }: { tools: WorkerToolDefinition[] 
     const paramType = jsonSchemaToTsType({ schema: t.function.parameters });
     return `// ${t.function.description}\ntype ${t.function.name} = (_: ${paramType}) => any;`;
   }).join('\n\n');
-  return `namespace functions {\n${fns}\n}`;
+  return `namespace functions {\n${fns}\n\n} // namespace functions`;
 }
 
 /**
@@ -311,6 +311,32 @@ function buildGptOssToolResultTokens({
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (tok as any)(harmonyText, { add_special_tokens: false });
+}
+
+function isGptOssToolContinuationRequest(messages: ChatMessage[]): boolean {
+  if (messages.length < 2) return false;
+
+  let assistantIndex = messages.length - 1;
+  while (assistantIndex >= 0 && messages[assistantIndex]?.tool_call_id) {
+    assistantIndex--;
+  }
+
+  if (assistantIndex === messages.length - 1) return false;
+
+  const assistantMessage = messages[assistantIndex];
+  if (!assistantMessage || assistantMessage.role !== 'assistant' || !assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+    return false;
+  }
+
+  const knownToolCallIds = new Set(assistantMessage.tool_calls.map(tc => tc.id));
+  for (let i = assistantIndex + 1; i < messages.length; i++) {
+    const toolMessage = messages[i];
+    if (!toolMessage?.tool_call_id || !knownToolCallIds.has(toolMessage.tool_call_id)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -523,7 +549,7 @@ const transformersJsWorker: ITransformersJsWorker = {
     const isGptOssWithTools = isGptOss && !!hasTools;
     // Continuation: tool results are present → encode only the new Harmony tokens,
     // reusing pastKeyValues from the preceding tool-call generation.
-    const isGptOssToolContinuation = isGptOssWithTools && messages.some(m => m.tool_call_id);
+    const isGptOssToolContinuation = isGptOssWithTools && isGptOssToolContinuationRequest(messages);
 
     console.log(`[transformersJsWorker] generateText: activeModelId='${activeModelId}', isGptOss=${isGptOss}, hasTools=${hasTools}, isGptOssToolContinuation=${isGptOssToolContinuation}`);
 
@@ -535,6 +561,7 @@ const transformersJsWorker: ITransformersJsWorker = {
       // The existing pastKeyValues KV cache provides all prior context.
       inputs = buildGptOssToolResultTokens({ messages, tokenizer });
     } else {
+      pastKeyValues = null;
       const formattedMessages = messages.map(m => {
         const msg: Record<string, unknown> = {
           role: m.role,
@@ -686,7 +713,6 @@ const transformersJsWorker: ITransformersJsWorker = {
         return_dict_in_generate: true,
       });
 
-      // Close any open analysis tag
       if (currentChannel === 'analysis') {
         onChunk('</think>');
       }

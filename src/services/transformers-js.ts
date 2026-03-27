@@ -29,6 +29,70 @@ let isCached: boolean = false;
 let isLoadingFromCache: boolean = false;
 let currentDevice: string = 'wasm';
 
+function cloneLmParameters({ params }: { params: LmParameters | undefined }): LmParameters | undefined {
+  if (!params) return undefined;
+
+  return {
+    temperature: params.temperature,
+    topP: params.topP,
+    maxCompletionTokens: params.maxCompletionTokens,
+    presencePenalty: params.presencePenalty,
+    frequencyPenalty: params.frequencyPenalty,
+    stop: params.stop ? [...params.stop] : undefined,
+    reasoning: {
+      effort: params.reasoning?.effort
+    }
+  };
+}
+
+function cloneToolCalls({ toolCalls }: { toolCalls: ToolCall[] | undefined }): ToolCall[] | undefined {
+  if (!toolCalls) return undefined;
+
+  return toolCalls.map(toolCall => ({
+    id: toolCall.id,
+    type: 'function',
+    function: {
+      name: toolCall.function.name,
+      arguments: toolCall.function.arguments,
+    }
+  }));
+}
+
+function cloneChatMessages({ messages }: { messages: ChatMessage[] }): ChatMessage[] {
+  return messages.map(message => ({
+    role: message.role,
+    content: Array.isArray(message.content)
+      ? message.content.map(part => {
+        switch (part.type) {
+        case 'text':
+          return { type: 'text', text: part.text };
+        case 'image_url':
+          return { type: 'image_url', image_url: { url: part.image_url.url } };
+        default: {
+          const _ex: never = part;
+          return _ex;
+        }
+        }
+      })
+      : message.content,
+    tool_calls: cloneToolCalls({ toolCalls: message.tool_calls }),
+    tool_call_id: message.tool_call_id,
+  }));
+}
+
+function cloneWorkerTools({ tools }: { tools: WorkerToolDefinition[] | undefined }): WorkerToolDefinition[] | undefined {
+  if (!tools) return undefined;
+
+  return tools.map(tool => ({
+    type: 'function',
+    function: {
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters: JSON.parse(JSON.stringify(tool.function.parameters)) as Record<string, unknown>,
+    }
+  }));
+}
+
 type ProgressListener = (
   status: typeof loadingStatus,
   progress: number,
@@ -729,11 +793,11 @@ export const transformersJsService = {
 
     try {
       await client.generateText({
-        messages,
+        messages: cloneChatMessages({ messages }),
         onChunk,
         onToolCalls,
-        params,
-        tools,
+        params: cloneLmParameters({ params }),
+        tools: cloneWorkerTools({ tools }),
       });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
