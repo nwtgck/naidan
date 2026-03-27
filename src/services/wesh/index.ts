@@ -4106,7 +4106,7 @@ usage: alias [name[=value] ...]
 
     const { pid, process: proc } = await this.kernel.spawn({
       image: resolvedCommand.resolved.invocationPath ?? cmdName,
-      args: expandedArgs,
+      args: [cmdName, ...expandedArgs],
       env: currentEnv,
       cwd: environment.cwd,
       fds: cmdFds,
@@ -4177,6 +4177,15 @@ usage: alias [name[=value] ...]
         };
       },
       getJobs: () => Array.from(this.jobs.values()).map(j => ({ id: j.id, command: j.command, status: j.status })),
+      getProcesses: () => this.kernel.getProcesses().map((process) => ({
+        pid: process.pid,
+        ppid: process.ppid,
+        pgid: process.pgid,
+        state: process.state,
+        argv0: process.env.get('0') ?? 'wesh',
+        args: [...process.args],
+        cwd: process.cwd,
+      })),
       getShellOption: ({ name }) => environment.shellOptions.get(name) === true,
       setShellOption: ({ name, enabled }) => {
         environment.shellOptions.set(name, enabled);

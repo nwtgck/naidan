@@ -482,6 +482,10 @@ export class WeshKernel {
     return Array.from(this.processes.values()).filter(proc => proc.pgid === options.pgid);
   }
 
+  getProcesses(): WeshProcess[] {
+    return Array.from(this.processes.values());
+  }
+
   registerOwnedHandle(options: {
     pid: number;
     handle: WeshFileHandle;

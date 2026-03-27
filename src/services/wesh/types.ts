@@ -108,6 +108,16 @@ export interface WeshProcess {
   ownedHandles?: Set<WeshFileHandle>;
 }
 
+export interface WeshProcessSnapshot {
+  pid: number;
+  ppid: number;
+  pgid: number;
+  state: WeshProcess['state'];
+  argv0: string;
+  args: string[];
+  cwd: string;
+}
+
 // --- Virtual File System ---
 
 /**
@@ -260,6 +270,7 @@ export interface WeshCommandContext {
   getCommandNames(): string[];
   resolveCommand(options: { name: string }): WeshResolvedCommand;
   getJobs(): Array<{ id: number; command: string; status: 'running' | 'done' }>;
+  getProcesses(): WeshProcessSnapshot[];
   getShellOption(options: { name: WeshShellOption }): boolean;
   setShellOption(options: { name: WeshShellOption; enabled: boolean }): void;
   getShellOptions(): Array<[WeshShellOption, boolean]>;
