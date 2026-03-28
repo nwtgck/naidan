@@ -23,7 +23,7 @@ async function readDirectoryEntries({
         lastModified: undefined,
         extension: getFileExtension({ name: child.name }),
         mimeCategory: getMimeCategory({ extension: getFileExtension({ name: child.name }) }),
-        readOnly: false,
+        readOnly: child.readOnly,
       });
       break;
     case 'directory':
@@ -70,20 +70,46 @@ export function useFileExplorerNavigation({
   root,
   sortConfig,
   filterQuery,
+  initialStack,
 }: {
   root: ExplorerDirectory;
   sortConfig: { value: SortConfig };
   filterQuery: { value: string };
+  /**
+   * Pre-built navigation stack (directories from root's children down to the
+   * target). When provided, the explorer opens directly at the last entry
+   * without any intermediate renders. The pathStack is initialised to
+   * [root, ...initialStack.slice(0, -1)] and currentDirectory to the last entry.
+   */
+  initialStack: ExplorerDirectory[] | undefined;
 }) {
-  const currentDirectory = shallowRef<ExplorerDirectory>(root);
-  const pathStack = shallowRef<ExplorerDirectory[]>([]);
+  const initialCurrent =
+    initialStack !== undefined && initialStack.length > 0
+      ? initialStack[initialStack.length - 1]!
+      : root;
+  const initialPathStack =
+    initialStack !== undefined && initialStack.length > 0
+      ? [root, ...initialStack.slice(0, -1)]
+      : [];
+
+  const currentDirectory = shallowRef<ExplorerDirectory>(initialCurrent);
+  const pathStack = shallowRef<ExplorerDirectory[]>(initialPathStack);
   const entries = ref<FileExplorerEntry[]>([]);
   const isLoading = ref(false);
   const loadError = ref<string | undefined>(undefined);
 
-  const columnPanes = ref<ColumnPaneState[]>([
-    { directory: root, entries: [], selectedEntryName: undefined, isLoading: false },
-  ]);
+  const initialColumnPanes: ColumnPaneState[] = [...initialPathStack, initialCurrent].map(d => ({
+    directory: d,
+    entries: [],
+    selectedEntryName: undefined,
+    isLoading: false,
+  }));
+
+  const columnPanes = ref<ColumnPaneState[]>(
+    initialColumnPanes.length > 0
+      ? initialColumnPanes
+      : [{ directory: root, entries: [], selectedEntryName: undefined, isLoading: false }],
+  );
 
   const pathSegments = computed(() => {
     const segs: Array<{ name: string; directory: ExplorerDirectory }> = [];
@@ -238,9 +264,11 @@ export function useFileExplorerNavigation({
     }
   }
 
-  // Initial load
-  void loadDirectory({ directory: root });
-  void loadColumnPane({ paneIndex: 0, directory: root });
+  // Initial load — load the deepest directory in the initial stack
+  void loadDirectory({ directory: initialCurrent });
+  for (let i = 0; i < columnPanes.value.length; i++) {
+    void loadColumnPane({ paneIndex: i, directory: columnPanes.value[i]!.directory });
+  }
 
   return {
     currentDirectory,

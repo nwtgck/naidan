@@ -16,7 +16,8 @@ import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection'
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
-import { VirtualMountRoot, MountExplorerDirectory } from './file-explorer/explorer-directory';
+import { VfsExplorerDirectory } from './file-explorer/explorer-directory';
+import { WeshVFS } from '@/services/wesh/vfs';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
@@ -545,20 +546,20 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
   const mounts = currentChat.value?.mounts ?? [];
   if (mounts.length === 0) return;
 
-  const mountDirs = new Map<string, MountExplorerDirectory>();
+  // Build a standalone VFS with only the chat mounts (no /dev since rootHandle is undefined).
+  // VFS synthesises intermediate directories like /home and /home/user automatically.
+  const vfs = new WeshVFS({ rootHandle: undefined });
   for (const m of mounts) {
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
     if (!handle) continue;
-    const segmentName = m.mountPath.split('/').filter(Boolean).pop() ?? m.volumeId;
-    mountDirs.set(segmentName, new MountExplorerDirectory({ name: segmentName, handle, readOnly: m.readOnly }));
+    await vfs.mount({ path: m.mountPath, handle, readOnly: m.readOnly });
   }
 
-  const virtualRoot = new VirtualMountRoot({ children: mountDirs });
+  const rootDir = new VfsExplorerDirectory({ name: 'Files', path: '/', vfs });
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
-  const initialEntryName = clickedMount?.mountPath.split('/').filter(Boolean).pop();
-  const title = initialEntryName ?? 'Files';
+  const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
 
-  openFileExplorer({ kind: 'explorer', root: virtualRoot, initialEntryName, title });
+  openFileExplorer({ kind: 'explorer', root: rootDir, initialPath, title: 'Files' });
 }
 
 async function handleDetachMount({ volumeId }: { volumeId: string }) {

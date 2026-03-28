@@ -45,7 +45,7 @@ class MockExplorerDirectory implements ExplorerDirectory {
       if (entry instanceof MockExplorerDirectory) {
         yield { kind: 'directory', name: entry.name, readOnly: false, directory: entry };
       } else {
-        yield { kind: 'file', name: entry.name, fileHandle: entry as unknown as FileSystemFileHandle };
+        yield { kind: 'file', name: entry.name, readOnly: false, fileHandle: entry as unknown as FileSystemFileHandle };
       }
     }
   }
@@ -128,7 +128,7 @@ function mountExplorer(root: MockExplorerDirectory, overrides: Record<string, un
       root,
       initialViewMode: 'list',
       initialPreviewVisibility: 'visible',
-      initialEntryName: undefined,
+      initialStack: undefined,
       ...overrides,
     },
     attachTo: document.body,

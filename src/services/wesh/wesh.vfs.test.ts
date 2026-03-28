@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from './index';
+import { WeshVFS } from './vfs';
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
@@ -373,5 +374,86 @@ describe('wesh vfs mounts', () => {
     const treeEntries = [];
     for await (const entry of wesh.vfs.readDir({ path: '/tree' })) treeEntries.push(entry);
     expect(treeEntries.map(entry => entry.name)).toEqual(['leaf.txt']);
+  });
+});
+
+describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () => {
+  it('getNativeHandle returns a real handle for a mounted directory', async () => {
+    const mount = new MockFileSystemDirectoryHandle('mount');
+    await mount.getFileHandle('file.txt', { create: true });
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    await vfs.mount({ path: '/data', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
+
+    const handle = await vfs.getNativeHandle({ path: '/data' });
+    expect(handle).not.toBeNull();
+    expect(handle!.kind).toBe('directory');
+  });
+
+  it('getNativeHandle returns null for a synthetic intermediate directory', async () => {
+    const mount = new MockFileSystemDirectoryHandle('mount');
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    await vfs.mount({ path: '/home/user/v1', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
+
+    expect(await vfs.getNativeHandle({ path: '/home' })).toBeNull();
+    expect(await vfs.getNativeHandle({ path: '/home/user' })).toBeNull();
+  });
+
+  it('getNativeHandle returns a file handle for a real file inside a mount', async () => {
+    const mount = new MockFileSystemDirectoryHandle('mount');
+    await mount.getFileHandle('note.txt', { create: true });
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    await vfs.mount({ path: '/data', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
+
+    const handle = await vfs.getNativeHandle({ path: '/data/note.txt' });
+    expect(handle).not.toBeNull();
+    expect(handle!.kind).toBe('file');
+  });
+
+  it('getReadOnlyForPath returns the mount readOnly flag for paths inside a mount', async () => {
+    const m1 = new MockFileSystemDirectoryHandle('m1');
+    const m2 = new MockFileSystemDirectoryHandle('m2');
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    await vfs.mount({ path: '/home/user/rw', handle: m1 as unknown as FileSystemDirectoryHandle, readOnly: false });
+    await vfs.mount({ path: '/home/user/ro', handle: m2 as unknown as FileSystemDirectoryHandle, readOnly: true });
+
+    expect(vfs.getReadOnlyForPath({ path: '/home/user/rw' })).toBe(false);
+    expect(vfs.getReadOnlyForPath({ path: '/home/user/ro' })).toBe(true);
+  });
+
+  it('getReadOnlyForPath returns true for synthetic directories outside any mount', async () => {
+    const mount = new MockFileSystemDirectoryHandle('mount');
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    await vfs.mount({ path: '/home/user/v1', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
+
+    expect(vfs.getReadOnlyForPath({ path: '/' })).toBe(true);
+    expect(vfs.getReadOnlyForPath({ path: '/home' })).toBe(true);
+    expect(vfs.getReadOnlyForPath({ path: '/home/user' })).toBe(true);
+  });
+
+  it('VFS with no rootHandle synthesises directories for nested mounts', async () => {
+    const v1 = new MockFileSystemDirectoryHandle('v1');
+    const v2 = new MockFileSystemDirectoryHandle('v2');
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    await vfs.mount({ path: '/home/user/v1', handle: v1 as unknown as FileSystemDirectoryHandle, readOnly: false });
+    await vfs.mount({ path: '/home/user/v2', handle: v2 as unknown as FileSystemDirectoryHandle, readOnly: true });
+
+    const rootEntries: string[] = [];
+    for await (const e of vfs.readDir({ path: '/' })) rootEntries.push(e.name);
+    expect(rootEntries).toEqual(['home']);
+
+    const userEntries: string[] = [];
+    for await (const e of vfs.readDir({ path: '/home/user' })) userEntries.push(e.name);
+    expect(userEntries.sort()).toEqual(['v1', 'v2']);
+  });
+
+  it('VFS with no rootHandle does not expose /dev special files', async () => {
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    const mount = new MockFileSystemDirectoryHandle('mount');
+    await vfs.mount({ path: '/data', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
+
+    const rootEntries: string[] = [];
+    for await (const e of vfs.readDir({ path: '/' })) rootEntries.push(e.name);
+    expect(rootEntries).toEqual(['data']);
+    expect(rootEntries).not.toContain('dev');
   });
 });

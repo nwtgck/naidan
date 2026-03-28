@@ -77,7 +77,7 @@ defineExpose({
       </span>
     </div>
     <Lock
-      v-if="entry.kind === 'directory' && entry.readOnly"
+      v-if="entry.readOnly"
       class="w-2.5 h-2.5 shrink-0 opacity-50"
       :class="isSelected ? 'text-white' : 'text-gray-400 dark:text-gray-500'"
       data-testid="entry-lock-icon"
@@ -134,7 +134,7 @@ defineExpose({
       :class="isSelected ? 'text-white' : 'text-gray-700 dark:text-gray-300'"
     >{{ entry.name }}</span>
     <Lock
-      v-if="entry.kind === 'directory' && entry.readOnly"
+      v-if="entry.readOnly"
       class="w-2.5 h-2.5 shrink-0 opacity-50 absolute top-1 right-1"
       :class="isSelected ? 'text-white' : 'text-gray-400 dark:text-gray-500'"
       data-testid="entry-lock-icon"
@@ -174,7 +174,7 @@ defineExpose({
       {{ entry.name }}
     </span>
     <Lock
-      v-if="entry.kind === 'directory' && entry.readOnly"
+      v-if="entry.readOnly"
       class="w-2.5 h-2.5 shrink-0 opacity-50"
       :class="isSelected ? 'text-white' : 'text-gray-400 dark:text-gray-500'"
       data-testid="entry-lock-icon"

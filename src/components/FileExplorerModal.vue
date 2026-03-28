@@ -9,6 +9,7 @@ import type { ExplorerDirectory } from './file-explorer/explorer-directory';
 const { closeFileExplorer, fileExplorerOptions, isFileExplorerOpen } = useFileExplorerModal();
 
 const root = ref<ExplorerDirectory | undefined>(undefined);
+const initialStack = ref<ExplorerDirectory[] | undefined>(undefined);
 const loadError = ref<string | undefined>(undefined);
 
 const title = computed(() => {
@@ -25,34 +26,44 @@ const title = computed(() => {
   }
 });
 
-const initialEntryName = computed(() => {
-  const opts = fileExplorerOptions.value;
-  switch (opts.kind) {
-  case 'explorer':
-    return opts.initialEntryName;
-  case 'opfs-root':
-    return undefined;
-  default: {
-    const _ex: never = opts;
-    throw new Error(`Unhandled kind: ${JSON.stringify(_ex)}`);
+async function buildInitialStack({
+  explorerRoot,
+  path,
+}: {
+  explorerRoot: ExplorerDirectory;
+  path: string[] | undefined;
+}): Promise<ExplorerDirectory[] | undefined> {
+  if (!path?.length) return undefined;
+  const stack: ExplorerDirectory[] = [];
+  let current = explorerRoot;
+  for (const seg of path) {
+    const child = await current.subdir({ name: seg });
+    if (!child) break;
+    stack.push(child);
+    current = child;
   }
-  }
-});
+  return stack.length > 0 ? stack : undefined;
+}
 
 async function loadRoot(): Promise<void> {
   const opts = fileExplorerOptions.value;
   root.value = undefined;
+  initialStack.value = undefined;
   loadError.value = undefined;
 
   switch (opts.kind) {
-  case 'explorer':
+  case 'explorer': {
+    // Pre-navigate to the initial path so the explorer opens directly at the
+    // target directory without any intermediate renders.
+    initialStack.value = await buildInitialStack({ explorerRoot: opts.root, path: opts.initialPath });
     root.value = opts.root;
     return;
+  }
   case 'opfs-root':
     // opfs-root: load async
     try {
       const handle = await navigator.storage.getDirectory();
-      root.value = new FsExplorerDirectory({ handle, readOnly: false });
+      root.value = new FsExplorerDirectory({ handle, readOnly: false, name: undefined });
     } catch (e) {
       loadError.value = e instanceof Error ? e.message : String(e);
     }
@@ -125,7 +136,7 @@ defineExpose({
           <FileExplorer
             v-else-if="root"
             :root="root"
-            :initial-entry-name="initialEntryName"
+            :initial-stack="initialStack"
             initial-view-mode="list"
             initial-preview-visibility="visible"
             class="h-full"

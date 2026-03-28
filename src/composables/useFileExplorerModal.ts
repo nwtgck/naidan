@@ -3,7 +3,7 @@ import type { ExplorerDirectory } from '@/components/file-explorer/explorer-dire
 
 export type FileExplorerModalOptions =
   | { kind: 'opfs-root' }
-  | { kind: 'explorer'; root: ExplorerDirectory; initialEntryName: string | undefined; title: string };
+  | { kind: 'explorer'; root: ExplorerDirectory; initialPath: string[] | undefined; title: string };
 
 const isOpen = ref(false);
 const options = ref<FileExplorerModalOptions>({ kind: 'opfs-root' });

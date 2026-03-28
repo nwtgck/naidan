@@ -1,3 +1,5 @@
+import type { WeshVFS } from '@/services/wesh/vfs';
+
 /**
  * File-explorer-specific directory abstraction.
  * Independent of FileSystemDirectoryHandle so it can carry metadata (e.g. readOnly)
@@ -17,7 +19,7 @@ export interface ExplorerDirectory {
 }
 
 export type ExplorerChild =
-  | { kind: 'file'; name: string; fileHandle: FileSystemFileHandle }
+  | { kind: 'file'; name: string; readOnly: boolean; fileHandle: FileSystemFileHandle }
   | { kind: 'directory'; name: string; readOnly: boolean; directory: ExplorerDirectory };
 
 // ─── FsExplorerDirectory ─────────────────────────────────────────────────────
@@ -34,11 +36,14 @@ export class FsExplorerDirectory implements ExplorerDirectory {
   constructor({
     handle,
     readOnly,
+    name,
   }: {
     handle: FileSystemDirectoryHandle;
     readOnly: boolean;
+    /** Override the display name (defaults to handle.name). */
+    name: string | undefined;
   }) {
-    this.name = handle.name;
+    this.name = name ?? handle.name;
     this.readOnly = readOnly;
     this._handle = handle;
   }
@@ -52,14 +57,14 @@ export class FsExplorerDirectory implements ExplorerDirectory {
     for await (const handle of this._handle.values()) {
       switch (handle.kind) {
       case 'file':
-        yield { kind: 'file', name: handle.name, fileHandle: handle as FileSystemFileHandle };
+        yield { kind: 'file', name: handle.name, readOnly: this.readOnly, fileHandle: handle as FileSystemFileHandle };
         break;
       case 'directory':
         yield {
           kind: 'directory',
           name: handle.name,
           readOnly: this.readOnly,
-          directory: new FsExplorerDirectory({ handle: handle as FileSystemDirectoryHandle, readOnly: this.readOnly }),
+          directory: new FsExplorerDirectory({ handle: handle as FileSystemDirectoryHandle, readOnly: this.readOnly, name: undefined }),
         };
         break;
       default: {
@@ -73,7 +78,7 @@ export class FsExplorerDirectory implements ExplorerDirectory {
   async subdir({ name }: { name: string }): Promise<ExplorerDirectory | null> {
     try {
       const h = await this._handle.getDirectoryHandle(name);
-      return new FsExplorerDirectory({ handle: h, readOnly: this.readOnly });
+      return new FsExplorerDirectory({ handle: h, readOnly: this.readOnly, name: undefined });
     } catch {
       return null;
     }
@@ -84,7 +89,7 @@ export class FsExplorerDirectory implements ExplorerDirectory {
       throw new DOMException('Read-only file system', 'NotAllowedError');
     }
     const h = await this._handle.getDirectoryHandle(name, { create: true });
-    return new FsExplorerDirectory({ handle: h, readOnly: false });
+    return new FsExplorerDirectory({ handle: h, readOnly: false, name: undefined });
   }
 
   async file({ name }: { name: string }): Promise<FileSystemFileHandle | null> {
@@ -115,91 +120,76 @@ export class FsExplorerDirectory implements ExplorerDirectory {
   }
 }
 
-// ─── MountExplorerDirectory ───────────────────────────────────────────────────
+// ─── VfsExplorerDirectory ─────────────────────────────────────────────────────
 
-/**
- * Top-level directory for a single chat mount.
- * Overrides name with the mount path's last segment (e.g. "v1"),
- * and reflects mount.readOnly for the volume.
- */
-export class MountExplorerDirectory implements ExplorerDirectory {
-  readonly name: string;
-  readonly readOnly: boolean;
-  private readonly _inner: FsExplorerDirectory;
-
-  constructor({
-    name,
-    handle,
-    readOnly,
-  }: {
-    name: string;
-    handle: FileSystemDirectoryHandle;
-    readOnly: boolean;
-  }) {
-    this.name = name;
-    this.readOnly = readOnly;
-    this._inner = new FsExplorerDirectory({ handle, readOnly });
-  }
-
-  getRawHandle(): FileSystemDirectoryHandle {
-    return this._inner.getRawHandle();
-  }
-
-  children(): AsyncIterable<ExplorerChild> {
-    return this._inner.children();
-  }
-
-  subdir({ name }: { name: string }): Promise<ExplorerDirectory | null> {
-    return this._inner.subdir({ name });
-  }
-
-  subdirCreate({ name }: { name: string }): Promise<ExplorerDirectory> {
-    return this._inner.subdirCreate({ name });
-  }
-
-  file({ name }: { name: string }): Promise<FileSystemFileHandle | null> {
-    return this._inner.file({ name });
-  }
-
-  fileCreate({ name }: { name: string }): Promise<FileSystemFileHandle> {
-    return this._inner.fileCreate({ name });
-  }
-
-  remove({ name, recursive }: { name: string; recursive: boolean }): Promise<void> {
-    return this._inner.remove({ name, recursive });
-  }
-
-  async isSameAs({ other }: { other: ExplorerDirectory }): Promise<boolean> {
-    if (other instanceof MountExplorerDirectory) {
-      return this._inner.isSameAs({ other: other._inner });
-    }
-    return false;
-  }
+function joinVfsPath({ base, name }: { base: string; name: string }): string {
+  return base === '/' ? `/${name}` : `${base}/${name}`;
 }
 
-// ─── VirtualMountRoot ─────────────────────────────────────────────────────────
-
 /**
- * Virtual root directory representing all chat mounts (analogous to /home/user/).
- * Lists each mount as a child directory. Write operations are always rejected.
+ * ExplorerDirectory backed by a WeshVFS instance at a given absolute path.
+ * Used for the virtual directory levels above actual mount points (e.g. `/home/user`).
+ * Always read-only: the VFS hierarchy above mounts cannot be mutated from the explorer.
+ * Once the path resolves to a real mount handle, a FsExplorerDirectory is returned instead.
  */
-export class VirtualMountRoot implements ExplorerDirectory {
-  readonly name = 'home/user';
+export class VfsExplorerDirectory implements ExplorerDirectory {
+  readonly name: string;
   readonly readOnly = true;
-  private readonly _children: Map<string, MountExplorerDirectory>;
+  private readonly _vfs: WeshVFS;
+  private readonly _path: string;
 
-  constructor({ children }: { children: Map<string, MountExplorerDirectory> }) {
-    this._children = children;
+  constructor({ name, path, vfs }: { name: string; path: string; vfs: WeshVFS }) {
+    this.name = name;
+    this._path = path;
+    this._vfs = vfs;
   }
 
   async *children(): AsyncIterable<ExplorerChild> {
-    for (const [, dir] of this._children) {
-      yield { kind: 'directory', name: dir.name, readOnly: dir.readOnly, directory: dir };
+    for await (const entry of this._vfs.readDir({ path: this._path })) {
+      switch (entry.type) {
+      case 'directory':
+        break;
+      case 'file':
+      case 'fifo':
+      case 'chardev':
+      case 'symlink':
+        continue;
+      default: {
+        const _ex: never = entry.type;
+        throw new Error(`Unhandled entry type: ${_ex}`);
+      }
+      }
+      const childPath = joinVfsPath({ base: this._path, name: entry.name });
+      const native = await this._vfs.getNativeHandle({ path: childPath });
+      if (native !== null && native.kind === 'directory') {
+        const ro = this._vfs.getReadOnlyForPath({ path: childPath });
+        yield {
+          kind: 'directory',
+          name: entry.name,
+          readOnly: ro,
+          directory: new FsExplorerDirectory({ handle: native as FileSystemDirectoryHandle, readOnly: ro, name: entry.name }),
+        };
+      } else {
+        yield {
+          kind: 'directory',
+          name: entry.name,
+          readOnly: true,
+          directory: new VfsExplorerDirectory({ name: entry.name, path: childPath, vfs: this._vfs }),
+        };
+      }
     }
   }
 
   async subdir({ name }: { name: string }): Promise<ExplorerDirectory | null> {
-    return this._children.get(name) ?? null;
+    const childPath = joinVfsPath({ base: this._path, name });
+    const stat = await this._vfs.stat({ path: childPath }).catch(() => null);
+    if (stat === null || stat.type !== 'directory') return null;
+    const native = await this._vfs.getNativeHandle({ path: childPath });
+    if (native !== null && native.kind === 'directory') {
+      const ro = this._vfs.getReadOnlyForPath({ path: childPath });
+      return new FsExplorerDirectory({ handle: native as FileSystemDirectoryHandle, readOnly: ro, name });
+    }
+    return new VfsExplorerDirectory({ name, path: childPath, vfs: this._vfs });
   }
 
   subdirCreate(_: { name: string }): Promise<ExplorerDirectory> {
@@ -218,7 +208,10 @@ export class VirtualMountRoot implements ExplorerDirectory {
     return Promise.reject(new DOMException('Read-only file system', 'NotAllowedError'));
   }
 
-  isSameAs(_: { other: ExplorerDirectory }): Promise<boolean> {
+  isSameAs({ other }: { other: ExplorerDirectory }): Promise<boolean> {
+    if (other instanceof VfsExplorerDirectory) {
+      return Promise.resolve(this._vfs === other._vfs && this._path === other._path);
+    }
     return Promise.resolve(false);
   }
 }

@@ -192,6 +192,18 @@ export interface WeshIVirtualFileSystem {
 
   registerSpecialFile(options: { path: string; handler: () => WeshFileHandle }): void;
   unregisterSpecialFile(options: { path: string }): void;
+
+  /**
+   * Returns the underlying native FileSystemHandle for the given path, or null
+   * if the path resolves to a synthetic directory, special file, or registry entry.
+   */
+  getNativeHandle(options: { path: string }): Promise<FileSystemHandle | null>;
+
+  /**
+   * Returns whether the given path is read-only based on the owning mount.
+   * Paths outside every real mount (synthetic intermediate directories) return true.
+   */
+  getReadOnlyForPath(options: { path: string }): boolean;
 }
 
 export interface WeshMount {

@@ -23,7 +23,7 @@ import { usePrompt } from '@/composables/usePrompt';
 export const FILE_EXPLORER_INJECTION_KEY: InjectionKey<FileExplorerContext> =
   Symbol('FileExplorerContext');
 
-export function useFileExplorer({ root }: { root: ExplorerDirectory }) {
+export function useFileExplorer({ root, initialStack }: { root: ExplorerDirectory; initialStack: ExplorerDirectory[] | undefined }) {
   const { addToast } = useToast();
   const { showPrompt } = usePrompt();
 
@@ -37,6 +37,7 @@ export function useFileExplorer({ root }: { root: ExplorerDirectory }) {
     root,
     sortConfig: sortConfig as { value: SortConfig },
     filterQuery: filterQuery as { value: string },
+    initialStack,
   });
 
   // --- Selection ---

@@ -67,7 +67,7 @@ function makeDirHandle(name: string): MockDir {
     readOnly: false,
     _files: files,
     async *children() {
-      for (const [fname, fh] of files) yield { kind: 'file' as const, name: fname, fileHandle: fh };
+      for (const [fname, fh] of files) yield { kind: 'file' as const, name: fname, readOnly: false, fileHandle: fh };
     },
     subdir: vi.fn(async ({ name: n }: { name: string }) => dirs.get(n) ?? null),
     subdirCreate: vi.fn(async ({ name: n }: { name: string }) => {

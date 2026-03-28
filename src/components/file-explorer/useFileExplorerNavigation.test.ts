@@ -37,7 +37,7 @@ class MockExplorerDirectory implements ExplorerDirectory {
       if (entry instanceof MockExplorerDirectory) {
         yield { kind: 'directory', name: entry.name, readOnly: false, directory: entry };
       } else {
-        yield { kind: 'file', name: entry.name, fileHandle: entry as unknown as FileSystemFileHandle };
+        yield { kind: 'file', name: entry.name, readOnly: false, fileHandle: entry as unknown as FileSystemFileHandle };
       }
     }
   }
@@ -84,9 +84,13 @@ class MockExplorerDirectory implements ExplorerDirectory {
     return fh;
   }
 
-  addDir(name: string): MockExplorerDirectory {
-    const d = new MockExplorerDirectory(name);
-    this._entries.set(name, d);
+  addDir(nameOrDir: string | MockExplorerDirectory): MockExplorerDirectory {
+    if (nameOrDir instanceof MockExplorerDirectory) {
+      this._entries.set(nameOrDir.name, nameOrDir);
+      return nameOrDir;
+    }
+    const d = new MockExplorerDirectory(nameOrDir);
+    this._entries.set(nameOrDir, d);
     return d;
   }
 }
@@ -101,6 +105,7 @@ function makeNav(root: MockExplorerDirectory) {
     root,
     sortConfig: defaultSort,
     filterQuery: defaultFilter,
+    initialStack: undefined,
   });
 }
 
@@ -314,5 +319,63 @@ describe('useFileExplorerNavigation', () => {
     await flushPromises();
     expect(isLoading.value).toBe(false);
     expect(loadError.value).toContain('permission denied');
+  });
+
+  describe('initialStack', () => {
+    it('opens directly at the deepest directory when initialStack is provided', async () => {
+      const child = new MockExplorerDirectory('child');
+      child.addFile('deep.txt', 42);
+      root.addDir(child);
+
+      const nav = useFileExplorerNavigation({
+        root,
+        sortConfig: defaultSort,
+        filterQuery: defaultFilter,
+        initialStack: [child],
+      });
+      await flushPromises();
+
+      expect(nav.currentDirectory.value).toBe(child);
+      expect(nav.entries.value.map(e => e.name)).toEqual(['deep.txt']);
+    });
+
+    it('pathSegments includes root and every stack entry', async () => {
+      const mid = new MockExplorerDirectory('mid');
+      const leaf = new MockExplorerDirectory('leaf');
+      root.addDir(mid);
+      mid.addDir(leaf);
+
+      const nav = useFileExplorerNavigation({
+        root,
+        sortConfig: defaultSort,
+        filterQuery: defaultFilter,
+        initialStack: [mid, leaf],
+      });
+      await flushPromises();
+
+      const names = nav.pathSegments.value.map(s => s.name);
+      expect(names).toEqual(['root', 'mid', 'leaf']);
+    });
+
+    it('can navigate up after being opened with initialStack', async () => {
+      const child = new MockExplorerDirectory('child');
+      root.addFile('top.txt');
+      root.addDir(child);
+
+      const nav = useFileExplorerNavigation({
+        root,
+        sortConfig: defaultSort,
+        filterQuery: defaultFilter,
+        initialStack: [child],
+      });
+      await flushPromises();
+
+      await nav.navigateUp();
+      await flushPromises();
+
+      expect(nav.currentDirectory.value).toBe(root);
+      const names = nav.entries.value.map(e => e.name).sort();
+      expect(names).toEqual(['child', 'top.txt']);
+    });
   });
 });

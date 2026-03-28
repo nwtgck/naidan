@@ -390,12 +390,15 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   private specialFiles: Map<string, () => WeshFileHandle> = new Map();
   private openFifos: Map<string, FifoHandle> = new Map();
 
-  constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle }) {
-    const rootReadOnly = rootHandle instanceof ReadonlyDirectoryHandle;
-    this.mount({ path: '/', handle: rootHandle as FileSystemDirectoryHandle, readOnly: rootReadOnly });
-
-    this.registerSpecialFile({ path: '/dev/null', handler: () => new DevNullHandle() });
-    this.registerSpecialFile({ path: '/dev/zero', handler: () => new DevZeroHandle() });
+  constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle | undefined }) {
+    if (rootHandle !== undefined) {
+      const rootReadOnly = rootHandle instanceof ReadonlyDirectoryHandle;
+      this.mount({ path: '/', handle: rootHandle as FileSystemDirectoryHandle, readOnly: rootReadOnly });
+      // Register standard device files only when a real root is present.
+      // Standalone VFS instances (rootHandle: undefined) are mount-only and do not need /dev.
+      this.registerSpecialFile({ path: '/dev/null', handler: () => new DevNullHandle() });
+      this.registerSpecialFile({ path: '/dev/zero', handler: () => new DevZeroHandle() });
+    }
   }
 
   async mount({ path, handle, readOnly }: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void> {
@@ -1237,6 +1240,46 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   // --- Path Helpers ---
+
+  /**
+   * Returns the underlying native FileSystemHandle if the path resolves to a
+   * real filesystem entry (i.e. a handle-kind resolved node). Returns null for
+   * synthetic directories, special files, and registry entries.
+   */
+  async getNativeHandle({ path }: { path: string }): Promise<FileSystemHandle | null> {
+    try {
+      const resolved = await this.resolveNode({
+        path,
+        finalSymlinkTreatment: 'follow',
+        depth: 0,
+      });
+      switch (resolved.kind) {
+      case 'handle':
+        return resolved.handle;
+      case 'synthetic-directory':
+      case 'special':
+      case 'registry':
+        return null;
+      default: {
+        const _ex: never = resolved;
+        throw new Error(`Unhandled resolved node: ${JSON.stringify(_ex)}`);
+      }
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Returns whether the given path is read-only based on the owning mount.
+   * Paths that fall outside every mount (synthetic intermediate directories)
+   * are always read-only.
+   */
+  getReadOnlyForPath({ path }: { path: string }): boolean {
+    const normalized = this.normalizePath({ path });
+    const mount = this.findMount({ path: normalized });
+    return mount?.readOnly ?? true;
+  }
 
   private normalizePath({ path }: { path: string }): string {
     if (!path.startsWith('/')) path = '/' + path;
