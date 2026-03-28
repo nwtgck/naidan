@@ -19,9 +19,11 @@ const props = defineProps<{
   initialPreviewVisibility: PreviewVisibility;
   /** Pre-built navigation stack (from root's children down to target). */
   initialStack: ExplorerDirectory[] | undefined;
+  /** When true, the explorer starts in locked mode (write operations disabled). */
+  initialLocked: boolean;
 }>();
 
-const { context, _viewMode, _preview } = useFileExplorer({ root: props.root, initialStack: props.initialStack });
+const { context, _viewMode, _preview } = useFileExplorer({ root: props.root, initialStack: props.initialStack, initialLocked: props.initialLocked });
 
 // Apply initial values
 _viewMode.value = props.initialViewMode;

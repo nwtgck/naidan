@@ -12,6 +12,8 @@ const root = ref<ExplorerDirectory | undefined>(undefined);
 const initialStack = ref<ExplorerDirectory[] | undefined>(undefined);
 const loadError = ref<string | undefined>(undefined);
 
+const initialLocked = computed(() => fileExplorerOptions.value.kind === 'opfs-root');
+
 const title = computed(() => {
   const opts = fileExplorerOptions.value;
   switch (opts.kind) {
@@ -137,6 +139,7 @@ defineExpose({
             v-else-if="root"
             :root="root"
             :initial-stack="initialStack"
+            :initial-locked="initialLocked"
             initial-view-mode="list"
             initial-preview-visibility="visible"
             class="h-full"

@@ -5,9 +5,11 @@ import type { ExplorerDirectory } from './explorer-directory';
 export function useFileExplorerDragDrop({
   moveEntries,
   currentDirectory,
+  isReadOnly,
 }: {
   moveEntries: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: ExplorerDirectory }) => Promise<void>;
   currentDirectory: { readonly value: ExplorerDirectory };
+  isReadOnly: () => boolean;
 }) {
   const dragState = ref<DragState>({ status: 'idle' });
 
@@ -22,6 +24,7 @@ export function useFileExplorerDragDrop({
     event: DragEvent;
     entries: FileExplorerEntry[];
   }): void {
+    if (isReadOnly()) return;
     if (!event.dataTransfer) return;
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', entries.map(e => e.name).join('\n'));
@@ -90,6 +93,12 @@ export function useFileExplorerDragDrop({
   }
 
   async function onDropEntry({ entry }: { entry: FileExplorerEntry }): Promise<void> {
+    if (isReadOnly()) {
+      activeDragEntries.value = [];
+      dragState.value = { status: 'idle' };
+      return;
+    }
+
     switch (entry.kind) {
     case 'directory':
       break;

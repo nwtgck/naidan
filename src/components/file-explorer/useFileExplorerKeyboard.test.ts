@@ -108,6 +108,8 @@ function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerCont
     columnPanes: [],
     selectColumnEntry: vi.fn().mockResolvedValue(undefined),
     statusBarInfo: { totalItems: 3, selectedCount: 0, totalSize: 0, selectedSize: 0 },
+    isLocked: false,
+    toggleLock: vi.fn(),
     ...overrides,
   };
 }

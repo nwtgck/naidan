@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { inject, ref } from 'vue';
-import { LayoutGrid, List, Columns3, RefreshCw, Search, FilePlus, FolderPlus, Upload, Eye, EyeOff, X } from 'lucide-vue-next';
+import { LayoutGrid, List, Columns3, RefreshCw, Search, FilePlus, FolderPlus, Upload, Eye, EyeOff, X, Lock, LockOpen } from 'lucide-vue-next';
 import FileExplorerBreadcrumbs from './FileExplorerBreadcrumbs.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
 import type { ViewMode } from './types';
@@ -106,6 +106,18 @@ defineExpose({
       </button>
 
       <button
+        :title="ctx.isLocked ? 'Locked — click to unlock' : 'Unlocked — click to lock'"
+        data-testid="lock-toggle"
+        class="p-1.5 rounded-lg transition-colors"
+        :class="ctx.isLocked
+          ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/20'
+          : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+        @click="ctx.toggleLock()"
+      >
+        <component :is="ctx.isLocked ? Lock : LockOpen" class="w-3.5 h-3.5" />
+      </button>
+
+      <button
         title="Search"
         data-testid="search-toggle"
         class="p-1.5 rounded-lg transition-colors"
@@ -117,40 +129,52 @@ defineExpose({
         <Search class="w-3.5 h-3.5" />
       </button>
 
-      <template v-if="!ctx.readOnly">
-        <button
-          title="Upload Files"
-          data-testid="upload-button"
-          class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          @click="handleUploadClick"
-        >
-          <Upload class="w-3.5 h-3.5" />
-        </button>
-        <input
-          ref="fileInputRef"
-          type="file"
-          multiple
-          class="hidden"
-          data-testid="upload-input"
-          @change="handleFileInputChange"
-        />
+      <button
+        :title="ctx.readOnly ? 'Upload Files (unlock to enable)' : 'Upload Files'"
+        data-testid="upload-button"
+        class="p-1.5 rounded-lg transition-colors"
+        :class="ctx.readOnly
+          ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+          : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+        :disabled="ctx.readOnly"
+        @click="!ctx.readOnly && handleUploadClick()"
+      >
+        <Upload class="w-3.5 h-3.5" />
+      </button>
+      <input
+        ref="fileInputRef"
+        type="file"
+        multiple
+        class="hidden"
+        data-testid="upload-input"
+        @change="handleFileInputChange"
+      />
 
-        <button
-          title="New File"
-          class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          @click="handleNewFile"
-        >
-          <FilePlus class="w-3.5 h-3.5" />
-        </button>
+      <button
+        :title="ctx.readOnly ? 'New File (unlock to enable)' : 'New File'"
+        data-testid="new-file-button"
+        class="p-1.5 rounded-lg transition-colors"
+        :class="ctx.readOnly
+          ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+          : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+        :disabled="ctx.readOnly"
+        @click="!ctx.readOnly && handleNewFile()"
+      >
+        <FilePlus class="w-3.5 h-3.5" />
+      </button>
 
-        <button
-          title="New Folder"
-          class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          @click="handleNewFolder"
-        >
-          <FolderPlus class="w-3.5 h-3.5" />
-        </button>
-      </template>
+      <button
+        :title="ctx.readOnly ? 'New Folder (unlock to enable)' : 'New Folder'"
+        data-testid="new-folder-button"
+        class="p-1.5 rounded-lg transition-colors"
+        :class="ctx.readOnly
+          ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+          : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
+        :disabled="ctx.readOnly"
+        @click="!ctx.readOnly && handleNewFolder()"
+      >
+        <FolderPlus class="w-3.5 h-3.5" />
+      </button>
 
       <button
         title="Refresh"

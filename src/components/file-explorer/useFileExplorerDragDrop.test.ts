@@ -47,8 +47,8 @@ describe('useFileExplorerDragDrop', () => {
     currentDirectory = ref(fakeDir) as unknown as { readonly value: ExplorerDirectory };
   });
 
-  function makeDnd() {
-    return useFileExplorerDragDrop({ moveEntries, currentDirectory });
+  function makeDnd({ isReadOnly = () => false }: { isReadOnly?: () => boolean } = {}) {
+    return useFileExplorerDragDrop({ moveEntries, currentDirectory, isReadOnly });
   }
 
   // ---- initial state ----

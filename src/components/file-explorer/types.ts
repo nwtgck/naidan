@@ -181,6 +181,10 @@ export interface FileExplorerContext {
   // Read-only state of the current directory
   readOnly: boolean;
 
+  // Lock state (user-togglable; overrides readOnly to true when active)
+  isLocked: boolean;
+  toggleLock: () => void;
+
   // Column view
   columnPanes: ColumnPaneState[];
   selectColumnEntry: ({ paneIndex, entryName }: { paneIndex: number; entryName: string }) => Promise<void>;

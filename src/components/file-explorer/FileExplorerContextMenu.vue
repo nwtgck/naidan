@@ -24,11 +24,13 @@ const hasClipboard = computed(() =>
 );
 
 type MenuItem =
-  | { type: 'action'; action: ContextMenuAction; label: string; icon: unknown; danger?: boolean }
+  | { type: 'action'; action: ContextMenuAction; label: string; icon: unknown; danger?: boolean; disabled?: boolean; disabledReason?: string }
   | { type: 'divider' };
 
 const menuItems = computed<MenuItem[]>(() => {
   const readOnly = ctx.readOnly;
+  const lockedReason = readOnly ? 'Unlock to enable' : undefined;
+
   switch (target.value.kind) {
   case 'entry': {
     const firstEntry = target.value.selectedEntries[0];
@@ -38,20 +40,15 @@ const menuItems = computed<MenuItem[]>(() => {
 
     const items: MenuItem[] = [
       { type: 'action', action: 'open', label: 'Open', icon: FolderOpen },
+      { type: 'action', action: 'rename', label: 'Rename', icon: Pencil, disabled: readOnly, disabledReason: lockedReason },
     ];
-
-    if (!readOnly) {
-      items.push({ type: 'action', action: 'rename', label: 'Rename', icon: Pencil });
-    }
 
     items.push({ type: 'divider' });
     items.push({ type: 'action', action: 'copy', label: 'Copy', icon: Copy });
+    items.push({ type: 'action', action: 'cut', label: 'Cut', icon: Scissors, disabled: readOnly, disabledReason: lockedReason });
 
-    if (!readOnly) {
-      items.push({ type: 'action', action: 'cut', label: 'Cut', icon: Scissors });
-      if (hasClipboard.value) {
-        items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPaste });
-      }
+    if (hasClipboard.value) {
+      items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPaste, disabled: readOnly, disabledReason: lockedReason });
     }
 
     items.push({ type: 'divider' });
@@ -61,27 +58,23 @@ const menuItems = computed<MenuItem[]>(() => {
     }
 
     items.push({ type: 'action', action: 'getInfo', label: 'Get Info', icon: Info });
-
-    if (!readOnly) {
-      items.push({ type: 'divider' });
-      items.push({ type: 'action', action: 'delete', label: 'Delete', icon: Trash2, danger: true });
-    }
+    items.push({ type: 'divider' });
+    items.push({ type: 'action', action: 'delete', label: 'Delete', icon: Trash2, danger: true, disabled: readOnly, disabledReason: lockedReason });
 
     return items;
   }
   case 'background': {
-    const items: MenuItem[] = [];
+    const items: MenuItem[] = [
+      { type: 'action', action: 'newFile', label: 'New File', icon: FilePlus, disabled: readOnly, disabledReason: lockedReason },
+      { type: 'action', action: 'newFolder', label: 'New Folder', icon: FolderPlus, disabled: readOnly, disabledReason: lockedReason },
+    ];
 
-    if (!readOnly) {
-      items.push({ type: 'action', action: 'newFile', label: 'New File', icon: FilePlus });
-      items.push({ type: 'action', action: 'newFolder', label: 'New Folder', icon: FolderPlus });
-      if (hasClipboard.value) {
-        items.push({ type: 'divider' });
-        items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPaste });
-      }
+    if (hasClipboard.value) {
       items.push({ type: 'divider' });
+      items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPaste, disabled: readOnly, disabledReason: lockedReason });
     }
 
+    items.push({ type: 'divider' });
     items.push({ type: 'action', action: 'selectAll', label: 'Select All', icon: CheckSquare });
 
     return items;
@@ -115,10 +108,14 @@ defineExpose({
         <button
           v-else-if="item.type === 'action'"
           class="flex items-center gap-2.5 w-full px-3 py-1.5 text-xs font-medium transition-colors text-left"
-          :class="item.danger
-            ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
-          @click="ctx.executeContextAction({ action: item.action })"
+          :class="item.disabled
+            ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+            : item.danger
+              ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+          :disabled="item.disabled"
+          :title="item.disabled && item.disabledReason ? item.disabledReason : undefined"
+          @click="!item.disabled && ctx.executeContextAction({ action: item.action })"
         >
           <component :is="item.icon" class="w-4 h-4 shrink-0 opacity-70" />
           {{ item.label }}

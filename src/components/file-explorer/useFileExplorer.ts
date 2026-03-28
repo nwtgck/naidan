@@ -23,7 +23,7 @@ import { usePrompt } from '@/composables/usePrompt';
 export const FILE_EXPLORER_INJECTION_KEY: InjectionKey<FileExplorerContext> =
   Symbol('FileExplorerContext');
 
-export function useFileExplorer({ root, initialStack }: { root: ExplorerDirectory; initialStack: ExplorerDirectory[] | undefined }) {
+export function useFileExplorer({ root, initialStack, initialLocked }: { root: ExplorerDirectory; initialStack: ExplorerDirectory[] | undefined; initialLocked: boolean }) {
   const { addToast } = useToast();
   const { showPrompt } = usePrompt();
 
@@ -31,6 +31,7 @@ export function useFileExplorer({ root, initialStack }: { root: ExplorerDirector
   const viewMode = ref<ViewMode>('list');
   const sortConfig = ref<SortConfig>({ field: 'name', direction: 'ascending' });
   const filterQuery = ref('');
+  const isLocked = ref(initialLocked);
 
   // --- Navigation ---
   const nav = useFileExplorerNavigation({
@@ -79,6 +80,7 @@ export function useFileExplorer({ root, initialStack }: { root: ExplorerDirector
   const dnd = useFileExplorerDragDrop({
     moveEntries: ops.moveEntries,
     currentDirectory: nav.currentDirectory,
+    isReadOnly: () => isLocked.value || nav.currentDirectory.value.readOnly,
   });
 
   // --- View mode ---
@@ -110,6 +112,11 @@ export function useFileExplorer({ root, initialStack }: { root: ExplorerDirector
   // --- Filter ---
   function setFilterQuery({ query }: { query: string }): void {
     filterQuery.value = query;
+  }
+
+  // --- Lock ---
+  function toggleLock(): void {
+    isLocked.value = !isLocked.value;
   }
 
   // --- Selection ---
@@ -311,8 +318,12 @@ export function useFileExplorer({ root, initialStack }: { root: ExplorerDirector
       return nav.currentDirectory.value;
     },
     get readOnly() {
-      return nav.currentDirectory.value.readOnly;
+      return isLocked.value || nav.currentDirectory.value.readOnly;
     },
+    get isLocked() {
+      return isLocked.value;
+    },
+    toggleLock,
     get pathSegments() {
       return nav.pathSegments.value;
     },
@@ -440,6 +451,7 @@ export function useFileExplorer({ root, initialStack }: { root: ExplorerDirector
     _ctxMenu: ctxMenu,
     _dnd: dnd,
     _viewMode: viewMode,
+    _isLocked: isLocked,
     _sortConfig: sortConfig,
     _filterQuery: filterQuery,
     _selectedEntries: selectedEntries,

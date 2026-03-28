@@ -129,6 +129,7 @@ function mountExplorer(root: MockExplorerDirectory, overrides: Record<string, un
       initialViewMode: 'list',
       initialPreviewVisibility: 'visible',
       initialStack: undefined,
+      initialLocked: false,
       ...overrides,
     },
     attachTo: document.body,
@@ -560,7 +561,7 @@ describe('FileExplorer.vue', () => {
     expect(wrapper.text()).toContain('added-after.txt');
   });
 
-  // ---- readOnly UI ----
+  // ---- readOnly UI (underlying directory is read-only) ----
 
   describe('readOnly directory', () => {
     class ReadOnlyMockExplorerDirectory extends MockExplorerDirectory {
@@ -568,9 +569,7 @@ describe('FileExplorer.vue', () => {
 
       override async *children(): AsyncIterable<import('./explorer-directory').ExplorerChild> {
         for await (const child of super.children()) {
-          yield child.kind === 'file'
-            ? { ...child, readOnly: true }
-            : { ...child, readOnly: true };
+          yield { ...child, readOnly: true };
         }
       }
     }
@@ -582,13 +581,13 @@ describe('FileExplorer.vue', () => {
       return tracked(mountExplorer(ro as unknown as MockExplorerDirectory));
     }
 
-    it('toolbar hides upload, new file, and new folder buttons when readOnly', async () => {
+    it('toolbar shows upload, new file, new folder as disabled when readOnly', async () => {
       const wrapper = mountReadOnlyExplorer();
       await flushPromises();
 
-      expect(wrapper.find('[data-testid="upload-button"]').exists()).toBe(false);
-      expect(wrapper.find('button[title="New File"]').exists()).toBe(false);
-      expect(wrapper.find('button[title="New Folder"]').exists()).toBe(false);
+      expect(wrapper.find('[data-testid="upload-button"]').attributes('disabled')).toBeDefined();
+      expect(wrapper.find('[data-testid="new-file-button"]').attributes('disabled')).toBeDefined();
+      expect(wrapper.find('[data-testid="new-folder-button"]').attributes('disabled')).toBeDefined();
     });
 
     it('toolbar still shows refresh and view-mode buttons when readOnly', async () => {
@@ -599,7 +598,7 @@ describe('FileExplorer.vue', () => {
       expect(wrapper.find('[data-testid="view-list"]').exists()).toBe(true);
     });
 
-    it('context menu on background excludes write actions when readOnly', async () => {
+    it('context menu on background shows write actions as disabled when readOnly', async () => {
       const wrapper = mountReadOnlyExplorer();
       await flushPromises();
 
@@ -608,13 +607,16 @@ describe('FileExplorer.vue', () => {
 
       const menu = document.body.querySelector('[data-testid="context-menu"]');
       expect(menu).not.toBeNull();
-      const labels = Array.from(menu!.querySelectorAll('button')).map(b => b.textContent?.trim());
-      expect(labels).not.toContain('New File');
-      expect(labels).not.toContain('New Folder');
-      expect(labels).toContain('Select All');
+      const buttons = Array.from(menu!.querySelectorAll('button'));
+      const newFileBtn = buttons.find(b => b.textContent?.includes('New File'));
+      const newFolderBtn = buttons.find(b => b.textContent?.includes('New Folder'));
+      expect(newFileBtn).toBeDefined();
+      expect(newFolderBtn).toBeDefined();
+      expect(newFileBtn!.disabled).toBe(true);
+      expect(newFolderBtn!.disabled).toBe(true);
     });
 
-    it('context menu on entry excludes rename, cut, delete when readOnly', async () => {
+    it('context menu on entry shows rename, cut, delete as disabled when readOnly', async () => {
       const wrapper = mountReadOnlyExplorer();
       await flushPromises();
 
@@ -623,30 +625,128 @@ describe('FileExplorer.vue', () => {
 
       const menu = document.body.querySelector('[data-testid="context-menu"]');
       expect(menu).not.toBeNull();
-      const labels = Array.from(menu!.querySelectorAll('button')).map(b => b.textContent?.trim());
-      expect(labels).not.toContain('Rename');
-      expect(labels).not.toContain('Cut');
-      expect(labels).not.toContain('Delete');
-      expect(labels).toContain('Open');
-      expect(labels).toContain('Copy');
+      const buttons = Array.from(menu!.querySelectorAll('button'));
+      const getBtn = (label: string) => buttons.find(b => b.textContent?.includes(label));
+      expect(getBtn('Rename')!.disabled).toBe(true);
+      expect(getBtn('Cut')!.disabled).toBe(true);
+      expect(getBtn('Delete')!.disabled).toBe(true);
+      expect(getBtn('Open')!.disabled).toBe(false);
+      expect(getBtn('Copy')!.disabled).toBe(false);
     });
 
-    it('lock icon is shown on readOnly file entries', async () => {
+    it('entry lock icon is shown on readOnly entries', async () => {
       const wrapper = mountReadOnlyExplorer();
       await flushPromises();
 
-      const lockIcons = wrapper.findAll('[data-testid="entry-lock-icon"]');
-      expect(lockIcons.length).toBeGreaterThanOrEqual(1);
-    });
-
-    it('lock icon is shown on readOnly directory entries', async () => {
-      const wrapper = mountReadOnlyExplorer();
-      await flushPromises();
-
-      // All entries are readOnly so all should have lock icons
       const entries = wrapper.findAll('[data-testid^="entry-item-"]');
       const locks = wrapper.findAll('[data-testid="entry-lock-icon"]');
       expect(locks.length).toBe(entries.length);
+    });
+  });
+
+  // ---- lock toggle ----
+
+  describe('lock feature', () => {
+    it('lock-toggle button is visible in toolbar', async () => {
+      const wrapper = tracked(mountExplorer(root));
+      await flushPromises();
+      expect(wrapper.find('[data-testid="lock-toggle"]').exists()).toBe(true);
+    });
+
+    it('starts unlocked when initialLocked is false', async () => {
+      root.addFile('a.txt');
+      const wrapper = tracked(mountExplorer(root, { initialLocked: false }));
+      await flushPromises();
+
+      // Write buttons should be enabled
+      expect(wrapper.find('[data-testid="upload-button"]').attributes('disabled')).toBeUndefined();
+      expect(wrapper.find('[data-testid="new-file-button"]').attributes('disabled')).toBeUndefined();
+    });
+
+    it('starts locked when initialLocked is true', async () => {
+      root.addFile('a.txt');
+      const wrapper = tracked(mountExplorer(root, { initialLocked: true }));
+      await flushPromises();
+
+      // Write buttons should be disabled
+      expect(wrapper.find('[data-testid="upload-button"]').attributes('disabled')).toBeDefined();
+      expect(wrapper.find('[data-testid="new-file-button"]').attributes('disabled')).toBeDefined();
+    });
+
+    it('clicking lock-toggle enables write buttons when starting locked', async () => {
+      root.addFile('a.txt');
+      const wrapper = tracked(mountExplorer(root, { initialLocked: true }));
+      await flushPromises();
+
+      await wrapper.find('[data-testid="lock-toggle"]').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find('[data-testid="upload-button"]').attributes('disabled')).toBeUndefined();
+      expect(wrapper.find('[data-testid="new-file-button"]').attributes('disabled')).toBeUndefined();
+    });
+
+    it('clicking lock-toggle disables write buttons when starting unlocked', async () => {
+      root.addFile('a.txt');
+      const wrapper = tracked(mountExplorer(root, { initialLocked: false }));
+      await flushPromises();
+
+      await wrapper.find('[data-testid="lock-toggle"]').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find('[data-testid="upload-button"]').attributes('disabled')).toBeDefined();
+      expect(wrapper.find('[data-testid="new-file-button"]').attributes('disabled')).toBeDefined();
+    });
+
+    it('context menu write items are disabled when locked', async () => {
+      root.addFile('file.txt');
+      const wrapper = tracked(mountExplorer(root, { initialLocked: true }));
+      await flushPromises();
+
+      await wrapper.find('[data-testid="entry-item-file.txt"]').trigger('contextmenu', { clientX: 50, clientY: 50 });
+      await flushPromises();
+
+      const menu = document.body.querySelector('[data-testid="context-menu"]');
+      const buttons = Array.from(menu!.querySelectorAll('button'));
+      const getBtn = (label: string) => buttons.find(b => b.textContent?.includes(label));
+      expect(getBtn('Rename')!.disabled).toBe(true);
+      expect(getBtn('Delete')!.disabled).toBe(true);
+      // Copy is not a write operation — stays enabled
+      expect(getBtn('Copy')!.disabled).toBe(false);
+    });
+
+    it('Delete key does not delete entries when locked', async () => {
+      root.addFile('keep.txt');
+      const wrapper = tracked(mountExplorer(root, { initialLocked: true }));
+      await flushPromises();
+
+      await wrapper.find('[data-testid="entry-item-keep.txt"]').trigger('click');
+      await flushPromises();
+
+      await wrapper.find('[data-testid="file-explorer"]').trigger('keydown', { key: 'Delete' });
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('keep.txt');
+    });
+
+    it('Ctrl+X does not cut entries when locked', async () => {
+      root.addFile('keep.txt');
+      const wrapper = tracked(mountExplorer(root, { initialLocked: true }));
+      await flushPromises();
+
+      await wrapper.find('[data-testid="entry-item-keep.txt"]').trigger('click');
+      await flushPromises();
+
+      // Cut while locked — clipboard should remain empty
+      await wrapper.find('[data-testid="file-explorer"]').trigger('keydown', { key: 'x', ctrlKey: true });
+      await flushPromises();
+
+      // Paste won't do anything because clipboard is empty
+      await wrapper.find('[data-testid="file-explorer"]').trigger('keydown', { key: 'v', ctrlKey: true });
+      await flushPromises();
+
+      // keep.txt still present, no second copy
+      const items = wrapper.findAll('[data-testid^="entry-item-"]');
+      expect(items).toHaveLength(1);
     });
   });
 });

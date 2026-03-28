@@ -44,25 +44,27 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
       return;
     }
 
-    // Ctrl/Cmd+X: cut
+    // Ctrl/Cmd+X: cut (write operation — blocked when readOnly)
     if (isCtrlOrCmd && event.key === 'x') {
       event.preventDefault();
-      if (ctx.selectedEntries.length > 0) {
+      if (!ctx.readOnly && ctx.selectedEntries.length > 0) {
         ctx.clipboardCut({ entries: ctx.selectedEntries });
       }
       return;
     }
 
-    // Ctrl/Cmd+V: paste
+    // Ctrl/Cmd+V: paste (write operation — blocked when readOnly)
     if (isCtrlOrCmd && event.key === 'v') {
       event.preventDefault();
-      await ctx.clipboardPaste();
+      if (!ctx.readOnly) {
+        await ctx.clipboardPaste();
+      }
       return;
     }
 
-    // Delete / Backspace: delete selected
+    // Delete / Backspace: delete selected (write operation — blocked when readOnly)
     if (event.key === 'Delete' || event.key === 'Backspace') {
-      if (ctx.selectedEntries.length > 0) {
+      if (!ctx.readOnly && ctx.selectedEntries.length > 0) {
         event.preventDefault();
         await ctx.deleteEntries({ entries: ctx.selectedEntries });
         ctx.applySelection({ action: { type: 'clear' } });
@@ -70,14 +72,16 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
       return;
     }
 
-    // F2: rename focused entry
+    // F2: rename focused entry (write operation — blocked when readOnly)
     if (event.key === 'F2') {
-      const focused = ctx.sortedFilteredEntries.find(
-        e => e.name === ctx.selectionState.focusName,
-      );
-      if (focused) {
-        event.preventDefault();
-        ctx.startRename({ entry: focused });
+      if (!ctx.readOnly) {
+        const focused = ctx.sortedFilteredEntries.find(
+          e => e.name === ctx.selectionState.focusName,
+        );
+        if (focused) {
+          event.preventDefault();
+          ctx.startRename({ entry: focused });
+        }
       }
       return;
     }
