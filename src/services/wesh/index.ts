@@ -305,6 +305,7 @@ export class Wesh {
     }
     this.registerCommand({ definition: helpCommandDefinition });
     this.registerCommand({ definition: this.createAliasCommandDefinition() });
+    this.registerCommand({ definition: this.createUnaliasCommandDefinition() });
     this.registerCommand({ definition: this.createShellAliasCommandDefinition({ name: 'sh' }) });
     this.registerCommand({ definition: this.createShellAliasCommandDefinition({ name: 'bash' }) });
     this.vfs.registerSpecialFile({
@@ -493,7 +494,10 @@ usage: alias [name[=value] ...]
         if (context.args.length === 0) {
           for (const alias of context.getAliases()) {
             await context.text().print({
-              text: `alias ${alias.name}='${alias.value.replaceAll("'", "'\\''")}'\n`,
+              text: this.formatAliasDefinition({
+                name: alias.name,
+                value: alias.value,
+              }),
             });
           }
           return { exitCode: 0 };
@@ -505,8 +509,8 @@ usage: alias [name[=value] ...]
           if (equalsIndex >= 0) {
             const name = arg.slice(0, equalsIndex);
             const value = arg.slice(equalsIndex + 1);
-            if (name.length === 0) {
-              await context.text().error({ text: 'alias: invalid alias name\n' });
+            if (!this.isValidAliasName({ name })) {
+              await context.text().error({ text: `alias: ${name}: invalid alias name\n` });
               exitCode = 1;
               continue;
             }
@@ -521,13 +525,91 @@ usage: alias [name[=value] ...]
             continue;
           }
           await context.text().print({
-            text: `alias ${existing.name}='${existing.value.replaceAll("'", "'\\''")}'\n`,
+            text: this.formatAliasDefinition({
+              name: existing.name,
+              value: existing.value,
+            }),
           });
         }
 
         return { exitCode };
       },
     };
+  }
+
+  private createUnaliasCommandDefinition(): WeshCommandDefinition {
+    return {
+      meta: {
+        name: 'unalias',
+        description: 'Remove shell aliases',
+        usage: 'unalias [-a] name [name ...]',
+      },
+      fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
+        if (context.args.length === 1 && context.args[0] === '--help') {
+          await context.text().print({
+            text: `\
+unalias: remove shell aliases
+usage: unalias [-a] name [name ...]
+`,
+          });
+          return { exitCode: 0 };
+        }
+
+        if (context.args.length === 1 && context.args[0] === '-a') {
+          for (const alias of context.getAliases()) {
+            context.unsetAlias({ name: alias.name });
+          }
+          return { exitCode: 0 };
+        }
+
+        if (context.args.length === 0) {
+          await context.text().error({ text: 'unalias: usage: unalias [-a] name [name ...]\n' });
+          return { exitCode: 1 };
+        }
+
+        let exitCode = 0;
+        for (const arg of context.args) {
+          if (arg.startsWith('-')) {
+            await context.text().error({ text: `unalias: ${arg}: invalid option\n` });
+            exitCode = 2;
+            continue;
+          }
+
+          const existing = context.getAliases().find((entry) => entry.name === arg);
+          if (existing === undefined) {
+            await context.text().error({ text: `unalias: ${arg}: not found\n` });
+            exitCode = 1;
+            continue;
+          }
+
+          context.unsetAlias({ name: arg });
+        }
+
+        return { exitCode };
+      },
+    };
+  }
+
+  private isValidAliasName({
+    name,
+  }: {
+    name: string;
+  }): boolean {
+    return name.length > 0
+      && !name.startsWith('-')
+      && !name.includes('/')
+      && !/\s/u.test(name)
+      && !name.includes('=');
+  }
+
+  private formatAliasDefinition({
+    name,
+    value,
+  }: {
+    name: string;
+    value: string;
+  }): string {
+    return `alias ${name}='${value.replaceAll("'", "'\\''")}'\n`;
   }
 
   private resolveBuiltinCommand({

@@ -167,6 +167,37 @@ describe('wesh core command parsing', () => {
     expect(selfAliasedResult.result.exitCode).toBe(0);
   });
 
+  it('removes aliases with unalias and supports unalias -a', async () => {
+    const removed = await execute({ script: "alias hi='echo hello'; unalias hi; hi" });
+    const cleared = await execute({ script: "alias a='echo a'; alias b='echo b'; unalias -a; alias" });
+
+    expect(removed.stdout.text).toBe('');
+    expect(removed.stderr.text).toContain('wesh: Command not found: hi');
+    expect(removed.result.exitCode).toBe(1);
+
+    expect(cleared.stdout.text).toBe('');
+    expect(cleared.stderr.text).toBe('');
+    expect(cleared.result.exitCode).toBe(0);
+  });
+
+  it('rejects invalid alias names and missing unalias targets', async () => {
+    const invalidSlash = await execute({ script: "alias foo/bar='echo bad'" });
+    const invalidSpace = await execute({ script: "alias 'foo bar=echo bad'" });
+    const missingUnalias = await execute({ script: 'unalias missing' });
+
+    expect(invalidSlash.stdout.text).toBe('');
+    expect(invalidSlash.stderr.text).toContain('alias: foo/bar: invalid alias name');
+    expect(invalidSlash.result.exitCode).toBe(1);
+
+    expect(invalidSpace.stdout.text).toBe('');
+    expect(invalidSpace.stderr.text).toContain('alias: foo bar: invalid alias name');
+    expect(invalidSpace.result.exitCode).toBe(1);
+
+    expect(missingUnalias.stdout.text).toBe('');
+    expect(missingUnalias.stderr.text).toContain('unalias: missing: not found');
+    expect(missingUnalias.result.exitCode).toBe(1);
+  });
+
   it('stops re-expanding aliases that already appeared in the same expansion chain', async () => {
     const { result, stdout, stderr } = await execute({ script: "alias loop='loop'; loop" });
     const mutual = await execute({ script: "alias a='b'; alias b='a'; a" });
