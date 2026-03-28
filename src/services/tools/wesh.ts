@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Tool } from './types';
+import type { Tool, ToolExecutionEvent } from './types';
 import type { WeshMount } from '@/services/wesh/types';
 import type { WeshWorkerClient } from '@/services/wesh-worker.types';
 
@@ -41,6 +41,12 @@ export function createWeshTool({
       .number()
       .default(defaultStderrLimit)
       .describe('Maximum number of bytes to capture from stderr.'),
+    timeoutMs: z
+      .number()
+      .int()
+      .min(0)
+      .default(8000)
+      .describe('Maximum execution time in milliseconds before the command is interrupted. Defaults to 8000 ms.'),
   });
 
   return {
@@ -51,35 +57,116 @@ export function createWeshTool({
       await client.dispose({});
     },
 
-    async execute({ args, signal }: { args: unknown; signal?: AbortSignal }) {
+    async execute({ args, signal, onEvent }: { args: unknown; signal?: AbortSignal; onEvent?: (event: ToolExecutionEvent) => void | Promise<void> }) {
       let abortHandler: (() => void) | undefined;
+      let executionId: string | undefined;
       try {
         if (signal?.aborted) throw new Error('Generation aborted');
         const validated = WeshArgsSchema.parse(args);
+        let stdoutText = '';
+        let stderrText = '';
+
+        const appendOutput = ({ stream, text }: { stream: 'stdout' | 'stderr'; text: string }) => {
+          switch (stream) {
+          case 'stdout':
+            stdoutText += text;
+            break;
+          case 'stderr':
+            stderrText += text;
+            break;
+          default: {
+            const _ex: never = stream;
+            throw new Error(`Unhandled wesh output stream: ${_ex}`);
+          }
+          }
+        };
+
         if (signal) {
           abortHandler = () => {
-            void client.interrupt({});
+            if (executionId) {
+              void client.interruptExecution({ request: { executionId } });
+            } else {
+              void client.interrupt({});
+            }
           };
           signal.addEventListener('abort', abortHandler, { once: true });
         }
 
-        const result = await client.execute({
+        const started = await client.startExecution({
           request: {
             script: validated.shell_script,
             stdoutLimit: validated.stdout_limit,
             stderrLimit: validated.stderr_limit,
           },
+          onEvent: async (event) => {
+            switch (event.type) {
+            case 'started':
+              await onEvent?.({ type: 'started' });
+              break;
+            case 'stdout':
+              appendOutput({ stream: 'stdout', text: event.text });
+              await onEvent?.({ type: 'output', stream: 'stdout', text: event.text });
+              break;
+            case 'stderr':
+              appendOutput({ stream: 'stderr', text: event.text });
+              await onEvent?.({ type: 'output', stream: 'stderr', text: event.text });
+              break;
+            case 'exit':
+              await onEvent?.({ type: 'exit', exitCode: event.exitCode });
+              break;
+            case 'stdout_truncated':
+            case 'stderr_truncated':
+              break;
+            case 'error':
+              throw new Error(event.message);
+            default: {
+              const _ex: never = event;
+              throw new Error(`Unhandled wesh execution event: ${String(_ex)}`);
+            }
+            }
+          },
         });
+        executionId = started.executionId;
+
+        let timedOut = false;
+        const completion = client.awaitExecution({
+          request: {
+            executionId,
+          },
+        });
+        const timeout = new Promise<'timeout'>(resolve => {
+          setTimeout(() => resolve('timeout'), validated.timeoutMs);
+        });
+        const outcome = await Promise.race([completion, timeout]);
+
+        if (outcome === 'timeout') {
+          timedOut = true;
+          await client.interruptExecution({
+            request: {
+              executionId,
+            },
+          });
+        }
+
+        const result = await completion;
+        stdoutText = result.stdout;
+        stderrText = result.stderr;
 
         let content = `Exit Code: ${result.exitCode}\n`;
-        const stdoutText = result.stdout;
-        const stderrText = result.stderr;
 
         if (stdoutText) {
           content += `\nSTDOUT:\n${stdoutText}\n`;
         }
         if (stderrText) {
           content += `\nSTDERR:\n${stderrText}\n`;
+        }
+
+        if (timedOut) {
+          return {
+            status: 'error',
+            code: 'timeout',
+            message: `Shell execution timed out after ${validated.timeoutMs}ms.\n\n${content}`,
+          };
         }
 
         return {
@@ -93,6 +180,13 @@ export function createWeshTool({
           message: `Shell execution error: ${error instanceof Error ? error.message : String(error)}`,
         };
       } finally {
+        if (executionId) {
+          await client.disposeExecution({
+            request: {
+              executionId,
+            },
+          });
+        }
         if (signal && abortHandler) {
           signal.removeEventListener('abort', abortHandler);
         }

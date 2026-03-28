@@ -7,6 +7,7 @@ import type { ToolExecutionResult } from '@/services/tools/types';
 const props = defineProps<{
   args: string;
   result: ToolExecutionResult;
+  liveOutput?: string;
 }>();
 
 // IMPORTANT: These schemas are intentionally local to this component and MUST NOT
@@ -48,6 +49,21 @@ const resultText = computed((): string | null => {
   return null;
 });
 
+const liveOutputText = computed((): string | null => {
+  const status = props.result.status;
+  switch (status) {
+  case 'executing':
+    return props.liveOutput && props.liveOutput.length > 0 ? props.liveOutput : null;
+  case 'success':
+  case 'error':
+    return null;
+  default: {
+    const _ex: never = status;
+    throw new Error(`Unhandled tool result status: ${_ex}`);
+  }
+  }
+});
+
 
 defineExpose({
   __testOnly: {
@@ -63,7 +79,10 @@ defineExpose({
       <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Arguments</div>
       <pre class="text-[10px] font-mono p-2 bg-black/5 dark:bg-black/20 rounded-lg overflow-x-auto custom-scrollbar">{{ formattedRawArgs }}</pre>
     </div>
-    <div v-if="result.status !== 'executing' && resultText !== null">
+    <div v-if="result.status === 'executing' && liveOutputText !== null">
+      <pre class="text-[10px] font-mono p-2 rounded-lg bg-blue-500/5 text-gray-700 dark:text-gray-300 overflow-x-auto custom-scrollbar whitespace-pre-wrap">{{ liveOutputText }}</pre>
+    </div>
+    <div v-else-if="resultText !== null">
       <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
         {{ result.status === 'success' ? 'Result' : 'Error' }}
       </div>
@@ -94,7 +113,10 @@ defineExpose({
     </div>
 
     <!-- Result -->
-    <div v-if="result.status !== 'executing' && resultText !== null">
+    <div v-if="result.status === 'executing' && liveOutputText !== null">
+      <pre class="text-[10px] font-mono p-2 rounded-lg bg-blue-500/5 text-gray-700 dark:text-gray-300 overflow-x-auto custom-scrollbar whitespace-pre-wrap">{{ liveOutputText }}</pre>
+    </div>
+    <div v-else-if="resultText !== null">
       <div v-if="result.status === 'error'" class="text-[10px] font-mono p-2 rounded-lg break-words bg-red-500/5 text-red-600 dark:text-red-400">
         <div class="font-bold mb-1 uppercase text-[8px] tracking-widest opacity-70">Code: {{ result.error.code }}</div>
         <div class="whitespace-pre-wrap">{{ resultText }}</div>

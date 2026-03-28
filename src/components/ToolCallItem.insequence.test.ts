@@ -21,6 +21,12 @@ vi.mock('@/services/storage', () => ({
   storageService: { getFile: vi.fn() },
 }));
 
+vi.mock('@/composables/useChat', () => ({
+  useChat: () => ({
+    getVolatileToolOutput: vi.fn().mockReturnValue(undefined),
+  }),
+}));
+
 const makeToolCall = (): CombinedToolCall => ({
   id: 'tc-1',
   nodeId: 'node-1',

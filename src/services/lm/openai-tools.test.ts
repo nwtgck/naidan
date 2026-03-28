@@ -65,7 +65,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     expect(result).toBe('The weather in Tokyo is Sunny.');
-    expect(mockTool.execute).toHaveBeenCalledWith({ args: { location: 'Tokyo' } });
+    expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { location: 'Tokyo' } }));
     expect(onToolCall).toHaveBeenCalledWith({ id: 'call_1', toolName: 'get_weather', args: { location: 'Tokyo' } });
     expect(onToolResult).toHaveBeenCalledWith({ id: 'call_1', result: { status: 'success', content: 'Sunny, 25C' } });
 
@@ -116,7 +116,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
       tools: [mockTool],
     });
 
-    expect(mockTool.execute).toHaveBeenCalledWith({ args: { e: '2+2' } });
+    expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { e: '2+2' } }));
   });
 
   it('should support interleaved text and tool calls', async () => {
@@ -526,7 +526,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     // Should NOT have 'calccalc' or '{"e":"2+2"}{"e":"2+2"}'
-    expect(mockTool.execute).toHaveBeenCalledWith({ args: { e: '2+2' } });
+    expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { e: '2+2' } }));
   });
 
   it('should treat concatenated JSON objects as a parse error and report to LLM (correct protocol enforcement)', async () => {

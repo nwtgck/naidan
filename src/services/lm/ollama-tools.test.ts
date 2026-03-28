@@ -69,7 +69,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     });
 
     expect(result).toBe('It is rainy in London.');
-    expect(mockTool.execute).toHaveBeenCalledWith({ args: { location: 'London' } });
+    expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { location: 'London' } }));
     expect(onToolCall).toHaveBeenCalledWith({ id: 'c1', toolName: 'get_weather', args: { location: 'London' } });
 
     expect(serverInstance!.capturedRequests).toHaveLength(2);
@@ -150,7 +150,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
       tools: [mockTool],
     });
 
-    expect(mockTool.execute).toHaveBeenCalledWith({ args: { val: 123 } });
+    expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { val: 123 } }));
   });
 
   it('should return error to LLM on invalid arguments (strict mode)', async () => {

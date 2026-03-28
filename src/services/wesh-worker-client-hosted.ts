@@ -2,11 +2,13 @@ import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
 import { createFileProtocolCompatibleWeshWorker } from '@/services/wesh-worker-loader'
 import {
+  weshWorkerExecutionSummarySchema,
   mapWeshMountsToWorkerMounts,
-  weshWorkerExecuteResponseSchema,
+  weshWorkerStartExecutionResponseSchema,
   weshWorkerInitRequestSchema,
   type IWeshWorker,
   type WeshWorkerClient,
+  type WeshWorkerExecutionEvent,
   type WeshWorkerExecuteRequest,
 } from './wesh-worker.types'
 import type { WeshMount } from '@/services/wesh/types'
@@ -38,9 +40,29 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   await remote.init({ request: initRequest })
 
   return {
+    async startExecution({ request, onEvent }: {
+      request: WeshWorkerExecuteRequest
+      onEvent?: (event: WeshWorkerExecutionEvent) => void | Promise<void>
+    }) {
+      const response = await remote.startExecution(
+        request,
+        onEvent ? Comlink.proxy(onEvent) : undefined,
+      )
+      return weshWorkerStartExecutionResponseSchema.parse(response)
+    },
+    async awaitExecution({ request }) {
+      const response = await remote.awaitExecution({ request })
+      return weshWorkerExecutionSummarySchema.parse(response)
+    },
+    async interruptExecution({ request }) {
+      return remote.interruptExecution({ request })
+    },
+    async disposeExecution({ request }) {
+      await remote.disposeExecution({ request })
+    },
     async execute({ request }: { request: WeshWorkerExecuteRequest }) {
       const response = await remote.execute({ request })
-      return weshWorkerExecuteResponseSchema.parse(response)
+      return weshWorkerExecutionSummarySchema.parse(response)
     },
     async interrupt(_args: EmptyArgs) {
       return remote.interrupt({})

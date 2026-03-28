@@ -32,12 +32,28 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       exitCode: 0,
       stdout: 'ok\n',
       stderr: '',
+      stdoutTruncated: false,
+      stderrTruncated: false,
     })
+    const startExecution = vi.fn().mockResolvedValue({ executionId: 'exec-1' })
+    const awaitExecution = vi.fn().mockResolvedValue({
+      exitCode: 0,
+      stdout: 'ok\n',
+      stderr: '',
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    })
+    const interruptExecution = vi.fn().mockResolvedValue(true)
+    const disposeExecution = vi.fn().mockResolvedValue(undefined)
     const interrupt = vi.fn().mockResolvedValue(true)
     const dispose = vi.fn().mockResolvedValue(undefined)
 
     vi.mocked(Comlink.wrap).mockReturnValue({
       init,
+      startExecution,
+      awaitExecution,
+      interruptExecution,
+      disposeExecution,
       execute,
       interrupt,
       dispose,

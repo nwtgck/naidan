@@ -3,6 +3,7 @@ import { Hammer, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Loader2 } fr
 import { ref, watch, onMounted, nextTick, inject, computed, markRaw } from 'vue';
 import type { CombinedToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
+import { useChat } from '@/composables/useChat';
 import ShellExecuteToolCall from './ShellExecuteToolCall.vue';
 
 const props = defineProps<{
@@ -10,6 +11,7 @@ const props = defineProps<{
 }>();
 
 const inSequence = inject<boolean>('inSequence', false);
+const chatStore = useChat();
 
 type DetailState = 'collapsed' | 'preview' | 'expanded';
 
@@ -97,6 +99,21 @@ const specializedContent = computed(() => {
   switch (props.toolCall.call.function.name) {
   case 'shell_execute': return markRaw(ShellExecuteToolCall);
   default: return null;
+  }
+});
+
+const liveOutput = computed(() => {
+  const status = props.toolCall.result.status;
+  switch (status) {
+  case 'executing':
+    return chatStore.getVolatileToolOutput({ toolCallId: props.toolCall.id }) || undefined;
+  case 'success':
+  case 'error':
+    return undefined;
+  default: {
+    const _ex: never = status;
+    throw new Error(`Unhandled tool result status: ${_ex}`);
+  }
   }
 });
 
@@ -200,6 +217,7 @@ defineExpose({
               :is="specializedContent"
               :args="toolCall.call.function.arguments"
               :result="toolCall.result"
+              :live-output="liveOutput"
             />
             <template v-else>
               <!-- Arguments -->
@@ -209,7 +227,11 @@ defineExpose({
               </div>
 
               <!-- Result -->
-              <div v-if="toolCall.result.status !== 'executing'">
+              <div v-if="toolCall.result.status === 'executing' && liveOutput">
+                <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Live Output</div>
+                <pre class="text-[10px] font-mono p-2 rounded-lg break-words bg-blue-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ liveOutput }}</pre>
+              </div>
+              <div v-else-if="toolCall.result.status !== 'executing'">
                 <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
                   {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
                 </div>
@@ -245,6 +267,7 @@ defineExpose({
             :is="specializedContent"
             :args="toolCall.call.function.arguments"
             :result="toolCall.result"
+            :live-output="liveOutput"
           />
           <template v-else>
             <!-- Arguments -->
@@ -254,7 +277,11 @@ defineExpose({
             </div>
 
             <!-- Result -->
-            <div v-if="toolCall.result.status !== 'executing'">
+            <div v-if="toolCall.result.status === 'executing' && liveOutput">
+              <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">Live Output</div>
+              <pre class="text-[10px] font-mono p-2 rounded-lg break-words bg-blue-500/5 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{{ liveOutput }}</pre>
+            </div>
+            <div v-else-if="toolCall.result.status !== 'executing'">
               <div class="text-[9px] font-bold text-gray-400 uppercase tracking-tight mb-1">
                 {{ toolCall.result.status === 'success' ? 'Result' : 'Error' }}
               </div>

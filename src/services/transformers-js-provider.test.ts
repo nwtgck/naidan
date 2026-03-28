@@ -140,7 +140,7 @@ describe('TransformersJsProvider', () => {
       expect(mockService.generateText).toHaveBeenCalledTimes(2);
 
       // Tool was called with validated args
-      expect(tool.execute).toHaveBeenCalledWith({ args: { input: 'hello' }, signal: undefined });
+      expect(tool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { input: 'hello' }, signal: undefined }));
       expect(onToolCall).toHaveBeenCalledWith({ id: 'call_1', toolName: 'my_tool', args: { input: 'hello' } });
       expect(onToolResult).toHaveBeenCalledWith({ id: 'call_1', result: { status: 'success', content: 'result of my_tool' } });
 

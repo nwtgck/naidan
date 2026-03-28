@@ -4,6 +4,16 @@ import { ref } from 'vue';
 import DebugWeshTerminalModal from './DebugWeshTerminalModal.vue';
 
 const mocks = vi.hoisted(() => ({
+  startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
+  awaitExecution: vi.fn().mockResolvedValue({
+    exitCode: 0,
+    stdout: '',
+    stderr: '',
+    stdoutTruncated: false,
+    stderrTruncated: false,
+  }),
+  interruptExecution: vi.fn().mockResolvedValue(true),
+  disposeExecution: vi.fn().mockResolvedValue(undefined),
   execute: vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' }),
   dispose: vi.fn().mockResolvedValue(undefined),
   createClient: vi.fn(),
@@ -50,6 +60,10 @@ describe('DebugWeshTerminalModal', () => {
     vi.clearAllMocks();
     mocks.showConfirm.mockResolvedValue(true);
     mocks.createClient.mockResolvedValue({
+      startExecution: mocks.startExecution,
+      awaitExecution: mocks.awaitExecution,
+      interruptExecution: mocks.interruptExecution,
+      disposeExecution: mocks.disposeExecution,
       execute: mocks.execute,
       interrupt: vi.fn(),
       dispose: mocks.dispose,
@@ -110,9 +124,12 @@ describe('DebugWeshTerminalModal', () => {
   });
 
   it('hides the next prompt while a command is running', async () => {
-    let resolveExecute: ((value: { exitCode: number; stdout: string; stderr: string }) => void) | undefined;
-    mocks.execute.mockImplementation(() => new Promise((resolve) => {
-      resolveExecute = resolve;
+    let resolveAwaitExecution:
+      ((value: { exitCode: number; stdout: string; stderr: string; stdoutTruncated: boolean; stderrTruncated: boolean }) => void)
+      | undefined;
+    mocks.startExecution.mockResolvedValue({ executionId: 'exec-1' });
+    mocks.awaitExecution.mockImplementation(() => new Promise((resolve) => {
+      resolveAwaitExecution = resolve;
     }));
 
     const wrapper = mount(DebugWeshTerminalModal, {
@@ -129,7 +146,13 @@ describe('DebugWeshTerminalModal', () => {
     expect(wrapper.text()).toContain('Running...');
     expect(wrapper.find('textarea').exists()).toBe(false);
 
-    resolveExecute?.({ exitCode: 0, stdout: '', stderr: '' });
+    resolveAwaitExecution?.({
+      exitCode: 0,
+      stdout: '',
+      stderr: '',
+      stdoutTruncated: false,
+      stderrTruncated: false,
+    });
     await flushPromises();
     expect(wrapper.find('textarea').exists()).toBe(true);
   });

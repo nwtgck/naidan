@@ -116,18 +116,49 @@ async function runCommand({ script }: { script: string }) {
   session.state = 'running';
 
   try {
-    const result = await session.client.execute({
+    const { executionId } = await session.client.startExecution({
       request: {
         script,
         stdoutLimit: 32768,
         stderrLimit: 32768,
       },
+      onEvent: async (event) => {
+        switch (event.type) {
+        case 'started':
+          break;
+        case 'stdout':
+          session.lines.push({ kind: 'stdout', text: event.text });
+          break;
+        case 'stderr':
+          session.lines.push({ kind: 'stderr', text: event.text });
+          break;
+        case 'stdout_truncated':
+          session.lines.push({ kind: 'error', text: 'stdout truncated due to size limit' });
+          break;
+        case 'stderr_truncated':
+          session.lines.push({ kind: 'error', text: 'stderr truncated due to size limit' });
+          break;
+        case 'exit':
+          break;
+        case 'error':
+          session.lines.push({ kind: 'error', text: event.message });
+          break;
+        default: {
+          const _ex: never = event;
+          throw new Error(`Unhandled wesh debug event: ${String(_ex)}`);
+        }
+        }
+      },
     });
-    if (result.stdout) session.lines.push({ kind: 'stdout', text: result.stdout });
-    if (result.stderr) session.lines.push({ kind: 'stderr', text: result.stderr });
+    const result = await session.client.awaitExecution({
+      request: {
+        executionId,
+      },
+    });
     if (result.exitCode !== 0) {
       session.lines.push({ kind: 'error', text: `Process exited with code ${result.exitCode}` });
     }
+    await session.client.disposeExecution({ request: { executionId } });
   } catch (error) {
     session.lines.push({ kind: 'error', text: `Execution failed: ${error instanceof Error ? error.message : String(error)}` });
   } finally {

@@ -38,6 +38,7 @@ const activeTitleGenerations = reactive(new Map<string, AbortController>());
 const externalGenerations = reactive(new Set<string>());
 const activeTaskCounts = reactive(new Map<string, number>());
 const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
+const volatileToolOutputs = reactive(new Map<string, string>());
 
 const streaming = computed(() => activeGenerations.size > 0 || externalGenerations.size > 0);
 const isGeneratingTitle = ({ chatId }: { chatId: string }) => (activeTaskCounts.get('title:' + chatId) || 0) > 0;
@@ -1236,6 +1237,9 @@ export function useChat() {
                 status: 'executing'
               });
             }
+            if (!volatileToolOutputs.has(params.id)) {
+              volatileToolOutputs.set(params.id, '');
+            }
 
             // 3. Update Assistant node's toolCalls metadata
             const assistant = generationState.currentAssistantNode;
@@ -1251,6 +1255,28 @@ export function useChat() {
               }];
             }
 
+            triggerRef(_currentChat);
+          },
+          onToolEvent: (params: { id: string; event: import('../services/tools/types').ToolExecutionEvent }) => {
+            const eventType = params.event.type;
+            switch (eventType) {
+            case 'started':
+              if (!volatileToolOutputs.has(params.id)) {
+                volatileToolOutputs.set(params.id, '');
+              }
+              break;
+            case 'output': {
+              const previous = volatileToolOutputs.get(params.id) || '';
+              volatileToolOutputs.set(params.id, previous + params.event.text);
+              break;
+            }
+            case 'exit':
+              break;
+            default: {
+              const _ex: never = eventType;
+              console.error(`Unhandled tool event: ${_ex}`);
+            }
+            }
             triggerRef(_currentChat);
           },
           onToolResult: async (params: {
@@ -1304,6 +1330,7 @@ export function useChat() {
               }
               triggerRef(_currentChat);
             }
+            volatileToolOutputs.delete(params.id);
           },
 
           onChunk: async (chunk: string) => {
@@ -2240,6 +2267,10 @@ export function useChat() {
     activeTaskCounts.clear();
   };
 
+  const getVolatileToolOutput = ({ toolCallId }: { toolCallId: string }) => {
+    return volatileToolOutputs.get(toolCallId);
+  };
+
   const {
     chatFlow,
     isThinkingActive,
@@ -2255,6 +2286,7 @@ export function useChat() {
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
     loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat, removeMountFromChat, updateChatMount,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle,
+    getVolatileToolOutput,
     chatFlow, isThinkingActive, isWaitingResponse,
     __testOnly: {
       liveChatRegistry,
@@ -2262,6 +2294,7 @@ export function useChat() {
       activeTaskCounts,
       clearLiveChatRegistry,
       clearActiveTaskCounts,
+      volatileToolOutputs,
       __testOnlySetCurrentChat,
       __testOnlySetCurrentChatGroup,
     }
