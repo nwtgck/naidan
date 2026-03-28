@@ -15,6 +15,7 @@ import { tailCommandDefinition } from './tail/index.ts';
 import { printfCommandDefinition } from './printf/index.ts';
 import { dirnameCommandDefinition } from './dirname/index.ts';
 import { basenameCommandDefinition } from './basename/index.ts';
+import { aliasCommandDefinition } from './alias/index.ts';
 import { seqCommandDefinition } from './seq/index.ts';
 import { teeCommandDefinition } from './tee/index.ts';
 import { touchCommandDefinition } from './touch/index.ts';
@@ -35,6 +36,7 @@ import { colonCommandDefinition } from './colon/index.ts';
 import { envCommandDefinition } from './env/index.ts';
 import { exportCmdCommandDefinition } from './export/index.ts';
 import { unsetCommandDefinition } from './unset/index.ts';
+import { unaliasCommandDefinition } from './unalias/index.ts';
 import { whichCommandDefinition } from './which/index.ts';
 import { commandCommandDefinition } from './command/index.ts';
 import { dateCommandDefinition } from './date/index.ts';
@@ -84,6 +86,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   printfCommandDefinition,
   dirnameCommandDefinition,
   basenameCommandDefinition,
+  aliasCommandDefinition,
   seqCommandDefinition,
   teeCommandDefinition,
   touchCommandDefinition,
@@ -104,6 +107,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   envCommandDefinition,
   exportCmdCommandDefinition,
   unsetCommandDefinition,
+  unaliasCommandDefinition,
   whichCommandDefinition,
   commandCommandDefinition,
   dateCommandDefinition,
