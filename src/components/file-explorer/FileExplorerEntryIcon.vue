@@ -73,49 +73,11 @@ function getIcon() {
 
 function getColorClass() {
   switch (props.kind) {
-  case 'directory': return 'text-amber-400 dark:text-amber-300';
-  case 'file': break;
+  case 'directory': return 'text-amber-500';
+  case 'file': return 'text-blue-500';
   default: {
     const _ex: never = props.kind;
     void _ex;
-  }
-  }
-
-  switch (props.mimeCategory) {
-  case 'image': return 'text-purple-500 dark:text-purple-400';
-  case 'video': return 'text-red-500 dark:text-red-400';
-  case 'audio': return 'text-green-500 dark:text-green-400';
-  case 'text': {
-    switch (props.extension) {
-    case '.json':
-    case '.jsonl':
-      return 'text-yellow-500 dark:text-yellow-400';
-    case '.ts':
-    case '.tsx':
-      return 'text-blue-500 dark:text-blue-400';
-    case '.js':
-    case '.jsx':
-    case '.mjs':
-      return 'text-yellow-400 dark:text-yellow-300';
-    case '.vue':
-      return 'text-green-500 dark:text-green-400';
-    case '.py':
-      return 'text-blue-400 dark:text-blue-300';
-    case '.rs':
-      return 'text-orange-500 dark:text-orange-400';
-    case '.go':
-      return 'text-cyan-500 dark:text-cyan-400';
-    case '.md':
-    case '.markdown':
-      return 'text-gray-500 dark:text-gray-400';
-    default:
-      return 'text-blue-400 dark:text-blue-300';
-    }
-  }
-  case 'binary': return 'text-gray-400 dark:text-gray-500';
-  default: {
-    const _exhaustiveCheck: never = props.mimeCategory;
-    void _exhaustiveCheck;
     return 'text-gray-400';
   }
   }

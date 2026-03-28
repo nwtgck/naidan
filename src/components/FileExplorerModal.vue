@@ -26,50 +26,55 @@ defineExpose({
 
 <template>
   <Teleport to="body">
+    <!-- Backdrop -->
     <div
-      class="fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-900"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       data-testid="file-explorer-modal"
+      @click.self="closeFileExplorer()"
     >
-      <!-- Modal header -->
-      <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 shrink-0">
-        <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">File Explorer (OPFS)</span>
-        <button
-          class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          title="Close"
-          data-testid="file-explorer-modal-close"
-          @click="closeFileExplorer()"
-        >
-          <X class="w-4 h-4" />
-        </button>
-      </div>
-
-      <!-- Content -->
-      <div class="flex-1 overflow-hidden">
-        <!-- Loading -->
-        <div
-          v-if="!rootHandle && !loadError"
-          class="flex items-center justify-center h-full gap-2 text-gray-400"
-        >
-          <Loader2 class="w-5 h-5 animate-spin" />
-          <span class="text-sm">Loading OPFS…</span>
+      <!-- Dialog panel -->
+      <div class="flex flex-col w-full max-w-5xl h-[680px] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 shrink-0">
+          <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">File Explorer (OPFS)</span>
+          <button
+            class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            title="Close"
+            data-testid="file-explorer-modal-close"
+            @click="closeFileExplorer()"
+          >
+            <X class="w-4 h-4" />
+          </button>
         </div>
 
-        <!-- Error -->
-        <div
-          v-else-if="loadError"
-          class="flex items-center justify-center h-full text-red-500 text-sm px-8 text-center"
-        >
-          {{ loadError }}
-        </div>
+        <!-- Content -->
+        <div class="flex-1 overflow-hidden">
+          <!-- Loading -->
+          <div
+            v-if="!rootHandle && !loadError"
+            class="flex items-center justify-center h-full gap-2 text-gray-400"
+          >
+            <Loader2 class="w-5 h-5 animate-spin" />
+            <span class="text-sm">Loading OPFS…</span>
+          </div>
 
-        <!-- Explorer -->
-        <FileExplorer
-          v-else-if="rootHandle"
-          :root="rootHandle"
-          initial-view-mode="list"
-          initial-preview-visibility="visible"
-          class="h-full"
-        />
+          <!-- Error -->
+          <div
+            v-else-if="loadError"
+            class="flex items-center justify-center h-full text-red-500 text-sm px-8 text-center"
+          >
+            {{ loadError }}
+          </div>
+
+          <!-- Explorer -->
+          <FileExplorer
+            v-else-if="rootHandle"
+            :root="rootHandle"
+            initial-view-mode="list"
+            initial-preview-visibility="visible"
+            class="h-full"
+          />
+        </div>
       </div>
     </div>
   </Teleport>

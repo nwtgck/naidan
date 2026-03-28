@@ -106,7 +106,7 @@ defineExpose({
             data-testid="sidebar-file-explorer-button"
           >
             <FolderSearch class="w-4 h-4" />
-            <span>File Explorer (New)</span>
+            <span>File Explorer</span>
           </button>
           <button
             @click="toggleWeshTerminal(); showOpfsMenu = false"
