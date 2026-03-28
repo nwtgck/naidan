@@ -2,6 +2,7 @@ import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
 import { createFileProtocolCompatibleStandaloneWorkerHub } from './worker-hub-standalone-loader'
 import {
+  mapRemoteWeshWorkerExecutionEventToClientEvent,
   weshWorkerExecutionSummarySchema,
   mapWeshMountsToWorkerMounts,
   weshWorkerStartExecutionResponseSchema,
@@ -9,6 +10,7 @@ import {
   type WeshWorkerClient,
   type WeshWorkerExecutionEvent,
   type WeshWorkerExecuteRequest,
+  type WeshWorkerRemoteExecutionEvent,
 } from './wesh-worker.types'
 import type { IWorkerHub } from './worker-hub.types'
 import type { WeshMount } from '@/services/wesh/types'
@@ -62,7 +64,9 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     }) {
       const response = await runtime.wesh.startExecution(
         request,
-        onEvent ? Comlink.proxy(onEvent) : undefined,
+        onEvent ? Comlink.proxy(async (event: WeshWorkerRemoteExecutionEvent) => {
+          await onEvent(mapRemoteWeshWorkerExecutionEventToClientEvent({ event }))
+        }) : undefined,
       )
       return weshWorkerStartExecutionResponseSchema.parse(response)
     },
@@ -77,8 +81,9 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       const activeRuntime = runtime
       await activeRuntime.wesh.interruptExecution({ request }).catch(() => false)
 
+      const completionSettled = activeRuntime.wesh.awaitExecution({ request }).then(() => true).catch(() => true)
       const stopped = await Promise.race([
-        activeRuntime.wesh.awaitExecution({ request }).then(() => true).catch(() => true),
+        completionSettled,
         new Promise<boolean>(resolve => setTimeout(() => resolve(false), 150)),
       ])
 
@@ -87,7 +92,11 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       }
 
       runtime = await createRuntime()
-      await destroyRuntime(activeRuntime)
+      void completionSettled.finally(() => {
+        void destroyRuntime(activeRuntime).catch(error => {
+          console.error('Failed to destroy cancelled standalone Wesh worker runtime', error)
+        })
+      })
       return true
     },
     async disposeExecution({ request }) {

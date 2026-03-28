@@ -18,8 +18,6 @@ export const weshWorkerInitRequestSchema = z.object({
 
 export const weshWorkerExecuteRequestSchema = z.object({
   script: z.string(),
-  stdoutLimit: z.number().int().min(0),
-  stderrLimit: z.number().int().min(0),
 })
 
 export const weshWorkerStartExecutionResponseSchema = z.object({
@@ -40,10 +38,6 @@ export const weshWorkerDisposeExecutionRequestSchema = z.object({
 
 export const weshWorkerExecutionSummarySchema = z.object({
   exitCode: z.number().int(),
-  stdout: z.string(),
-  stderr: z.string(),
-  stdoutTruncated: z.boolean(),
-  stderrTruncated: z.boolean(),
 })
 
 export type WeshWorkerInitRequest = z.infer<typeof weshWorkerInitRequestSchema>
@@ -55,12 +49,17 @@ export type WeshWorkerDisposeExecutionRequest = z.infer<typeof weshWorkerDispose
 export type WeshWorkerExecutionSummary = z.infer<typeof weshWorkerExecutionSummarySchema>
 export type WeshWorkerMount = z.infer<typeof weshWorkerMountSchema>
 
+export type WeshWorkerRemoteExecutionEvent =
+  | { type: 'started' }
+  | { type: 'stdout'; buffer: ArrayBuffer }
+  | { type: 'stderr'; buffer: ArrayBuffer }
+  | { type: 'exit'; exitCode: number }
+  | { type: 'error'; message: string }
+
 export type WeshWorkerExecutionEvent =
   | { type: 'started' }
-  | { type: 'stdout'; text: string }
-  | { type: 'stderr'; text: string }
-  | { type: 'stdout_truncated' }
-  | { type: 'stderr_truncated' }
+  | { type: 'stdout'; chunk: Uint8Array }
+  | { type: 'stderr'; chunk: Uint8Array }
   | { type: 'exit'; exitCode: number }
   | { type: 'error'; message: string }
 
@@ -68,7 +67,7 @@ export interface IWeshWorker {
   init({ request }: { request: WeshWorkerInitRequest }): Promise<void>
   startExecution(
     request: WeshWorkerExecuteRequest,
-    onEvent?: (event: WeshWorkerExecutionEvent) => void | Promise<void>
+    onEvent?: (event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>
   ): Promise<WeshWorkerStartExecutionResponse>
   awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>
   interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
@@ -100,4 +99,31 @@ export function mapWeshMountsToWorkerMounts({ mounts }: {
     handle: mount.handle,
     readOnly: mount.readOnly,
   }))
+}
+
+export function mapRemoteWeshWorkerExecutionEventToClientEvent({ event }: {
+  event: WeshWorkerRemoteExecutionEvent
+}): WeshWorkerExecutionEvent {
+  switch (event.type) {
+  case 'started':
+    return event
+  case 'stdout':
+    return {
+      type: 'stdout',
+      chunk: new Uint8Array(event.buffer),
+    }
+  case 'stderr':
+    return {
+      type: 'stderr',
+      chunk: new Uint8Array(event.buffer),
+    }
+  case 'exit':
+    return event
+  case 'error':
+    return event
+  default: {
+    const _ex: never = event
+    throw new Error(`Unhandled remote wesh execution event: ${String(_ex)}`)
+  }
+  }
 }

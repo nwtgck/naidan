@@ -1,3 +1,4 @@
+import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
 import { Wesh } from '@/services/wesh'
 import { ReadonlyDirectoryHandle } from '@/services/wesh/readonly-directory-handle'
@@ -12,85 +13,45 @@ import {
   weshWorkerInterruptExecutionRequestSchema,
   weshWorkerStartExecutionResponseSchema,
   type IWeshWorker,
-  type WeshWorkerExecutionEvent,
+  type WeshWorkerRemoteExecutionEvent,
   type WeshWorkerExecutionSummary,
 } from './wesh-worker.types'
 
-function createCaptureHandle({
-  limit,
+function createForwardingHandle({
   stream,
   onEvent,
 }: {
-  limit: number
   stream: 'stdout' | 'stderr'
-  onEvent: (event: WeshWorkerExecutionEvent) => Promise<void>
+  onEvent: (event: WeshWorkerRemoteExecutionEvent) => Promise<void>
 }) {
-  let size = 0
-  const chunks: Uint8Array[] = []
-  let truncated = false
-  const streamDecoder = new TextDecoder()
+  const toTransferableBuffer = ({ chunk }: {
+    chunk: Uint8Array
+  }): ArrayBuffer => {
+    if (
+      chunk.byteOffset === 0
+      && chunk.byteLength === chunk.buffer.byteLength
+      && chunk.buffer instanceof ArrayBuffer
+    ) {
+      return chunk.buffer
+    }
+    return chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) as ArrayBuffer
+  }
 
   const handle = createWriteHandleFromStream({
     target: new WritableStream({
       async write(chunk) {
-        if (truncated) return
-        if (size + chunk.length > limit) {
-          const remaining = limit - size
-          if (remaining > 0) {
-            const acceptedChunk = new Uint8Array(chunk.subarray(0, remaining))
-            chunks.push(acceptedChunk)
-            const text = streamDecoder.decode(acceptedChunk, { stream: true })
-            if (text) {
-              await onEvent({ type: stream, text })
-            }
-            size = limit
-          }
-          truncated = true
-          const truncateEvent = (() => {
-            switch (stream) {
-            case 'stdout':
-              return { type: 'stdout_truncated' } as const
-            case 'stderr':
-              return { type: 'stderr_truncated' } as const
-            default: {
-              const _ex: never = stream
-              throw new Error(`Unhandled wesh output stream: ${_ex}`)
-            }
-            }
-          })()
-          await onEvent(truncateEvent)
-          return
-        }
-        const acceptedChunk = new Uint8Array(chunk)
-        chunks.push(acceptedChunk)
-        const text = streamDecoder.decode(acceptedChunk, { stream: true })
-        if (text) {
-          await onEvent({ type: stream, text })
-        }
-        size += chunk.length
+        const buffer = toTransferableBuffer({ chunk })
+
+        await onEvent(Comlink.transfer({
+          type: stream,
+          buffer,
+        }, [buffer]))
       },
     }),
   })
 
   return {
     handle,
-    async flushStreamDecoder() {
-      const text = streamDecoder.decode()
-      if (text) {
-        await onEvent({ type: stream, text })
-      }
-    },
-    isTruncated() {
-      return truncated
-    },
-    readText() {
-      const decoder = new TextDecoder()
-      let result = chunks.map(chunk => decoder.decode(chunk, { stream: true })).join('') + decoder.decode()
-      if (truncated) {
-        result += '\n[Output truncated due to size limit]'
-      }
-      return result
-    },
   }
 }
 
@@ -132,16 +93,14 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       const validated = weshWorkerExecuteRequestSchema.parse(request)
       const executionId = `wesh-exec-${nextExecutionId}`
       nextExecutionId += 1
-      const emit = async (event: WeshWorkerExecutionEvent) => {
+      const emit = async (event: WeshWorkerRemoteExecutionEvent) => {
         await onEvent?.(event)
       }
-      const stdoutCapture = createCaptureHandle({
-        limit: validated.stdoutLimit,
+      const stdoutCapture = createForwardingHandle({
         stream: 'stdout',
         onEvent: emit,
       })
-      const stderrCapture = createCaptureHandle({
-        limit: validated.stderrLimit,
+      const stderrCapture = createForwardingHandle({
         stream: 'stderr',
         onEvent: emit,
       })
@@ -155,16 +114,10 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
             stdout: stdoutCapture.handle,
             stderr: stderrCapture.handle,
           })
-          await stdoutCapture.flushStreamDecoder()
-          await stderrCapture.flushStreamDecoder()
           await emit({ type: 'exit', exitCode: result.exitCode })
 
           return weshWorkerExecutionSummarySchema.parse({
             exitCode: result.exitCode,
-            stdout: stdoutCapture.readText(),
-            stderr: stderrCapture.readText(),
-            stdoutTruncated: stdoutCapture.isTruncated(),
-            stderrTruncated: stderrCapture.isTruncated(),
           })
         } catch (error) {
           await emit({

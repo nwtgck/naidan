@@ -7,15 +7,11 @@ const mocks = vi.hoisted(() => ({
   startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
   awaitExecution: vi.fn().mockResolvedValue({
     exitCode: 0,
-    stdout: '',
-    stderr: '',
-    stdoutTruncated: false,
-    stderrTruncated: false,
   }),
   interruptExecution: vi.fn().mockResolvedValue(true),
   cancelExecution: vi.fn().mockResolvedValue(true),
   disposeExecution: vi.fn().mockResolvedValue(undefined),
-  execute: vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' }),
+  execute: vi.fn().mockResolvedValue({ exitCode: 0 }),
   dispose: vi.fn().mockResolvedValue(undefined),
   createClient: vi.fn(),
   getVolumeDirectoryHandle: vi.fn().mockResolvedValue({} as FileSystemDirectoryHandle),
@@ -127,7 +123,7 @@ describe('DebugWeshTerminalModal', () => {
 
   it('hides the next prompt while a command is running', async () => {
     let resolveAwaitExecution:
-      ((value: { exitCode: number; stdout: string; stderr: string; stdoutTruncated: boolean; stderrTruncated: boolean }) => void)
+      ((value: { exitCode: number }) => void)
       | undefined;
     mocks.startExecution.mockResolvedValue({ executionId: 'exec-1' });
     mocks.awaitExecution.mockImplementation(() => new Promise((resolve) => {
@@ -150,10 +146,6 @@ describe('DebugWeshTerminalModal', () => {
 
     resolveAwaitExecution?.({
       exitCode: 0,
-      stdout: '',
-      stderr: '',
-      stdoutTruncated: false,
-      stderrTruncated: false,
     });
     await flushPromises();
     expect(wrapper.find('textarea').exists()).toBe(true);

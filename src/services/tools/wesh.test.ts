@@ -4,28 +4,26 @@ import type { WeshWorkerClient } from '@/services/wesh-worker.types'
 
 describe('createWeshTool', () => {
   let client: WeshWorkerClient
+  const encoder = new TextEncoder()
 
   beforeEach(() => {
     client = {
-      startExecution: vi.fn().mockResolvedValue({
-        executionId: 'exec-1',
+      startExecution: vi.fn().mockImplementation(async ({ onEvent }) => {
+        await onEvent?.({ type: 'started' })
+        await onEvent?.({ type: 'stdout', chunk: encoder.encode('hello\n') })
+        await onEvent?.({ type: 'exit', exitCode: 0 })
+        return {
+          executionId: 'exec-1',
+        }
       }),
       awaitExecution: vi.fn().mockResolvedValue({
         exitCode: 0,
-        stdout: 'hello\n',
-        stderr: '',
-        stdoutTruncated: false,
-        stderrTruncated: false,
       }),
       interruptExecution: vi.fn().mockResolvedValue(true),
       cancelExecution: vi.fn().mockResolvedValue(true),
       disposeExecution: vi.fn().mockResolvedValue(undefined),
       execute: vi.fn().mockResolvedValue({
         exitCode: 0,
-        stdout: 'hello\n',
-        stderr: '',
-        stdoutTruncated: false,
-        stderrTruncated: false,
       }),
       interrupt: vi.fn().mockResolvedValue(true),
       dispose: vi.fn().mockResolvedValue(undefined),
@@ -51,8 +49,6 @@ describe('createWeshTool', () => {
     expect(client.startExecution).toHaveBeenCalledWith({
       request: {
         script: 'echo hello',
-        stdoutLimit: 4096,
-        stderrLimit: 4096,
       },
       onEvent: expect.any(Function),
     })
@@ -85,10 +81,6 @@ hello
     })
     vi.mocked(client.awaitExecution).mockResolvedValue({
       exitCode: 130,
-      stdout: '',
-      stderr: '',
-      stdoutTruncated: false,
-      stderrTruncated: false,
     })
 
     await expect(tool.execute({
@@ -123,23 +115,23 @@ hello
     expect(client.startExecution).toHaveBeenCalledWith({
       request: {
         script: 'echo hello',
-        stdoutLimit: 4096,
-        stderrLimit: 4096,
       },
       onEvent: expect.any(Function),
     })
   })
 
   it('returns a timeout error with captured output', async () => {
-    vi.mocked(client.startExecution).mockResolvedValue({
-      executionId: 'exec-1',
+    vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
+      await onEvent?.({ type: 'started' })
+      await onEvent?.({ type: 'stdout', chunk: encoder.encode('before-timeout\n') })
+      await onEvent?.({ type: 'stderr', chunk: encoder.encode('partial error\n') })
+      await onEvent?.({ type: 'exit', exitCode: 130 })
+      return {
+        executionId: 'exec-1',
+      }
     })
     vi.mocked(client.awaitExecution).mockResolvedValue({
       exitCode: 130,
-      stdout: 'before-timeout\n',
-      stderr: 'partial error\n',
-      stdoutTruncated: false,
-      stderrTruncated: false,
     })
 
     const tool = createWeshTool({
@@ -169,6 +161,111 @@ before-timeout
 STDERR:
 partial error
 
+`,
+    })
+  })
+
+  it('cancels execution when stdout exceeds the configured limit', async () => {
+    vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
+      await onEvent?.({ type: 'started' })
+      await onEvent?.({ type: 'stdout', chunk: encoder.encode('abcdef') })
+      await onEvent?.({ type: 'exit', exitCode: 130 })
+      return {
+        executionId: 'exec-1',
+      }
+    })
+    vi.mocked(client.awaitExecution).mockResolvedValue({
+      exitCode: 130,
+    })
+
+    const tool = createWeshTool({
+      client,
+      mounts: [],
+      name: 'shell_execute',
+      description: undefined,
+      defaultStdoutLimit: 4,
+      defaultStderrLimit: 4096,
+    })
+
+    const result = await tool.execute({
+      args: {
+        shell_script: 'python -c "print(\\"abcdef\\")"',
+      },
+    })
+
+    expect(client.cancelExecution).toHaveBeenCalledWith({
+      request: {
+        executionId: 'exec-1',
+      },
+    })
+    expect(result).toEqual({
+      status: 'success',
+      content: `\
+Exit Code: 130
+
+STDOUT:
+abcd
+[Output truncated due to size limit]
+`,
+    })
+  })
+
+  it('does not block streaming callbacks while cancellation is in flight', async () => {
+    let resolveCancellation: (() => void) | undefined
+    let startExecutionReturned = false
+
+    vi.mocked(client.cancelExecution).mockImplementation(() => {
+      return new Promise<boolean>(resolve => {
+        resolveCancellation = () => resolve(true)
+      })
+    })
+    vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
+      await onEvent?.({ type: 'started' })
+      await onEvent?.({ type: 'stdout', chunk: encoder.encode('abcdef') })
+      startExecutionReturned = true
+      await onEvent?.({ type: 'exit', exitCode: 130 })
+      return {
+        executionId: 'exec-1',
+      }
+    })
+    vi.mocked(client.awaitExecution).mockResolvedValue({
+      exitCode: 130,
+    })
+
+    const tool = createWeshTool({
+      client,
+      mounts: [],
+      name: 'shell_execute',
+      description: undefined,
+      defaultStdoutLimit: 4,
+      defaultStderrLimit: 4096,
+    })
+
+    const resultPromise = tool.execute({
+      args: {
+        shell_script: 'python -c "print(\\"abcdef\\")"',
+      },
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(startExecutionReturned).toBe(true)
+    expect(client.cancelExecution).toHaveBeenCalledWith({
+      request: {
+        executionId: 'exec-1',
+      },
+    })
+
+    resolveCancellation?.()
+
+    await expect(resultPromise).resolves.toEqual({
+      status: 'success',
+      content: `\
+Exit Code: 130
+
+STDOUT:
+abcd
+[Output truncated due to size limit]
 `,
     })
   })

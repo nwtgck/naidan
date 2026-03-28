@@ -67,11 +67,34 @@ export function createWeshTool({
       let abortHandler: (() => void) | undefined;
       let abortPromiseCleanup: (() => void) | undefined;
       let executionId: string | undefined;
+      let cancellationPromise: Promise<void> | undefined;
       try {
         if (signal?.aborted) throw new Error('Generation aborted');
         const validated = WeshArgsSchema.parse(args);
         let stdoutText = '';
         let stderrText = '';
+        let pendingCancellation = false;
+        let cancellationRequested = false;
+
+        const streamState: Record<'stdout' | 'stderr', {
+          limit: number;
+          bytes: number;
+          truncated: boolean;
+          decoder: TextDecoder;
+        }> = {
+          stdout: {
+            limit: validated.stdout_limit,
+            bytes: 0,
+            truncated: false,
+            decoder: new TextDecoder(),
+          },
+          stderr: {
+            limit: validated.stderr_limit,
+            bytes: 0,
+            truncated: false,
+            decoder: new TextDecoder(),
+          },
+        };
 
         const appendOutput = ({ stream, text }: { stream: 'stdout' | 'stderr'; text: string }) => {
           switch (stream) {
@@ -85,6 +108,63 @@ export function createWeshTool({
             const _ex: never = stream;
             throw new Error(`Unhandled wesh output stream: ${_ex}`);
           }
+          }
+        };
+
+        const startCancellation = () => {
+          if (!executionId) {
+            return;
+          }
+          cancellationRequested = true;
+          cancellationPromise = client.cancelExecution({ request: { executionId } }).then(() => {});
+        };
+
+        const requestCancellation = () => {
+          if (cancellationRequested) {
+            return;
+          }
+          if (executionId) {
+            startCancellation();
+            return;
+          }
+          pendingCancellation = true;
+        };
+
+        const consumeOutputChunk = async ({ stream, chunk }: {
+          stream: 'stdout' | 'stderr';
+          chunk: Uint8Array;
+        }) => {
+          const state = streamState[stream];
+          if (state.truncated) {
+            return;
+          }
+
+          const remaining = Math.max(0, state.limit - state.bytes);
+          const acceptedLength = Math.min(chunk.byteLength, remaining);
+          if (acceptedLength > 0) {
+            const acceptedChunk = chunk.subarray(0, acceptedLength);
+            state.bytes += acceptedChunk.byteLength;
+            const text = state.decoder.decode(acceptedChunk, { stream: true });
+            if (text) {
+              appendOutput({ stream, text });
+              await onEvent?.({ type: 'output', stream, text });
+            }
+          }
+
+          if (acceptedLength < chunk.byteLength) {
+            state.truncated = true;
+            requestCancellation();
+          }
+        };
+
+        const flushOutput = async ({ stream }: { stream: 'stdout' | 'stderr' }) => {
+          const state = streamState[stream];
+          const text = state.decoder.decode();
+          if (text) {
+            appendOutput({ stream, text });
+          }
+          if (state.truncated) {
+            appendOutput({ stream, text: '\n[Output truncated due to size limit]' });
           }
         };
 
@@ -102,8 +182,6 @@ export function createWeshTool({
         const started = await client.startExecution({
           request: {
             script: validated.shell_script,
-            stdoutLimit: validated.stdout_limit,
-            stderrLimit: validated.stderr_limit,
           },
           onEvent: async (event) => {
             switch (event.type) {
@@ -111,18 +189,13 @@ export function createWeshTool({
               await onEvent?.({ type: 'started' });
               break;
             case 'stdout':
-              appendOutput({ stream: 'stdout', text: event.text });
-              await onEvent?.({ type: 'output', stream: 'stdout', text: event.text });
+              await consumeOutputChunk({ stream: 'stdout', chunk: event.chunk });
               break;
             case 'stderr':
-              appendOutput({ stream: 'stderr', text: event.text });
-              await onEvent?.({ type: 'output', stream: 'stderr', text: event.text });
+              await consumeOutputChunk({ stream: 'stderr', chunk: event.chunk });
               break;
             case 'exit':
               await onEvent?.({ type: 'exit', exitCode: event.exitCode });
-              break;
-            case 'stdout_truncated':
-            case 'stderr_truncated':
               break;
             case 'error':
               throw new Error(event.message);
@@ -134,11 +207,18 @@ export function createWeshTool({
           },
         });
         executionId = started.executionId;
+        if (pendingCancellation) {
+          requestCancellation();
+        }
+        if (!executionId) {
+          throw new Error('Wesh execution did not return an execution id');
+        }
+        const activeExecutionId = executionId;
 
         if (signal?.aborted) {
           await client.cancelExecution({
             request: {
-              executionId,
+              executionId: activeExecutionId,
             },
           });
           throw createGenerationAbortedError();
@@ -161,7 +241,7 @@ export function createWeshTool({
         let timedOut = false;
         const completion = client.awaitExecution({
           request: {
-            executionId,
+            executionId: activeExecutionId,
           },
         });
         const timeout = new Promise<'timeout'>(resolve => {
@@ -177,14 +257,14 @@ export function createWeshTool({
           timedOut = true;
           await client.cancelExecution({
             request: {
-              executionId,
+              executionId: activeExecutionId,
             },
           });
         }
 
         const result = await completion;
-        stdoutText = result.stdout;
-        stderrText = result.stderr;
+        await flushOutput({ stream: 'stdout' });
+        await flushOutput({ stream: 'stderr' });
 
         let content = `Exit Code: ${result.exitCode}\n`;
 
@@ -218,11 +298,12 @@ export function createWeshTool({
         };
       } finally {
         if (executionId) {
+          await cancellationPromise;
           await client.disposeExecution({
             request: {
               executionId,
             },
-          }).catch(() => {});
+          });
         }
         abortPromiseCleanup?.();
         if (signal && abortHandler) {

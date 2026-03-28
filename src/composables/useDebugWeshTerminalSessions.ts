@@ -110,33 +110,107 @@ const activeSession = computed(() => {
 async function runCommand({ script }: { script: string }) {
   const session = activeSession.value;
   if (!session || !session.client || !script.trim()) return;
+  const client = session.client;
+
+  const outputLimitBytes = 32768;
+  let executionId: string | undefined;
+  let pendingCancellation = false;
+  let cancellationRequested = false;
+  let cancellationPromise: Promise<void> | undefined;
+  const streamState: Record<'stdout' | 'stderr', {
+    limit: number;
+    bytes: number;
+    truncated: boolean;
+    decoder: TextDecoder;
+  }> = {
+    stdout: {
+      limit: outputLimitBytes,
+      bytes: 0,
+      truncated: false,
+      decoder: new TextDecoder(),
+    },
+    stderr: {
+      limit: outputLimitBytes,
+      bytes: 0,
+      truncated: false,
+      decoder: new TextDecoder(),
+    },
+  };
+
+  const startCancellation = () => {
+    if (!executionId) {
+      return;
+    }
+    cancellationRequested = true;
+    cancellationPromise = client.cancelExecution({ request: { executionId } })
+      .catch(() => {})
+      .then(() => {});
+  };
+
+  const requestCancellation = () => {
+    if (cancellationRequested) {
+      return;
+    }
+    if (executionId) {
+      startCancellation();
+      return;
+    }
+    pendingCancellation = true;
+  };
+
+  const consumeOutputChunk = async ({ stream, chunk }: {
+    stream: 'stdout' | 'stderr';
+    chunk: Uint8Array;
+  }) => {
+    const state = streamState[stream];
+    if (state.truncated) {
+      return;
+    }
+
+    const remaining = Math.max(0, state.limit - state.bytes);
+    const acceptedLength = Math.min(chunk.byteLength, remaining);
+    if (acceptedLength > 0) {
+      const acceptedChunk = chunk.subarray(0, acceptedLength);
+      state.bytes += acceptedChunk.byteLength;
+      const text = state.decoder.decode(acceptedChunk, { stream: true });
+      if (text) {
+        session.lines.push({ kind: stream, text });
+      }
+    }
+
+    if (acceptedLength < chunk.byteLength) {
+      state.truncated = true;
+      session.lines.push({ kind: 'error', text: `${stream} truncated due to size limit` });
+      requestCancellation();
+    }
+  };
+
+  const flushOutput = ({ stream }: { stream: 'stdout' | 'stderr' }) => {
+    const state = streamState[stream];
+    const text = state.decoder.decode();
+    if (text) {
+      session.lines.push({ kind: stream, text });
+    }
+  };
 
   session.input = '';
   session.lines.push({ kind: 'command', text: script });
   session.state = 'running';
 
   try {
-    const { executionId } = await session.client.startExecution({
+    const started = await client.startExecution({
       request: {
         script,
-        stdoutLimit: 32768,
-        stderrLimit: 32768,
       },
       onEvent: async (event) => {
         switch (event.type) {
         case 'started':
           break;
         case 'stdout':
-          session.lines.push({ kind: 'stdout', text: event.text });
+          await consumeOutputChunk({ stream: 'stdout', chunk: event.chunk });
           break;
         case 'stderr':
-          session.lines.push({ kind: 'stderr', text: event.text });
-          break;
-        case 'stdout_truncated':
-          session.lines.push({ kind: 'error', text: 'stdout truncated due to size limit' });
-          break;
-        case 'stderr_truncated':
-          session.lines.push({ kind: 'error', text: 'stderr truncated due to size limit' });
+          await consumeOutputChunk({ stream: 'stderr', chunk: event.chunk });
           break;
         case 'exit':
           break;
@@ -150,15 +224,26 @@ async function runCommand({ script }: { script: string }) {
         }
       },
     });
-    const result = await session.client.awaitExecution({
+    executionId = started.executionId;
+    if (pendingCancellation) {
+      requestCancellation();
+    }
+    if (!executionId) {
+      throw new Error('Wesh execution did not return an execution id');
+    }
+    const activeExecutionId = executionId;
+    const result = await client.awaitExecution({
       request: {
-        executionId,
+        executionId: activeExecutionId,
       },
     });
+    flushOutput({ stream: 'stdout' });
+    flushOutput({ stream: 'stderr' });
     if (result.exitCode !== 0) {
       session.lines.push({ kind: 'error', text: `Process exited with code ${result.exitCode}` });
     }
-    await session.client.disposeExecution({ request: { executionId } });
+    await cancellationPromise;
+    await client.disposeExecution({ request: { executionId: activeExecutionId } });
   } catch (error) {
     session.lines.push({ kind: 'error', text: `Execution failed: ${error instanceof Error ? error.message : String(error)}` });
   } finally {
