@@ -101,7 +101,7 @@ defineExpose({
       @click.self="closeFileExplorer()"
     >
       <!-- Dialog panel -->
-      <div class="flex flex-col w-full max-w-5xl h-[680px] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
+      <div class="flex flex-col w-full max-w-5xl h-[95vh] md:h-[90vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
         <!-- Header -->
         <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 shrink-0">
           <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ title }}</span>
