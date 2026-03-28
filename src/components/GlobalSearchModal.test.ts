@@ -500,6 +500,37 @@ describe('GlobalSearchModal Component', () => {
     vi.useRealTimers();
   });
 
+  it('should show role filters only for content search scopes', async () => {
+    const wrapper = mount(GlobalSearchModal);
+    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(false);
+
+    await wrapper.get('[data-testid="scope-button-all"]').trigger('click');
+    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="scope-button-title_only"]').trigger('click');
+    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(false);
+  });
+
+  it('should include role filter in search options', async () => {
+    mockQuery.value = 'content';
+    const wrapper = mount(GlobalSearchModal);
+
+    await wrapper.get('[data-testid="scope-button-current_thread"]').trigger('click');
+
+    await nextTick();
+    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(true);
+
+    mockSearch.mockClear();
+    await wrapper.get('[data-testid="role-filter-select"]').setValue('user');
+
+    expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        scope: 'current_thread',
+        roleFilter: 'user',
+      })
+    }));
+  });
+
   it('should persist query and select it on reopen', async () => {
     // 1. Open and type something
     mockIsSearchOpen.value = true;

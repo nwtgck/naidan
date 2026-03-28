@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 export const searchScopeSchema = z.enum(['all', 'title_only', 'current_thread'])
+export const searchRoleFilterSchema = z.enum(['all', 'user', 'assistant'])
 
 export const searchChatSummarySchema = z.object({
   id: z.string().min(1),
@@ -112,10 +113,12 @@ export const searchOptionsSchema = z.object({
   scope: searchScopeSchema,
   chatGroupIds: z.array(z.string().min(1)).optional(),
   chatId: z.string().min(1).optional(),
+  roleFilter: searchRoleFilterSchema.optional(),
 })
 
 export type ContentMatch = z.infer<typeof contentMatchSchema>
 export type SearchScope = z.infer<typeof searchScopeSchema>
+export type SearchRoleFilter = z.infer<typeof searchRoleFilterSchema>
 export type SearchChatSummary = z.infer<typeof searchChatSummarySchema>
 export type SearchChatGroup = z.infer<typeof searchChatGroupSchema>
 export type SearchChatSource = z.infer<typeof searchChatSourceSchema>

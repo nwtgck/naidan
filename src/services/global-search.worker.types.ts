@@ -32,6 +32,7 @@ export const globalSearchWorkerSearchChatContentRequestSchema = z.object({
   sessionId: z.string().min(1),
   searchQuery: z.string(),
   scope: searchScopeSchema,
+  roleFilter: searchOptionsSchema.shape.roleFilter,
   chat: searchChatSummarySchema,
   groupName: z.union([z.string(), z.undefined()]),
   content: searchChatContentSchema,

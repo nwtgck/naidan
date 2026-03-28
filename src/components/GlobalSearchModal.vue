@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import { Search, X, Loader2, MessageSquare, CornerDownRight, Clock, GitBranch, Folder, Filter, Check, Eye } from 'lucide-vue-next';
 import he from 'he';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
-import { useChatSearch, type SearchResultItem, type SearchScope, type ContentMatch } from '@/composables/useChatSearch';
+import { useChatSearch, type SearchResultItem, type SearchRoleFilter, type SearchScope, type ContentMatch } from '@/composables/useChatSearch';
 import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
@@ -36,6 +36,7 @@ const groupPreviewRef = ref<{
 const selectedIndex = ref(0);
 const scrollContainer = ref<HTMLElement | null>(null);
 const searchScope = ref<SearchScope>('title_only');
+const searchRoleFilter = ref<SearchRoleFilter>('all');
 const showGroupSelector = ref(false);
 const activePane = ref<'results' | 'preview'>('results');
 const isExpandedByClick = ref(false);
@@ -79,6 +80,21 @@ const shouldLoadPreview = computed(() => {
 });
 
 const isPreviewVisible = computed(() => searchPreviewMode.value !== 'disabled');
+
+const shouldShowRoleFilter = computed(() => {
+  const scope = searchScope.value;
+  switch (scope) {
+  case 'all':
+  case 'current_thread':
+    return true;
+  case 'title_only':
+    return false;
+  default: {
+    const _ex: never = scope;
+    throw new Error(`Unhandled scope: ${_ex}`);
+  }
+  }
+});
 
 // Performance Optimization: Defer highlighting to ensure the initial list rendering is near-instant.
 // This allows the modal to open and the results to appear immediately, with visual highlights appearing shortly after.
@@ -215,6 +231,7 @@ const performSearch = ({ val }: { val: string }) => {
     searchQuery: val,
     options: {
       scope: searchScope.value,
+      roleFilter: searchRoleFilter.value,
       chatGroupIds: chatGroupIds.value,
       chatId: chatId.value
     }
@@ -257,7 +274,7 @@ function isEnterForImeComposition({ event }: { event: KeyboardEvent }) {
   );
 }
 
-watch([searchScope, chatGroupIds, chatId], () => {
+watch([searchScope, searchRoleFilter, chatGroupIds, chatId], () => {
   if (isSearchOpen.value && (query.value || searchScope.value === 'title_only')) {
     performSearch({ val: query.value });
   }
@@ -452,7 +469,7 @@ defineExpose({
       <div class="absolute inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm transition-opacity" aria-hidden="true" @click="closeSearch" />
 
       <!-- Modal Container (Split View) -->
-      <div class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col h-[70vh] overflow-hidden transform transition-all scale-100" @click.stop>
+      <div class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col h-[82vh] overflow-hidden transform transition-all scale-100" @click.stop>
 
         <!-- Search Header -->
         <div class="flex items-center gap-3 p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
@@ -475,123 +492,146 @@ defineExpose({
         </div>
 
         <!-- Search Options -->
-        <div class="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between shrink-0 overflow-visible">
-          <div class="flex items-center gap-1.5 min-w-0">
-            <div class="flex items-center gap-1 shrink-0">
-              <button
-                v-for="scope in (['all', 'current_thread', 'title_only'] as SearchScope[])"
-                :key="scope"
-                @click="searchScope = scope"
-                class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
-                :class="searchScope === scope ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
-              >
-                {{ scope.replace('_', ' ') }}
-              </button>
-            </div>
-
-            <div class="h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1 shrink-0"></div>
-
-            <!-- Group Filter Popover -->
-            <div class="relative shrink-0">
-              <button
-                @click="showGroupSelector = !showGroupSelector"
-                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
-                :class="chatGroupIds.length > 0 ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
-                data-testid="group-filter-button"
-              >
-                <Filter class="w-3 h-3" />
-                <span>Groups</span>
-                <span v-if="chatGroupIds.length > 0" class="ml-1 px-1.5 py-0.5 bg-indigo-600 text-white rounded-full text-[8px]">{{ chatGroupIds.length }}</span>
-              </button>
-
-              <Transition name="dropdown">
-                <div
-                  v-if="showGroupSelector"
-                  class="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden"
-                  @click.stop
-                  data-testid="group-selector-dropdown"
-                >
-                  <div class="px-3 py-2 border-b border-gray-50 dark:border-gray-700/50 text-[10px] font-black text-gray-400 uppercase tracking-widest">Filter by Group</div>
-                  <div class="max-h-64 overflow-y-auto p-1">
-                    <button
-                      v-for="group in chatGroups"
-                      :key="group.id"
-                      @click="toggleGroupFilter({ groupId: group.id })"
-                      class="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors"
-                      :class="chatGroupIds.includes(group.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:indigo-text-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
-                      :data-testid="'group-filter-item-' + group.id"
-                    >
-                      <div class="flex items-center gap-2 overflow-hidden">
-                        <Folder class="w-3.5 h-3.5 shrink-0 opacity-60" />
-                        <span class="truncate">{{ group.name }}</span>
-                      </div>
-                      <Check v-if="chatGroupIds.includes(group.id)" class="w-3.5 h-3.5 shrink-0" />
-                    </button>
-                    <div v-if="chatGroups.length === 0" class="p-4 text-center text-[10px] text-gray-400 italic">No groups available</div>
-                  </div>
-                  <div v-if="chatGroupIds.length > 0" class="p-1 border-t border-gray-50 dark:border-gray-700/50">
-                    <button @click="chatGroupIds = []" class="w-full px-3 py-2 text-[10px] font-black text-gray-400 hover:text-red-500 uppercase tracking-widest text-center transition-colors">Clear All Filters</button>
-                  </div>
-                </div>
-              </Transition>
-            </div>
-
-            <!-- Active Filters (Groups & Specific Chat) -->
-            <div class="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
-              <!-- Specific Chat Filter -->
-              <div
-                v-if="chatId"
-                class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
-              >
-                <MessageSquare class="w-2.5 h-2.5" />
-                <span>{{ targetChatTitle }}</span>
-                <button @click="chatId = undefined" class="hover:text-indigo-800 dark:hover:text-indigo-300">
-                  <X class="w-2.5 h-2.5" />
-                </button>
-              </div>
-
-              <div
-                v-for="group in selectedGroups"
-                :key="group.id"
-                class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
-              >
-                <span>{{ group.name }}</span>
-                <button @click="toggleGroupFilter({ groupId: group.id })" class="hover:text-indigo-800 dark:hover:text-indigo-300">
-                  <X class="w-2.5 h-2.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-4 text-[10px] font-bold text-gray-400 ml-4">
-            <div class="flex items-center gap-2">
-              <span>PREVIEW</span>
-              <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+        <div class="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 shrink-0 overflow-visible">
+          <div class="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div class="flex flex-wrap items-center gap-1.5 min-w-0">
+              <div class="flex flex-wrap items-center gap-1 shrink-0">
                 <button
-                  v-for="mode in (['always', 'peek', 'disabled'] as const)"
-                  :key="mode"
-                  @click="setSearchPreviewMode({ mode })"
-                  class="px-2 py-1 rounded-md transition-all uppercase tracking-tighter"
-                  :class="searchPreviewMode === mode ? 'bg-blue-600 text-white shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-700'"
+                  v-for="scope in (['all', 'current_thread', 'title_only'] as SearchScope[])"
+                  :key="scope"
+                  @click="searchScope = scope"
+                  class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+                  :class="searchScope === scope ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+                  :data-testid="'scope-button-' + scope"
                 >
-                  {{ mode === 'always' ? 'on' : mode === 'disabled' ? 'off' : mode }}
+                  {{ scope.replace('_', ' ') }}
                 </button>
+              </div>
+
+              <div class="hidden sm:block h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1 shrink-0"></div>
+
+              <div v-if="shouldShowRoleFilter" class="flex items-center gap-1.5 shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/80 px-2.5 py-1">
+                <span class="text-[8px] font-black uppercase tracking-[0.16em] text-gray-400">Role</span>
+                <select
+                  :value="searchRoleFilter"
+                  @change="searchRoleFilter = ($event.target as HTMLSelectElement).value as SearchRoleFilter"
+                  class="w-[4.8rem] bg-transparent border-none outline-none text-[9px] font-black uppercase tracking-[0.12em] text-gray-600 dark:text-gray-300 cursor-pointer pr-1"
+                  data-testid="role-filter-select"
+                >
+                  <option
+                    v-for="role in (['all', 'user', 'assistant'] as SearchRoleFilter[])"
+                    :key="role"
+                    :value="role"
+                  >
+                    {{ role }}
+                  </option>
+                </select>
+              </div>
+
+              <div v-if="shouldShowRoleFilter" class="hidden sm:block h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1 shrink-0"></div>
+
+              <!-- Group Filter Popover -->
+              <div class="relative shrink-0">
+                <button
+                  @click="showGroupSelector = !showGroupSelector"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+                  :class="chatGroupIds.length > 0 ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+                  data-testid="group-filter-button"
+                >
+                  <Filter class="w-3 h-3" />
+                  <span>Groups</span>
+                  <span v-if="chatGroupIds.length > 0" class="ml-1 px-1.5 py-0.5 bg-indigo-600 text-white rounded-full text-[8px]">{{ chatGroupIds.length }}</span>
+                </button>
+
+                <Transition name="dropdown">
+                  <div
+                    v-if="showGroupSelector"
+                    class="absolute left-0 top-full mt-1 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-xl z-50 py-1 overflow-hidden"
+                    @click.stop
+                    data-testid="group-selector-dropdown"
+                  >
+                    <div class="px-3 py-2 border-b border-gray-50 dark:border-gray-700/50 text-[10px] font-black text-gray-400 uppercase tracking-widest">Filter by Group</div>
+                    <div class="max-h-64 overflow-y-auto p-1">
+                      <button
+                        v-for="group in chatGroups"
+                        :key="group.id"
+                        @click="toggleGroupFilter({ groupId: group.id })"
+                        class="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors"
+                        :class="chatGroupIds.includes(group.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:indigo-text-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                        :data-testid="'group-filter-item-' + group.id"
+                      >
+                        <div class="flex items-center gap-2 overflow-hidden">
+                          <Folder class="w-3.5 h-3.5 shrink-0 opacity-60" />
+                          <span class="truncate">{{ group.name }}</span>
+                        </div>
+                        <Check v-if="chatGroupIds.includes(group.id)" class="w-3.5 h-3.5 shrink-0" />
+                      </button>
+                      <div v-if="chatGroups.length === 0" class="p-4 text-center text-[10px] text-gray-400 italic">No groups available</div>
+                    </div>
+                    <div v-if="chatGroupIds.length > 0" class="p-1 border-t border-gray-50 dark:border-gray-700/50">
+                      <button @click="chatGroupIds = []" class="w-full px-3 py-2 text-[10px] font-black text-gray-400 hover:text-red-500 uppercase tracking-widest text-center transition-colors">Clear All Filters</button>
+                    </div>
+                  </div>
+                </Transition>
+              </div>
+
+              <!-- Active Filters (Groups & Specific Chat) -->
+              <div class="flex flex-wrap items-center gap-1.5 min-w-0">
+                <!-- Specific Chat Filter -->
+                <div
+                  v-if="chatId"
+                  class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
+                >
+                  <MessageSquare class="w-2.5 h-2.5" />
+                  <span>{{ targetChatTitle }}</span>
+                  <button @click="chatId = undefined" class="hover:text-indigo-800 dark:hover:text-indigo-300">
+                    <X class="w-2.5 h-2.5" />
+                  </button>
+                </div>
+
+                <div
+                  v-for="group in selectedGroups"
+                  :key="group.id"
+                  class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
+                >
+                  <span>{{ group.name }}</span>
+                  <button @click="toggleGroupFilter({ groupId: group.id })" class="hover:text-indigo-800 dark:hover:text-indigo-300">
+                    <X class="w-2.5 h-2.5" />
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div v-if="isPreviewVisible" class="flex items-center gap-2">
-              <span>CONTEXT</span>
-              <select
-                :value="searchContextSize === Infinity ? 'max' : searchContextSize"
-                @change="e => setSearchContextSize((e.target as HTMLSelectElement).value === 'max' ? Infinity : parseInt((e.target as HTMLSelectElement).value))"
-                class="bg-transparent border-none outline-none text-gray-600 dark:text-gray-300 font-black cursor-pointer"
-              >
-                <option :value="1">1</option>
-                <option :value="2">2</option>
-                <option :value="3">3</option>
-                <option :value="5">5</option>
-                <option value="max">FULL</option>
-              </select>
+            <div class="flex flex-wrap items-center gap-4 text-[10px] font-bold text-gray-400 xl:ml-4 xl:justify-end">
+              <div class="flex items-center gap-2">
+                <span>PREVIEW</span>
+                <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+                  <button
+                    v-for="mode in (['always', 'peek', 'disabled'] as const)"
+                    :key="mode"
+                    @click="setSearchPreviewMode({ mode })"
+                    class="px-2 py-1 rounded-md transition-all uppercase tracking-tighter"
+                    :class="searchPreviewMode === mode ? 'bg-blue-600 text-white shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-gray-700'"
+                  >
+                    {{ mode === 'always' ? 'on' : mode === 'disabled' ? 'off' : mode }}
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="isPreviewVisible" class="flex items-center gap-2">
+                <span>CONTEXT</span>
+                <select
+                  :value="searchContextSize === Infinity ? 'max' : searchContextSize"
+                  @change="e => setSearchContextSize((e.target as HTMLSelectElement).value === 'max' ? Infinity : parseInt((e.target as HTMLSelectElement).value))"
+                  class="bg-transparent border-none outline-none text-gray-600 dark:text-gray-300 font-black cursor-pointer"
+                >
+                  <option :value="1">1</option>
+                  <option :value="2">2</option>
+                  <option :value="3">3</option>
+                  <option :value="5">5</option>
+                  <option value="max">FULL</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>

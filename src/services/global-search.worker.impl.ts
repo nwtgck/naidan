@@ -123,6 +123,7 @@ export function createGlobalSearchWorker(_args: EmptyArgs): IGlobalSearchWorker 
           query: validated.searchQuery,
           chatId: validated.chat.id,
           targetLeafId: validated.content.currentLeafId,
+          roleFilter: validated.roleFilter,
         })
         break
       }
@@ -135,6 +136,7 @@ export function createGlobalSearchWorker(_args: EmptyArgs): IGlobalSearchWorker 
           query: validated.searchQuery,
           chatId: validated.chat.id,
           activeBranchIds,
+          roleFilter: validated.roleFilter,
         })
         break
       }

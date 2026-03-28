@@ -6,6 +6,8 @@ import { createGlobalSearchWorkerClient } from '@/services/global-search-worker-
 import type {
   ContentMatch,
   FlatSearchResultItem,
+  SearchOptions,
+  SearchRoleFilter,
   SearchChatGroup,
   SearchChatSource,
   SearchResultItem,
@@ -13,7 +15,7 @@ import type {
   SearchSource,
 } from '@/services/global-search.types';
 
-export type { ContentMatch, FlatSearchResultItem, SearchResultItem, SearchScope };
+export type { ContentMatch, FlatSearchResultItem, SearchResultItem, SearchRoleFilter, SearchScope };
 
 function flattenSidebarForSearch({ sidebarItems }: {
   sidebarItems: SidebarItem[]
@@ -87,13 +89,14 @@ export function useChatSearch() {
 
   function createSearchKey({ trimmedQuery, options }: {
     trimmedQuery: string
-    options: { scope: SearchScope, chatGroupIds?: string[], chatId?: string }
+    options: SearchOptions
   }): string {
     return JSON.stringify({
       trimmedQuery,
       scope: options.scope,
       chatId: options.chatId,
       chatGroupIds: options.chatGroupIds ? [...options.chatGroupIds] : undefined,
+      roleFilter: options.roleFilter,
     })
   }
 
@@ -122,10 +125,14 @@ export function useChatSearch() {
    * Prioritizes title matches, then performs content search.
    * Uses time-slicing to avoid blocking the main thread.
    */
-  const search = async ({ searchQuery, options = { scope: 'all' } }: { searchQuery: string, options?: { scope: SearchScope, chatGroupIds?: string[], chatId?: string } }) => {
+  const search = async ({ searchQuery, options = { scope: 'all' } }: {
+    searchQuery: string,
+    options?: SearchOptions,
+  }) => {
     query.value = searchQuery;
     const trimmedQuery = searchQuery.trim();
     const scope = options.scope;
+    const roleFilter: SearchRoleFilter = options.roleFilter ?? 'all';
 
     if (!trimmedQuery && scope !== 'title_only') {
       results.value = [];
@@ -202,6 +209,7 @@ export function useChatSearch() {
             scope: options.scope,
             chatGroupIds: options.chatGroupIds ? [...options.chatGroupIds] : undefined,
             chatId: options.chatId,
+            roleFilter,
           },
         },
       })
@@ -264,6 +272,7 @@ export function useChatSearch() {
                 sessionId: searchSessionId,
                 searchQuery: trimmedQuery,
                 scope,
+                roleFilter,
                 chat,
                 groupName,
                 content,

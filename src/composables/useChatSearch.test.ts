@@ -243,6 +243,81 @@ describe('useChatSearch Composable', () => {
     }
   })
 
+  it('should filter content matches by role in the worker path', async () => {
+    const composable = await createComposable()
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Hello World', updatedAt: 100 } },
+    ] as never)
+    vi.mocked(storageService.loadChatContent).mockResolvedValue({
+      root: {
+        items: [
+          {
+            id: 'm1',
+            content: 'hello from user',
+            timestamp: 100,
+            role: 'user',
+            replies: { items: [] },
+          },
+          {
+            id: 'm2',
+            content: 'hello from assistant',
+            timestamp: 200,
+            role: 'assistant',
+            replies: { items: [] },
+          },
+        ],
+      },
+      currentLeafId: 'm2',
+    } as never)
+
+    await composable.search({ searchQuery: 'hello', options: { scope: 'all', roleFilter: 'assistant' } })
+
+    expect(composable.results.value).toHaveLength(2)
+    const messageEntry = composable.results.value[1]
+    expect(messageEntry?.type).toBe('message')
+    if (messageEntry?.type === 'message') {
+      expect(messageEntry.item.role).toBe('assistant')
+    }
+  })
+
+  it('should rerun search when role filter changes for the same trimmed query', async () => {
+    const composable = await createComposable()
+    vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
+      { id: 'chat1', type: 'chat', chat: { id: 'chat1', title: 'Hello World', updatedAt: 100 } },
+    ] as never)
+    vi.mocked(storageService.loadChatContent).mockResolvedValue({
+      root: {
+        items: [
+          {
+            id: 'm1',
+            content: 'hello from user',
+            timestamp: 100,
+            role: 'user',
+            replies: { items: [] },
+          },
+          {
+            id: 'm2',
+            content: 'hello from assistant',
+            timestamp: 200,
+            role: 'assistant',
+            replies: { items: [] },
+          },
+        ],
+      },
+      currentLeafId: 'm2',
+    } as never)
+
+    await composable.search({ searchQuery: 'hello', options: { scope: 'all', roleFilter: 'user' } })
+    await composable.search({ searchQuery: 'hello', options: { scope: 'all', roleFilter: 'assistant' } })
+
+    expect(storageService.loadChatContent).toHaveBeenCalledTimes(2)
+    const messageEntry = composable.results.value[1]
+    expect(messageEntry?.type).toBe('message')
+    if (messageEntry?.type === 'message') {
+      expect(messageEntry.item.role).toBe('assistant')
+    }
+  })
+
   it('should handle AND search keywords in titles', async () => {
     const composable = await createComposable()
     vi.mocked(storageService.getSidebarStructure).mockResolvedValue([
