@@ -152,6 +152,7 @@ describe('wesh core command parsing', () => {
   it('defines and expands shell aliases across commands', async () => {
     const aliasResult = await execute({ script: "alias hi='echo hello'; hi world" });
     const showResult = await execute({ script: 'alias hi' });
+    const selfAliasedResult = await execute({ script: "alias echo='echo hello'; echo world" });
 
     expect(aliasResult.stdout.text).toBe('hello world\n');
     expect(aliasResult.stderr.text).toBe('');
@@ -160,13 +161,22 @@ describe('wesh core command parsing', () => {
     expect(showResult.stdout.text).toBe("alias hi='echo hello'\n");
     expect(showResult.stderr.text).toBe('');
     expect(showResult.result.exitCode).toBe(0);
+
+    expect(selfAliasedResult.stdout.text).toBe('hello world\n');
+    expect(selfAliasedResult.stderr.text).toBe('');
+    expect(selfAliasedResult.result.exitCode).toBe(0);
   });
 
-  it('guards against recursive alias expansion loops', async () => {
+  it('stops re-expanding aliases that already appeared in the same expansion chain', async () => {
     const { result, stdout, stderr } = await execute({ script: "alias loop='loop'; loop" });
+    const mutual = await execute({ script: "alias a='b'; alias b='a'; a" });
 
     expect(stdout.text).toBe('');
-    expect(stderr.text).toContain('alias: expansion loop for loop');
+    expect(stderr.text).toContain('wesh: Command not found: loop');
     expect(result.exitCode).toBe(1);
+
+    expect(mutual.stdout.text).toBe('');
+    expect(mutual.stderr.text).toContain('wesh: Command not found: a');
+    expect(mutual.result.exitCode).toBe(1);
   });
 });

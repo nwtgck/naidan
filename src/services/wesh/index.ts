@@ -734,16 +734,15 @@ usage: alias [name[=value] ...]
   private expandAliasCommandNode({
     node,
     environment,
-    depth,
+    expandedAliases,
   }: {
     node: WeshCommandNode;
     environment: WeshExecutionEnvironment;
-    depth: number;
+    expandedAliases: Set<string>;
   }): WeshCommandNode {
-    if (depth >= 20) {
-      throw new Error(`alias: expansion loop for ${node.name}`);
+    if (expandedAliases.has(node.name)) {
+      return node;
     }
-
     const aliasValue = environment.aliases.get(node.name);
     if (aliasValue === undefined) {
       return node;
@@ -793,7 +792,10 @@ usage: alias [name[=value] ...]
         ],
       },
       environment,
-      depth: depth + 1,
+      expandedAliases: new Set([
+        ...expandedAliases,
+        node.name,
+      ]),
     });
   }
 
@@ -3924,7 +3926,7 @@ usage: alias [name[=value] ...]
       : this.expandAliasCommandNode({
         node,
         environment,
-        depth: 0,
+        expandedAliases: new Set(),
       });
 
     const expandedArgs: string[] = [];
