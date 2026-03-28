@@ -61,6 +61,7 @@ const {
   addMountToChat,
   removeMountFromChat,
   updateChatMount,
+  ensureChatTmpDirectory,
 } = chatStore;
 const { showConfirm } = useConfirm();
 
@@ -543,12 +544,15 @@ async function processDropItems(items: DataTransferItem[]) {
 }
 
 async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Promise<void> {
-  const mounts = currentChat.value?.mounts ?? [];
+  if (!currentChat.value) return;
+  const mounts = currentChat.value.mounts ?? [];
   if (mounts.length === 0) return;
 
   // Build a standalone VFS with only the chat mounts (no /dev since rootHandle is undefined).
   // VFS synthesises intermediate directories like /home and /home/user automatically.
   const vfs = new WeshVFS({ rootHandle: undefined });
+  const tmpDirectory = await ensureChatTmpDirectory({ chatId: currentChat.value.id });
+  await vfs.mount({ path: tmpDirectory.mountPath, handle: tmpDirectory.handle, readOnly: false });
   for (const m of mounts) {
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
     if (!handle) continue;

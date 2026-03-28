@@ -47,6 +47,10 @@ vi.mock('lucide-vue-next', () => ({
 vi.mock('./ModelSelector.vue', () => ({ default: { name: 'ModelSelector', template: '<div></div>' } }));
 vi.mock('./ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', template: '<div></div>' } }));
 
+const mockOpenFileExplorer = vi.fn();
+const mockEnsureChatTmpDirectory = vi.fn();
+const mockGetChatTmpDirectory = vi.fn();
+
 // Mock new composables and services
 vi.mock('../composables/useChatTools', () => ({
   useChatTools: () => ({
@@ -63,11 +67,18 @@ vi.mock('../composables/useConfirm', () => ({
     showConfirm: vi.fn().mockResolvedValue(true),
   }),
 }));
+vi.mock('../composables/useFileExplorerModal', () => ({
+  useFileExplorerModal: () => ({
+    openFileExplorer: mockOpenFileExplorer,
+  }),
+}));
 vi.mock('../services/storage', () => ({
   storageService: {
     getVolume: vi.fn(),
     createVolumeFromFiles: vi.fn(),
     createVolume: vi.fn(),
+    getVolumeDirectoryHandle: vi.fn(),
+    listVolumes: vi.fn(),
   },
 }));
 vi.mock('../services/storage/opfs-detection', () => ({
@@ -128,6 +139,8 @@ vi.mock('../composables/useChat', () => ({
       if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
       return c;
     }),
+    ensureChatTmpDirectory: mockEnsureChatTmpDirectory,
+    getChatTmpDirectory: mockGetChatTmpDirectory,
   }),
 }));
 
@@ -186,6 +199,8 @@ const mockChatStore = {
     if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
     return c;
   }),
+  ensureChatTmpDirectory: mockEnsureChatTmpDirectory,
+  getChatTmpDirectory: mockGetChatTmpDirectory,
   addMountToChat: vi.fn(),
   removeMountFromChat: vi.fn(),
   updateChatMount: vi.fn(),
@@ -219,6 +234,9 @@ global.URL.revokeObjectURL = vi.fn();
 describe('ChatInput Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCurrentChat.value = { id: 'chat-1', modelId: 'model-1' };
+    mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
+    mockGetChatTmpDirectory.mockReturnValue(undefined);
   });
 
   const getWrapper = () => mount(ChatInput, {
@@ -265,6 +283,30 @@ describe('ChatInput Integration', () => {
 
     expect(wrapper.vm.__testOnly.editingAttachmentId.value).toBe('att-1');
     expect(wrapper.find('[data-testid="image-editor"]').exists()).toBe(true);
+  });
+
+  it('mount explorer includes tmp while opening from a volume badge', async () => {
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      modelId: 'model-1',
+      mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: true }],
+    };
+
+    const { storageService } = await import('../services/storage');
+    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
+
+    const wrapper = getWrapper();
+    await nextTick();
+
+    await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
+    await flushPromises();
+
+    expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'explorer',
+      initialPath: ['home', 'user', 'work'],
+      title: 'Files',
+    }));
   });
 
   it('should update attachment and revoke old URL when ImageEditor saves', async () => {

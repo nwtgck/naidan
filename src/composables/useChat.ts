@@ -27,6 +27,7 @@ import {
 import { useChatTools } from './useChatTools';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
+import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 
 const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
@@ -39,6 +40,10 @@ const externalGenerations = reactive(new Set<string>());
 const activeTaskCounts = reactive(new Map<string, number>());
 const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
 const volatileToolOutputs = reactive(new Map<string, string>());
+const chatTmpDirectories = reactive(new Map<string, {
+  handle: FileSystemDirectoryHandle;
+  mountPath: '/tmp';
+}>());
 
 const streaming = computed(() => activeGenerations.size > 0 || externalGenerations.size > 0);
 const isGeneratingTitle = ({ chatId }: { chatId: string }) => (activeTaskCounts.get('title:' + chatId) || 0) > 0;
@@ -167,6 +172,38 @@ function unregisterLiveInstance(chatId: string) {
   if (!isTaskRunning(chatId)) {
     liveChatRegistry.delete(chatId);
   }
+}
+
+async function ensureChatTmpDirectory({
+  chatId,
+}: {
+  chatId: string;
+}): Promise<{
+  handle: FileSystemDirectoryHandle;
+  mountPath: '/tmp';
+}> {
+  const existing = chatTmpDirectories.get(chatId);
+  if (existing) {
+    return existing;
+  }
+
+  const created = {
+    handle: await getOPFSTmpManager().createTmpDirectory({ prefix: chatId }),
+    mountPath: '/tmp' as const,
+  };
+  chatTmpDirectories.set(chatId, created);
+  return created;
+}
+
+function getChatTmpDirectory({
+  chatId,
+}: {
+  chatId: string;
+}): {
+  handle: FileSystemDirectoryHandle;
+  mountPath: '/tmp';
+} | undefined {
+  return chatTmpDirectories.get(chatId);
 }
 
 watch(_currentChat, (newChat, oldChat) => {
@@ -309,6 +346,7 @@ storageService.subscribeToChanges(async (event) => {
     activeGenerations.clear();
     activeTaskCounts.clear();
     liveChatRegistry.clear();
+    chatTmpDirectories.clear();
 
     rootItems.value = await storageService.getSidebarStructure();
     if (_currentChat.value) {
@@ -548,6 +586,7 @@ export function useChat() {
 
   const addMountToChat = async ({ chatId, mount }: { chatId: string; mount: import('@/models/types').Mount }) => {
     await storageService.addMountToChat({ chatId, mount });
+    await ensureChatTmpDirectory({ chatId });
     const existing = liveChatRegistry.get(chatId);
     if (existing) {
       existing.mounts = [...(existing.mounts ?? []), mount];
@@ -713,6 +752,7 @@ export function useChat() {
       activeTaskCounts.delete('fetch:' + id);
       activeTaskCounts.delete('process:' + id);
       liveChatRegistry.delete(id);
+      chatTmpDirectories.delete(id);
       await storageService.deleteChat(id);
     };
 
@@ -768,6 +808,7 @@ export function useChat() {
     activeGenerations.clear();
     activeTaskCounts.clear();
     liveChatRegistry.clear();
+    chatTmpDirectories.clear();
 
     const all = await storageService.listChats();
     for (const c of all) await storageService.deleteChat(c.id);
@@ -1158,11 +1199,15 @@ export function useChat() {
       let lastSave = 0;
       let isSaving = false;
       const { enabledToolNames } = useChatTools();
+      const shellExecuteEnabled = enabledToolNames.value.includes('shell_execute');
+      const chatTmpDirectory = shellExecuteEnabled
+        ? await ensureChatTmpDirectory({ chatId: mutableChat.id })
+        : undefined;
       const enabledTools = await getEnabledTools({
         enabledNames: enabledToolNames.value,
         settings: settings.value as unknown as Settings,
         chatMounts: mutableChat.mounts,
-        chatId: mutableChat.id,
+        tmpHandle: chatTmpDirectory?.handle,
       });
 
       const generationState = {
@@ -2285,13 +2330,14 @@ export function useChat() {
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
     loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat, removeMountFromChat, updateChatMount,
-    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle,
+    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle, ensureChatTmpDirectory, getChatTmpDirectory,
     getVolatileToolOutput,
     chatFlow, isThinkingActive, isWaitingResponse,
     __testOnly: {
       liveChatRegistry,
       activeGenerations,
       activeTaskCounts,
+      chatTmpDirectories,
       clearLiveChatRegistry,
       clearActiveTaskCounts,
       volatileToolOutputs,

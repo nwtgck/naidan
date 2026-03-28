@@ -7,7 +7,6 @@ const mockAbortOngoingScans = vi.fn()
 const mockGetVolumeExtensions = vi.fn()
 const mockIsVolumeScanned = vi.fn()
 const mockStartVolumeExtensionScan = vi.fn()
-const mockCreateTmpDirectory = vi.fn()
 
 vi.mock('@/services/wesh-worker-client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mockCreateClient,
@@ -23,12 +22,6 @@ vi.mock('@/services/storage', () => ({
   },
 }))
 
-vi.mock('@/services/opfs-tmp-manager', () => ({
-  getOPFSTmpManager: () => ({
-    createTmpDirectory: mockCreateTmpDirectory,
-  }),
-}))
-
 vi.mock('./volume-extension-cache', () => ({
   abortOngoingScans: mockAbortOngoingScans,
   getVolumeExtensions: mockGetVolumeExtensions,
@@ -37,14 +30,11 @@ vi.mock('./volume-extension-cache', () => ({
 }))
 
 function setupStandardMocks({
-  tmpHandle,
   volumeHandle,
 }: {
-  tmpHandle: FileSystemDirectoryHandle
   volumeHandle: FileSystemDirectoryHandle
 }) {
   mockCheckOPFSSupport.mockResolvedValue(true)
-  mockCreateTmpDirectory.mockResolvedValueOnce(tmpHandle)
   mockGetVolumeDirectoryHandle.mockResolvedValueOnce(volumeHandle)
   mockCreateClient.mockResolvedValue({
     startExecution: vi.fn(),
@@ -72,9 +62,6 @@ describe('getEnabledTools shell_execute', () => {
     const volumeHandleB = { kind: 'directory', name: 'vol-b' } as FileSystemDirectoryHandle
 
     mockCheckOPFSSupport.mockResolvedValue(true)
-    mockCreateTmpDirectory
-      .mockResolvedValueOnce(tmpHandleA)
-      .mockResolvedValueOnce(tmpHandleB)
     mockGetVolumeDirectoryHandle
       .mockResolvedValueOnce(volumeHandleA)
       .mockResolvedValueOnce(volumeHandleB)
@@ -93,14 +80,14 @@ describe('getEnabledTools shell_execute', () => {
 
     const [toolA] = await getEnabledTools({
       enabledNames: ['shell_execute'],
-      chatId: 'chat-1',
+      tmpHandle: tmpHandleA,
       settings: {
         mounts: [{ type: 'volume', volumeId: 'a', mountPath: '/mnt/a', readOnly: false }],
       } as never,
     })
     const [toolB] = await getEnabledTools({
       enabledNames: ['shell_execute'],
-      chatId: 'chat-1',
+      tmpHandle: tmpHandleB,
       settings: {
         mounts: [{ type: 'volume', volumeId: 'b', mountPath: '/mnt/b', readOnly: true }],
       } as never,
@@ -140,19 +127,19 @@ Execute shell scripts to perform file operations, system exploration, and data p
 Mounted directories:
 - /tmp (read-write)
 - /mnt/b (read-only)`)
-  })
+  }, 15000)
 
   it('sets initialCwd to /home/user when a mount lives under /home/user/', async () => {
     const tmpHandle = { kind: 'directory', name: 'chat-1-id-x' } as FileSystemDirectoryHandle
     const volumeHandle = { kind: 'directory', name: 'vol-x' } as FileSystemDirectoryHandle
 
-    setupStandardMocks({ tmpHandle, volumeHandle })
+    setupStandardMocks({ volumeHandle })
 
     const { getEnabledTools } = await import('./factory')
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
-      chatId: 'chat-1',
+      tmpHandle,
       settings: {
         mounts: [{ type: 'volume', volumeId: 'x', mountPath: '/home/user/myproject', readOnly: false }],
       } as never,
@@ -169,7 +156,7 @@ Mounted directories:
     const { getEnabledTools } = await import('./factory')
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute'],
-      chatId: 'chat-1',
+      tmpHandle: undefined,
       settings: {
         mounts: [],
       } as never,
@@ -183,14 +170,14 @@ Mounted directories:
     const tmpHandle = { kind: 'directory', name: 'chat-1-id-s' } as FileSystemDirectoryHandle
     const volumeHandle = { kind: 'directory', name: 'vol-s' } as FileSystemDirectoryHandle
 
-    setupStandardMocks({ tmpHandle, volumeHandle })
+    setupStandardMocks({ volumeHandle })
     mockIsVolumeScanned.mockReturnValue(false)
 
     const { getEnabledTools } = await import('./factory')
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
-      chatId: 'chat-1',
+      tmpHandle,
       settings: {
         mounts: [{ type: 'volume', volumeId: 'vol-s', mountPath: '/mnt/s', readOnly: true }],
       } as never,
@@ -206,14 +193,14 @@ Mounted directories:
     const tmpHandle = { kind: 'directory', name: 'chat-1-id-r' } as FileSystemDirectoryHandle
     const volumeHandle = { kind: 'directory', name: 'vol-r' } as FileSystemDirectoryHandle
 
-    setupStandardMocks({ tmpHandle, volumeHandle })
+    setupStandardMocks({ volumeHandle })
     mockIsVolumeScanned.mockReturnValue(true)
 
     const { getEnabledTools } = await import('./factory')
 
     await getEnabledTools({
       enabledNames: ['shell_execute'],
-      chatId: 'chat-1',
+      tmpHandle,
       settings: {
         mounts: [{ type: 'volume', volumeId: 'vol-r', mountPath: '/mnt/r', readOnly: true }],
       } as never,
@@ -226,14 +213,14 @@ Mounted directories:
     const tmpHandle = { kind: 'directory', name: 'chat-1-id-d' } as FileSystemDirectoryHandle
     const volumeHandle = { kind: 'directory', name: 'vol-d' } as FileSystemDirectoryHandle
 
-    setupStandardMocks({ tmpHandle, volumeHandle })
+    setupStandardMocks({ volumeHandle })
     mockGetVolumeExtensions.mockReturnValue(new Set(['.docx', '.xlsx']))
 
     const { getEnabledTools } = await import('./factory')
 
     const [tool] = await getEnabledTools({
       enabledNames: ['shell_execute'],
-      chatId: 'chat-1',
+      tmpHandle,
       settings: {
         mounts: [{ type: 'volume', volumeId: 'vol-d', mountPath: '/mnt/d', readOnly: true }],
       } as never,

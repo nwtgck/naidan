@@ -8,7 +8,6 @@ import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import type { WeshMount } from '@/services/wesh/types';
 import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './volume-extension-cache';
 import { buildShellDescription } from './shell-description';
-import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 
 /**
  * Dynamically creates and returns a list of enabled tools based on settings.
@@ -18,12 +17,12 @@ export async function getEnabledTools({
   enabledNames,
   settings,
   chatMounts,
-  chatId,
+  tmpHandle,
 }: {
   enabledNames: string[];
   settings: Settings;
   chatMounts?: Mount[];
-  chatId: string;
+  tmpHandle: FileSystemDirectoryHandle | undefined;
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
 
@@ -39,9 +38,9 @@ export async function getEnabledTools({
         break;
       }
 
-      // Create a unique writable /tmp directory inside this page owner's scope.
-      // The root `/` uses a virtual read-only handle — no real OPFS dir needed.
-      const tmpHandle = await getOPFSTmpManager().createTmpDirectory({ prefix: chatId });
+      if (!tmpHandle) {
+        break;
+      }
 
       // Resolve mounts from settings (global) + chatMounts (per-chat)
       const allMounts = [...settings.mounts, ...(chatMounts ?? [])];
