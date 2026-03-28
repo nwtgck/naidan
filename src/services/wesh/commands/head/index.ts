@@ -2,6 +2,7 @@ import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } fro
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
+import type { WeshFileHandle } from '@/services/wesh/types';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   if (path.startsWith('/')) {
@@ -22,6 +23,27 @@ function parseCount({
   }
   const parsed = parseInt(value, 10);
   return { ok: true, value: parsed };
+}
+
+async function writeAll({
+  handle,
+  buffer,
+}: {
+  handle: WeshFileHandle;
+  buffer: Uint8Array;
+}): Promise<void> {
+  let written = 0;
+  while (written < buffer.length) {
+    const { bytesWritten } = await handle.write({
+      buffer,
+      offset: written,
+      length: buffer.length - written,
+    });
+    if (bytesWritten === 0) {
+      return;
+    }
+    written += bytesWritten;
+  }
 }
 
 const headArgvSpec: StandardArgvParserSpec = {
@@ -151,7 +173,10 @@ export const headCommandDefinition: WeshCommandDefinition = {
             if (done) break;
 
             const toRead = Math.min(value.length, bytes - bytesReadCount);
-            await textOutput.print({ text: new TextDecoder().decode(value.subarray(0, toRead)) });
+            await writeAll({
+              handle: context.stdout,
+              buffer: value.subarray(0, toRead),
+            });
             bytesReadCount += toRead;
             if (bytesReadCount >= bytes) {
               shouldCancel = true;

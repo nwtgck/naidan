@@ -3,11 +3,12 @@ import type { WeshFileHandle } from '@/services/wesh/types';
 async function writeAllTextToHandle({
   handle,
   text,
+  encoder,
 }: {
   handle: WeshFileHandle;
   text: string;
+  encoder: TextEncoder;
 }): Promise<void> {
-  const encoder = new TextEncoder();
   const data = encoder.encode(text);
   let totalWritten = 0;
 
@@ -33,6 +34,8 @@ export function createTextIoHelpers({
   stdout: WeshFileHandle;
   stderr: WeshFileHandle;
 }) {
+  const encoder = new TextEncoder();
+
   // Async Iterable for reading lines from stdin
   const inputIterable: AsyncIterable<string> = {
     async *[Symbol.asyncIterator]() {
@@ -70,6 +73,7 @@ export function createTextIoHelpers({
       await writeAllTextToHandle({
         handle: stdout,
         text,
+        encoder,
       });
     },
 
@@ -77,6 +81,7 @@ export function createTextIoHelpers({
       await writeAllTextToHandle({
         handle: stderr,
         text,
+        encoder,
       });
     },
   };

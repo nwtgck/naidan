@@ -559,6 +559,76 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       return { matched, selectedLineCount, outputLines };
     };
 
+    const streamingEnabled = before === 0 && after === 0;
+
+    const processStreamingLine = async ({
+      line,
+      lineNumber,
+      name,
+      state,
+    }: {
+      line: string;
+      lineNumber: number;
+      name?: string;
+      state: {
+        matched: boolean;
+        selectedLineCount: number;
+      };
+    }): Promise<boolean> => {
+      regex.lastIndex = 0;
+      const isRegexMatch = regex.test(line);
+      const isSelected = parsed.optionValues.invertMatch === true ? !isRegexMatch : isRegexMatch;
+      if (!isSelected) {
+        return false;
+      }
+
+      state.matched = true;
+      if (state.selectedLineCount >= maxCount) {
+        return true;
+      }
+      state.selectedLineCount += 1;
+
+      if (quiet) {
+        return true;
+      }
+
+      switch (outputMode) {
+      case 'count':
+      case 'files-without-match':
+        return state.selectedLineCount >= maxCount;
+      case 'files-with-matches':
+        if (name !== undefined) {
+          await text.print({ text: `${name}\n` });
+        }
+        return true;
+      case 'only-matching': {
+        globalRegex.lastIndex = 0;
+        for (const match of line.matchAll(globalRegex)) {
+          const matchedText = match[0];
+          if (matchedText === undefined || matchedText.length === 0) continue;
+          let output = '';
+          if (name !== undefined && showFilename) output += `${name}:`;
+          if (parsed.optionValues.lineNumber === true) output += `${lineNumber}:`;
+          output += `${matchedText}\n`;
+          await text.print({ text: output });
+        }
+        return state.selectedLineCount >= maxCount;
+      }
+      case 'lines': {
+        let output = '';
+        if (name !== undefined && showFilename) output += `${name}:`;
+        if (parsed.optionValues.lineNumber === true) output += `${lineNumber}:`;
+        output += `${line}\n`;
+        await text.print({ text: output });
+        return state.selectedLineCount >= maxCount;
+      }
+      default: {
+        const _ex: never = outputMode;
+        throw new Error(`Unhandled output mode: ${_ex}`);
+      }
+      }
+    };
+
     const processStream = async ({
       stream,
       name,
@@ -569,27 +639,122 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       const decoder = new TextDecoder();
       let buffer = '';
       const reader = stream.getReader();
+      const state = {
+        matched: false,
+        selectedLineCount: 0,
+      };
       const allLines: string[] = [];
+      let lineNumber = 0;
+      let shouldCancel = false;
+      let skippedBinary = false;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
 
-        if (parsed.optionValues.binaryWithoutMatch === true) {
-          const isBinary = value.some(byte => byte === 0);
-          if (isBinary) {
-            return { matched: false, selectedLineCount: 0, outputLines: [] };
+          if (parsed.optionValues.binaryWithoutMatch === true && value.some(byte => byte === 0)) {
+            skippedBinary = true;
+            shouldCancel = true;
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          if (!streamingEnabled) {
+            allLines.push(...lines);
+            continue;
+          }
+
+          for (const line of lines) {
+            lineNumber += 1;
+            const stop = await processStreamingLine({
+              line,
+              lineNumber,
+              name,
+              state,
+            });
+            if (stop) {
+              shouldCancel = true;
+              break;
+            }
+          }
+
+          if (shouldCancel) {
+            break;
           }
         }
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        allLines.push(...lines);
-      }
-      if (buffer) allLines.push(buffer);
+        if (!shouldCancel) {
+          buffer += decoder.decode();
+        }
 
-      return processAllLines({ allLines, name });
+        if (!streamingEnabled) {
+          if (buffer) allLines.push(buffer);
+          if (skippedBinary) {
+            return { matched: false, selectedLineCount: 0, outputLines: [] };
+          }
+          return processAllLines({ allLines, name });
+        }
+
+        if (skippedBinary) {
+          return {
+            matched: false,
+            selectedLineCount: 0,
+            outputLines: [],
+          };
+        }
+
+        if (!shouldCancel && buffer.length > 0) {
+          lineNumber += 1;
+          await processStreamingLine({
+            line: buffer,
+            lineNumber,
+            name,
+            state,
+          });
+        }
+
+        if (!quiet) {
+          switch (outputMode) {
+          case 'count': {
+            let output = '';
+            if (name !== undefined && showFilename) output += `${name}:`;
+            output += `${Math.min(state.selectedLineCount, maxCount)}\n`;
+            await text.print({ text: output });
+            break;
+          }
+          case 'files-without-match':
+            if (!state.matched && name !== undefined) {
+              await text.print({ text: `${name}\n` });
+            }
+            break;
+          case 'lines':
+          case 'files-with-matches':
+          case 'only-matching':
+            break;
+          default: {
+            const _ex: never = outputMode;
+            throw new Error(`Unhandled output mode: ${_ex}`);
+          }
+          }
+        }
+
+        return {
+          matched: state.matched,
+          selectedLineCount: state.selectedLineCount,
+          outputLines: [],
+        };
+      } finally {
+        if (shouldCancel) {
+          await reader.cancel();
+        }
+        reader.releaseLock();
+      }
     };
 
     const inputFiles = files.length === 0 ? ['-'] : files;
