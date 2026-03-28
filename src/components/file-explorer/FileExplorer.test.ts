@@ -128,6 +128,7 @@ function mountExplorer(root: MockExplorerDirectory, overrides: Record<string, un
       root,
       initialViewMode: 'list',
       initialPreviewVisibility: 'visible',
+      initialEntryName: undefined,
       ...overrides,
     },
     attachTo: document.body,

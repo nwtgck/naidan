@@ -28,6 +28,7 @@ type MenuItem =
   | { type: 'divider' };
 
 const menuItems = computed<MenuItem[]>(() => {
+  const readOnly = ctx.readOnly;
   switch (target.value.kind) {
   case 'entry': {
     const firstEntry = target.value.selectedEntries[0];
@@ -37,14 +38,20 @@ const menuItems = computed<MenuItem[]>(() => {
 
     const items: MenuItem[] = [
       { type: 'action', action: 'open', label: 'Open', icon: FolderOpen },
-      { type: 'action', action: 'rename', label: 'Rename', icon: Pencil },
-      { type: 'divider' },
-      { type: 'action', action: 'copy', label: 'Copy', icon: Copy },
-      { type: 'action', action: 'cut', label: 'Cut', icon: Scissors },
     ];
 
-    if (hasClipboard.value) {
-      items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPaste });
+    if (!readOnly) {
+      items.push({ type: 'action', action: 'rename', label: 'Rename', icon: Pencil });
+    }
+
+    items.push({ type: 'divider' });
+    items.push({ type: 'action', action: 'copy', label: 'Copy', icon: Copy });
+
+    if (!readOnly) {
+      items.push({ type: 'action', action: 'cut', label: 'Cut', icon: Scissors });
+      if (hasClipboard.value) {
+        items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPaste });
+      }
     }
 
     items.push({ type: 'divider' });
@@ -54,23 +61,27 @@ const menuItems = computed<MenuItem[]>(() => {
     }
 
     items.push({ type: 'action', action: 'getInfo', label: 'Get Info', icon: Info });
-    items.push({ type: 'divider' });
-    items.push({ type: 'action', action: 'delete', label: 'Delete', icon: Trash2, danger: true });
+
+    if (!readOnly) {
+      items.push({ type: 'divider' });
+      items.push({ type: 'action', action: 'delete', label: 'Delete', icon: Trash2, danger: true });
+    }
 
     return items;
   }
   case 'background': {
-    const items: MenuItem[] = [
-      { type: 'action', action: 'newFile', label: 'New File', icon: FilePlus },
-      { type: 'action', action: 'newFolder', label: 'New Folder', icon: FolderPlus },
-    ];
+    const items: MenuItem[] = [];
 
-    if (hasClipboard.value) {
+    if (!readOnly) {
+      items.push({ type: 'action', action: 'newFile', label: 'New File', icon: FilePlus });
+      items.push({ type: 'action', action: 'newFolder', label: 'New Folder', icon: FolderPlus });
+      if (hasClipboard.value) {
+        items.push({ type: 'divider' });
+        items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPaste });
+      }
       items.push({ type: 'divider' });
-      items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPaste });
     }
 
-    items.push({ type: 'divider' });
     items.push({ type: 'action', action: 'selectAll', label: 'Select All', icon: CheckSquare });
 
     return items;

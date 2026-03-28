@@ -15,6 +15,8 @@ import { startVolumeExtensionScan } from '@/services/tools/volume-extension-cach
 import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
+import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { VirtualMountRoot, MountExplorerDirectory } from './file-explorer/explorer-directory';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
@@ -32,6 +34,7 @@ import type { Attachment, Chat, LmParameters } from '@/models/types';
 const chatStore = useChat();
 const { setToolEnabled } = useChatTools();
 const { addToast } = useToast();
+const { openFileExplorer } = useFileExplorerModal();
 const reasoningStore = useReasoning();
 const router = useRouter();
 const { getDraft, saveDraft, clearDraft } = useChatDraft();
@@ -536,6 +539,26 @@ async function processDropItems(items: DataTransferItem[]) {
   if (plainFiles.length > 0) {
     await onAttachFilesSelected(plainFiles);
   }
+}
+
+async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Promise<void> {
+  const mounts = currentChat.value?.mounts ?? [];
+  if (mounts.length === 0) return;
+
+  const mountDirs = new Map<string, MountExplorerDirectory>();
+  for (const m of mounts) {
+    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
+    if (!handle) continue;
+    const segmentName = m.mountPath.split('/').filter(Boolean).pop() ?? m.volumeId;
+    mountDirs.set(segmentName, new MountExplorerDirectory({ name: segmentName, handle, readOnly: m.readOnly }));
+  }
+
+  const virtualRoot = new VirtualMountRoot({ children: mountDirs });
+  const clickedMount = mounts.find(m => m.volumeId === volumeId);
+  const initialEntryName = clickedMount?.mountPath.split('/').filter(Boolean).pop();
+  const title = initialEntryName ?? 'Files';
+
+  openFileExplorer({ kind: 'explorer', root: virtualRoot, initialEntryName, title });
 }
 
 async function handleDetachMount({ volumeId }: { volumeId: string }) {
@@ -1117,7 +1140,12 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           data-testid="chat-mount-badge"
         >
           <Folder class="w-3.5 h-3.5 shrink-0" />
-          <span class="max-w-[120px] truncate mx-1">{{ mount.mountPath.replace(/^\/home\/user\//, '') }}</span>
+          <button
+            class="max-w-[120px] truncate mx-1 hover:underline focus:outline-none"
+            :title="`Browse ${mount.mountPath.replace(/^\/home\/user\//, '')}`"
+            data-testid="mount-open-explorer"
+            @click="handleOpenMountExplorer({ volumeId: mount.volumeId })"
+          >{{ mount.mountPath.replace(/^\/home\/user\//, '') }}</button>
           <button
             @click="handleToggleMountReadOnly({ volumeId: mount.volumeId, readOnly: !mount.readOnly })"
             :title="mount.readOnly ? 'Read-only — click to allow write' : 'Read & write — click to restrict'"

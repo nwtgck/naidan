@@ -117,38 +117,40 @@ defineExpose({
         <Search class="w-3.5 h-3.5" />
       </button>
 
-      <button
-        title="Upload Files"
-        data-testid="upload-button"
-        class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        @click="handleUploadClick"
-      >
-        <Upload class="w-3.5 h-3.5" />
-      </button>
-      <input
-        ref="fileInputRef"
-        type="file"
-        multiple
-        class="hidden"
-        data-testid="upload-input"
-        @change="handleFileInputChange"
-      />
+      <template v-if="!ctx.readOnly">
+        <button
+          title="Upload Files"
+          data-testid="upload-button"
+          class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          @click="handleUploadClick"
+        >
+          <Upload class="w-3.5 h-3.5" />
+        </button>
+        <input
+          ref="fileInputRef"
+          type="file"
+          multiple
+          class="hidden"
+          data-testid="upload-input"
+          @change="handleFileInputChange"
+        />
 
-      <button
-        title="New File"
-        class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        @click="handleNewFile"
-      >
-        <FilePlus class="w-3.5 h-3.5" />
-      </button>
+        <button
+          title="New File"
+          class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          @click="handleNewFile"
+        >
+          <FilePlus class="w-3.5 h-3.5" />
+        </button>
 
-      <button
-        title="New Folder"
-        class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        @click="handleNewFolder"
-      >
-        <FolderPlus class="w-3.5 h-3.5" />
-      </button>
+        <button
+          title="New Folder"
+          class="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          @click="handleNewFolder"
+        >
+          <FolderPlus class="w-3.5 h-3.5" />
+        </button>
+      </template>
 
       <button
         title="Refresh"

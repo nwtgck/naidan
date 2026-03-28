@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { provide } from 'vue';
+import { provide, onMounted } from 'vue';
 import { Loader2 } from 'lucide-vue-next';
 import FileExplorerToolbar from './FileExplorerToolbar.vue';
 import FileExplorerListView from './FileExplorerListView.vue';
@@ -17,9 +17,10 @@ const props = defineProps<{
   root: ExplorerDirectory;
   initialViewMode: ViewMode;
   initialPreviewVisibility: PreviewVisibility;
+  initialEntryName: string | undefined;
 }>();
 
-const { context, _viewMode, _preview } = useFileExplorer({ root: props.root });
+const { context, _viewMode, _preview, _nav } = useFileExplorer({ root: props.root });
 
 // Apply initial values
 _viewMode.value = props.initialViewMode;
@@ -27,6 +28,15 @@ _preview.previewState.value = { ..._preview.previewState.value, visibility: prop
 
 // Provide context for child components
 provide(FILE_EXPLORER_INJECTION_KEY, context);
+
+// Auto-navigate to the initial entry if specified
+onMounted(async () => {
+  if (!props.initialEntryName) return;
+  const subDir = await props.root.subdir({ name: props.initialEntryName });
+  if (subDir) {
+    await _nav.navigateToDirectory({ directory: subDir });
+  }
+});
 
 // Keyboard handler
 const { handleKeyDown } = useFileExplorerKeyboard({ ctx: context });

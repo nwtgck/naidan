@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronRight } from 'lucide-vue-next';
+import { ChevronRight, Lock } from 'lucide-vue-next';
 import FileExplorerEntryIcon from './FileExplorerEntryIcon.vue';
 import FileExplorerRenameInput from './FileExplorerRenameInput.vue';
 import type { FileExplorerEntry } from './types';
@@ -76,6 +76,12 @@ defineExpose({
         {{ entry.name }}
       </span>
     </div>
+    <Lock
+      v-if="entry.kind === 'directory' && entry.readOnly"
+      class="w-2.5 h-2.5 shrink-0 opacity-50"
+      :class="isSelected ? 'text-white' : 'text-gray-400 dark:text-gray-500'"
+      data-testid="entry-lock-icon"
+    />
     <span class="text-[10px] font-mono w-16 text-right shrink-0" :class="isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'">
       {{ entry.kind === 'file' ? formatSize({ bytes: entry.size }) : '' }}
     </span>
@@ -127,6 +133,12 @@ defineExpose({
       class="text-[11px] text-center leading-tight break-all line-clamp-2 w-full px-1"
       :class="isSelected ? 'text-white' : 'text-gray-700 dark:text-gray-300'"
     >{{ entry.name }}</span>
+    <Lock
+      v-if="entry.kind === 'directory' && entry.readOnly"
+      class="w-2.5 h-2.5 shrink-0 opacity-50 absolute top-1 right-1"
+      :class="isSelected ? 'text-white' : 'text-gray-400 dark:text-gray-500'"
+      data-testid="entry-lock-icon"
+    />
   </div>
 
   <!-- COLUMN MODE ROW -->
@@ -161,6 +173,12 @@ defineExpose({
     <span v-else class="text-xs flex-1 truncate" :class="isSelected ? 'text-white' : 'text-gray-700 dark:text-gray-300'">
       {{ entry.name }}
     </span>
+    <Lock
+      v-if="entry.kind === 'directory' && entry.readOnly"
+      class="w-2.5 h-2.5 shrink-0 opacity-50"
+      :class="isSelected ? 'text-white' : 'text-gray-400 dark:text-gray-500'"
+      data-testid="entry-lock-icon"
+    />
     <ChevronRight
       v-if="entry.kind === 'directory'"
       class="w-3 h-3 shrink-0"
