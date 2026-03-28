@@ -92,8 +92,8 @@ export async function getEnabledTools({
         mounts: resolvedMounts,
         name: 'shell_execute',
         description: buildShellDescription({ mounts: resolvedMounts, detectedExtensions }),
-        defaultStdoutLimit: 4096,
-        defaultStderrLimit: 4096,
+        defaultStdoutLimit: 32768,
+        defaultStderrLimit: 16384,
       }));
       break;
     }
