@@ -132,6 +132,25 @@ Examples:
 - archive readers should try blob-native reads before buffering through generic handles
 - archive extractors should try efficient file writers before chunking through generic `write()`
 
+### Buffered Text Output
+
+For text-heavy commands, do not assume `context.text().print()` is cheap when
+called once per line or once per match.
+
+Rules:
+- if a command can emit many small chunks, prefer buffering stdout writes
+- preserve streaming behavior; do not switch to full-input buffering just to reduce writes
+- flush buffered output before returning, before early success exits, and before any path that must expose pending stdout
+- keep stderr behavior explicit; buffer stderr only when you are sure it preserves the expected UX
+
+Examples:
+- `grep -o` printing one match at a time
+- `sed` printing one transformed line at a time
+- other line-oriented filters in long pipelines
+
+The target is fewer small writes, not delayed end-of-command output. Prefer
+small bounded buffers that still stream progressively.
+
 ## Keep Shared Abstractions Small
 
 Before creating a new shared helper:
