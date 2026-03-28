@@ -189,6 +189,20 @@ betA
     expect(result.exitCode).toBe(0);
   });
 
+  it('coalesces stdout writes when many stdin lines are transformed', async () => {
+    const stdinText = Array.from({ length: 200 }, () => 'w:t> alpha xml:space').join('\n') + '\n';
+
+    const { result, stdout, stderr } = await execute({
+      script: "sed -e 's/w:t[^>]*>//g' -e 's/xml:.*//g' -e 's/ //g'",
+      stdinText,
+    });
+
+    expect(stdout.text).toBe(Array.from({ length: 200 }, () => 'alpha\n').join(''));
+    expect(stdout.chunkCount).toBeLessThan(20);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports q to quit after the addressed line', async () => {
     await writeFile({ path: 'input.txt', data: `\
 alpha

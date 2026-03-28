@@ -56,6 +56,9 @@ export function createTestWriteCaptureHandle() {
 
   return {
     handle,
+    get chunkCount() {
+      return chunks.length;
+    },
     get text() {
       const decoder = new TextDecoder();
       return chunks.map(c => decoder.decode(c, { stream: true })).join('') + decoder.decode();

@@ -292,6 +292,23 @@ alpha
     expect(result.exitCode).toBe(0);
   });
 
+  it('coalesces stdout writes for many -o matches from a single long stdin line', async () => {
+    const stdinText = Array.from({ length: 200 }, () => '<w:t>alpha</w:t>').join('');
+
+    const { result, stdout, stderr } = await execute({
+      script: "grep -o 'w:t[^>]*>[^<]*'",
+      stdinText,
+    });
+
+    const outputLines = stdout.text.trimEnd().split('\n');
+    expect(outputLines).toHaveLength(400);
+    expect(outputLines.filter(line => line === 'w:t>alpha')).toHaveLength(200);
+    expect(outputLines.filter(line => line === 'w:t>')).toHaveLength(200);
+    expect(stdout.chunkCount).toBeLessThan(20);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports -s to suppress missing-file errors', async () => {
     const noisy = await execute({
       script: 'grep alpha missing.txt',

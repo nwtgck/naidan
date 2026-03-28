@@ -25,6 +25,49 @@ async function writeAllTextToHandle({
   }
 }
 
+export function createBufferedTextWriter({
+  handle,
+  maxBufferLength,
+}: {
+  handle: WeshFileHandle;
+  maxBufferLength: number;
+}) {
+  const encoder = new TextEncoder();
+  let buffer = '';
+
+  return {
+    async write({
+      text,
+    }: {
+      text: string;
+    }): Promise<void> {
+      buffer += text;
+      if (buffer.length < maxBufferLength) {
+        return;
+      }
+
+      await writeAllTextToHandle({
+        handle,
+        text: buffer,
+        encoder,
+      });
+      buffer = '';
+    },
+    async flush(): Promise<void> {
+      if (buffer.length === 0) {
+        return;
+      }
+
+      await writeAllTextToHandle({
+        handle,
+        text: buffer,
+        encoder,
+      });
+      buffer = '';
+    },
+  };
+}
+
 export function createTextIoHelpers({
   stdin,
   stdout,

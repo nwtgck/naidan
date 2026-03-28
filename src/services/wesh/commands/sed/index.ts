@@ -3,6 +3,7 @@ import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
 import { readAllFileBytes, writeAllStreamToFile, writeAllFileBytes } from '@/services/wesh/utils/fs';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 
 type SedAddress =
   | { kind: 'line'; lineNumber: number }
@@ -946,6 +947,10 @@ export const sedCommandDefinition: WeshCommandDefinition = {
     const inPlace = parsed.optionValues.inPlaceSuffix !== undefined;
     const inPlaceSuffix = typeof parsed.optionValues.inPlaceSuffix === 'string' ? parsed.optionValues.inPlaceSuffix : '';
     const encoder = new TextEncoder();
+    const bufferedStdout = createBufferedTextWriter({
+      handle: context.stdout,
+      maxBufferLength: 16384,
+    });
     const processText = ({
       input,
     }: {
@@ -1004,12 +1009,13 @@ export const sedCommandDefinition: WeshCommandDefinition = {
           quiet,
         });
         for (const output of result.outputs) {
-          await context.text().print({ text: output });
+          await bufferedStdout.write({ text: output });
         }
         if (result.shouldQuit) {
           break;
         }
       }
+      await bufferedStdout.flush();
       return { exitCode: 0 };
     }
 
@@ -1060,7 +1066,7 @@ export const sedCommandDefinition: WeshCommandDefinition = {
               quiet,
             });
             for (const output of result.outputs) {
-              await context.text().print({ text: output });
+              await bufferedStdout.write({ text: output });
             }
             if (result.shouldQuit) {
               break;
@@ -1073,6 +1079,8 @@ export const sedCommandDefinition: WeshCommandDefinition = {
         await context.text().error({ text: `sed: ${file}: ${message}\n` });
       }
     }
+
+    await bufferedStdout.flush();
 
     return { exitCode };
   },

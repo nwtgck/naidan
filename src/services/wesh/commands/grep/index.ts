@@ -4,6 +4,7 @@ import type { ArgvOptionOccurrence } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { openFileReadStream, readAllFileBytes } from '@/services/wesh/utils/fs';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 
 interface GrepFileReport {
   matched: boolean;
@@ -308,6 +309,10 @@ export const grepCommandDefinition: WeshCommandDefinition = {
     }
 
     const text = context.text();
+    const bufferedStdout = createBufferedTextWriter({
+      handle: context.stdout,
+      maxBufferLength: 16384,
+    });
     const inlinePatterns = parsed.occurrences
       .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => isValueOccurrenceForKey(occurrence, 'regexp'))
       .map((occurrence) => occurrence.value)
@@ -598,7 +603,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
         return state.selectedLineCount >= maxCount;
       case 'files-with-matches':
         if (name !== undefined) {
-          await text.print({ text: `${name}\n` });
+          await bufferedStdout.write({ text: `${name}\n` });
         }
         return true;
       case 'only-matching': {
@@ -610,7 +615,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
           if (name !== undefined && showFilename) output += `${name}:`;
           if (parsed.optionValues.lineNumber === true) output += `${lineNumber}:`;
           output += `${matchedText}\n`;
-          await text.print({ text: output });
+          await bufferedStdout.write({ text: output });
         }
         return state.selectedLineCount >= maxCount;
       }
@@ -619,7 +624,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
         if (name !== undefined && showFilename) output += `${name}:`;
         if (parsed.optionValues.lineNumber === true) output += `${lineNumber}:`;
         output += `${line}\n`;
-        await text.print({ text: output });
+        await bufferedStdout.write({ text: output });
         return state.selectedLineCount >= maxCount;
       }
       default: {
@@ -725,12 +730,12 @@ export const grepCommandDefinition: WeshCommandDefinition = {
             let output = '';
             if (name !== undefined && showFilename) output += `${name}:`;
             output += `${Math.min(state.selectedLineCount, maxCount)}\n`;
-            await text.print({ text: output });
+            await bufferedStdout.write({ text: output });
             break;
           }
           case 'files-without-match':
             if (!state.matched && name !== undefined) {
-              await text.print({ text: `${name}\n` });
+              await bufferedStdout.write({ text: `${name}\n` });
             }
             break;
           case 'lines':
@@ -862,7 +867,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
 
         if (!quiet) {
           for (const outputLine of report.outputLines) {
-            await text.print({ text: outputLine });
+            await bufferedStdout.write({ text: outputLine });
           }
         }
 
@@ -878,6 +883,8 @@ export const grepCommandDefinition: WeshCommandDefinition = {
         }
       }
     }
+
+    await bufferedStdout.flush();
 
     if (sawError) {
       return { exitCode: 2 };
