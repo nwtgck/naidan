@@ -69,6 +69,7 @@ import { stringsCommandDefinition } from './strings/index.ts';
 import { mktempCommandDefinition } from './mktemp/index.ts';
 import { psCommandDefinition } from './ps/index.ts';
 import { foldCommandDefinition } from './fold/index.ts';
+import { base64CommandDefinition } from './base64/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -140,6 +141,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   mktempCommandDefinition,
   psCommandDefinition,
   foldCommandDefinition,
+  base64CommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
 ];
