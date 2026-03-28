@@ -7,6 +7,7 @@ const isSidebarOpen = ref(true);
 const isDebugOpen = ref(false);
 const isWeshTerminalOpen = ref(false);
 const activeFocusArea = ref<FocusArea>('chat');
+const activeFocusAreaVersion = ref(0);
 const mediaShelfVisibility = ref<MediaShelfVisibility>('hidden');
 const preferredEditorMode = ref<'advanced' | 'textarea'>('advanced');
 
@@ -37,6 +38,7 @@ export function useLayout() {
 
   const setActiveFocusArea = (area: FocusArea) => {
     activeFocusArea.value = area;
+    activeFocusAreaVersion.value += 1;
   };
 
   const setMediaShelfVisibility = ({ visibility }: { visibility: MediaShelfVisibility }) => {
@@ -65,6 +67,7 @@ export function useLayout() {
     isDebugOpen,
     isWeshTerminalOpen,
     activeFocusArea,
+    activeFocusAreaVersion,
     mediaShelfVisibility,
     toggleSidebar,
     setSidebarOpen,

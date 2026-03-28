@@ -30,12 +30,14 @@ import { scrollIntoViewSafe } from '@/utils/dom';
 
 const chatStore = useChat();
 const {
-  currentChat, currentChatGroup, chatGroups, chats, isProcessing,
+  currentChat, currentChatGroup, isProcessing,
 } = chatStore;
 
 const { settings, isFetchingModels, availableModels, updateGlobalModel } = useSettings();
 const sortedModels = computed(() => naturalSort(availableModels.value || []));
-const { isSidebarOpen, activeFocusArea, setActiveFocusArea, toggleSidebar } = useLayout();
+const layout = useLayout();
+const { isSidebarOpen, activeFocusArea, setActiveFocusArea, toggleSidebar } = layout;
+const activeFocusAreaVersion = 'activeFocusAreaVersion' in layout ? layout.activeFocusAreaVersion : ref(0);
 const { showConfirm } = useConfirm();
 
 const router = useRouter();
@@ -114,42 +116,166 @@ const focusedId = computed(() => {
   return currentChatGroup.value?.id || currentChat.value?.id || null;
 });
 
-// Scroll active chat into view
-watch(() => currentChat.value?.id, async (id) => {
+function isSidebarItemVisible({
+  container,
+  element,
+}: {
+  container: HTMLElement;
+  element: HTMLElement;
+}) {
+  const containerRect = container.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+
+  if (containerRect.height === 0 || elementRect.height === 0) {
+    return false;
+  }
+
+  return elementRect.top >= containerRect.top && elementRect.bottom <= containerRect.bottom;
+}
+
+function ensureChatVisibleInCompactGroup({
+  chatId,
+}: {
+  chatId: string;
+}) {
+  for (const item of sidebarItemsLocal.value) {
+    switch (item.type) {
+    case 'chat':
+      continue;
+    case 'chat_group': {
+      const hiddenItemIndex = item.chatGroup.items.findIndex((chatItem, index) =>
+        index >= COMPACT_THRESHOLD && chatItem.chat.id === chatId
+      );
+
+      if (hiddenItemIndex === -1) continue;
+      if (item.chatGroup.isCollapsed) return;
+      if (expandedGroupIds.value.has(item.chatGroup.id)) return;
+
+      expandedGroupIds.value.add(item.chatGroup.id);
+      return;
+    }
+    default: {
+      const _ex: never = item;
+      return _ex;
+    }
+    }
+  }
+}
+
+async function scheduleSidebarItemScroll({
+  itemType,
+  id,
+  onlyWhenOutOfView,
+}: {
+  itemType: 'chat' | 'chat_group';
+  id: string | undefined;
+  onlyWhenOutOfView: boolean;
+}) {
   if (!id || typeof document === 'undefined' || !navContainer.value) return;
-  await nextTick();
-  // Wait a bit for potential transitions
-  setTimeout(() => {
-    if (typeof document === 'undefined' || !navContainer.value) return;
-    const el = navContainer.value.querySelector(`[data-sidebar-chat-id="${id}"]`);
-    if (el instanceof HTMLElement) {
+
+  switch (itemType) {
+  case 'chat':
+    ensureChatVisibleInCompactGroup({ chatId: id });
+    break;
+  case 'chat_group':
+    break;
+  default: {
+    const _ex: never = itemType;
+    return _ex;
+  }
+  }
+
+  return nextTick().then(() => new Promise<void>((resolve) => {
+    window.setTimeout(() => {
+      if (typeof document === 'undefined' || !navContainer.value) {
+        resolve();
+        return;
+      }
+
+      const selector = (() => {
+        switch (itemType) {
+        case 'chat':
+          return `[data-sidebar-chat-id="${id}"]`;
+        case 'chat_group':
+          return `[data-sidebar-group-id="${id}"]`;
+        default: {
+          const _ex: never = itemType;
+          return _ex;
+        }
+        }
+      })();
+
+      const el = navContainer.value.querySelector(selector);
+      if (!(el instanceof HTMLElement)) {
+        resolve();
+        return;
+      }
+      if (onlyWhenOutOfView && isSidebarItemVisible({ container: navContainer.value, element: el })) {
+        resolve();
+        return;
+      }
+
       scrollIntoViewSafe({
         container: navContainer.value,
         element: el,
         behavior: 'smooth',
         block: 'nearest'
       });
-    }
-  }, 100);
+      resolve();
+    }, 100);
+  }));
+}
+
+watch(() => currentChat.value?.id, (id) => {
+  void scheduleSidebarItemScroll({
+    itemType: 'chat',
+    id,
+    onlyWhenOutOfView: true
+  });
 }, { immediate: true });
 
-// Scroll active group into view
-watch(() => currentChatGroup.value?.id, async (id) => {
-  if (!id || typeof document === 'undefined' || !navContainer.value) return;
-  await nextTick();
-  setTimeout(() => {
-    if (typeof document === 'undefined' || !navContainer.value) return;
-    const el = navContainer.value.querySelector(`[data-sidebar-group-id="${id}"]`);
-    if (el instanceof HTMLElement) {
-      scrollIntoViewSafe({
-        container: navContainer.value,
-        element: el,
-        behavior: 'smooth',
-        block: 'nearest'
-      });
-    }
-  }, 100);
+watch(() => currentChatGroup.value?.id, (id) => {
+  void scheduleSidebarItemScroll({
+    itemType: 'chat_group',
+    id,
+    onlyWhenOutOfView: true
+  });
 }, { immediate: true });
+
+watch(activeFocusAreaVersion, () => {
+  switch (activeFocusArea.value) {
+  case 'chat':
+    break;
+  case 'sidebar':
+  case 'chat-group-settings':
+  case 'chat-settings':
+  case 'settings':
+  case 'onboarding':
+  case 'dialog':
+  case 'none':
+  case 'search':
+    return;
+  default: {
+    const _ex: never = activeFocusArea.value;
+    return _ex;
+  }
+  }
+
+  if (currentChat.value?.id) {
+    void scheduleSidebarItemScroll({
+      itemType: 'chat',
+      id: currentChat.value.id,
+      onlyWhenOutOfView: true
+    });
+    return;
+  }
+
+  void scheduleSidebarItemScroll({
+    itemType: 'chat_group',
+    id: currentChatGroup.value?.id,
+    onlyWhenOutOfView: true
+  });
+});
 
 function isGroupCompactExpanded(groupId: string) {
   return expandedGroupIds.value.has(groupId);
@@ -187,6 +313,20 @@ function handleClickOutside(event: MouseEvent) {
 onMounted(() => {
   syncLocalItems();
   document.addEventListener('mousedown', handleClickOutside);
+  if (currentChat.value?.id) {
+    void scheduleSidebarItemScroll({
+      itemType: 'chat',
+      id: currentChat.value.id,
+      onlyWhenOutOfView: true
+    });
+    return;
+  }
+
+  void scheduleSidebarItemScroll({
+    itemType: 'chat_group',
+    id: currentChatGroup.value?.id,
+    onlyWhenOutOfView: true
+  });
 });
 
 onUnmounted(() => {
@@ -199,8 +339,8 @@ function syncLocalItems() {
   sidebarItemsLocal.value = JSON.parse(JSON.stringify(chatStore.sidebarItems.value));
 }
 
-// Watch for external changes (new chats, deletions) to sync local list
-watch([chatGroups, chats], () => {
+// Watch for external sidebar changes (new chats, deletions, reordering) to sync local list
+watch(() => chatStore.sidebarItems.value, () => {
   syncLocalItems();
 }, { deep: true });
 
@@ -578,6 +718,9 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
 defineExpose({
   __testOnly: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    scheduleSidebarItemScroll,
+    syncLocalItems,
+    toggleGroupCompactExpansion,
   }
 });
 </script>

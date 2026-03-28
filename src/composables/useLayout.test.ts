@@ -21,4 +21,15 @@ describe('useLayout editor mode preference', () => {
     layout2.setPreferredEditorMode({ mode: 'advanced' });
     expect(layout1.preferredEditorMode.value).toBe('advanced');
   });
+
+  it('increments activeFocusAreaVersion even when setting the same area repeatedly', () => {
+    const layout = useLayout();
+    const initialVersion = layout.activeFocusAreaVersion.value;
+
+    layout.setActiveFocusArea('chat');
+    layout.setActiveFocusArea('chat');
+
+    expect(layout.activeFocusArea.value).toBe('chat');
+    expect(layout.activeFocusAreaVersion.value).toBe(initialVersion + 2);
+  });
 });

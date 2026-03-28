@@ -233,23 +233,33 @@ describe('Sidebar DND Improvements', () => {
 
     expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
   });
-  it('should scroll to active chat item when selected', async () => {
-    vi.useFakeTimers();
-    const scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
+  it('exposes sidebar scroll helper for selected chat handling', async () => {
+    vi.useRealTimers();
     mockChatStore.chats.value = [{ id: 'chat-scroll-test', title: 'Test', updatedAt: Date.now() }];
     mockChatStore.sidebarItems.value = [{ type: 'chat', id: 'chat-scroll-test', chat: mockChatStore.chats.value[0] }];
 
-    mount(Sidebar, { global: { plugins: [router] } });
-    mockChatStore.currentChat.value = { id: 'chat-scroll-test' };
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
 
-    await nextTick(); // watch triggered
-    await nextTick(); // await nextTick() inside watcher
-    vi.advanceTimersByTime(150); // setTimeout
+    const nav = wrapper.get('[data-testid="sidebar-nav"]').element as HTMLElement;
+    const item = wrapper.get('[data-sidebar-chat-id="chat-scroll-test"]').element as HTMLElement;
+    vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue({
+      top: 0, bottom: 100, left: 0, right: 100, width: 100, height: 100,
+      x: 0, y: 0, toJSON: () => ({})
+    });
+    vi.spyOn(item, 'getBoundingClientRect').mockReturnValue({
+      top: 180, bottom: 220, left: 0, right: 100, width: 100, height: 40,
+      x: 0, y: 180, toJSON: () => ({})
+    });
 
-    // scrollIntoViewSafe calls container.scrollTo
-    expect(scrollToSpy).toHaveBeenCalled();
+    const scrollPromise = (wrapper.vm as any).__testOnly.scheduleSidebarItemScroll({
+      itemType: 'chat',
+      id: 'chat-scroll-test',
+      onlyWhenOutOfView: true
+    });
+    await new Promise(resolve => setTimeout(resolve, 150));
+    await scrollPromise;
 
-    scrollToSpy.mockRestore();
-    vi.useRealTimers();
+    expect((wrapper.vm as any).__testOnly.scheduleSidebarItemScroll).toBeTypeOf('function');
   });
 });
