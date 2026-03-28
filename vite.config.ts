@@ -321,11 +321,13 @@ const copyZipPlugin = () => ({
 })
 
 /**
- * Custom Vite plugin to inline the IIFE bundle into index.html.
- * This is crucial for supporting the 'file:///' protocol (e.g., in Firefox)
- * because:
- * 1. ES modules (type="module") are restricted by CORS/Module security on local files.
- * 2. IIFE format combined with inlining allows the app to run as a truly standalone file.
+ * Custom Vite plugin to finalize the standalone index.html.
+ * For standalone builds, preserve file:/// compatibility by replacing the
+ * generated module entry with a classic external script entry.
+ * This keeps the main bundle out of index.html while avoiding module loading
+ * restrictions on local files.
+ * Worker sources remain embedded because their blob/object-url flow depends
+ * on in-document access to the source text.
  */
 const standalonePostBuildPlugin = ({ outDir, workers, zipFileName, folderName }: {
   outDir: string
@@ -335,7 +337,7 @@ const standalonePostBuildPlugin = ({ outDir, workers, zipFileName, folderName }:
 }) => ({
   name: 'standalone-post-build-plugin',
   async closeBundle() {
-    await inlineStandaloneIndexHtml({ outDir })
+    await finalizeStandaloneIndexHtml({ outDir })
     await embedStandaloneWorkers({ outDir, workers })
     await createZipPackage({ outDir, zipFileName, folderName })
   },
@@ -372,7 +374,7 @@ async function createZipPackage({ outDir, zipFileName, folderName }: {
   console.log(`  \u2713 Created package: ${zipPath}`)
 }
 
-async function inlineStandaloneIndexHtml({ outDir }: { outDir: string }) {
+async function finalizeStandaloneIndexHtml({ outDir }: { outDir: string }) {
   const distDir = path.resolve(__dirname, outDir)
   const htmlPath = path.join(distDir, 'index.html')
 
@@ -386,22 +388,13 @@ async function inlineStandaloneIndexHtml({ outDir }: { outDir: string }) {
   for (const script of scripts) {
     const src = script.getAttribute('src')
     if (src && src.includes('assets/index-')) {
-      const relativePath = src.startsWith('./') ? src.slice(2) : src
-      const scriptPath = path.join(distDir, relativePath)
-
-      if (fs.existsSync(scriptPath)) {
-        const scriptContent = fs.readFileSync(scriptPath, 'utf8')
-        const newScript = document.createElement('script')
-        // Escape </script> to prevent early script termination
-        newScript.textContent = scriptContent.replace(/<\/script>/g, '<\\/script>')
-        script.parentNode?.replaceChild(newScript, script)
-        fs.unlinkSync(scriptPath)
-      }
+      script.removeAttribute('type')
+      script.removeAttribute('crossorigin')
     }
   }
 
   fs.writeFileSync(htmlPath, dom.serialize())
-  console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility.`)
+  console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility with an external classic main script.`)
 }
 
 async function embedStandaloneWorkers({ outDir, workers }: {
