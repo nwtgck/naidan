@@ -249,6 +249,14 @@ const handleInput = (e: Event) => {
   }, delay);
 };
 
+function isEnterForImeComposition({ event }: { event: KeyboardEvent }) {
+  return event.key === 'Enter' && (
+    event.isComposing ||
+    event.keyCode === 229 ||
+    event.which === 229
+  );
+}
+
 watch([searchScope, chatGroupIds, chatId], () => {
   if (isSearchOpen.value && (query.value || searchScope.value === 'title_only')) {
     performSearch({ val: query.value });
@@ -256,6 +264,10 @@ watch([searchScope, chatGroupIds, chatId], () => {
 }, { deep: true });
 
 const handleKeydown = (e: KeyboardEvent) => {
+  if (isEnterForImeComposition({ event: e })) {
+    return;
+  }
+
   if (e.key === 'ArrowDown') {
     e.preventDefault();
     const pane = activePane.value;

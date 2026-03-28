@@ -203,6 +203,24 @@ describe('GlobalSearchModal Component', () => {
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
+  it('should ignore Enter during IME composition', async () => {
+    mockQuery.value = 'test';
+    mockResults.value = [
+      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', {
+      key: 'Enter',
+      isComposing: true,
+    });
+
+    expect(mockOpenChat).not.toHaveBeenCalled();
+    expect(mockCloseSearch).not.toHaveBeenCalled();
+  });
+
   it('should select a result when clicked', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
