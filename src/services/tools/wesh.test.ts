@@ -108,7 +108,7 @@ hello
     await tool.execute({
       args: {
         shell_script: 'echo hello',
-        timeoutMs: 1500,
+        timeout_ms: 1500,
       },
     })
 

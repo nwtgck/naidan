@@ -47,7 +47,7 @@ export function createWeshTool({
       .number()
       .default(defaultStderrLimit)
       .describe('Maximum number of bytes to capture from stderr.'),
-    timeoutMs: z
+    timeout_ms: z
       .number()
       .int()
       .min(0)
@@ -245,7 +245,7 @@ export function createWeshTool({
           },
         });
         const timeout = new Promise<'timeout'>(resolve => {
-          setTimeout(() => resolve('timeout'), validated.timeoutMs);
+          setTimeout(() => resolve('timeout'), validated.timeout_ms);
         });
         const raceParticipants: Array<Promise<unknown>> = [completion, timeout];
         if (abortPromise) {
@@ -279,7 +279,7 @@ export function createWeshTool({
           return {
             status: 'error',
             code: 'timeout',
-            message: `Shell execution timed out after ${validated.timeoutMs}ms.\n\n${content}`,
+            message: `Shell execution timed out after ${validated.timeout_ms}ms.\n\n${content}`,
           };
         }
 
